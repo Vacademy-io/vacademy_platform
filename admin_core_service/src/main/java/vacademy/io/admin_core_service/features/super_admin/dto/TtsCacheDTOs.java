@@ -133,4 +133,43 @@ public final class TtsCacheDTOs {
         private Date createdAt;
         private Date finishedAt;
     }
+
+    /** One AI agent and its speech-cache switch — every agent, not only the
+     *  ones that have cached something, so an OFF agent can be switched on. */
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AgentMode {
+        private String agentId;
+        private String agentName;
+        private String instituteId;
+        private String instituteName;
+        private String ttsModel;
+        private String voice;
+        /** OFF | FIXED | FULL. */
+        private String speechCacheMode;
+        private Date updatedAt;
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ModeRequest {
+        /** OFF | FIXED | FULL. */
+        private String mode;
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ModeChange {
+        private String agentId;
+        private String previousMode;
+        private String speechCacheMode;
+    }
 }

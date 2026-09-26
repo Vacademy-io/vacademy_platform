@@ -14,6 +14,23 @@ import { renderLatexDelimiters } from '@/lib/latex-delimiters';
 // function defined locally below to avoid circular dependency
 // import { formatTimeStudyLibraryInSeconds } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-helper/helper';
 
+/**
+ * Per-question marks a generated paper carries in its provenance
+ * (`source_meta.marks`, written by ai_service for KNOWLEDGE_BASE questions).
+ * Returned as the form's string mark, or '' when the question has none — the
+ * section default then applies exactly as before.
+ */
+export const marksFromSourceMeta = (item: { source_meta?: string | null }): string => {
+    if (!item?.source_meta) return '';
+    try {
+        const meta = JSON.parse(item.source_meta) as { marks?: unknown };
+        const marks = Number(meta?.marks);
+        return Number.isFinite(marks) && marks > 0 ? String(marks) : '';
+    } catch {
+        return '';
+    }
+};
+
 export const formatTimeStudyLibraryInSeconds = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -634,7 +651,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
                     item.explanation_text?.content || item.explanation_text_data?.content
                 ) || '',
             questionType: item.question_type,
-            questionMark: '',
+            questionMark: marksFromSourceMeta(item),
             questionPenalty: '',
             questionDuration: {
                 hrs: String(Math.floor((item.default_question_time_mins ?? 0) / 60)), // Extract hours
@@ -757,7 +774,7 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
                 item.explanation_text?.content || item.explanation_text_data?.content
             ) || '',
         questionType: item.question_type,
-        questionMark: '',
+        questionMark: marksFromSourceMeta(item),
         questionPenalty: '',
         questionDuration: {
             hrs: String(Math.floor((item.default_question_time_mins ?? 0) / 60)), // Extract hours

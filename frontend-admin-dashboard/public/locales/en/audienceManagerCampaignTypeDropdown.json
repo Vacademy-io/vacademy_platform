@@ -1,0 +1,10 @@
+{
+    "placeholder": "Select campaign type",
+    "optionWebsite": "Website",
+    "optionGoogleAds": "Google Ads",
+    "optionSocialMedia": "Social Media",
+    "addCustomType": "Add custom Enquiry type",
+    "customInputPlaceholder": "Enter campaign type",
+    "cancel": "Cancel",
+    "save": "Save"
+}

@@ -64,8 +64,9 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PagedResponse, SystemAlertItem } from '@/services/notifications/system-alerts';
-import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { useSystemAlertToasts } from '@/components/common/notifications/useSystemAlertToasts';
+import { getDefaultAdminDisplaySettings } from '@/constants/display-settings/admin-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import { MyButton } from '@/components/design-system/button';
 import { ClearAllAlertsButton } from '@/components/common/notifications/ClearAllAlertsButton';
 import { DismissAlertButton } from '@/components/common/notifications/DismissAlertButton';
@@ -88,6 +89,7 @@ import { useLanguageStore } from '@/stores/localization/useLanguageStore';
 import { getEnabledLocales } from '@/services/language-settings';
 import { dueLabel, useDueFollowupReminders } from '@/components/shared/leads/followup-reminders';
 import { Alarm } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
     const roleColors: Record<string, string> = {
@@ -122,23 +124,39 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const { setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
 
+    // Subscribe to language changes so the navbar (a persistent, always-mounted
+    // chrome component) re-renders immediately when the language switcher
+    // changes locale, rather than waiting for some unrelated state update.
+    const { t } = useTranslation('navbar');
+
     // Effective display settings (cached or defaults) for permission gating
     const isAdminRoleForDS = roles.includes('ADMIN');
     const roleKeyForDS = getActiveRoleDisplaySettingsKey();
     const cachedDS = getDisplaySettingsFromCache(roleKeyForDS);
-    const defaultDS = isAdminRoleForDS
-        ? DEFAULT_ADMIN_DISPLAY_SETTINGS
-        : DEFAULT_TEACHER_DISPLAY_SETTINGS;
+    // Only the permission flags and `ui` are read from this fallback, and neither
+    // depends on the sidebar labels the getters resolve through i18n — so the
+    // role is the whole dependency. Memoized because the navbar is always
+    // mounted and building the defaults walks every sidebar entry.
+    const defaultDS = useMemo(
+        () =>
+            isAdminRoleForDS
+                ? getDefaultAdminDisplaySettings()
+                : getDefaultTeacherDisplaySettings(),
+        [isAdminRoleForDS]
+    );
     const effectiveDS = cachedDS || defaultDS;
     const canViewProfile = effectiveDS.permissions.canViewProfileDetails;
     const canEditProfile = effectiveDS.permissions.canEditProfileDetails;
     const canViewInstitute = effectiveDS.permissions.canViewInstituteDetails;
     const canEditInstitute = effectiveDS.permissions.canEditInstituteDetails;
 
-    // Alerts: last 5
+    // Alerts: last 5. Polled while the tab is visible so a job finishing in
+    // the background (a bulk AI check, say) reaches the bell - and a toast -
+    // without a page change.
     const { data: alertsList, isLoading: isAlertsLoading } = useSuspenseQuery<
         PagedResponse<SystemAlertItem>
-    >(getSystemAlertsQuery(userId, 5));
+    >({ ...getSystemAlertsQuery(userId, 5), refetchInterval: 60_000 });
+    useSystemAlertToasts(alertsList?.content);
 
     // Alerts: full list (infinite)
     const infiniteAlerts = useInfiniteQuery<PagedResponse<SystemAlertItem>>({
@@ -351,7 +369,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     <button
                         onClick={() => window.history.back()}
                         className="flex items-center justify-center rounded-md p-2 transition-colors hover:bg-neutral-100"
-                        aria-label="Go back"
+                        aria-label={t('aria.goBack')}
                     >
                         <ArrowLeft className="size-5 text-neutral-600" weight="bold" />
                     </button>
@@ -362,7 +380,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     <button
                         onClick={() => setOpenMobile(true)}
                         className="flex items-center justify-center rounded-md p-2 transition-colors hover:bg-neutral-100"
-                        aria-label="Open menu"
+                        aria-label={t('aria.openMenu')}
                     >
                         <List className="size-5 text-neutral-600" weight="bold" />
                     </button>
@@ -381,7 +399,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 >
                                     <img
                                         src={instituteLogo}
-                                        alt="logo"
+                                        alt={t('profile.logo')}
                                         className="h-full w-full object-contain"
                                     />
                                 </div>
@@ -408,7 +426,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 )}
                             >
                                 <span className="whitespace-nowrap text-[10px] font-medium text-neutral-500 md:text-xs">
-                                    Powered by
+                                    {t('poweredBy')}
                                 </span>
                                 {mainInstituteLogoUrl ? (
                                     <div className="flex shrink-0 items-center justify-center overflow-hidden rounded">
@@ -467,7 +485,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             {finalInstructorPortalUrl && (
                                 <div className="mb-2">
                                     <div className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                                        Instructor Section
+                                        {t('appsMenu.instructorSection')}
                                     </div>
                                     <div className="grid grid-cols-4 gap-2 px-2 py-1">
                                         <a
@@ -475,14 +493,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                            title="Instructor Portal"
+                                            title={t('appsMenu.instructorPortal')}
                                         >
                                             <ChalkboardTeacher
                                                 className="size-6 text-primary-500"
                                                 weight="fill"
                                             />
                                             <span className="text-center text-[10px] leading-tight text-neutral-600">
-                                                Portal
+                                                {t('appsMenu.portal')}
                                             </span>
                                         </a>
                                     </div>
@@ -497,7 +515,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 <div>
                                     {finalInstructorPortalUrl && <Separator className="my-1" />}
                                     <div className="my-1 px-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                                        Learner Section
+                                        {t('appsMenu.learnerSection')}
                                     </div>
                                     <div className="grid grid-cols-4 gap-2 px-2 py-1">
                                         {finalLearnerPortalUrl && (
@@ -506,14 +524,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                title="Learner Portal"
+                                                title={t('appsMenu.learnerPortal')}
                                             >
                                                 <Student
                                                     className="size-6 text-primary-500"
                                                     weight="fill"
                                                 />
                                                 <span className="text-center text-[10px] leading-tight text-neutral-600">
-                                                    Portal
+                                                    {t('appsMenu.portal')}
                                                 </span>
                                             </a>
                                         )}
@@ -523,14 +541,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                title="Google Play Store"
+                                                title={t('appsMenu.googlePlayStore')}
                                             >
                                                 <AndroidLogo
                                                     className="size-6 text-green-600"
                                                     weight="fill"
                                                 />
                                                 <span className="text-[10px] text-neutral-600">
-                                                    Android
+                                                    {t('appsMenu.android')}
                                                 </span>
                                             </a>
                                         )}
@@ -540,14 +558,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                title="App Store"
+                                                title={t('appsMenu.appStore')}
                                             >
                                                 <AppleLogo
                                                     className="size-6 text-black"
                                                     weight="fill"
                                                 />
                                                 <span className="text-[10px] text-neutral-600">
-                                                    iOS
+                                                    {t('appsMenu.ios')}
                                                 </span>
                                             </a>
                                         )}
@@ -557,14 +575,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                title="Windows App"
+                                                title={t('appsMenu.windowsApp')}
                                             >
                                                 <WindowsLogo
                                                     className="size-6 text-blue-600"
                                                     weight="fill"
                                                 />
                                                 <span className="text-[10px] text-neutral-600">
-                                                    Win
+                                                    {t('appsMenu.windows')}
                                                 </span>
                                             </a>
                                         )}
@@ -574,14 +592,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex flex-col items-center justify-center gap-1 rounded-md p-1 hover:bg-neutral-100"
-                                                title="Mac App"
+                                                title={t('appsMenu.macApp')}
                                             >
                                                 <Desktop
                                                     className="size-6 text-neutral-600"
                                                     weight="fill"
                                                 />
                                                 <span className="text-[10px] text-neutral-600">
-                                                    Mac
+                                                    {t('appsMenu.mac')}
                                                 </span>
                                             </a>
                                         )}
@@ -621,7 +639,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 <div className="flex items-center justify-between bg-warning-50 px-3 py-2">
                                     <span className="flex items-center gap-1.5 text-sm font-medium text-warning-700">
                                         <Alarm size={15} weight="bold" />
-                                        Follow-ups due ({dueFollowups.length})
+                                        {t('notifications.followUpsDue', {
+                                            count: dueFollowups.length,
+                                        })}
                                     </span>
                                     <button
                                         className="text-xs text-primary-500 hover:underline"
@@ -629,7 +649,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             navigate({ to: '/audience-manager/follow-ups' })
                                         }
                                     >
-                                        View all
+                                        {t('notifications.viewAll')}
                                     </button>
                                 </div>
                                 <div className="max-h-40 overflow-y-auto p-2">
@@ -645,7 +665,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             >
                                                 <span className="min-w-0">
                                                     <span className="block truncate text-xs font-medium text-neutral-800">
-                                                        {f.lead_name ?? 'Lead'}
+                                                        {f.lead_name ?? t('notifications.lead')}
                                                     </span>
                                                     {f.lead_mobile && (
                                                         <span className="block text-caption text-neutral-500">
@@ -668,7 +688,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     })}
                                     {dueFollowups.length > 4 && (
                                         <p className="p-1 text-center text-caption text-neutral-500">
-                                            +{dueFollowups.length - 4} more due
+                                            {t('notifications.moreDue', {
+                                                count: dueFollowups.length - 4,
+                                            })}
                                         </p>
                                     )}
                                 </div>
@@ -676,7 +698,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             </>
                         )}
                         <div className="flex items-center justify-between px-3 py-2">
-                            <span className="text-sm font-medium">System Alerts</span>
+                            <span className="text-sm font-medium">
+                                {t('notifications.systemAlerts')}
+                            </span>
                             <div className="flex items-center gap-2">
                                 <ClearAllAlertsButton
                                     userId={userId}
@@ -687,7 +711,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     className="text-xs text-primary-500 hover:underline"
                                     onClick={() => setShowAllDialog(true)}
                                 >
-                                    See all
+                                    {t('notifications.seeAll')}
                                 </button>
                             </div>
                         </div>
@@ -744,7 +768,11 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             </div>
                                             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-neutral-500">
                                                 <span>
-                                                    Sent by {item.createdByName || 'System'}
+                                                    {t('notifications.sentBy', {
+                                                        name:
+                                                            item.createdByName ||
+                                                            t('notifications.system'),
+                                                    })}
                                                 </span>
                                                 <span>•</span>
                                                 <span>{formatAlertTimestamp(sentAt)}</span>
@@ -754,7 +782,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 })
                             ) : (
                                 <div className="p-3 text-center text-xs text-neutral-500">
-                                    No alerts
+                                    {t('notifications.noAlerts')}
                                 </div>
                             )}
                         </div>
@@ -764,7 +792,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 className="text-xs font-medium text-primary-500 hover:underline"
                                 onClick={() => setShowAllDialog(true)}
                             >
-                                See all notifications
+                                {t('notifications.seeAllNotifications')}
                             </button>
                         </div>
                     </DropdownMenuContent>
@@ -779,7 +807,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                         )}
                     >
                         <div className="flex items-center justify-between gap-2 px-5 py-4">
-                            <DialogTitle className="text-base">System Alerts</DialogTitle>
+                            <DialogTitle className="text-base">
+                                {t('notifications.systemAlerts')}
+                            </DialogTitle>
                             <ClearAllAlertsButton
                                 userId={userId}
                                 hasAlerts={
@@ -812,9 +842,16 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                                 </div>
                                                                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-neutral-500">
                                                                     <span>
-                                                                        Sent by{' '}
-                                                                        {item.createdByName ||
-                                                                            'System'}
+                                                                        {t(
+                                                                            'notifications.sentBy',
+                                                                            {
+                                                                                name:
+                                                                                    item.createdByName ||
+                                                                                    t(
+                                                                                        'notifications.system'
+                                                                                    ),
+                                                                            }
+                                                                        )}
                                                                     </span>
                                                                     <span>•</span>
                                                                     <span>
@@ -870,8 +907,8 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     onClick={() => infiniteAlerts.fetchNextPage()}
                                                 >
                                                     {infiniteAlerts.isFetchingNextPage
-                                                        ? 'Loading...'
-                                                        : 'Load more'}
+                                                        ? t('notifications.loading')
+                                                        : t('notifications.loadMore')}
                                                 </button>
                                             </div>
                                         )}
@@ -888,7 +925,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     </div>
                                 ) : (
                                     <div className="py-8 text-center text-xs text-neutral-500">
-                                        No alerts found
+                                        {t('notifications.noAlertsFound')}
                                     </div>
                                 )}
                             </div>
@@ -908,12 +945,12 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
                         <DropdownMenuTrigger
                             className="flex items-center gap-1 md:gap-2"
-                            aria-label="Open profile menu"
+                            aria-label={t('aria.openProfileMenu')}
                         >
                             {adminLogo !== '' ? (
                                 <img
                                     src={adminLogo}
-                                    alt="logo"
+                                    alt={t('profile.logo')}
                                     className={cn(
                                         'rounded-full object-cover',
                                         isCompact ? 'size-8' : 'size-8 md:size-10'
@@ -943,7 +980,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             {canViewProfile && (
                                 <Sheet>
                                     <SheetTrigger className="w-full p-2 text-left text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
-                                        View Profile Details
+                                        {t('profile.viewProfileDetails')}
                                     </SheetTrigger>
                                     <SheetContent
                                         className={cn(
@@ -952,14 +989,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         )}
                                     >
                                         <SheetTitle className="text-primary-500">
-                                            Profile Details
+                                            {t('profile.profileDetails')}
                                         </SheetTitle>
                                         <div className="flex flex-col gap-8">
                                             <div className="flex flex-col items-center justify-center gap-4">
                                                 {adminLogo !== '' && (
                                                     <img
                                                         src={adminLogo}
-                                                        alt="logo"
+                                                        alt={t('profile.logo')}
                                                         className="size-32 rounded-full object-cover md:size-48"
                                                     />
                                                 )}
@@ -967,7 +1004,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     {adminDetails?.full_name}
                                                 </h1>
                                                 <div className="flex flex-wrap items-center justify-center gap-2">
-                                                    <h1 className="whitespace-nowrap">Role Type</h1>
+                                                    <h1 className="whitespace-nowrap">
+                                                        {t('profile.roleType')}
+                                                    </h1>
                                                     {adminDetails.roles?.map((role, idx) => {
                                                         const bgColor =
                                                             roleColors[
@@ -991,7 +1030,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             <Separator />
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <h1>Account Information</h1>
+                                                    <h1>{t('profile.accountInformation')}</h1>
                                                     <MyButton
                                                         buttonType="secondary"
                                                         scale="small"
@@ -999,11 +1038,11 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                             setShowEditAccountDetails(true);
                                                         }}
                                                     >
-                                                        Edit Details
+                                                        {t('profile.editDetails')}
                                                     </MyButton>
                                                 </div>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Username:&nbsp;</span>
+                                                    <span>{t('profile.username')}&nbsp;</span>
                                                     <span className="break-all">
                                                         {getUserName()}
                                                     </span>
@@ -1011,15 +1050,15 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             </div>
                                             <Separator />
                                             <div className="flex flex-col gap-2">
-                                                <h1>Contact Information</h1>
+                                                <h1>{t('profile.contactInformation')}</h1>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Email:&nbsp;</span>
+                                                    <span>{t('profile.email')}&nbsp;</span>
                                                     <span className="break-all">
                                                         {adminDetails?.email}
                                                     </span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Mobile:&nbsp;</span>
+                                                    <span>{t('profile.mobile')}&nbsp;</span>
                                                     <span>+{adminDetails?.mobile_number}</span>
                                                 </p>
                                             </div>
@@ -1030,7 +1069,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             {canViewInstitute && (
                                 <Sheet>
                                     <SheetTrigger className="w-full p-2 text-sm hover:rounded-sm hover:bg-accent hover:text-accent-foreground">
-                                        View Institute Details
+                                        {t('institute.viewInstituteDetails')}
                                     </SheetTrigger>
                                     <SheetContent
                                         className={cn(
@@ -1039,14 +1078,14 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         )}
                                     >
                                         <SheetTitle className="text-primary-500">
-                                            Institute Details
+                                            {t('institute.instituteDetails')}
                                         </SheetTitle>
                                         <div className="flex flex-col gap-8">
                                             <div className="flex flex-col items-center justify-center gap-4">
                                                 {instituteLogo !== '' && (
                                                     <img
                                                         src={instituteLogo}
-                                                        alt="logo"
+                                                        alt={t('profile.logo')}
                                                         className="size-32 object-contain md:size-48"
                                                     />
                                                 )}
@@ -1054,7 +1093,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     {instituteDetails?.institute_name}
                                                 </h1>
                                                 <div className="flex items-center gap-2">
-                                                    <h1>Institute Type</h1>
+                                                    <h1>{t('institute.instituteType')}</h1>
                                                     <p className="rounded-lg border px-2 py-1 text-sm text-neutral-600">
                                                         {instituteDetails?.type}
                                                     </p>
@@ -1065,19 +1104,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             </div>
                                             <Separator />
                                             <div className="flex flex-col gap-2">
-                                                <h1>Contact Information</h1>
+                                                <h1>{t('institute.contactInformation')}</h1>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Institute Email:&nbsp;</span>
+                                                    <span>
+                                                        {t('institute.instituteEmail')}&nbsp;
+                                                    </span>
                                                     <span className="break-all">
                                                         {instituteDetails?.email}
                                                     </span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Institute Mobile:&nbsp;</span>
+                                                    <span>
+                                                        {t('institute.instituteMobile')}&nbsp;
+                                                    </span>
                                                     <span>+{instituteDetails?.phone}</span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Institute Website:&nbsp;</span>
+                                                    <span>
+                                                        {t('institute.instituteWebsite')}&nbsp;
+                                                    </span>
                                                     <span className="break-all">
                                                         {instituteDetails?.website_url}
                                                     </span>
@@ -1085,25 +1130,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                             </div>
                                             <Separator />
                                             <div className="flex flex-col gap-2">
-                                                <h1>Location Details</h1>
+                                                <h1>{t('institute.locationDetails')}</h1>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Address:&nbsp;</span>
+                                                    <span>{t('institute.address')}&nbsp;</span>
                                                     <span>{instituteDetails?.address}</span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>City/Village:&nbsp;</span>
+                                                    <span>{t('institute.cityVillage')}&nbsp;</span>
                                                     <span>{instituteDetails?.city}</span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>State:&nbsp;</span>
+                                                    <span>{t('institute.state')}&nbsp;</span>
                                                     <span>{instituteDetails?.state}</span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Country:&nbsp;</span>
+                                                    <span>{t('institute.country')}&nbsp;</span>
                                                     <span>{instituteDetails?.country}</span>
                                                 </p>
                                                 <p className="text-sm text-neutral-600">
-                                                    <span>Pincode:&nbsp;</span>
+                                                    <span>{t('institute.pincode')}&nbsp;</span>
                                                     <span>{instituteDetails?.pin_code}</span>
                                                 </p>
                                             </div>
@@ -1120,7 +1165,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                 onClick={handleLogout}
                                 className="w-full cursor-pointer"
                             >
-                                Logout
+                                {t('logout')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

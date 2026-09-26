@@ -43,6 +43,16 @@ async def start_from_url(url: str) -> str:
     return pdf_id
 
 
+async def start_from_bytes(pdf_bytes: bytes, filename: str = "paper.pdf") -> str:
+    """Submit PDF bytes we already hold (a downloaded question paper) straight
+    to MathPix — no public S3 object needed first. Returns pdfId."""
+    pdf_id = await mathpix_pdf_service.submit_bytes(pdf_bytes, filename)
+    if not pdf_id:
+        raise RuntimeError("MathPix did not return a pdf_id")
+    await asyncio.to_thread(_cache_start, pdf_id, None)
+    return pdf_id
+
+
 async def fetch_or_convert_html(pdf_id: str, *, allow_poll: bool) -> str:
     """Return the cached HTML for a pdfId, or convert it. With allow_poll=False
     (sync pdf-to-html) raises StillProcessing if MathPix isn't done yet; with

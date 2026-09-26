@@ -11,12 +11,14 @@ import {
 import 'react-quill/dist/quill.snow.css';
 import { PPTViewQuillEditor } from '@/components/quill/PPTViewQuillEditor';
 import { QuestionPaperTemplateFormProps } from '../MainViewComponentFactory';
+import { useTranslation } from 'react-i18next';
 
 export const LongAnswerQuestionPaperTemplatePPTView = ({
     form,
     currentQuestionIndex,
     className,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('evaluatorAiLongAnswerPptView');
     const { control, getValues, setValue } = form;
 
     const [isDropdownVisible, setIsDropdownVisible] = useState(false); // State to track dropdown visibility
@@ -83,10 +85,10 @@ export const LongAnswerQuestionPaperTemplatePPTView = ({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="mt-1">
                             <DropdownMenuItem onClick={handleDuplicateSlide}>
-                                Duplicate Slide
+                                {t('duplicateSlide')}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={handleDeleteSlide}>
-                                Delete Slide
+                                {t('deleteSlide')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

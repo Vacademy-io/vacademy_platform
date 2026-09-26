@@ -85,11 +85,17 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
             const p = c?.props || {};
             const cctx = { ...ctx, componentId: c?.id };
 
-            // Capture surfaces wired to nothing.
-            const wantsForm =
-                p.action === 'openForm' || p.button?.action === 'openForm';
-            const formAudience = String(p.audienceId || p.button?.audienceId || '').trim();
-            if (wantsForm && !formAudience) {
+            // Capture surfaces wired to nothing: a bare action, the single
+            // `button` (CTA banner, media showcase…) and each hero button.
+            const formButtons: Array<{ action?: string; audienceId?: string }> = [
+                { action: p.action, audienceId: p.audienceId },
+                ...(p.button ? [p.button] : []),
+                ...(p.left?.buttons || []),
+            ];
+            const unwiredButton = formButtons.some(
+                (b) => b?.action === 'openForm' && !String(b?.audienceId || '').trim(),
+            );
+            if (unwiredButton) {
                 issues.push({
                     severity: 'error',
                     title: 'A button opens a form but no campaign is selected',
@@ -112,6 +118,19 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     fix: 'Pick a product page in its properties, or remove the section. It is hidden from visitors as-is.',
                     ...cctx,
                 });
+            }
+            // A blog on the home page still works (?post=<slug>), but every
+            // article then shares the home URL — no clean links, no sitemap entries.
+            if (c?.type === 'blog' && c?.enabled !== false) {
+                const route = String(page?.route || '').replace(/^\//, '').toLowerCase();
+                if (route === '' || route === 'home' || route === 'homepage' || page?.id === 'home') {
+                    issues.push({
+                        severity: 'warning',
+                        title: 'The Blog section is on the home page',
+                        fix: 'Move it to its own page (for example "blog") so each article gets a clean URL of its own and appears in the sitemap.',
+                        ...cctx,
+                    });
+                }
             }
 
             // Header/footer nav pointing at pages that do not exist.

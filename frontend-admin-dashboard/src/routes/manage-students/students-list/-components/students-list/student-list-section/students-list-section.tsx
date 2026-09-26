@@ -1,5 +1,6 @@
 // StudentListSection.tsx
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { GetFilterData } from '@/routes/manage-students/students-list/-constants/all-filters';
@@ -54,6 +55,8 @@ import { useListCustomFieldControls } from '@/components/shared/leads/use-list-c
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const StudentsListSection = () => {
+    const { t } = useTranslation('manageStudentsListSection');
+    const { t: tAllFilters } = useTranslation('manageStudentsAllFilters');
     const { setNavHeading } = useNavHeadingStore();
     const { isError, isLoading } = useQuery(useInstituteQuery());
     const [isOpen, setIsOpen] = useState(false);
@@ -248,6 +251,7 @@ export const StudentsListSection = () => {
     );
 
     const allFilters = GetFilterData(
+        tAllFilters,
         instituteDetails,
         currentSession.id,
         campaignsData?.content,
@@ -328,7 +332,7 @@ export const StudentsListSection = () => {
         onError: (error) =>
             reportApiError(error, {
                 feature: 'students-select-all',
-                fallbackMessage: 'Could not select everyone — try again.',
+                fallbackMessage: t('bulkActionsBar.selectAllError'),
             }),
     });
 
@@ -352,19 +356,25 @@ export const StudentsListSection = () => {
                 <EmptyStudentListImage className="size-12 opacity-50" />
             </div>
             <h3 className="mb-2 text-base font-semibold text-neutral-700">
-                No {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Found
+                {t('emptyState.title', {
+                    term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                })}
             </h3>
             <p className="mb-4 max-w-md text-xs leading-relaxed text-neutral-500">
-                No {getTerminology(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()} data
-                matches your current filters. Try adjusting your search criteria or add new{' '}
-                {getTerminology(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()} to get
-                started.
+                {t('emptyState.description', {
+                    termLower: getTerminology(
+                        RoleTerms.Learner,
+                        SystemTerms.Learner
+                    ).toLocaleLowerCase(),
+                })}
             </p>
             <div className="flex flex-col items-center gap-2 sm:flex-row">
                 <InviteFormProvider>
                     <button className="group flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 px-3 py-1.5 text-sm text-white shadow-md transition-all duration-200 hover:scale-105 hover:from-primary-600 hover:to-primary-700">
                         <Users className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
-                        Invite {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
+                        {t('emptyState.inviteButton', {
+                            term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                        })}
                     </button>
                 </InviteFormProvider>
                 <button
@@ -372,7 +382,7 @@ export const StudentsListSection = () => {
                     className="group flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-1.5 text-sm text-neutral-700 transition-all duration-200 hover:scale-105 hover:bg-neutral-200"
                 >
                     <FileMagnifyingGlass className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
-                    Clear Filters
+                    {t('emptyState.clearFiltersButton')}
                 </button>
             </div>
         </div>
@@ -423,12 +433,12 @@ export const StudentsListSection = () => {
                         <div className="flex w-full flex-col items-center gap-2 py-6">
                             <DashboardLoader />
                             <p className="animate-pulse text-xs text-neutral-500">
-                                Loading{' '}
-                                {getTerminology(
-                                    RoleTerms.Learner,
-                                    SystemTerms.Learner
-                                ).toLocaleLowerCase()}{' '}
-                                data...
+                                {t('loadingData', {
+                                    termLower: getTerminology(
+                                        RoleTerms.Learner,
+                                        SystemTerms.Learner
+                                    ).toLocaleLowerCase(),
+                                })}
                             </p>
                         </div>
                     ) : !studentTableData || studentTableData.content.length == 0 ? (
@@ -455,17 +465,19 @@ export const StudentsListSection = () => {
                                                     onClick={selectAllMatching}
                                                 >
                                                     {isSelectingAll
-                                                        ? 'Selecting…'
-                                                        : `Select all ${totalElements}`}
+                                                        ? t('bulkActionsBar.selecting')
+                                                        : t('bulkActionsBar.selectAllCount', {
+                                                              count: totalElements,
+                                                          })}
                                                 </MyButton>
                                             ) : (
                                                 <span className="text-caption text-neutral-500">
-                                                    all{' '}
-                                                    {getTerminologyPlural(
-                                                        RoleTerms.Learner,
-                                                        SystemTerms.Learner
-                                                    ).toLocaleLowerCase()}{' '}
-                                                    matching your filters
+                                                    {t('bulkActionsBar.allMatchingFilters', {
+                                                        term: getTerminologyPlural(
+                                                            RoleTerms.Learner,
+                                                            SystemTerms.Learner
+                                                        ).toLocaleLowerCase(),
+                                                    })}
                                                 </span>
                                             )
                                         }
@@ -541,7 +553,7 @@ export const StudentsListSection = () => {
                                                 // Counsellor column: always shown when lead system is enabled
                                                 augmented.push({
                                                     id: 'counsellor',
-                                                    header: 'Counsellor',
+                                                    header: t('table.counsellorHeader'),
                                                     size: 160,
                                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                                     cell: (props: any) => {
@@ -563,7 +575,9 @@ export const StudentsListSection = () => {
                                                                             userName: name,
                                                                         });
                                                                     }}
-                                                                    title="Click to reassign"
+                                                                    title={t(
+                                                                        'table.reassignTooltip'
+                                                                    )}
                                                                 >
                                                                     <UserCircle className="size-4 shrink-0 text-neutral-400" />
                                                                     <span className="truncate">
@@ -583,7 +597,7 @@ export const StudentsListSection = () => {
                                                                     });
                                                                 }}
                                                             >
-                                                                Assign
+                                                                {t('table.assignButton')}
                                                             </button>
                                                         );
                                                     },
@@ -681,8 +695,8 @@ export const StudentsListSection = () => {
                 <NoCourseDialog
                     isOpen={isOpen}
                     setIsOpen={setIsOpen}
-                    type="Enroll Students"
-                    content="You need to create a course and add a subject in it before"
+                    type={t('noCourseDialog.enrollStudentsLabel')}
+                    content={t('noCourseDialog.defaultContent')}
                 />
                 <ShareCredentialsDialog />
                 <IndividualShareCredentialsDialog />

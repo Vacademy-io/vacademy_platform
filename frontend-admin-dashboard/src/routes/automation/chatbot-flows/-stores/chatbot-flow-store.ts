@@ -14,6 +14,7 @@ import {
     ChatbotFlowDTO,
     ChatbotFlowNodeDTO,
     ChatbotFlowEdgeDTO,
+    ChatbotFlowSettings,
     ChatbotNodeType,
     NODE_TYPE_REGISTRY,
 } from '@/types/chatbot-flow/chatbot-flow-types';
@@ -26,6 +27,8 @@ interface ChatbotFlowBuilderState {
     channelType: string;
     flowStatus: string;
     instituteId: string;
+    /** Flow-level settings — notification emails for chatbot hand-overs live here. */
+    flowSettings: ChatbotFlowSettings;
 
     // React Flow state
     nodes: Node[];
@@ -54,6 +57,7 @@ interface ChatbotFlowBuilderState {
     setFlowDescription: (desc: string) => void;
     setChannelType: (type: string) => void;
     setInstituteId: (id: string) => void;
+    setFlowSettings: (settings: ChatbotFlowSettings) => void;
 
     // Persistence
     loadFlow: (dto: ChatbotFlowDTO) => void;
@@ -69,6 +73,7 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
     channelType: 'WHATSAPP_COMBOT',
     flowStatus: 'DRAFT',
     instituteId: '',
+    flowSettings: {},
     nodes: [],
     edges: [],
     selectedNodeId: null,
@@ -198,6 +203,7 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
     setFlowDescription: (desc) => set({ flowDescription: desc, isDirty: true }),
     setChannelType: (type) => set({ channelType: type, isDirty: true }),
     setInstituteId: (id) => set({ instituteId: id }),
+    setFlowSettings: (settings) => set({ flowSettings: settings, isDirty: true }),
     setIsSaving: (saving) => set({ isSaving: saving }),
 
     loadFlow: (dto) => {
@@ -236,6 +242,7 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
             channelType: dto.channelType,
             flowStatus: dto.status,
             instituteId: dto.instituteId,
+            flowSettings: dto.settings || {},
             nodes,
             edges,
             selectedNodeId: null,
@@ -272,6 +279,7 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
             description: state.flowDescription,
             channelType: state.channelType,
             status: state.flowStatus as ChatbotFlowDTO['status'],
+            settings: state.flowSettings,
             nodes,
             edges,
         };
@@ -284,6 +292,7 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
             flowDescription: '',
             channelType: 'WHATSAPP_COMBOT',
             flowStatus: 'DRAFT',
+            flowSettings: {},
             nodes: [],
             edges: [],
             selectedNodeId: null,

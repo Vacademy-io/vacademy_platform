@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Trans, useTranslation } from "react-i18next";
 import { Preferences } from "@capacitor/preferences";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import {
   ArrowsClockwise,
   CreditCard,
@@ -33,11 +36,21 @@ import {
 import { SessionLoginForm } from "@/routes/study-library/live-class/$username/components/SessionLoginForm";
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
+  cancelScheduledPlanChange,
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
+  requestPlanChange,
+  type PlanChangeResult,
+  type PlanChangeTarget,
   type Subscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
+import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
+import {
+  DEFAULT_MANDATE_METHOD,
+  MandateMethodPicker,
+  type MandateMethod,
+} from "@/components/common/subscription/MandateMethodPicker";
 
 const formatPrice = (amount?: number | null, currency?: string | null): string => {
   if (amount == null) return "";
@@ -73,6 +86,7 @@ const formatDate = (value?: string | null): string | null => {
 };
 
 function RouteComponent() {
+  const { t } = useTranslation("miscRoutesB");
   const params = Route.useParams();
   const domainRouting = useDomainRouting();
 
@@ -146,11 +160,10 @@ function RouteComponent() {
             ) : (
               <div className="space-y-4 text-center">
                 <h2 className="text-2xl font-semibold text-gray-900">
-                  Unable to Load Subscriptions
+                  {t("subscriptions.unableToLoad.title")}
                 </h2>
                 <p className="text-gray-600">
-                  Could not determine the institute for this page. Please open
-                  the exact link you received, or contact support.
+                  {t("subscriptions.unableToLoad.description")}
                 </p>
               </div>
             )
@@ -160,16 +173,15 @@ function RouteComponent() {
               instituteId={domainRouting.instituteId}
               onLoginSuccess={() => setAuthState("authenticated")}
               onNavigate={() => {}}
-              successToastDescription="Loading your subscriptions"
+              successToastDescription={t("subscriptions.loadingToast")}
             />
           ) : (
             <div className="space-y-4 text-center">
               <h2 className="text-2xl font-semibold text-gray-900">
-                Unable to Load Subscriptions
+                {t("subscriptions.unableToLoad.title")}
               </h2>
               <p className="text-gray-600">
-                Could not determine the institute for this page. Please open the
-                exact link you received, or contact support.
+                {t("subscriptions.unableToLoad.description")}
               </p>
             </div>
           )}
@@ -179,7 +191,7 @@ function RouteComponent() {
       <div className="border-t bg-white">
         <div className="mx-auto px-4 py-4">
           <p className="text-center text-sm text-gray-500">
-            Need help? Message us and we&apos;ll sort it out.
+            {t("subscriptions.footer")}
           </p>
         </div>
       </div>
@@ -198,12 +210,18 @@ function RouteComponent() {
  * "everything is fine" to learners who had just cancelled.
  */
 function ManageSubscriptions({ instituteId }: { instituteId: string }) {
+  const { t } = useTranslation("miscRoutesB");
+  const liveClasses = getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession);
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
+  const [toChange, setToChange] = useState<Subscription | null>(null);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
   const [renewingPlanId, setRenewingPlanId] = useState<string | null>(null);
   // Per-plan "also enable auto-pay" choice (offered only when the invite has
   // autopay configured). Default off: the learner cancelled it deliberately.
   const [autopayChoice, setAutopayChoice] = useState<Record<string, boolean>>({});
+  // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
+  const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
 
   const refetchSoon = () => {
@@ -238,11 +256,16 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       const withAutopay = Boolean(
         sub.autopay_available && autopayChoice[sub.user_plan_id]
       );
-      const response = await initiateRenewalPayment(instituteId, sub, withAutopay);
+      const response = await initiateRenewalPayment(
+        instituteId,
+        sub,
+        withAutopay,
+        mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
+      );
       const orderDetails =
         response?.payment_response?.response_data || response?.response_data;
       if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
-        throw new Error("Could not create the payment order");
+        throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
       }
       razorpayRef.current?.openPayment({
         razorpayKeyId: orderDetails.razorpayKeyId,
@@ -257,13 +280,89 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         customerId: orderDetails.customerId,
       });
     } catch (e) {
-      toast.error("Couldn't start the payment", {
-        description: e instanceof Error ? e.message : "Please try again in a moment.",
+      toast.error(t("subscriptions.manage.toast.startFailedTitle"), {
+        description: e instanceof Error ? e.message : t("subscriptions.manage.toast.genericRetry"),
       });
     } finally {
       setRenewingPlanId(null);
     }
   };
+
+  /**
+   * Book a plan change from this page. Mirrors startRenewal: an upgrade opens the same
+   * Razorpay checkout (for the prorated difference), a downgrade is booked for the end of
+   * the cycle and only needs a refetch. Mandate re-auth is forced when the backend says
+   * the current mandate cannot carry the new plan.
+   */
+  const startPlanChange = async (
+    sub: Subscription,
+    target: PlanChangeTarget,
+    withAutopay: boolean,
+    mandateMethod?: MandateMethod
+  ): Promise<PlanChangeResult | null> => {
+    try {
+      setChangingPlanId(sub.user_plan_id);
+      const result = await requestPlanChange(
+        instituteId,
+        sub.user_plan_id,
+        target.plan_id,
+        withAutopay || Boolean(target.requires_mandate_reauth),
+        mandateMethod
+      );
+      if (result.status === "PENDING_PAYMENT" && result.payment_response) {
+        const orderDetails =
+          result.payment_response?.payment_response?.response_data ??
+          result.payment_response?.response_data;
+        if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
+          throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
+        }
+        let email = "";
+        let mobile = "";
+        try {
+          const stored = await Preferences.get({ key: "StudentDetails" });
+          if (stored.value) {
+            const details = JSON.parse(stored.value);
+            email = details?.email ?? "";
+            mobile = details?.mobile_number ?? details?.mobileNumber ?? "";
+          }
+        } catch {
+          // best effort — the backend resolves the customer from the JWT anyway
+        }
+        razorpayRef.current?.openPayment({
+          razorpayKeyId: orderDetails.razorpayKeyId,
+          razorpayOrderId: orderDetails.razorpayOrderId,
+          amount: orderDetails.amount,
+          currency: orderDetails.currency || target.currency || "INR",
+          contact: mobile,
+          email,
+          recurring: orderDetails.recurring,
+          customerId: orderDetails.customerId,
+        });
+      } else {
+        queryClient.invalidateQueries({
+          queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, "public-manage", instituteId],
+        });
+      }
+      return result;
+    } catch (e) {
+      toast.error(t("subscriptions.manage.toast.startFailedTitle"), {
+        description:
+          e instanceof Error ? e.message : t("subscriptions.manage.toast.genericRetry"),
+      });
+      return null;
+    } finally {
+      setChangingPlanId(null);
+    }
+  };
+
+  const cancelPlanChangeMutation = useMutation({
+    mutationFn: (userPlanId: string) =>
+      cancelScheduledPlanChange(instituteId, userPlanId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, "public-manage", instituteId],
+      }),
+  });
 
   const {
     data: subscriptions,
@@ -282,10 +381,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       const until = formatDate(updated.end_date);
       // Not toast.success: they have cancelled something, and a green tick
       // alongside "membership stopped" is the mixed signal this page had.
-      toast("Membership stopped", {
+      toast(t("subscriptions.manage.toast.membershipStoppedTitle"), {
         description: until
-          ? `You can still join classes until ${until}. You won't be charged again.`
-          : "You won't be charged again.",
+          ? t("subscriptions.manage.toast.stoppedWithDate", { liveClasses, date: until })
+          : t("subscriptions.manage.toast.stoppedNoDate"),
       });
       setToCancel(null);
       queryClient.invalidateQueries({
@@ -293,8 +392,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       });
     },
     onError: () => {
-      toast.error("Couldn't stop your membership", {
-        description: "Please try again in a moment.",
+      toast.error(t("subscriptions.manage.toast.stopFailedTitle"), {
+        description: t("subscriptions.manage.toast.genericRetry"),
       });
     },
   });
@@ -303,7 +402,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-500">
         <SpinnerGap className="size-4 animate-spin" />
-        Loading your subscriptions...
+        {t("subscriptions.manage.loading")}
       </div>
     );
   }
@@ -312,7 +411,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
         <Info className="size-4 shrink-0" />
-        Subscriptions are unavailable right now. Please try again later.
+        {t("subscriptions.manage.error")}
       </div>
     );
   }
@@ -322,17 +421,16 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-gray-900">Your membership</h2>
+        <h2 className="text-xl font-semibold text-gray-900">{t("subscriptions.manage.heading")}</h2>
         <p className="text-sm text-gray-600">
-          You can stop your membership anytime. Your classes carry on until the
-          date you&apos;ve already paid for.
+          {t("subscriptions.manage.description", { liveClasses })}
         </p>
       </div>
 
       {subs.length === 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
           <Info className="size-4 shrink-0" />
-          No subscriptions found for this account.
+          {t("subscriptions.manage.empty")}
         </div>
       )}
 
@@ -356,19 +454,19 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-gray-700">
-                      {sub.plan_name ?? "Subscription"}
+                      {sub.plan_name ?? t("subscriptions.manage.planFallback")}
                     </p>
                     {sub.is_trial && (
                       <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500">
-                        Trial
+                        {t("subscriptions.manage.trialBadge")}
                       </span>
                     )}
                   </div>
                   {autopayOn && (
                     <p className="text-xs text-gray-500">
                       {nextCharge
-                        ? `Next payment on ${nextCharge}`
-                        : "Renews automatically"}
+                        ? t("subscriptions.manage.nextPayment", { date: nextCharge })
+                        : t("subscriptions.manage.renewsAutomatically")}
                     </p>
                   )}
                 </div>
@@ -381,7 +479,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                   layoutVariant="default"
                   onClick={() => setToCancel(sub)}
                 >
-                  Stop membership
+                  {t("subscriptions.manage.stopMembership")}
                 </MyButton>
               )}
             </div>
@@ -394,10 +492,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
                 <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
                 <span>
-                  <span className="font-medium">Membership stopped.</span>{" "}
+                  <span className="font-medium">{t("subscriptions.manage.membershipStoppedLabel")}</span>{" "}
                   {accessUntil
-                    ? `You can still join classes until ${accessUntil}. After that your membership ends. You won't be charged again.`
-                    : "You can still join classes until the end of the time you've paid for. You won't be charged again."}
+                    ? t("subscriptions.manage.membershipStoppedWithDate", { liveClasses, date: accessUntil })
+                    : t("subscriptions.manage.membershipStoppedNoDate", { liveClasses })}
                 </span>
               </div>
             )}
@@ -406,10 +504,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               <div className="flex items-start gap-2 rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
                 <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
                 <span>
-                  <span className="font-medium">Payment didn&apos;t go through.</span>{" "}
+                  <span className="font-medium">{t("subscriptions.manage.paymentFailedLabel")}</span>{" "}
                   {accessUntil
-                    ? `You can still join classes until ${accessUntil}. Pay below to keep your membership.`
-                    : "Pay below to keep your membership."}
+                    ? t("subscriptions.manage.paymentFailedWithDate", { liveClasses, date: accessUntil })
+                    : t("subscriptions.manage.paymentFailedNoDate")}
                 </span>
               </div>
             )}
@@ -419,14 +517,14 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                 <div className="text-sm text-gray-700">
                   {sub.status === "EXPIRED" || sub.status === "PAYMENT_FAILED" ? (
                     <span>
-                      Start your membership again — same plan, same classes.
-                      You don&apos;t need to sign up again.
+                      {t("subscriptions.manage.restartMembership", { liveClasses })}
                     </span>
                   ) : (
                     <span>
-                      Want to keep going after{" "}
-                      {accessUntil ?? "your current period"}? Pay now and your
-                      classes carry on.
+                      {t("subscriptions.manage.renewPrompt", {
+                        period: accessUntil ?? t("subscriptions.manage.currentPeriodFallback"),
+                        liveClasses,
+                      })}
                     </span>
                   )}
                 </div>
@@ -444,11 +542,21 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                       }
                     />
                     <span>
-                      Also enable auto-pay for future renewals — one approval
-                      pays now and sets up automatic deduction, no more manual
-                      payments.
+                      {t("subscriptions.manage.autopayCheckbox")}
                     </span>
                   </label>
+                )}
+                {sub.autopay_available && autopayChoice[sub.user_plan_id] && (
+                  <MandateMethodPicker
+                    value={mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD}
+                    onChange={(method) =>
+                      setMandateMethodChoice((prev) => ({
+                        ...prev,
+                        [sub.user_plan_id]: method,
+                      }))
+                    }
+                    disabled={renewingPlanId === sub.user_plan_id}
+                  />
                 )}
                 <div className="flex justify-end">
                   <MyButton
@@ -461,15 +569,74 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                   >
                     <CreditCard className="me-1.5 size-4" />
                     {renewingPlanId === sub.user_plan_id
-                      ? "Starting payment..."
-                      : `Pay ${formatPrice(sub.plan_price, sub.currency)} to continue`}
+                      ? t("subscriptions.manage.startingPayment")
+                      : t("subscriptions.manage.payToContinue", {
+                          amount: formatPrice(sub.plan_price, sub.currency),
+                        })}
                   </MyButton>
                 </div>
+              </div>
+            )}
+
+            {/* A downgrade already booked for the end of the cycle. */}
+            {sub.scheduled_plan_change && (
+              <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-sm text-info-600">
+                <ArrowsClockwise className="mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span>
+                    {t("subscriptions.manage.planChangeScheduled", {
+                      plan: sub.scheduled_plan_change.to_plan_name,
+                      date:
+                        formatDate(sub.scheduled_plan_change.effective_from) ??
+                        t("subscriptions.manage.currentPeriodFallback"),
+                    })}
+                  </span>
+                  <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="text"
+                    layoutVariant="default"
+                    disable={cancelPlanChangeMutation.isPending}
+                    onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
+                  >
+                    {t("subscriptions.manage.planChangeCancelScheduled")}
+                  </MyButton>
+                </div>
+              </div>
+            )}
+
+            {/* Switch plan — only when the institute flagged another plan switchable. */}
+            {sub.can_change_plan && !sub.scheduled_plan_change && (
+              <div className="flex justify-end">
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="secondary"
+                  layoutVariant="default"
+                  onClick={() => setToChange(sub)}
+                  disable={changingPlanId === sub.user_plan_id}
+                >
+                  <ArrowsClockwise className="me-1.5 size-4" />
+                  {t("subscriptions.manage.changePlan")}
+                </MyButton>
               </div>
             )}
           </div>
         );
       })}
+
+      <ChangePlanDialog
+        open={Boolean(toChange)}
+        onOpenChange={(open) => {
+          if (!open) setToChange(null);
+        }}
+        subscription={toChange}
+        instituteId={instituteId}
+        isSubmitting={Boolean(changingPlanId)}
+        onConfirm={(target, withAutopay, mandateMethod) =>
+          startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
+        }
+      />
 
       {/* Gateway checkout host — visually hidden (its built-in card UI shows a
           placeholder amount); the SDK's payment modal attaches to document.body,
@@ -481,14 +648,13 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         amount={0}
         currency="INR"
         onPaymentReady={() => {
-          toast.success("Payment received!", {
-            description:
-              "Your membership is being reactivated — this takes a few seconds.",
+          toast.success(t("subscriptions.manage.toast.paymentReceivedTitle"), {
+            description: t("subscriptions.manage.toast.paymentReceivedDescription"),
           });
           refetchSoon();
         }}
         onError={(message) =>
-          toast.error("Payment not completed", { description: message })
+          toast.error(t("subscriptions.manage.toast.paymentNotCompletedTitle"), { description: message })
         }
       />
       </div>
@@ -503,16 +669,20 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warning className="size-5 text-danger-500" weight="fill" />
-              Stop your membership?
+              {t("subscriptions.manage.cancelDialog.title")}
             </DialogTitle>
             <DialogDescription>
-              You can still join classes until{" "}
-              <span className="font-medium text-gray-700">
-                {formatDate(toCancel?.end_date) ??
-                  "the end of the time you've paid for"}
-              </span>
-              . After that your membership ends and you won&apos;t be charged
-              again. You can start it again anytime.
+              <Trans
+                i18nKey="subscriptions.manage.cancelDialog.description"
+                t={t}
+                values={{
+                  liveClasses,
+                  date:
+                    formatDate(toCancel?.end_date) ??
+                    t("subscriptions.manage.endOfPaidPeriodFallback"),
+                }}
+                components={{ bold: <span className="font-medium text-gray-700" /> }}
+              />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -524,7 +694,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               onClick={() => setToCancel(null)}
               disable={cancelMutation.isPending}
             >
-              Keep membership
+              {t("subscriptions.manage.cancelDialog.keepMembership")}
             </MyButton>
             <MyButton
               type="button"
@@ -536,7 +706,9 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               }
               disable={cancelMutation.isPending}
             >
-              {cancelMutation.isPending ? "Stopping..." : "Stop membership"}
+              {cancelMutation.isPending
+                ? t("subscriptions.manage.stopping")
+                : t("subscriptions.manage.stopMembership")}
             </MyButton>
           </DialogFooter>
         </DialogContent>

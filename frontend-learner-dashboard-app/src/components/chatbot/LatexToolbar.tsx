@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface LatexSymbol {
@@ -10,50 +11,6 @@ interface SymbolGroup {
   name: string;
   symbols: LatexSymbol[];
 }
-
-const SYMBOL_GROUPS: SymbolGroup[] = [
-  {
-    name: "Arithmetic",
-    symbols: [
-      { label: "\u221A", insert: "\\sqrt{}" },
-      { label: "x\u00B2", insert: "^{2}" },
-      { label: "x\u2099", insert: "_{n}" },
-      { label: "\u00F7", insert: "\\frac{}{}" },
-      { label: "\u00B1", insert: "\\pm" },
-    ],
-  },
-  {
-    name: "Relations",
-    symbols: [
-      { label: "\u2260", insert: "\\neq" },
-      { label: "\u2264", insert: "\\leq" },
-      { label: "\u2265", insert: "\\geq" },
-    ],
-  },
-  {
-    name: "Calculus",
-    symbols: [
-      { label: "\u222B", insert: "\\int_{a}^{b}" },
-      { label: "\u03A3", insert: "\\sum_{i=1}^{n}" },
-      { label: "lim", insert: "\\lim_{x \\to }" },
-      { label: "dx", insert: "\\frac{d}{dx}" },
-      { label: "\u2202", insert: "\\partial" },
-    ],
-  },
-  {
-    name: "Greek",
-    symbols: [
-      { label: "\u03C0", insert: "\\pi" },
-      { label: "\u03B1", insert: "\\alpha" },
-      { label: "\u03B2", insert: "\\beta" },
-      { label: "\u03B8", insert: "\\theta" },
-    ],
-  },
-  {
-    name: "Other",
-    symbols: [{ label: "\u221E", insert: "\\infty" }],
-  },
-];
 
 export interface LatexToolbarProps {
   /** Whether the toolbar is visible */
@@ -83,6 +40,52 @@ export const LatexToolbar: React.FC<LatexToolbarProps> = ({
   visible,
   onInsert,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
+
+  const SYMBOL_GROUPS: SymbolGroup[] = [
+    {
+      name: t("latexToolbar.groupArithmetic"),
+      symbols: [
+        { label: "√", insert: "\\sqrt{}" },
+        { label: "x²", insert: "^{2}" },
+        { label: "xₙ", insert: "_{n}" },
+        { label: "÷", insert: "\\frac{}{}" },
+        { label: "±", insert: "\\pm" },
+      ],
+    },
+    {
+      name: t("latexToolbar.groupRelations"),
+      symbols: [
+        { label: "≠", insert: "\\neq" },
+        { label: "≤", insert: "\\leq" },
+        { label: "≥", insert: "\\geq" },
+      ],
+    },
+    {
+      name: t("latexToolbar.groupCalculus"),
+      symbols: [
+        { label: "∫", insert: "\\int_{a}^{b}" },
+        { label: "Σ", insert: "\\sum_{i=1}^{n}" },
+        { label: "lim", insert: "\\lim_{x \\to }" },
+        { label: "dx", insert: "\\frac{d}{dx}" },
+        { label: "∂", insert: "\\partial" },
+      ],
+    },
+    {
+      name: t("latexToolbar.groupGreek"),
+      symbols: [
+        { label: "π", insert: "\\pi" },
+        { label: "α", insert: "\\alpha" },
+        { label: "β", insert: "\\beta" },
+        { label: "θ", insert: "\\theta" },
+      ],
+    },
+    {
+      name: t("latexToolbar.groupOther"),
+      symbols: [{ label: "∞", insert: "\\infty" }],
+    },
+  ];
+
   if (!visible) return null;
 
   return (

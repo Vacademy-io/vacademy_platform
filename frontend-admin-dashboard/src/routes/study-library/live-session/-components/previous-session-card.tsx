@@ -1,11 +1,25 @@
-import { LockSimple } from '@phosphor-icons/react';
-import { Badge } from '@/components/ui/badge';
 import { LiveSession } from '../schedule/-services/utils';
 import React, { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
-import { DownloadSimple } from '@phosphor-icons/react';
+import {
+    ArrowSquareOut,
+    CalendarBlank,
+    ClipboardText,
+    Clock,
+    DotsThree,
+    DownloadSimple,
+    FilmSlate,
+    GlobeHemisphereWest,
+} from '@phosphor-icons/react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { MyDialog } from '@/components/design-system/dialog';
 import { fetchSessionDetails, SessionDetailsResponse } from '../-hooks/useSessionDetails';
 import { MyButton } from '@/components/design-system/button';
@@ -19,8 +33,22 @@ import {
 } from '../-constants/attendance-report-with-checkbox';
 import { LiveSessionReport } from '../-services/utils';
 import { MyPieChart } from '@/components/design-system/charts/MyPieChart';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { formatMeetingDate, formatTimeRange } from '../-utils/live-sesstions';
+import {
+    AccessBadge,
+    SessionBatches,
+    SessionCardFooter,
+    SessionCardHeading,
+    SessionCardShell,
+    SessionMetaItem,
+    SessionMetaRow,
+    SessionTeacher,
+} from './session-card-shell';
 import { AttendanceBulkActions } from './attendance-bulk-actions';
 import { SendMessageDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-message-dialog';
 import { SendEmailDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-email-dialog';
@@ -30,9 +58,16 @@ import { BulkActionInfo } from '@/routes/manage-students/students-list/-types/bu
 
 interface PreviousSessionCardProps {
     session: LiveSession;
+    /** Resolved once per page by the list, so avatars cost one lookup, not one per card. */
+    avatarUrlByFileId?: Record<string, string>;
 }
 
-export default function PreviousSessionCard({ session }: PreviousSessionCardProps) {
+export default function PreviousSessionCard({
+    session,
+    avatarUrlByFileId,
+}: PreviousSessionCardProps) {
+    const { t } = useTranslation('studyLibraryPreviousSessionCard');
+    const { t: tCard } = useTranslation('studyLibraryLiveSessionCard');
     const [openDialog, setOpenDialog] = useState<boolean>(false);
     const [scheduledSessionDetails, setScheduleSessionDetails] =
         useState<SessionDetailsResponse | null>(null);
@@ -107,11 +142,23 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         // const batchValue = session.package_session_details && session.package_session_details.length > 0
         //     ? session.package_session_details.map((d) => d.level_name).filter(Boolean).join(' | ')
         //     : '';
-        const courseValue = session.package_session_details && session.package_session_details.length > 0
-            ? session.package_session_details.map((d) => d.package_name).filter(Boolean).join(' | ')
-            : '';
+        const courseValue =
+            session.package_session_details && session.package_session_details.length > 0
+                ? session.package_session_details
+                      .map((d) => d.package_name)
+                      .filter(Boolean)
+                      .join(' | ')
+                : '';
         const csvData = (reportResponse || []).map((item, idx) => {
-            const engagement = item.engagementData ? (() => { try { return JSON.parse(item.engagementData); } catch { return null; } })() : null;
+            const engagement = item.engagementData
+                ? (() => {
+                      try {
+                          return JSON.parse(item.engagementData);
+                      } catch {
+                          return null;
+                      }
+                  })()
+                : null;
             const duration = item.providerTotalDurationMinutes ?? '';
             const talkTimeMin = engagement?.talkTime ? Math.round(engagement.talkTime / 60) : '';
             const talks = engagement?.talks ?? '';
@@ -136,21 +183,26 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
             }
 
             return {
-                '#': idx + 1,
-                'Name': item.fullName,
-                'Email': item.email || '',
-                // 'Batch': batchValue,
-                'Course': courseValue,
-                'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
-                'Mode': item.statusType || '',
-                'Duration (min)': duration,
-                'Active Points': activePoints,
-                'Talk Time (min)': talkTimeMin,
-                'Talk Segments': talks,
-                'Raise Hands': raiseHands,
-                'Emojis': emojis,
-                'Chats': chats,
-                'Poll Votes': pollVotes,
+                [t('csv.number')]: idx + 1,
+                [t('csv.name')]: item.fullName,
+                [t('csv.email')]: item.email || '',
+                // [t('csv.batch')]: batchValue,
+                [t('csv.course')]: courseValue,
+                [t('csv.status')]:
+                    item.attendanceStatus === 'PRESENT'
+                        ? t('status.present')
+                        : item.attendanceStatus === 'ABSENT'
+                          ? t('status.absent')
+                          : t('status.unmarked'),
+                [t('csv.mode')]: item.statusType || '',
+                [t('csv.durationMin')]: duration,
+                [t('csv.activePoints')]: activePoints,
+                [t('csv.talkTimeMin')]: talkTimeMin,
+                [t('csv.talkSegments')]: talks,
+                [t('csv.raiseHands')]: raiseHands,
+                [t('csv.emojis')]: emojis,
+                [t('csv.chats')]: chats,
+                [t('csv.pollVotes')]: pollVotes,
             };
         });
         const csv = Papa.unparse(csvData);
@@ -164,7 +216,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         setIsAttendanceExporting(false);
-        toast.success('Attendance report downloaded successfully.');
+        toast.success(t('toast.attendanceDownloaded'));
     };
 
     // Convert LiveSessionReport to StudentTable format
@@ -233,14 +285,14 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleSendWhatsApp = () => {
         if (selectedStudents.length === 0) {
-            toast.error('Please select at least one student');
+            toast.error(t('toast.selectAtLeastOneStudent'));
             return;
         }
 
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds,
             selectedStudents,
-            displayText: `${selectedStudents.length} students`,
+            displayText: t('studentsCount', { count: selectedStudents.length }),
         };
 
         openBulkSendMessageDialog(bulkActionInfo);
@@ -248,7 +300,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleSendEmail = () => {
         if (selectedStudents.length === 0) {
-            toast.error('Please select at least one student');
+            toast.error(t('toast.selectAtLeastOneStudent'));
             return;
         }
 
@@ -261,7 +313,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds,
             selectedStudents,
-            displayText: `${selectedStudents.length} students`,
+            displayText: t('studentsCount', { count: selectedStudents.length }),
         };
 
         openBulkSendEmailDialog(bulkActionInfo);
@@ -341,93 +393,137 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         });
     };
 
-    const formattedDateTime = `${session.meeting_date} ${session.start_time}`;
+    const dateLabel = formatMeetingDate(session.meeting_date);
+    const timeRangeLabel = formatTimeRange(session.start_time, session.last_entry_time);
+    const batchesTerm = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
+    const teacherTerm = getTerminology(RoleTerms.Teacher, SystemTerms.Teacher);
+    const batchNames = (session.package_session_details ?? [])
+        .map((d) => `${d.level_name} ${d.package_name}`.trim())
+        .filter(Boolean);
+    const goToSession = () =>
+        navigate({
+            to: '/study-library/live-session/view/$sessionId',
+            params: { sessionId: session?.session_id || '' },
+        });
+
     return (
-        <div
-            ref={cardRef}
-            className="my-6 flex cursor-pointer flex-col gap-4 rounded-xl border bg-neutral-50 p-4 transition-shadow hover:shadow-md"
-            onClick={handleCardClick}
-        >
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="font-semibold">{session.title}</h1>
-                    <Badge className="rounded-md border border-neutral-300 bg-primary-50 py-1.5 shadow-none">
-                        <LockSimple size={16} className="mr-2" />
-                        {session.access_level}
-                    </Badge>
-                </div>
-            </div>
+        <SessionCardShell cardRef={cardRef} onClick={handleCardClick}>
+            <SessionCardHeading
+                title={session.title}
+                subtitle={session.subject || null}
+                badge={<AccessBadge accessLevel={session.access_level} />}
+                actions={
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <MyButton
+                                type="button"
+                                scale="medium"
+                                buttonType="secondary"
+                                layoutVariant="icon"
+                                aria-label={t('actions.viewDetails', {
+                                    term: getTerminology(
+                                        ContentTerms.LiveSession,
+                                        SystemTerms.LiveSession
+                                    ),
+                                })}
+                            >
+                                <DotsThree size={20} weight="bold" />
+                            </MyButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                                className="cursor-pointer gap-2"
+                                onClick={goToSession}
+                            >
+                                <ArrowSquareOut size={16} />
+                                {t('actions.viewDetails', {
+                                    term: getTerminology(
+                                        ContentTerms.LiveSession,
+                                        SystemTerms.LiveSession
+                                    ),
+                                })}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="cursor-pointer gap-2"
+                                onClick={goToSession}
+                            >
+                                <FilmSlate size={16} />
+                                {t('actions.viewRecordings')}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                }
+            />
 
-            <div className="flex w-full flex-wrap items-center justify-start gap-x-6 gap-y-1 text-sm text-neutral-500 sm:gap-x-8">
-                <div className="flex items-center gap-2">
-                    <span className="text-black">
-                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:
-                    </span>
-                    <span>{session.subject}</span>
-                </div>
+            <SessionMetaRow>
+                <SessionMetaItem
+                    icon={<CalendarBlank size={16} />}
+                    tone="primary"
+                    value={dateLabel ?? session.meeting_date}
+                />
+                <SessionMetaItem
+                    icon={<Clock size={16} />}
+                    tone="info"
+                    value={timeRangeLabel ?? session.start_time}
+                />
+                {session.timezone ? (
+                    <SessionMetaItem
+                        icon={<GlobeHemisphereWest size={16} />}
+                        tone="success"
+                        value={session.timezone}
+                    />
+                ) : null}
+            </SessionMetaRow>
 
-                <div className="flex items-center gap-2">
-                    <span className="text-black">Start Date & Time:</span>
-                    <span>{formattedDateTime}</span>
+            <SessionCardFooter>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-3">
+                    <SessionTeacher
+                        instructors={session.instructors}
+                        label={teacherTerm}
+                        unassignedLabel={tCard('meta.teacherUnassigned')}
+                        unknownLabel={tCard('meta.teacherUnknown')}
+                        avatarUrlByFileId={avatarUrlByFileId}
+                    />
+                    {batchNames.length ? (
+                        <SessionBatches
+                            batches={batchNames}
+                            maxVisible={2}
+                            label={batchesTerm}
+                            moreLabel={(count) => tCard('batches.more', { count })}
+                            lessLabel={tCard('batches.less')}
+                        />
+                    ) : null}
                 </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-black">End Time:</span>
-                    <span>{session.last_entry_time}</span>
+                <div
+                    className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="secondary"
+                        className="w-full sm:w-auto sm:!min-w-0 sm:px-4"
+                        onClick={handleOpenDialog}
+                    >
+                        <ClipboardText size={16} className="mr-2" />
+                        {t('actions.viewAttendanceReport')}
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="primary"
+                        className="w-full sm:w-auto sm:!min-w-0 sm:px-5"
+                        onClick={goToSession}
+                    >
+                        <ArrowSquareOut size={16} className="mr-2" />
+                        {tCard('actions.openSession')}
+                    </MyButton>
                 </div>
-                {session.package_session_details && session.package_session_details.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-black">Batches:</span>
-                        <span>
-                            {session.package_session_details
-                                .map((d) => `${d.level_name} ${d.package_name}`)
-                                .join(', ')}
-                        </span>
-                    </div>
-                )}
-            </div>
-            <div
-                className="flex flex-wrap items-center gap-2 text-sm text-primary-500 sm:gap-4"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                    onClick={() => {
-                        navigate({
-                            to: '/study-library/live-session/view/$sessionId',
-                            params: { sessionId: session?.session_id || '' },
-                        });
-                    }}
-                >
-                    <span>View {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Details</span>
-                </button>
-                <span className="hidden text-gray-300 sm:inline">|</span>
-                <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                    onClick={handleOpenDialog}
-                >
-                    <span>View Attendance Report</span>
-                </button>
-                <span className="hidden text-gray-300 sm:inline">|</span>
-                <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                    onClick={() => {
-                        navigate({
-                            to: '/study-library/live-session/view/$sessionId',
-                            params: { sessionId: session?.session_id || '' },
-                        });
-                    }}
-                >
-                    <span>View Recordings</span>
-                </button>
-            </div>
+            </SessionCardFooter>
 
             {/* Attendance Report Dialog */}
             <MyDialog
-                heading="Attendance Report"
+                heading={t('dialog.heading')}
                 open={openDialog}
                 onOpenChange={handleOpenDialog}
                 className="w-[95vw] max-w-4xl sm:w-[80vw]"
@@ -446,26 +542,26 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     {/* Basic Details */}
                     <div className="rounded-lg">
-                        <h3 className="mb-1 font-semibold">Basic Class Details</h3>
+                        <h3 className="mb-1 font-semibold">{t('dialog.basicClassDetails')}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2">
                             <div className="flex gap-2">
-                                <span className="font-bold">Session:</span>
+                                <span className="font-bold">{t('dialog.session')}</span>
                                 <span>
                                     {scheduledSessionDetails?.accessLevel === 'private'
-                                        ? 'Paid Members'
-                                        : 'Open Session'}
+                                        ? t('dialog.paidMembers')
+                                        : t('dialog.openSession')}
                                 </span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Occurrence:</span>
+                                <span className="font-bold">{t('dialog.occurrence')}</span>
                                 <span>{scheduledSessionDetails?.recurrenceType}</span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Type:</span>
+                                <span className="font-bold">{t('dialog.type')}</span>
                                 <span>{scheduledSessionDetails?.accessLevel}</span>
                             </div>
                             <div className="flex gap-2">
-                                <span className="font-bold">Duration:</span>
+                                <span className="font-bold">{t('dialog.duration')}</span>
                                 <span>{duration}</span>
                             </div>
                         </div>
@@ -473,7 +569,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     {/* Description */}
                     <div className="rounded-lg">
-                        <h3 className="mb-1 text-lg font-semibold">Description</h3>
+                        <h3 className="mb-1 text-lg font-semibold">{t('dialog.description')}</h3>
                         <div className="prose prose-sm max-w-none text-neutral-600">
                             {scheduledSessionDetails?.descriptionHtml ? (
                                 <div
@@ -482,19 +578,23 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     }}
                                 />
                             ) : (
-                                'No description available.'
+                                t('dialog.noDescriptionAvailable')
                             )}
                         </div>
                     </div>
 
                     {/* Insights & Attendance */}
                     <div className="rounded-lg">
-                        <h3 className="mb-2 text-lg font-semibold">Participants Insights</h3>
+                        <h3 className="mb-2 text-lg font-semibold">
+                            {t('dialog.participantsInsights')}
+                        </h3>
                         <div className="flex flex-col items-center justify-center gap-4 rounded-md bg-neutral-100 p-4 sm:flex-row">
                             <div className="flex w-full flex-col items-center justify-center gap-3 sm:w-1/2">
                                 <MyPieChart data={pieChartData} />
                                 <div className="text-lg font-semibold">
-                                    Total Participants: {attendanceSummary.total}
+                                    {t('dialog.totalParticipants', {
+                                        count: attendanceSummary.total,
+                                    })}
                                 </div>
                             </div>
                             <div className="flex w-full flex-col gap-4 sm:w-1/2">
@@ -502,7 +602,9 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     <div className="flex items-center gap-2">
                                         <div className="size-4 rounded-full bg-success-400"></div>
                                         <div className="flex items-center gap-2 text-black">
-                                            <span className="font-medium">Attendees:</span>
+                                            <span className="font-medium">
+                                                {t('dialog.attendees')}
+                                            </span>
                                             <span className="font-semibold text-success-600">
                                                 {attendanceSummary.present}
                                             </span>
@@ -511,7 +613,9 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     <div className="flex items-center gap-2">
                                         <div className="size-4 rounded-full bg-success-200"></div>
                                         <div className="flex items-center gap-2 text-black">
-                                            <span className="font-medium">Not Attendees:</span>
+                                            <span className="font-medium">
+                                                {t('dialog.notAttendees')}
+                                            </span>
                                             <span className="font-semibold text-red-600">
                                                 {attendanceSummary.absent}
                                             </span>
@@ -521,15 +625,15 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                 <div className="rounded-lg p-3">
                                     <div className="text-left">
                                         <div className="text-sm font-medium text-neutral-600">
-                                            Attendance Percentage
+                                            {t('dialog.attendancePercentage')}
                                         </div>
                                         <div className="text-xl font-bold text-primary-500">
                                             {attendanceSummary.total > 0
                                                 ? (
-                                                    (attendanceSummary.present /
-                                                        attendanceSummary.total) *
-                                                    100
-                                                ).toFixed(2)
+                                                      (attendanceSummary.present /
+                                                          attendanceSummary.total) *
+                                                      100
+                                                  ).toFixed(2)
                                                 : '0.00'}
                                             %
                                         </div>
@@ -541,7 +645,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
                     <div className="mt-4 rounded-lg">
                         <div className="mb-4 flex items-center justify-between">
-                            <h3 className="text-lg font-semibold">Attendance</h3>
+                            <h3 className="text-lg font-semibold">{t('dialog.attendance')}</h3>
                             <div className="flex items-center gap-2">
                                 {/* Bulk Actions */}
                                 {reportResponse && reportResponse.length > 0 && (
@@ -564,12 +668,12 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                     {isAttendanceExporting ? (
                                         <>
                                             <div className="mr-2 size-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                                            <span>Exporting...</span>
+                                            <span>{t('actions.exporting')}</span>
                                         </>
                                     ) : (
                                         <>
                                             <DownloadSimple size={20} className="mr-2" />
-                                            CSV
+                                            {t('actions.csv')}
                                         </>
                                     )}
                                 </MyButton>
@@ -593,7 +697,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                             />
                         ) : isPending ? (
                             <div className="flex items-center justify-center py-8">
-                                <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                <div className="border-primary size-6 animate-spin rounded-full border-2 border-t-transparent" />
                             </div>
                         ) : null}
                     </div>
@@ -603,6 +707,6 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
             {/* Bulk Action Dialogs */}
             <SendMessageDialog />
             <SendEmailDialog />
-        </div>
+        </SessionCardShell>
     );
 }

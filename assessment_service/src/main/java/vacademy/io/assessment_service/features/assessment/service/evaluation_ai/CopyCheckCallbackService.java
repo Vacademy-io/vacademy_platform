@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.CopyCheckCallbackDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
@@ -41,11 +43,13 @@ import java.util.Optional;
 public class CopyCheckCallbackService {
 
     private final AiEvaluationProcessRepository processRepository;
+    private final vacademy.io.assessment_service.features.assessment.copy_intake.service.CopyIntakeService copyIntakeService;
     private final AiQuestionEvaluationRepository questionEvaluationRepository;
     private final CopyCheckLayoutRepository layoutRepository;
     private final QuestionWiseMarksRepository questionWiseMarksRepository;
     private final StudentAttemptRepository studentAttemptRepository;
     private final AiEvaluationCancellationService cancellationService;
+    private final TypedAnswerEvaluation typedAnswerEvaluation;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -55,6 +59,23 @@ public class CopyCheckCallbackService {
             log.warn("[copy-check] progress callback for unknown process={}", payload.getProcessId());
             return;
         }
+        // Progress never moves a finished process: a straggler (or a heartbeat
+        // that overlapped the complete callback) must not flip COMPLETED back
+        // to EVALUATING, and a reaped run must stay reaped.
+        if (isTerminal(process.getStatus())) {
+            log.info("[copy-check] ignoring progress '{}' for finished process {} (status={})",
+                    payload.getStep(), payload.getProcessId(), process.getStatus());
+            return;
+        }
+        // ai_service re-posts the current step every minute as a heartbeat. A
+        // repeat carries no news, so it only moves updated_at - as a targeted
+        // UPDATE, never a full-row save that could race a real state change.
+        boolean heartbeat = payload.getStep() != null && payload.getStep().equals(process.getCurrentStep())
+                && (payload.getLayoutMap() == null || payload.getLayoutMap().isNull());
+        if (heartbeat) {
+            processRepository.touch(process.getId(), new Date(), TERMINAL);
+            return;
+        }
         process.setCurrentStep(payload.getStep());
         if ("LAYOUT_OCR_DONE".equals(payload.getStep())) {
             process.setStatus(AiEvaluationStatusEnum.EXTRACTING.name());
@@ -62,7 +83,15 @@ public class CopyCheckCallbackService {
         } else if ("GRADING".equals(payload.getStep())) {
             process.setStatus(AiEvaluationStatusEnum.EVALUATING.name());
         }
+        process.setUpdatedAt(new Date());
         processRepository.save(process);
+    }
+
+    /** Nothing further can happen to a process in one of these states. */
+    private static final List<String> TERMINAL = List.of("COMPLETED", "FAILED", "CANCELLED");
+
+    private static boolean isTerminal(String status) {
+        return status != null && TERMINAL.contains(status.toUpperCase());
     }
 
     private void persistLayoutIfPresent(AiEvaluationProcess process, JsonNode layoutMap) {
@@ -100,8 +129,16 @@ public class CopyCheckCallbackService {
                 : "COMPLETED";
         boolean failed = "FAILED".equals(qStatus);
 
-        Optional<AiQuestionEvaluation> row = questionEvaluationRepository
-                .findByEvaluationProcessIdAndQuestionId(process.getId(), payload.getQuestionId());
+        // Duplicated tracking rows (a double dispatch) used to turn this lookup
+        // into "2 results were returned" and lose the whole verdict; take the
+        // newest row instead and let the rest sit idle.
+        List<AiQuestionEvaluation> rowsForQuestion = questionEvaluationRepository
+                .findAllByEvaluationProcessIdAndQuestionIdOrderByCreatedAtDesc(process.getId(), payload.getQuestionId());
+        if (rowsForQuestion.size() > 1) {
+            log.warn("[copy-check] {} tracking rows for question {} in process {}; using the newest",
+                    rowsForQuestion.size(), payload.getQuestionId(), process.getId());
+        }
+        Optional<AiQuestionEvaluation> row = rowsForQuestion.stream().findFirst();
 
         // Never let a late or retried AI callback overwrite a mark a human has
         // already reviewed/edited on the review page.
@@ -188,6 +225,8 @@ public class CopyCheckCallbackService {
         } catch (JsonProcessingException ignored) {
         }
         processRepository.save(process);
+        // A copy from a bulk upload: settle its intake row and maybe the batch.
+        notifyIntake(payload.getProcessId(), true, null);
 
         if (process.getStudentAttempt() != null) {
             StudentAttempt attempt = studentAttemptRepository
@@ -208,13 +247,12 @@ public class CopyCheckCallbackService {
                 // Recompute from the successfully-graded questions rather than
                 // trusting the AI's reported total: FAILED questions are excluded
                 // (not counted as a silent 0) until a teacher grades them, which
-                // recomputes this total via AiEvaluationReviewService.
+                // recomputes this total via AiEvaluationReviewService. An online
+                // attempt's run covers only its written answers; the objective
+                // marks scored on submit are added back in.
                 List<AiQuestionEvaluation> rows = questionEvaluationRepository
                         .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
-                double total = rows.stream()
-                        .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
-                        .mapToDouble(q -> q.getMarksAwarded().doubleValue())
-                        .sum();
+                double total = typedAnswerEvaluation.attemptTotal(attempt, rows);
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
 
@@ -272,6 +310,7 @@ public class CopyCheckCallbackService {
         process.setErrorMessage(payload.getErrorMessage());
         process.setCompletedAt(new Date());
         processRepository.save(process);
+        notifyIntake(payload.getProcessId(), false, payload.getErrorMessage());
         cancellationService.clearFlag(payload.getProcessId());
         log.warn("[copy-check] process {} failed: {}", payload.getProcessId(), payload.getErrorMessage());
     }
@@ -279,5 +318,32 @@ public class CopyCheckCallbackService {
     /** A process that has been reaped by the sweeper (FAILED) or the user (CANCELLED). */
     private static boolean isReaped(String status) {
         return "FAILED".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status);
+    }
+
+    /**
+     * Best-effort: the intake bookkeeping must never fail a grading callback.
+     * Runs after this callback's transaction commits, so the batch settles on
+     * committed data and the completion email is not sent inside a database
+     * transaction that is still open.
+     */
+    private void notifyIntake(String processId, boolean succeeded, String error) {
+        Runnable update = () -> {
+            try {
+                copyIntakeService.onEvaluationFinished(processId, succeeded, error);
+                copyIntakeService.getBatchIdForProcess(processId).ifPresent(copyIntakeService::finalizeIfDone);
+            } catch (Exception e) {
+                log.warn("[copy-check] intake update failed for process {}: {}", processId, e.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    update.run();
+                }
+            });
+        } else {
+            update.run();
+        }
     }
 }

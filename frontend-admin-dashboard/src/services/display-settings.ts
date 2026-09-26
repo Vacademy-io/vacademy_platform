@@ -9,10 +9,11 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { StorageKey } from '@/constants/storage/storage';
-import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { getDefaultAdminDisplaySettings } from '@/constants/display-settings/admin-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
@@ -251,9 +252,9 @@ function getLocalStorageKey(role: RoleKey, instituteId?: string | null): string 
 }
 
 function getDefaults(role: RoleKey): DisplaySettingsData {
-    if (role === ADMIN_DISPLAY_SETTINGS_KEY) return DEFAULT_ADMIN_DISPLAY_SETTINGS;
+    if (role === ADMIN_DISPLAY_SETTINGS_KEY) return getDefaultAdminDisplaySettings();
     // Both teacher and custom role can use teacher defaults as baseline
-    return DEFAULT_TEACHER_DISPLAY_SETTINGS;
+    return getDefaultTeacherDisplaySettings();
 }
 
 function mergeArrayById<T extends { id: string }>(
@@ -289,7 +290,12 @@ function mergeArrayById<T extends { id: string }>(
     return merged;
 }
 
-function mergeDisplayWithDefaults(
+/**
+ * Exported for tests only. Every caller in this module uses it directly; the export exists so the
+ * "a saved blob that pre-dates a flag still gets the role's default" behaviour can be pinned —
+ * that is where a new setting silently comes out wrong for institutes who already saved settings.
+ */
+export function mergeDisplayWithDefaults(
     incoming: Partial<DisplaySettingsData> | null | undefined,
     role: RoleKey
 ): DisplaySettingsData {
@@ -601,6 +607,7 @@ function mergeDisplayWithDefaults(
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
         directEditPublishedCourse: false,
+        requireCourseApproval: true,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showAdvancedCourseIds: false,
@@ -628,6 +635,10 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.directEditPublishedCourse ??
             defCoursePage.directEditPublishedCourse ??
             false,
+        requireCourseApproval:
+            incoming?.coursePage?.requireCourseApproval ??
+            defCoursePage.requireCourseApproval ??
+            true,
         canEditCourseStructure:
             incoming?.coursePage?.canEditCourseStructure ??
             defCoursePage.canEditCourseStructure ??
@@ -764,8 +775,10 @@ function mergeDisplayWithDefaults(
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
+        allowResendMessage: true,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -791,9 +804,17 @@ function mergeDisplayWithDefaults(
         leadTab: incoming?.studentSideView?.leadTab ?? defStudentSideView.leadTab,
         fullHistoryTab:
             incoming?.studentSideView?.fullHistoryTab ?? defStudentSideView.fullHistoryTab ?? false,
+        workflowsTab:
+            incoming?.studentSideView?.workflowsTab ?? defStudentSideView.workflowsTab ?? false,
         parentTab: incoming?.studentSideView?.parentTab ?? defStudentSideView.parentTab ?? false,
         onboardingTab:
             incoming?.studentSideView?.onboardingTab ?? defStudentSideView.onboardingTab ?? false,
+        // Resend on the Notifications tab. The role's own default decides what a
+        // blob that pre-dates this flag gets (on for admin, off for the rest) —
+        // a literal here would hand every role the same answer.
+        allowResendMessage:
+            incoming?.studentSideView?.allowResendMessage ??
+            defStudentSideView.allowResendMessage,
         // Preserve user-supplied ordering and default-tab choice; fall back to
         // the role's defaults so older saved settings (which lacked these
         // fields) still render in a sensible order.
@@ -821,6 +842,15 @@ function mergeDisplayWithDefaults(
         showApprovalToggle:
             incoming?.learnerManagement?.showApprovalToggle ??
             defLearnerManagement.showApprovalToggle,
+        // Was missing from this list, so a saved value was dropped on every read: the Display
+        // Settings toggle could never grant Edit Credentials to a teacher or custom role, and an
+        // admin could not take it away. Role default when never set (ON admin, OFF otherwise).
+        allowEditCredentials:
+            incoming?.learnerManagement?.allowEditCredentials ??
+            defLearnerManagement.allowEditCredentials,
+        // Explicit pass-through, or the flag is dropped on read and can never be switched on.
+        // Anything but an explicit `true` is OFF.
+        allowDeletePayments: incoming?.learnerManagement?.allowDeletePayments === true,
     };
 
     // Learner Management header action buttons (hide Enroll/Invite per role +
@@ -879,6 +909,13 @@ function mergeDisplayWithDefaults(
     // (LEADS → leadsFilterCustomFields, STUDENTS → legacy auto-expose).
     merged.listCustomFieldControls =
         incoming?.listCustomFieldControls ?? defaults.listCustomFieldControls;
+
+    // Campaign (UTM) filter controls per surface (institute-wide). Same
+    // pass-through rule: an absent surface means "follow the UTM setting", and
+    // dropping a saved `enabled: false` here would silently un-hide a list the
+    // admin explicitly hid.
+    merged.listUtmFilterControls =
+        incoming?.listUtmFilterControls ?? defaults.listUtmFilterControls;
 
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
@@ -974,6 +1011,9 @@ function mergeDisplayWithDefaults(
         { id: 'CRM', visible: true, default: true, order: 0 },
         { id: 'LMS', visible: true, default: false, order: 1 },
         { id: 'AI', visible: true, default: false, order: 2 },
+        // ERP ships hidden: its modules are opt-in per institute (see
+        // OPT_IN_TAB_IDS), so the rail category would otherwise show up empty.
+        { id: 'ERP', visible: false, default: false, order: 3 },
     ];
 
     const mergedSidebarCategories = mergeArrayById(
@@ -982,7 +1022,7 @@ function mergeDisplayWithDefaults(
     );
 
     merged.sidebarCategories = mergedSidebarCategories.map((c) => ({
-        id: c.id as 'CRM' | 'LMS' | 'AI',
+        id: c.id as SidebarCategory,
         visible: c.visible ?? true,
         locked: c.locked ?? false,
         default: c.default ?? c.id === 'CRM',
@@ -1292,7 +1332,7 @@ export async function getAllRoleDisplaySettings(): Promise<Record<string, Partia
     }
 }
 
-type CategoryId = 'CRM' | 'LMS' | 'AI';
+type CategoryId = SidebarCategory;
 
 /**
  * Resolve the effective post-login redirect URL for a role.

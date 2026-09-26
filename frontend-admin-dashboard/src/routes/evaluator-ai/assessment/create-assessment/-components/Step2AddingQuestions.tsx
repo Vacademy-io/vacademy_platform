@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import sectionDetailsSchema from '../-utils/section-details-sechma';
 import { FormProvider, useFieldArray, useForm } from 'react-hook-form';
@@ -23,6 +24,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     handleCompleteCurrentStep,
 }) => {
     // const storeDataStep2 = useSectionDetailsStore((state) => state);
+    const { t } = useTranslation('evaluatorAiStep2AddingQuestions');
     const navigate = useNavigate();
     const { savedAssessmentId, saveAssessmentName, setSavedAssessmentId, setSavedAssessmentName } =
         useSavedAssessmentStore();
@@ -33,7 +35,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
             section: [
                 {
                     sectionId: '',
-                    sectionName: `Section 1`,
+                    sectionName: t('sectionDefaultName', { number: 1 }),
                     questionPaperTitle: '',
                     subject: '',
                     yearClass: '',
@@ -93,7 +95,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
 
                 setSavedAssessmentId('');
                 setSavedAssessmentName('');
-                toast.success('Your assessment has been saved successfully!', {
+                toast.success(t('assessmentSavedSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -103,7 +105,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                 });
             }
         } catch (error) {
-            toast.error('Error saving assessment', {
+            toast.error(t('errorSavingAssessment'), {
                 className: 'error-toast',
                 duration: 2000,
             });
@@ -124,7 +126,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const handleAddSection = () => {
         append({
             sectionId: '',
-            sectionName: `Section ${allSections.length + 1}`,
+            sectionName: t('sectionDefaultName', { number: allSections.length + 1 }),
             questionPaperTitle: '',
             subject: '',
             yearClass: '',
@@ -160,14 +162,14 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                 {allSections.length > 0 && (
                     <>
                         <div className="m-0 flex items-center justify-between p-0">
-                            <h1>Add Questions</h1>
+                            <h1>{t('addQuestions')}</h1>
                             <MyButton
                                 type="button"
                                 scale="large"
                                 buttonType="primary"
                                 onClick={handleSubmit(onSubmit, onInvalid)}
                             >
-                                {'Next'}
+                                {t('next')}
                             </MyButton>
                         </div>
 
@@ -194,7 +196,7 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                     onClick={handleAddSection}
                 >
                     <Plus size={32} />
-                    Add Section
+                    {t('addSection')}
                 </MyButton>
             </form>
         </FormProvider>

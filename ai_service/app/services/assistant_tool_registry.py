@@ -57,7 +57,7 @@ class _StaticKeyResolver:
     def __init__(self, keys: tuple):
         self._keys = keys
 
-    def resolve_keys(self, institute_id=None, user_id=None, request_model=None):
+    def resolve_keys(self, institute_id=None, user_id=None, request_model=None, **_ignored):
         return self._keys
 
 
@@ -100,6 +100,10 @@ class ToolSpec:
     default_roles: Optional[List[str]] = None  # on for THESE roles when no setting (e.g. ["ADMIN"])
     phase: int = 1                             # roadmap phase (1=help, 2=read, 3=write)
     mode: str = "READ"                         # READ | WRITE
+    # Skips the Settings leg entirely: on for everyone who may use the
+    # assistant/MCP at all, and not offered as a toggle. Reserved for tools that
+    # reveal nothing beyond the caller's own identity (whoami).
+    always_allowed: bool = False
 
     def key(self) -> str:
         return self.setting_key or self.name
@@ -563,7 +567,11 @@ async def _service_json(
         if resp.status_code != 200:
             logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
             return {"error": "fetch_failed", "status": resp.status_code}
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            # Some Java endpoints answer a bare string (an id, a URL) — hand it back as text.
+            return resp.text.strip()
     except Exception as e:
         logger.warning("assistant %s %s failed: %s", method, path, e)
         return {"error": "fetch_failed"}
@@ -577,6 +585,11 @@ async def _admin_core_json(ctx: ToolContext, method: str, path: str, **kw: Any) 
 async def _assessment_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
     from ..config import get_settings
     return await _service_json(ctx, method, get_settings().assessment_service_base_url, path, **kw)
+
+
+async def _auth_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
+    from ..config import get_settings
+    return await _service_json(ctx, method, get_settings().auth_service_base_url, path, **kw)
 
 
 async def _notification_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
@@ -841,9 +854,11 @@ _GET_INSTITUTE_OVERVIEW_SCHEMA: Dict[str, Any] = {
     "function": {
         "name": "get_institute_overview",
         "description": (
-            "Institute-level snapshot. sections: 'outstanding_fees' (total overdue "
-            "amount + count across the institute), 'live_now' (classes running right "
-            "now), 'enrollment_counts' (active learner count). Use for 'how much fees "
+            "Institute-level snapshot. sections: 'profile' (the institute's name, logo, theme, "
+            "contact details, portal URLs and its own terminology — e.g. what it calls a course), "
+            "'outstanding_fees' (total overdue amount + count across the institute), 'live_now' "
+            "(classes running right now), 'enrollment_counts' (active learner count). Use 'profile' "
+            "to address the institute by its own name and vocabulary; the others for 'how much fees "
             "is pending overall / how many active learners do we have'."
         ),
         "parameters": {
@@ -851,7 +866,7 @@ _GET_INSTITUTE_OVERVIEW_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "sections": {
                     "type": "array",
-                    "items": {"type": "string", "enum": ["outstanding_fees", "live_now", "enrollment_counts"]},
+                    "items": {"type": "string", "enum": ["profile", "outstanding_fees", "live_now", "enrollment_counts"]},
                 },
             },
             "required": ["sections"],
@@ -860,9 +875,77 @@ _GET_INSTITUTE_OVERVIEW_SCHEMA: Dict[str, Any] = {
 }
 
 
+async def _media_public_url(ctx: ToolContext, file_id: Optional[str]) -> Optional[str]:
+    """A public URL for a media-service file id, or None. (The endpoint answers plain text.)"""
+    if not file_id or not ctx.bearer_token:
+        return None
+    import httpx
+    from ..config import get_settings
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{get_settings().media_server_base_url}/media-service/get-public-url",
+                params={"fileId": file_id}, headers=_jwt_headers(ctx),
+            )
+        url = resp.text.strip().strip('"') if resp.status_code == 200 else ""
+        return url if url.startswith("http") else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("media public url lookup failed for %s: %s", file_id, exc)
+        return None
+
+
+def _terminology_from_setting(setting_json: Any) -> Dict[str, str]:
+    """NAMING_SETTING → {"Course": "Program", …}: only the words the institute renamed."""
+    try:
+        blob = json.loads(setting_json) if isinstance(setting_json, str) else (setting_json or {})
+        rows = (((blob.get("setting") or {}).get("NAMING_SETTING") or {}).get("data") or {}).get("data") or []
+    except (ValueError, AttributeError):
+        return {}
+    out: Dict[str, str] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        key, custom, system = r.get("key"), r.get("customValue"), r.get("systemValue")
+        if key and custom and custom != (system or key):
+            out[str(key)] = str(custom)
+    return out
+
+
+async def load_institute_profile(ctx: ToolContext) -> Dict[str, Any]:
+    """
+    Who the institute is: name, logo, theme, contact, portals, terminology.
+
+    White-label institutes are their OWN brand to their staff; an assistant that
+    says "Vacademy" to a Shiksha Nation admin is wrong. This is what tools and
+    the MCP server hand the model so it speaks in the institute's name.
+    """
+    data = await _admin_core_json(
+        ctx, "GET", f"/admin-core-service/institute/v1/details-non-batches/{ctx.principal.institute_id}",
+        timeout=15.0,
+    )
+    if not isinstance(data, dict) or data.get("error"):
+        return {"id": ctx.principal.institute_id, "error": "profile_unavailable"}
+    logo_url = await _media_public_url(ctx, data.get("institute_logo_file_id"))
+    profile = {
+        "id": ctx.principal.institute_id,
+        "name": data.get("institute_name"),
+        "logo_url": logo_url,
+        "theme": data.get("institute_theme_code"),
+        "email": data.get("email"),
+        "address": data.get("address"),
+        "website_url": data.get("website_url"),
+        "learner_portal_url": data.get("learner_portal_url"),
+        "admin_portal_url": data.get("admin_portal_url"),
+        "terminology": _terminology_from_setting(data.get("setting")) or None,
+    }
+    return {k: v for k, v in profile.items() if v not in (None, "", {})}
+
+
 async def _execute_get_institute_overview(args: Dict[str, Any], ctx: ToolContext) -> str:
     sections = [s for s in (args.get("sections") or []) if isinstance(s, str)]
     out: Dict[str, Any] = {}
+    if "profile" in sections:
+        out["profile"] = await load_institute_profile(ctx)
     if "outstanding_fees" in sections:
         # Audit fix 2026-07-16: the earlier source (adjustment/pending) only
         # covered installments awaiting a concession/penalty decision, badly
@@ -1819,7 +1902,72 @@ WRITE_PERFORMERS: Dict[str, Callable[[Dict[str, Any], ToolContext], Awaitable[Di
 # The registry.
 # ──────────────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────────────
+# whoami — the caller's own identity and institute. Always allowed: it reveals
+# nothing the caller does not already know about themselves, and an assistant
+# that cannot say who it is talking to (name, institute, role) cannot address
+# them properly. Not a settings toggle.
+# ──────────────────────────────────────────────────────────────────────────
+_WHOAMI_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "whoami",
+        "description": (
+            "Who is connected: the current user's name, username, email, mobile, roles, and the "
+            "institute this connection belongs to (name, logo, theme, portal URLs, terminology). "
+            "Call once at the start of a conversation to address the user and institute by name "
+            "and to use the institute's own vocabulary. Identity comes from the authorization, "
+            "never from arguments."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
+
+async def _execute_whoami(args: Dict[str, Any], ctx: ToolContext) -> str:
+    p = ctx.principal
+    user: Dict[str, Any] = {
+        "user_id": p.user_id,
+        "username": p.username,
+        "full_name": p.full_name,
+        "roles": list(p.roles or []),
+        "is_root_user": bool(p.is_root_user),
+    }
+    details = await _auth_json(
+        ctx, "GET", "/auth-service/v1/user-details/get",
+        params={"userId": p.user_id, "instituteId": p.institute_id}, timeout=15.0,
+    )
+    if isinstance(details, dict) and not details.get("error"):
+        user.update({k: v for k, v in {
+            "full_name": details.get("full_name") or p.full_name,
+            "email": details.get("email"),
+            "mobile": details.get("mobile_number"),
+            "preferred_locale": details.get("preferred_locale"),
+            "profile_photo_url": await _media_public_url(ctx, details.get("profile_pic_file_id")),
+        }.items() if v})
+    institute = await load_institute_profile(ctx)
+    return json.dumps({
+        "user": {k: v for k, v in user.items() if v not in (None, "", [], False)},
+        "institute": institute,
+        "note": (
+            f"Address the user as {user.get('full_name') or p.username or 'the admin'} and the "
+            f"institute as {institute.get('name') or 'the institute'}; use its terminology where given."
+        ),
+    }, ensure_ascii=False, default=str)
+
+
 ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
+    "whoami": ToolSpec(
+        name="whoami",
+        schema=_WHOAMI_SCHEMA,
+        executor=_execute_whoami,
+        required_permission=None,
+        setting_key="identity",
+        default_enabled=True,
+        always_allowed=True,
+        phase=1,
+        mode="READ",
+    ),
     "search_help_knowledge": ToolSpec(
         name="search_help_knowledge",
         schema=_SEARCH_HELP_KNOWLEDGE_SCHEMA,
@@ -2093,45 +2241,18 @@ def load_assistant_tools_setting(db: Session, institute_id: str) -> Optional[Dic
     """
     Read the institute's ASSISTANT_TOOLS_SETTING from the shared admin_core DB.
 
-    Institute settings are stored as a single JSON STRING in
-    ``institutes.setting_json`` (common_service Institute.java -> @Column
-    name="setting_json", a String). Keys map to per-feature blobs via the
-    generic settings strategy. Returns the parsed setting blob or None when the
-    institute has not configured it — in which case the Settings leg falls back
-    to ``default_enabled`` tools.
+    Delegates to the shared reader, which knows the envelope admin_core_service
+    actually writes (``setting_json["setting"][KEY]["data"]``) and keeps the
+    legacy top-level lookup as a fallback. Returns the parsed setting blob or
+    None when the institute has not configured it — in which case the Settings
+    leg falls back to ``default_enabled`` tools.
 
     Fails closed-to-default (returns None, never raises) so a settings read
     problem can never silently grant a tool.
     """
-    try:
-        row = db.execute(
-            text("SELECT setting_json FROM institutes WHERE id = :id"),
-            {"id": institute_id},
-        ).first()
-    except Exception as e:
-        logger.warning("Could not read institutes.setting_json for %s: %s", institute_id, e)
-        return None
+    from .institute_setting_reader import load_institute_setting_data
 
-    if not row or not row[0]:
-        return None
-
-    raw = row[0]
-    try:
-        settings_obj = json.loads(raw) if isinstance(raw, str) else raw
-    except (ValueError, TypeError) as e:
-        logger.warning("institutes.setting_json for %s is not valid JSON: %s", institute_id, e)
-        return None
-
-    if not isinstance(settings_obj, dict):
-        return None
-
-    node = settings_obj.get(ASSISTANT_TOOLS_SETTING_KEY)
-    if node is None:
-        return None
-    # The generic settings strategy may wrap the payload as {key, name, data:{...}}.
-    if isinstance(node, dict) and isinstance(node.get("data"), dict):
-        return node["data"]
-    return node if isinstance(node, dict) else None
+    return load_institute_setting_data(db, institute_id, ASSISTANT_TOOLS_SETTING_KEY)
 
 
 def _effective_enabled_tools(setting: Optional[Dict[str, Any]], roles: Optional[List[str]]) -> set:
@@ -2183,6 +2304,9 @@ def is_tool_allowed(
     if spec.required_permission is not None:
         if not (principal.is_root_user or spec.required_permission in (principal.permissions or [])):
             return False
+
+    if spec.always_allowed:
+        return True
 
     # Settings leg — a multi-group resolver passes if ANY of its groups is enabled.
     enabled = _effective_enabled_tools(setting, principal.roles)
@@ -2252,6 +2376,26 @@ async def execute_tool(
             tool_name, int((time.monotonic() - started) * 1000), e,
         )
         return json.dumps({"error": "tool_failed", "tool": tool_name})
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Feature tools that live in their own modules (website builder, lead forms).
+# Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
+# so importing it here is only to make sure that happens. The import is
+# tolerant of the cycle: a test that imports the feature module first will find
+# this module half-initialised, and the feature module registers itself once
+# this one finishes.
+# ──────────────────────────────────────────────────────────────────────────
+def _load_feature_tools() -> None:
+    for module in ("assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
+                   "assistant_tools_workflow", "assistant_tools_blog"):
+        try:
+            __import__(f"{__package__}.{module}")
+        except ImportError as exc:  # partially initialised cycle; see above
+            logger.debug("deferred feature tool module %s: %s", module, exc)
+
+
+_load_feature_tools()
 
 
 __all__ = [

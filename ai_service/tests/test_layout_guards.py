@@ -115,3 +115,25 @@ def test_avatar_stage_skip_is_not_a_missing_output():
     ).read_text()
     assert 'if stage_pipeline_name == "avatar" and not generate_avatar:' in src
     assert 'A skip is not a missing output' in src
+
+
+def test_headings_never_split_mid_word():
+    """`* { word-break: break-word }` is a safety valve for prose in a narrow
+    column. Applied to display type it produced "CONFIRM SUBMISSI / ON" in a
+    shipped frame.
+
+    A heading that does not fit should be SHRUNK — the fit sweep already does
+    that — not hacked in half. keep-all breaks at spaces only.
+    """
+    import os
+    src = open(
+        os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py")
+    ).read()
+    i = src.index("word-break: keep-all")
+    block = src[i - 700:i + 200]
+    for sel in ("h1, h2, h3", '[class*="title" i]', '[class*="headline" i]'):
+        assert sel in block, f"heading carve-out missing {sel}"
+    assert "overflow-wrap: normal;" in block
+    assert "hyphens: none;" in block
+    # The global valve must still exist — this is a carve-out, not its removal.
+    assert "word-break: break-word;" in src

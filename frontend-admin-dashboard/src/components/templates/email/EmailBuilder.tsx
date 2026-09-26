@@ -12,6 +12,8 @@ type FormApi<T, U> = {
     getState: () => { values: T };
 };
 import AssetPicker from './AssetPicker';
+import { registerTextBorderFrame } from './textBorderFrame';
+import { registerTextAttributePanel } from './TextAttributePanel';
 import { MessageTemplate, TEMPLATE_VARIABLES } from '@/types/message-template-types';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
@@ -21,6 +23,10 @@ import { toast } from 'sonner';
 import 'easy-email-editor/lib/style.css';
 import 'easy-email-extensions/lib/style.css';
 import '@arco-themes/react-easy-email-theme/css/arco.css';
+
+// Text-block border / radius: render override + the panel section that edits it.
+registerTextBorderFrame();
+registerTextAttributePanel();
 
 // Define the email template interface
 interface IEmailTemplate {

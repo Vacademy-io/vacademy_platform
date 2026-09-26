@@ -1,6 +1,7 @@
 /**
  * Utility functions for handling custom fields in registration forms
  */
+import i18n from "@/i18n";
 
 export interface CustomField {
   guestId: string | null;
@@ -34,6 +35,8 @@ export interface InstituteCustomFieldResponse {
   type_id: string;
   group_name: string | null;
   custom_field: CustomField;
+  /** Per-form required-ness. Takes precedence over the shared `custom_field.isMandatory`. */
+  is_mandatory?: boolean | null;
   individual_order: number | null;
   group_internal_order: number | null;
   status: string;
@@ -136,7 +139,56 @@ export interface CustomFieldFullConfig {
   // Short hint rendered under the input, set by the admin in the custom-field
   // dialog. Distinct from `description`, which is the checkbox consent body.
   helpText?: string;
+  // Overrides the auto-generated "Enter <field name>" prompt inside the input.
+  // Authored per field so one institute can reword the hint (e.g. spelling out
+  // "Enter First Name and Last Name" on a Full Name field) without renaming the
+  // field — the label above the input keeps coming from `field_name`.
+  placeholder?: string;
+  // Proof-of-ownership gate: the visitor must receive a one-time code on the
+  // value they typed and enter it back before the form can be submitted.
+  // Authored per field in the admin, so any field can be made verifiable —
+  // nothing here is specific to phone numbers or to one institute.
+  verification?: FieldVerificationConfig;
 }
+
+/** Channels a one-time code can be delivered over. */
+export type VerificationChannel = "WHATSAPP";
+
+export interface FieldVerificationConfig {
+  /** Off unless explicitly enabled — an unverifiable field must never block a form. */
+  required?: boolean;
+  channel?: VerificationChannel;
+  /**
+   * WhatsApp template to send. Naming one here skips the institute's
+   * OTP_REQUEST notification config entirely, so an institute with an approved
+   * template but no config wired up can still verify. Blank falls back to that
+   * config.
+   */
+  templateName?: string;
+  /**
+   * Language the named template is approved in. Meta registers a template per
+   * language, so one approved only as "en_US" must say so or the send is
+   * rejected. Ignored unless templateName is set; blank means English.
+   */
+  languageCode?: string;
+}
+
+/**
+ * The verification a field asks for, or null when it asks for none.
+ *
+ * Deliberately strict: a config that names a channel this build cannot deliver
+ * returns null rather than a gate nobody can pass. A form that cannot be
+ * submitted is a worse failure than one that skips a check.
+ */
+export const getFieldVerification = (
+  config?: string | null
+): Required<Pick<FieldVerificationConfig, "channel">> & FieldVerificationConfig | null => {
+  const parsed = parseFieldConfig(config)?.verification;
+  if (!parsed?.required) return null;
+  const channel = parsed.channel ?? "WHATSAPP";
+  if (channel !== "WHATSAPP") return null;
+  return { ...parsed, channel };
+};
 
 // Sentinel value for the admin's "All Files" option — equivalent to no
 // restriction at all, including formats outside the fixed category list
@@ -323,7 +375,9 @@ export const transformCustomFieldsToFormValues = (
       id: custom_field.id,
       name: custom_field.fieldName,
       value: initialValue,
-      is_mandatory: custom_field.isMandatory ?? false,
+      // The form builder's Required switch writes the per-form mapping row, so read that
+      // first and fall back to the master only when this form never answered.
+      is_mandatory: field.is_mandatory ?? custom_field.isMandatory ?? false,
       type: fieldType,
       render_type: getFieldRenderType(fieldKey, fieldType),
       config: custom_field.config,
@@ -345,14 +399,14 @@ export const validateFieldValue = (
   renderType: FieldRenderType
 ): { isValid: boolean; error?: string } => {
   if (!value || !value.trim()) {
-    return { isValid: false, error: "This field is required" };
+    return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.required") };
   }
 
   switch (renderType) {
     case FieldRenderType.EMAIL: {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(value)) {
-        return { isValid: false, error: "Please enter a valid email address" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidEmail") };
       }
       break;
     }
@@ -361,7 +415,7 @@ export const validateFieldValue = (
       if (!phoneRegex.test(value)) {
         return {
           isValid: false,
-          error: "Please enter a valid phone number",
+          error: i18n.t("enrollmentB:fieldValidation.invalidPhone"),
         };
       }
       break;
@@ -370,19 +424,19 @@ export const validateFieldValue = (
       try {
         new URL(value);
       } catch {
-        return { isValid: false, error: "Please enter a valid URL" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidUrl") };
       }
       break;
     }
     case FieldRenderType.NUMBER: {
       if (Number.isNaN(Number(value))) {
-        return { isValid: false, error: "Please enter a valid number" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidNumber") };
       }
       break;
     }
     case FieldRenderType.DATE: {
       if (Number.isNaN(new Date(value).getTime())) {
-        return { isValid: false, error: "Please enter a valid date" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidDate") };
       }
       break;
     }

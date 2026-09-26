@@ -107,6 +107,7 @@ public class BulkAssignmentService {
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     // Used only to resolve a sub-org's own leader for the workflow context — see resolveSubOrgLeader.
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -1195,10 +1196,21 @@ public class BulkAssignmentService {
             // email resolves to the wrong practice group, or to none at all.
             UserDTO subOrgLeader = resolveSubOrgLeader(subOrg, packageSession.getId());
 
+            // Same lmsEditExistingUser policy the batch path resolves (course → institute,
+            // defaults false), so the edit-user node behaves identically however a member is
+            // enrolled. Best-effort: a read failure leaves the existing LMS account untouched.
+            boolean mayEditExistingLmsUser = false;
+            try {
+                mayEditExistingLmsUser = lmsExistingUserEditPolicyService.mayEditExistingUser(
+                        instituteId, packageSession.getPackageEntity().getId());
+            } catch (Exception e) {
+                log.warn("Could not resolve lmsEditExistingUser for institute {} / package {} — defaulting to false: {}",
+                        instituteId, packageSession.getPackageEntity().getId(), e.getMessage());
+            }
             // Built centrally so this and /sub-org/v1/add-member publish an identical context —
             // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
             Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
-                    userDTO, subOrgLeader, enrolledBy, packageSession);
+                    userDTO, subOrgLeader, enrolledBy, packageSession, mayEditExistingLmsUser);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),

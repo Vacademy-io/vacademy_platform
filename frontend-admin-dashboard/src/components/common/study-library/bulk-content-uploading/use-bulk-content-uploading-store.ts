@@ -88,7 +88,7 @@ const initialState = {
     phase: 'select' as WizardPhase,
     mode: 'single' as UploadMode,
     context: null,
-    options: { publish: true, notify: false, skipDuplicateTitles: false },
+    options: { publish: true, notify: false, skipDuplicateTitles: false, createMissing: true },
     nodes: {},
     items: {},
     issues: [],
@@ -289,29 +289,40 @@ export const selectCsvReadiness = (state: {
     return { ready: true };
 };
 
+/** True when any ancestor of this node is skipped, so the node is moot. */
+const isUnderSkippedAncestor = (node: BulkNode, nodes: Record<string, BulkNode>): boolean => {
+    let parentId = node.parentId;
+    while (parentId) {
+        const parent = nodes[parentId];
+        if (!parent) break;
+        if (parent.mapping.action === 'skip') return true;
+        parentId = parent.parentId;
+    }
+    return false;
+};
+
 /**
- * Folders with no existing match that haven't been skipped (directly or via an
- * ancestor). Bulk upload is match-only, so these block Confirm until resolved.
+ * Folders with no existing match that the user hasn't skipped (directly or via
+ * an ancestor). These block Confirm only when auto-create is off — with it on
+ * they are actionable ("will be created"), not blockers.
+ *
+ * The synthetic depth-2 root is excluded unconditionally: applyMatching marks it
+ * 'create' whenever the batch has no DEFAULT chapter yet, but the preview tree
+ * renders no dropdown for it, so blocking on it would be a dead end. Phase 0 of
+ * the commit creates that DEFAULT chapter anyway.
  */
 export const selectUnresolvedNodes = (
     nodes: Record<string, BulkNode>,
-    sectionId?: string
+    sectionId?: string,
+    createMissing = false
 ): BulkNode[] => {
-    const isUnderSkipped = (node: BulkNode): boolean => {
-        let parentId = node.parentId;
-        while (parentId) {
-            const parent = nodes[parentId];
-            if (!parent) break;
-            if (parent.mapping.action === 'skip') return true;
-            parentId = parent.parentId;
-        }
-        return false;
-    };
+    if (createMissing) return [];
     return Object.values(nodes).filter(
         (node) =>
             (sectionId ? node.sectionId === sectionId : true) &&
             node.mapping.action === 'create' &&
-            !isUnderSkipped(node)
+            !node.syntheticRoot &&
+            !isUnderSkippedAncestor(node, nodes)
     );
 };
 
@@ -325,6 +336,24 @@ export const selectSectionsOrdered = (sections: Record<string, CourseSection>): 
         return a.topFolderDisplay.localeCompare(b.topFolderDisplay);
     });
 
+/**
+ * Folders auto-create will really turn into new subjects/modules/chapters —
+ * what the preview promises and the results step reports. Excludes the synthetic
+ * depth-2 root (not a real folder) and anything under a skipped ancestor, since
+ * Phase 1 never reaches those: counting them would promise work that never runs.
+ */
+export const selectCreatedNodes = (
+    nodes: Record<string, BulkNode>,
+    sectionId?: string
+): BulkNode[] =>
+    Object.values(nodes).filter(
+        (node) =>
+            (sectionId ? node.sectionId === sectionId : true) &&
+            node.mapping.action === 'create' &&
+            !node.syntheticRoot &&
+            !isUnderSkippedAncestor(node, nodes)
+    );
+
 /** Confirm gate for multi mode: every section resolved, batches picked, snapshots loaded. */
 export const selectMultiReadiness = (state: {
     courseSections: Record<string, CourseSection>;
@@ -332,6 +361,7 @@ export const selectMultiReadiness = (state: {
     items: Record<string, BulkItem>;
     nodes: Record<string, BulkNode>;
     fatalErrors: string[];
+    options: BulkUploadOptions;
 }): { ready: boolean; reason?: string } => {
     if (state.fatalErrors.length > 0) {
         return { ready: false, reason: state.fatalErrors[0] };
@@ -380,7 +410,11 @@ export const selectMultiReadiness = (state: {
             };
         }
         if (section.status === 'ready') {
-            const unresolved = selectUnresolvedNodes(state.nodes, section.id);
+            const unresolved = selectUnresolvedNodes(
+                state.nodes,
+                section.id,
+                state.options.createMissing
+            );
             if (unresolved.length > 0) {
                 return {
                     ready: false,

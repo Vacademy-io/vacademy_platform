@@ -32,6 +32,10 @@ public class CopyCheckGradeRequestDto {
     @JsonProperty("institute_id")
     private String instituteId;
 
+    /** COPY (default on ai_service) = scanned sheet at pdf_url; TYPED = online answers in student_answer. */
+    @JsonProperty("answer_mode")
+    private String answerMode;
+
     @JsonProperty("pdf_url")
     private String pdfUrl;
 
@@ -66,10 +70,35 @@ public class CopyCheckGradeRequestDto {
         @JsonProperty("subject")
         private String subject;
 
+        /** 1-based position in the paper's order (section, then question). */
+        @JsonProperty("question_number")
+        private Integer questionNumber;
+
+        /**
+         * The number the student sees printed next to this question — "2", "3(a)",
+         * "Q7" — which may repeat across sections. Without it the grader was told
+         * the question's UUID was "the number on the paper" and had to guess where
+         * the answer sat from the wording alone.
+         */
+        @JsonProperty("paper_label")
+        private String paperLabel;
+
+        /** Section heading as printed ("Section B", "Passage II"), when known. */
+        @JsonProperty("section")
+        private String section;
+
         @JsonProperty("options")
         private List<Map<String, Object>> options;
 
         @JsonProperty("correct_answer")
         private String correctAnswer;
+
+        /** TYPED mode only: what the learner typed for this question. */
+        @JsonProperty("student_answer")
+        private String studentAnswer;
+
+        /** TYPED mode only: the answer the teacher wrote on the question, as a reference. */
+        @JsonProperty("model_answer")
+        private String modelAnswer;
     }
 }

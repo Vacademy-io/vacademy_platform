@@ -102,9 +102,18 @@
         "filtersConfig": [
           {
             "id": "level",
-            "label": "Level",
             "type": "checkbox",
             "field": "level_name"
+          },
+          {
+            "id": "session",
+            "type": "checkbox",
+            "field": "session_name"
+          },
+          {
+            "id": "tags",
+            "type": "checkbox",
+            "field": "comma_separeted_tags"
           }
         ],
         "render": {
@@ -174,6 +183,21 @@
         }
       },
       "capabilities": "layout: grid | carousel | slider. media[]: {type: image|video, url, caption, heading, backgroundImage}. Use it for a swipeable row of photos or videos; it carries no per-item button, so for cards that need a CTA use featureGrid with per-feature image + link."
+    },
+    {
+      "type": "courseShowcase",
+      "templateKey": "courseShowcase",
+      "exampleProps": {
+        "title": "New courses",
+        "subtitle": "",
+        "source": "newest",
+        "tag": "",
+        "courseIds": [],
+        "limit": 3,
+        "layout": "row",
+        "badgeText": "",
+        "badgeTone": "hot"
+      }
     },
     {
       "type": "statsHighlights",
@@ -346,6 +370,21 @@
       }
     },
     {
+      "type": "documentViewer",
+      "templateKey": "documentViewer",
+      "exampleProps": {
+        "heading": "Browse our catalogue",
+        "subheading": "Flip through every page right here.",
+        "documentUrl": "",
+        "fileName": "",
+        "display": "button",
+        "buttonText": "Open the catalogue",
+        "coverImage": "",
+        "height": "70vh",
+        "showDownload": true
+      }
+    },
+    {
       "type": "ctaBanner",
       "templateKey": "ctaBanner",
       "exampleProps": {
@@ -508,6 +547,31 @@
         "showTag": true,
         "backgroundColor": "#FFFFFF"
       }
+    },
+    {
+      "type": "blog",
+      "templateKey": "blog",
+      "exampleProps": {
+        "heading": "From the blog",
+        "subheading": "Study tips, exam updates and stories from our classrooms.",
+        "layout": "grid",
+        "columns": 3,
+        "pageSize": 9,
+        "category": "",
+        "showCoverImage": true,
+        "showExcerpt": true,
+        "showDate": true,
+        "showAuthor": true,
+        "showCategory": true,
+        "showReadingTime": true,
+        "showCategoryFilter": true,
+        "readMoreLabel": "Read more",
+        "backLabel": "All posts",
+        "emptyMessage": "No posts yet — check back soon.",
+        "backgroundColor": "",
+        "textColor": ""
+      },
+      "dataBound": "Live blog: reads the institute's PUBLISHED posts (written in Manage Pages → Blog or by an AI app over the MCP `blog_edit` tool). Renders the post list on the page it sits on and one article at /<page>/<post-slug>, so put it on a DEDICATED page (route \"blog\"), never on the home page. Placement + look only: heading, subheading, layout grid|list, columns 2|3, pageSize, category (\"\" = all), show* toggles. Never invent posts — there are none in the page JSON."
     },
     {
       "type": "imageGallery",
@@ -907,6 +971,9 @@
         "showViewAll": true,
         "viewAllLabel": "See all",
         "ctaLabel": "Enrol now",
+        "enableCart": false,
+        "cartCtaLabel": "Add to Cart",
+        "checkoutCtaLabel": "Proceed to checkout",
         "showViewCourse": true,
         "viewCourseLabel": "View course",
         "showImage": true,

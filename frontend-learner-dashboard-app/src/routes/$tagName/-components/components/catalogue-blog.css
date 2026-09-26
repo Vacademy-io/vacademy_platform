@@ -1,0 +1,101 @@
+/* Blog article body — extends .catalogue-rich-text (catalogue-animations.css)
+   with what an article carries and a marketing text block does not: images,
+   figures, tables, code and video embeds. Kept out of the byte-synced
+   catalogue-*.css files because only the learner renders post bodies. */
+
+.catalogue-blog-article {
+    font-size: 1.0625rem;
+    color: hsl(var(--catalogue-text-secondary, 215 16% 30%));
+}
+.catalogue-blog-article h1,
+.catalogue-blog-article h2,
+.catalogue-blog-article h3,
+.catalogue-blog-article h4 {
+    color: hsl(var(--catalogue-text-primary, 222 47% 11%));
+    font-family: var(--catalogue-heading-font, inherit);
+}
+.catalogue-blog-article h2 { margin-top: 2rem; }
+.catalogue-blog-article h3 { margin-top: 1.5rem; }
+.catalogue-blog-article img,
+.catalogue-blog-article video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 1.5rem auto;
+    border-radius: var(--catalogue-radius-lg, 12px);
+}
+.catalogue-blog-article figure { margin: 1.5rem 0; }
+.catalogue-blog-article figure img { margin: 0 auto; }
+.catalogue-blog-article figcaption {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: hsl(var(--catalogue-text-muted, 215 14% 46%));
+}
+.catalogue-blog-article iframe {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    margin: 1.5rem 0;
+    border: 0;
+    border-radius: var(--catalogue-radius-lg, 12px);
+}
+.catalogue-blog-article pre {
+    overflow-x: auto;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+    border-radius: var(--catalogue-radius-md, 8px);
+    background: hsl(var(--catalogue-text-primary, 222 47% 11%));
+    color: #f8fafc;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+.catalogue-blog-article code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+}
+.catalogue-blog-article :not(pre) > code {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: hsl(var(--catalogue-bg-muted, 210 40% 96%));
+}
+.catalogue-blog-article table {
+    width: 100%;
+    margin: 1.25rem 0;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+}
+.catalogue-blog-article th,
+.catalogue-blog-article td {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid hsl(var(--catalogue-border, 214 32% 91%));
+    text-align: start;
+    vertical-align: top;
+}
+.catalogue-blog-article th {
+    background: hsl(var(--catalogue-bg-muted, 210 40% 96%));
+    font-weight: 600;
+}
+.catalogue-blog-article hr {
+    margin: 2rem 0;
+    border: 0;
+    border-top: 1px solid hsl(var(--catalogue-border, 214 32% 91%));
+}
+.catalogue-blog-article blockquote {
+    border-left-color: hsl(var(--primary-500, 217 91% 60%));
+}
+
+/* Card list */
+.catalogue-blog-card-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.catalogue-blog-card-excerpt {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

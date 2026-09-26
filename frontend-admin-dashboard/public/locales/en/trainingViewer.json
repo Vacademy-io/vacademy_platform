@@ -1,0 +1,12 @@
+{
+    "title": "Training",
+    "searchPlaceholder": "Search videos by name, description or module…",
+    "allVideos": "All videos",
+    "back": "Back to videos",
+    "closeAriaLabel": "Close training",
+    "error": "Could not load training videos. Try again later.",
+    "noVideos": "No training videos yet",
+    "noVideosDescription": "The Vacademy team hasn't published any LMS training videos yet.",
+    "noResults": "No videos match your search",
+    "noResultsDescription": "Try a different keyword or clear the search."
+}

@@ -1,0 +1,13 @@
+{
+    "dashboardHeading": "Dashboard",
+    "dashboardDescription": "This page shows the dashboard of the institute.",
+    "greetingHello": "Hello",
+    "greetingName": "Evaluator!",
+    "enrollStudentsTitle": "Enroll students",
+    "enroll": "Enroll",
+    "assessmentCreatedLabel": "Assessment created",
+    "createAssessmentTitle": "Create Assessment to evaluate",
+    "create": "Create",
+    "evaluateStudentsTitle": "Evaluate students response for an assessment",
+    "evaluate": "Evaluate"
+}

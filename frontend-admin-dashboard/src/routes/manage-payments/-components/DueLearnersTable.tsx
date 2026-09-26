@@ -11,10 +11,17 @@ import type { OutstandingLearner, OutstandingLearnersPage } from '@/services/pay
 
 interface DueLearnersTableProps {
     data: OutstandingLearnersPage | undefined;
+    /**
+     * 'due' (default): learners with something already overdue. 'outstanding': everyone with a
+     * balance still to collect, with the amount and date of their next instalment.
+     */
+    mode?: 'due' | 'outstanding';
     isLoading: boolean;
     error: unknown;
     currentPage: number;
     onPageChange: (page: number) => void;
+    /** Opens the balance breakdown for one learner. */
+    onSelectLearner?: (learner: OutstandingLearner) => void;
 }
 
 const initialsOf = (name?: string | null): string => {
@@ -49,19 +56,22 @@ const isOverdue = (date?: string | null): boolean => {
 };
 
 /**
- * Who owes what — the drill-down behind the "Due payment" card.
+ * Who owes what — the drill-down behind the "Due" card.
  *
  * The payments table below can't answer this: a learner part-way through an instalment plan shows
  * only the instalments they HAVE paid, and one who has never paid shows nothing at all. This lists
- * the balance itself (billed minus paid, per learner), the fee type it sits under, and for custom
- * instalment plans how many instalments are outstanding and when the next one is due.
+ * what is overdue right now (per learner), what falls due next, the fee type it sits under, and for
+ * custom instalment plans how many instalments are outstanding and when the next one is due. A
+ * learner is here only while something is overdue — an upcoming instalment alone does not list them.
  */
 export function DueLearnersTable({
     data,
+    mode = 'due',
     isLoading,
     error,
     currentPage,
     onPageChange,
+    onSelectLearner,
 }: DueLearnersTableProps) {
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
@@ -101,8 +111,8 @@ export function DueLearnersTable({
                             {row.original.course_name || '—'}
                         </div>
                         {row.original.plan_count > 1 && (
-                            <div className="text-xs text-neutral-500">
-                                +{row.original.plan_count - 1} more
+                            <div className="text-xs text-primary-500">
+                                +{row.original.plan_count - 1} more · view all
                             </div>
                         )}
                     </div>
@@ -154,6 +164,63 @@ export function DueLearnersTable({
                 size: 120,
             },
             {
+                id: 'outstanding',
+                header: 'Outstanding',
+                accessorFn: (row) => row.outstanding ?? 0,
+                cell: ({ row }) => (
+                    <span className="font-semibold tabular-nums text-neutral-800">
+                        {money(row.original.outstanding ?? 0, row.original.currency)}
+                    </span>
+                ),
+                size: 130,
+            },
+            {
+                id: 'next_installment',
+                header: 'Next instalment',
+                accessorFn: (row) => row.next_due_date || '',
+                cell: ({ row }) => {
+                    const learner = row.original;
+                    if (!learner.next_due_date) {
+                        return <span className="text-neutral-400">—</span>;
+                    }
+                    const overdue = isOverdue(learner.next_due_date);
+                    return (
+                        <div className="space-y-0.5">
+                            {learner.next_due_amount != null && (
+                                <div className="font-medium tabular-nums text-neutral-700">
+                                    {money(learner.next_due_amount, learner.currency)}
+                                </div>
+                            )}
+                            <div
+                                className={cn(
+                                    'flex items-center gap-1.5 text-xs',
+                                    overdue ? 'font-medium text-danger-600' : 'text-neutral-500'
+                                )}
+                            >
+                                {overdue && <CalendarX size={12} />}
+                                {overdue ? 'Overdue since ' : 'Due '}
+                                {formatDueDate(learner.next_due_date)}
+                            </div>
+                        </div>
+                    );
+                },
+                size: 160,
+            },
+            {
+                id: 'upcoming',
+                header: 'Upcoming',
+                accessorFn: (row) => row.upcoming,
+                cell: ({ row }) =>
+                    row.original.upcoming > 0 ? (
+                        <span className="tabular-nums text-neutral-600">
+                            {money(row.original.upcoming, row.original.currency)}
+                        </span>
+                    ) : (
+                        <span className="text-neutral-400">—</span>
+                    ),
+                size: 110,
+            },
+            {
                 id: 'installments',
                 header: 'Instalments',
                 accessorFn: (row) => row.pending_installments,
@@ -191,6 +258,18 @@ export function DueLearnersTable({
         [courseTerm]
     );
 
+    // Each list shows the columns that answer its own question: Due is about what is overdue now,
+    // Outstanding about the whole balance and when the next part of it falls due.
+    const visibleColumns = useMemo(
+        () =>
+            columns.filter((column) =>
+                mode === 'outstanding'
+                    ? !['due', 'upcoming'].includes(column.id ?? '')
+                    : !['outstanding', 'next_installment'].includes(column.id ?? '')
+            ),
+        [columns, mode]
+    );
+
     const tableData = useMemo(() => {
         if (!data) return undefined;
         return {
@@ -220,21 +299,38 @@ export function DueLearnersTable({
         <div className="space-y-4">
             {isEmpty ? (
                 <div className="rounded-lg border border-border bg-card p-12 text-center">
-                    <p className="text-title font-medium text-neutral-700">Nothing outstanding</p>
-                    <p className="mt-2 text-body text-neutral-500">
-                        Every enrolment in this view is paid up.
-                    </p>
+                    {mode === 'outstanding' ? (
+                        <>
+                            <p className="text-title font-medium text-neutral-700">
+                                Nothing outstanding
+                            </p>
+                            <p className="mt-2 text-body text-neutral-500">
+                                No learner with access in this view has an unpaid instalment or
+                                invoice.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-title font-medium text-neutral-700">Nothing overdue</p>
+                            <p className="mt-2 text-body text-neutral-500">
+                                No learner with access in this view has an unpaid instalment,
+                                renewal or invoice past its date.
+                            </p>
+                        </>
+                    )}
                 </div>
             ) : (
                 <MyTable
                     data={tableData}
-                    columns={columns}
+                    columns={visibleColumns}
                     isLoading={isLoading}
                     error={null}
                     currentPage={currentPage}
                     scrollable={true}
                     enableColumnResizing={true}
                     enableColumnPinning={false}
+                    onCellClick={(row) => onSelectLearner?.(row)}
+                    className={onSelectLearner ? '[&_tbody_tr]:cursor-pointer' : undefined}
                 />
             )}
 

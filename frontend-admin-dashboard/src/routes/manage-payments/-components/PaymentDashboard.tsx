@@ -30,7 +30,7 @@ import {
     type AmountSlice,
     type PaymentAnalytics,
 } from '../-utils/paymentAnalytics';
-import { computeBillingFromEntries, computePaymentSummary } from '../-utils/paymentSummary';
+import { computePaymentSummary } from '../-utils/paymentSummary';
 import {
     formatRangeLabel,
     rangeToLocalIsoWindow,
@@ -48,6 +48,7 @@ import {
 } from '@/services/payment-logs';
 import { GatewayBadge } from './GatewayBadge';
 import { PaymentKpiCards } from './PaymentKpiCards';
+import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
 import { DateRangeDropdown } from './DateRangeDropdown';
 
 // ─── Formatting ────────────────────────────────────────────────────────────────
@@ -213,9 +214,9 @@ export function PaymentDashboard() {
     });
 
     /**
-     * Billed / collected / due, straight from the enrolments — the same figures Manage Payments
-     * shows. Payment records can only report money that was actually raised, so an instalment plan
-     * looks fully collected until this is asked for.
+     * Collected / due / upcoming, straight from the enrolments — the same figures Manage Payments
+     * shows. Payment records can only report money that was actually raised, so an overdue
+     * instalment is invisible until this is asked for.
      */
     const { data: billingSummary } = useQuery({
         queryKey: ['payment-billing-summary-dash', range],
@@ -226,20 +227,28 @@ export function PaymentDashboard() {
         staleTime: 60_000,
         retry: false,
     });
-    // Same fallback as Manage Payments: derive billing from the rows when the endpoint is absent.
-    const entryBilling = useMemo(() => computeBillingFromEntries(entries), [entries]);
+    // Same as Manage Payments: no client-side fallback for the balance cards — pricing the rows
+    // on screen is the model that reported abandoned checkouts as debt.
     const billing = billingSummary
         ? {
-              totalBilled: billingSummary.total_billed,
               collected: billingSummary.collected,
               due: billingSummary.due,
+              upcoming: billingSummary.upcoming,
+              upcomingDays: billingSummary.upcoming_days,
+              learnersOwing: billingSummary.learners_owing,
+              learnersUpcoming: billingSummary.learners_upcoming,
+              activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+              outstanding: billingSummary.outstanding,
+              learnersOutstanding: billingSummary.learners_outstanding,
+              upcomingAll: billingSummary.upcoming_all ?? undefined,
+              learnersUpcomingAll: billingSummary.learners_upcoming_all,
+              nextDueDate: billingSummary.next_due_date,
+              usesInstallments: billingSummary.uses_installments,
               currency: billingSummary.currency || '',
-              planCount: billingSummary.plan_count,
-              settledPlanCount: billingSummary.settled_plan_count,
           }
-        : entryBilling.planCount > 0
-          ? entryBilling
-          : null;
+        : null;
+    // Same card choices as Manage Payments (shared per-institute storage).
+    const cardPrefs = useKpiCardPrefs(billing);
 
     /**
      * Who the Due figure is made of. Without this the dashboard could report lakhs outstanding and
@@ -296,24 +305,31 @@ export function PaymentDashboard() {
                         Collections and outstanding dues · {rangeLabel}
                     </p>
                 </div>
-                <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    className="gap-2"
-                    onClick={handleExport}
-                >
-                    <DownloadSimple size={16} />
-                    Export
-                </MyButton>
+                <div className="flex items-center gap-2">
+                    <KpiCardSettings
+                        visible={cardPrefs.visible}
+                        onToggle={cardPrefs.toggle}
+                        onReset={cardPrefs.reset}
+                        isCustomised={cardPrefs.isCustomised}
+                    />
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        className="gap-2"
+                        onClick={handleExport}
+                    >
+                        <DownloadSimple size={16} />
+                        Export
+                    </MyButton>
+                </div>
             </div>
 
             {/* KPI row — the same five tiles as Manage Payments, from the same component */}
             <PaymentKpiCards
                 summary={summary}
                 billing={billing}
-                totalCount={entries.length}
                 isLoading={isLoading}
-                truncated={data?.truncated}
+                visibleKeys={cardPrefs.visible}
             />
 
             {isError ? (

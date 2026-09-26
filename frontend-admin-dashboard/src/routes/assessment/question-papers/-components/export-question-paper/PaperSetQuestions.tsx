@@ -1,4 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { Input } from '@/components/ui/input';
 import { ExportSettings } from '@/components/common/export-offline/contexts/export-settings-context';
@@ -15,6 +16,7 @@ interface PaperSetProps {
 }
 
 export function PaperSetQuestions({ questionPaperId, settings }: PaperSetProps) {
+    const { t } = useTranslation('assessmentPaperSetQuestions');
     const { data: questionsData, isLoading } = useSuspenseQuery(
         handleGetQuestionPaperById(questionPaperId)
     );
@@ -71,7 +73,7 @@ export function PaperSetQuestions({ questionPaperId, settings }: PaperSetProps) 
                     {settings.customLetterheadImage ? (
                         <img
                             src={settings.customLetterheadImage}
-                            alt="Letterhead"
+                            alt={t('header.letterheadAlt')}
                             className="mx-auto mb-2 max-h-24"
                         />
                     ) : (
@@ -120,7 +122,7 @@ export function PaperSetQuestions({ questionPaperId, settings }: PaperSetProps) 
 
     const renderRoughWork = () => (
         <div className="mt-auto">
-            <h3 className="mb-2 text-lg font-semibold">Space for Rough Work</h3>
+            <h3 className="mb-2 text-lg font-semibold">{t('roughWork.heading')}</h3>
             <div
                 className="rounded-lg border-t-2 border-dashed"
                 style={{ height: `${ROUGH_WORK_HEIGHT}mm` }}

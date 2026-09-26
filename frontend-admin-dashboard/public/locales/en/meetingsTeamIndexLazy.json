@@ -1,0 +1,15 @@
+{
+    "navHeading": "Team Meetings",
+    "heading": "Team Meetings",
+    "subtitle": "Meetings hosted by you and your team",
+    "unknownHost": "Unknown host",
+    "noTeamTitle": "You don't manage a team yet",
+    "noTeamDescription": "Team Meetings shows the schedules of everyone reporting to you. Once team members report to you, their meetings will appear here.",
+    "emptyTitle": "No team meetings this week",
+    "emptyDescription": "Meetings hosted by you or your team will appear here.",
+    "hostFilterAriaLabel": "Filter meetings by host",
+    "allHosts": "All hosts ({{count}})",
+    "filterByHost": "Filter by host",
+    "searchHostPlaceholder": "Search host…",
+    "noHostFound": "No host found."
+}

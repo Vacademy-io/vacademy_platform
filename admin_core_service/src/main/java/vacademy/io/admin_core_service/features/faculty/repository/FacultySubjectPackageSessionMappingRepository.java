@@ -131,6 +131,11 @@ public interface FacultySubjectPackageSessionMappingRepository
   Optional<FacultySubjectPackageSessionMapping> findByUserIdAndPackageSessionIdAndSubjectIdAndStatusIn(String userId,
       String packageSessionId, String subjectId, List<String> status);
 
+  // Course-level instructor rows (Add Course -> Authors) are stored with subject_id NULL.
+  // List, not Optional: addFacultyToBatch never de-duplicates, so more than one can exist.
+  List<FacultySubjectPackageSessionMapping> findAllByUserIdAndPackageSessionIdAndSubjectIdIsNullAndStatusIn(
+      String userId, String packageSessionId, List<String> status);
+
   @Query(value = """
       SELECT
           fspm.user_id AS facultyId,

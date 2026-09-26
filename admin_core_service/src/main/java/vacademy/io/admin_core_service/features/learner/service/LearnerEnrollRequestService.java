@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -12,6 +13,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSet
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.InviteFormAdminNotificationService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
@@ -43,12 +45,14 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PhoneIdentifierInviteSubmissionGuard;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.EnrollmentConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
@@ -110,6 +114,9 @@ public class LearnerEnrollRequestService {
     private SubOrgService subOrgService;
 
     @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
+
+    @Autowired
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
@@ -117,6 +124,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
+
+    @Autowired
+    private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
 
     @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
@@ -135,6 +145,10 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgPartnerOnboardingService subOrgPartnerOnboardingService;
 
     @Autowired
     private FacultyService facultyService;
@@ -309,6 +323,13 @@ public class LearnerEnrollRequestService {
         validateEnrollmentReferences(enrollInvite, paymentOption, paymentPlan,
                 enrollDTO.getPackageSessionIds());
 
+        // Defense in depth for clients that skip form-submit: the same phone-based
+        // account cannot create another plan/payment for this exact invite.
+        phoneIdentifierInviteSubmissionGuard.validateNotAlreadySubmitted(
+                enrollInvite,
+                learnerEnrollRequestDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getInstituteId());
+
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();
         String subOrgId = null;
@@ -372,8 +393,9 @@ public class LearnerEnrollRequestService {
                 ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
                         .getBlockedPackageSessions().get(0);
                 String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
-                throw new VacademyException(
-                        new String("You are already enrolled in this demo. Please complete your current trial first."));
+                throw new EnrollmentConflictException(
+                        EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
+                        "You are already enrolled in this demo. Please complete your current trial first.");
             } else {
                 // Multiple package sessions - check if at least one is allowed
                 if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
@@ -384,7 +406,8 @@ public class LearnerEnrollRequestService {
                             .min(java.util.Date::compareTo)
                             .orElse(new java.util.Date());
                     String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
-                    throw new VacademyException(
+                    throw new EnrollmentConflictException(
+                            EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
                             String.format("You can retry operation on %s", retryDateStr));
                 } else {
                     // At least one is allowed - filter out blocked ones
@@ -448,6 +471,17 @@ public class LearnerEnrollRequestService {
                 userPlan,
                 extraData);
 
+        // Invite-form team notification for FREE invites only. The learner FE skips the
+        // /open/v1/enrollment/form-submit step when the invite is FREE, so this is the
+        // only place their submission is observed; every other payment type is notified
+        // from EnrollmentFormService, which keeps it exactly-once either way.
+        if (PaymentOptionType.FREE.name().equals(paymentOption.getType())) {
+            inviteFormAdminNotificationService.notifyAdminsOnFormFill(
+                    enrollInvite,
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollDTO.getCustomFieldValues());
+        }
+
         // B2B: Post-processing for SUB_ORG invite enrollment
         // Creates ROOT_ADMIN mappings, StudentSubOrg entry, and faculty mappings
         if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
@@ -457,6 +491,14 @@ public class LearnerEnrollRequestService {
                     enrollDTO.getPackageSessionIds(),
                     enrollInvite,
                     userPlan);
+
+            // A FREE partner plan is active right here; paid ones become active in the payment
+            // webhook (UserPlanService.applyOperationsOnFirstPayment), which runs the same
+            // onboarding there. Best-effort by contract: the service never throws.
+            if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+                subOrgPartnerOnboardingService.onPartnerActivated(
+                        enrollInvite.getSubOrgId(), enrollInvite.getInstituteId(), userPlan);
+            }
         }
 
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)

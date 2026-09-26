@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Eye } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface MarkingCriteriaDialogProps {
     markingJson: string;
 }
 
 export function MarkingCriteriaDialog({ markingJson }: MarkingCriteriaDialogProps) {
+    const { t } = useTranslation('evaluatorAiMarkingCriteriaDialog');
     const [open, setOpen] = useState(false);
 
     let markingData = { total_marks: 0, criteria: [] };
@@ -23,24 +25,24 @@ export function MarkingCriteriaDialog({ markingJson }: MarkingCriteriaDialogProp
         <>
             <Button variant="outline" onClick={() => setOpen(true)} className="">
                 <Eye className="mr-2 size-4" />
-                View
+                {t('view')}
             </Button>
 
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-h-[80vh] min-w-fit overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
-                            Marking Criteria for {markingData.total_marks} marks
+                            {t('markingCriteriaFor', { marks: markingData.total_marks })}
                         </DialogTitle>
                     </DialogHeader>
 
                     <div className="mt-4">
-                        <h3 className="mb-2 font-medium">Selected Criteria:</h3>
+                        <h3 className="mb-2 font-medium">{t('selectedCriteria')}</h3>
 
                         <div className="rounded-md border">
                             <div className="flex justify-between border-b bg-muted/50 p-3">
-                                <div className="font-medium">Criteria</div>
-                                <div className="font-medium">Marks</div>
+                                <div className="font-medium">{t('criteriaColumn')}</div>
+                                <div className="font-medium">{t('marksColumn')}</div>
                                 {/* <div className="font-medium">Action</div> */}
                             </div>
 
@@ -58,7 +60,7 @@ export function MarkingCriteriaDialog({ markingJson }: MarkingCriteriaDialogProp
                                 ))
                             ) : (
                                 <div className="p-4 text-center text-muted-foreground">
-                                    No criteria selected, please select criteria from available list
+                                    {t('noCriteriaSelected')}
                                 </div>
                             )}
                         </div>

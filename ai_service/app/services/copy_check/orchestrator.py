@@ -8,6 +8,7 @@ and between questions — matching the Java cancellation model.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -20,18 +21,71 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
+from . import annotator, callbacks, cancellation, locate, typed_answers, vision_transcript
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
+from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
 from .validator import validate_and_cap
+from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
+
+# A silent job looks dead to Java's stale-job sweeper, which requeues it and
+# would then run the same copy twice. Long phases (a 30-page handwriting read,
+# Mathpix enrichment) post no step change of their own, so the running job
+# re-posts its current step this often to say "still here".
+HEARTBEAT_SECONDS = float(os.getenv("COPY_CHECK_HEARTBEAT_SECONDS", "60"))
+
+
+def describe_failure(exc: BaseException) -> str:
+    """What to tell the admin about a question that could not be graded.
+
+    Read on the evaluation page under "AI could not grade this". A raw
+    `ValueError: could not convert string to float: 'low'` told the teacher
+    nothing they could act on; say what happened in plain words and keep the
+    class + message after it for whoever reads the logs.
+    """
+    name = type(exc).__name__
+    msg = str(exc) or name
+    low = msg.lower()
+    if "token budget" in low:
+        why = "The AI budget for this copy ran out before this question."
+    elif "no valid max_marks" in low:
+        why = "This question has no maximum marks set on the assessment."
+    elif name in ("TimeoutError", "ReadTimeout", "ConnectTimeout", "ConnectError") or "timed out" in low:
+        why = "The AI service did not answer in time."
+    elif name in ("JSONDecodeError", "ValueError", "TypeError", "KeyError", "AttributeError"):
+        why = "The AI's reply could not be read as a verdict, twice."
+    elif "rate limit" in low or "429" in low:
+        why = "The AI provider rate-limited the request."
+    else:
+        why = "The AI service returned an error, twice."
+    return f"{why} ({name}: {msg})"[:500]
 
 
 def _new_job_id() -> str:
     return str(uuid.uuid4())
+
+
+def _looks_unattempted(raw: dict[str, Any]) -> bool:
+    """The grader found no answer: the explicit verdict, or the shape the
+    prompt prescribes for one (0 marks, nothing extracted, nothing to draw) for
+    models that leave `verdict` out."""
+    if not isinstance(raw, dict):
+        return False
+    if str(raw.get("verdict") or "").strip().lower() == "unattempted":
+        return True
+    try:
+        marks = float(raw.get("marks_awarded") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (
+        marks == 0
+        and not str(raw.get("extracted_answer") or "").strip()
+        and not raw.get("annotations")
+    )
 
 
 def _render_client() -> CopyCheckRenderClient:
@@ -55,19 +109,118 @@ async def grade_copy(process_id: Optional[str] = None) -> str:
     return job_id
 
 
+def _mark_label_blocks(questions: list[dict[str, Any]]) -> None:
+    """Tell repeated printed numbers apart.
+
+    A paper with two passages under one section prints 1-10 twice; the student
+    writes both runs. `label_block` = which run this question belongs to (1, 2…)
+    and `label_blocks` = how many runs that section has, worked out from paper
+    order: a printed number that is <= the previous one in the same section
+    starts a new run. Without this "Section A · 1" named two questions and the
+    grader marked one passage's answers against the other's key (2026-09-21).
+    """
+    import re as _re
+
+    def _num(label: Any) -> int | None:
+        m = _re.match(r"\s*(\d+)", str(label or ""))
+        return int(m.group(1)) if m else None
+
+    runs: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for q in questions:
+        section = str(q.get("section") or "").strip()
+        n = _num(q.get("paper_label"))
+        if n is None:
+            q["label_block"] = 1
+            continue
+        if section in last and n <= last[section]:
+            runs[section] = runs.get(section, 1) + 1
+        runs.setdefault(section, 1)
+        last[section] = n
+        q["label_block"] = runs[section]
+    for q in questions:
+        q["label_blocks"] = runs.get(str(q.get("section") or "").strip(), 1)
+
+
+_EMPTY_LAYOUT: dict[str, Any] = {"pages": []}
+
+
+async def _grade_typed(
+    questions: list[dict[str, Any]],
+    rubric_resolver: RubricResolver,
+    grader: CopyCheckGrader,
+    preferred_model: Optional[str],
+    on_verdict,
+    check_cancelled,
+) -> tuple[float, float, int, int]:
+    """Grade every typed answer; post each verdict through `on_verdict`.
+    Returns (awarded, max, evaluated, graded) - `graded` counts the answers a
+    model actually read, which is what the institute is charged for."""
+    total_awarded = 0.0
+    total_max = 0.0
+    evaluated = 0
+    graded = 0
+    for q in questions:
+        check_cancelled()
+        answer = typed_answers.answer_text(q.get("student_answer"))
+        if not answer:
+            verdict = typed_answers.unattempted_verdict(q)
+        else:
+            graded += 1
+            try:
+                rubric = await rubric_resolver.resolve(q, preferred_model)
+                raw = await grader.grade_typed_question(q, rubric, preferred_model)
+                verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+            except cancellation.Cancelled:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Typed grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                )
+                try:
+                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
+                    raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
+                    verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                except cancellation.Cancelled:
+                    raise
+                except Exception as retry_err:
+                    logger.exception(f"Retry also failed for question {q.get('question_id')}")
+                    verdict = {
+                        "question_id": q["question_id"],
+                        "marks_awarded": 0.0,
+                        "max_marks": float(q.get("max_marks") or 0),
+                        "extracted_answer": answer,
+                        "feedback": "This answer could not be evaluated automatically and needs manual review.",
+                        "confidence": 0.0,
+                        "criteria_breakdown": [],
+                        "annotations": [],
+                        "status": "FAILED",
+                        "error_detail": describe_failure(retry_err),
+                    }
+            # What the student typed, not the model's retelling of it.
+            verdict["extracted_answer"] = answer
+            verdict["annotations"] = []
+        total_awarded += verdict["marks_awarded"]
+        total_max += verdict["max_marks"]
+        evaluated += 1
+        verdict.setdefault("question_number", q.get("question_number") or evaluated)
+        await on_verdict(verdict)
+    return total_awarded, total_max, evaluated, graded
+
+
 async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     """The actual pipeline. Designed to never raise out of the BG task — any
     failure ends in a callbacks.failed() POST so Java can surface it."""
     process_id = req["process_id"]
     callback_base = req["callback_base_url"]
-    pdf_url = req["pdf_url"]
+    pdf_url = req.get("pdf_url")
     assessment_id = req["assessment_id"]
     institute_id = req.get("institute_id")
     preferred_model = req.get("preferred_model")
     questions: list[dict[str, Any]] = req["questions"]
 
     llm = ChatLLMClient(ApiKeyResolver(db))
-    grader = CopyCheckGrader(llm, institute_id=institute_id)
+    grader = CopyCheckGrader(llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)))
     mathpix = MathpixFallback()
 
     async def _llm_for_criteria(system: str, user: str, model: str | None) -> dict[str, Any]:
@@ -82,6 +235,32 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     # the pool isn't pinned for minutes (#17).
     rubric_snapshot = load_snapshot(db, assessment_id)
     rubric_resolver = RubricResolver(rubric_snapshot, _llm_for_criteria)
+
+    current_step = {"step": "QUEUED"}
+
+    async def _progress(step: str, **kwargs: Any) -> None:
+        current_step["step"] = step
+        await callbacks.progress(callback_base, process_id, job_id, step=step, **kwargs)
+
+    async def _heartbeat() -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_SECONDS)
+            try:
+                await callbacks.progress(callback_base, process_id, job_id, step=current_step["step"])
+            except Exception as e:  # best-effort; the next beat will try again
+                logger.debug("copy-check job %s heartbeat failed: %s", job_id, e)
+
+    heartbeat = asyncio.create_task(_heartbeat())
+
+    async def _stop_heartbeat() -> None:
+        """Before any terminal callback: a beat in flight alongside complete/failed
+        could land after it and be applied to a finished process."""
+        if not heartbeat.done():
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
 
     try:
         # 0. Rubric coherence: generate any missing rubrics ONCE, persist them,
@@ -127,36 +306,152 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 q["model_answer"] = model_answer
         db.close()
 
+        if req.get("answer_mode") == "TYPED":
+            # An online attempt: the answers are exact text already. Nothing to
+            # OCR, locate or draw on - grade each answer and finish.
+            await _progress("GRADING")
+            total_awarded, total_max, evaluated, graded = await _grade_typed(
+                questions, rubric_resolver, grader, preferred_model,
+                lambda verdict: callbacks.question_done(
+                    callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                ),
+                lambda: cancellation.check(job_id, process_id),
+            )
+            await _stop_heartbeat()
+            await callbacks.complete(
+                callback_base, process_id, job_id,
+                total_marks_awarded=round(total_awarded, 2),
+                total_max_marks=round(total_max, 2),
+                questions_evaluated=evaluated,
+                evaluated_file_id=None,
+            )
+            logger.info("copy-check job %s (typed) complete: %s/%s, %d graded, %d tokens",
+                        job_id, total_awarded, total_max, graded, grader.tokens_used)
+            # Blank answers were zeroed without a model call; only the answers
+            # actually read are charged.
+            if graded:
+                record_tool_billing(
+                    tool_key="copy_check_evaluation",
+                    tool_params={"num_questions": graded},
+                    request_type=RequestType.EVALUATION,
+                    model=(preferred_model or DEFAULT_MODEL),
+                    prompt_tokens=grader.prompt_tokens,
+                    completion_tokens=grader.completion_tokens,
+                    institute_id=institute_id,
+                    request_id=job_id,
+                    idempotency_key=process_id,
+                )
+            return
+
         # 1. OCR via render_worker.
         cancellation.check(job_id, process_id)
         render = _render_client()
         if not render.is_configured:
             raise RuntimeError("RENDER_WORKER_URL not configured on ai_service")
-        await callbacks.progress(callback_base, process_id, job_id, step="LAYOUT_OCR_STARTED")
+        await _progress("LAYOUT_OCR_STARTED")
         layout_map = await render.submit_and_wait(
             pdf_url, dpi=200, poll_interval=3.0, timeout=300.0,
             cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
         )
-        await callbacks.progress(
-            callback_base, process_id, job_id, step="LAYOUT_OCR_DONE", layout_map=layout_map,
-        )
+
+        # 1b. Re-read the handwriting with a vision model, and merge the OCR's
+        # word-level boxes into real lines. render_worker runs PaddleOCR's
+        # PRINTED-text recogniser on handwriting, which returns fragments like
+        # 'yromrp' — grading against that does not produce lenient marks, it
+        # produces random ones, because the model reconstructs a textbook answer
+        # from keyword noise and scores it at high confidence. This step is what
+        # makes the marks mean anything. It is pinned to a known vision model
+        # rather than `preferred_model`: reading the page is not a place to let
+        # a picker choose a text-only model and silently fall back to noise.
+        cancellation.check(job_id, process_id)
+        await _progress("HANDWRITING_READ")
+        try:
+            layout_map = await vision_transcript.enrich_layout_with_vision(
+                pdf_url, layout_map, llm,
+                institute_id=institute_id,
+                token_sink=grader,
+                cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
+            )
+        except cancellation.Cancelled:
+            raise
+        except Exception:
+            # Never lose a copy to this step: grading can still proceed on the
+            # raw OCR, and the prompt now tells the model that transcript is
+            # unreliable so it answers with low confidence instead of inventing.
+            logger.exception("Vision transcription failed; falling back to raw OCR")
+
+        cancellation.check(job_id, process_id)
+        quality = layout_map.get("vision_quality") or {}
+        if quality and not quality.get("gradeable", True):
+            # Refuse to grade a copy we could not read. Before this gate existed
+            # nothing checked the transcript was usable, so an unreadable scan
+            # came back as confident marks. A human reading it is the correct
+            # outcome; a fabricated mark is not.
+            raise RuntimeError(
+                "answer sheet could not be read reliably "
+                f"({quality.get('legible_pages')}/{quality.get('pages')} pages legible, "
+                f"{quality.get('avg_chars_per_page')} chars/page) — needs manual evaluation"
+            )
+
+        await _progress("LAYOUT_OCR_DONE", layout_map=layout_map)
 
         # 2. Selective math fallback (cheap if there are no flagged lines).
         cancellation.check(job_id, process_id)
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
+        # 2b. Where is each answer? One call over the page prose so every
+        # grading call below gets only the pages that matter (+1 either side)
+        # instead of the whole copy. Without this, cost was pages × questions:
+        # a 100-question/40-page copy re-sent ~18k tokens of transcript 100
+        # times. Advisory only — {} (call failed, copy too small, locator
+        # unconvincing) means every call sees the full transcript, as before.
+        cancellation.check(job_id, process_id)
+        located = await locate.locate_answers(
+            llm, questions, layout_map, DEFAULT_MODEL,
+            institute_id=institute_id, token_sink=grader,
+        )
+        all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
+        question_order = locate.paper_order(questions)
+
         # 3. Per-question grading.
+        # Java flips the process to EVALUATING on this step. Python never sent
+        # it, so that branch was dead and the UI showed "OCR done" for most of
+        # the run — the grading loop is the long part.
+        await _progress("GRADING")
         total_awarded = 0.0
         total_max = 0.0
         evaluated = 0
         # Kept so the annotator can draw every verdict in one pass at the end;
         # the per-question callback already fired for each of these.
+        # Every other question's printed label: the grader is told which numbers
+        # exist on the sheet so "2." under Section B is not mistaken for "2." under
+        # Passage I. Labels only reached us from 2026-09-21; before that this list
+        # would have been ids and was not sent at all.
+        _mark_label_blocks(questions)
+        all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
-        for q in questions:
+        for index, q in enumerate(questions):
+            q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
+            qid = str(q["question_id"])
+            page_ids = locate.pages_for_question(qid, located, question_order, all_page_ids)
+            narrowed = page_ids is not None and len(page_ids) < len(all_page_ids)
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
-                raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
+                raw = await grader.grade_question(q, rubric, layout_map, preferred_model, page_ids)
+                if narrowed and _looks_unattempted(raw) and located.get(qid) != []:
+                    # The locator said the answer is on these pages (or did not
+                    # place it at all) and the grader found nothing there. One
+                    # of them is wrong; a wrong locator must never cost a
+                    # student the marks, so look at the whole copy once. An
+                    # explicit [] from the locator ("not attempted") agreeing
+                    # with the grader is left alone — that is two reads
+                    # saying the same thing.
+                    logger.info(
+                        "Q%s unattempted on located pages %s; re-grading against the full copy",
+                        qid, page_ids,
+                    )
+                    raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
                 verdict = validate_and_cap(raw, q, layout_map)
             except cancellation.Cancelled:
                 raise
@@ -172,7 +467,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 )
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
                     verdict = validate_and_cap(raw, q, layout_map)
                 except cancellation.Cancelled:
                     raise
@@ -198,7 +493,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                         # so no provider error or stack trace reaches a student —
                         # this rides along to ai_question_evaluation instead, where
                         # only admins read it. Class name + message, not a trace.
-                        "error_detail": f"{type(retry_err).__name__}: {retry_err}"[:500],
+                        "error_detail": describe_failure(retry_err),
                     }
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
@@ -216,11 +511,36 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         # Checkpoint first: a cancel that landed after the last question's check
         # would otherwise render, upload, and bill a copy the teacher stopped.
         cancellation.check(job_id, process_id)
+        # Between the grader and the renderer: enforce.py makes the marking
+        # correct whatever the model returned - exactly one score per attempted
+        # question in the right margin, one deduction note below the answer,
+        # praise only where the guide allows it, every annotation on a real
+        # row. A question it still cannot place is reported and left without
+        # ink; the copy ships anyway. Withholding the whole file for one gap
+        # (the first rule here) sent teachers a bare scan with the on-screen
+        # overlay instead of twenty checked answers.
+        try:
+            questions_meta = [{
+                "question_id": q.get("question_id"),
+                # section-qualified so "2" under Section B and "2" under Passage I
+                # stay two different keys inside enforce
+                "paper_label": paper_label_for(q) if (q.get("paper_label") or q.get("label")) else None,
+                "max_marks": q.get("max_marks"),
+                "question_type": q.get("question_type"),
+            } for q in questions]
+        except Exception:
+            questions_meta = None
+        verdicts, _total, enforce_report, unmarked = apply_enforcement(
+            verdicts, layout_map, questions_meta)
+        if unmarked:
+            logger.warning("copy-check %s: enforce could not place a mark for %s; shipping the copy without them",
+                           process_id, unmarked)
         evaluated_file_id = await annotator.render_and_upload(
             pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
         )
 
         # 5. Done.
+        await _stop_heartbeat()
         await callbacks.complete(
             callback_base, process_id, job_id,
             total_marks_awarded=round(total_awarded, 2),
@@ -252,9 +572,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         )
     except (cancellation.Cancelled, OcrCancelled):
         logger.info(f"copy-check job {job_id} cancelled")
+        await _stop_heartbeat()
         await callbacks.failed(callback_base, process_id, job_id, "Cancelled by user")
     except Exception as e:
         logger.exception(f"copy-check job {job_id} failed")
+        await _stop_heartbeat()
         await callbacks.failed(callback_base, process_id, job_id, str(e))
     finally:
+        heartbeat.cancel()
         cancellation.cleanup(job_id, process_id=process_id)

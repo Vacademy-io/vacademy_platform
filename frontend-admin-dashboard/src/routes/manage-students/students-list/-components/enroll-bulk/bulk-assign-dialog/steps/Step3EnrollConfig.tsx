@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import {
@@ -51,6 +52,7 @@ interface CourseConfigRowProps {
 }
 
 const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const { data: resolved } = useResolvedInviteDetails({
         instituteId,
         packageSessionId: ps.packageSessionId,
@@ -70,7 +72,9 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
                 <div className="flex-1">
-                    <Label className="mb-1 text-xs text-neutral-500">Invite Link</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('courseInviteSection.inviteLinkLabel')}
+                    </Label>
                     <InvitePickerDropdown
                         instituteId={instituteId}
                         packageSessionId={ps.packageSessionId}
@@ -87,11 +91,13 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     />
                 </div>
                 <div className="w-36">
-                    <Label className="mb-1 text-xs text-neutral-500">Access Days Override</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('courseInviteSection.accessDaysLabel')}
+                    </Label>
                     <Input
                         type="number"
                         min={1}
-                        placeholder="From invite"
+                        placeholder={t('courseInviteSection.accessDaysPlaceholder')}
                         value={ps.accessDays ?? ''}
                         onChange={(e) =>
                             onUpdate({
@@ -120,7 +126,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     </span>
                     {resolved.resolvedFromDefault && (
                         <span className="text-caption text-neutral-400">
-                            (auto-resolved from DEFAULT invite)
+                            {t('courseInviteSection.autoResolvedFromDefault')}
                         </span>
                     )}
                 </div>
@@ -144,6 +150,7 @@ export const Step3EnrollConfig = ({
     options,
     onOptionsChange,
 }: Props) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
@@ -165,11 +172,10 @@ export const Step3EnrollConfig = ({
             {/* Per-course invite configuration */}
             <div>
                 <h3 className="mb-1 text-sm font-semibold text-neutral-700">
-                    Enrollment Invite per {courseTerm}
+                    {t('courseInviteSection.heading', { term: courseTerm })}
                 </h3>
                 <p className="mb-3 text-xs text-neutral-400">
-                    Choose an invite link for each {courseTerm.toLowerCase()}. Leave blank to
-                    auto-use the default invite.
+                    {t('courseInviteSection.description', { term: courseTerm.toLowerCase() })}
                 </p>
                 <div className="flex flex-col gap-3">
                     {selectedPackageSessions.map((ps) => (
@@ -185,18 +191,23 @@ export const Step3EnrollConfig = ({
 
             {/* Global options */}
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                <h3 className="mb-3 text-sm font-semibold text-neutral-700">Global Options</h3>
+                <h3 className="mb-3 text-sm font-semibold text-neutral-700">
+                    {t('globalOptions.heading')}
+                </h3>
                 <div className="flex flex-col gap-4">
                     {/* Notify learners — visibility controlled by Course Settings */}
                     {showNotifyLearners && (
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label className="text-sm font-medium text-neutral-700">
-                                    Notify {learnersTerm}
+                                    {t('globalOptions.notifyLearnersLabel', {
+                                        term: learnersTerm,
+                                    })}
                                 </Label>
                                 <p className="text-xs text-neutral-400">
-                                    Send enrollment confirmation emails to newly enrolled{' '}
-                                    {learnersTerm.toLowerCase()}
+                                    {t('globalOptions.notifyLearnersDescription', {
+                                        term: learnersTerm.toLowerCase(),
+                                    })}
                                 </p>
                             </div>
                             <Switch
@@ -213,11 +224,12 @@ export const Step3EnrollConfig = ({
                         <div className="flex items-center justify-between">
                             <div>
                                 <Label className="text-sm font-medium text-neutral-700">
-                                    Send Credentials
+                                    {t('globalOptions.sendCredentialsLabel')}
                                 </Label>
                                 <p className="text-xs text-neutral-400">
-                                    Send registration email with login credentials to new{' '}
-                                    {learnersTerm.toLowerCase()}
+                                    {t('globalOptions.sendCredentialsDescription', {
+                                        term: learnersTerm.toLowerCase(),
+                                    })}
                                 </p>
                             </div>
                             <Switch
@@ -232,7 +244,7 @@ export const Step3EnrollConfig = ({
                     {/* Duplicate handling */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            If {learnerTerm} is Already Enrolled
+                            {t('globalOptions.duplicateHandling.label', { term: learnerTerm })}
                         </Label>
                         <Select
                             value={options.duplicateHandling}
@@ -247,23 +259,34 @@ export const Step3EnrollConfig = ({
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="z-popover-above-modal">
-                                <SelectItem value="SKIP">Skip silently (recommended)</SelectItem>
-                                <SelectItem value="ERROR">Mark as error in report</SelectItem>
+                                <SelectItem value="SKIP">
+                                    {t('globalOptions.duplicateHandling.skipOption')}
+                                </SelectItem>
+                                <SelectItem value="ERROR">
+                                    {t('globalOptions.duplicateHandling.errorOption')}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="mt-1 text-xs text-neutral-400">
                             {options.duplicateHandling === 'SKIP' &&
-                                `${learnersTerm} with active access or a pending invitation will be silently skipped.`}
+                                t('globalOptions.duplicateHandling.skipDescription', {
+                                    term: learnersTerm,
+                                })}
                             {options.duplicateHandling === 'ERROR' &&
-                                `${learnersTerm} with active access or a pending invitation will appear as failures in the results.`}
-                            {` Expired or terminated ${learnersTerm.toLowerCase()} are always re-enrolled.`}
+                                t('globalOptions.duplicateHandling.errorDescription', {
+                                    term: learnersTerm,
+                                })}
+                            {' '}
+                            {t('globalOptions.duplicateHandling.alwaysReenrolled', {
+                                term: learnersTerm.toLowerCase(),
+                            })}
                         </p>
                     </div>
 
                     {/* Payment Date (Optional) */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            Payment Date (Optional)
+                            {t('globalOptions.paymentDate.label')}
                         </Label>
                         <Popover>
                             <PopoverTrigger asChild>
@@ -278,7 +301,7 @@ export const Step3EnrollConfig = ({
                                     {options.paymentDate ? (
                                         format(parseISO(options.paymentDate), 'PPP')
                                     ) : (
-                                        <span>Select payment date</span>
+                                        <span>{t('globalOptions.paymentDate.placeholder')}</span>
                                     )}
                                 </Button>
                             </PopoverTrigger>
@@ -307,18 +330,18 @@ export const Step3EnrollConfig = ({
                             </PopoverContent>
                         </Popover>
                         <p className="mt-1 text-xs text-neutral-400">
-                            Date when the payment was made
+                            {t('globalOptions.paymentDate.description')}
                         </p>
                     </div>
 
                     {/* Transaction ID (Optional) */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            Transaction ID (Optional)
+                            {t('globalOptions.transactionId.label')}
                         </Label>
                         <Input
                             type="text"
-                            placeholder="Enter transaction ID"
+                            placeholder={t('globalOptions.transactionId.placeholder')}
                             value={options.transactionId}
                             onChange={(e) =>
                                 onOptionsChange({
@@ -328,7 +351,7 @@ export const Step3EnrollConfig = ({
                             }
                         />
                         <p className="mt-1 text-xs text-neutral-400">
-                            External payment transaction reference
+                            {t('globalOptions.transactionId.description')}
                         </p>
                     </div>
                 </div>
@@ -359,6 +382,7 @@ const LinkedWorkflowsSection = ({
     instituteId,
     selectedPackageSessions,
 }: LinkedWorkflowsSectionProps) => {
+    const { t } = useTranslation('manageStudentsStep3EnrollConfig');
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const navigate = useNavigate();
 
@@ -406,18 +430,17 @@ const LinkedWorkflowsSection = ({
             <div className="mb-3 flex items-center gap-2">
                 <Lightning size={16} weight="duotone" className="text-primary-500" />
                 <h3 className="text-sm font-semibold text-neutral-700">
-                    Workflows that will fire on enrollment
+                    {t('workflows.heading')}
                 </h3>
             </div>
 
             {isLoading && (
-                <p className="text-xs text-neutral-400">Loading linked workflows…</p>
+                <p className="text-xs text-neutral-400">{t('workflows.loading')}</p>
             )}
 
             {!isLoading && !hasAny && (
                 <p className="text-xs text-neutral-400">
-                    No automation workflows are linked to the selected{' '}
-                    {courseTerm.toLowerCase()}s.
+                    {t('workflows.noneLinked', { term: courseTerm.toLowerCase() })}
                 </p>
             )}
 
@@ -429,10 +452,10 @@ const LinkedWorkflowsSection = ({
                                 variant="outline"
                                 className="border-neutral-200 bg-white text-caption font-medium text-neutral-600"
                             >
-                                Global
+                                {t('workflows.global')}
                             </Badge>
                             <span className="text-xs text-neutral-500">
-                                Fires on every batch enrollment:
+                                {t('workflows.firesOnEveryEnrollment')}
                             </span>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                 {globalWorkflows.map((w, idx) => (
@@ -479,7 +502,7 @@ const LinkedWorkflowsSection = ({
                                 </div>
                                 {list.length === 0 ? (
                                     <p className="text-caption text-neutral-400">
-                                        No course-specific workflows linked.
+                                        {t('workflows.noCourseSpecific')}
                                     </p>
                                 ) : (
                                     <ul className="flex flex-col gap-1 pl-1">

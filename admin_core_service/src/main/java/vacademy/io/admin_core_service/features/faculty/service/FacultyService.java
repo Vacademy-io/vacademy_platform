@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.faculty.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class FacultyService {
     private final FacultySubjectPackageSessionMappingRepository facultyRepository;
@@ -77,6 +79,19 @@ public class FacultyService {
                             userDetails.getFullName(),
                             FacultyStatusEnum.ACTIVE.name());
                     updatedMappings.add(newMapping);
+                } else if (subjectId == null) {
+                    // Removing the batch-level (subject-less) instructor row. A plain
+                    // `subject_id = NULL` lookup never matches, so retire every active
+                    // NULL-subject row explicitly. Nothing to retire is fine: the caller
+                    // sends this entry unconditionally on "remove from batch".
+                    for (FacultySubjectPackageSessionMapping batchLevelMapping : facultyRepository
+                            .findAllByUserIdAndPackageSessionIdAndSubjectIdIsNullAndStatusIn(
+                                    updateRequest.getFacultyId(),
+                                    batchId,
+                                    List.of(FacultyStatusEnum.ACTIVE.name()))) {
+                        batchLevelMapping.setStatus(FacultyStatusEnum.DELETED.name());
+                        updatedMappings.add(batchLevelMapping);
+                    }
                 } else {
                     FacultySubjectPackageSessionMapping existingMapping = facultyRepository
                             .findByUserIdAndPackageSessionIdAndSubjectIdAndStatusIn(
@@ -241,6 +256,8 @@ public class FacultyService {
             if (addFacultyToCourseDTO.isNewUser()) {
 
                 teacher = inviteUser(teacher, instituteId);
+            } else {
+                syncAuthorMetadata(teacher);
             }
             FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping(
                     teacher.getId(),
@@ -271,7 +288,35 @@ public class FacultyService {
     }
 
     private UserDTO resolveUser(AddFacultyToCourseDTO dto, String instituteId) {
-        return dto.isNewUser() ? inviteUser(dto.getUser(), instituteId) : dto.getUser();
+        if (dto.isNewUser()) {
+            return inviteUser(dto.getUser(), instituteId);
+        }
+        syncAuthorMetadata(dto.getUser());
+        return dto.getUser();
+    }
+
+    /**
+     * Push author metadata (subtitle / description) from the Add Course -> Add Authors
+     * flow onto the EXISTING user record in auth_service. Best-effort: a transient
+     * auth-service failure is logged and swallowed so it never fails course
+     * creation/update, and the faculty mapping itself is unaffected.
+     */
+    private void syncAuthorMetadata(UserDTO teacher) {
+        if (teacher == null || teacher.getId() == null
+                || (teacher.getAuthorSubtitle() == null && teacher.getAuthorDescription() == null)) {
+            return;
+        }
+        try {
+            UserDTO persistedUser = authService.getUsersFromAuthServiceByUserIds(List.of(teacher.getId()))
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Author user not found"));
+            persistedUser.setAuthorSubtitle(teacher.getAuthorSubtitle());
+            persistedUser.setAuthorDescription(teacher.getAuthorDescription());
+            authService.updateUser(persistedUser, persistedUser.getId());
+        } catch (Exception e) {
+            log.warn("Failed to sync author metadata for user {}: {}", teacher.getId(), e.getMessage());
+        }
     }
 
     private FacultySubjectPackageSessionMapping resolveMapping(AddFacultyToCourseDTO dto, UserDTO teacher,

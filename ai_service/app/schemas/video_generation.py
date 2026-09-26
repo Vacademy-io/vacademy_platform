@@ -53,6 +53,14 @@ class VideoCostPreviewResponse(BaseModel):
     balance: Dict[str, Any]
 
 
+# Upper bound on indexed input assets per run. Images are cheap (one metadata
+# JSON each) so the ceiling is set by prompt budget, not media cost; the
+# per-image OCR block scales down as the count rises. Videos stay capped at
+# MAX_INPUT_VIDEOS in the service layer.
+MAX_INPUT_ASSETS = 20
+MAX_INPUT_VIDEOS = 5
+
+
 class ReferenceFileItem(BaseModel):
     """A reference file (image or PDF) attached to a generation request."""
     url: str = Field(..., description="Public S3 URL of the file")
@@ -757,7 +765,14 @@ class VideoGenerationRequest(BaseModel):
             self.input_video_ids = [self.input_video_id]
         # If both set, list takes precedence
         if self.input_video_ids:
-            self.input_video_ids = self.input_video_ids[:5]  # cap at 5
+            # Polymorphic asset ids: this list carries both indexed videos and
+            # indexed images and the schema cannot tell them apart (kind lives
+            # on the row). The old flat cap of 5 was sized for videos — each is
+            # a large download plus an index job — and silently truncated an
+            # image-led run to 5 stills, which is not enough to walk a product
+            # flow. Ceiling raised for images; the video-specific cap is
+            # enforced in the service layer, where `kind` is known.
+            self.input_video_ids = self.input_video_ids[:MAX_INPUT_ASSETS]
             # Set singular to first for backward compat downstream
             self.input_video_id = self.input_video_ids[0]
             # Multi-source forces TTS (can't splice different audio tracks)

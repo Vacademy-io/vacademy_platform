@@ -99,7 +99,16 @@ export type ToolKey =
     | 'html_document'
     | 'html_document_edit'
     | 'html_document_pdf'
+    // Pictures for an HTML page or an AI-drafted reading, per picture.
+    | 'html_document_image'
+    // AI engagement planner: a drafted plan (priced per task requested) and one regenerated task.
+    | 'engagement_plan'
+    | 'engagement_item'
     | 'copy_check_evaluation'
+    // Vsmart Extract: a teacher's own paper digitised verbatim (V527);
+    // the _ocr surcharge applies only to scanned PDFs (MathPix, per page)
+    | 'extract_questions'
+    | 'extract_questions_ocr'
     // Knowledge Base (V435)
     | 'kb_ingest_page'
     | 'kb_ingest_url'
@@ -109,7 +118,17 @@ export type ToolKey =
     | 'kb_paper_questions'
     | 'kb_paper_regenerate'
     // One-time permanent unlock of a curated library (V445)
-    | 'kb_library_unlock';
+    | 'kb_library_unlock'
+    // Live AI tutor: per-slide teaching-plan compile and per-image media (V494)
+    | 'tutor_compile_slide'
+    | 'tutor_media_image'
+    | 'tutor_voice_prepare'
+    | 'tutor_avatar_minute'
+    // Voice lessons: one charge per started minute (V496)
+    | 'tutor_live_minute'
+    // One AI-written analysis per ASSESSMENT, charged once then free to
+    // re-download (admin_core V500 + ai_service DEFAULT_TOOL_PRICING).
+    | 'assessment_class_ai_report';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 
@@ -350,7 +369,19 @@ export const computeToolCredits = (
     switch (row.unit_field) {
         case 'questions': {
             const n = Math.max(0, Number(params.num_questions) || 0);
-            total += n * perUnit;
+            const slabs = extra.slabs as
+                | Array<{ upto: number | null; credits: string | number }>
+                | undefined;
+            if (Array.isArray(slabs) && slabs.length > 0) {
+                // Range pricing (Vsmart Extract): the first band whose ceiling
+                // the count does not exceed; a null ceiling catches the rest.
+                const band =
+                    slabs.find((s) => s.upto == null || n <= Number(s.upto)) ??
+                    slabs[slabs.length - 1];
+                total += Number(band?.credits) || 0;
+            } else {
+                total += n * perUnit;
+            }
             // Explicit image_count (charge time) wins; else include_images is the
             // preview upper bound of one image per question.
             let images = 0;

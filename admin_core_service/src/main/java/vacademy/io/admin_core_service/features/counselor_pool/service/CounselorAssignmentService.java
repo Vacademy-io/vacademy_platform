@@ -85,10 +85,30 @@ public class CounselorAssignmentService {
      */
     @Transactional
     public Optional<String> assignCounselorForLead(String audienceId) {
+        return assignCounselorForLead(audienceId, false);
+    }
+
+    /**
+     * Intake variant: the same rotation, but honours the list's {@code assign_on_intake}
+     * choice. A list set to on-demand (AI-first) returns empty here so the lead arrives
+     * unowned and the CALL_AI node is free to dial it; the plain
+     * {@link #assignCounselorForLead(String)} — what the AI-call outcome processor and the
+     * exhausted-retries hand-off call — still assigns for that list.
+     */
+    @Transactional
+    public Optional<String> assignCounselorOnIntake(String audienceId) {
+        return assignCounselorForLead(audienceId, true);
+    }
+
+    private Optional<String> assignCounselorForLead(String audienceId, boolean intake) {
         // Step 1: resolve the pool
         Optional<CounselorPoolAudience> poolAudienceOpt = poolAudienceRepository.findByAudienceId(audienceId);
         if (poolAudienceOpt.isEmpty()) {
             return Optional.empty(); // Audience isn't in any pool — nothing to do.
+        }
+        if (intake && Boolean.FALSE.equals(poolAudienceOpt.get().getAssignOnIntake())) {
+            log.info("Audience {} is on-demand (assign_on_intake=false) — leaving the new lead unassigned", audienceId);
+            return Optional.empty();
         }
         String poolId = poolAudienceOpt.get().getPoolId();
 

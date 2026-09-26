@@ -1,0 +1,18 @@
+{
+    "noPdfSubmissionFound": "Aucune soumission PDF trouvée pour cet étudiant",
+    "couldNotRetrievePdfUrl": "Impossible de récupérer l'URL du PDF",
+    "failedToRetrievePdf": "Échec de la récupération du PDF",
+    "columnId": "Id",
+    "columnName": "Nom",
+    "columnSubmission": "Soumission",
+    "columnMarks": "Points",
+    "columnDetails": "Détails",
+    "columnStatus": "Statut",
+    "loading": "Chargement...",
+    "preview": "Aperçu",
+    "details": "Détails",
+    "extractedResponsesOf": "Réponses extraites de {{student}}",
+    "confirmReEvaluation": "Confirmer la réévaluation",
+    "confirmReEvaluateStudent": "Voulez-vous vraiment réévaluer cet étudiant ?",
+    "goAhead": "Continuer"
+}

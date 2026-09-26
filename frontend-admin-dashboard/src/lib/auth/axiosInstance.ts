@@ -257,6 +257,25 @@ authenticatedAxiosInstance.interceptors.response.use(
 
         // Handle 401 Unauthorized
         if (response?.status === 401) {
+            // A 401 carrying a structured backend body is a business rejection an endpoint chose
+            // ("Authentication required" from a widget/support/roadmap controller), NOT a dead
+            // session — the same distinction the 511 branch above already draws. A genuinely
+            // expired token never lands here: JwtAuthFilter throws VacademyException("Expired
+            // Token"), which is a 510. Logging out on these would end the session over one
+            // endpoint's own permission check.
+            const structured = response?.data;
+            if (
+                structured &&
+                typeof structured === 'object' &&
+                (structured.ex || structured.responseCode || structured.message)
+            ) {
+                console.warn(
+                    '[Axios Response] 401 with backend exception details - NOT logging out:',
+                    structured
+                );
+                return Promise.reject(error);
+            }
+
             // A 401 from the AI service (separate auth) must not log the user
             // out of the whole app — reject so the local caller can handle it.
             if (shouldSkipAuthLogout(error.config)) {
@@ -277,8 +296,17 @@ authenticatedAxiosInstance.interceptors.response.use(
 
         // Handle 403 Forbidden
         if (response?.status === 403) {
-            // Don't log 403 errors as they're expected for some institute details requests
-            return Promise.reject(new Error('You do not have permission to perform this action.'));
+            // Don't log 403 errors as they're expected for some institute details requests.
+            //
+            // Reject the AxiosError itself rather than a bare Error. A 403 is how the backend says
+            // WHY it refused — chat's CHAT_DISABLED / DM_NOT_ALLOWED, an audience report the caller
+            // isn't scoped to — and replacing it dropped `response.status` and `response.data` on
+            // the floor, so every caller checking `error.response?.status === 403` was dead code and
+            // reason codes could never be read. The friendly sentence is kept as the error's own
+            // message, which is all the replacement ever carried, so `err.message` callers are
+            // unaffected.
+            error.message = 'You do not have permission to perform this action.';
+            return Promise.reject(error);
         }
 
         // Handle other authentication-related errors

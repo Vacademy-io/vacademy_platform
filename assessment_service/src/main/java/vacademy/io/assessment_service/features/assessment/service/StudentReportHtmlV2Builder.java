@@ -1,5 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -1041,6 +1043,7 @@ public class StudentReportHtmlV2Builder {
         if (feedback != null && !feedback.isBlank()) {
             appendQuestionRow(sb, "Feedback", HtmlBuilderService.stripHtmlTags(feedback), MUTED);
         }
+        appendAiCriteriaBreakdown(sb, row.getAiCriteriaBreakdown());
 
         // Marks, and time only where time is meaningful (never on MANUAL).
         StringBuilder foot = new StringBuilder();
@@ -1104,6 +1107,42 @@ public class StudentReportHtmlV2Builder {
         sb.append("<table class=\"qrow\"><tr><td class=\"qlabel\">").append(label).append(":</td>")
                 .append("<td style=\"color: ").append(color).append(";\">")
                 .append(esc(truncate(value))).append("</td></tr></table>");
+    }
+
+    /**
+     * Renders the rubric returned by copy-check AI.  It is stored as JSON on
+     * question_wise_marks, so it needs to be decoded before a PDF is created;
+     * otherwise the report shows the awarded score but hides why it was given.
+     */
+    private void appendAiCriteriaBreakdown(StringBuilder sb, String rawBreakdown) {
+        if (rawBreakdown == null || rawBreakdown.isBlank()) {
+            return;
+        }
+        try {
+            JsonNode criteria = new ObjectMapper().readTree(rawBreakdown);
+            if (!criteria.isArray() || criteria.isEmpty()) {
+                return;
+            }
+            sb.append("<div style=\"margin: 7px 0 4px 0; padding: 7px 9px; background: #F6F8FB; border-left: 2px solid ")
+                    .append(NAVY).append("; font-size: 10px;\">")
+                    .append("<div style=\"font-weight: 700; color: ").append(NAVY)
+                    .append("; margin-bottom: 4px;\">AI EVALUATION</div>");
+            for (JsonNode criterion : criteria) {
+                String name = criterion.path("criteria_name").asText("Criterion");
+                String marks = criterion.has("marks") && !criterion.get("marks").isNull()
+                        ? criterion.get("marks").asText() : "-";
+                String reason = criterion.path("reason").asText("");
+                sb.append("<div style=\"margin-top: 3px;\"><b>").append(esc(name)).append(" (")
+                        .append(esc(marks)).append(" marks):</b>");
+                if (!reason.isBlank()) {
+                    sb.append(" ").append(esc(truncate(HtmlBuilderService.stripHtmlTags(reason))));
+                }
+                sb.append("</div>");
+            }
+            sb.append("</div>");
+        } catch (Exception ignored) {
+            // An older or malformed stored AI result must never prevent a report download.
+        }
     }
 
     /** One long essay answer must not push the rest of the report off the page. */

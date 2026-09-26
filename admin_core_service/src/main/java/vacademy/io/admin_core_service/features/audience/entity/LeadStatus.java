@@ -56,6 +56,21 @@ public class LeadStatus {
     @Builder.Default
     private Boolean isSystem = false;
 
+    /** User who created the row; null for rows seeded by the system. */
+    @Column(name = "created_by")
+    private String createdBy;
+
+    /** User who last changed the row. */
+    @Column(name = "updated_by")
+    private String updatedBy;
+
+    /** User who soft-deleted the row; cleared if it is reactivated. */
+    @Column(name = "deleted_by")
+    private String deletedBy;
+
+    @Column(name = "deleted_at")
+    private Timestamp deletedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

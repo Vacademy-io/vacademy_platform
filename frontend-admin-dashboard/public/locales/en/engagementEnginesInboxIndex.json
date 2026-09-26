@@ -1,0 +1,38 @@
+{
+    "helmetTitle": "Engagement task inbox",
+    "heading": "Task inbox",
+    "subheading": "Every message the engines drafted, ranked by priority. Review, edit, and send.",
+    "allEngines": "All engines",
+    "filters": {
+        "needsAction": "Needs action",
+        "sent": "Sent",
+        "failed": "Failed",
+        "handled": "Handled"
+    },
+    "errors": {
+        "loadFailed": "Could not load tasks."
+    },
+    "emptyState": "Nothing here right now.",
+    "noDraft": "(no draft)",
+    "priority": "priority {{value}}",
+    "kind": {
+        "reply": "Reply",
+        "autoSend": "Auto-send"
+    },
+    "actions": {
+        "reviewAndSend": "Review & send",
+        "acknowledge": "Acknowledge",
+        "handledElsewhere": "Handled elsewhere",
+        "dismiss": "Dismiss",
+        "reopen": "Reopen",
+        "cancel": "Cancel"
+    },
+    "sendDialog": {
+        "heading": "Review & send",
+        "fixedTemplateNotice": "This is a fixed Meta-approved WhatsApp template. The text can't be edited — only its variables. This is exactly what will be sent:",
+        "variables": "Variables",
+        "editableNotice": "Edit before sending if you like — your edit is what goes out.",
+        "sending": "Sending…",
+        "sendNow": "Send now"
+    }
+}

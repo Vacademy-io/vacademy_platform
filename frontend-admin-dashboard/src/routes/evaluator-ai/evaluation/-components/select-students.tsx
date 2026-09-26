@@ -37,7 +37,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { useTranslation } from 'react-i18next';
 
 interface AttemptData {
     id: string;
@@ -67,6 +68,7 @@ export function StudentSelectionDialog({
     onSubmit,
     itemsPerPage = 10,
 }: StudentSelectionDialogProps) {
+    const { t, i18n } = useTranslation('evaluatorAiEvaluationSelectStudents');
     const [selected, setSelected] = useState<number[]>([]);
     const [isAssessmentModalOpen, setIsAssessmentModalOpen] = useState(false);
     const [selectedAssessment, setSelectedAssessment] = useState<string>('');
@@ -115,7 +117,7 @@ export function StudentSelectionDialog({
 
     const handleOpenAssessmentModal = () => {
         if (selected.length === 0) {
-            toast.warning('Please select at least one student');
+            toast.warning(t('toast.selectAtLeastOneStudent'));
             return;
         }
         setIsAssessmentModalOpen(true);
@@ -123,7 +125,7 @@ export function StudentSelectionDialog({
 
     const handleEvaluate = async () => {
         if (!selectedAssessment) {
-            toast.warning('Please select an assessment');
+            toast.warning(t('toast.selectAssessment'));
             return;
         }
         setIsEvaluating(true);
@@ -133,7 +135,7 @@ export function StudentSelectionDialog({
             // @ts-expect-error : //FIXME this error
             onSubmit(selectedStudents, selectedAssessment);
         } catch (error) {
-            toast.error('Evaluation failed. Please try again.');
+            toast.error(t('toast.evaluationFailed'));
         } finally {
             setIsEvaluating(false);
             setIsAssessmentModalOpen(false);
@@ -168,7 +170,7 @@ export function StudentSelectionDialog({
 
     const formatDate = (dateString: string) => {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleDateString(i18n.language, {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
@@ -183,8 +185,9 @@ export function StudentSelectionDialog({
                 <DialogContent className="w-[60vw]">
                     <DialogHeader className="mb-2">
                         <DialogTitle className="font-bold">
-                            Select {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)} for
-                            Evaluation
+                            {t('dialog.title', {
+                                term: getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner),
+                            })}
                         </DialogTitle>
                     </DialogHeader>
                     <div className="mx-auto mb-4 w-full max-w-4xl">
@@ -193,7 +196,7 @@ export function StudentSelectionDialog({
                                 <Table>
                                     <TableHeader className="bg-primary-50">
                                         <TableRow>
-                                            <TableHead className="sticky left-0 z-10 w-12 bg-primary-50 text-center">
+                                            <TableHead className="sticky start-0 z-10 w-12 bg-primary-50 text-center">
                                                 <Checkbox
                                                     checked={
                                                         paginatedStudents.length > 0 &&
@@ -204,12 +207,12 @@ export function StudentSelectionDialog({
                                                     }
                                                 />
                                             </TableHead>
-                                            <TableHead className="sticky left-12 z-10 bg-primary-50">
-                                                Name
+                                            <TableHead className="sticky start-12 z-10 bg-primary-50">
+                                                {t('table.name')}
                                             </TableHead>
-                                            <TableHead>Enrollment ID</TableHead>
-                                            <TableHead>Attempt Count</TableHead>
-                                            <TableHead>Current PDF ID</TableHead>
+                                            <TableHead>{t('table.enrollmentId')}</TableHead>
+                                            <TableHead>{t('table.attemptCount')}</TableHead>
+                                            <TableHead>{t('table.currentPdfId')}</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -218,10 +221,10 @@ export function StudentSelectionDialog({
                                             <>
                                                 {Array.from({ length: 3 }).map((_, index) => (
                                                     <TableRow key={index}>
-                                                        <TableCell className="sticky left-0 z-10 bg-white text-center">
+                                                        <TableCell className="sticky start-0 z-10 bg-white text-center">
                                                             <div className="size-4 animate-pulse rounded bg-gray-200"></div>
                                                         </TableCell>
-                                                        <TableCell className="sticky left-12 z-10 bg-white">
+                                                        <TableCell className="sticky start-12 z-10 bg-white">
                                                             <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200"></div>
                                                         </TableCell>
                                                         <TableCell>
@@ -243,12 +246,13 @@ export function StudentSelectionDialog({
                                                         <div className="flex items-center justify-center gap-2">
                                                             <Loader2 className="size-4 animate-spin" />
                                                             <span>
-                                                                Evaluating{' '}
-                                                                {getTerminology(
-                                                                    RoleTerms.Learner,
-                                                                    SystemTerms.Learner
-                                                                ).toLocaleLowerCase()}
-                                                                s with {selectedAssessment}...
+                                                                {t('table.evaluatingWithAssessment', {
+                                                                    term: getTerminologyPlural(
+                                                                        RoleTerms.Learner,
+                                                                        SystemTerms.Learner
+                                                                    ).toLocaleLowerCase(),
+                                                                    assessment: selectedAssessment,
+                                                                })}
                                                             </span>
                                                         </div>
                                                     </TableCell>
@@ -263,7 +267,7 @@ export function StudentSelectionDialog({
                                                     student.attempts[student?.currentAttemptIndex];
                                                 return (
                                                     <TableRow key={index}>
-                                                        <TableCell className="sticky left-0 z-10 bg-white text-center">
+                                                        <TableCell className="sticky start-0 z-10 bg-white text-center">
                                                             <Checkbox
                                                                 checked={selected.includes(
                                                                     actualIndex
@@ -273,7 +277,7 @@ export function StudentSelectionDialog({
                                                                 }
                                                             />
                                                         </TableCell>
-                                                        <TableCell className="sticky left-12 z-10 bg-white">
+                                                        <TableCell className="sticky start-12 z-10 bg-white">
                                                             {student.name}
                                                         </TableCell>
                                                         <TableCell>{student.enrollId}</TableCell>
@@ -293,8 +297,10 @@ export function StudentSelectionDialog({
                                                                         size="sm"
                                                                         className="flex items-center gap-1"
                                                                     >
-                                                                        {student.attempts.length}{' '}
-                                                                        Attempts
+                                                                        {t('table.attemptsCount', {
+                                                                            count: student.attempts
+                                                                                .length,
+                                                                        })}
                                                                         <ChevronDown className="size-4" />
                                                                     </Button>
                                                                 </DropdownMenuTrigger>
@@ -320,9 +326,14 @@ export function StudentSelectionDialog({
                                                                                 }
                                                                             >
                                                                                 <span>
-                                                                                    Attempt{' '}
-                                                                                    {attemptIndex +
-                                                                                        1}
+                                                                                    {t(
+                                                                                        'table.attemptLabel',
+                                                                                        {
+                                                                                            number:
+                                                                                                attemptIndex +
+                                                                                                1,
+                                                                                        }
+                                                                                    )}
                                                                                 </span>
                                                                                 <span className="text-xs text-muted-foreground">
                                                                                     {formatDate(
@@ -336,8 +347,8 @@ export function StudentSelectionDialog({
                                                             </DropdownMenu>
                                                         </TableCell>
                                                         <TableCell>
-                                                            {currentAttempt?.pdfId || 'N/A'}
-                                                            {/* {currentAttempt ? currentAttempt.pdfId : "N/A"} */}
+                                                            {currentAttempt?.pdfId ||
+                                                                t('table.notAvailable')}
                                                         </TableCell>
                                                     </TableRow>
                                                 );
@@ -349,19 +360,22 @@ export function StudentSelectionDialog({
 
                             {studentData.length === 0 && !isEvaluating ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
-                                    No enrolled{' '}
-                                    {getTerminology(
-                                        RoleTerms.Learner,
-                                        SystemTerms.Learner
-                                    ).toLocaleLowerCase()}
-                                    s found.
+                                    {t('table.emptyState', {
+                                        term: getTerminologyPlural(
+                                            RoleTerms.Learner,
+                                            SystemTerms.Learner
+                                        ).toLocaleLowerCase(),
+                                    })}
                                 </div>
                             ) : (
                                 !isEvaluating && (
                                     <div className="flex items-center justify-between p-4">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm text-muted-foreground">
-                                                Page {currentPage} of {totalPages}
+                                                {t('pagination.pageInfo', {
+                                                    current: currentPage,
+                                                    total: totalPages,
+                                                })}
                                             </span>
                                             <div className="flex gap-1">
                                                 <Button
@@ -370,7 +384,7 @@ export function StudentSelectionDialog({
                                                     onClick={() => goToPage(currentPage - 1)}
                                                     disabled={currentPage === 1}
                                                 >
-                                                    Previous
+                                                    {t('pagination.previous')}
                                                 </Button>
                                                 <Button
                                                     variant="outline"
@@ -378,13 +392,15 @@ export function StudentSelectionDialog({
                                                     onClick={() => goToPage(currentPage + 1)}
                                                     disabled={currentPage === totalPages}
                                                 >
-                                                    Next
+                                                    {t('pagination.next')}
                                                 </Button>
                                             </div>
                                         </div>
                                         <div>
-                                            <span className="mr-2 text-sm text-muted-foreground">
-                                                {selected.length} selected
+                                            <span className="me-2 text-sm text-muted-foreground">
+                                                {t('pagination.selectedCount', {
+                                                    count: selected.length,
+                                                })}
                                             </span>
                                         </div>
                                     </div>
@@ -395,13 +411,13 @@ export function StudentSelectionDialog({
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => onOpenChange(false)}>
-                            Cancel
+                            {t('common.cancel')}
                         </Button>
                         <Button
                             onClick={handleOpenAssessmentModal}
                             disabled={selected.length === 0 || isEvaluating}
                         >
-                            Submit Selected ({selected.length})
+                            {t('table.submitSelected', { count: selected.length })}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -411,16 +427,20 @@ export function StudentSelectionDialog({
             <Dialog open={isAssessmentModalOpen} onOpenChange={setIsAssessmentModalOpen}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle className="font-bold">Select Assessment</DialogTitle>
+                        <DialogTitle className="font-bold">
+                            {t('assessmentDialog.title')}
+                        </DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="assessment" className="text-right">
-                                Assessment
+                            <Label htmlFor="assessment" className="text-end">
+                                {t('assessmentDialog.assessmentLabel')}
                             </Label>
                             <Select onValueChange={(value) => setSelectedAssessment(value)}>
                                 <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select an assessment" />
+                                    <SelectValue
+                                        placeholder={t('assessmentDialog.selectPlaceholder')}
+                                    />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {assessments.map((assessment) => (
@@ -441,7 +461,7 @@ export function StudentSelectionDialog({
                             onClick={() => setIsAssessmentModalOpen(false)}
                             disabled={isEvaluating}
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </Button>
                         <Button
                             variant="destructive"
@@ -450,11 +470,11 @@ export function StudentSelectionDialog({
                         >
                             {isEvaluating ? (
                                 <>
-                                    <Loader2 className="mr-2 size-4 animate-spin" />
-                                    Evaluating...
+                                    <Loader2 className="me-2 size-4 animate-spin" />
+                                    {t('assessmentDialog.evaluating')}
                                 </>
                             ) : (
-                                'Evaluate'
+                                t('assessmentDialog.evaluateButton')
                             )}
                         </Button>
                     </DialogFooter>

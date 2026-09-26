@@ -1,0 +1,13 @@
+{
+    "title": "Email Inbox",
+    "subtitle": "Conversations grouped by audience email, scoped to your configured senders",
+    "refresh": "Refresh",
+    "inboxFor": "Inbox for",
+    "noSendersConfigured": "No senders configured",
+    "allSenders": "All senders ({{count}})",
+    "direction": {
+        "all": "All",
+        "sent": "Sent",
+        "received": "Received"
+    }
+}

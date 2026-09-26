@@ -539,11 +539,28 @@ public class FileServiceImpl implements FileService {
         if (fileMetadata.isEmpty()) {
             throw new FileDownloadException("File Not Found");
         }
+        String key = fileMetadata.get().getKey();
 
-        // The object is in the public bucket, so presigning added nothing but an
-        // expiry; return the permanent public/CDN URL instead. expiryDays is kept
-        // in the signature for API compatibility and ignored.
-        return cdnUrlService.publicUrl(fileMetadata.get().getKey());
+        // With CloudFront in front of the public bucket the permanent URL is the right
+        // answer: the distribution reads the object through OAC, so no per-request
+        // signature is needed and the edge cache actually gets used. expiryDays is
+        // ignored on this path.
+        if (cdnUrlService.isCdnEnabled()) {
+            return cdnUrlService.publicUrl(key);
+        }
+
+        // No CDN (the vet deployment): the caller gets a raw S3 URL, and the "public"
+        // bucket is only public by name — Block Public Access is on, so an unsigned GET
+        // returns 403 AccessDenied. That is what broke invoice PDF links in the
+        // manage-students payment-history side view. Fall back to the presigned GET this
+        // endpoint emitted before the CDN layer landed; it is also what puts the bucket's
+        // own region in the host (SigV4 signs against the regional endpoint), instead of
+        // the region-less host the permanent-URL form builds.
+        Date expiration = addTime(expiryDays == null || expiryDays <= 0 ? 1 : expiryDays);
+        GeneratePresignedUrlRequest presignRequest = new GeneratePresignedUrlRequest(publicBucket, key)
+                .withMethod(HttpMethod.GET)
+                .withExpiration(expiration);
+        return s3Client.generatePresignedUrl(presignRequest).toString();
     }
 
     /**

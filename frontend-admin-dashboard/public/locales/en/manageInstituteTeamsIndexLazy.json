@@ -1,0 +1,39 @@
+{
+    "navHeading": "Teams",
+    "tabs": {
+        "instituteUsers": "Institute Users",
+        "invites": "Invites",
+        "orgChart": "Org Chart"
+    },
+    "search": {
+        "placeholder": "Search by name, email..."
+    },
+    "filters": {
+        "roleType": "Role Type",
+        "status": "Status",
+        "subOrg": "Sub-Org",
+        "applyFilters": "Apply Filters",
+        "clearAll": "Clear All",
+        "clearAllFilters": "Clear all filters"
+    },
+    "columns": {
+        "name": "Name",
+        "email": "Email",
+        "username": "Username",
+        "password": "Password",
+        "phone": "Phone",
+        "roles": "Roles",
+        "subOrgs": "Sub-Orgs",
+        "actions": "Actions"
+    },
+    "subOrgColumn": {
+        "assignedTooltip": "Assigned to this person",
+        "grantedByRoleTooltip": "Granted by this person's role",
+        "viaRole": "via role"
+    },
+    "assignSubOrgs": "Assign {{term}}",
+    "emptyState": {
+        "title": "No team members found",
+        "body": "We couldn't find any team members matching your current search or filters. Try adjusting them or invite new users."
+    }
+}

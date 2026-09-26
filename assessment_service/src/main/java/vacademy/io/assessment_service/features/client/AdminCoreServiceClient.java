@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
@@ -74,6 +76,121 @@ public class AdminCoreServiceClient {
             log.warn("Failed to fetch AI report for user {} assessment {}: {}", userId, assessmentId, e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Every learner's stored AI analysis for one assessment, in one call.
+     *
+     * <p>This is what makes a CLASS-level AI report free: the per-learner
+     * analyses have already been generated and paid for, so the class view is
+     * arithmetic over them rather than a fresh model call.
+     *
+     * <p>Never throws — an unreachable admin_core costs the AI half of the
+     * report, not the report.
+     */
+    public List<String> getProcessedAIReportsForAssessment(String assessmentId) {
+        try {
+            String route = "/admin-core-service/llm-analytics/internal/processed-logs/by-source?sourceId="
+                    + assessmentId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                Object analyses = body.get("analyses");
+                if (analyses instanceof List<?> rows) {
+                    List<String> out = new ArrayList<>(rows.size());
+                    for (Object row : rows) {
+                        if (row instanceof Map<?, ?> map) {
+                            Object json = map.get("processed_json");
+                            if (json != null) out.add(json.toString());
+                        }
+                    }
+                    return out;
+                }
+            }
+            log.warn("Bulk AI analyses returned {} for assessment {}", response.getStatusCode(), assessmentId);
+        } catch (Exception e) {
+            log.warn("Failed to fetch AI analyses for assessment {}: {}", assessmentId, e.getMessage());
+        }
+        return List.of();
+    }
+
+    /**
+     * Outcome of an on-demand AI report generation request.
+     *
+     * @param status       admin_core's activity_log status - {@code processed},
+     *                     {@code skipped_no_credits}, {@code failed},
+     *                     {@code not_found} or {@code error}
+     * @param processedJson the report JSON; non-null only when {@code status} is
+     *                     {@code processed}
+     */
+    public record AiReportGenerationResult(String status, String processedJson) {
+
+        public static final String STATUS_PROCESSED = "processed";
+        public static final String STATUS_NO_CREDITS = "skipped_no_credits";
+        public static final String STATUS_NOT_FOUND = "not_found";
+        /**
+         * The model call outran our HTTP read timeout. admin_core keeps working and
+         * stores the result, so this means "come back shortly", not "it failed" —
+         * and crucially not "retry now", which would risk a second charge.
+         */
+        public static final String STATUS_GENERATING = "generating";
+
+        public boolean isProcessed() {
+            return STATUS_PROCESSED.equalsIgnoreCase(status) && processedJson != null && !processedJson.isBlank();
+        }
+
+        public boolean isOutOfCredits() {
+            return STATUS_NO_CREDITS.equalsIgnoreCase(status);
+        }
+
+        public boolean isNotFound() {
+            return STATUS_NOT_FOUND.equalsIgnoreCase(status);
+        }
+    }
+
+    /**
+     * Generates the AI report for {@code userId} + {@code assessmentId} right now
+     * instead of waiting for admin_core's hourly scheduler, and returns the result.
+     * <p>
+     * This is the call that <b>spends the institute's AI credits</b>, so it must only
+     * be made on an explicit user action. It is a no-op cost-wise when the report has
+     * already been generated: admin_core returns the stored row without calling the
+     * model again.
+     * <p>
+     * Never throws - a transport failure degrades to {@code status="error"} so the
+     * caller can decide what to tell the admin.
+     */
+    public AiReportGenerationResult generateAiReportOnDemand(String userId, String assessmentId) {
+        try {
+            String route = "/admin-core-service/llm-analytics/internal/process-on-demand?userId="
+                    + userId + "&sourceId=" + assessmentId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl, route, null);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                Object status = body.get("status");
+                Object processedJson = body.get("processed_json");
+                return new AiReportGenerationResult(
+                        status != null ? status.toString() : "error",
+                        processedJson != null ? processedJson.toString() : null);
+            }
+            log.warn("On-demand AI report generation returned {} for user {} assessment {}",
+                    response.getStatusCode(), userId, assessmentId);
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            // Read timeout: admin_core is still running the model call and will
+            // persist the result. Reported as "generating" so the caller waits
+            // instead of firing a second, separately-charged request.
+            log.warn("On-demand AI report generation timed out for user {} assessment {}: {}",
+                    userId, assessmentId, e.getMessage());
+            return new AiReportGenerationResult(AiReportGenerationResult.STATUS_GENERATING, null);
+        } catch (Exception e) {
+            log.warn("Failed to generate AI report on demand for user {} assessment {}: {}",
+                    userId, assessmentId, e.getMessage());
+        }
+        return new AiReportGenerationResult("error", null);
     }
 
     /**
@@ -170,6 +287,87 @@ public class AdminCoreServiceClient {
             if (value != null && StringUtils.hasText(value.toString())) return value.toString();
         }
         return null;
+    }
+
+    /**
+     * Learners enrolled in {@code batchIds}, for the "enrolled but has not attempted"
+     * list. Returns an empty list on any failure — the Pending tab degrades to empty
+     * rather than failing the whole submissions page.
+     *
+     * <p><b>Cached, and that is load-critical.</b> The submissions page fetches the
+     * Pending count on every mount, so without a cache each page view would cost an
+     * admin_core round trip. Batch enrollment barely changes, so a short window collapses
+     * every mount, tab switch and page step for the same batch set onto one call. The key
+     * is the SORTED batch id list, so callers passing the same batches in a different
+     * order still share the entry.
+     *
+     * <p>Deliberately fetches the whole enrolled set instead of asking admin_core to
+     * exclude the already-attempted learners: an exclusion array is unestimable, and on a
+     * generic plan Postgres re-evaluated it per row (22ms -> 434-880ms on prod data,
+     * intermittently). See the endpoint's own javadoc.
+     */
+    @Cacheable(value = "batchEnrolledLearners", key = "#instituteId + '|' + #batchIds", unless = "#result.isEmpty()")
+    public List<EnrolledLearnerDto> getEnrolledLearnersForBatches(String instituteId, List<String> batchIds) {
+        if (instituteId == null || instituteId.isBlank() || batchIds == null || batchIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("package_session_ids", batchIds);
+            body.put("statuses", List.of("ACTIVE"));
+
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl,
+                    "/admin-core-service/internal/learner/v1/enrolled-by-package-sessions", body);
+
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(response.getBody(), new TypeReference<List<EnrolledLearnerDto>>() {
+                });
+            }
+            log.warn("Enrolled-learner lookup returned {} for institute {} ({} batches)",
+                    response.getStatusCode(), instituteId, batchIds.size());
+        } catch (Exception e) {
+            log.warn("Failed to fetch enrolled learners for institute {} ({} batches): {}",
+                    instituteId, batchIds.size(), e.getMessage());
+        }
+        return List.of();
+    }
+
+    /**
+     * Display name per batch id, for the batch column in the participant CSV exports.
+     * Missing ids simply stay absent, so callers must fall back to the raw id (or blank)
+     * rather than assuming a hit.
+     *
+     * <p>Reuses admin_core's existing {@code /v1/package-sessions/names} — the same
+     * endpoint notification_service uses to title batch chats — so batch naming stays
+     * consistent across services instead of this one inventing its own format.
+     *
+     * <p>Cached: an export resolves every batch in the sheet at once, and batch names
+     * essentially never change, so this should not be a per-export round trip.
+     */
+    @Cacheable(value = "batchNames", key = "#batchIds", unless = "#result.isEmpty()")
+    public Map<String, String> getBatchNames(List<String> batchIds) {
+        if (batchIds == null || batchIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            // camelCase key: that endpoint binds PackageSessionsRequest.packageSessionIds
+            // with the default naming strategy, not the snake_case one used elsewhere.
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl,
+                    "/admin-core-service/v1/package-sessions/names",
+                    Map.of("packageSessionIds", batchIds));
+
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, String>>() {
+                });
+            }
+            log.warn("Batch-name lookup returned {} for {} batches", response.getStatusCode(), batchIds.size());
+        } catch (Exception e) {
+            log.warn("Failed to resolve names for {} batches: {}", batchIds.size(), e.getMessage());
+        }
+        return Map.of();
     }
 
     private static final String STUDENT = "STUDENT";

@@ -3,9 +3,9 @@ assessment_service sends in /trigger-evaluation and what we POST back via
 the callbacks (progress / question / complete / failed)."""
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ----------------------------- Layout map shape ------------------------------
@@ -54,6 +54,17 @@ class GradeQuestionInput(BaseModel):
     subject: Optional[str] = None     # used by criteria-gen prompt (#22)
     options: Optional[list[dict[str, Any]]] = None
     correct_answer: Optional[str] = None
+    # Where the answer sits on the sheet, from the caller's knowledge of the paper:
+    # 1-based position, the number printed next to the question ("2", "3(a)")
+    # — which repeats across sections — and that section's heading.
+    question_number: Optional[int] = None
+    paper_label: Optional[str] = None
+    section: Optional[str] = None
+    # answer_mode TYPED only: what the learner typed in the online player.
+    student_answer: Optional[str] = None
+    # The question's own reference answer (typed mode). A model answer stored
+    # with the assessment rubric takes precedence over it.
+    model_answer: Optional[str] = None
 
 
 class CopyCheckGradeRequest(BaseModel):
@@ -61,15 +72,43 @@ class CopyCheckGradeRequest(BaseModel):
     attempt_id: str
     assessment_id: str
     institute_id: Optional[str] = None
-    pdf_url: str
+    # COPY = a scanned/uploaded answer sheet at pdf_url (OCR + annotated copy).
+    # TYPED = an online attempt: each question carries student_answer, no PDF.
+    answer_mode: Literal["COPY", "TYPED"] = "COPY"
+    pdf_url: Optional[str] = None
     questions: list[GradeQuestionInput]
     preferred_model: Optional[str] = None
     callback_base_url: str = Field(..., description="Base URL Java exposes for /copy-check/callback/* callbacks")
+
+    @model_validator(mode="after")
+    def _copy_needs_pdf(self) -> "CopyCheckGradeRequest":
+        if self.answer_mode == "COPY" and not self.pdf_url:
+            raise ValueError("pdf_url is required when answer_mode is COPY")
+        return self
 
 
 class CopyCheckGradeResponse(BaseModel):
     job_id: str
     status: str = "PROCESSING"
+
+
+class CopyCheckIdentifyRequest(BaseModel):
+    """Read the student's handwritten identification header off a copy."""
+    pdf_url: str
+    institute_id: Optional[str] = None
+    preferred_model: Optional[str] = None
+
+
+class CopyCheckIdentifyResponse(BaseModel):
+    student_name: Optional[str] = None
+    student_name_latin: Optional[str] = None
+    roll_number: Optional[str] = None
+    class_section: Optional[str] = None
+    other_identifiers: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    name_found: bool = False
+    page_count: int = 0
+    pages_read: int = 0
 
 
 # --------------------------- Annotation shape -------------------------------

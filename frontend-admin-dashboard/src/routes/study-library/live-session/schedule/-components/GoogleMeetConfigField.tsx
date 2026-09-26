@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { type Control, type UseFormSetValue, useWatch } from 'react-hook-form';
 import { Info } from '@phosphor-icons/react';
@@ -22,6 +23,7 @@ export function GoogleMeetConfigField({
     control: Control<any>;
     setValue: UseFormSetValue<any>;
 }) {
+    const { t } = useTranslation('studyLibraryGoogleMeetConfigField');
     const selectedAccountId = useWatch({ control, name: 'googleMeetAccountId' });
 
     const { data: accounts = [], isLoading } = useQuery({
@@ -44,7 +46,7 @@ export function GoogleMeetConfigField({
     if (isLoading) {
         return (
             <div className="rounded-lg border border-neutral-200 p-4 text-sm text-neutral-400">
-                Loading Google accounts…
+                {t('loadingGoogleAccounts')}
             </div>
         );
     }
@@ -54,10 +56,11 @@ export function GoogleMeetConfigField({
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-xs text-amber-800">
                 <Info size={16} className="mt-0.5 shrink-0" />
                 <div>
-                    Google Meet integration isn&apos;t set up for this institute. Connect a Google
-                    Workspace account under{' '}
-                    <strong>Settings → Live Session → Google Meet Integration</strong>, or paste a
-                    meeting link in the Live Class Link field below.
+                    <Trans
+                        t={t}
+                        i18nKey="notSetUpMessage"
+                        components={{ strong: <strong /> }}
+                    />
                 </div>
             </div>
         );
@@ -67,7 +70,7 @@ export function GoogleMeetConfigField({
 
     return (
         <div className="rounded-lg border border-primary-200 bg-primary-50/30 p-4">
-            <h4 className="mb-3 text-sm font-semibold">Google Meet Settings</h4>
+            <h4 className="mb-3 text-sm font-semibold">{t('googleMeetSettings')}</h4>
 
             {/* Account picker */}
             <FormField
@@ -75,7 +78,7 @@ export function GoogleMeetConfigField({
                 name="googleMeetAccountId"
                 render={({ field }) => (
                     <FormItem className="mb-3">
-                        <FormLabel className="text-sm font-normal">Google account (organizer)</FormLabel>
+                        <FormLabel className="text-sm font-normal">{t('googleAccountOrganizer')}</FormLabel>
                         <FormControl>
                             <select
                                 value={field.value ?? ''}
@@ -85,7 +88,7 @@ export function GoogleMeetConfigField({
                                 {activeAccounts.map((a) => (
                                     <option key={a.id} value={a.id}>
                                         {a.organizerEmail}
-                                        {a.isDefault ? ' (default)' : ''}
+                                        {a.isDefault ? ` ${t('defaultSuffix')}` : ''}
                                     </option>
                                 ))}
                             </select>
@@ -97,15 +100,14 @@ export function GoogleMeetConfigField({
             <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-800">
                 <Info size={14} className="mt-0.5 shrink-0" />
                 <div className="leading-relaxed">
-                    A Google Meet link is created on this account.{' '}
+                    {t('linkCreatedOnAccount')}{' '}
                     {selected?.defaultAccessType === 'OPEN'
-                        ? 'Anyone with the link joins (no knocking) — best for learners.'
-                        : 'Guests must knock and the host admits each one.'}{' '}
+                        ? t('anyoneWithLinkJoins')
+                        : t('guestsMustKnock')}{' '}
                     {selected?.recordingEnabled
-                        ? 'Auto-recording is ON — a teacher signed into the institute’s Workspace must be present.'
-                        : 'Auto-recording is OFF.'}{' '}
-                    Manage join-access and recording per account under Settings → Live Session →
-                    Google Meet Integration.
+                        ? t('autoRecordingOn')
+                        : t('autoRecordingOff')}{' '}
+                    {t('manageJoinAccessAndRecording')}
                 </div>
             </div>
         </div>

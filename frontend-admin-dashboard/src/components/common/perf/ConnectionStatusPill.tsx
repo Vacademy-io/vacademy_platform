@@ -3,6 +3,7 @@ import { CloudSlash, Gauge, WifiSlash, type Icon } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BASE_URL } from '@/constants/urls';
 import {
+    buildDiagnostics,
     getSnapshot,
     NETWORK_SLOW_MS,
     SERVER_SLOW_MS,
@@ -70,6 +71,12 @@ function ms(value: number | null): string {
     return value === null ? '—' : `${Math.round(value)} ms`;
 }
 
+/** Local wall-clock, because its job is to be matched against server logs. */
+function clock(at: number | null): string {
+    if (at === null) return '—';
+    return new Date(at).toLocaleTimeString(undefined, { hour12: false });
+}
+
 function sideTone(value: number | null, threshold: number): Tone {
     if (value === null) return 'idle';
     return value > threshold ? 'warn' : 'good';
@@ -88,6 +95,18 @@ function MetricRow({ tone, label, value }: { tone: Tone; label: string; value: s
 
 export function ConnectionStatusPill({ className }: { className?: string }) {
     const [snapshot, setSnapshot] = useState<PerfSnapshot>(() => getSnapshot());
+    const [copied, setCopied] = useState(false);
+
+    const copyDiagnostics = async () => {
+        try {
+            await navigator.clipboard.writeText(buildDiagnostics());
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard blocked (insecure context, permissions). Not worth an error
+            // state on a diagnostic affordance.
+        }
+    };
 
     useEffect(() => {
         const unsubscribe = subscribe(() => setSnapshot(getSnapshot()));
@@ -102,7 +121,9 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
         };
     }, []);
 
-    const { verdict, serverMs, networkMs } = snapshot;
+    const { verdict, serverMs, networkMs, externalMs, slowest } = snapshot;
+    // Only worth showing once it is big enough to be what the user is feeling.
+    const showExternal = externalMs !== null && externalMs >= 400;
     const showAsServerSlow = verdict === 'server-slow' && SHOW_SERVER_SIDE_TO_USERS;
 
     let RailIcon: Icon = Gauge;
@@ -127,17 +148,23 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
         label = 'Good';
         tone = 'good';
         headline = 'Running normally';
-        note = null;
+        // A page can feel slow while nothing is wrong: placing a call or opening a
+        // live class waits on an outside service. Say so, rather than leaving the
+        // user to conclude the LMS is slow.
+        note = showExternal
+            ? 'Some actions wait on an outside service, such as placing a call or starting a live class. That wait is normal.'
+            : null;
     }
 
     return (
         <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
-                <div
-                    role="status"
-                    aria-label={`${headline}. Vacademy ${ms(serverMs)}, your connection ${ms(networkMs)}.`}
+                <button
+                    type="button"
+                    onClick={copyDiagnostics}
+                    aria-label={`${headline}. Vacademy ${ms(serverMs)}, your connection ${ms(networkMs)}${showExternal ? `, waiting on provider ${ms(externalMs)}` : ''}. Click to copy diagnostics.`}
                     className={cn(
-                        'relative flex w-14 cursor-default flex-col items-center gap-0.5 rounded-xl px-1 py-2.5',
+                        'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5',
                         'transition-all duration-200 hover:bg-white/10',
                         className
                     )}
@@ -163,12 +190,12 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
                     >
                         {label}
                     </span>
-                </div>
+                </button>
             </TooltipTrigger>
 
             <TooltipContent
                 side="right"
-                className="w-56 border border-white/10 bg-neutral-900 p-0 text-white shadow-lg"
+                className="w-72 border border-white/10 bg-neutral-900 p-0 text-white shadow-lg"
             >
                 <div className="border-b border-white/10 px-3 py-2">
                     <p className="text-xs font-semibold text-white">{headline}</p>
@@ -176,6 +203,7 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
                         <p className="mt-0.5 text-[11px] leading-snug text-white/70">{note}</p>
                     ) : null}
                 </div>
+
                 <div className="space-y-1.5 px-3 py-2 text-[11px]">
                     <MetricRow
                         tone={sideTone(serverMs, SERVER_SLOW_MS)}
@@ -187,9 +215,55 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
                         label="Your connection"
                         value={ms(networkMs)}
                     />
+                    {/* Third-party wait, kept out of the "Vacademy" number on purpose.
+                        Neutral tone: it is not a fault on either side. */}
+                    {showExternal ? (
+                        <MetricRow
+                            tone="idle"
+                            label="Waiting on provider"
+                            value={ms(externalMs)}
+                        />
+                    ) : null}
                 </div>
-                <p className="border-t border-white/10 px-3 py-1.5 text-[10px] text-white/45">
-                    Typical of your last {snapshot.sampleCount || 0} requests
+
+                {/* The single worst call in the window — a median says THAT it was
+                    slow, this says which request to go and look at. */}
+                {slowest ? (
+                    <div className="border-t border-white/10 px-3 py-2 text-[11px]">
+                        <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-white/60">Slowest call</span>
+                            <span className="font-mono font-medium tabular-nums text-white">
+                                {ms(slowest.serverMs)}
+                            </span>
+                        </div>
+                        <p
+                            className="mt-0.5 break-all font-mono text-[10px] leading-snug text-white/50"
+                            title={slowest.routeKey}
+                        >
+                            {slowest.routeKey}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[10px] text-white/40">
+                            at {clock(slowest.at)}
+                        </p>
+                    </div>
+                ) : null}
+
+                {/* Exact times so this window can be lined up against server logs. */}
+                <div className="border-t border-white/10 px-3 py-2 text-[10px] text-white/45">
+                    <p className="font-mono">
+                        {clock(snapshot.windowStart)} – {clock(snapshot.updatedAt)}
+                    </p>
+                    <p className="mt-0.5">
+                        {snapshot.sampleCount} requests · {snapshot.pingCount} pings
+                        {snapshot.errorCount > 0 ? ` · ${snapshot.errorCount} errors` : ''}
+                        {snapshot.unannotatedCount > 0
+                            ? ` · ${snapshot.unannotatedCount} untimed`
+                            : ''}
+                    </p>
+                </div>
+
+                <p className="border-t border-white/10 px-3 py-1.5 text-[10px] text-white/40">
+                    {copied ? 'Copied to clipboard' : 'Click the icon to copy diagnostics'}
                 </p>
             </TooltipContent>
         </Tooltip>

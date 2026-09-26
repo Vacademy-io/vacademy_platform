@@ -14,7 +14,7 @@ import {
   ClipboardText,
   DownloadSimple,
 } from "@phosphor-icons/react";
-import i18next from "i18next";
+import i18next, { type TFunction } from "i18next";
 import {
   ContentTerms,
   NAMING_SETTINGS_KEY,
@@ -328,28 +328,41 @@ export const SidebarItemsData: SidebarItemsType[] = [
     ],
   },
 ];
-export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
+// A function (not a static array) so every caller re-translates on each
+// render / language change instead of freezing whatever locale was active
+// the moment this module first loaded.
+export const getHamBurgerSidebarItemsData = (t: TFunction): SidebarItemsType[] => [
   //TODO : add other options when api and ui is available
   {
     icon: UserCircle,
     id: "view-profile",
-    title: "View Profile Details",
+    title: t("sidebar.hamburgerMenu.viewProfileDetails", { ns: "layoutCommonA" }),
     to: "/user-profile",
   },
   {
     icon: Files,
     id: "my-files",
-    title: "My Files",
+    title: t("sidebar.hamburgerMenu.myFiles", { ns: "layoutCommonA" }),
     to: "/my-files",
   },
   {
     icon: DownloadSimple,
     id: "offline-downloads",
-    title: "Downloads",
+    title: t("sidebar.hamburgerMenu.downloads", { ns: "layoutCommonA" }),
     to: "/downloads",
   },
-  { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
-  { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/profile/onboarding" },
+  {
+    icon: AddressBook,
+    id: "my-reports",
+    title: t("sidebar.hamburgerMenu.myReports", { ns: "layoutCommonA" }),
+    to: "/my-reports",
+  },
+  {
+    icon: ClipboardText,
+    id: "onboarding",
+    title: t("sidebar.hamburgerMenu.onboarding", { ns: "layoutCommonA" }),
+    to: "/profile/onboarding",
+  },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",
@@ -358,7 +371,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   {
     icon: Password,
     id: "change-password",
-    title: "Change Password",
+    title: t("sidebar.hamburgerMenu.changePassword", { ns: "layoutCommonA" }),
     to: "/change-password",
   },
   // {
@@ -369,13 +382,13 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   {
     icon: SignOut,
     id: "logout",
-    title: "Log Out",
+    title: t("sidebar.hamburgerMenu.logOut", { ns: "layoutCommonA" }),
     to: "/logout",
   },
   {
     icon: UserCircleMinus,
     id: "delete-account",
-    title: "Delete Account",
+    title: t("sidebar.hamburgerMenu.deleteAccount", { ns: "layoutCommonA" }),
     to: "/delete-user",
   },
 ];
@@ -425,3 +438,64 @@ export async function filterHamburgerMenuItemsWithPermissions(
 
   return HamBurgerSidebarItemsData;
 }
+
+/* -------------------------------------------------------------------------- *
+ * "Has a daily-task plan" flag.
+ *
+ * Remembers, per institute, that the learner's last engagement feed had a plan
+ * running. Two readers need that answer before (or without) fetching the feed:
+ *  - the dashboard, which picks the Today module's slot on the first render so
+ *    the main column never reflows when the feed lands;
+ *  - the sidebar, which shows the "Daily tasks" entry only to learners who have
+ *    tasks, without polling the feed on every page.
+ * The dashboard writes it from the feed: set on a plan, cleared on a confirmed
+ * "no plan". Storage can be missing or throw (private mode, cleared site data),
+ * so every access is guarded and the answer then defaults to "no plan".
+ * -------------------------------------------------------------------------- */
+
+const ENGAGEMENT_PLAN_FLAG_KEY = "vacademy:engagement:plan-institutes";
+/** Fired on `window` whenever the flag changes, so the sidebar updates in place. */
+export const ENGAGEMENT_PLAN_FLAG_EVENT = "vacademy:engagement-plan-flag";
+
+const readPlanInstitutes = (): string[] => {
+  try {
+    const raw = localStorage.getItem(ENGAGEMENT_PLAN_FLAG_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Whether the learner's last feed for this institute had a plan. With no
+ * institute id yet (still resolving), whether any institute had one — most
+ * learners belong to exactly one.
+ */
+export const readEngagementPlanFlag = (instituteId?: string | null): boolean => {
+  const ids = readPlanInstitutes();
+  return instituteId ? ids.includes(instituteId) : ids.length > 0;
+};
+
+/** Record whether this institute currently has a plan. No-op without an id. */
+export const writeEngagementPlanFlag = (
+  instituteId: string | null | undefined,
+  hasPlan: boolean
+): void => {
+  if (!instituteId) return;
+  const ids = readPlanInstitutes();
+  const had = ids.includes(instituteId);
+  if (had === hasPlan) return;
+  const next = hasPlan ? [...ids, instituteId] : ids.filter((id) => id !== instituteId);
+  try {
+    localStorage.setItem(ENGAGEMENT_PLAN_FLAG_KEY, JSON.stringify(next));
+  } catch {
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ENGAGEMENT_PLAN_FLAG_EVENT));
+  }
+};

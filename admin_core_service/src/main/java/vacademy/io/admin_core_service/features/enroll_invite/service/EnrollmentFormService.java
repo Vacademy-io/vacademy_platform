@@ -44,20 +44,31 @@ public class EnrollmentFormService {
     @Autowired
     private CustomFieldValueService customFieldValueService;
 
+    @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
+
+    @Autowired
+    private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
+
 
     @Transactional
     public EnrollmentFormSubmitResponseDTO submitEnrollmentForm(EnrollmentFormSubmitDTO request) {
-        log.info("Processing enrollment form submission for email: {}", 
+        log.info("Processing enrollment form submission for email: {}",
                 request.getUserDetails() != null ? request.getUserDetails().getEmail() : "null");
 
         // Step 1: Validate EnrollInvite
-        validateEnrollInvite(request.getEnrollInviteId(), request.getInstituteId());
+        EnrollInvite enrollInvite = validateEnrollInvite(request.getEnrollInviteId(), request.getInstituteId());
 
         // Step 2: Create or update user
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(
                 request.getUserDetails(), 
                 request.getInstituteId(), 
                 false);
+
+        // PHONE is this institute's identity key. Once that resolved account has a
+        // plan for this invite, stop here before checkout rows/payment can begin.
+        phoneIdentifierInviteSubmissionGuard.validateNotAlreadySubmitted(
+                enrollInvite, createdUser.getId(), request.getInstituteId());
         
         // Step 3: Create student record
         studentRegistrationManager.createStudentFromRequest(
@@ -107,6 +118,15 @@ public class EnrollmentFormService {
                     CustomFieldValueSourceTypeEnum.USER.name(),
                     createdUser.getId());
         }
+
+        // Step 6: Alert the team members configured on this invite
+        // (setting_json → setting.NOTIFICATION_SETTING). FREE invites never reach this
+        // endpoint — the learner FE skips form-submit for them — so that path fires the
+        // same notification from LearnerEnrollRequestService instead.
+        inviteFormAdminNotificationService.notifyAdminsOnFormFill(
+                enrollInvite,
+                createdUser,
+                request.getCustomFieldValues());
 
         log.info("Enrollment form submitted successfully for user: {}, created {} ABANDONED_CART entries",
                 createdUser.getId(), abandonedCartEntryIds.size());

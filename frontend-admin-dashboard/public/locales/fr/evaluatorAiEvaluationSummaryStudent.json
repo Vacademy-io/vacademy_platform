@@ -1,0 +1,58 @@
+{
+    "header": {
+        "back": "← Retour",
+        "title": "Résumé de l'évaluation",
+        "exportReport": "Exporter le rapport",
+        "sendReport": "Envoyer le rapport"
+    },
+    "sendDialog": {
+        "title": "Envoyer le rapport d'évaluation",
+        "recipientEmailPlaceholder": "E-mail du destinataire",
+        "subjectPlaceholder": "Objet (facultatif)",
+        "remarksPlaceholder": "Remarques (facultatif)",
+        "sendButton": "Envoyer"
+    },
+    "sections": {
+        "studentInformation": "Informations sur l'étudiant",
+        "evaluationDetails": "Détails de l'évaluation",
+        "performanceBreakdown": "Analyse des performances",
+        "questionWiseMarking": "Notation par question"
+    },
+    "fields": {
+        "name": "Nom :",
+        "learnerId": "ID APPRENANT :",
+        "assessment": "Évaluation :",
+        "summary": "Résumé :",
+        "totalMarks": "Note totale :"
+    },
+    "table": {
+        "questionNo": "N° Q.",
+        "question": "Question",
+        "answer": "Réponse",
+        "marks": "Points",
+        "feedback": "Commentaire",
+        "description": "Description",
+        "viewMore": "Voir plus"
+    },
+    "previewDialog": {
+        "heading": "Voir la question",
+        "questionLabel": "Question",
+        "extractedAnswerLabel": "Réponse extraite"
+    },
+    "loading": {
+        "generatingPdf": "Génération du PDF...",
+        "sendingMail": "Envoi de l'e-mail...",
+        "pleaseWait": "Cela peut prendre un moment, veuillez patienter."
+    },
+    "toast": {
+        "emailSent": "E-mail envoyé avec succès",
+        "emailFailed": "Erreur lors de l'envoi de l'e-mail"
+    },
+    "validation": {
+        "invalidEmail": "Adresse e-mail invalide"
+    },
+    "email": {
+        "defaultSubject": "Rapport d'évaluation",
+        "defaultStudentName": "Étudiant"
+    }
+}

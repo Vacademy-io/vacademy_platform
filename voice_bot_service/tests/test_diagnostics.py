@@ -1,9 +1,10 @@
 """Tests for the per-call technical diagnostics (app/diagnostics.py).
 
-Pure module, no pipecat — driven directly like the callstate harness. Each
-verdict test encodes one of the founder-flagged 2026-07 calls, so the panel can
+Verdicts are driven directly like the callstate harness; metrics routing also
+exercises the Pipecat observer. Each verdict test encodes a flagged call, so the panel can
 never silently stop naming the fault that call actually had.
 """
+import pytest
 import app.diagnostics as dg
 
 
@@ -227,20 +228,28 @@ def test_reconciled_count_drives_the_fault():
 # STT latency into the TTS reservoir. The panel's first live call reported
 # SLOW_TTS while the real TTS times were all ~0.2s.
 
-def test_ttfb_routing_discriminates_stt_from_tts():
-    import inspect
-    import app.bot as b
-    src = inspect.getsource(b.TtfbObserver)
-    body = src[src.index("proc = (d.processor"):]
-    body = body[:body.index("except Exception")] if "except Exception" in body else body
-    assert body.index('"stt" in proc') < body.index('"tts" in proc'), (
-        "stt must be tested BEFORE tts: the STT class name contains 'tts'"
-    )
-    # And prove the discrimination on the real class names.
-    stt = "ResilientSarvamSTTService#0".lower()
-    tts = "ResilientSarvamTTSService#0".lower()
-    assert "tts" in stt and "stt" in stt      # the trap
-    assert "stt" not in tts                   # …which ordering resolves cleanly
+@pytest.mark.asyncio
+@pytest.mark.parametrize("processor,bucket", [
+    ("ResilientSarvamSTTService#0", "stt_ttfb"),
+    ("SarvamSTTService#1", "stt_ttfb"),
+    ("SmallestSTTService#0", "stt_ttfb"),
+    ("SmallestTTSService#1", "tts_ttfb"),
+    ("ResilientSarvamTTSService#0", "tts_ttfb"),
+    ("GoogleTTSService#1", "tts_ttfb"),
+    ("OpenAILLMService#2", "llm_ttfb"),
+])
+async def test_ttfb_routing_discriminates_stt_from_tts(processor, bucket):
+    from types import SimpleNamespace
+    from app.bot import TtfbObserver
+    from pipecat.frames.frames import MetricsFrame
+    from pipecat.metrics.metrics import TTFBMetricsData
+    diag = dg.CallDiagnostics()
+    observer = TtfbObserver("test", diag).observer
+    data = SimpleNamespace(frame=MetricsFrame(data=[TTFBMetricsData(processor=processor, value=0.25)]))
+    await observer.on_push_frame(data)
+    await observer.on_push_frame(data)  # another pipeline hop must not duplicate it
+    for name in ("stt_ttfb", "tts_ttfb", "llm_ttfb"):
+        assert getattr(diag, name) == ([0.25] if name == bucket else [])
 
 
 # ── a dial nobody answered is NOT a broken call ─────────────────────────────
@@ -350,6 +359,30 @@ def test_reconcile_short_keys_never_containment_match():
     # the transcript and hide REAL deletions of short acks.
     n, _ = dg.reconcile_answers(["हाँ।"], ["हाय। इफ यू रिकॉर्ड योर नेम।"])
     assert n == 1
+
+
+def test_reconcile_short_answers_inside_a_joined_message_are_delivered():
+    """Live ee6f561c (2026-09-11): four saaras finals joined by the aggregator
+    into one message the model demonstrably answered ("fifth class") — and
+    'ठीक।' was reported DELETED because its 2-char key is below the substring
+    floor. Whole-word matching places it. Over 7 days 'Yes.' x8 / 'हाँ।' x3 /
+    'Yeah.' x3 were the top "deleted answers" for the same reason."""
+    heard = ["But.", "बच्चा भी।", "ठीक।", "fifth class में पढ़ रहा है।"]
+    delivered = ["But. बच्चा भी। ठीक। fifth class में पढ़ रहा है।"]
+    lost = dg.split_lost(heard, delivered)
+    assert (lost.answers, lost.fragments) == (0, 0), lost
+    assert dg.reconcile_answers(["Yes, speak.", "Yes."], ["Yes, speak. Yes."])[0] == 0
+    assert dg.reconcile_answers(["हाँ।", "जी।", "दीदी से।"], ["हाँ। जी। दीदी से।"])[0] == 0
+
+
+def test_reconcile_short_answers_are_whole_words_and_consumed_once():
+    # A word is spoken for once: a second 'Yes.' still needs its own copy...
+    n, samples = dg.reconcile_answers(["Yes.", "Yes."], ["Okay. Yes."])
+    assert (n, samples) == (1, ["Yes."])
+    # ...and a genuinely undelivered 'Yes.' is still a loss.
+    assert dg.reconcile_answers(["Yes."], ["I will call you back tomorrow."])[0] == 1
+    # Whole words only: 'yes' is not inside 'yesterday'.
+    assert dg.reconcile_answers(["Yes."], ["I said yesterday."])[0] == 1
 
 
 def test_reconcile_exact_matched_message_not_reused_as_span():

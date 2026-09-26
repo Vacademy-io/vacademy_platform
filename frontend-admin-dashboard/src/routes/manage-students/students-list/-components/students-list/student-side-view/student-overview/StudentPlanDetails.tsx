@@ -18,6 +18,8 @@ import {
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { getUserPlans, UserPlan } from '@/services/user-plan';
+import { getInstituteId } from '@/constants/helper';
+import { ChangePlanDialog } from '../student-membership/change-plan-dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { toast } from 'sonner';
 import { format, formatDate } from 'date-fns';
@@ -26,6 +28,8 @@ import type { PolicyDetails } from '@/types/membership-expiry';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface StudentPlanDetailsProps {
     userId: string;
@@ -39,32 +43,40 @@ const getFirstPolicy = (plan: UserPlan): PolicyDetails | null => {
     return null;
 };
 
-const getPlanName = (plan: UserPlan): string => {
+const getPlanName = (plan: UserPlan, t: TFunction): string => {
     try {
         if (plan.payment_plan_dto?.name) return plan.payment_plan_dto.name;
         if (typeof plan.plan_json === 'string') {
             const parsed = JSON.parse(plan.plan_json);
-            return parsed.name || 'Unknown Plan';
+            return parsed.name || t('fallback.planName');
         }
-        return 'Unknown Plan';
+        return t('fallback.planName');
     } catch {
-        return 'Unknown Plan';
+        return t('fallback.planName');
     }
 };
 
-const getOptionName = (plan: UserPlan): string =>
-    plan.payment_option?.name || 'Unknown Payment Option';
+const getOptionName = (plan: UserPlan, t: TFunction): string =>
+    plan.payment_option?.name || t('fallback.paymentOption');
+
+/**
+ * CPO-backed memberships carry an installment schedule (student_fee_payment rows), so
+ * switching them would leave already-allocated payments stranded against bills for a plan
+ * the learner is no longer on. The backend refuses them too — this just hides the button.
+ */
+const isCpoPlan = (plan: UserPlan): boolean =>
+    (plan.payment_option?.type || '').toUpperCase() === 'CPO';
 
 const getPlanAmount = (plan: UserPlan): number => plan.payment_plan_dto?.actual_price || 0;
 
 const getPlanCurrency = (plan: UserPlan): string => plan.payment_plan_dto?.currency || 'N/A';
 
-const getCourseLabel = (plan: UserPlan): string => {
+const getCourseLabel = (plan: UserPlan, t: TFunction): string => {
     const policy = getFirstPolicy(plan);
     return (
         policy?.package_session_name?.trim() ||
         plan.enroll_invite?.name?.trim() ||
-        getPlanName(plan)
+        getPlanName(plan, t)
     );
 };
 
@@ -149,20 +161,28 @@ const getExpiryLabel = (plan: UserPlan): string | null => {
     return null;
 };
 
+/**
+ * Display labels for plan status codes. The Record keys are the raw backend
+ * enum values used for style lookup and MUST NOT be translated — only the
+ * rendered `label` text below changes per-locale.
+ */
+const buildPlanStatusMap = (t: TFunction): Record<string, { label: string; classes: string }> => ({
+    ACTIVE: {
+        label: t('planStatus.active'),
+        classes: 'bg-success-50 text-success-700 ring-success-200',
+    },
+    EXPIRED: {
+        label: t('planStatus.expired'),
+        classes: 'bg-danger-50 text-danger-700 ring-danger-200',
+    },
+});
+
 const PlanStatusBadge = ({ status }: { status?: string }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const normalized = (status || '').toUpperCase();
-    const map: Record<string, { label: string; classes: string }> = {
-        ACTIVE: {
-            label: 'Plan Active',
-            classes: 'bg-success-50 text-success-700 ring-success-200',
-        },
-        EXPIRED: {
-            label: 'Plan Expired',
-            classes: 'bg-danger-50 text-danger-700 ring-danger-200',
-        },
-    };
+    const map = buildPlanStatusMap(t);
     const entry = map[normalized] || {
-        label: normalized || 'Unknown',
+        label: normalized || t('planStatus.unknown'),
         classes: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
     };
     return (
@@ -182,19 +202,20 @@ const EnrollmentStatusBadge = ({
 }: {
     enrollmentStatus: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null;
 }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     if (!enrollmentStatus) return null;
     if (enrollmentStatus === 'ACTIVE') {
         return (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2 py-0.5 text-xs font-semibold text-success-700 ring-1 ring-success-200">
                 <CheckCircle className="size-3" />
-                Enrollment Active
+                {t('enrollmentStatus.active')}
             </span>
         );
     }
     return (
         <span className="inline-flex items-center gap-1 rounded-full bg-danger-50 px-2 py-0.5 text-xs font-semibold text-danger-700 ring-1 ring-danger-200">
             <Prohibit className="size-3" />
-            Course Inactive
+            {t('enrollmentStatus.inactive')}
         </span>
     );
 };
@@ -205,19 +226,27 @@ const EnrollmentStatusBadge = ({
  * info even if the coupon definition changed after the redemption.
  */
 const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const applied = parseAppliedCoupon(plan);
     if (!applied) return null;
     const isPercentage = (applied.type || '').toUpperCase() === 'PERCENTAGE';
     const discountLabel = isPercentage
-        ? `${applied.point}% off${applied.maxPoint ? ` · max ${getCurrencySymbol(currency)}${applied.maxPoint}` : ''}`
-        : `${getCurrencySymbol(currency === 'N/A' ? 'INR' : currency)}${applied.point} off`;
+        ? applied.maxPoint
+            ? t('coupon.percentageOffWithCap', {
+                  point: applied.point,
+                  amount: `${getCurrencySymbol(currency)}${applied.maxPoint}`,
+              })
+            : t('coupon.percentageOff', { point: applied.point })
+        : t('coupon.amountOff', {
+              amount: `${getCurrencySymbol(currency === 'N/A' ? 'INR' : currency)}${applied.point}`,
+          });
     return (
         <div className="mt-2 flex items-center gap-2 rounded-md border border-success-200 bg-success-50 px-2.5 py-1.5">
             <Tag className="size-3.5 shrink-0 text-success-600" weight="fill" />
             <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-1.5">
                     <span className="font-mono text-xs font-semibold text-success-700">
-                        {applied.code || 'Coupon'}
+                        {applied.code || t('coupon.defaultLabel')}
                     </span>
                     {applied.point != null && (
                         <span className="text-xs text-success-600">{discountLabel}</span>
@@ -229,6 +258,7 @@ const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string
 };
 
 const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     if (!policy?.on_expiry_policy) return null;
     const isEnabled = policy.on_expiry_policy.enable_auto_renewal;
     return (
@@ -248,20 +278,20 @@ const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
                         ) : (
                             <Prohibit className="size-3" />
                         )}
-                        {isEnabled ? 'Auto-Renewal' : 'No Auto-Renewal'}
+                        {isEnabled ? t('autoRenewal.enabled') : t('autoRenewal.disabled')}
                     </span>
                 </TooltipTrigger>
                 <TooltipContent>
                     {isEnabled
-                        ? `Payment attempt on ${
-                              policy.on_expiry_policy.next_payment_attempt_date
+                        ? t('autoRenewal.paymentAttemptOn', {
+                              date: policy.on_expiry_policy.next_payment_attempt_date
                                   ? format(
                                         new Date(policy.on_expiry_policy.next_payment_attempt_date),
                                         'MMM dd, yyyy'
                                     )
-                                  : 'scheduled date'
-                          }`
-                        : 'Auto-renewal is disabled'}
+                                  : t('autoRenewal.scheduledDate'),
+                          })
+                        : t('autoRenewal.disabledTooltip')}
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
@@ -275,6 +305,7 @@ const PolicyDetailsSection = ({
     policy: PolicyDetails | null;
     compact?: boolean;
 }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const [isExpanded, setIsExpanded] = useState(false);
     if (!policy) return null;
     const hasExpiryPolicy = policy.on_expiry_policy !== null;
@@ -288,7 +319,7 @@ const PolicyDetailsSection = ({
                 <div className="space-y-1.5 rounded-md bg-neutral-50 p-2">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                            Expiry Policy
+                            {t('policy.expiryPolicy')}
                         </span>
                         <AutoRenewalBadge policy={policy} />
                     </div>
@@ -297,11 +328,12 @@ const PolicyDetailsSection = ({
                             <div className="flex items-center gap-1">
                                 <Calendar className="size-3 text-danger-500" />
                                 <span className="text-neutral-600">
-                                    Final:{' '}
-                                    {format(
-                                        new Date(policy.on_expiry_policy.final_expiry_date),
-                                        'MMM dd, yyyy'
-                                    )}
+                                    {t('policy.finalDate', {
+                                        date: format(
+                                            new Date(policy.on_expiry_policy.final_expiry_date),
+                                            'MMM dd, yyyy'
+                                        ),
+                                    })}
                                 </span>
                             </div>
                         )}
@@ -310,7 +342,9 @@ const PolicyDetailsSection = ({
                                 <div className="flex items-center gap-1">
                                     <Clock className="size-3 text-warning-500" />
                                     <span className="text-neutral-600">
-                                        {policy.on_expiry_policy.waiting_period_in_days} day grace
+                                        {t('policy.gracePeriod', {
+                                            count: policy.on_expiry_policy.waiting_period_in_days,
+                                        })}
                                     </span>
                                 </div>
                             )}
@@ -325,19 +359,22 @@ const PolicyDetailsSection = ({
                             <>
                                 <CheckCircle className="size-3 text-success-500" />
                                 <span className="text-neutral-600">
-                                    Re-enrollment{' '}
                                     {policy.reenrollment_policy.next_eligible_enrollment_date
-                                        ? `from ${format(
-                                              new Date(
-                                                  policy.reenrollment_policy.next_eligible_enrollment_date
+                                        ? t('policy.reenrollmentFrom', {
+                                              date: format(
+                                                  new Date(
+                                                      policy.reenrollment_policy.next_eligible_enrollment_date
+                                                  ),
+                                                  'MMM dd, yyyy'
                                               ),
-                                              'MMM dd, yyyy'
-                                          )}`
-                                        : 'available'}
+                                          })
+                                        : t('policy.reenrollmentAvailable')}
                                     {policy.reenrollment_policy.reenrollment_gap_in_days > 0 && (
                                         <span className="ml-1 text-neutral-400">
-                                            ({policy.reenrollment_policy.reenrollment_gap_in_days}{' '}
-                                            day gap)
+                                            {t('policy.gapDays', {
+                                                count: policy.reenrollment_policy
+                                                    .reenrollment_gap_in_days,
+                                            })}
                                         </span>
                                     )}
                                 </span>
@@ -345,7 +382,9 @@ const PolicyDetailsSection = ({
                         ) : (
                             <>
                                 <Prohibit className="size-3 text-danger-500" />
-                                <span className="text-neutral-500">Re-enrollment not allowed</span>
+                                <span className="text-neutral-500">
+                                    {t('policy.reenrollmentNotAllowed')}
+                                </span>
                             </>
                         )}
                     </div>
@@ -360,7 +399,7 @@ const PolicyDetailsSection = ({
                         className="flex w-full items-center justify-between p-2 text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-100"
                     >
                         <span className="uppercase tracking-wide">
-                            Policy Actions ({policy.policy_actions.length})
+                            {t('policy.actionsCount', { count: policy.policy_actions.length })}
                         </span>
                         {isExpanded ? (
                             <CaretUp className="size-3" />
@@ -380,30 +419,38 @@ const PolicyDetailsSection = ({
 };
 
 // Pick the days-left tone for headline + progress + status label.
-const getDaysLeftTone = (daysLeft: number | null): { color: string; status: string } => {
+const getDaysLeftTone = (
+    t: TFunction,
+    daysLeft: number | null
+): { color: string; status: string } => {
     if (daysLeft === null) {
-        return { color: 'text-neutral-500', status: 'No expiry' };
+        return { color: 'text-neutral-500', status: t('daysLeft.noExpiry') };
     }
     if (daysLeft >= 180) {
-        return { color: 'text-success-600', status: 'Active session' };
+        return { color: 'text-success-600', status: t('daysLeft.activeSession') };
     }
     if (daysLeft >= 30) {
-        return { color: 'text-warning-600', status: 'Renewal due soon' };
+        return { color: 'text-warning-600', status: t('daysLeft.renewalDueSoon') };
     }
-    return { color: 'text-danger-600', status: 'Urgent renewal required' };
+    return { color: 'text-danger-600', status: t('daysLeft.urgentRenewal') };
 };
 
 const PlanCard = ({
     plan,
     enrollmentStatus,
+    onChangePlan,
 }: {
     plan: UserPlan;
     enrollmentStatus: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null;
+    /** Absent in the history dialog — past plans are not switchable. */
+    onChangePlan?: (plan: UserPlan) => void;
 }) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const policy = getFirstPolicy(plan);
-    const courseLabel = getCourseLabel(plan);
+    const courseLabel = getCourseLabel(plan, t);
+    const planName = getPlanName(plan, t);
     const daysLeft = computeDaysLeft(plan.end_date);
-    const tone = getDaysLeftTone(daysLeft);
+    const tone = getDaysLeftTone(t, daysLeft);
     const expiryLabel = getExpiryLabel(plan);
     const amount = getPlanAmount(plan);
     const currency = getPlanCurrency(plan);
@@ -419,16 +466,22 @@ const PlanCard = ({
                     <div className="rounded-md bg-primary-50 p-1.5">
                         <Clock className="size-4 text-primary-600" />
                     </div>
+                    {/* The payment PLAN leads, not the payment option — the plan is what
+                        the learner is billed on and what a plan change moves them between.
+                        The course and the option follow as context. */}
                     <div className="min-w-0 flex-1">
                         <h4
                             className="truncate text-xs font-semibold text-neutral-900"
-                            title={courseLabel}
+                            title={planName}
                         >
-                            {courseLabel}
+                            {planName}
                         </h4>
-                        <p className="mt-0.5 truncate text-xs text-neutral-500">
-                            {getOptionName(plan)} · {getPlanName(plan)}
+                        <p className="mt-0.5 truncate text-xs text-neutral-500" title={courseLabel}>
+                            {courseLabel}
                         </p>
+                        <span className="mt-1 inline-flex max-w-full items-center truncate rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                            {getOptionName(plan, t)}
+                        </span>
                     </div>
                 </div>
                 <TrendUp className={cn('size-3.5 shrink-0', tone.color)} />
@@ -443,7 +496,7 @@ const PlanCard = ({
                 <div className="mb-3">
                     <div className="mb-1 flex items-baseline gap-1.5">
                         <span className={cn('text-base font-bold', tone.color)}>{daysLeft}</span>
-                        <span className="text-xs text-neutral-500">days left</span>
+                        <span className="text-xs text-neutral-500">{t('daysLeft.label')}</span>
                     </div>
                     <ProgressBar progress={daysLeft} />
                     <p className="mt-1 text-center text-xs text-neutral-500">{tone.status}</p>
@@ -454,13 +507,17 @@ const PlanCard = ({
                 {plan.start_date && (
                     <div className="flex items-center gap-1">
                         <Calendar className="size-3 text-neutral-400" />
-                        <span>Started {formatDate(new Date(plan.start_date), 'dd MMM yyyy')}</span>
+                        <span>
+                            {t('dates.started', {
+                                date: formatDate(new Date(plan.start_date), 'dd MMM yyyy'),
+                            })}
+                        </span>
                     </div>
                 )}
                 {expiryLabel && (
                     <div className="flex items-center gap-1">
                         <Calendar className="size-3 text-neutral-400" />
-                        <span>Ends {expiryLabel}</span>
+                        <span>{t('dates.ends', { date: expiryLabel })}</span>
                     </div>
                 )}
                 {currency !== 'N/A' && amount > 0 && (
@@ -490,11 +547,27 @@ const PlanCard = ({
             <CouponAppliedRow plan={plan} currency={currency} />
 
             <PolicyDetailsSection policy={policy} compact />
+
+            {/* CPO-backed memberships are excluded: their price comes from an installment
+                schedule that a plan swap would leave unreconciled. */}
+            {onChangePlan && plan.status === 'ACTIVE' && !isCpoPlan(plan) && (
+                <div className="mt-3 flex justify-end border-t border-neutral-100 pt-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => onChangePlan(plan)}
+                    >
+                        <ArrowsClockwise className="mr-1 size-3" />
+                        {t('changePlan.button')}
+                    </MyButton>
+                </div>
+            )}
         </div>
     );
 };
 
 const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) => {
+    const { t } = useTranslation('manageStudentsPlanDetails');
     const { selectedStudent } = useStudentSidebar();
     const [activePlans, setActivePlans] = useState<UserPlan[]>([]);
     const [isLoadingActive, setIsLoadingActive] = useState(false);
@@ -503,7 +576,11 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
+    const [planToChange, setPlanToChange] = useState<UserPlan | null>(null);
     const pageSize = 5;
+    // The dialog needs an explicit institute id; the prop is optional here because most
+    // callers let the service derive it from the token.
+    const resolvedInstituteId = instituteId || getInstituteId() || '';
 
     // The selected learner row's package_session_id reflects the batch the admin
     // is viewing them under. If the admin marked them INACTIVE in this batch, we
@@ -556,7 +633,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
             setTotalPages(response.totalPages || 1);
         } catch (error) {
             console.error('Error loading plan history:', error);
-            toast.error('Failed to load plan history');
+            toast.error(t('toast.loadHistoryFailed'));
         } finally {
             setIsLoadingHistory(false);
         }
@@ -578,7 +655,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
             setTotalPages(response.totalPages || 1);
         } catch (error) {
             console.error('Error loading page:', error);
-            toast.error('Failed to load plans');
+            toast.error(t('toast.loadPageFailed'));
         } finally {
             setIsLoadingHistory(false);
         }
@@ -588,11 +665,13 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
         <>
             <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-neutral-800">Active Memberships</h3>
+                    <h3 className="text-sm font-semibold text-neutral-800">
+                        {t('heading.activeMemberships')}
+                    </h3>
                     {activePlans.length > 0 && (
                         <MyButton onClick={handleViewHistory} buttonType="secondary" scale="small">
                             <Eye className="mr-1 size-3" />
-                            View History
+                            {t('heading.viewHistory')}
                         </MyButton>
                     )}
                 </div>
@@ -604,7 +683,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                 ) : activePlans.length === 0 ? (
                     <div className="flex items-center gap-2 rounded-md bg-info-50 p-3 text-xs text-info-700 ring-1 ring-info-200">
                         <Warning className="size-4 shrink-0" />
-                        <span>No active membership for this learner.</span>
+                        <span>{t('emptyState.noActivePlans')}</span>
                     </div>
                 ) : (
                     <div className="space-y-2.5">
@@ -620,16 +699,29 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                     key={plan.id}
                                     plan={plan}
                                     enrollmentStatus={resolveEnrollmentStatus(plan)}
+                                    onChangePlan={setPlanToChange}
                                 />
                             ))}
                     </div>
                 )}
             </div>
 
+            <ChangePlanDialog
+                open={Boolean(planToChange)}
+                onOpenChange={(open) => {
+                    if (!open) setPlanToChange(null);
+                }}
+                userPlanId={planToChange?.id ?? null}
+                instituteId={resolvedInstituteId}
+                // Not react-query here — this component owns its plans in local state, so
+                // just re-run the same loader rather than introducing a second cache.
+                onChanged={loadActivePlans}
+            />
+
             <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
                 <DialogContent className="max-h-screen max-w-2xl overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Membership History</DialogTitle>
+                        <DialogTitle>{t('heading.membershipHistory')}</DialogTitle>
                     </DialogHeader>
 
                     <div className="space-y-3 py-2">
@@ -640,7 +732,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                         ) : allPlans.length === 0 ? (
                             <div className="flex items-center gap-2 rounded-md bg-info-50 p-3 text-sm text-info-700 ring-1 ring-info-200">
                                 <Warning className="size-4 shrink-0" />
-                                <span>No plans found.</span>
+                                <span>{t('emptyState.noPlansFound')}</span>
                             </div>
                         ) : (
                             <>
@@ -657,7 +749,10 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                 {totalPages > 1 && (
                                     <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
                                         <span className="text-sm text-neutral-600">
-                                            Page {currentPage} of {totalPages}
+                                            {t('pagination.pageOf', {
+                                                current: currentPage,
+                                                total: totalPages,
+                                            })}
                                         </span>
                                         <div className="flex gap-2">
                                             <MyButton
@@ -666,7 +761,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                                 disable={currentPage === 1 || isLoadingHistory}
                                                 onClick={() => handlePageChange(currentPage - 1)}
                                             >
-                                                Previous
+                                                {t('pagination.previous')}
                                             </MyButton>
                                             <MyButton
                                                 buttonType="secondary"
@@ -676,7 +771,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                                 }
                                                 onClick={() => handlePageChange(currentPage + 1)}
                                             >
-                                                Next
+                                                {t('pagination.next')}
                                             </MyButton>
                                         </div>
                                     </div>

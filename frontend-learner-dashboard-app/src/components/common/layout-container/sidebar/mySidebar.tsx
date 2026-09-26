@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Sidebar,
   SidebarContent,
@@ -19,11 +20,13 @@ import { cn } from "@/lib/utils";
 import { sideBarStateType } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
 import {
-  HamBurgerSidebarItemsData,
+  getHamBurgerSidebarItemsData,
   stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
   getTerminologyPlural,
+  readEngagementPlanFlag,
+  ENGAGEMENT_PLAN_FLAG_EVENT,
 } from "./utils";
 import {
   ContentTerms,
@@ -52,6 +55,7 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
+  ListChecks,
 } from "@phosphor-icons/react";
 import {
   NavHouseIcon,
@@ -89,6 +93,18 @@ const createLetterIcon =
       </div>
     );
 
+/**
+ * "Daily tasks" nav icon. Phosphor's light weight matches the thin-line custom
+ * nav set (nav-icons.tsx); the sidebar's active/inactive `weight` is ignored
+ * the same way those icons ignore it, since state is carried by colour.
+ */
+const NavDailyTasksIcon = ({ className }: { className?: string; weight?: unknown }) => (
+  <ListChecks weight="light" className={className} aria-hidden />
+);
+
+/** Sidebar tab id of the injected "Daily tasks" entry. */
+const DAILY_TASKS_TAB_ID = "daily-tasks";
+
 const humanizeText = (text: string) => {
   if (!text) return "";
   return text
@@ -108,6 +124,8 @@ export const MySidebar = ({
    *  identity block of its own and still needs this one. */
   hideBrandingHeader?: boolean;
 }) => {
+  const { t, i18n } = useTranslation("layoutCommonA");
+  const { t: tEngagement } = useTranslation("dashboardEngagement");
   const navigate = useNavigate();
   const { state, isMobile, toggleSidebar } = useSidebar();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -141,10 +159,25 @@ export const MySidebar = ({
   const [configuredTabs, setConfiguredTabs] = useState<
     StudentSidebarTabConfig[]
   >([]);
-  const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
-    HamBurgerSidebarItemsData
+  const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(() =>
+    getHamBurgerSidebarItemsData(t)
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
+  // Institutes that moved their downloads to the dashboard's getApp widget turn
+  // this off. Starts true so the links do not flicker out on every load while
+  // the settings request is in flight.
+  const [showAppLinks, setShowAppLinks] = useState<boolean>(true);
+  // One gate for the footer's presence check and its contents, so the two can
+  // never disagree and leave an empty bordered strip above the profile row.
+  const hasAppLinks =
+    showAppLinks &&
+    Boolean(
+      playStoreAppLink ||
+        appStoreAppLink ||
+        windowsAppLink ||
+        macAppLink ||
+        learnerPortalUrl
+    );
   const [studentData, setStudentData] = useState<Student | null>(null);
   // Whether the institute's chat FEATURE is on (independent of the In-App
   // Messages tab's visibility) — gates the per-mentor chat entries.
@@ -157,6 +190,19 @@ export const MySidebar = ({
     getInstituteId().then((id) => setInstituteId(id ?? undefined));
   }, []);
   const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
+
+  // "Daily tasks" shows only to learners whose institute runs a daily-task
+  // plan. The dashboard records that from the feed (see readEngagementPlanFlag),
+  // so the sidebar never polls the feed itself on every page.
+  const [hasEngagementPlan, setHasEngagementPlan] = useState<boolean>(() =>
+    readEngagementPlanFlag()
+  );
+  useEffect(() => {
+    const sync = () => setHasEngagementPlan(readEngagementPlanFlag(instituteId));
+    sync();
+    window.addEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+    return () => window.removeEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+  }, [instituteId]);
   // A learner with no mentor still needs a way in to Find a mentor, so the tab
   // also appears when their institute lists mentors for browsing. The directory
   // is only fetched in that case — learners who already have a mentor see the
@@ -210,6 +256,7 @@ export const MySidebar = ({
       referral: NavGiftIcon,
       attendance: NavCalendarCheckIcon,
       "my-mentors": NavUsersIcon,
+      [DAILY_TASKS_TAB_ID]: NavDailyTasksIcon,
     }),
     []
   );
@@ -221,22 +268,26 @@ export const MySidebar = ({
       attendance: "/learning-centre/attendance",
       chat: "/chat",
       "my-mentors": "/my-mentors",
+      [DAILY_TASKS_TAB_ID]: "/engagement",
     }),
     []
   );
 
   const labelByTabId: Record<string, string> = useMemo(
     () => ({
-      dashboard: "Dashboard",
-      "learning-center": "Learning Center",
-      homework: "Homework",
-      "assessment-center": "Assessment Centre",
-      referral: "Referral",
-      attendance: "Attendance",
-      chat: "In-App Messages",
-      "my-mentors": "My Mentors",
+      dashboard: t("sidebar.tabs.dashboard"),
+      "learning-center": t("sidebar.tabs.learningCenter"),
+      homework: t("sidebar.tabs.homework"),
+      "assessment-center": t("sidebar.tabs.assessmentCentre"),
+      referral: t("sidebar.tabs.referral"),
+      attendance: t("sidebar.tabs.attendance"),
+      chat: t("sidebar.tabs.inAppMessages"),
+      "my-mentors": t("sidebar.tabs.myMentors"),
+      [DAILY_TASKS_TAB_ID]: tEngagement("nav.dailyTasks"),
     }),
-    []
+    // t's identity is stable across a language switch in react-i18next; key
+    // off i18n.language too so this fallback map actually re-translates.
+    [t, tEngagement, i18n.language]
   );
 
   const transformTabsToSidebarItems = (
@@ -303,7 +354,7 @@ export const MySidebar = ({
     const dashboardIndex = tabs.findIndex((t) => t.id === "dashboard");
     const chatTab: StudentSidebarTabConfig = {
       id: "chat",
-      label: "In-App Messages",
+      label: t("sidebar.tabs.inAppMessages"),
       route: "/chat",
       order: 0,
       visible: true,
@@ -332,8 +383,8 @@ export const MySidebar = ({
         ? (mentors[0]?.display_name || mentors[0]?.name || "").trim()
         : "";
     const mentorLabel = soleMentorName
-      ? `Mentor · ${soleMentorName.split(/\s+/)[0]}`
-      : "My Mentors";
+      ? t("sidebar.mentorLabelWithName", { name: soleMentorName.split(/\s+/)[0] })
+      : t("sidebar.tabs.myMentors");
     // One chat entry per mentor (capped so a big list can't flood the rail),
     // after an "All mentors" entry for the full page with booking. When the
     // institute's chat feature is OFF the chat entries would be dead links, so
@@ -344,14 +395,16 @@ export const MySidebar = ({
       ? [
           {
             id: "my-mentors-all",
-            label: "All mentors",
+            label: t("sidebar.allMentors"),
             route: "/my-mentors",
             order: 1,
             visible: true,
           },
           ...mentors.slice(0, 6).map((m, i) => ({
             id: `my-mentor-chat-${m.user_id}`,
-            label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
+            label: t("sidebar.chatWithMentorName", {
+              name: (m.display_name || m.name || t("sidebar.mentorFallbackName")).trim(),
+            }),
             // Opens the full In-App Messages screen with this mentor's
             // conversation selected (resolved by /chat's ?dm= handling).
             route: `/chat?dm=${encodeURIComponent(m.user_id)}`,
@@ -391,14 +444,38 @@ export const MySidebar = ({
     return next;
   };
 
+  // The "Daily tasks" entry (/engagement, active on every /engagement page) is
+  // data-driven like My Mentors: injected right after the dashboard while the
+  // learner has a plan, and absent otherwise. A saved tab with this id (should
+  // an institute ever configure one) keeps its own position and visibility.
+  const ensureDailyTasksTab = (
+    tabs: StudentSidebarTabConfig[],
+    hasPlan: boolean
+  ): StudentSidebarTabConfig[] => {
+    if (!hasPlan) return tabs.filter((tab) => tab.id !== DAILY_TASKS_TAB_ID);
+    if (tabs.some((tab) => tab.id === DAILY_TASKS_TAB_ID)) return tabs;
+    const dashboardIndex = tabs.findIndex((tab) => tab.id === "dashboard");
+    const next = tabs.slice();
+    next.splice(dashboardIndex >= 0 ? dashboardIndex + 1 : 0, 0, {
+      id: DAILY_TASKS_TAB_ID,
+      route: "/engagement",
+      order: 0,
+      visible: true,
+    });
+    return next;
+  };
+
   const filteredSidebarItems = useMemo(
     () =>
       transformTabsToSidebarItems(
-        ensureMentorTab(
-          configuredTabs,
-          myMentorsQuery.data ?? [],
-          chatFeatureEnabled,
-          (mentorDirectoryQuery.data?.length ?? 0) > 0
+        ensureDailyTasksTab(
+          ensureMentorTab(
+            configuredTabs,
+            myMentorsQuery.data ?? [],
+            chatFeatureEnabled,
+            (mentorDirectoryQuery.data?.length ?? 0) > 0
+          ),
+          hasEngagementPlan
         )
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -407,6 +484,8 @@ export const MySidebar = ({
       myMentorsQuery.data,
       mentorDirectoryQuery.data,
       chatFeatureEnabled,
+      hasEngagementPlan,
+      labelByTabId,
     ]
   );
 
@@ -418,6 +497,9 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
+        // Only an explicit false hides the footer links: settings saved before
+        // this flag existed have no value here and must keep showing them.
+        setShowAppLinks(settings?.sidebar?.appLinks !== false);
         setChatFeatureEnabled(chatEnabled);
         setConfiguredTabs(
           ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
@@ -428,7 +510,7 @@ export const MySidebar = ({
     if (sideBarState === sideBarStateType.HAMBURGER) {
       // Filter hamburger menu items based on permissions
       filterHamburgerMenuItemsWithPermissions(
-        HamBurgerSidebarItemsData,
+        getHamBurgerSidebarItemsData(t),
         permissions || {
           canViewProfile: false,
           canEditProfile: false,
@@ -508,7 +590,7 @@ export const MySidebar = ({
             <button
               type="button"
               onClick={toggleSidebar}
-              aria-label="Close sidebar"
+              aria-label={t("sidebar.closeSidebar")}
               className="absolute top-4 mt-6 end-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={18} />
@@ -540,7 +622,7 @@ export const MySidebar = ({
                     <div className="flex h-10 items-center gap-3">
                       <div className="flex aspect-square size-8 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0">
                         {subOrgLogoUrl ? (
-                          <img src={subOrgLogoUrl} alt="Logo" className="size-8 object-contain rounded-md bg-white" />
+                          <img src={subOrgLogoUrl} alt={t("sidebar.logoAlt")} className="size-8 object-contain rounded-md bg-white" />
                         ) : (
                           <div className="size-8 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-caption font-semibold text-primary-500 dark:text-neutral-200">
                             {(subOrgName[0] || "S").toUpperCase()}
@@ -555,7 +637,7 @@ export const MySidebar = ({
                     </div>
                     {isExpanded && (
                       <div className="flex items-center gap-1.5 ps-11">
-                        <span className="text-caption text-muted-foreground whitespace-nowrap">Powered by</span>
+                        <span className="text-caption text-muted-foreground whitespace-nowrap">{t("common.poweredBy")}</span>
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                           <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-20 object-contain" />
                         ) : (
@@ -578,7 +660,7 @@ export const MySidebar = ({
                       {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                         <img
                           src={instituteLogoFileUrl}
-                          alt="Logo"
+                          alt={t("sidebar.logoAlt")}
                           className={
                             hasCustomLogoDims
                               ? "object-contain rounded-md bg-white"
@@ -670,22 +752,13 @@ export const MySidebar = ({
             })()}
         </SidebarMenu>
       </SidebarContent>
-      {(playStoreAppLink ||
-        appStoreAppLink ||
-        windowsAppLink ||
-        macAppLink ||
-        learnerPortalUrl ||
-        studentData) && (
+      {(hasAppLinks || studentData) && (
           <SidebarFooter className="border-t border-border">
-            {(playStoreAppLink ||
-              appStoreAppLink ||
-              windowsAppLink ||
-              macAppLink ||
-              learnerPortalUrl) &&
+            {hasAppLinks &&
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
                 <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
-                  Apps & Portals
+                  {t("sidebar.appsAndPortals")}
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {learnerPortalUrl && (
@@ -694,7 +767,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Web Portal"
+                      title={t("sidebar.webPortal")}
                     >
                       <Globe className="h-5 w-5" weight="duotone" />
                     </a>
@@ -705,7 +778,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Android App"
+                      title={t("sidebar.androidApp")}
                     >
                       <GooglePlayLogo className="h-5 w-5 text-green-600" weight="fill" />
                     </a>
@@ -716,7 +789,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="iOS App"
+                      title={t("sidebar.iosApp")}
                     >
                       <AppStoreLogo className="h-5 w-5 text-sky-600" weight="fill" />
                     </a>
@@ -727,7 +800,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Windows App"
+                      title={t("sidebar.windowsApp")}
                     >
                       <WindowsLogo className="h-5 w-5 text-blue-600" weight="fill" />
                     </a>
@@ -738,7 +811,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Mac App"
+                      title={t("sidebar.macApp")}
                     >
                       <AppleLogo className="h-5 w-5 text-neutral-800 dark:text-neutral-200" weight="fill" />
                     </a>
@@ -753,7 +826,7 @@ export const MySidebar = ({
                       <SidebarMenuButton
                         size="lg"
                         className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground justify-center"
-                        tooltip="Apps & Portals"
+                        tooltip={t("sidebar.appsAndPortals")}
                       >
                         <SquaresFour weight="duotone" className="h-5 w-5" />
                       </SidebarMenuButton>
@@ -766,7 +839,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Web Portal"
+                            title={t("sidebar.webPortal")}
                           >
                             <Globe className="h-5 w-5" weight="duotone" />
                           </a>
@@ -777,7 +850,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Android App"
+                            title={t("sidebar.androidApp")}
                           >
                             <GooglePlayLogo className="h-5 w-5 text-green-600" weight="fill" />
                           </a>
@@ -788,7 +861,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="iOS App"
+                            title={t("sidebar.iosApp")}
                           >
                             <AppStoreLogo className="h-5 w-5 text-sky-600" weight="fill" />
                           </a>
@@ -799,7 +872,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Windows App"
+                            title={t("sidebar.windowsApp")}
                           >
                             <WindowsLogo className="h-5 w-5 text-blue-600" weight="fill" />
                           </a>
@@ -810,7 +883,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Mac App"
+                            title={t("sidebar.macApp")}
                           >
                             <AppleLogo className="h-5 w-5 text-neutral-800 dark:text-neutral-200" weight="fill" />
                           </a>
@@ -842,8 +915,8 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/logout" })}
-                    aria-label="Log out"
-                    title="Log out"
+                    aria-label={t("common.logOut")}
+                    title={t("common.logOut")}
                     className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <SignOut className="size-5" weight="duotone" />
@@ -854,7 +927,7 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/user-profile" })}
-                    aria-label="Open profile"
+                    aria-label={t("sidebar.openProfile")}
                     title={learnerDisplayName}
                     className="flex size-10 items-center justify-center rounded-lg hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
@@ -868,8 +941,8 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/logout" })}
-                    aria-label="Log out"
-                    title="Log out"
+                    aria-label={t("common.logOut")}
+                    title={t("common.logOut")}
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <SignOut className="size-5" weight="duotone" />

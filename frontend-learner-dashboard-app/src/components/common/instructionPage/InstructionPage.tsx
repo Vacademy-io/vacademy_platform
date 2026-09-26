@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "@tanstack/react-router";
 import AssessmentStartModal from "./StartAssessment";
 import { Preferences } from "@capacitor/preferences";
@@ -17,13 +18,21 @@ import { useExamExperienceSettings } from "@/hooks/use-exam-experience-settings"
 import { useImmersiveMode } from "@/hooks/use-immersive-mode";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { bottomSafeAreaInset } from "@/utils/safe-area";
+import { ProctorCheckIn } from "@/components/common/proctoring/ProctorCheckIn";
+import { fetchProctoringConfig } from "@/services/proctoring";
+import { isProctored, type ProctoringConfig } from "@/types/proctoring";
 
 const InstructionPage = () => {
+  const { t } = useTranslation("layoutCommonB");
   const [instructions, setInstructions] = useState<RichText>();
   const [assessmentInfo, setAssessmentInfo] = useState<AssessmentType>();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  // Proctoring (V48). null until fetched; a failed fetch resolves to "off", so
+  // the Start button never waits on this for an unproctored assessment.
+  const [proctoring, setProctoring] = useState<ProctoringConfig | null>(null);
+  const [proctorReady, setProctorReady] = useState(false);
   const { assessmentId } = useParams({ strict: false });
   const examExperience = useExamExperienceSettings();
   // The brief is part of the assessment safe zone: it is a full-bleed screen
@@ -85,7 +94,20 @@ const InstructionPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentId]);
 
+  useEffect(() => {
+    if (!assessmentId) return;
+    let cancelled = false;
+    fetchProctoringConfig(assessmentId).then((cfg) => {
+      if (!cancelled) setProctoring(cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [assessmentId]);
+
   const isReady = !isLoading && !hasError && !!assessmentInfo;
+  const needsCheckIn = isProctored(proctoring);
+  const canStart = isReady && agreed && (!needsCheckIn || proctorReady);
 
   return (
     // fixed inset-0 rather than min-h-screen: the brief is a full-bleed screen
@@ -104,18 +126,17 @@ const InstructionPage = () => {
                 weight="bold"
               />
               <p className="text-body text-neutral-500">
-                Loading assessment details…
+                {t("instructionPage.instructionPage.loadingDetails")}
               </p>
             </div>
           ) : hasError || !assessmentInfo ? (
             <div className="flex min-h-reg-320 flex-col items-center justify-center gap-4 text-center">
               <WarningCircle size={48} className="text-danger-400" weight="duotone" />
               <p className="text-title font-semibold text-neutral-700">
-                Assessment details unavailable
+                {t("instructionPage.instructionPage.detailsUnavailable")}
               </p>
               <p className="max-w-sm text-body text-neutral-500">
-                We couldn&apos;t load this assessment. Please go back and try
-                again.
+                {t("instructionPage.instructionPage.loadFailed")}
               </p>
             </div>
           ) : (
@@ -147,10 +168,17 @@ const InstructionPage = () => {
                   className="mt-0.5 size-4 flex-none accent-primary-500"
                 />
                 <span className="text-body leading-relaxed text-neutral-700">
-                  I have read the instructions and understand that leaving full
-                  screen is recorded and may auto-submit my paper.
+                  {t("instructionPage.instructionPage.acknowledgement")}
                 </span>
               </label>
+
+              {needsCheckIn && proctoring && assessmentId && (
+                <ProctorCheckIn
+                  assessmentId={assessmentId}
+                  config={proctoring}
+                  onReadyChange={setProctorReady}
+                />
+              )}
             </>
           )}
         </div>
@@ -163,10 +191,10 @@ const InstructionPage = () => {
         }}
       >
         <div className="mx-auto w-full max-w-2xl">
-          <AssessmentStartModal disabled={!isReady || !agreed} />
+          <AssessmentStartModal disabled={!canStart} />
           {isReady && !agreed && (
             <p className="mt-2 text-center text-caption text-neutral-400">
-              Tick the acknowledgement above to begin.
+              {t("instructionPage.instructionPage.tickToBegin")}
             </p>
           )}
         </div>

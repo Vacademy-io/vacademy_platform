@@ -1,3 +1,4 @@
+import type { ProctoringConfigWire } from './proctoring';
 export interface Instructions {
     id: string;
     type: string;
@@ -84,6 +85,8 @@ export interface SavedData {
     pre_batch_registrations: PreBatchRegistration[];
     registration_close_date: string | null;
     notifications: AssessmentNotification;
+    /** Effective proctoring config (V48). Absent/NONE on older assessments. */
+    proctoring_config?: ProctoringConfigWire | null;
 }
 
 export interface Section {

@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
+import vacademy.io.admin_core_service.features.user_subscription.util.PlanValidityResolver;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -46,6 +47,9 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.invoice.service.InvoiceService invoiceService;
     private final vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService paymentNotificatonService;
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+    private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
+    private final RenewalGracePolicy gracePolicy;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -67,12 +71,18 @@ public class RenewalPaymentService {
         }
         UserPlan userPlan = paymentLog.getUserPlan();
         if (paymentStatus == PaymentStatusEnum.PAID) {
-            // Record the payment itself as settled. Renewals previously left the log
-            // in its pre-payment state, so a paid renewal showed as unpaid in payment
-            // history and any invoice would have hung off a non-PAID log.
+            // Razorpay delivers payment.captured AND order.paid for one capture, and prod
+            // runs 4 replicas, so this arrives more than once. Without a claim every
+            // delivery extended the plan by a full cycle: one Rs 1,200 payment bought two
+            // months, one Rs 7,200 payment two years (2026-09-19). The conditional UPDATE
+            // flips the log to PAID exactly once, in its own transaction, so only the
+            // winning delivery runs the ledger / extension / invoice side effects.
+            if (paymentLogService.claimPaidIfNotAlready(orderId) == 0) {
+                log.info("RENEWAL order {} already applied by another event or replica — skipping duplicate", orderId);
+                return;
+            }
             paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
             paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
-            paymentLogRepository.save(paymentLog);
             recordRenewalOnLedger(paymentLog, userPlan, instituteId);
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);
@@ -252,6 +262,16 @@ public class RenewalPaymentService {
         log.info("Processing successful renewal for UserPlan: {}", userPlan.getId());
 
         try {
+            // A downgrade booked for the end of this cycle lands here, BEFORE the new end
+            // date is worked out — so the extension uses the new plan's validity, not the
+            // one the learner is leaving.
+            try {
+                planChangeService.applyScheduledChangeIfDue(userPlan);
+            } catch (Exception pce) {
+                log.error("Scheduled plan change could not be applied for plan {} — renewing on the "
+                        + "existing plan instead: {}", userPlan.getId(), pce.getMessage(), pce);
+            }
+
             // Extend UserPlan endDate based on subscription period
             Date newEndDate = calculateNewEndDate(userPlan);
             userPlan.setEndDate(newEndDate);
@@ -343,7 +363,9 @@ public class RenewalPaymentService {
 
         try {
             int attempts = userPlan.getRenewalAttemptCount() != null ? userPlan.getRenewalAttemptCount() : 0;
-            boolean exhausted = attempts >= MAX_RENEWAL_ATTEMPTS;
+            // Same rule as the sweep: a configured grace period (end_date + N days) governs;
+            // otherwise the attempt ceiling. Keeps the two failure paths from disagreeing.
+            boolean exhausted = gracePolicy.isExhausted(userPlan, new Date(), attempts, MAX_RENEWAL_ATTEMPTS);
             if (exhausted) {
                 userPlan.setStatus(UserPlanStatusEnum.EXPIRED.name());
                 userPlan.setNextChargeAt(null);
@@ -458,29 +480,11 @@ public class RenewalPaymentService {
     /**
      * Validity days for the plan, from the linked PaymentPlan (falling back to
      * the plan snapshot on user_plan.plan_json), defaulting to 30 only if
-     * nothing is resolvable.
+     * nothing is resolvable. Shared with the plan-change proration, which has to
+     * agree with the renewal on how long a plan lasts.
      */
     private int resolveValidityDays(UserPlan userPlan) {
-        if (userPlan.getPaymentPlan() != null && userPlan.getPaymentPlan().getValidityInDays() != null
-                && userPlan.getPaymentPlan().getValidityInDays() > 0) {
-            return userPlan.getPaymentPlan().getValidityInDays();
-        }
-        if (StringUtils.hasText(userPlan.getPlanJson())) {
-            try {
-                var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(userPlan.getPlanJson());
-                var v = node.get("validityInDays");
-                if (v == null) {
-                    v = node.get("validity_in_days");
-                }
-                if (v != null && v.asInt() > 0) {
-                    return v.asInt();
-                }
-            } catch (Exception e) {
-                log.debug("Could not read validityInDays from plan_json for UserPlan: {}", userPlan.getId());
-            }
-        }
-        log.warn("No validity_in_days resolvable for UserPlan: {} — defaulting to 30 days", userPlan.getId());
-        return 30;
+        return PlanValidityResolver.resolveValidityDays(userPlan);
     }
 
     /**

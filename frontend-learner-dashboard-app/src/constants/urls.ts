@@ -54,6 +54,9 @@ export const START_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learn
 export const ASSESSMENT_SAVE = `${BASE_URL}/assessment-service/assessment/learner/status/update`;
 export const ASSESSMENT_SUBMIT = `${BASE_URL}/assessment-service/assessment/learner/status/submit`;
 export const RESTART_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learner/status/restart`;
+// Proctoring (assessment_service V48): per-assessment config, batched device events.
+export const PROCTORING_CONFIG = `${BASE_URL}/assessment-service/assessment/learner/proctoring/config`;
+export const PROCTORING_EVENTS = `${BASE_URL}/assessment-service/assessment/learner/proctoring/events`;
 // Learner-raised reattempt / time-extension requests, reviewed by an admin.
 export const REATTEMPT_REQUEST = `${BASE_URL}/assessment-service/learner/reattempt-request/v1`;
 export const REATTEMPT_REQUEST_MINE = `${BASE_URL}/assessment-service/learner/reattempt-request/v1/mine`;
@@ -98,6 +101,14 @@ export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-se
 export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner/subscription/v1`;
 export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
   `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
+
+// Plan change (upgrade / downgrade). The options endpoint prices every switchable plan
+// for this learner at this moment; the change endpoint books it. Same path is used with
+// DELETE to call off a downgrade that has not landed yet.
+export const LEARNER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-options`;
+export const LEARNER_PLAN_CHANGE = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/change-plan`;
 
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
@@ -198,6 +209,9 @@ export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/instit
 // Open (unauthenticated) guest-query endpoints — used by the login page pre-auth.
 export const OPEN_DOUBT_CONFIG = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/config`;
 export const OPEN_DOUBT_CREATE = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/create`;
+// Open (unauthenticated) read of STUDENT_DISPLAY_SETTINGS — lets pre-login screens
+// (login page, public catalogue) honour learner display toggles such as signup.enabled.
+export const OPEN_STUDENT_DISPLAY_SETTINGS = `${BASE_URL}/admin-core-service/open/institute/setting/v1/student-display`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;

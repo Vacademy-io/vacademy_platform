@@ -41,6 +41,9 @@ public class AssessmentBasicDetailsManager {
     @Autowired
     vacademy.io.assessment_service.features.assessment.service.AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
 
+    @Autowired
+    vacademy.io.assessment_service.features.proctoring.service.ProctoringConfigService proctoringConfigService;
+
     public ResponseEntity<AssessmentSaveResponseDto> saveBasicAssessmentDetails(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
 
         if (!StringUtils.hasText(assessmentId))
@@ -74,6 +77,16 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        // ifPresent, not a plain set: AI evaluation spends institute credits, so a
+        // partial basic-details save must never flip it on or off by omission.
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationEnabled())
+                .ifPresent(assessment::setAiEvaluationEnabled);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
+                .ifPresent(assessment::setAiEvaluationModel);
+        // Same rule: absent leaves it alone; NONE clears it (stored as NULL).
+        if (basicAssessmentDetailsDTO.getProctoringConfig() != null) {
+            assessment.setProctoringConfig(proctoringConfigService.serialize(basicAssessmentDetailsDTO.getProctoringConfig()));
+        }
 
         // The subject lives on the institute mapping, not the assessment. Load it
         // so subject changes are persisted on edit; without this the mapping is
@@ -119,6 +132,16 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        // ifPresent, not a plain set: AI evaluation spends institute credits, so a
+        // partial basic-details save must never flip it on or off by omission.
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationEnabled())
+                .ifPresent(assessment::setAiEvaluationEnabled);
+        Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationModel())
+                .ifPresent(assessment::setAiEvaluationModel);
+        // Same rule: absent leaves it alone; NONE clears it (stored as NULL).
+        if (basicAssessmentDetailsDTO.getProctoringConfig() != null) {
+            assessment.setProctoringConfig(proctoringConfigService.serialize(basicAssessmentDetailsDTO.getProctoringConfig()));
+        }
         addOrUpdateTestCreationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestCreation());
         addOrUpdateBoundationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestBoundation());
 
@@ -146,8 +169,17 @@ public class AssessmentBasicDetailsManager {
 
     private void addOrUpdateBoundationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.LiveDateRange boundationData) {
         if (!ObjectUtils.isEmpty(boundationData)) {
-            Optional.ofNullable(boundationData.getStartDate()).ifPresent((startDate) -> assessment.setBoundStartTime(convertStringToUTCDate(startDate)));
-            Optional.ofNullable(boundationData.getEndDate()).ifPresent((endDate) -> assessment.setBoundEndTime(convertStringToUTCDate(endDate)));
+            // The admin sends "" for a blank optional date, not null, and
+            // DateUtil.convertStringToUTCDate("") returns `new Date()` — so an
+            // unset window used to be stored as start = end = now, i.e. a survey
+            // that was already over the moment it was created. Treat blank as
+            // "leave the bound unset"; a NULL bound means no limit on that side.
+            if (StringUtils.hasText(boundationData.getStartDate())) {
+                assessment.setBoundStartTime(convertStringToUTCDate(boundationData.getStartDate()));
+            }
+            if (StringUtils.hasText(boundationData.getEndDate())) {
+                assessment.setBoundEndTime(convertStringToUTCDate(boundationData.getEndDate()));
+            }
         }
     }
 

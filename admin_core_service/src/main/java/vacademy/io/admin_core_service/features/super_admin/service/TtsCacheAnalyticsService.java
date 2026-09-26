@@ -214,6 +214,59 @@ public class TtsCacheAnalyticsService {
         return out;
     }
 
+    // ── the switch: every agent's speech-cache tier ─────────────────────────
+
+    private static final java.util.Set<String> MODES = java.util.Set.of("OFF", "FIXED", "FULL");
+
+    /** Every AI agent with its tier — including agents that never cached, so
+     *  an OFF agent can be switched on from the portal. */
+    @Transactional(readOnly = true)
+    public List<TtsCacheDTOs.AgentMode> agentModes(String instituteId) {
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT a.id, a.name, a.institute_id, i.name, a.tts_model, a.voice,
+                       COALESCE(a.speech_cache_mode, 'OFF'), a.updated_at
+                FROM ai_agent a
+                LEFT JOIN institutes i ON i.id = a.institute_id
+                WHERE (CAST(:inst AS text) IS NULL OR a.institute_id = CAST(:inst AS text))
+                ORDER BY i.name NULLS LAST, a.name
+                """).setParameter("inst", blank(instituteId)).getResultList();
+        List<TtsCacheDTOs.AgentMode> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            out.add(TtsCacheDTOs.AgentMode.builder()
+                    .agentId((String) r[0]).agentName((String) r[1])
+                    .instituteId((String) r[2]).instituteName((String) r[3])
+                    .ttsModel((String) r[4]).voice((String) r[5])
+                    .speechCacheMode((String) r[6]).updatedAt(date(r[7]))
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * Set one agent's speech-cache tier. The bot reads it at the start of every
+     * call, so it takes effect on the next call — no restart, no deploy. Until
+     * this existed the only way was SQL on the primary.
+     */
+    @Transactional
+    public TtsCacheDTOs.ModeChange setMode(String agentId, String mode, String userId) {
+        String m = mode == null ? "" : mode.trim().toUpperCase();
+        if (!MODES.contains(m)) {
+            throw new IllegalArgumentException("speech cache mode must be OFF, FIXED or FULL, got " + mode);
+        }
+        List<?> prev = em.createNativeQuery(
+                "SELECT COALESCE(speech_cache_mode, 'OFF') FROM ai_agent WHERE id = :id")
+                .setParameter("id", agentId).getResultList();
+        if (prev.isEmpty()) {
+            throw new IllegalArgumentException("no AI agent " + agentId);
+        }
+        em.createNativeQuery("UPDATE ai_agent SET speech_cache_mode = :m, updated_at = now() WHERE id = :id")
+                .setParameter("m", m).setParameter("id", agentId).executeUpdate();
+        log.info("tts-cache: agent {} speech cache {} -> {} by super-admin {}",
+                agentId, prev.get(0), m, userId);
+        return TtsCacheDTOs.ModeChange.builder()
+                .agentId(agentId).previousMode((String) prev.get(0)).speechCacheMode(m).build();
+    }
+
     // ── screen 2: the sentences ─────────────────────────────────────────────
 
     @Transactional(readOnly = true)

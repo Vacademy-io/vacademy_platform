@@ -12,7 +12,6 @@ import {
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
 import {
   ChartBar,
-  Fire,
   CaretRight,
   Check,
   X,
@@ -22,7 +21,10 @@ import { format, isToday, parseISO } from "date-fns";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import iconAttendance from "@/assets/cleaner-play/icon-attendance.webp";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 function getPercentageColor(pct: number) {
@@ -88,14 +90,16 @@ function DayDot({
 }
 
 /**
- * The streak is a game mechanic, not an attendance fact, so it rides the same
- * `gamification` widget flag as the XP / badges panel: an institute that turned
- * game mechanics off was still getting "start your streak" copy and a Fire
- * counter inside the attendance card. Defaults to on, so institutes that never
- * touched the flag are unaffected.
+ * Attendance for the dashboard rail.
+ *
+ * There is exactly one streak on the dashboard (the server's learning streak,
+ * shown by the hero / streak widgets), so this card no longer carries an
+ * attendance streak of its own (D9): the middle tile says how many of this
+ * week's class days the learner attended ("3 of 4 live classes this week").
  */
-export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean } = {}) {
+export function AttendanceWidget() {
   const { t } = useTranslation("dashboard");
+  const { t: tE } = useTranslation("dashboardEngagement");
   const [period, setPeriod] = useState<AttendancePeriod>("7d");
   const { data: stats, isLoading } = useAttendanceStats({ period });
   const { data: weeklyData, isLoading: isLoadingWeekly } =
@@ -106,6 +110,10 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
   // Attendance tracks a learner's live classes, so the label follows the
   // institute's renamed term for LiveSession, lowercased for mid-sentence use.
   const liveClassTerm = getTerminology(
+    ContentTerms.LiveSession,
+    SystemTerms.LiveSession
+  ).toLocaleLowerCase();
+  const liveClassPluralTerm = getTerminologyPlural(
     ContentTerms.LiveSession,
     SystemTerms.LiveSession
   ).toLocaleLowerCase();
@@ -142,7 +150,6 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
   }
 
   const pct = stats?.attendancePercentage ?? 0;
-  const streak = stats?.currentStreak ?? 0;
   const present = stats?.presentDays ?? 0;
   const total = stats?.totalClassDays ?? 0;
   // First-run state: nothing has been marked yet (no present days and no
@@ -152,9 +159,20 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
     weeklyData?.days?.some(
       (d) => d.status === "PRESENT" || d.status === "ABSENT"
     ) ?? false;
-  const isEmpty =
-    (total === 0 && (!showStreak || streak === 0)) ||
-    (present === 0 && !hasMarkedDay);
+  const isEmpty = total === 0 || (present === 0 && !hasMarkedDay);
+
+  // This week (Mon-Sun): class days so far and ahead, and how many attended.
+  const weekDays = weeklyData?.days ?? [];
+  const weekClassDays = weekDays.filter((d) => d.status !== "NO_CLASS").length;
+  const weekPresent = weekDays.filter((d) => d.status === "PRESENT").length;
+  const weekSummary =
+    weekClassDays > 0
+      ? tE("attendanceWeek.summary", {
+          present: weekPresent,
+          count: weekClassDays,
+          liveClass: weekClassDays === 1 ? liveClassTerm : liveClassPluralTerm,
+        })
+      : tE("attendanceWeek.none", { liveClass: liveClassPluralTerm });
 
   // The chosen period is only an upper bound: the backend also floors results at
   // the learner's enrolment date, and a studio may have no older sessions. When
@@ -169,15 +187,10 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
         })
       : null;
 
-  // Empty-state copy has to drop the streak framing too, else an institute with
-  // game mechanics off still reads "start your streak".
-  const emptyTitle = showStreak
-    ? t("attendance.emptyTitleWithStreak", { liveClass: liveClassTerm })
-    : t("attendance.emptyTitleNoStreak", { liveClass: liveClassTerm });
-  const emptyBody = showStreak
-    ? t("attendance.emptyBodyWithStreak")
-    : t("attendance.emptyBodyNoStreak");
-  const statGridClass = showStreak ? "grid-cols-3" : "grid-cols-2";
+  // No streak framing: attendance has no streak of its own any more.
+  const emptyTitle = t("attendance.emptyTitleNoStreak", { liveClass: liveClassTerm });
+  const emptyBody = t("attendance.emptyBodyNoStreak");
+  const statGridClass = "grid-cols-3";
 
   const goToAttendance = () =>
     navigate({ to: "/learning-centre/attendance" });
@@ -253,25 +266,27 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
                 <div className="mt-0.5 text-3xs font-bold text-play-ink/60">{t("attendance.overall")}</div>
               </div>
 
-              {showStreak && (
-                <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
-                  <div className="flex items-center justify-center gap-1 text-h3 font-black text-play-ink">
-                    {isLoading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <>
-                        <Fire
-                          size={18}
-                          weight="fill"
-                          className={streak > 0 ? "text-play-warn" : "text-play-ink/30"}
-                        />
-                        {streak}
-                      </>
-                    )}
-                  </div>
-                  <div className="mt-0.5 text-3xs font-bold text-play-ink/60">{t("attendance.streak")}</div>
+              <div
+                className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center"
+                title={weekSummary}
+              >
+                <div className="text-h3 font-black tabular-nums text-play-ink">
+                  {isLoadingWeekly ? (
+                    <Skeleton className="mx-auto h-8 w-12" />
+                  ) : (
+                    <span aria-hidden>
+                      {weekPresent}
+                      {weekClassDays > 0 && (
+                        <span className="text-body text-play-ink/60">/{weekClassDays}</span>
+                      )}
+                    </span>
+                  )}
                 </div>
-              )}
+                <span className="sr-only">{weekSummary}</span>
+                <div className="mt-0.5 text-3xs font-bold text-play-ink/60" aria-hidden>
+                  {t("attendance.thisWeek")}
+                </div>
+              </div>
 
               <div className="min-w-0 rounded-xl bg-white/70 px-2 py-2 text-center">
                 <div className="text-h3 font-black text-play-ink">
@@ -388,25 +403,27 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
                 <div className="cp-muted mt-0.5 text-3xs">{t("attendance.overall")}</div>
               </div>
 
-              {showStreak && (
-                <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
-                  <div className="cp-heading flex items-center justify-center gap-1 text-h3">
-                    {isLoading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <>
-                        <Fire
-                          size={18}
-                          weight="fill"
-                          className={streak > 0 ? "text-cp-gold" : "cp-muted"}
-                        />
-                        {streak}
-                      </>
-                    )}
-                  </div>
-                  <div className="cp-muted mt-0.5 text-3xs">{t("attendance.streak")}</div>
+              <div
+                className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center"
+                title={weekSummary}
+              >
+                <div className="cp-heading text-h3 tabular-nums">
+                  {isLoadingWeekly ? (
+                    <Skeleton className="mx-auto h-8 w-12" />
+                  ) : (
+                    <span aria-hidden>
+                      {weekPresent}
+                      {weekClassDays > 0 && (
+                        <span className="cp-muted text-body">/{weekClassDays}</span>
+                      )}
+                    </span>
+                  )}
                 </div>
-              )}
+                <span className="sr-only">{weekSummary}</span>
+                <div className="cp-muted mt-0.5 text-3xs" aria-hidden>
+                  {t("attendance.thisWeek")}
+                </div>
+              </div>
 
               <div className="min-w-0 rounded-xl bg-cp-bg-deep px-2 py-2 text-center">
                 <div className="cp-heading text-h3">
@@ -535,28 +552,25 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
                 </div>
               </div>
 
-              {/* Streak */}
-              {showStreak && (
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground flex items-center justify-center gap-1">
-                    {isLoading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <>
-                        <Fire
-                          size={20}
-                          weight="fill"
-                          className={streak > 0 ? "text-orange-500" : "text-slate-300"}
-                        />
-                        {streak}
-                      </>
-                    )}
-                  </div>
-                  <div className="text-caption text-muted-foreground mt-0.5">
-                    {t("attendance.streak")}
-                  </div>
+              {/* This week: attended class days of this week's class days */}
+              <div className="text-center" title={weekSummary}>
+                <div className="text-h2 font-bold tabular-nums text-foreground">
+                  {isLoadingWeekly ? (
+                    <Skeleton className="h-8 w-12 mx-auto" />
+                  ) : (
+                    <span aria-hidden>
+                      {weekPresent}
+                      {weekClassDays > 0 && (
+                        <span className="text-muted-foreground text-title">/{weekClassDays}</span>
+                      )}
+                    </span>
+                  )}
                 </div>
-              )}
+                <span className="sr-only">{weekSummary}</span>
+                <div className="text-caption text-muted-foreground mt-0.5" aria-hidden>
+                  {t("attendance.thisWeek")}
+                </div>
+              </div>
 
               {/* Present / Total */}
               <div className="text-center">

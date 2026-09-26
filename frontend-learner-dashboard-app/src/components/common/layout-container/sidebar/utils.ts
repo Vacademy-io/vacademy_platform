@@ -438,3 +438,64 @@ export async function filterHamburgerMenuItemsWithPermissions(
 
   return HamBurgerSidebarItemsData;
 }
+
+/* -------------------------------------------------------------------------- *
+ * "Has a daily-task plan" flag.
+ *
+ * Remembers, per institute, that the learner's last engagement feed had a plan
+ * running. Two readers need that answer before (or without) fetching the feed:
+ *  - the dashboard, which picks the Today module's slot on the first render so
+ *    the main column never reflows when the feed lands;
+ *  - the sidebar, which shows the "Daily tasks" entry only to learners who have
+ *    tasks, without polling the feed on every page.
+ * The dashboard writes it from the feed: set on a plan, cleared on a confirmed
+ * "no plan". Storage can be missing or throw (private mode, cleared site data),
+ * so every access is guarded and the answer then defaults to "no plan".
+ * -------------------------------------------------------------------------- */
+
+const ENGAGEMENT_PLAN_FLAG_KEY = "vacademy:engagement:plan-institutes";
+/** Fired on `window` whenever the flag changes, so the sidebar updates in place. */
+export const ENGAGEMENT_PLAN_FLAG_EVENT = "vacademy:engagement-plan-flag";
+
+const readPlanInstitutes = (): string[] => {
+  try {
+    const raw = localStorage.getItem(ENGAGEMENT_PLAN_FLAG_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Whether the learner's last feed for this institute had a plan. With no
+ * institute id yet (still resolving), whether any institute had one — most
+ * learners belong to exactly one.
+ */
+export const readEngagementPlanFlag = (instituteId?: string | null): boolean => {
+  const ids = readPlanInstitutes();
+  return instituteId ? ids.includes(instituteId) : ids.length > 0;
+};
+
+/** Record whether this institute currently has a plan. No-op without an id. */
+export const writeEngagementPlanFlag = (
+  instituteId: string | null | undefined,
+  hasPlan: boolean
+): void => {
+  if (!instituteId) return;
+  const ids = readPlanInstitutes();
+  const had = ids.includes(instituteId);
+  if (had === hasPlan) return;
+  const next = hasPlan ? [...ids, instituteId] : ids.filter((id) => id !== instituteId);
+  try {
+    localStorage.setItem(ENGAGEMENT_PLAN_FLAG_KEY, JSON.stringify(next));
+  } catch {
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ENGAGEMENT_PLAN_FLAG_EVENT));
+  }
+};

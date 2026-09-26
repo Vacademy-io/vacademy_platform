@@ -1665,3 +1665,17 @@ html, body {
   border-color: hsl(var(--border));
   color: inherit;
 }
+
+/* Safe-area padding for full-height overlays (the engagement task runner's
+   bottom sheet on phones): keeps its header clear of the notch / status bar and
+   its footer CTA clear of the home indicator. env() is 0 on devices without
+   insets, so these are no-ops on the web. Unlike html/body above, no -20px
+   offset: an overlay has no app header of its own to compensate for. */
+@layer utilities {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

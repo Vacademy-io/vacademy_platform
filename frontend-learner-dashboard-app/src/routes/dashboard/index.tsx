@@ -14,7 +14,7 @@ import {
 } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { getStudyLibraryQuery } from "@/services/study-library/getStudyLibraryDetails";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DashbaordResponse,
   DashboardSlide,
@@ -57,11 +57,17 @@ import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAttendance";
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
 import { toast } from "sonner";
-import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+  readEngagementPlanFlag,
+  writeEngagementPlanFlag,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
+import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
 import { DashboardPinsPanel } from "@/components/announcements";
 import { RaiseQueryCard } from "./-components/RaiseQueryCard";
 import { useServerTime } from "@/hooks/use-server-time";
@@ -93,6 +99,7 @@ import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import {
+  applyServerPoints,
   computeGamificationData,
   findNewlyUnlockedSince,
   readCelebrationBaseline,
@@ -119,8 +126,12 @@ import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
-import { EngagementTodayCard } from "./-components/engagement/EngagementTodayCard";
-import { fetchPointsSummary } from "@/services/points";
+import { EngagementTaskHostProvider } from "./-components/engagement/EngagementTaskHost";
+import { TodayModule } from "./-components/engagement/TodayModule";
+import { useEngagementFeed } from "./-components/engagement/use-engagement-feed";
+import type { DailyTaskProgress } from "./-components/play/useDashboardHeroData";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { fetchPointsSummary, pointsMeKey, useCurrentInstituteId } from "@/services/points";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import {
@@ -251,6 +262,7 @@ function DashboardOnboardingGate() {
 
 export function DashboardComponent() {
   const { t } = useTranslation("dashboard");
+  const { t: tEngagement } = useTranslation("dashboardEngagement");
   const [username, setUsername] = useState<string | null>(null);
   const [testAssignedCount, setTestAssignedCount] = useState<number>(0);
   // Count kept in state only because fetchStaticData's signature requires the setter.
@@ -270,6 +282,15 @@ export function DashboardComponent() {
   const isCleanerPlayTheme = useCleanerPlayTheme();
   const { setData: setGamificationData } = usePlayGamificationStore();
   const { instituteId } = useInstituteFeatureStore();
+  const queryClient = useQueryClient();
+  // Today module slot (D3/D4): lg and up = the rail, chosen from the screen
+  // width and a remembered "has a plan" flag, never from the async feed, so
+  // the main column does not reflow when the feed lands. `use-mobile` breaks
+  // at 768, which is the wrong line here.
+  const isLgScreen = useMediaQuery("(min-width: 1024px)");
+  const [rememberedPlan, setRememberedPlan] = useState<boolean>(() =>
+    readEngagementPlanFlag(instituteId)
+  );
 
   // Fetch study library data with React Query (5-minute cache)
   const { data: studyLibraryData, fetchStatus: studyLibraryFetchStatus } = useQuery(
@@ -326,19 +347,6 @@ export function DashboardComponent() {
       }
     }).length;
   }, [mergedLiveSessions]);
-
-  // Consecutive attended class days this week, walking back from the most
-  // recent day. PENDING / NO_CLASS days neither extend nor break the streak.
-  const attendanceStreak = useMemo(() => {
-    const days = weeklyAttendance?.days ?? [];
-    let streak = 0;
-    for (let i = days.length - 1; i >= 0; i--) {
-      const status = days[i]?.status;
-      if (status === "PRESENT") streak += 1;
-      else if (status === "ABSENT" || status === "UNMARKED") break;
-    }
-    return streak;
-  }, [weeklyAttendance]);
 
   // Any course with progress > 0 — splits first-run from returning learners.
   const hasAnyProgress = useMemo(
@@ -492,7 +500,13 @@ export function DashboardComponent() {
 
   const getWidgetOrder = (id: StudentDashboardWidgetConfig["id"]) => {
     const cfg = widgetConfigs?.find((w) => w.id === id);
-    return cfg?.order ?? Number.MAX_SAFE_INTEGER;
+    // An id missing from a saved config takes its code default (todayTasks
+    // leads its column), not "last".
+    return (
+      cfg?.order ??
+      DEFAULT_STUDENT_DISPLAY_SETTINGS.dashboard.widgets.find((w) => w.id === id)?.order ??
+      Number.MAX_SAFE_INTEGER
+    );
   };
 
   // Hoisted to a stable boolean because the gamification EFFECT below depends
@@ -502,6 +516,41 @@ export function DashboardComponent() {
   const customWidget = widgetConfigs?.find(
     (w) => w.id === "custom" && w.visible !== false
   );
+
+  // ── Today's daily tasks (engagement plan) ──────────────────────────────────
+  const showTodayTasks =
+    isWidgetVisible("todayTasks") && !showForInstitutes([HOLISTIC_INSTITUTE_ID]);
+  // Same query (and key) the Today module reads, so this costs no extra call.
+  const { feed: engagementFeed, status: engagementStatus } = useEngagementFeed({
+    enabled: showTodayTasks,
+  });
+  const engagementInstituteId = useCurrentInstituteId();
+  // Remember whether a plan runs (for the next visit's slot and the sidebar's
+  // "Daily tasks" entry). A confirmed "no plan" also releases a rail that was
+  // held only for the module.
+  useEffect(() => {
+    if (engagementFeed === undefined || !engagementInstituteId) return;
+    writeEngagementPlanFlag(engagementInstituteId, engagementFeed !== null);
+    if (engagementFeed === null) setRememberedPlan(false);
+  }, [engagementFeed, engagementInstituteId]);
+  // Hero daily goal = today's tasks done / scheduled while a plan runs.
+  const dailyTaskProgress: DailyTaskProgress | null =
+    engagementFeed && engagementFeed.scheduledToday > 0
+      ? { done: engagementFeed.completedToday, scheduled: engagementFeed.scheduledToday }
+      : null;
+  // Rail slot when the rail exists anyway, or when a plan is remembered.
+  // (These ids must match railWidgets below.)
+  const railHasOtherWidgets = (
+    ["upcomingLiveClasses", "thisWeekAttendance", "myMentors", "getApp"] as const
+  ).some((id) => isWidgetVisible(id));
+  const todayInRail = showTodayTasks && isLgScreen && (railHasOtherWidgets || rememberedPlan);
+  // Mount the module (and so its skeleton / error card) only for a learner who
+  // has, or last had, a plan. Most institutes run none: without this gate every
+  // dashboard load flashed a skeleton that then collapsed, which below lg
+  // shifted Continue Learning up (a main-column reflow). A first-ever plan
+  // appears once when the feed lands; from then on the flag holds its slot.
+  const todayMounted =
+    showTodayTasks && (engagementFeed != null || (engagementStatus !== "ready" && rememberedPlan));
 
   useEffect(() => {
     if (batchId) {
@@ -588,7 +637,30 @@ export function DashboardComponent() {
         const learnerId = await getUserId();
         const baseline = inputsSettled ? readCelebrationBaseline(instituteId, learnerId) : null;
 
-        const gamificationData = computeGamificationData({
+        // points_ledger is the authoritative source for points AND the streak.
+        // Fetched through the shared ['points','me'] query so the widgets and
+        // the pill reuse it; null (offline, older server) falls back to the
+        // browser-computed figures.
+        // Keyed by the id usePointsSummary resolves (getInstituteId), so this
+        // run and the widgets share ONE cache entry even before the feature
+        // store has its instituteId.
+        const pointsInstituteId = instituteId || (await getInstituteId()) || null;
+        const serverPoints = await queryClient
+          .fetchQuery({
+            queryKey: pointsMeKey(pointsInstituteId),
+            queryFn: () => fetchPointsSummary(pointsInstituteId),
+            staleTime: 60_000,
+          })
+          .catch(() => null);
+        const serverStreak =
+          typeof serverPoints?.currentStreak === "number"
+            ? {
+                currentStreak: serverPoints.currentStreak,
+                longestStreak: serverPoints.longestStreak ?? null,
+              }
+            : null;
+
+        const computed = computeGamificationData({
           dashboard: data,
           activities,
           attendance: weeklyAttendance ?? null,
@@ -600,27 +672,15 @@ export function DashboardComponent() {
           scoring,
           liveSessionCount: liveStats.count,
           liveSessionStreak: liveStats.streak,
+          // One streak everywhere (D9): the server's, so the streak points line
+          // and the streak badge agree with every streak display.
+          serverStreak,
         });
 
-        // The figures above are computed in THIS browser and cached in
-        // localStorage, so they can never agree with a leaderboard or be
-        // compared between learners. points_ledger is the authoritative source;
-        // overlay it when the server answers and keep the computed values as a
-        // fallback when it does not (offline, or an institute mid-rollout).
-        const serverPoints = await fetchPointsSummary();
-        if (serverPoints) {
-          gamificationData.totalXp = serverPoints.totalPoints;
-          gamificationData.todayXp = serverPoints.todayPoints;
-          gamificationData.level = serverPoints.level;
-          gamificationData.xpToNextLevel = serverPoints.pointsToNextLevel;
-          if (serverPoints.breakdown?.length) {
-            gamificationData.xpBreakdown = serverPoints.breakdown.map((b) => ({
-              key: b.key,
-              label: b.label,
-              points: b.points,
-            }));
-          }
-        }
+        // The figures above are computed in THIS browser, so they can never
+        // agree with a leaderboard; overlay the server's totals, level,
+        // breakdown and streak when it answered (D2).
+        const gamificationData = applyServerPoints(computed, serverPoints);
 
         // Cache the FINAL figures (after the server overlay) for pages that read
         // the cache on a fresh load; compute no longer writes it (D2).
@@ -708,6 +768,7 @@ export function DashboardComponent() {
     studyLibraryFetchStatus,
     setGamificationData,
     showGamification,
+    queryClient,
     t,
   ]);
 
@@ -835,7 +896,15 @@ export function DashboardComponent() {
     ContentTerms.LiveSession,
     SystemTerms.LiveSession
   );
-  // One useful header fact: classes today, else attendance streak, else none.
+  // This week's attended class days out of its class days (the attendance
+  // "streak" is gone: the dashboard has one streak, the server's; D9).
+  const weekClassDays = (weeklyAttendance?.days ?? []).filter(
+    (d) => d.status !== "NO_CLASS"
+  ).length;
+  const weekPresentDays = (weeklyAttendance?.days ?? []).filter(
+    (d) => d.status === "PRESENT"
+  ).length;
+  // One useful header fact: classes today, else this week's attendance, else none.
   const headerFact =
     classesTodayCount > 0
       ? t("dashboardPage.classesToday", {
@@ -845,8 +914,15 @@ export function DashboardComponent() {
             : liveClassPlural
           ).toLowerCase(),
         })
-      : attendanceStreak > 0
-        ? t("dashboardPage.attendanceStreakFact", { count: attendanceStreak })
+      : weekPresentDays > 0
+        ? tEngagement("attendanceWeek.summary", {
+            present: weekPresentDays,
+            count: weekClassDays,
+            liveClass: (weekClassDays === 1
+              ? liveClassSingular
+              : liveClassPlural
+            ).toLowerCase(),
+          })
         : null;
 
   const heroProps = {
@@ -856,6 +932,12 @@ export function DashboardComponent() {
     hasAnyProgress,
     studyLibraryLoaded,
     onJoinSession: handleJoinSession,
+  };
+  // Play / cleanerPlay heroes carry the streak and the daily-goal ring.
+  const playHeroProps = {
+    ...heroProps,
+    showGamification,
+    taskProgress: dailyTaskProgress,
   };
 
   // ── Curated 2/3 + 1/3 layout ────────────────────────────────────────────────
@@ -871,7 +953,7 @@ export function DashboardComponent() {
   }> = [
     {
       id: "coursesStat" as const,
-      render: (layout) => (
+      render: (layout: StatCardLayout) => (
         <StatCard
           layout={layout}
           title={getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
@@ -896,7 +978,7 @@ export function DashboardComponent() {
     },
     {
       id: "liveClasses" as const,
-      render: (layout) => (
+      render: (layout: StatCardLayout) => (
         <StatCard
           layout={layout}
           title={getTerminologyPlural(
@@ -918,7 +1000,7 @@ export function DashboardComponent() {
     },
     {
       id: "evaluationStat" as const,
-      render: (layout) => (
+      render: (layout: StatCardLayout) => (
         <StatCard
           layout={layout}
           title={t("dashboardPage.statCard.assessmentsTitle")}
@@ -960,6 +1042,13 @@ export function DashboardComponent() {
   // insights, custom widget, commerce. Commerce is hidden for the play
   // (K-12) audience.
   const mainColumnWidgets = [
+    {
+      // Below lg (or with no rail at all): right under the hero, collapsed.
+      id: "todayTasks" as const,
+      order: getWidgetOrder("todayTasks"),
+      visible: todayMounted && !todayInRail,
+      render: <TodayModule slot="main" showGamification={showGamification} />,
+    },
     {
       id: "continueLearning" as const,
       order: getWidgetOrder("continueLearning"),
@@ -1076,6 +1165,13 @@ export function DashboardComponent() {
   // then the configurable rail widgets.
   const railWidgets = [
     {
+      // lg and up: first in the rail (default order 0.5).
+      id: "todayTasks" as const,
+      order: getWidgetOrder("todayTasks"),
+      visible: todayMounted && todayInRail,
+      render: <TodayModule slot="rail" showGamification={showGamification} />,
+    },
+    {
       id: "upcomingLiveClasses" as const,
       order: getWidgetOrder("upcomingLiveClasses"),
       visible: isWidgetVisible("upcomingLiveClasses"),
@@ -1092,8 +1188,7 @@ export function DashboardComponent() {
       id: "thisWeekAttendance" as const,
       order: getWidgetOrder("thisWeekAttendance"),
       visible: isWidgetVisible("thisWeekAttendance"),
-      // Streak rides the gamification flag — see AttendanceWidget.
-      render: <AttendanceWidget showStreak={showGamification} />,
+      render: <AttendanceWidget />,
     },
     {
       id: "myMentors" as const,
@@ -1120,6 +1215,9 @@ export function DashboardComponent() {
   const hasRail = railWidgets.length > 0;
 
   return (
+    // One task runner for the whole page, mounted ABOVE the Today module so a
+    // resize that moves the module between slots never drops an open runner.
+    <EngagementTaskHostProvider showGamification={showGamification}>
     <div className="min-h-screen bg-background relative overflow-hidden w-full dashboard-container smooth-scroll">
       <Helmet>
         <title>
@@ -1196,9 +1294,9 @@ export function DashboardComponent() {
           <>
             {/* Hero — owns the live-class banner and resume / first-run band */}
             {isCleanerPlayTheme ? (
-              <CleanerPlayDashboardHero {...heroProps} />
+              <CleanerPlayDashboardHero {...playHeroProps} />
             ) : isPlayTheme ? (
-              <PlayDashboardHero {...heroProps} />
+              <PlayDashboardHero {...playHeroProps} />
             ) : (
               // Passed only here: the play / cleaner-play heroes have no
               // first-run checklist to suppress (they render a greeting band
@@ -1236,10 +1334,6 @@ export function DashboardComponent() {
               >
                 {/* Without a rail, announcements lead the main column */}
                 {!hasRail && <DashboardPinsPanel maxPins={3} />}
-                {/* Today's teacher-scheduled tasks. Renders null when the
-                    institute has no engagement plan running, so a dashboard
-                    without the feature keeps exactly the layout it has now. */}
-                <EngagementTodayCard />
                 {mainColumnWidgets.map((w) => (
                   <div key={w.id} className="empty:hidden">
                     {w.render}
@@ -1634,5 +1728,6 @@ export function DashboardComponent() {
         )}
       </div>
     </div>
+    </EngagementTaskHostProvider>
   );
 }

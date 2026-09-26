@@ -12,6 +12,7 @@ import type { PlayBadge, PlayGamificationData } from "@/services/play-gamificati
 import { isLibraryToken } from "@/services/badge-library";
 import { isManualTrigger } from "@/services/badge-config";
 import { BadgeVisual } from "./badge-icons";
+import { useStreakState } from "./play/useDashboardHeroData";
 
 const XP_PER_LEVEL = 500;
 
@@ -41,7 +42,11 @@ export function AchievementsDialog({
     Math.max(0, Math.round(((XP_PER_LEVEL - xpToNext) / XP_PER_LEVEL) * 100))
   );
   const breakdown = data?.xpBreakdown ?? [];
-  const streak = data?.currentStreak ?? 0;
+  // The one streak value every surface shows (server first, then the browser
+  // estimate), read only while the dialog is open.
+  const streakState = useStreakState({ enabled: open });
+  const streak = streakState.source === "server" ? streakState.current : data?.currentStreak ?? 0;
+  const streakKept = streakState.source === "server" ? streakState.status === "kept" : true;
 
   // Unlocked first, then locked badges by closeness to unlocking (so the "almost
   // there" badges bubble up); locked staff-awarded badges (no progress to make) last.
@@ -85,9 +90,16 @@ export function AchievementsDialog({
                   </p>
                 </div>
                 {streak > 0 && (
-                  <div className="flex items-center gap-1 rounded-full bg-warning-50 px-2.5 py-1">
-                    <Fire weight="fill" size={14} className="text-warning-500" />
-                    <span className="text-caption font-semibold text-warning-600">
+                  <div
+                    className="flex items-center gap-1 rounded-full bg-warning-50 px-2.5 py-1"
+                    title={t("streak.dayStreakLabel")}
+                  >
+                    <Fire
+                      weight={streakKept ? "fill" : "regular"}
+                      size={14}
+                      className="text-warning-500"
+                    />
+                    <span className="text-caption font-semibold tabular-nums text-warning-600">
                       {streak}
                     </span>
                   </div>

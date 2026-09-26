@@ -35,6 +35,7 @@ import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/lea
 import { Route as KycCompleteIndexRouteImport } from './routes/kyc-complete/index'
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
 import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-response/index'
+import { Route as EngagementIndexRouteImport } from './routes/engagement/index'
 import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
@@ -253,6 +254,11 @@ const InstituteSelectionIndexRoute = InstituteSelectionIndexRouteImport.update({
 const EnquiryResponseIndexRoute = EnquiryResponseIndexRouteImport.update({
   id: '/enquiry-response/',
   path: '/enquiry-response/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EngagementIndexRoute = EngagementIndexRouteImport.update({
+  id: '/engagement/',
+  path: '/engagement/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
@@ -765,6 +771,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/downloads': typeof DownloadsIndexRoute
+  '/engagement': typeof EngagementIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/kyc-complete': typeof KycCompleteIndexRoute
@@ -880,6 +887,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/downloads': typeof DownloadsIndexRoute
+  '/engagement': typeof EngagementIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/kyc-complete': typeof KycCompleteIndexRoute
@@ -996,6 +1004,7 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
   '/downloads/': typeof DownloadsIndexRoute
+  '/engagement/': typeof EngagementIndexRoute
   '/enquiry-response/': typeof EnquiryResponseIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
   '/kyc-complete/': typeof KycCompleteIndexRoute
@@ -1114,6 +1123,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/delete-user'
     | '/downloads'
+    | '/engagement'
     | '/enquiry-response'
     | '/institute-selection'
     | '/kyc-complete'
@@ -1229,6 +1239,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/delete-user'
     | '/downloads'
+    | '/engagement'
     | '/enquiry-response'
     | '/institute-selection'
     | '/kyc-complete'
@@ -1344,6 +1355,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/delete-user/'
     | '/downloads/'
+    | '/engagement/'
     | '/enquiry-response/'
     | '/institute-selection/'
     | '/kyc-complete/'
@@ -1461,6 +1473,7 @@ export interface RootRouteChildren {
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   DownloadsIndexRoute: typeof DownloadsIndexRoute
+  EngagementIndexRoute: typeof EngagementIndexRoute
   EnquiryResponseIndexRoute: typeof EnquiryResponseIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
   KycCompleteIndexRoute: typeof KycCompleteIndexRoute
@@ -1731,6 +1744,13 @@ declare module '@tanstack/react-router' {
       path: '/enquiry-response'
       fullPath: '/enquiry-response'
       preLoaderRoute: typeof EnquiryResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/engagement/': {
+      id: '/engagement/'
+      path: '/engagement'
+      fullPath: '/engagement'
+      preLoaderRoute: typeof EngagementIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/downloads/': {
@@ -2413,6 +2433,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   DownloadsIndexRoute: DownloadsIndexRoute,
+  EngagementIndexRoute: EngagementIndexRoute,
   EnquiryResponseIndexRoute: EnquiryResponseIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
   KycCompleteIndexRoute: KycCompleteIndexRoute,

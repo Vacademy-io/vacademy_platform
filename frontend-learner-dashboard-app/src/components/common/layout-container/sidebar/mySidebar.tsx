@@ -25,6 +25,8 @@ import {
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
   getTerminologyPlural,
+  readEngagementPlanFlag,
+  ENGAGEMENT_PLAN_FLAG_EVENT,
 } from "./utils";
 import {
   ContentTerms,
@@ -53,6 +55,7 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
+  ListChecks,
 } from "@phosphor-icons/react";
 import {
   NavHouseIcon,
@@ -90,6 +93,18 @@ const createLetterIcon =
       </div>
     );
 
+/**
+ * "Daily tasks" nav icon. Phosphor's light weight matches the thin-line custom
+ * nav set (nav-icons.tsx); the sidebar's active/inactive `weight` is ignored
+ * the same way those icons ignore it, since state is carried by colour.
+ */
+const NavDailyTasksIcon = ({ className }: { className?: string; weight?: unknown }) => (
+  <ListChecks weight="light" className={className} aria-hidden />
+);
+
+/** Sidebar tab id of the injected "Daily tasks" entry. */
+const DAILY_TASKS_TAB_ID = "daily-tasks";
+
 const humanizeText = (text: string) => {
   if (!text) return "";
   return text
@@ -110,6 +125,7 @@ export const MySidebar = ({
   hideBrandingHeader?: boolean;
 }) => {
   const { t, i18n } = useTranslation("layoutCommonA");
+  const { t: tEngagement } = useTranslation("dashboardEngagement");
   const navigate = useNavigate();
   const { state, isMobile, toggleSidebar } = useSidebar();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -174,6 +190,19 @@ export const MySidebar = ({
     getInstituteId().then((id) => setInstituteId(id ?? undefined));
   }, []);
   const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
+
+  // "Daily tasks" shows only to learners whose institute runs a daily-task
+  // plan. The dashboard records that from the feed (see readEngagementPlanFlag),
+  // so the sidebar never polls the feed itself on every page.
+  const [hasEngagementPlan, setHasEngagementPlan] = useState<boolean>(() =>
+    readEngagementPlanFlag()
+  );
+  useEffect(() => {
+    const sync = () => setHasEngagementPlan(readEngagementPlanFlag(instituteId));
+    sync();
+    window.addEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+    return () => window.removeEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+  }, [instituteId]);
   // A learner with no mentor still needs a way in to Find a mentor, so the tab
   // also appears when their institute lists mentors for browsing. The directory
   // is only fetched in that case — learners who already have a mentor see the
@@ -227,6 +256,7 @@ export const MySidebar = ({
       referral: NavGiftIcon,
       attendance: NavCalendarCheckIcon,
       "my-mentors": NavUsersIcon,
+      [DAILY_TASKS_TAB_ID]: NavDailyTasksIcon,
     }),
     []
   );
@@ -238,6 +268,7 @@ export const MySidebar = ({
       attendance: "/learning-centre/attendance",
       chat: "/chat",
       "my-mentors": "/my-mentors",
+      [DAILY_TASKS_TAB_ID]: "/engagement",
     }),
     []
   );
@@ -252,10 +283,11 @@ export const MySidebar = ({
       attendance: t("sidebar.tabs.attendance"),
       chat: t("sidebar.tabs.inAppMessages"),
       "my-mentors": t("sidebar.tabs.myMentors"),
+      [DAILY_TASKS_TAB_ID]: tEngagement("nav.dailyTasks"),
     }),
     // t's identity is stable across a language switch in react-i18next; key
     // off i18n.language too so this fallback map actually re-translates.
-    [t, i18n.language]
+    [t, tEngagement, i18n.language]
   );
 
   const transformTabsToSidebarItems = (
@@ -412,14 +444,38 @@ export const MySidebar = ({
     return next;
   };
 
+  // The "Daily tasks" entry (/engagement, active on every /engagement page) is
+  // data-driven like My Mentors: injected right after the dashboard while the
+  // learner has a plan, and absent otherwise. A saved tab with this id (should
+  // an institute ever configure one) keeps its own position and visibility.
+  const ensureDailyTasksTab = (
+    tabs: StudentSidebarTabConfig[],
+    hasPlan: boolean
+  ): StudentSidebarTabConfig[] => {
+    if (!hasPlan) return tabs.filter((tab) => tab.id !== DAILY_TASKS_TAB_ID);
+    if (tabs.some((tab) => tab.id === DAILY_TASKS_TAB_ID)) return tabs;
+    const dashboardIndex = tabs.findIndex((tab) => tab.id === "dashboard");
+    const next = tabs.slice();
+    next.splice(dashboardIndex >= 0 ? dashboardIndex + 1 : 0, 0, {
+      id: DAILY_TASKS_TAB_ID,
+      route: "/engagement",
+      order: 0,
+      visible: true,
+    });
+    return next;
+  };
+
   const filteredSidebarItems = useMemo(
     () =>
       transformTabsToSidebarItems(
-        ensureMentorTab(
-          configuredTabs,
-          myMentorsQuery.data ?? [],
-          chatFeatureEnabled,
-          (mentorDirectoryQuery.data?.length ?? 0) > 0
+        ensureDailyTasksTab(
+          ensureMentorTab(
+            configuredTabs,
+            myMentorsQuery.data ?? [],
+            chatFeatureEnabled,
+            (mentorDirectoryQuery.data?.length ?? 0) > 0
+          ),
+          hasEngagementPlan
         )
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -428,6 +484,8 @@ export const MySidebar = ({
       myMentorsQuery.data,
       mentorDirectoryQuery.data,
       chatFeatureEnabled,
+      hasEngagementPlan,
+      labelByTabId,
     ]
   );
 

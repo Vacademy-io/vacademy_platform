@@ -32,6 +32,10 @@ public class CopyCheckGradeRequestDto {
     @JsonProperty("institute_id")
     private String instituteId;
 
+    /** COPY (default on ai_service) = scanned sheet at pdf_url; TYPED = online answers in student_answer. */
+    @JsonProperty("answer_mode")
+    private String answerMode;
+
     @JsonProperty("pdf_url")
     private String pdfUrl;
 
@@ -88,5 +92,13 @@ public class CopyCheckGradeRequestDto {
 
         @JsonProperty("correct_answer")
         private String correctAnswer;
+
+        /** TYPED mode only: what the learner typed for this question. */
+        @JsonProperty("student_answer")
+        private String studentAnswer;
+
+        /** TYPED mode only: the answer the teacher wrote on the question, as a reference. */
+        @JsonProperty("model_answer")
+        private String modelAnswer;
     }
 }

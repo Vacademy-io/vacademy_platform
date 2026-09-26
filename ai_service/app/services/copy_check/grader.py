@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from ..chat_llm_client import ChatLLMClient
 from .prompt_builder import GRADING_SYSTEM, build_grading_prompt
+from .typed_answers import TYPED_GRADING_SYSTEM, build_typed_grading_prompt
 from .validator import coerce_confidence
 
 logger = logging.getLogger(__name__)
@@ -223,6 +224,42 @@ class CopyCheckGrader:
             {"role": "system", "content": GRADING_SYSTEM},
             {"role": "user", "content": prompt},
         ]
+        return await self._complete(messages, question, model)
+
+    async def grade_typed_question(
+        self,
+        question: dict[str, Any],
+        rubric: dict[str, Any],
+        preferred_model: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """An answer typed in the online player (`question["student_answer"]`):
+        no transcript, no annotations. Same budget, escalation and JSON repair
+        as a copy."""
+        model = preferred_model or DEFAULT_MODEL
+        verdict = await self._call_typed(question, rubric, model)
+        if (
+            coerce_confidence(verdict.get("confidence")) < ESCALATION_CONF_THRESHOLD
+            and self._escalations_used < MAX_ESCALATIONS_PER_COPY
+        ):
+            self._escalations_used += 1
+            try:
+                verdict = await self._call_typed(question, rubric, ESCALATION_MODEL)
+            except Exception as e:
+                logger.warning(f"Escalation failed, keeping initial verdict: {e}")
+        return verdict
+
+    async def _call_typed(self, question: dict[str, Any], rubric: dict[str, Any], model: str) -> dict[str, Any]:
+        if self._tokens_used >= self.token_budget:
+            raise RuntimeError(
+                f"copy-check token budget exhausted: {self._tokens_used} >= {self.token_budget}"
+            )
+        messages = [
+            {"role": "system", "content": TYPED_GRADING_SYSTEM},
+            {"role": "user", "content": build_typed_grading_prompt(question, rubric)},
+        ]
+        return await self._complete(messages, question, model)
+
+    async def _complete(self, messages: list[dict[str, str]], question: dict[str, Any], model: str) -> dict[str, Any]:
         try:
             response = await self.llm.chat_completion(
                 messages=messages,

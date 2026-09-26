@@ -22,18 +22,16 @@ export const surveyCardState = (
 ) => {
   const isSurvey = info.play_mode === "SURVEY";
   const attempted = isPast && usedAttempts > 0;
+  // PENDING = held for a teacher on any result type (an uploaded copy, or typed
+  // answers the AI is grading); MANUAL waits for RELEASED as before.
+  const held =
+    info.report_release_status === "PENDING" ||
+    (info.result_type === "MANUAL" &&
+      info.report_release_status !== "RELEASED");
 
   return {
-    canShowReport:
-      !isSurvey &&
-      attempted &&
-      (info.result_type !== "MANUAL" ||
-        info.report_release_status === "RELEASED"),
-    resultsPending:
-      !isSurvey &&
-      attempted &&
-      info.result_type === "MANUAL" &&
-      info.report_release_status !== "RELEASED",
+    canShowReport: !isSurvey && attempted && !held,
+    resultsPending: !isSurvey && attempted && held,
     surveySubmitted: isSurvey && attempted,
   };
 };

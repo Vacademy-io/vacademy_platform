@@ -6,6 +6,7 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.TypedAnswerEvaluation;
 
 import java.util.Optional;
 
@@ -41,7 +42,14 @@ class StudentAttemptServiceManualHoldTest {
     }
 
     private static StudentAttempt run(StudentAttempt sa) {
+        return run(sa, false);
+    }
+
+    private static StudentAttempt run(StudentAttempt sa, boolean awaitsAiGrading) {
         StudentAttemptService service = spy(new StudentAttemptService());
+        TypedAnswerEvaluation typed = mock(TypedAnswerEvaluation.class);
+        when(typed.awaitsAiGrading(any(), any())).thenReturn(awaitsAiGrading);
+        ReflectionTestUtils.setField(service, "typedAnswerEvaluation", typed);
         doReturn(0.0).when(service).calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(any());
         AttemptDataParserService parser = mock(AttemptDataParserService.class);
         when(parser.getTimeElapsedInSecondsFromAttemptData(any())).thenReturn(0L);
@@ -64,6 +72,28 @@ class StudentAttemptServiceManualHoldTest {
     @Test
     void anAlreadyReleasedAttemptStaysReleasedWhenRecalculated() {
         StudentAttempt saved = run(attempt("MANUAL", "RELEASED"));
+        assertThat(saved.getReportReleaseStatus()).isEqualTo("RELEASED");
+    }
+
+    @Test
+    void anOnlineAttemptTheAiWillGradeIsHeldInsteadOfAutoReleased() {
+        // Essay typed in the player on an "auto after submission" assessment with
+        // AI evaluation on: the word-overlap score must not be published.
+        StudentAttempt sa = attempt("AUTO", null);
+        sa.getRegistration().getAssessment().setResultType("AUTO_AFTER_SUBMISSION");
+        StudentAttempt saved = run(sa, true);
+        assertThat(saved.getResultStatus()).isEqualTo("PENDING");
+        assertThat(saved.getReportReleaseStatus()).isEqualTo("PENDING");
+        // result_marks is still written for an AUTO attempt, as the release path expects.
+        assertThat(saved.getResultMarks()).isEqualTo(0.0);
+    }
+
+    @Test
+    void theSameAttemptWithoutAiIsReleasedOnSubmitAsBefore() {
+        StudentAttempt sa = attempt("AUTO", null);
+        sa.getRegistration().getAssessment().setResultType("AUTO_AFTER_SUBMISSION");
+        StudentAttempt saved = run(sa, false);
+        assertThat(saved.getResultStatus()).isEqualTo("COMPLETED");
         assertThat(saved.getReportReleaseStatus()).isEqualTo("RELEASED");
     }
 

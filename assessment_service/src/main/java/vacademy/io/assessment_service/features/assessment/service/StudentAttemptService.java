@@ -23,6 +23,7 @@ import vacademy.io.assessment_service.features.assessment.enums.ResultTypeEnum;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.TypedAnswerEvaluation;
 import vacademy.io.assessment_service.features.learner_assessment.constants.AttemptJsonConstants;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
@@ -67,6 +68,9 @@ public class StudentAttemptService {
 
     @Autowired
     AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
+
+    @Autowired
+    TypedAnswerEvaluation typedAnswerEvaluation;
 
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt) {
         return studentAttemptRepository.save(studentAttempt);
@@ -159,7 +163,16 @@ public class StudentAttemptService {
         // attempt-expiry cron) must not flip such attempts to COMPLETED
         // ("Evaluated") or release their results.
         boolean isManualEvaluation = isManualEvaluationAssessment(attempt);
-        if (isManualEvaluation) {
+        // An online attempt whose written answers the AI is about to grade is held
+        // the same way: until then those answers carry only the word-overlap score,
+        // and the AI's marks are a draft the teacher reviews and releases.
+        boolean heldForAi = !isManualEvaluation && awaitsAiGrading(attempt);
+        if (heldForAi) {
+            // Still an AUTO attempt: keep result_marks as the release path expects;
+            // the AI run replaces both totals when it completes.
+            attempt.setResultMarks(totalMarks);
+        }
+        if (isManualEvaluation || heldForAi) {
             if (!AssessmentAttemptResultEnum.COMPLETED.name().equals(attempt.getResultStatus())) {
                 attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
             }
@@ -187,7 +200,7 @@ public class StudentAttemptService {
         }
 
         // Auto-release result based on assessment's result_type
-        boolean justReleased = !isManualEvaluation && autoReleaseResultIfApplicable(attempt);
+        boolean justReleased = !isManualEvaluation && !heldForAi && autoReleaseResultIfApplicable(attempt);
 
         StudentAttempt saved = studentAttemptRepository.save(attempt);
         if (endedByThisCall && endSource != null) {
@@ -197,6 +210,15 @@ public class StudentAttemptService {
             assessmentWorkflowEventPublisher.publishResultReleased(saved, null, null);
         }
         return saved;
+    }
+
+    private boolean awaitsAiGrading(StudentAttempt attempt) {
+        try {
+            return typedAnswerEvaluation.awaitsAiGrading(attempt, attempt.getRegistration().getAssessment());
+        } catch (Exception e) {
+            log.error("Failed to resolve AI grading for attempt {}: {}", attempt.getId(), e.getMessage());
+            return false;
+        }
     }
 
     private boolean isManualEvaluationAssessment(StudentAttempt attempt) {
@@ -461,6 +483,11 @@ public class StudentAttemptService {
         Long timeTakenInSecs = attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson);
 
         QuestionWiseMarks marksRow = context.marksRowByQuestionAndSection.get(questionId + "|" + sectionId);
+        if (marksRow != null && isEvaluatorMarked(marksRow)) {
+            // Read by the AI (and maybe a teacher) - a recalculation must not put
+            // the word-overlap score back over that mark.
+            return marksRow.getMarks();
+        }
         if (marksRow != null) {
             if (!Objects.isNull(timeTakenInSecs)) {
                 marksRow.setTimeTakenInSeconds(timeTakenInSecs);
@@ -492,6 +519,10 @@ public class StudentAttemptService {
         }
 
         return marksObtained;
+    }
+
+    static boolean isEvaluatorMarked(QuestionWiseMarks marksRow) {
+        return "AI".equals(marksRow.getMarksSource()) || "AI_REVIEWED".equals(marksRow.getMarksSource());
     }
 
     public LearnerAssessmentAttemptDataDto validateAndCreateJsonObject(String jsonContent) {

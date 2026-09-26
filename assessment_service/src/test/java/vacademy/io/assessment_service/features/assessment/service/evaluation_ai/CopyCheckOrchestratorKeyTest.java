@@ -45,7 +45,8 @@ class CopyCheckOrchestratorKeyTest {
                                 mock(AiServiceCopyCheckClient.class),
                                 new ObjectMapper(),
                                 mock(OptionRepository.class),
-                                mappings);
+                                mappings,
+                                mock(TypedAnswerEvaluation.class));
         }
 
         private static Option option(String id, String html) {

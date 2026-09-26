@@ -289,14 +289,15 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt shows
-                -- no score until the teacher releases it. Admin views pass false.
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt, or any
+                -- attempt held PENDING for a teacher, shows no score until released. Admin views pass false.
                 -- NB no apostrophes or colons in these comments -- Spring Data parses the
                 -- whole string for quotes and parameters and cannot see SQL comments.
                 CASE
                     WHEN :hideHeldManualMarks = TRUE
-                     AND a.result_type = 'MANUAL'
-                     AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED')
+                     AND ((a.result_type = 'MANUAL'
+                           AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED'))
+                          OR sa.report_release_status = 'PENDING')
                     THEN NULL
                     ELSE sa.total_marks
                 END AS totalMarks,
@@ -370,14 +371,15 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt shows
-                -- no score until the teacher releases it. Admin views pass false.
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt, or any
+                -- attempt held PENDING for a teacher, shows no score until released. Admin views pass false.
                 -- NB no apostrophes or colons in these comments -- Spring Data parses the
                 -- whole string for quotes and parameters and cannot see SQL comments.
                 CASE
                     WHEN :hideHeldManualMarks = TRUE
-                     AND a.result_type = 'MANUAL'
-                     AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED')
+                     AND ((a.result_type = 'MANUAL'
+                           AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED'))
+                          OR sa.report_release_status = 'PENDING')
                     THEN NULL
                     ELSE sa.total_marks
                 END AS totalMarks,

@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { cn } from "@/lib/utils";
+import { useBlockTextInjection } from "./use-block-text-injection";
 
 export function LongAnswerInput() {
   const { t } = useTranslation("questionTest");
   const { currentQuestion, answers, setAnswer, setQuestionState } =
     useAssessmentStore();
+  const [box, setBox] = useState<HTMLTextAreaElement | null>(null);
+  useBlockTextInjection(box, currentQuestion?.question_id);
   if (!currentQuestion) {
     return null;
   }
@@ -32,13 +36,15 @@ export function LongAnswerInput() {
         </span>
       </div>
       <textarea
+        ref={setBox}
         value={currentAnswer}
         onChange={handleChange}
         placeholder={t("longAnswer.placeholder")}
         aria-label={t("common.yourAnswer")}
         rows={7}
         // Copy/cut/paste stay blocked here for the same reason as the rest of
-        // the live test — pasted answers defeat the proctoring rules.
+        // the live test — pasted answers defeat the proctoring rules. Drag-drop
+        // and clipboard inserts are blocked by useBlockTextInjection.
         onCopy={(event) => event.preventDefault()}
         onCut={(event) => event.preventDefault()}
         onPaste={(event) => event.preventDefault()}

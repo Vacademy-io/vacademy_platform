@@ -1,0 +1,31 @@
+{
+    "heading": "Writing integrity",
+    "stats": {
+        "words": "Words: {{value}}",
+        "minutes": "Time: {{value}} min",
+        "wordsPerMinute": "Pace: {{value}} words/min",
+        "tabSwitches": "Left the test window: {{value}}",
+        "corrections": "Corrections: {{value}}",
+        "largeInserts": "Large text inserts: {{value}}",
+        "blockedPastes": "Blocked paste attempts: {{value}}",
+        "similarity": "{{percent}}% similar to {{name}}",
+        "aiStyle": "AI-style hint: {{level}}"
+    },
+    "aiStyleLevel": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+    },
+    "flags": {
+        "FAST_WRITING": "Written unusually fast",
+        "LARGE_INSERTS": "Large blocks of text appeared at once",
+        "PASTE_ATTEMPTS": "Tried to paste",
+        "LEFT_WINDOW": "Left the test while answering",
+        "FEW_CORRECTIONS": "Long answer with almost no corrections",
+        "HIGH_SIMILARITY": "Very similar to another learner",
+        "AI_STYLE_HIGH": "Reads like AI-generated text"
+    },
+    "aiStyleReason": "AI hint: {{reason}}",
+    "noSignals": "Typing signals were not recorded for this answer (older app version).",
+    "disclaimer": "These are signals to help you review, not proof. They do not change the marks."
+}

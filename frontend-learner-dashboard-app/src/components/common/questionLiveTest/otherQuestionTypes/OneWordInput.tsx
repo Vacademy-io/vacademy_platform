@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { cn } from "@/lib/utils";
+import { useBlockTextInjection } from "./use-block-text-injection";
 
 export function OneWordInput() {
   const { t } = useTranslation("questionTest");
@@ -8,6 +10,8 @@ export function OneWordInput() {
     useAssessmentStore();
   const currentAnswer =
     (currentQuestion && answers[currentQuestion.question_id]?.[0]) || "";
+  const [box, setBox] = useState<HTMLInputElement | null>(null);
+  useBlockTextInjection(box);
 
   return (
     <div>
@@ -15,6 +19,7 @@ export function OneWordInput() {
         {t("common.yourAnswer")}
       </p>
       <input
+        ref={setBox}
         type="text"
         value={currentAnswer}
         onChange={(event) => {
@@ -25,7 +30,8 @@ export function OneWordInput() {
         placeholder={t("oneWord.placeholder")}
         aria-label={t("common.yourAnswer")}
         // Copy/cut/paste stay blocked here for the same reason as the rest of
-        // the live test — pasted answers defeat the proctoring rules.
+        // the live test — pasted answers defeat the proctoring rules. Drag-drop
+        // and clipboard inserts are blocked by useBlockTextInjection.
         onCopy={(event) => event.preventDefault()}
         onCut={(event) => event.preventDefault()}
         onPaste={(event) => event.preventDefault()}

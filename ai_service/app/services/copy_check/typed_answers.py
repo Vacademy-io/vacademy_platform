@@ -42,6 +42,13 @@ HOW TO MARK
 - An empty answer, or one that does not address the question at all, is
   "unattempted" with 0 marks.
 
+AI-STYLE HINT (separate from marking)
+Also say how much the answer reads like machine-generated text: generic,
+over-polished phrasing, textbook structure with no personal voice, vocabulary
+well beyond the rest of the answer. This is only a hint for the teacher - many
+students write plainly and well - so use "high" only when several signs are
+clearly present. It must NEVER change the marks.
+
 FEEDBACK
 Two or three sentences addressed to the student: what was done well, and the
 single most useful thing to improve. When marks were deducted, name what was
@@ -104,8 +111,25 @@ STUDENT_ANSWER>>>
   "confidence": <0..1>,
   "criteria_breakdown": [
     {{"criteria_name": "<exact rubric name>", "marks": <float>, "reason": "<why this mark, specific to this answer>"}}
-  ]
+  ],
+  "ai_style": {{"level": "low|medium|high", "reason": "<one short line naming the signs, or why it reads as the student's own>"}}
 }}"""
+
+
+_AI_STYLE_LEVELS = ("low", "medium", "high")
+
+
+def ai_style_hint(raw: Any) -> dict[str, str] | None:
+    """The grader's machine-text hint, or None when it gave none we can read."""
+    if not isinstance(raw, dict):
+        return None
+    hint = raw.get("ai_style")
+    if not isinstance(hint, dict):
+        return None
+    level = str(hint.get("level") or "").strip().lower()
+    if level not in _AI_STYLE_LEVELS:
+        return None
+    return {"level": level, "reason": str(hint.get("reason") or "").strip()[:300]}
 
 
 def unattempted_verdict(question: dict[str, Any]) -> dict[str, Any]:

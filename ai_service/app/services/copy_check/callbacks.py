@@ -91,6 +91,9 @@ async def question_done(
         # This payload is an explicit field list, so forgetting a key here means
         # the field silently never reaches Java.
         "error_detail": verdict.get("error_detail"),
+        # Typed answers only: the grader's machine-text hint for the teacher
+        # ({level, reason}). Never used for marks.
+        "ai_style": verdict.get("ai_style"),
     }
     await _post(f"{base_url.rstrip('/')}/copy-check/callback/question", payload)
 

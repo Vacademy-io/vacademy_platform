@@ -7,6 +7,10 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { HelpModal } from "@/components/modals/help-modals";
 import { useAssessmentStore } from "@/stores/assessment-store";
+import {
+  recordFocusLoss,
+  snapshotWritingSignals,
+} from "@/lib/writing-signals";
 import { SubmitModal } from "@/components/modals/submit-modal";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -205,6 +209,10 @@ export function Navbar({
         status,
         tabSwitchCount: state.tabSwitchCount || 0,
       },
+      // Not on the PDF-upload submit: that endpoint parses this JSON strictly.
+      ...(evaluationType !== "MANUAL" && {
+        writingSignals: snapshotWritingSignals(attemptId),
+      }),
       sections: state.assessment?.section_dtos?.map((section, idx) => ({
         sectionId: section.id,
         sectionDurationLeftInSeconds: state.sectionTimers?.[idx]?.timeLeft || 0,
@@ -481,6 +489,8 @@ export function Navbar({
     const handleVisibilityChange = () => {
       if (document.hidden) {
         incrementTabSwitchCount();
+        const { assessment, currentQuestion } = useAssessmentStore.getState();
+        recordFocusLoss(assessment?.attempt_id, currentQuestion?.question_id);
         setShowWarningModal(true);
       }
     };

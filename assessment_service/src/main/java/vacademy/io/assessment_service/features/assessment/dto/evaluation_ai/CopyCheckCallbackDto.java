@@ -106,6 +106,10 @@ public class CopyCheckCallbackDto {
         // logs. Admin-facing only; the student-visible text stays in `feedback`.
         @JsonProperty("error_detail")
         private String errorDetail;
+
+        /** Typed answers only: the grader's machine-text hint {level, reason}. Never used for marks. */
+        @JsonProperty("ai_style")
+        private JsonNode aiStyle;
     }
 
     @Data

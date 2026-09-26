@@ -7,6 +7,10 @@ import {
   type QuestionDto,
 } from "../types/assessment";
 import { safeParse } from "@/lib/storage";
+import {
+  restoreWritingSignals,
+  snapshotWritingSignals,
+} from "@/lib/writing-signals";
 
 const LEGACY_STATE_KEY_PREFIX = "ASSESSMENT_STATE_";
 
@@ -630,6 +634,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       questionTimers: state.questionTimers,
       entireTestTimer: state.entireTestTimer,
       tabSwitchCount: state.tabSwitchCount,
+      writingSignals: snapshotWritingSignals(attemptId),
       questionStartTime: state.questionStartTime,
       questionTimeSpent: state.questionTimeSpent,
       pdfFile: state.pdfFile
@@ -684,7 +689,10 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
     );
     if (!parsedState) return;
 
-    set(parsedState);
+    // Not store state: see writing-signals.ts.
+    const { writingSignals, ...restored } = parsedState;
+    restoreWritingSignals(attemptId, writingSignals);
+    set(restored);
   },
 
   clearPersistedState: async () => {

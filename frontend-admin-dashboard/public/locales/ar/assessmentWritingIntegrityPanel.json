@@ -1,0 +1,31 @@
+{
+    "heading": "نزاهة الكتابة",
+    "stats": {
+        "words": "الكلمات: {{value}}",
+        "minutes": "الوقت: {{value}} دقيقة",
+        "wordsPerMinute": "السرعة: {{value}} كلمة/دقيقة",
+        "tabSwitches": "مغادرة نافذة الاختبار: {{value}}",
+        "corrections": "التصحيحات: {{value}}",
+        "largeInserts": "إدراج نص كبير دفعة واحدة: {{value}}",
+        "blockedPastes": "محاولات لصق محظورة: {{value}}",
+        "similarity": "مشابه لإجابة {{name}} بنسبة {{percent}}%",
+        "aiStyle": "مؤشر أسلوب الذكاء الاصطناعي: {{level}}"
+    },
+    "aiStyleLevel": {
+        "low": "منخفض",
+        "medium": "متوسط",
+        "high": "مرتفع"
+    },
+    "flags": {
+        "FAST_WRITING": "كُتبت بسرعة غير معتادة",
+        "LARGE_INSERTS": "ظهرت كتل نصية كبيرة دفعة واحدة",
+        "PASTE_ATTEMPTS": "حاول اللصق",
+        "LEFT_WINDOW": "غادر الاختبار أثناء الإجابة",
+        "FEW_CORRECTIONS": "إجابة طويلة بلا تصحيحات تقريباً",
+        "HIGH_SIMILARITY": "مشابهة جداً لإجابة متعلم آخر",
+        "AI_STYLE_HIGH": "تبدو كنص مولَّد بالذكاء الاصطناعي"
+    },
+    "aiStyleReason": "مؤشر الذكاء الاصطناعي: {{reason}}",
+    "noSignals": "لم تُسجَّل إشارات الكتابة لهذه الإجابة (إصدار أقدم من التطبيق).",
+    "disclaimer": "هذه مؤشرات لمساعدتك في المراجعة وليست دليلاً، ولا تغيّر الدرجات."
+}

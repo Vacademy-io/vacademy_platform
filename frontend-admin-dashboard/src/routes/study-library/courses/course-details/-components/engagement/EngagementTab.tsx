@@ -19,6 +19,13 @@ import { PlanCard } from '@/routes/engagement/-components/PlanCard';
 export function EngagementTab({ packageSessionId }: { packageSessionId: string }) {
     const { t } = useTranslation('engagement');
     const [composerOpen, setComposerOpen] = useState(false);
+    // Bumped on every "New plan" so the composer mounts fresh: no fields, days or
+    // tasks carried over from the previous plan.
+    const [composerKey, setComposerKey] = useState(0);
+    const openComposer = () => {
+        setComposerKey((n) => n + 1);
+        setComposerOpen(true);
+    };
     const [aiOpen, setAiOpen] = useState(false);
 
     const {
@@ -59,7 +66,7 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
                     <MyButton type="button" buttonType="secondary" onClick={() => setAiOpen(true)}>
                         <Sparkle size={16} /> {t('page.planWithAi')}
                     </MyButton>
-                    <MyButton type="button" onClick={() => setComposerOpen(true)}>
+                    <MyButton type="button" onClick={openComposer}>
                         <Plus size={16} /> {t('page.newPlan')}
                     </MyButton>
                 </span>
@@ -112,6 +119,7 @@ export function EngagementTab({ packageSessionId }: { packageSessionId: string }
             />
 
             <PlanComposerDialog
+                key={composerKey}
                 open={composerOpen}
                 onOpenChange={setComposerOpen}
                 onCreated={() => void refetch()}

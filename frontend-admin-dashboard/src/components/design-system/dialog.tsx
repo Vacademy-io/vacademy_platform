@@ -105,7 +105,7 @@ export const MyDialog = ({
 
                 {/* Content */}
                 <DialogDescription asChild>
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                    <div className="relative flex-1 overflow-y-auto overflow-x-hidden">
                         <div className="p-6">{children || content}</div>
                     </div>
                 </DialogDescription>

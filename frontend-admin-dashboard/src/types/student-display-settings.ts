@@ -65,6 +65,9 @@ export type StudentDashboardWidgetId =
     // footer uses, so an institute can carry them in the sidebar, the
     // dashboard, both, or neither (see `sidebar.appLinks`).
     | 'getApp'
+    // Today's teacher-scheduled tasks (the Daily Engagement module). The
+    // learner dashboard renders nothing for an institute with no plan running.
+    | 'todayTasks'
     | 'custom';
 
 /**
@@ -100,6 +103,7 @@ export const WIDGET_LABELS: Record<string, string> = {
     exploreMemberships: 'Explore Memberships (button)',
     exploreBooks: 'Explore Books (button)',
     getApp: 'Get the app (download links card)',
+    todayTasks: "Today's tasks (daily engagement plan)",
     custom: 'Custom',
 };
 
@@ -281,8 +285,8 @@ export interface StudentCourseDetailsSettings {
      * follows enrolledLayout (content-only skips the list), explicit wins.
      */
     chapterOpensFirstSlide?: boolean;
-  /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
-  contentCardImageFit?: ContentCardImageFit;
+    /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
+    contentCardImageFit?: ContentCardImageFit;
 }
 
 // Course Settings

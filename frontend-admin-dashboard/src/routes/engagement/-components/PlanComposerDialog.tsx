@@ -1,30 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import {
+    Controller,
+    useFieldArray,
+    useForm,
+    useWatch,
+    type Control,
+    type FieldErrors,
+} from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
     ArrowClockwise,
-    GraduationCap,
-    Plus,
+    CalendarPlus,
+    CopySimple,
+    NotePencil,
     Trash,
+    UsersThree,
     Warning,
     WarningCircle,
 } from '@phosphor-icons/react';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { MyDialog } from '@/components/design-system/dialog';
+import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
+import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
+import { Form } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { MyButton } from '@/components/design-system/button';
-import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -35,125 +42,65 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
+import { getEngagementSettings } from '@/routes/settings/-services/engagement-settings';
+import { getEngagementPlan } from '../-services/engagement-service';
+import type { EngagementPlanRequest, PlanStatus } from '../-types/types';
+import { addDays, daysBetween, instituteToday, slotLastDate } from '../-utils/format';
 import {
-    createEngagementPlan,
-    getEngagementPlan,
-    updateEngagementPlan,
-} from '../-services/engagement-service';
-import { PlanPreview } from './PlanPreview';
+    composerSchema,
+    dtoToForm,
+    flattenFormErrors,
+    newComposerForm,
+    newItemForm,
+    requestToForm,
+    slotToForm,
+    type ComposerForm,
+    type ItemForm,
+    type SlotForm,
+} from './forms/composer-schema';
 import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
-import { CourseSlidePicker, type PickedSlide } from './CourseSlidePicker';
-import type {
-    EngagementItemRequest,
-    QuestionFormat,
-    EngagementItemType,
-    EngagementPlanRequest,
-    MissPolicy,
-} from '../-types/types';
+import type { PickedSlide } from './CourseSlidePicker';
+import { PlanPreview } from './PlanPreview';
+import { DayRail, dayHeading, dayRanks, orderDays } from './composer/DayRail';
+import { DayScheduleEditor } from './composer/DayScheduleEditor';
+import { TaskList, type DayOption } from './composer/TaskList';
+import { ComposerFooterActions, ComposerFooterLeft } from './composer/ComposerFooter';
+import {
+    PublishSummaryDialog,
+    buildPublishSummary,
+    type PublishSummary,
+} from './composer/PublishSummaryDialog';
+import {
+    ComposerSaveError,
+    detachItem,
+    planSaveSteps,
+    detachSlot,
+    isComposerDirty,
+    lockedChanges,
+    saveErrorText,
+    slotSaveOrders,
+    slotSnapshot,
+    takeBaseline,
+    useComposerSave,
+    type ComposerBaseline,
+    type LockedChange,
+} from './composer/use-composer-save';
 
 /**
- * Compose one engagement plan: a batch, a window, and the items inside it.
+ * Compose or edit one engagement plan: its details, every day (slot) it runs, and the
+ * tasks of each day.
  *
- * Times are entered as institute-local wall clock (06:00, 20:00) and stored that
- * way — the plan snapshots the institute's timezone so a later timezone change
- * cannot shift windows under learners who already attempted them.
+ * A thin shell over the composer parts: it owns the react-hook-form instance (zod
+ * `composerSchema`, every day and task at once), loads a saved plan, and runs the
+ * save. Days are listed in `DayRail`; the selected day is edited by
+ * `DayScheduleEditor` + `TaskList`; the right column is "What learners see".
+ *
+ * Times are institute-local wall clock; the plan snapshots its timezone at creation.
  */
 
-// Labels and hints live in locales/<lng>/engagement.json under composer.types,
-// composer.miss and composer.formats, keyed by these values.
-const ITEM_TYPES: EngagementItemType[] = [
-    'READING_HTML',
-    'VISUAL_NOTE',
-    'QUESTION_OF_DAY',
-    'GAME',
-    'POLL',
-    'COURSE_SLIDE',
-];
-
-const MISS_POLICIES: MissPolicy[] = ['EXPIRES', 'CATCH_UP_FULL', 'CATCH_UP_REDUCED'];
-
-/**
- * The message a teacher's game posts to report its result. Matches the protocol the
- * HTML slide renderer already speaks, so a game written for a slide works here
- * unchanged. Kept as a string constant because the braces read as a hex colour to
- * the design linter when written as an HTML entity.
- */
-const GAME_SCORE_SNIPPET = "postMessage({ type: 'vacademy:complete', score, maxScore })";
-
-const QUESTION_FORMATS: QuestionFormat[] = ['MCQ', 'TEXT', 'UPLOAD'];
-
-interface DraftItem extends EngagementItemRequest {
-    /** Local-only key so rows stay stable before the server assigns ids. */
-    key: string;
-    /** Set when the row came from a saved plan; drives update instead of insert. */
-    id?: string;
-    /** Chosen course slide, serialised into slideId + payloadJson on save. */
-    slide?: PickedSlide;
-    /** MCQ | TEXT | UPLOAD for a question of the day. */
-    format?: QuestionFormat;
-    /** QUESTION_OF_DAY authoring, serialised into payloadJson on save. */
-    prompt?: string;
-    options?: { id: string; text: string }[];
-    correctOptionId?: string;
-    explanation?: string;
-}
-
-/** Today on the teacher's own calendar as yyyy-MM-dd, the default first day of a new plan. */
-function today(): string {
-    // Not toISOString: that is the UTC date, which is still yesterday before 05:30 IST.
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${now.getFullYear()}-${month}-${day}`;
-}
-
-/** Day-1 slot fields this form doesn't edit but must send back unchanged. */
-interface SlotMeta {
-    title?: string | null;
-    sortOrder?: number;
-    dowMask?: number | null;
-}
-
-function newItem(): DraftItem {
-    return {
-        key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        itemType: 'READING_HTML',
-        format: 'MCQ',
-        title: '',
-        completionPoints: 10,
-        correctPoints: 0,
-        isRequired: false,
-        options: [
-            { id: 'a', text: '' },
-            { id: 'b', text: '' },
-        ],
-        correctOptionId: 'a',
-    };
-}
-
-/** Rich text that renders as nothing ("<p></p>", "<p><br></p>", whitespace) counts as empty. */
-function emptyRichTextToBlank(html: string | undefined | null): string {
-    if (!html) return '';
-    if (/<(img|iframe|video|audio|hr)\b/i.test(html)) return html;
-    return html
-        .replace(/<[^>]*>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .trim() === ''
-        ? ''
-        : html;
-}
-
-export function PlanComposerDialog({
-    open,
-    onOpenChange,
-    onCreated,
-    defaultPackageSessionId,
-    planId,
-    presetSlide,
-}: {
+export interface PlanComposerDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onCreated: () => void;
@@ -165,124 +112,155 @@ export function PlanComposerDialog({
      * on a slide, so the teacher only has to choose batches and a window.
      */
     presetSlide?: PickedSlide | null;
-}) {
-    const { t } = useTranslation('engagement');
+    /**
+     * An unsaved plan to open (the AI planner's "Edit in full editor"). Create mode
+     * only; every day and task of the draft is loaded.
+     */
+    draft?: EngagementPlanRequest | null;
+}
+
+const STATUS_CHIP: Record<PlanStatus, StatusType> = {
+    DRAFT: 'INFO',
+    PUBLISHED: 'SUCCESS',
+    ARCHIVED: 'WARNING',
+    DELETED: 'DANGER',
+};
+
+/** "Course · Session · Level" (or the batch's own name) from the institute store. */
+function storeBatchLabel(packageSessionId: string): string | null {
+    const batch = useInstituteDetailsStore
+        .getState()
+        .getDetailsFromPackageSessionId({ packageSessionId });
+    if (!batch) return null;
+    if (batch.name) return batch.name;
+    const parts = [
+        batch.package_dto?.package_name,
+        batch.session?.session_name,
+        batch.level?.level_name,
+    ].filter((part): part is string => Boolean(part) && part?.toUpperCase() !== 'DEFAULT');
+    return parts.join(' · ') || null;
+}
+
+function storeCourseId(packageSessionId: string | undefined): string | undefined {
+    if (!packageSessionId) return undefined;
+    return (
+        useInstituteDetailsStore.getState().getDetailsFromPackageSessionId({ packageSessionId })
+            ?.package_dto?.id ?? undefined
+    );
+}
+
+function presetTask(slide: PickedSlide): ItemForm {
+    const base = newItemForm('COURSE_SLIDE', { title: slide.slideTitle, isRequired: true });
+    return {
+        ...base,
+        itemType: 'COURSE_SLIDE',
+        slideId: slide.slideId,
+        slide: { ...slide } as Record<string, unknown>,
+    } as ItemForm;
+}
+
+const PLAN_FIELD_ORDER = ['title', 'packageSessionIds', 'description'];
+
+/**
+ * Errors in the order the teacher sees them, so "Go to first" lands on the topmost one:
+ * the plan's own fields, then each day in date order (its schedule, then its tasks),
+ * then the plan-wide late policy.
+ */
+function sortErrorsByScreenOrder<T extends { path: string }>(errors: T[], slots: SlotForm[]): T[] {
+    const ranks = dayRanks(slots);
+    const rank = (path: string): number[] => {
+        const field = PLAN_FIELD_ORDER.indexOf(path.split('.')[0] ?? '');
+        if (field >= 0) return [0, field, 0, 0];
+        const match = /^slots\.(\d+)(?:\.items\.(\d+))?/.exec(path);
+        if (match) {
+            const day = ranks.get(Number(match[1])) ?? Number(match[1]) + 1;
+            return [1, day, match[2] == null ? 0 : 1, match[2] == null ? 0 : Number(match[2])];
+        }
+        return [2, 0, 0, 0];
+    };
+    return errors
+        .map((error, index) => ({ error, index, key: rank(error.path) }))
+        .sort((a, b) => {
+            for (let i = 0; i < a.key.length; i++) {
+                const diff = a.key[i]! - b.key[i]!;
+                if (diff !== 0) return diff;
+            }
+            return a.index - b.index;
+        })
+        .map(({ error }) => error);
+}
+
+/** The last day any slot runs on. */
+function planLastDate(slots: SlotForm[]): string | null {
+    let last: string | null = null;
+    for (const slot of slots) {
+        if (!slot.startDate) continue;
+        const end = slotLastDate(slot);
+        if (!last || end > last) last = end;
+    }
+    return last;
+}
+
+export function PlanComposerDialog({
+    open,
+    onOpenChange,
+    onCreated,
+    defaultPackageSessionId,
+    planId,
+    presetSlide,
+    draft,
+}: PlanComposerDialogProps) {
+    const { t, i18n } = useTranslation('engagement');
+    const lang = i18n.language;
     const navigate = useNavigate();
     const isEdit = Boolean(planId);
-    const [title, setTitle] = useState('');
-    const [description, setDescription] = useState('');
-    const [batches, setBatches] = useState<BatchOption[]>([]);
-    const [batchPickerOpen, setBatchPickerOpen] = useState(false);
-    /** Which task row is choosing a slide, by its local key. */
-    const [slidePickerFor, setSlidePickerFor] = useState<string | null>(null);
-    const [startDate, setStartDate] = useState(today);
-    const [endDate, setEndDate] = useState('');
-    const [startTime, setStartTime] = useState('06:00');
-    const [endTime, setEndTime] = useState('20:00');
-    const [revealTime, setRevealTime] = useState('20:00');
-    const [notifyTime, setNotifyTime] = useState('06:00');
-    const [missPolicy, setMissPolicy] = useState<MissPolicy>('EXPIRES');
-    const [publish, setPublish] = useState(true);
-    const [items, setItems] = useState<DraftItem[]>([newItem()]);
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [slotId, setSlotId] = useState<string | null>(null);
-    const [slotMeta, setSlotMeta] = useState<SlotMeta | null>(null);
-    const [activeKey, setActiveKey] = useState<string | null>(null);
-    /** False until the form holds what it should (defaults, or the loaded plan). */
-    const [formReady, setFormReady] = useState(false);
-    const [confirmDiscard, setConfirmDiscard] = useState(false);
-    /** The form as it was when it opened, to tell whether closing loses edits. */
-    const [baseline, setBaseline] = useState<string | null>(null);
-    const [baselineSeq, setBaselineSeq] = useState(0);
-    /** Bumped on every open, so an edit always loads the plan fresh. */
+
+    const form = useForm<ComposerForm>({
+        resolver: zodResolver(composerSchema, undefined, { raw: true }),
+        defaultValues: newComposerForm(),
+        mode: 'onSubmit',
+        reValidateMode: 'onChange',
+        shouldFocusError: false,
+    });
+    const { control, getValues, setValue, setFocus, handleSubmit, reset } = form;
+    const slotsArray = useFieldArray({ control, name: 'slots', keyName: 'rhfKey' });
+    const status = useWatch({ control, name: 'status' });
+    const batchIds = useWatch({ control, name: 'packageSessionIds' });
+
+    // ── Open / reset sequencing ────────────────────────────────────────────
+    // Every open starts clean: a new plan gets defaults, an edit loads the plan fresh.
     const [openSeq, setOpenSeq] = useState(0);
-    // Starts false so a composer mounted already open (the slide page) still resets.
     const [wasOpen, setWasOpen] = useState(false);
-
-    /**
-     * Back to defaults, plus whatever the caller seeded. An edit starts here too, so a
-     * plan with no active day never shows the previous open's slot or tasks.
-     */
-    function resetForm() {
-        const seeded = seedBatch();
-        setTitle(presetSlide?.slideTitle ?? '');
-        setDescription('');
-        setBatches(seeded ? [seeded] : []);
-        setStartDate(today());
-        setEndDate('');
-        setStartTime('06:00');
-        setEndTime('20:00');
-        setRevealTime('20:00');
-        setNotifyTime('06:00');
-        setMissPolicy('EXPIRES');
-        setPublish(true);
-        setItems(
-            presetSlide
-                ? [
-                      {
-                          ...newItem(),
-                          itemType: 'COURSE_SLIDE',
-                          title: presetSlide.slideTitle,
-                          slide: presetSlide,
-                          completionPoints: 10,
-                          isRequired: true,
-                      },
-                  ]
-                : [newItem()]
-        );
-        setError(null);
-        setSlotId(null);
-        setSlotMeta(null);
-        setActiveKey(null);
-    }
-
-    /**
-     * The batch a new plan starts on: the one the caller is showing, else the batch
-     * the preset slide's course, session and level belong to.
-     */
-    function seedBatch(): BatchOption | null {
-        if (defaultPackageSessionId) {
-            return { id: defaultPackageSessionId, label: t('composer.thisBatch') };
-        }
-        if (!presetSlide?.courseId || !presetSlide.sessionId || !presetSlide.levelId) return null;
-        const store = useInstituteDetailsStore.getState();
-        const id = store.getPackageSessionId({
-            courseId: presetSlide.courseId,
-            sessionId: presetSlide.sessionId,
-            levelId: presetSlide.levelId,
-        });
-        if (!id) return null;
-        const batch = store.getDetailsFromPackageSessionId({ packageSessionId: id });
-        const label =
-            batch?.name ||
-            (batch
-                ? `${batch.package_dto.package_name} · ${batch.level.level_name}`
-                : t('composer.thisBatch'));
-        return { id, label };
-    }
-
-    // Runs during render (React's "adjust state when a prop changes" pattern) so the
-    // first painted frame of a new plan is already reset, not the previous plan.
     if (open !== wasOpen) {
         setWasOpen(open);
-        if (open) {
-            setOpenSeq((n) => n + 1);
-            setConfirmDiscard(false);
-            resetForm();
-            if (isEdit) {
-                // Ready (and baselined) once the plan has loaded; see the effect below.
-                setFormReady(false);
-                setBaseline(null);
-            } else {
-                setFormReady(true);
-                setBaselineSeq((n) => n + 1);
-            }
-        }
+        if (open) setOpenSeq((n) => n + 1);
     }
+    const [readySeq, setReadySeq] = useState(0);
+    const ready = open && openSeq > 0 && readySeq === openSeq;
+    const baselineRef = useRef<ComposerBaseline | null>(null);
+    const bodyRef = useRef<HTMLDivElement>(null);
+    /** Whether the last submit was a Publish (whole plan must be valid). */
+    const publishIntent = useRef(false);
 
-    // Load the plan being edited and fill the form from it. Keyed per open and never
-    // refetched in the background, so a refetch can't overwrite edits in progress.
+    const [selectedDay, setSelectedDay] = useState(0);
+    const [openKey, setOpenKey] = useState<string | null>(null);
+    const [activeCardId, setActiveCardId] = useState<string | null>(null);
+    const [batchLabels, setBatchLabels] = useState<Record<string, string>>({});
+    const [batchPickerOpen, setBatchPickerOpen] = useState(false);
+    const [confirmDiscard, setConfirmDiscard] = useState(false);
+    const [deleteDayIndex, setDeleteDayIndex] = useState<number | null>(null);
+    const [publishSummary, setPublishSummary] = useState<PublishSummary | null>(null);
+    const [lockedPrompt, setLockedPrompt] = useState<{
+        changes: LockedChange[];
+        publish: boolean;
+    } | null>(null);
+    const [serverError, setServerError] = useState<string | null>(null);
+    const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
+    /** Bumped when whole days are replaced in place, so their editors remount. */
+    const [formEpoch, setFormEpoch] = useState(0);
+    const { saving, save } = useComposerSave();
+    const today = useMemo(() => instituteToday(), [openSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const editQuery = useQuery({
         queryKey: ['engagement-plan-edit', planId, openSeq],
         queryFn: () => getEngagementPlan(planId!),
@@ -293,1005 +271,762 @@ export function PlanComposerDialog({
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
     });
-    const existing = editQuery.data;
-    /** Day 1 is all this editor can change; the others are kept as they are. */
-    const dayCount = isEdit ? existing?.slots?.length ?? 0 : 0;
-    const multiDay = dayCount > 1;
+    const settingsQuery = useQuery({
+        queryKey: ['engagement-settings'],
+        queryFn: getEngagementSettings,
+        enabled: open,
+        staleTime: 5 * 60_000,
+        retry: 1,
+    });
+    const dailyItemCap = settingsQuery.data?.settings.dailyItemCap ?? null;
+    const plan = editQuery.data;
 
-    useEffect(() => {
-        if (!open || !existing) return;
-        setTitle(existing.title ?? '');
-        setDescription(existing.description ?? '');
-        setMissPolicy(existing.defaultMissPolicy ?? 'EXPIRES');
-        setPublish(existing.status === 'PUBLISHED');
-        setBatches([{ id: existing.packageSessionId, label: t('composer.thisBatch') }]);
+    function fill(values: ComposerForm, labels: Record<string, string>) {
+        reset(values);
+        baselineRef.current = takeBaseline(values);
+        setBatchLabels(labels);
+        setSelectedDay(0);
+        setOpenKey(values.slots[0]?.items[0]?.key ?? null);
+        setActiveCardId(null);
+        setServerError(null);
+        setMobileTab('edit');
+        setPublishSummary(null);
+        setLockedPrompt(null);
+        setDeleteDayIndex(null);
+        setConfirmDiscard(false);
+        setReadySeq(openSeq);
+    }
 
-        const slot = existing.slots?.[0];
-        setFormReady(true);
-        setBaselineSeq((n) => n + 1);
-        if (!slot) return;
-        setSlotId(slot.id);
-        setSlotMeta({ title: slot.title, sortOrder: slot.sortOrder, dowMask: slot.dowMask });
-        setStartDate(slot.startDate);
-        setEndDate(slot.endDate ?? '');
-        setStartTime((slot.startTime ?? '06:00').slice(0, 5));
-        setEndTime((slot.endTime ?? '20:00').slice(0, 5));
-        setRevealTime((slot.revealTime ?? '').slice(0, 5));
-        setNotifyTime((slot.notifyTime ?? '').slice(0, 5));
-
-        setItems(
-            (slot.items ?? []).map((item) => {
-                // Question options and the answer key travel inside payloadJson; unpack
-                // them back into the fields the form edits.
-                let parsed: {
-                    prompt?: string;
-                    options?: { id: string; text: string }[];
-                    correctOptionId?: string;
-                    explanation?: string;
-                } = {};
-                try {
-                    parsed = item.payloadJson ? JSON.parse(item.payloadJson) : {};
-                } catch {
-                    parsed = {};
-                }
-                return {
-                    key: item.id,
-                    id: item.id,
-                    itemType: item.itemType,
-                    title: item.title,
-                    isRequired: item.isRequired,
-                    contentHtml: item.contentHtml ?? undefined,
-                    completionPoints: item.completionPoints,
-                    correctPoints: item.correctPoints,
-                    maxScore: item.maxScore ?? undefined,
-                    slide:
-                        item.itemType === 'COURSE_SLIDE' && item.slideId
-                            ? ({
-                                  ...(parsed as unknown as PickedSlide),
-                                  slideId: item.slideId,
-                              } as PickedSlide)
-                            : undefined,
-                    hideResultUntilReveal: item.hideResultUntilReveal ?? false,
-                    format: ((parsed as { format?: QuestionFormat }).format ??
-                        'MCQ') as QuestionFormat,
-                    prompt: parsed.prompt ?? '',
-                    options:
-                        parsed.options && parsed.options.length > 0
-                            ? parsed.options
-                            : [
-                                  { id: 'a', text: '' },
-                                  { id: 'b', text: '' },
-                              ],
-                    correctOptionId: parsed.correctOptionId ?? 'a',
-                    explanation: parsed.explanation ?? '',
-                };
-            })
-        );
-    }, [open, existing, t]);
-
-    // Everything the teacher can change, serialised; local row keys are left out so
-    // a reset with fresh keys still compares equal.
-    const snapshot = useMemo(
-        () =>
-            JSON.stringify({
-                title,
-                description,
-                batches: batches.map((b) => b.id),
-                startDate,
-                endDate,
-                startTime,
-                endTime,
-                revealTime,
-                notifyTime,
-                missPolicy,
-                publish,
-                items: items.map((item) => ({
-                    ...item,
-                    key: undefined,
-                    // The rich-text editor normalises an empty body to "<p></p>" right
-                    // after it mounts, which would otherwise mark an untouched form dirty.
-                    contentHtml: emptyRichTextToBlank(item.contentHtml),
-                    prompt: emptyRichTextToBlank(item.prompt),
-                    explanation: emptyRichTextToBlank(item.explanation),
-                })),
-            }),
-        [
-            title,
-            description,
-            batches,
-            startDate,
-            endDate,
-            startTime,
-            endTime,
-            revealTime,
-            notifyTime,
-            missPolicy,
-            publish,
-            items,
-        ]
-    );
-
-    // Take the baseline on the render after a reset or load has landed in state.
-    useEffect(() => {
-        if (baselineSeq > 0) setBaseline(snapshot);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [baselineSeq]);
-
-    const isDirty = formReady && baseline !== null && snapshot !== baseline;
-
-    /** Escape, the overlay and the close button all land here. */
-    function handleOpenChange(next: boolean) {
-        if (next) {
-            onOpenChange(true);
-            return;
+    function labelsFor(ids: string[]): Record<string, string> {
+        const out: Record<string, string> = {};
+        for (const id of ids) {
+            const label =
+                id === defaultPackageSessionId
+                    ? storeBatchLabel(id) ?? t('composer.thisBatch')
+                    : storeBatchLabel(id);
+            if (label) out[id] = label;
         }
+        return out;
+    }
+
+    /** The batch a new plan starts on: the caller's, else the preset slide's. */
+    function seedBatchId(): string | null {
+        if (defaultPackageSessionId) return defaultPackageSessionId;
+        if (!presetSlide?.courseId || !presetSlide.sessionId || !presetSlide.levelId) return null;
+        return useInstituteDetailsStore.getState().getPackageSessionId({
+            courseId: presetSlide.courseId,
+            sessionId: presetSlide.sessionId,
+            levelId: presetSlide.levelId,
+        });
+    }
+
+    // Create: defaults (or the AI draft) on every open.
+    useEffect(() => {
+        if (!open || isEdit || openSeq === 0 || readySeq === openSeq) return;
+        let values: ComposerForm;
+        if (draft) {
+            values = requestToForm(draft);
+            values.status = 'DRAFT';
+            if (values.slots.length === 0) values.slots = newComposerForm().slots;
+        } else {
+            const seeded = seedBatchId();
+            values = newComposerForm({
+                packageSessionIds: seeded ? [seeded] : [],
+                startDate: instituteToday(),
+                items: presetSlide ? [presetTask(presetSlide)] : undefined,
+            });
+            if (presetSlide) values.title = presetSlide.slideTitle;
+        }
+        fill(values, labelsFor(values.packageSessionIds));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, isEdit, openSeq, readySeq]);
+
+    // Edit: fill once the plan has loaded for this open.
+    useEffect(() => {
+        if (!open || !isEdit || !plan || readySeq === openSeq) return;
+        const values = dtoToForm(plan);
+        const label =
+            plan.packageSessionLabel ||
+            storeBatchLabel(plan.packageSessionId) ||
+            t('composer.thisBatch');
+        fill(values, { [plan.packageSessionId]: label });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, isEdit, plan, openSeq, readySeq]);
+
+    // Keep the selected day in range after deletes.
+    const dayCount = slotsArray.fields.length;
+    const dayIndex = Math.min(selectedDay, Math.max(0, dayCount - 1));
+    const selectedField = slotsArray.fields[dayIndex];
+
+    // ── Close guard ────────────────────────────────────────────────────────
+    function requestClose() {
         if (saving) return;
-        if (isDirty) {
+        if (ready && isComposerDirty(getValues(), baselineRef.current)) {
             setConfirmDiscard(true);
             return;
         }
         onOpenChange(false);
     }
 
-    // Feeds the preview straight from the form state, so it moves as the teacher types.
-    const previewTasks = useMemo(
-        () =>
-            items.map((item) => ({
-                key: item.key,
-                itemType: item.itemType,
-                title: item.title,
-                isRequired: item.isRequired,
-                contentHtml: item.contentHtml,
-                prompt: item.prompt,
-                options: item.options,
-                correctOptionId: item.correctOptionId,
-                explanation: item.explanation,
-                completionPoints: item.completionPoints,
-                correctPoints: item.correctPoints,
-            })),
-        [items]
-    );
-
-    function patchItem(key: string, patch: Partial<DraftItem>) {
-        setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
-    }
-
-    function buildPayload(item: DraftItem): string | undefined {
-        if (item.itemType === 'COURSE_SLIDE') {
-            // The learner app needs the whole path to deep-link into the slide, not
-            // just its id.
-            return item.slide ? JSON.stringify(item.slide) : undefined;
-        }
-        if (item.itemType === 'QUESTION_OF_DAY' || item.itemType === 'POLL') {
-            const format: QuestionFormat = item.itemType === 'POLL' ? 'MCQ' : item.format ?? 'MCQ';
-            const isMcq = format === 'MCQ';
-            return JSON.stringify({
-                format,
-                prompt: item.prompt ?? '',
-                // Only a multiple-choice question has options to show.
-                ...(isMcq
-                    ? { options: (item.options ?? []).filter((o) => o.text.trim().length > 0) }
-                    : {}),
-                // Only a graded question has an answer key; the server strips it from
-                // every learner response until the reveal time passes.
-                ...(item.itemType === 'QUESTION_OF_DAY' && isMcq
-                    ? {
-                          correctOptionId: item.correctOptionId,
-                          explanation: item.explanation ?? '',
-                      }
-                    : {}),
-                ...(item.itemType === 'QUESTION_OF_DAY' && !isMcq
-                    ? { explanation: item.explanation ?? '' }
-                    : {}),
-            });
-        }
-        return undefined;
-    }
-
-    function validate(): string | null {
-        if (!title.trim()) return t('composer.errors.title');
-        if (batches.length === 0) return t('composer.errors.batch');
-        if (endTime <= startTime) return t('composer.errors.time');
-        if (items.length === 0) return t('composer.errors.tasks');
-        for (const item of items) {
-            if (!item.title.trim()) return t('composer.errors.taskTitle');
-            if (item.itemType === 'COURSE_SLIDE' && !item.slide) {
-                return t('composer.errors.content');
-            }
-            if (item.itemType === 'QUESTION_OF_DAY' && (item.format ?? 'MCQ') === 'MCQ') {
-                const filled = (item.options ?? []).filter((o) => o.text.trim().length > 0);
-                if (filled.length < 2) return t('composer.errors.options');
-                if (!filled.some((o) => o.id === item.correctOptionId)) {
-                    return t('composer.errors.correct');
-                }
-            }
+    // ── Errors ─────────────────────────────────────────────────────────────
+    /** The dialog's scrolling body (the nearest ancestor that scrolls vertically). */
+    function bodyScroller(): HTMLElement | null {
+        for (let el = bodyRef.current?.parentElement; el; el = el.parentElement) {
+            const { overflowY } = window.getComputedStyle(el);
+            if (overflowY === 'auto' || overflowY === 'scroll') return el;
         }
         return null;
     }
 
-    async function handleSave() {
-        const problem = validate();
-        if (problem) {
-            setError(problem);
+    /**
+     * Focusing a field scrolls every ancestor that can scroll, including the dialog box
+     * itself (overflow hidden, but still programmatically scrollable). Put the box back so
+     * the header, X and footer never slide away.
+     */
+    function pinDialogFrame(scroller: HTMLElement | null) {
+        for (let el = scroller?.parentElement; el; el = el.parentElement) {
+            if (el.scrollTop) el.scrollTop = 0;
+            if (el.scrollLeft) el.scrollLeft = 0;
+            if (el.getAttribute('role') === 'dialog') break;
+        }
+    }
+
+    function scrollToPath(path: string) {
+        const root = bodyRef.current;
+        if (!root) return;
+        const scroller = bodyScroller();
+        pinDialogFrame(scroller);
+        const segments = path.split('.');
+        for (let n = segments.length; n > 0; n--) {
+            const candidate = segments.slice(0, n).join('.');
+            const node = root.querySelector(`[data-composer-path="${CSS.escape(candidate)}"]`);
+            if (!node) continue;
+            // A field with no registered ref (the batch picker, a weekday group) still
+            // gets keyboard focus: its first control.
+            if (!node.contains(document.activeElement)) {
+                node
+                    .querySelector<HTMLElement>(
+                        'input, textarea, button, [contenteditable="true"], [tabindex="0"]'
+                    )
+                    ?.focus({ preventScroll: true });
+            }
+            if (!scroller) {
+                node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                return;
+            }
+            // Centre the field in the body's own scroll area only.
+            const box = node.getBoundingClientRect();
+            const view = scroller.getBoundingClientRect();
+            const offset = box.top - view.top - Math.max(0, (view.height - box.height) / 2);
+            scroller.scrollBy({ top: offset, behavior: 'smooth' });
             return;
         }
-        setSaving(true);
-        setError(null);
-        try {
-            const request: EngagementPlanRequest = {
-                title: title.trim(),
-                description: description.trim() || undefined,
-                status: publish ? 'PUBLISHED' : 'DRAFT',
-                defaultMissPolicy: missPolicy,
-                // Keep a saved plan's own catch-up terms; these are only the defaults.
-                defaultCatchUpDays:
-                    missPolicy === 'EXPIRES' ? undefined : existing?.defaultCatchUpDays ?? 2,
-                defaultCatchUpPercent:
-                    missPolicy === 'CATCH_UP_REDUCED'
-                        ? existing?.defaultCatchUpPercent ?? 50
-                        : undefined,
-                slots: [
-                    {
-                        // Carry the slot id when editing, or the save would add a second
-                        // slot beside the one being edited instead of updating it.
-                        ...(slotId ? { id: slotId } : {}),
-                        // The server overwrites every slot field it is sent, so send the
-                        // day's own order and weekdays back unchanged. On a multi-day plan
-                        // the day keeps its own title (an AI day theme) too.
-                        title: (multiDay && slotMeta?.title) || title.trim(),
-                        ...(slotMeta
-                            ? {
-                                  sortOrder: slotMeta.sortOrder,
-                                  dowMask: slotMeta.dowMask ?? undefined,
-                              }
-                            : {}),
-                        startDate,
-                        endDate: endDate || undefined,
-                        startTime,
-                        endTime,
-                        revealTime: revealTime || undefined,
-                        notifyTime: notifyTime || undefined,
-                        items: items.map((item, index) => ({
-                            ...(item.id ? { id: item.id } : {}),
-                            itemType: item.itemType,
-                            title: item.title.trim(),
-                            sortOrder: index,
-                            isRequired: item.isRequired,
-                            contentHtml: item.contentHtml,
-                            slideId: item.slide?.slideId,
-                            payloadJson: buildPayload(item),
-                            completionPoints: item.completionPoints ?? 0,
-                            correctPoints: item.correctPoints ?? 0,
-                            maxScore: item.maxScore,
-                            hideResultUntilReveal: item.hideResultUntilReveal,
-                        })),
-                    },
-                ],
-            };
+    }
 
-            if (isEdit && planId) {
-                await updateEngagementPlan(planId, request);
-                toast.success(t('composer.saved'));
-            } else {
-                const created = await createEngagementPlan({
-                    ...request,
-                    packageSessionIds: batches.map((b) => b.id),
-                });
-                const firstBatchId = batches[0]?.id;
+    function goToFirstError(path?: string) {
+        const first = path
+            ? { path }
+            : blockingErrors(form.formState.errors, publishIntent.current)[0];
+        if (!first) return;
+        const match = /^slots\.(\d+)(?:\.items\.(\d+))?/.exec(first.path);
+        if (match) {
+            const day = Number(match[1]);
+            setSelectedDay(day);
+            if (match[2] != null) {
+                const key = getValues(`slots.${day}.items.${Number(match[2])}.key`);
+                if (key) setOpenKey(key);
+            }
+        }
+        setMobileTab('edit');
+        // Two frames: one to render the day and open the task, one to lay it out.
+        window.requestAnimationFrame(() =>
+            window.requestAnimationFrame(() => {
+                try {
+                    setFocus(first.path as Parameters<typeof setFocus>[0]);
+                } catch {
+                    // Not every error sits on a focusable field (a day with no tasks).
+                }
+                scrollToPath(first.path);
+            })
+        );
+    }
+
+    // ── Save ───────────────────────────────────────────────────────────────
+    async function runSave(publish: boolean) {
+        setServerError(null);
+        const values = getValues();
+        const toSave: ComposerForm = publish ? { ...values, status: 'PUBLISHED' } : values;
+        try {
+            const result = await save({ planId, form: toSave, baseline: baselineRef.current });
+            if (result.kind === 'created') {
+                const firstBatch = toSave.packageSessionIds[0];
                 toast.success(
-                    t('composer.created', { count: created.length }),
-                    // Off the engagement page (the slide editor), offer a way to the plan.
-                    presetSlide && firstBatchId
+                    publish
+                        ? t('composer.toast.published')
+                        : t('composer.created', { count: result.plans.length }),
+                    presetSlide && firstBatch
                         ? {
                               action: {
                                   label: t('composer.viewPlan'),
                                   onClick: () =>
                                       void navigate({
                                           to: '/engagement',
-                                          search: { packageSessionId: firstBatchId },
+                                          search: { packageSessionId: firstBatch },
                                       }),
                               },
                           }
                         : undefined
                 );
+            } else {
+                toast.success(
+                    publish
+                        ? t('composer.toast.published')
+                        : result.changed
+                          ? t('composer.saved')
+                          : t('composer.toast.noChanges')
+                );
             }
+            setPublishSummary(null);
             onCreated();
             onOpenChange(false);
-        } catch (e: unknown) {
-            const message =
-                (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                t('composer.errors.save');
-            setError(message);
-        } finally {
-            setSaving(false);
+        } catch (error) {
+            if (error instanceof ComposerSaveError) {
+                // Fold what did save back in, so a retry never repeats it.
+                const baseline = baselineRef.current;
+                for (const id of error.progress.deletedSlotIds) {
+                    if (baseline) delete baseline.slots[id];
+                }
+                for (const saved of error.progress.savedSlots) {
+                    const fresh = slotToForm(saved.dto);
+                    setValue(`slots.${saved.index}`, fresh, { shouldDirty: true });
+                    if (baseline) {
+                        const order = slotSaveOrders(getValues('slots'))[saved.index] ?? 0;
+                        baseline.slots[saved.dto.id] = slotSnapshot(fresh, order);
+                    }
+                }
+                if (error.failedDayIndex != null) setSelectedDay(error.failedDayIndex);
+                if (error.progress.savedSlots.length > 0) setFormEpoch((n) => n + 1);
+            }
+            const message = saveErrorText(error, t);
+            setServerError(message);
+            setPublishSummary(null);
+            toast.error(message);
         }
     }
 
+    function proceed(publish: boolean) {
+        if (!publish) {
+            void runSave(false);
+            return;
+        }
+        const values = getValues();
+        const labels = (isEdit ? [values.packageSessionId ?? ''] : values.packageSessionIds)
+            .filter(Boolean)
+            .map((id) => batchLabels[id] ?? storeBatchLabel(id) ?? t('composer.thisBatch'));
+        setPublishSummary(
+            buildPublishSummary(values, {
+                batchLabels: labels,
+                learnerCount: plan?.learnerCount ?? null,
+                today,
+                dailyItemCap,
+            })
+        );
+    }
+
+    function afterValid(publish: boolean) {
+        const locked = lockedChanges(getValues());
+        if (locked.length > 0) {
+            setLockedPrompt({ changes: locked, publish });
+            return;
+        }
+        proceed(publish);
+    }
+
+    /**
+     * Errors that stop this save. Saving an edit sends only the days that changed, so a
+     * problem in a day it doesn't send (say, an old AI game with no top score on day 3)
+     * doesn't block renaming day 2; it stays flagged on its day. Publishing, and every
+     * new plan, needs the whole plan valid.
+     */
+    function blockingErrors(errors: FieldErrors<ComposerForm>, publish: boolean) {
+        const all = sortErrorsByScreenOrder(flattenFormErrors(errors), getValues('slots'));
+        if (publish || !isEdit || !baselineRef.current) return all;
+        const sent = new Set(
+            planSaveSteps(getValues(), baselineRef.current).upsertSlots.map((step) => step.index)
+        );
+        return all.filter((error) => {
+            const match = /^slots\.(\d+)\./.exec(error.path);
+            return !match || sent.has(Number(match[1]));
+        });
+    }
+
+    function submit(publish: boolean) {
+        publishIntent.current = publish;
+        setServerError(null);
+        void handleSubmit(
+            () => afterValid(publish),
+            (errors) => {
+                const blocking = blockingErrors(errors, publish);
+                if (blocking.length === 0) {
+                    afterValid(publish);
+                    return;
+                }
+                goToFirstError(blocking[0]!.path);
+            }
+        )();
+    }
+
+    function saveLockedAsNew() {
+        if (!lockedPrompt) return;
+        for (const change of lockedPrompt.changes) {
+            const path = `slots.${change.dayIndex}.items.${change.itemIndex}` as const;
+            const copy = detachItem(getValues(path));
+            setValue(path, copy, { shouldDirty: true });
+            if (openKey === change.key) setOpenKey(copy.key);
+        }
+        const publish = lockedPrompt.publish;
+        setLockedPrompt(null);
+        setFormEpoch((n) => n + 1);
+        proceed(publish);
+    }
+
+    // ── Days ───────────────────────────────────────────────────────────────
+    function addDay() {
+        const slots = getValues('slots');
+        const source = slots[dayIndex];
+        const last = planLastDate(slots);
+        const startDate = last ? addDays(last, 1) : instituteToday();
+        const fresh: SlotForm = {
+            ...newComposerForm().slots[0]!,
+            startDate,
+            startTime: source?.startTime ?? '06:00',
+            endTime: source?.endTime ?? '20:00',
+            revealTime: source?.revealTime ?? '',
+            notifyTime: source?.notifyTime ?? '',
+            items: [],
+        };
+        slotsArray.append(fresh);
+        setSelectedDay(slots.length);
+        setOpenKey(null);
+    }
+
+    function duplicateDay(index: number) {
+        const slots = getValues('slots');
+        const source = slots[index];
+        if (!source) return;
+        const last = planLastDate(slots);
+        const startDate = last ? addDays(last, 1) : source.startDate;
+        const span = source.endDate
+            ? Math.max(0, daysBetween(source.startDate, source.endDate))
+            : 0;
+        const copy = detachSlot(source, {
+            startDate,
+            endDate: source.endDate ? addDays(startDate, span) : '',
+        });
+        slotsArray.append(copy);
+        setSelectedDay(slots.length);
+        setOpenKey(copy.items[0]?.key ?? null);
+        toast.success(t('composer.toast.dayDuplicated'));
+    }
+
+    function confirmDeleteDay() {
+        const index = deleteDayIndex;
+        setDeleteDayIndex(null);
+        if (index == null || dayCount <= 1) return;
+        slotsArray.remove(index);
+        setOpenKey(null);
+        setSelectedDay((current) =>
+            current > index ? current - 1 : Math.min(current, dayCount - 2)
+        );
+    }
+
+    /**
+     * Move a day from one place in the date order to another. A day's place IS its
+     * date (the server lists days by date), so the days keep their places' schedules
+     * (dates and weekdays) and the content moves: the moved day takes the dates of the
+     * place it lands on, and the days in between shift along by one place.
+     */
+    function moveDay(fromPosition: number, toPosition: number) {
+        const slots = getValues('slots');
+        if (toPosition < 0 || toPosition >= slots.length || fromPosition === toPosition) return;
+        const order = orderDays(slots);
+        const schedules = order.map((index) => ({
+            startDate: slots[index]!.startDate,
+            endDate: slots[index]!.endDate,
+            dowMask: slots[index]!.dowMask,
+        }));
+        const next = [...order];
+        const [moved] = next.splice(fromPosition, 1);
+        next.splice(toPosition, 0, moved!);
+        next.forEach((formIndex, position) => {
+            const target = schedules[position]!;
+            const current = slots[formIndex]!;
+            const options = { shouldDirty: true, shouldValidate: form.formState.isSubmitted };
+            if (current.startDate !== target.startDate) {
+                setValue(`slots.${formIndex}.startDate`, target.startDate, options);
+            }
+            if (current.endDate !== target.endDate) {
+                setValue(`slots.${formIndex}.endDate`, target.endDate, options);
+            }
+            if (current.dowMask !== target.dowMask) {
+                setValue(`slots.${formIndex}.dowMask`, target.dowMask, options);
+            }
+        });
+    }
+
+    function moveTaskToDay(item: ItemForm, target: number) {
+        const items = getValues(`slots.${target}.items`) ?? [];
+        setValue(`slots.${target}.items`, [...items, item], { shouldDirty: true });
+    }
+
+    // Only the days' dates and start times are watched here (for "Day 2 · Thu, 25 Sep"
+    // labels and the date order), so typing in a task never re-renders the shell.
+    const scheduleNames = slotsArray.fields.flatMap(
+        (_, index) => [`slots.${index}.startDate`, `slots.${index}.startTime`] as const
+    );
+    const scheduleValues = useWatch({ control, name: scheduleNames }) as (string | undefined)[];
+    const scheduleSlots = slotsArray.fields.map((_, index) => ({
+        startDate: scheduleValues[index * 2] ?? '',
+        startTime: scheduleValues[index * 2 + 1] ?? '',
+    }));
+    const ranks = dayRanks(scheduleSlots);
+    function dayLabel(index: number): string {
+        const slot = getValues(`slots.${index}`);
+        const when = slot ? dayHeading(slot, lang).label : '';
+        const label = t('composer.rail.dayN', { n: ranks.get(index) ?? index + 1 });
+        return when ? `${label} · ${when}` : label;
+    }
+    const dayOptions: DayOption[] = ready
+        ? orderDays(scheduleSlots).map((index) => ({ index, label: dayLabel(index) }))
+        : [];
+    const deleteTarget = deleteDayIndex != null ? getValues(`slots.${deleteDayIndex}`) : undefined;
+    const deleteAnswered = (deleteTarget?.items ?? []).reduce(
+        (sum, item) => sum + (item.id ? item.completedCount ?? 0 : 0),
+        0
+    );
+
+    const courseFilter = presetSlide?.courseId ?? storeCourseId(defaultPackageSessionId);
+    const selectedBatches: BatchOption[] = (batchIds ?? []).map((id) => ({
+        id,
+        label: batchLabels[id] ?? storeBatchLabel(id) ?? id,
+    }));
+
+    const heading = isEdit ? t('composer.titleEdit') : t('composer.titleNew');
+    const footerHint =
+        status === 'DRAFT' ? t('composer.footer.hintDraft') : t('composer.footer.hintLive');
+
     return (
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-5xl">
-                <DialogHeader>
-                    <DialogTitle className="text-start">
-                        {isEdit ? t('composer.titleEdit') : t('composer.titleNew')}
-                    </DialogTitle>
-                </DialogHeader>
+        <>
+            <MyDialog
+                heading={heading}
+                open={open}
+                onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}
+                dialogWidth="max-w-7xl"
+                className="h-dialog-tall"
+                headerActions={
+                    ready && status ? (
+                        <StatusChip
+                            text={t(`composer.statusChip.${status}`)}
+                            textSize="text-caption"
+                            status={STATUS_CHIP[status]}
+                            showIcon={false}
+                        />
+                    ) : undefined
+                }
+                footerLeft={
+                    <ComposerFooterLeft
+                        control={control}
+                        serverError={serverError}
+                        onGoToFirstError={() => goToFirstError()}
+                        hint={ready ? footerHint : null}
+                    />
+                }
+                footer={
+                    <ComposerFooterActions
+                        status={status ?? 'DRAFT'}
+                        ready={ready}
+                        saving={saving}
+                        isEdit={isEdit}
+                        onCancel={requestClose}
+                        onSave={() => submit(false)}
+                        onPublish={() => submit(true)}
+                    />
+                }
+            >
+                {/* `relative` keeps absolutely positioned descendants (sr-only labels, dnd-kit
+                    live regions) inside the scroll area. Without it they are placed against
+                    the fixed dialog box, give it scrollable overflow, and scrolling a field
+                    into view slides the whole dialog — header, X and footer — out of place. */}
+                <div ref={bodyRef} className="relative">
+                    {isEdit && editQuery.isError && (
+                        <Alert className="border-danger-200 bg-danger-50 text-danger-700">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <WarningCircle size={18} className="shrink-0" aria-hidden />
+                                <AlertDescription className="min-w-0 flex-1">
+                                    {t('composer.loadError')}
+                                </AlertDescription>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => void editQuery.refetch()}
+                                >
+                                    <ArrowClockwise size={14} aria-hidden /> {t('common.retry')}
+                                </MyButton>
+                            </div>
+                        </Alert>
+                    )}
 
-                {isEdit && !formReady && !editQuery.isError && (
-                    <div className="space-y-4" aria-busy="true">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-40 w-full" />
-                        <Skeleton className="h-56 w-full" />
-                    </div>
-                )}
+                    {!ready && !(isEdit && editQuery.isError) && <ComposerSkeleton />}
 
-                {isEdit && editQuery.isError && (
-                    <Alert className="border-danger-200 bg-danger-50 text-danger-700">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <WarningCircle size={18} className="shrink-0" />
-                            <AlertDescription className="min-w-0 flex-1">
-                                {t('composer.loadError')}
-                            </AlertDescription>
+                    {ready && !selectedField && (
+                        <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
+                            <p className="text-subtitle font-semibold text-neutral-900">
+                                {t('composer.noDays.title')}
+                            </p>
+                            <p className="mt-1 text-body text-neutral-500">
+                                {t('composer.noDays.hint')}
+                            </p>
                             <MyButton
                                 type="button"
                                 buttonType="secondary"
-                                scale="small"
-                                onClick={() => void editQuery.refetch()}
+                                scale="medium"
+                                className="mt-4"
+                                onClick={addDay}
                             >
-                                <ArrowClockwise size={14} /> {t('common.retry')}
+                                <CalendarPlus size={16} aria-hidden /> {t('composer.rail.add')}
                             </MyButton>
                         </div>
-                    </Alert>
-                )}
+                    )}
 
-                {formReady && (
-                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                        <div className="space-y-6">
-                            {multiDay && (
-                                <Alert className="border-warning-200 bg-warning-50 text-warning-700">
-                                    <div className="flex items-start gap-3">
-                                        <Warning size={18} className="mt-0.5 shrink-0" />
-                                        <AlertDescription className="min-w-0 flex-1">
-                                            {t('composer.multiDay', { count: dayCount })}
-                                        </AlertDescription>
-                                    </div>
-                                </Alert>
-                            )}
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="plan-title">{t('composer.title')}</Label>
-                                    <Input
-                                        id="plan-title"
-                                        value={title}
-                                        onChange={(e) => setTitle(e.target.value)}
-                                        placeholder={t('composer.titlePlaceholder')}
+                    {ready && selectedField && (
+                        <Form {...form}>
+                            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+                                <aside className="lg:sticky lg:top-0 lg:w-60 lg:shrink-0">
+                                    <DayRail
+                                        control={control}
+                                        days={slotsArray.fields}
+                                        selectedIndex={dayIndex}
+                                        onSelect={(index) => {
+                                            setSelectedDay(index);
+                                            setOpenKey(null);
+                                            setActiveCardId(null);
+                                        }}
+                                        onAdd={addDay}
+                                        onDuplicate={duplicateDay}
+                                        onDelete={(index) => setDeleteDayIndex(index)}
+                                        onMove={moveDay}
                                     />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>{t('composer.batches')}</Label>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        // A saved plan belongs to one batch, so editing cannot
-                                        // move it; create a new plan for another batch instead.
-                                        disabled={isEdit}
-                                        className="h-10 w-full justify-start font-normal"
-                                        onClick={() => setBatchPickerOpen(true)}
-                                    >
-                                        {batches.length === 0
-                                            ? t('composer.selectBatches')
-                                            : batches.length === 1
-                                              ? batches[0]!.label
-                                              : t('composer.batchesSelected', {
-                                                    count: batches.length,
-                                                })}
-                                    </Button>
-                                    {isEdit ? (
-                                        <p className="text-xs text-neutral-500">
-                                            {t('composer.editOneBatch')}
-                                        </p>
-                                    ) : (
-                                        batches.length > 1 && (
-                                            <p className="text-xs text-neutral-500">
-                                                {t('composer.onePerBatch')}
-                                            </p>
-                                        )
-                                    )}
-                                </div>
-                            </div>
+                                </aside>
 
-                            <div className="space-y-1.5">
-                                <Label htmlFor="plan-description">
-                                    {t('composer.description')}
-                                </Label>
-                                <Textarea
-                                    id="plan-description"
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    placeholder={t('composer.descriptionPlaceholder')}
-                                />
-                            </div>
-
-                            <div className="rounded-lg border border-neutral-200 p-4">
-                                <p className="text-sm font-medium text-neutral-900">
-                                    {t('composer.when')}
-                                </p>
-                                <p className="mt-0.5 text-xs text-neutral-500">
-                                    {t('composer.tz')}
-                                </p>
-                                {multiDay && (
-                                    <p className="mt-0.5 text-xs text-neutral-500">
-                                        {t('composer.datesLocked')}
-                                    </p>
-                                )}
-                                <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-start-date">
-                                            {t('composer.firstDay')}
-                                        </Label>
-                                        {/* Locked on a multi-day plan: widening day 1 would stack
-                                        its tasks on top of the days after it. */}
-                                        <Input
-                                            id="plan-start-date"
-                                            type="date"
-                                            value={startDate}
-                                            disabled={multiDay}
-                                            onChange={(e) => setStartDate(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-end-date">
-                                            {t('composer.lastDay')}
-                                        </Label>
-                                        <Input
-                                            id="plan-end-date"
-                                            type="date"
-                                            value={endDate}
-                                            disabled={multiDay}
-                                            onChange={(e) => setEndDate(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-notify">
-                                            {t('composer.notifyAt')}
-                                        </Label>
-                                        <Input
-                                            id="plan-notify"
-                                            type="time"
-                                            value={notifyTime}
-                                            onChange={(e) => setNotifyTime(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-start-time">
-                                            {t('composer.opensAt')}
-                                        </Label>
-                                        <Input
-                                            id="plan-start-time"
-                                            type="time"
-                                            value={startTime}
-                                            onChange={(e) => setStartTime(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-end-time">
-                                            {t('composer.closesAt')}
-                                        </Label>
-                                        <Input
-                                            id="plan-end-time"
-                                            type="time"
-                                            value={endTime}
-                                            onChange={(e) => setEndTime(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="plan-reveal">
-                                            {t('composer.revealAt')}
-                                        </Label>
-                                        <Input
-                                            id="plan-reveal"
-                                            type="time"
-                                            value={revealTime}
-                                            onChange={(e) => setRevealTime(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 space-y-1.5">
-                                    <Label>{t('composer.ifMissed')}</Label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {MISS_POLICIES.map((policy) => (
-                                            <button
-                                                key={policy}
-                                                type="button"
-                                                onClick={() => setMissPolicy(policy)}
-                                                className={
-                                                    missPolicy === policy
-                                                        ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
-                                                        : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
-                                                }
-                                            >
-                                                <span className="block font-medium text-neutral-900">
-                                                    {t(`composer.miss.${policy}`)}
-                                                </span>
-                                                <span className="block text-neutral-500">
-                                                    {t(`composer.miss.${policy}_hint`)}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-sm font-medium text-neutral-900">
-                                        {t('composer.tasks')}
-                                    </p>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setItems((prev) => [...prev, newItem()])}
-                                    >
-                                        <Plus size={16} /> {t('composer.addTask')}
-                                    </Button>
-                                </div>
-
-                                {items.map((item, index) => (
-                                    <div
-                                        key={item.key}
-                                        onFocusCapture={() => setActiveKey(item.key)}
-                                        className={
-                                            activeKey === item.key
-                                                ? 'space-y-3 rounded-lg border border-primary-300 p-4'
-                                                : 'space-y-3 rounded-lg border border-neutral-200 p-4'
+                                <div className="min-w-0 flex-1 space-y-5">
+                                    <Tabs
+                                        value={mobileTab}
+                                        onValueChange={(value) =>
+                                            setMobileTab(value === 'preview' ? 'preview' : 'edit')
                                         }
+                                        className="xl:hidden"
                                     >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {ITEM_TYPES.map((type) => (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        title={t(`composer.types.${type}_hint`)}
-                                                        onClick={() =>
-                                                            patchItem(item.key, {
-                                                                itemType: type,
-                                                            })
-                                                        }
-                                                        className={
-                                                            item.itemType === type
-                                                                ? 'rounded-md bg-primary-500 px-2.5 py-1 text-xs font-medium text-white'
-                                                                : 'rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200'
-                                                        }
-                                                    >
-                                                        {t(`composer.types.${type}`)}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {items.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    aria-label={t('composer.removeTask')}
-                                                    onClick={() =>
-                                                        setItems((prev) =>
-                                                            prev.filter((it) => it.key !== item.key)
-                                                        )
-                                                    }
-                                                    className="text-neutral-400 hover:text-danger-600"
-                                                >
-                                                    <Trash size={16} />
-                                                </button>
-                                            )}
-                                        </div>
+                                        <TabsList className="w-full">
+                                            <TabsTrigger value="edit" className="flex-1">
+                                                {t('composer.tabs.edit')}
+                                            </TabsTrigger>
+                                            <TabsTrigger value="preview" className="flex-1">
+                                                {t('composer.tabs.preview')}
+                                            </TabsTrigger>
+                                        </TabsList>
+                                    </Tabs>
 
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor={`item-title-${index}`}>
-                                                {t('composer.taskTitle')}
-                                            </Label>
-                                            <Input
-                                                id={`item-title-${index}`}
-                                                value={item.title}
-                                                onChange={(e) =>
-                                                    patchItem(item.key, { title: e.target.value })
-                                                }
-                                                placeholder={t('composer.taskTitlePlaceholder')}
-                                            />
-                                        </div>
-
-                                        {item.itemType === 'COURSE_SLIDE' && (
-                                            <div className="space-y-1.5">
-                                                <Label>{t('composer.courseContent')}</Label>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    className="h-10 w-full justify-start font-normal"
-                                                    disabled={batches.length === 0}
-                                                    onClick={() => setSlidePickerFor(item.key)}
-                                                >
-                                                    {item.slide ? (
-                                                        <span className="flex min-w-0 items-center gap-2">
-                                                            <GraduationCap
-                                                                size={16}
-                                                                className="shrink-0 text-neutral-500"
-                                                            />
-                                                            <span className="truncate">
-                                                                {item.slide.slideTitle}
-                                                            </span>
-                                                        </span>
-                                                    ) : batches.length === 0 ? (
-                                                        t('composer.pickBatchFirst')
-                                                    ) : (
-                                                        t('composer.chooseLesson')
-                                                    )}
-                                                </Button>
-                                                <p className="text-xs text-neutral-500">
-                                                    {t('composer.lessonHint')}
-                                                </p>
-                                            </div>
+                                    <div
+                                        className={cn(
+                                            'space-y-5',
+                                            mobileTab === 'preview' && 'hidden xl:block'
                                         )}
+                                    >
+                                        <PlanDetails
+                                            control={control}
+                                            isEdit={isEdit}
+                                            batches={selectedBatches}
+                                            onPickBatches={() => setBatchPickerOpen(true)}
+                                            courseFilter={courseFilter}
+                                        />
 
-                                        {(item.itemType === 'READING_HTML' ||
-                                            item.itemType === 'VISUAL_NOTE' ||
-                                            item.itemType === 'GAME') && (
-                                            <div className="space-y-1.5">
-                                                <Label htmlFor={`item-html-${index}`}>
-                                                    {item.itemType === 'GAME'
-                                                        ? t('composer.gameHtml')
-                                                        : t('composer.content')}
-                                                </Label>
-                                                {item.itemType === 'GAME' ? (
-                                                    // A game is a self-contained document with its own
-                                                    // scripts and styles — a rich-text editor would rewrite
-                                                    // it. Authored as raw HTML on purpose.
-                                                    <Textarea
-                                                        id={`item-html-${index}`}
-                                                        value={item.contentHtml ?? ''}
-                                                        onChange={(e) =>
-                                                            patchItem(item.key, {
-                                                                contentHtml: e.target.value,
-                                                            })
-                                                        }
-                                                        rows={5}
-                                                        placeholder="<!DOCTYPE html> …"
-                                                        className="font-mono text-xs"
-                                                    />
-                                                ) : (
-                                                    <TipTapEditor
-                                                        value={item.contentHtml ?? ''}
-                                                        onChange={(html) =>
-                                                            patchItem(item.key, {
-                                                                contentHtml: html,
-                                                            })
-                                                        }
-                                                        placeholder={t(
-                                                            'composer.contentPlaceholder'
-                                                        )}
-                                                        minHeight={160}
-                                                    />
-                                                )}
-                                                {item.itemType === 'GAME' && (
-                                                    <p className="text-xs text-neutral-500">
-                                                        {t('composer.gameHint')}{' '}
-                                                        <code className="rounded bg-neutral-100 px-1">
-                                                            {GAME_SCORE_SNIPPET}
-                                                        </code>{' '}
-                                                        {t('composer.gameHint2')}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        )}
+                                        <DayHeader
+                                            control={control}
+                                            index={dayIndex}
+                                            rank={ranks.get(dayIndex) ?? dayIndex + 1}
+                                            count={dayCount}
+                                            onDuplicate={() => duplicateDay(dayIndex)}
+                                            onDelete={() => setDeleteDayIndex(dayIndex)}
+                                        />
 
-                                        {(item.itemType === 'QUESTION_OF_DAY' ||
-                                            item.itemType === 'POLL') && (
-                                            <div className="space-y-3">
-                                                {item.itemType === 'QUESTION_OF_DAY' && (
-                                                    <div className="space-y-1.5">
-                                                        <Label>{t('composer.howAnswer')}</Label>
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {QUESTION_FORMATS.map((f) => (
-                                                                <button
-                                                                    key={f}
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        patchItem(item.key, {
-                                                                            format: f,
-                                                                        })
-                                                                    }
-                                                                    className={
-                                                                        (item.format ?? 'MCQ') === f
-                                                                            ? 'rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-start text-xs'
-                                                                            : 'rounded-lg border border-neutral-200 px-3 py-2 text-start text-xs hover:border-neutral-300'
-                                                                    }
-                                                                >
-                                                                    <span className="block font-medium text-neutral-900">
-                                                                        {t(`composer.formats.${f}`)}
-                                                                    </span>
-                                                                    <span className="block text-neutral-500">
-                                                                        {t(
-                                                                            `composer.formats.${f}_hint`
-                                                                        )}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                        <DayScheduleEditor
+                                            key={`schedule-${selectedField.rhfKey}-${formEpoch}`}
+                                            control={control}
+                                            setValue={setValue}
+                                            dayIndex={dayIndex}
+                                            dailyItemCap={dailyItemCap}
+                                            timezone={plan?.timezone}
+                                            today={today}
+                                        />
 
-                                                <div className="space-y-1.5">
-                                                    <Label>{t('composer.question')}</Label>
-                                                    <TipTapEditor
-                                                        value={item.prompt ?? ''}
-                                                        onChange={(html) =>
-                                                            patchItem(item.key, { prompt: html })
-                                                        }
-                                                        placeholder={t('composer.askPlaceholder')}
-                                                        minHeight={90}
-                                                        minimalToolbar
-                                                    />
-                                                </div>
-                                                {/* Options belong to multiple choice only; a written
-                                                or uploaded answer has nothing to choose from. */}
-                                                {(item.itemType === 'POLL' ||
-                                                    (item.format ?? 'MCQ') === 'MCQ') && (
-                                                    <div className="space-y-2">
-                                                        <Label>{t('composer.options')}</Label>
-                                                        {(item.options ?? []).map(
-                                                            (option, optionIndex) => (
-                                                                <div
-                                                                    key={option.id}
-                                                                    className="flex items-center gap-2"
-                                                                >
-                                                                    {item.itemType ===
-                                                                        'QUESTION_OF_DAY' && (
-                                                                        <input
-                                                                            type="radio"
-                                                                            name={`correct-${item.key}`}
-                                                                            checked={
-                                                                                item.correctOptionId ===
-                                                                                option.id
-                                                                            }
-                                                                            onChange={() =>
-                                                                                patchItem(
-                                                                                    item.key,
-                                                                                    {
-                                                                                        correctOptionId:
-                                                                                            option.id,
-                                                                                    }
-                                                                                )
-                                                                            }
-                                                                            aria-label={t(
-                                                                                'composer.optionCorrect',
-                                                                                {
-                                                                                    id: option.id.toUpperCase(),
-                                                                                }
-                                                                            )}
-                                                                        />
-                                                                    )}
-                                                                    <Input
-                                                                        value={option.text}
-                                                                        onChange={(e) => {
-                                                                            const next = [
-                                                                                ...(item.options ??
-                                                                                    []),
-                                                                            ];
-                                                                            next[optionIndex] = {
-                                                                                ...option,
-                                                                                text: e.target
-                                                                                    .value,
-                                                                            };
-                                                                            patchItem(item.key, {
-                                                                                options: next,
-                                                                            });
-                                                                        }}
-                                                                        placeholder={t(
-                                                                            'composer.optionPlaceholder',
-                                                                            {
-                                                                                id: option.id.toUpperCase(),
-                                                                            }
-                                                                        )}
-                                                                    />
-                                                                </div>
-                                                            )
-                                                        )}
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                const next = [
-                                                                    ...(item.options ?? []),
-                                                                ];
-                                                                const id = String.fromCharCode(
-                                                                    97 + next.length
-                                                                );
-                                                                next.push({ id, text: '' });
-                                                                patchItem(item.key, {
-                                                                    options: next,
-                                                                });
-                                                            }}
-                                                        >
-                                                            <Plus size={14} />{' '}
-                                                            {t('composer.option')}
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                                {item.itemType === 'QUESTION_OF_DAY' && (
-                                                    <div className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3">
-                                                        <Switch
-                                                            id={`item-hide-result-${index}`}
-                                                            checked={Boolean(
-                                                                item.hideResultUntilReveal
-                                                            )}
-                                                            onCheckedChange={(checked) =>
-                                                                patchItem(item.key, {
-                                                                    hideResultUntilReveal: checked,
-                                                                })
-                                                            }
-                                                        />
-                                                        <div className="space-y-0.5">
-                                                            <Label
-                                                                htmlFor={`item-hide-result-${index}`}
-                                                            >
-                                                                {t('composer.hideResult')}
-                                                            </Label>
-                                                            <p className="text-xs text-neutral-500">
-                                                                {t('composer.hideResultHint')}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {item.itemType === 'QUESTION_OF_DAY' && (
-                                                    <div className="space-y-1.5">
-                                                        <Label>{t('composer.explanation')}</Label>
-                                                        <TipTapEditor
-                                                            value={item.explanation ?? ''}
-                                                            onChange={(html) =>
-                                                                patchItem(item.key, {
-                                                                    explanation: html,
-                                                                })
-                                                            }
-                                                            placeholder={t(
-                                                                'composer.explanationPlaceholder'
-                                                            )}
-                                                            minHeight={90}
-                                                            minimalToolbar
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <div className="grid gap-3 sm:grid-cols-3">
-                                            <div className="space-y-1.5">
-                                                <Label htmlFor={`item-completion-${index}`}>
-                                                    {t('composer.completionPoints')}
-                                                </Label>
-                                                <Input
-                                                    id={`item-completion-${index}`}
-                                                    type="number"
-                                                    value={item.completionPoints ?? 0}
-                                                    onChange={(e) =>
-                                                        patchItem(item.key, {
-                                                            completionPoints: Number(
-                                                                e.target.value
-                                                            ),
-                                                        })
-                                                    }
-                                                />
-                                            </div>
-                                            {item.itemType === 'QUESTION_OF_DAY' && (
-                                                <div className="space-y-1.5">
-                                                    <Label htmlFor={`item-correct-${index}`}>
-                                                        {t('composer.bonus')}
-                                                    </Label>
-                                                    <Input
-                                                        id={`item-correct-${index}`}
-                                                        type="number"
-                                                        value={item.correctPoints ?? 0}
-                                                        onChange={(e) =>
-                                                            patchItem(item.key, {
-                                                                correctPoints: Number(
-                                                                    e.target.value
-                                                                ),
-                                                            })
-                                                        }
-                                                    />
-                                                </div>
-                                            )}
-                                            <div className="flex items-end gap-2">
-                                                <Switch
-                                                    id={`item-required-${index}`}
-                                                    checked={Boolean(item.isRequired)}
-                                                    onCheckedChange={(checked) =>
-                                                        patchItem(item.key, { isRequired: checked })
-                                                    }
-                                                />
-                                                <Label htmlFor={`item-required-${index}`}>
-                                                    {t('composer.required')}
-                                                </Label>
-                                            </div>
-                                        </div>
+                                        <TaskList
+                                            key={`tasks-${selectedField.rhfKey}-${formEpoch}`}
+                                            control={control}
+                                            getValues={getValues}
+                                            setFocus={setFocus}
+                                            dayIndex={dayIndex}
+                                            days={dayOptions}
+                                            openKey={openKey}
+                                            onOpenKeyChange={(key) => {
+                                                setOpenKey(key);
+                                                setActiveCardId(null);
+                                            }}
+                                            activeCardId={activeCardId}
+                                            onActiveCardChange={setActiveCardId}
+                                            onMoveToDay={moveTaskToDay}
+                                            packageSessionId={
+                                                isEdit ? plan?.packageSessionId : batchIds?.[0]
+                                            }
+                                        />
                                     </div>
-                                ))}
+
+                                    <div
+                                        className={cn(
+                                            mobileTab === 'edit' && 'hidden',
+                                            'xl:hidden'
+                                        )}
+                                    >
+                                        <PreviewPane
+                                            control={control}
+                                            dayIndex={dayIndex}
+                                            activeKey={openKey}
+                                            onSelect={(key) => {
+                                                setOpenKey(key);
+                                                setMobileTab('edit');
+                                            }}
+                                            activeCardId={activeCardId}
+                                        />
+                                    </div>
+                                </div>
+
+                                <aside className="hidden xl:sticky xl:top-0 xl:block xl:w-80 xl:shrink-0">
+                                    <PreviewPane
+                                        control={control}
+                                        dayIndex={dayIndex}
+                                        activeKey={openKey}
+                                        onSelect={(key) => setOpenKey(key)}
+                                        activeCardId={activeCardId}
+                                    />
+                                </aside>
                             </div>
+                        </Form>
+                    )}
+                </div>
+            </MyDialog>
 
-                            {error && (
-                                <p className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">
-                                    {error}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Sticky so the preview stays in view while a long form scrolls. */}
-                        <aside className="lg:sticky lg:top-0 lg:self-start">
-                            <PlanPreview
-                                tasks={previewTasks}
-                                startTime={startTime}
-                                endTime={endTime}
-                                revealTime={revealTime}
-                                missPolicy={missPolicy}
-                                catchUpPercent={existing?.defaultCatchUpPercent ?? 50}
-                                activeKey={activeKey}
-                            />
-                        </aside>
-                    </div>
-                )}
-
-                <DialogFooter className="items-center gap-3 sm:justify-between">
-                    <div className="flex items-center gap-2">
-                        <Switch
-                            id="plan-publish"
-                            checked={publish}
-                            disabled={!formReady}
-                            onCheckedChange={setPublish}
-                        />
-                        <Label htmlFor="plan-publish">
-                            {isEdit ? t('composer.published') : t('composer.publishNow')}
-                        </Label>
-                    </div>
-                    {/* Disabled until an edited plan has loaded, so a save can never
-                        write new-plan defaults over it. */}
-                    <MyButton type="button" onClick={handleSave} disable={saving || !formReady}>
-                        {saving
-                            ? t('composer.saving')
-                            : isEdit
-                              ? t('composer.saveChanges')
-                              : t('composer.savePlan')}
-                    </MyButton>
-                </DialogFooter>
-            </DialogContent>
-
-            {slidePickerFor && batches[0] && (
-                <CourseSlidePicker
-                    open={Boolean(slidePickerFor)}
-                    onOpenChange={(next) => {
-                        if (!next) setSlidePickerFor(null);
-                    }}
-                    packageSessionId={batches[0].id}
-                    onPick={(slide) => {
-                        const target = slidePickerFor;
-                        patchItem(target, {
-                            slide,
-                            // Seed an empty title with the lesson's own name.
-                            ...(items.find((i) => i.key === target)?.title
-                                ? {}
-                                : { title: slide.slideTitle }),
-                        });
-                        setSlidePickerFor(null);
+            {!isEdit && (
+                <BatchPickerDialog
+                    open={batchPickerOpen}
+                    onOpenChange={setBatchPickerOpen}
+                    selected={selectedBatches}
+                    courseId={courseFilter}
+                    onConfirm={(next) => {
+                        setBatchLabels((current) => ({
+                            ...current,
+                            ...Object.fromEntries(next.map((batch) => [batch.id, batch.label])),
+                        }));
+                        setValue(
+                            'packageSessionIds',
+                            next.map((batch) => batch.id),
+                            { shouldDirty: true, shouldValidate: form.formState.isSubmitted }
+                        );
                     }}
                 />
             )}
 
-            <BatchPickerDialog
-                open={batchPickerOpen}
-                onOpenChange={setBatchPickerOpen}
-                selected={batches}
-                onConfirm={setBatches}
+            <PublishSummaryDialog
+                open={publishSummary !== null}
+                onOpenChange={(next) => {
+                    if (!next && !saving) setPublishSummary(null);
+                }}
+                summary={publishSummary}
+                onConfirm={() => runSave(true)}
             />
+
+            <AlertDialog
+                open={lockedPrompt !== null}
+                onOpenChange={(next) => {
+                    if (!next) setLockedPrompt(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-start">
+                            {t('composer.locked.title', {
+                                count: lockedPrompt?.changes.length ?? 0,
+                            })}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-start">
+                            {t('composer.locked.description')}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <ul className="space-y-1 text-body text-neutral-700">
+                        {lockedPrompt?.changes.map((change) => (
+                            <li key={change.key} className="flex items-center gap-2">
+                                <NotePencil size={14} className="shrink-0 text-neutral-500" />
+                                <span className="min-w-0 truncate">
+                                    {change.title || t('preview.untitled')}
+                                </span>
+                                <span className="shrink-0 text-caption text-neutral-500">
+                                    {t('composer.taskList.answered', { count: change.answered })}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{t('composer.discard.keep')}</AlertDialogCancel>
+                        <AlertDialogAction onClick={saveLockedAsNew}>
+                            {t('composer.locked.confirm', {
+                                count: lockedPrompt?.changes.length ?? 0,
+                            })}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog
+                open={deleteDayIndex !== null}
+                onOpenChange={(next) => {
+                    if (!next) setDeleteDayIndex(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-start">
+                            {t('composer.deleteDay.title', {
+                                day: deleteDayIndex != null ? dayLabel(deleteDayIndex) : '',
+                            })}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-start">
+                            {t('composer.deleteDay.description', {
+                                count: deleteTarget?.items?.length ?? 0,
+                            })}
+                            {deleteAnswered > 0 &&
+                                ` ${t('composer.deleteDay.answered', { count: deleteAnswered })}`}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>{t('composer.discard.keep')}</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-danger-600 hover:bg-danger-500"
+                            onClick={confirmDeleteDay}
+                        >
+                            {t('composer.deleteDay.confirm')}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
                 <AlertDialogContent>
@@ -1317,6 +1052,275 @@ export function PlanComposerDialog({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </Dialog>
+        </>
+    );
+}
+
+// ── Parts ────────────────────────────────────────────────────────────────────
+
+function ComposerSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 lg:flex-row" aria-busy="true">
+            <div className="space-y-2 lg:w-60">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+            </div>
+            <div className="flex-1 space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+            </div>
+            <div className="hidden space-y-3 xl:block xl:w-80">
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-24 w-full" />
+            </div>
+        </div>
+    );
+}
+
+/** Title, batch and description: the plan's own fields. */
+function PlanDetails({
+    control,
+    isEdit,
+    batches,
+    onPickBatches,
+    courseFilter,
+}: {
+    control: Control<ComposerForm>;
+    isEdit: boolean;
+    batches: BatchOption[];
+    onPickBatches: () => void;
+    courseFilter?: string;
+}) {
+    const { t } = useTranslation('engagement');
+    const [showDescription, setShowDescription] = useState(false);
+    const description = useWatch({ control, name: 'description' });
+    const slots = useWatch({ control, name: 'slots' });
+    const descriptionOpen = showDescription || Boolean(description?.trim());
+
+    // Course-content tasks only open for learners of that course.
+    const slideCourses = new Set(
+        (slots ?? []).flatMap((slot) =>
+            (slot?.items ?? []).flatMap((item) => {
+                if (item.itemType !== 'COURSE_SLIDE') return [];
+                const courseId = (item.slide as { courseId?: unknown } | null | undefined)
+                    ?.courseId;
+                return typeof courseId === 'string' && courseId ? [courseId] : [];
+            })
+        )
+    );
+    if (slideCourses.size === 0 && courseFilter && hasCourseSlide(slots)) {
+        slideCourses.add(courseFilter);
+    }
+    const foreignBatches =
+        slideCourses.size === 0
+            ? 0
+            : batches.filter((batch) => {
+                  const courseId = storeCourseId(batch.id);
+                  return Boolean(courseId) && !slideCourses.has(courseId!);
+              }).length;
+
+    const batchText =
+        batches.length === 0
+            ? t('composer.selectBatches')
+            : batches.length === 1
+              ? batches[0]!.label
+              : t('composer.batchesSelected', { count: batches.length });
+
+    return (
+        <section className="min-w-0 space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Controller
+                    control={control}
+                    name="title"
+                    render={({ field, fieldState }) => (
+                        <div className="min-w-0" data-composer-path="title">
+                            <MyInput
+                                label={t('composer.title')}
+                                aria-label={t('composer.title')}
+                                required
+                                input={field.value}
+                                onChangeFunction={(e) => field.onChange(e.target.value)}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                inputPlaceholder={t('composer.titlePlaceholder')}
+                                error={
+                                    fieldState.error?.message
+                                        ? t(fieldState.error.message)
+                                        : undefined
+                                }
+                                className="sm:w-full"
+                            />
+                        </div>
+                    )}
+                />
+                <Controller
+                    control={control}
+                    name="packageSessionIds"
+                    render={({ fieldState }) => (
+                        <div className="min-w-0 space-y-1" data-composer-path="packageSessionIds">
+                            <p className="text-subtitle font-regular text-neutral-900">
+                                {isEdit ? t('composer.details.batch') : t('composer.batches')}
+                            </p>
+                            {isEdit ? (
+                                <p className="flex h-9 items-center gap-2 truncate rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-body text-neutral-700">
+                                    <UsersThree size={16} className="shrink-0" aria-hidden />
+                                    <span className="truncate">{batchText}</span>
+                                </p>
+                            ) : (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    className={cn(
+                                        'w-full justify-start font-regular',
+                                        fieldState.error && 'border-danger-600'
+                                    )}
+                                    onClick={onPickBatches}
+                                >
+                                    <UsersThree size={16} aria-hidden />
+                                    <span className="truncate">{batchText}</span>
+                                </MyButton>
+                            )}
+                            {fieldState.error?.message ? (
+                                <p className="text-caption text-danger-600">
+                                    {t(fieldState.error.message)}
+                                </p>
+                            ) : (
+                                <p className="text-caption text-neutral-500">
+                                    {isEdit
+                                        ? t('composer.editOneBatch')
+                                        : batches.length > 1
+                                          ? t('composer.onePerBatch')
+                                          : ''}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                />
+            </div>
+
+            {foreignBatches > 0 && (
+                <p className="flex items-start gap-2 rounded-md bg-warning-50 px-3 py-2 text-caption text-warning-700">
+                    <Warning size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    {t('composer.details.otherCourse', { count: foreignBatches })}
+                </p>
+            )}
+
+            {descriptionOpen ? (
+                <Controller
+                    control={control}
+                    name="description"
+                    render={({ field }) => (
+                        <div className="space-y-1.5">
+                            <Label htmlFor="plan-description">{t('composer.description')}</Label>
+                            <Textarea
+                                id="plan-description"
+                                value={field.value}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                onBlur={field.onBlur}
+                                placeholder={t('composer.descriptionPlaceholder')}
+                                rows={2}
+                            />
+                        </div>
+                    )}
+                />
+            ) : (
+                <MyButton
+                    type="button"
+                    buttonType="text"
+                    scale="small"
+                    className="px-0"
+                    onClick={() => setShowDescription(true)}
+                >
+                    {t('composer.details.addDescription')}
+                </MyButton>
+            )}
+        </section>
+    );
+}
+
+function hasCourseSlide(slots: SlotForm[] | undefined): boolean {
+    return (slots ?? []).some((slot) =>
+        (slot?.items ?? []).some((item) => item.itemType === 'COURSE_SLIDE')
+    );
+}
+
+/** "Day 2 of 3 · Thu, 25 Sep" with the day's own actions (reachable on every width). */
+function DayHeader({
+    control,
+    index,
+    rank,
+    count,
+    onDuplicate,
+    onDelete,
+}: {
+    control: Control<ComposerForm>;
+    index: number;
+    /** 1-based place in date order. */
+    rank: number;
+    count: number;
+    onDuplicate: () => void;
+    onDelete: () => void;
+}) {
+    const { t, i18n } = useTranslation('engagement');
+    const slot = useWatch({ control, name: `slots.${index}` }) as SlotForm | undefined;
+    const theme = slot?.title?.trim();
+    const when = slot ? dayHeading(slot, i18n.language).label : '';
+    const label = [when, theme].filter(Boolean).join(' · ');
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+                <p className="text-caption font-semibold text-primary-500">
+                    {t('composer.dayOf', { n: rank, count })}
+                </p>
+                <h3 className="truncate text-h3-semibold text-neutral-900">{label}</h3>
+            </div>
+            <div className="flex items-center gap-1">
+                <MyButton type="button" buttonType="secondary" scale="small" onClick={onDuplicate}>
+                    <CopySimple size={14} aria-hidden /> {t('composer.rail.duplicate')}
+                </MyButton>
+                {count > 1 && (
+                    <MyButton type="button" buttonType="text" scale="small" onClick={onDelete}>
+                        <Trash size={14} className="text-danger-600" aria-hidden />{' '}
+                        {t('composer.rail.delete')}
+                    </MyButton>
+                )}
+            </div>
+        </div>
+    );
+}
+
+/** "What learners see" for the selected day, following the open task. */
+function PreviewPane({
+    control,
+    dayIndex,
+    activeKey,
+    onSelect,
+    activeCardId,
+}: {
+    control: Control<ComposerForm>;
+    dayIndex: number;
+    activeKey: string | null;
+    onSelect: (key: string) => void;
+    activeCardId: string | null;
+}) {
+    const slot = useWatch({ control, name: `slots.${dayIndex}` }) as SlotForm | undefined;
+    const defaultMissPolicy = useWatch({ control, name: 'defaultMissPolicy' });
+    const defaultCatchUpDays = useWatch({ control, name: 'defaultCatchUpDays' });
+    const defaultCatchUpPercent = useWatch({ control, name: 'defaultCatchUpPercent' });
+    if (!slot) return null;
+    return (
+        <PlanPreview
+            slot={slot}
+            defaultMissPolicy={defaultMissPolicy}
+            defaultCatchUpDays={defaultCatchUpDays}
+            defaultCatchUpPercent={defaultCatchUpPercent}
+            activeKey={activeKey}
+            onSelect={onSelect}
+            activeCardId={activeCardId}
+        />
     );
 }

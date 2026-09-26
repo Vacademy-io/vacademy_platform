@@ -26,7 +26,8 @@
     "daysLeft": "{{count}}d left",
     "hoursLeft": "{{hours}}h {{minutes}}m left",
     "minutesLeft": "{{count}}m left",
-    "closingNow": "Closing now"
+    "closingNow": "Closing now",
+    "closed": "Closed"
   },
   "types": {
     "READING_HTML": "Read",
@@ -36,7 +37,13 @@
     "GAME": "Game",
     "POLL": "Poll",
     "COURSE_SLIDE": "Lesson",
-    "fallback": "Task"
+    "fallback": "Task",
+    "FLASHCARDS": "Flashcards",
+    "formats": {
+      "MCQ": "Quick question",
+      "TEXT": "Write it",
+      "UPLOAD": "Show your work"
+    }
   },
   "dialog": {
     "openError": "This task could not be opened right now.",
@@ -101,5 +108,123 @@
     "empty": "Nothing here yet — your finished and missed tasks will show up as the days go by.",
     "error": "Couldn't load your past tasks.",
     "retry": "Try again"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "offline": "You're offline. Your answer is kept; try again when you're back online.",
+    "LESSON_NOT_FINISHED": "Finish the lesson first, then come back to claim this task.",
+    "TASK_CLOSED": "This task has closed.",
+    "NOT_OPEN": "This task isn't open yet.",
+    "READ_GATE": "Keep reading a little longer before you finish.",
+    "ANSWER_REQUIRED": "Add your answer before you submit.",
+    "GAME_NOT_FINISHED": "Finish the game to claim your points.",
+    "UNSUPPORTED_TYPE": "This task can't be done in the app yet.",
+    "FLASHCARDS_STALE": "These cards were just updated. Reloading them now.",
+    "FLASHCARDS_INCOMPLETE": "Study every card to finish. If you don't see the cards, update the app.",
+    "FLASHCARDS_TOO_FAST": "Take a moment with each card before finishing."
+  },
+  "preview": {
+    "flashcards_one": "{{count}} card · ~{{minutes}} min",
+    "flashcards_other": "{{count}} cards · ~{{minutes}} min"
+  },
+  "meta": {
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min"
+  },
+  "duration": {
+    "days_one": "{{count}}d",
+    "days_other": "{{count}}d",
+    "hours_one": "{{count}}h",
+    "hours_other": "{{count}}h",
+    "minutes_one": "{{count}}m",
+    "minutes_other": "{{count}}m"
+  },
+  "points": {
+    "plain": "+{{count}}",
+    "withBonus": "+{{now}} now · +{{bonus}} if correct",
+    "withBonusAt": "+{{now}} now · +{{bonus}} if correct · answer {{time}}",
+    "upTo": "up to +{{count}}",
+    "catchUp": "+{{count}} · {{percent}}% points",
+    "catchUpHalf": "+{{count}} · half points",
+    "answerOut": "+{{count}} · answer already out, completion points only"
+  },
+  "earned": {
+    "plain": "+{{count}}",
+    "bonusPending": "+{{count}} · bonus pending",
+    "onItsWay": "+{{count}} · +{{bonus}} on its way"
+  },
+  "reveal": {
+    "answerAt": "Answer at {{time}}",
+    "findOut": "You'll find out at {{time}}",
+    "findOutBonus": "You'll find out at {{time}} · +{{count}} if right",
+    "lockedIn": "Locked in · result at {{time}}",
+    "lockedInNoTime": "Locked in · result at the reveal",
+    "resultsAt": "Results at {{time}}",
+    "sentToTeacher": "Sent to your teacher"
+  },
+  "catchUp": {
+    "half": "From yesterday · half points",
+    "halfCloses": "From yesterday · half points · closes in {{left}}",
+    "percent": "From yesterday · {{percent}}% points",
+    "percentCloses": "From yesterday · {{percent}}% points · closes in {{left}}",
+    "plain": "From yesterday",
+    "plainCloses": "From yesterday · closes in {{left}}"
+  },
+  "badge": {
+    "pts_one": "+{{count}} pt",
+    "pts_other": "+{{count}} pts",
+    "xp_one": "+{{count}} XP",
+    "xp_other": "+{{count}} XP",
+    "pointsAria_one": "{{count}} point",
+    "pointsAria_other": "{{count}} points",
+    "pointsEarnedAria_one": "Earned {{count}} point",
+    "pointsEarnedAria_other": "Earned {{count}} points",
+    "pointsStruckAria_one": "{{count}} point, down from {{full}}",
+    "pointsStruckAria_other": "{{count}} points, down from {{full}}",
+    "mustDo": "Must do",
+    "bonus": "Bonus",
+    "state": {
+      "done": "Done",
+      "late": "Done late",
+      "correct": "Correct",
+      "wrong": "Not quite",
+      "missed": "Missed",
+      "catchUp": "Catch up",
+      "catchUpPercent": "Catch up · {{percent}}%",
+      "closed": "Closed",
+      "pending": "Result pending",
+      "resultAt": "Result at {{time}}",
+      "upcoming": "Unlocks {{time}}",
+      "upcomingNoTime": "Coming up"
+    }
+  },
+  "result": {
+    "correct": "Correct",
+    "wrong": "Not quite",
+    "pending": "Locked in",
+    "done": "Done",
+    "plus": "+{{count}}",
+    "unitPts_one": "pt",
+    "unitPts_other": "pts",
+    "unitXp": "XP",
+    "alreadyCompleted": "You'd already finished this one",
+    "answerOut": "Answer already out · completion points only",
+    "resultAt": "Result at {{time}}",
+    "resultAtReveal": "Result at the reveal",
+    "youWrote": "You wrote"
+  },
+  "choice": {
+    "check": "Check",
+    "vote": "Vote",
+    "checking": "Checking…",
+    "yourAnswer": "your answer",
+    "yourAnswerCorrect": "your answer, correct",
+    "yourAnswerWrong": "your answer, not correct",
+    "correctAnswer": "correct answer",
+    "yourVote": "your vote",
+    "percent": "{{percent}}%",
+    "responses_one": "{{count}} response",
+    "responses_other": "{{count}} responses",
+    "tooFewVotes": "Results show once {{count}} people have voted"
   }
 }

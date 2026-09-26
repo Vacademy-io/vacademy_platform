@@ -9,6 +9,7 @@ import {
   isManualTrigger,
 } from "@/services/badge-config";
 import type { AwardedBadge } from "@/services/awarded-badges";
+import type { PointsStreakDay, PointsSummary } from "@/services/points";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -43,6 +44,14 @@ export interface PlayGamificationData {
   longestStreak: number;
   lastActivityDate: string | null;
   weeklyDots: boolean[]; // Mon–Sun, true = active
+  /**
+   * Server streak state (points summary). Absent when the server sent none; the
+   * streak above is then the browser's activity-log estimate.
+   */
+  keptToday?: boolean | null;
+  last7Days?: PointsStreakDay[] | null;
+  /** Where `currentStreak` came from. */
+  streakSource?: "server" | "client";
 
   // XP
   totalXp: number;
@@ -89,7 +98,12 @@ export function getCachedGamification(
   }
 }
 
-function setCachedGamification(
+/**
+ * Write the display cache that off-dashboard surfaces read on a fresh load. Call it
+ * only with FINAL figures (after the server points overlay) — writing the browser-
+ * computed numbers here is what made the pill disagree with the dashboard.
+ */
+export function setCachedGamification(
   instituteId: string,
   data: PlayGamificationData
 ) {
@@ -500,12 +514,17 @@ export function computeGamificationData(params: {
   liveSessionCount?: number;
   /** Live classes attended in a row (no misses), for live_session_streak. */
   liveSessionStreak?: number;
+  /**
+   * The server streak (points summary). When given it replaces the browser's
+   * activity-log streak everywhere: the display, the streak points line (0 when the
+   * streak is 0) and the streak badge trigger, so every surface shows one number.
+   */
+  serverStreak?: { currentStreak: number; longestStreak?: number | null } | null;
 }): PlayGamificationData {
   const {
     dashboard,
     activities,
     attendance,
-    instituteId,
     badgeConfig,
     studyLibrary,
     bestAssessmentScorePct = null,
@@ -513,10 +532,19 @@ export function computeGamificationData(params: {
     scoring,
     liveSessionCount = 0,
     liveSessionStreak = 0,
+    serverStreak = null,
   } = params;
 
-  const { current: currentStreak, longest: longestStreak, lastActive } =
-    computeStreak(activities);
+  const clientStreak = computeStreak(activities);
+  const lastActive = clientStreak.lastActive;
+  const useServerStreak =
+    serverStreak != null && Number.isFinite(serverStreak.currentStreak);
+  const currentStreak = useServerStreak
+    ? Math.max(0, serverStreak.currentStreak)
+    : clientStreak.current;
+  const longestStreak = useServerStreak
+    ? Math.max(currentStreak, serverStreak.longestStreak ?? 0)
+    : clientStreak.longest;
 
   const attendanceDays = attendance?.days
     ? attendance.days.filter((d) => d.status === "PRESENT").length
@@ -584,10 +612,46 @@ export function computeGamificationData(params: {
     badges,
     badgesEnabled,
     xpBreakdown,
+    streakSource: useServerStreak ? "server" : "client",
   };
 
-  // Persist to cache
-  setCachedGamification(instituteId, data);
+  // The display cache is NOT written here (D2): the caller overlays the server
+  // points first and then calls setCachedGamification with the final figures.
+  // `instituteId` stays in the params so existing callers keep compiling.
 
   return data;
+}
+
+/**
+ * Overlay the authoritative server figures on a computed snapshot: totals, level,
+ * breakdown, and the streak when the server sends one. Returns a new object; `null`
+ * summary returns the input unchanged.
+ */
+export function applyServerPoints(
+  data: PlayGamificationData,
+  summary: PointsSummary | null | undefined
+): PlayGamificationData {
+  if (!summary) return data;
+  const next: PlayGamificationData = {
+    ...data,
+    totalXp: summary.totalPoints,
+    todayXp: summary.todayPoints,
+    level: summary.level,
+    xpToNextLevel: summary.pointsToNextLevel,
+  };
+  if (summary.breakdown?.length) {
+    next.xpBreakdown = summary.breakdown.map((b) => ({
+      key: b.key,
+      label: b.label,
+      points: b.points,
+    }));
+  }
+  if (typeof summary.currentStreak === "number") {
+    next.currentStreak = Math.max(0, summary.currentStreak);
+    next.longestStreak = Math.max(next.currentStreak, summary.longestStreak ?? 0);
+    next.keptToday = summary.keptToday ?? null;
+    next.last7Days = summary.last7Days ?? null;
+    next.streakSource = "server";
+  }
+  return next;
 }

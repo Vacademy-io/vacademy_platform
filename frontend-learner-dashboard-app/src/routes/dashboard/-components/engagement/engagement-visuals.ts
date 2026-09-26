@@ -1,135 +1,178 @@
+import { createElement, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import {
-  BookOpen,
+  BookOpenText,
+  Cards,
   ChartBar,
-  CheckSquare,
   GameController,
   GraduationCap,
+  ImageSquare,
   Lightbulb,
-  PaintBrush,
+  ListChecks,
+  PencilSimpleLine,
   Sparkle,
+  UploadSimple,
   type Icon,
 } from "@phosphor-icons/react";
 import type { EngagementItemType } from "@/services/engagement";
+import { formatDate } from "@/lib/formatters";
+import artBooks from "@/assets/cleaner-play/icon-books.webp";
+import artReports from "@/assets/cleaner-play/icon-reports.webp";
+import artHelp from "@/assets/cleaner-play/icon-help.webp";
+import artAssessments from "@/assets/cleaner-play/icon-assessments.webp";
+import artBadges from "@/assets/cleaner-play/icon-badges.webp";
+import artLeaderboard from "@/assets/cleaner-play/icon-leaderboard.webp";
+import artCourses from "@/assets/cleaner-play/icon-courses.webp";
+import artProgress from "@/assets/cleaner-play/icon-progress.webp";
+import { toneClasses, type EngagementTone } from "./engagement-tone";
 
 /**
- * Per-type presentation. One place so the feed card, the dialog header and the
- * upcoming strip always describe a task the same way.
+ * Every task type the learner UI knows how to draw. `FLASHCARDS` is listed
+ * explicitly so this table works whether or not the service union has picked
+ * it up yet.
+ */
+export type EngagementVisualType = EngagementItemType | "FLASHCARDS";
+
+/** Anything `visualFor` can describe: a type string, or an item carrying one. */
+export type EngagementVisualInput =
+  | EngagementVisualType
+  | string
+  | { itemType: string; payloadJson?: string | null };
+
+/**
+ * Per-type presentation. One place so the Today module, the runner and the
+ * `/engagement` page describe a task the same way.
  */
 export interface EngagementVisual {
-  /** i18n key under dashboardEngagement:types. */
-  label: string;
-  /** Emoji marker — reads instantly and needs no icon import. */
-  glyph: string;
-  /** Line-icon equivalent of `glyph`, used by the Corporate skin, where emoji
-   *  read as consumer/K-12 rather than as a professional work tool. */
+  /** Phosphor icon for the type (format-aware for a question of the day). */
   icon: Icon;
-  /** Chip background + text. */
+  /** Colour family; feed it to `toneClasses(tone, part)`. */
+  tone: EngagementTone;
+  /** CleanerPlay illustration that replaces the icon tile in that skin. */
+  art: string;
+  /** Key under `dashboardEngagement:types`, e.g. `READING_HTML` or `fallback`. */
+  label: string;
+
+  /**
+   * @deprecated Legacy card/dialog/history only (deleted in wave 3). Now the
+   * type's icon element rather than an emoji, sized 1em so it follows the
+   * surrounding font size.
+   */
+  glyph: ReactNode;
+  /** @deprecated Legacy chip: the tone's `tile` classes. */
   chip: string;
-  /** Solid accent for the rail and progress. */
+  /** @deprecated Legacy solid accent. */
   accent: string;
-  /** Soft wash behind the task tile. */
+  /** @deprecated Legacy row hover wash. */
   wash: string;
-  /** Gradient for the opened-task header. */
+  /**
+   * @deprecated Legacy dialog header gradient. It sits under white text, so it
+   * is a dark neutral for every type (the old light gradients were ~2:1).
+   */
   gradient: string;
 }
 
-const VISUALS: Record<EngagementItemType, EngagementVisual> = {
-  READING_HTML: {
-    label: "READING_HTML",
-    glyph: "📖",
-    icon: BookOpen,
-    chip: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200",
-    accent: "bg-sky-500",
-    wash: "group-hover:bg-sky-50/60 dark:group-hover:bg-sky-950/20",
-    gradient: "from-sky-500 to-cyan-400",
-  },
-  VISUAL_NOTE: {
-    label: "VISUAL_NOTE",
-    glyph: "🎨",
-    icon: PaintBrush,
-    chip: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200",
-    accent: "bg-violet-500",
-    wash: "group-hover:bg-violet-50/60 dark:group-hover:bg-violet-950/20",
-    gradient: "from-violet-500 to-fuchsia-400",
-  },
-  QUESTION_OF_DAY: {
-    label: "QUESTION_OF_DAY",
-    glyph: "💡",
-    icon: Lightbulb,
-    chip: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
-    accent: "bg-amber-500",
-    wash: "group-hover:bg-amber-50/60 dark:group-hover:bg-amber-950/20",
-    gradient: "from-amber-500 to-orange-400",
-  },
-  QUIZ: {
-    label: "QUIZ",
-    glyph: "✅",
-    icon: CheckSquare,
-    chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200",
-    accent: "bg-emerald-500",
-    wash: "group-hover:bg-emerald-50/60 dark:group-hover:bg-emerald-950/20",
-    gradient: "from-emerald-500 to-teal-400",
-  },
-  GAME: {
-    label: "GAME",
-    glyph: "🎮",
-    icon: GameController,
-    chip: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-    accent: "bg-rose-500",
-    wash: "group-hover:bg-rose-50/60 dark:group-hover:bg-rose-950/20",
-    gradient: "from-rose-500 to-pink-400",
-  },
-  COURSE_SLIDE: {
-    label: "COURSE_SLIDE",
-    glyph: "🎓",
-    icon: GraduationCap,
-    chip: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-200",
-    accent: "bg-teal-500",
-    wash: "group-hover:bg-teal-50/60 dark:group-hover:bg-teal-950/20",
-    gradient: "from-teal-500 to-emerald-400",
-  },
-  POLL: {
-    label: "POLL",
-    glyph: "📊",
-    icon: ChartBar,
-    chip: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200",
-    accent: "bg-indigo-500",
-    wash: "group-hover:bg-indigo-50/60 dark:group-hover:bg-indigo-950/20",
-    gradient: "from-indigo-500 to-blue-400",
-  },
+interface TypeVisual {
+  icon: Icon;
+  tone: EngagementTone;
+  art: string;
+  label: string;
+}
+
+const TYPE_VISUALS: Record<EngagementVisualType, TypeVisual> = {
+  READING_HTML: { icon: BookOpenText, tone: "info", art: artBooks, label: "READING_HTML" },
+  VISUAL_NOTE: { icon: ImageSquare, tone: "info", art: artReports, label: "VISUAL_NOTE" },
+  QUESTION_OF_DAY: { icon: Lightbulb, tone: "warn", art: artHelp, label: "QUESTION_OF_DAY" },
+  QUIZ: { icon: ListChecks, tone: "neutral", art: artAssessments, label: "QUIZ" },
+  GAME: { icon: GameController, tone: "danger", art: artBadges, label: "GAME" },
+  POLL: { icon: ChartBar, tone: "success", art: artLeaderboard, label: "POLL" },
+  COURSE_SLIDE: { icon: GraduationCap, tone: "navy", art: artCourses, label: "COURSE_SLIDE" },
+  FLASHCARDS: { icon: Cards, tone: "accent", art: artProgress, label: "FLASHCARDS" },
 };
 
-const FALLBACK: EngagementVisual = {
-  label: "fallback",
-  glyph: "✨",
+const FALLBACK_VISUAL: TypeVisual = {
   icon: Sparkle,
-  chip: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200",
-  accent: "bg-neutral-500",
-  wash: "group-hover:bg-neutral-50 dark:group-hover:bg-neutral-900",
-  gradient: "from-neutral-500 to-neutral-400",
+  tone: "neutral",
+  art: artProgress,
+  label: "fallback",
 };
 
+/** Legacy accent per tone (literal strings for the Tailwind scanner). */
+const LEGACY_ACCENT: Record<EngagementTone, string> = {
+  info: "bg-info-500",
+  accent: "bg-primary-500",
+  warn: "bg-warning-500",
+  success: "bg-success-500",
+  danger: "bg-danger-500",
+  navy: "bg-info-700",
+  neutral: "bg-muted-foreground",
+};
+
+const LEGACY_WASH = "group-hover:bg-muted/50";
+const LEGACY_GRADIENT = "from-neutral-800 to-neutral-700";
+
+/** A question of the day's answer format, read without importing the parser. */
+function questionFormat(payloadJson?: string | null): "MCQ" | "TEXT" | "UPLOAD" {
+  if (!payloadJson) return "MCQ";
+  try {
+    const format = (JSON.parse(payloadJson) as { format?: string } | null)?.format;
+    return format === "TEXT" || format === "UPLOAD" ? format : "MCQ";
+  } catch {
+    return "MCQ";
+  }
+}
+
+const cache = new Map<string, EngagementVisual>();
+
+function build(base: TypeVisual, icon: Icon): EngagementVisual {
+  return {
+    icon,
+    tone: base.tone,
+    art: base.art,
+    label: base.label,
+    glyph: createElement(icon, { weight: "duotone", "aria-hidden": true }),
+    chip: toneClasses(base.tone, "tile"),
+    accent: LEGACY_ACCENT[base.tone],
+    wash: LEGACY_WASH,
+    gradient: LEGACY_GRADIENT,
+  };
+}
+
 /**
- * Corporate skin: one neutral chip for every task type. The per-type rainbow
- * (sky / violet / amber / emerald / rose / teal / indigo) is a large part of
- * what reads as K-12 on a professional-training dashboard; the type is still
- * named in the chip's text and shown by its line icon.
+ * Presentation for a task. Accepts the type (legacy callers) or the item
+ * itself; given an item, a written or uploaded question of the day gets the
+ * pencil or upload icon instead of the bulb.
  */
+export function visualFor(input: EngagementVisualInput): EngagementVisual {
+  const type = typeof input === "string" ? input : input?.itemType;
+  const base = TYPE_VISUALS[type as EngagementVisualType] ?? FALLBACK_VISUAL;
+  const format =
+    type === "QUESTION_OF_DAY" && typeof input !== "string"
+      ? questionFormat(input?.payloadJson)
+      : "MCQ";
+  const icon =
+    format === "TEXT" ? PencilSimpleLine : format === "UPLOAD" ? UploadSimple : base.icon;
+  const key = `${base.label}:${format}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const visual = build(base, icon);
+  cache.set(key, visual);
+  return visual;
+}
+
 /**
- * A few catalog strings open with a decorative emoji ("✨ Revealed",
- * "🔒 Answer locked in …") in every locale. Corporate renders them without it
- * rather than forking the copy; the words are unchanged.
+ * Corporate skin: one neutral chip for every task type.
+ * @deprecated Legacy components only; `toneClasses(tone, "tile")` already
+ * carries the corporate variant.
+ */
+export const CORPORATE_CHIP = "bg-muted text-muted-foreground";
+
+/**
+ * Some older catalog strings open with a decorative emoji. Strip it where a
+ * surface must not show one.
  */
 export function stripLeadingEmoji(text: string): string {
   return text.replace(/^(?:\p{Extended_Pictographic}\uFE0F?\s*)+/u, "");
-}
-
-export const CORPORATE_CHIP =
-  "bg-muted text-muted-foreground dark:bg-neutral-800 dark:text-neutral-300";
-
-export function visualFor(type: EngagementItemType): EngagementVisual {
-  return VISUALS[type] ?? FALLBACK;
 }
 
 /**
@@ -155,25 +198,24 @@ export function timeLeftLabel(
   return t("time.closingNow");
 }
 
+/** Two hours: the point where a deadline is worth nudging about. */
+export const URGENT_MS = 2 * 60 * 60 * 1000;
+
 /** True when the deadline is close enough to be worth nudging about. */
 export function isUrgent(closesAt?: string | null, now: number = Date.now()): boolean {
   if (!closesAt) return false;
   const end = new Date(closesAt).getTime();
   if (!Number.isFinite(end)) return false;
   const ms = end - now;
-  return ms > 0 && ms <= 2 * 60 * 60 * 1000;
+  return ms > 0 && ms <= URGENT_MS;
 }
 
-/** "Mon 15 Sep" for the locked upcoming strip. */
+/** "Mon 15 Sep" in the active UI locale, for a plan-local yyyy-MM-dd date. */
 export function shortDateLabel(isoDate?: string | null): string {
   if (!isoDate) return "";
   const date = new Date(`${isoDate}T00:00:00`);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  return formatDate(date, { weekday: "short", day: "numeric", month: "short", year: undefined });
 }
 
 /** Staggered entrance delay, capped so a long list never feels slow. */

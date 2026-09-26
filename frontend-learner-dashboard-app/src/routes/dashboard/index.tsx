@@ -96,6 +96,7 @@ import {
   computeGamificationData,
   findNewlyUnlockedSince,
   readCelebrationBaseline,
+  setCachedGamification,
   shouldCelebrateBadge,
   writeCelebrationBaseline,
 } from "@/services/play-gamification";
@@ -621,6 +622,9 @@ export function DashboardComponent() {
           }
         }
 
+        // Cache the FINAL figures (after the server overlay) for pages that read
+        // the cache on a fresh load; compute no longer writes it (D2).
+        setCachedGamification(instituteId, gamificationData);
         setGamificationData(gamificationData);
 
         // Celebration moment: confetti once + one toast per badge that unlocked

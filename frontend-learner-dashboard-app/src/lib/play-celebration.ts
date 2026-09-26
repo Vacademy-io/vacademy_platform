@@ -79,3 +79,74 @@ export function shouldCelebrateSlide(slideId: string): boolean {
     return true;
   }
 }
+
+// ── Engagement tasks: skin- and outcome-gated ─────────────────────────
+
+/** Which skin the call site is rendering (from usePlayTheme / useCleanerPlayTheme). */
+export type CelebrationSkin = "play" | "cleanerPlay" | "other";
+export type CelebrationKind = "correct" | "complete" | "milestone";
+
+/** A small burst for Cleaner Play, which celebrates correct answers only. */
+function celebrateSmall(): void {
+  confetti({
+    particleCount: 40,
+    spread: 50,
+    startVelocity: 28,
+    origin: { y: 0.7 },
+    colors: PLAY_COLORS,
+    disableForReducedMotion: true,
+  });
+}
+
+/**
+ * The single celebration entry point for engagement tasks. A no-op outside the
+ * play skins, and under reduced motion.
+ * - play: a burst on `correct` / `complete`, the volley on `milestone`.
+ * - cleanerPlay: a small burst on `correct` only.
+ *
+ * Decide `kind` with {@link celebrationKindFor}, which never celebrates a wrong
+ * answer, a hidden result or a repeat submit.
+ */
+export function celebrate(kind: CelebrationKind, opts: { skin: CelebrationSkin }): void {
+  if (opts.skin === "other" || quiet()) return;
+  if (opts.skin === "cleanerPlay") {
+    if (kind === "correct") celebrateSmall();
+    return;
+  }
+  if (kind === "milestone") celebrateMilestone();
+  else celebrateCompletion();
+}
+
+/**
+ * Which celebration a submit result earns, or null for none (D23):
+ * - `correct` when the answer was graded correct;
+ * - `complete` for an ungraded completion that paid new points;
+ * - null for a wrong answer, a result held until the reveal, a repeat submit, or 0 points.
+ */
+export function celebrationKindFor(r: {
+  isCorrect?: boolean | null;
+  resultPending?: boolean | null;
+  alreadyCompleted?: boolean | null;
+  pointsAwarded?: number | null;
+}): Exclude<CelebrationKind, "milestone"> | null {
+  if (r.alreadyCompleted === true || r.resultPending === true) return null;
+  if (r.isCorrect === true) return "correct";
+  if (r.isCorrect === false) return null;
+  return (r.pointsAwarded ?? 0) > 0 ? "complete" : null;
+}
+
+/**
+ * Once-per-day guard for a milestone (e.g. "all of today's tasks done"). Keyed by
+ * scope and the device's calendar day; storage failures allow the celebration.
+ */
+export function claimDailyCelebration(scope: string, now: Date = new Date()): boolean {
+  const day = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const key = `vacademy.dailyCelebration.v1:${scope}`;
+  try {
+    if (localStorage.getItem(key) === day) return false;
+    localStorage.setItem(key, day);
+    return true;
+  } catch {
+    return true;
+  }
+}

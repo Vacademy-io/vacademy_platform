@@ -202,14 +202,16 @@ describe("computeGamificationData", () => {
     instituteId: "inst-1",
   };
 
-  it("emits no badges when the master toggle is off, and caches the result", () => {
+  it("emits no badges when the master toggle is off, and leaves caching to the dashboard", () => {
     const data = computeGamificationData({
       ...baseParams,
       badgeConfig: { version: 1, enabled: false, badges: [def({ id: "one" })] },
     });
     expect(data.badgesEnabled).toBe(false);
     expect(data.badges).toEqual([]);
-    expect(getCachedGamification("inst-1")?.badgesEnabled).toBe(false);
+    // Compute no longer writes the cache: the dashboard writes it after the
+    // server-points overlay, so other pages never read a stale local total.
+    expect(getCachedGamification("inst-1")).toBeNull();
   });
 
   it("leaves XP untouched by badges (no badge points)", () => {

@@ -8,6 +8,12 @@ Status: **Phase 1 BUILT 2026-09-13 — not deployed, not runtime-verified.** Com
 the design gate pass). No service has been booted against a database, so the JPA queries and the
 migrations are unproven at runtime. See §15 for exactly what is and isn't done.
 
+> **Current state (2026-09-26):** Phases 1–4 are live on prod, and the September review → rebuild
+> (commits `4b21c1ffca`..`c7814cd36b`) changed several contracts described in §7, §8 and §16.
+> **§19 is authoritative** where it disagrees with an earlier section. The rebuild itself — what
+> was wrong, what shipped per wave, what is deferred — is recorded in
+> [`ENGAGEMENT_UI_REBUILD_2026-09.md`](./ENGAGEMENT_UI_REBUILD_2026-09.md).
+
 Not to be confused with `ENGAGEMENT_ENGINES.md` in this folder, which is the *outbound* messaging
 brain (WhatsApp/email/call). This document is the *in-app* daily engagement surface. They share
 nothing but the word "engagement"; keep the packages separate.
@@ -321,6 +327,10 @@ work, which is noise dressed as competition.
 | `QUIZ` | `assessment_id` | assessment submitted | **Yes** |
 | `GAME` | `content_html` (teacher-uploaded) | `postMessage` score | **No** — clamped + capped |
 | `POLL` | `payload_json.options` | option chosen | N/A — no correct answer |
+| `COURSE_SLIDE` | `slide_id` | the slide's own progress reads as finished | No |
+| `FLASHCARDS` | `payload_json` (`flashcards/v1` deck) | every card rated once, after a patience gate | No — completion points only (§19.4) |
+
+Gates, redaction and scoring as they work today: §19.
 
 **Reading must not outscore quizzes.** Dwell + scroll is a patience signal, gameable by leaving a tab
 open. Keep `completion_points` for reading well below `correct_points` for a question, or the
@@ -375,7 +385,8 @@ POST   /item/{id}/submit           complete, grade, award to ledger (idempotent)
 ```
 
 `/upcoming` was folded into `/feed` (an `upcoming[]` array) — the home page needs both together and
-a second round trip bought nothing. `/start` was dropped: the attempt row is created on submit, and
+a second round trip bought nothing. (Superseded, §19.2: `GET /item/{id}` now writes the STARTED
+row, and every dwell gate is measured from it.) `/start` was dropped: the attempt row is created on submit, and
 a STARTED row that nothing reads is just a write. `/item/{id}/stats` was folded in too, as
 `completedCount` on each feed item. `/history` is Phase 2.
 
@@ -747,3 +758,355 @@ dialog); "See past tasks" link at the bottom of the home card.
 
 **Still open:** `QUIZ` item type unused; assessment points outside the ledger; AI wizard streaming;
 nightly accrual (`vacademy.points.accrual.enabled`) still OFF pending the POINTS-metric flip.
+
+---
+
+## 19. Integrity, contracts and flashcards after the September rebuild (2026-09-25/26)
+
+A review of both UIs against prod data (learner D1–D55, admin A1–A22) found an answer-key leak,
+forgeable gates, a save path that wiped completions, and two UIs that didn't match the product
+bar. The fixes and the rebuild shipped as the commits in §19.12. This section is the contract as
+it stands on `origin/main` after `c7814cd36b`; it overrides §7, §8 and §16 where they differ. The
+narrative (what was wrong, what shipped per wave, what is deferred) is in
+[`ENGAGEMENT_UI_REBUILD_2026-09.md`](./ENGAGEMENT_UI_REBUILD_2026-09.md).
+
+Paths: `BE/` = `admin_core_service/.../features/engagement/`.
+
+### 19.1 Redaction rule (answer key)
+
+- `toLearnerDto` sends `correctOptionId` and `explanation` **only when the reveal time has passed
+  AND the learner has finished the task or can no longer submit it** (closed, catch-up window
+  over). "Reveal time passed" alone is not enough: before `4b21c1ffca` every catch-up question past
+  its reveal, and any open question whose reveal came before its close, shipped the key to
+  learners who could still answer.
+- A hide-until-reveal question never carries `isCorrect` / the outcome before the reveal, on
+  submit, on `GET /item/{id}` or in the feed (`b6234bd4b6`).
+- History: an older run of a recurring question does not ship its key while today's run of the
+  same item is still answerable.
+- `revealed[]` in the feed carries **only `QUESTION_OF_DAY` and `POLL`**. Readings, notes, games,
+  lessons and flashcards have nothing to reveal and never appear there.
+- **No bonus after the reveal.** An answer submitted after the reveal time earns completion points
+  only; the submit response says so with `answerAlreadyOut: true`. `EngagementRevealJob` skips
+  answers given after the reveal and pays late (catch-up) answers at the catch-up percent, not in
+  full. Its idempotency key is
+  `ENGAGEMENT_BONUS:{itemId}:v{attempt.itemVersion}:{userId}`, so a version bump (§19.3) can't pay
+  the same learner twice.
+
+### 19.2 STARTED on GET, and server-time gates
+
+- `GET /engagement/learner/v1/item/{id}` records a `STARTED` attempt the first time a learner opens
+  the task (`insertStartedIfAbsent`, `ON CONFLICT DO NOTHING`). `startedAt` is the **first open
+  ever** and is never reset. There is no `/start` endpoint; clients open a task by fetching it.
+- Every count (feed progress, tracking, overview, history) filters `COMPLETED`; a STARTED row never
+  counts as done. It does count as "Opened" in tracking.
+- Submit measures dwell as `serverElapsedMs = now − startedAt`. The client's `timeSpentMs` is
+  stored for reference and **never gates anything**. No `startedAt` (never opened through GET) is a
+  rejection, not a pass.
+
+| Type | Gate (server) | Setting (Settings → Daily Engagement, per institute) | Reject code |
+|---|---|---|---|
+| `READING_HTML`, `VISUAL_NOTE` | elapsed ≥ `minReadSeconds` **and** client `scrollPercent` ≥ `minScrollPercent` (advisory; the server can't see the page) | `minReadSeconds` default 15 (0–3600); `minScrollPercent` default 80 (0–100) | `READ_GATE` |
+| `GAME` | elapsed ≥ `minGameSeconds`; reported score clamped to `maxScore`; score bonus only if verifiable or `allowUnverifiedScoreBonus` | `minGameSeconds` default 20 (0–3600) | `GAME_NOT_FINISHED` |
+| `FLASHCARDS` | §19.4 | none (per-deck formula) | `FLASHCARDS_*` |
+| `COURSE_SLIDE` | the slide's own progress reads as finished | — | `LESSON_NOT_FINISHED` |
+
+The learner item DTO exposes `minReadMs`, `minScrollPercent` and `minGameMs` so the runner's gate
+checklist mirrors the server rule exactly. Client side, a game's claim button stays disabled until
+the page posts `vacademy:complete`, with a hand-claim after 60 s for games that never do. These
+gates are **patience checks**, not proof of learning; keep completion points for readings and
+games well below a question's correct points.
+
+### 19.3 Item versioning in place, and the answer-key lock
+
+The composer re-sends every task on every save (and must — `retireItemsNotIn` soft-deletes any
+item a slot request leaves out). The old `upsertItem` retired and re-inserted any task with an
+attempt under a new id, changed or not; combined with STARTED-on-GET, merely opening a task made
+the next "Save changes" wipe completions, re-pay points and zero tracking. Now
+(`BE/service/EngagementItemChangePolicy.java`):
+
+1. **Normalise first.** FLASHCARDS payloads are validated and replaced by their canonical JSON, and
+   the server-forced fields applied (§19.4), before any compare.
+2. **No-op detection.** `isLearnerVisibleChange` compares type, title, content HTML, slide id,
+   question id, completion/correct points, max score, required, hide-result and the payload
+   **parsed as JSON** (jsonb reorders keys, so string compares are wrong). Unchanged → only order,
+   schedule overrides and the slot (a task moved to another day, `9d320229e2`) are updated; id and
+   version stay.
+3. **Real change → versioned in place:** same id, `version + 1`. Attempts keep the `item_version`
+   they were made against, so completions, points and tracking stay attached. There is no
+   RETIRED-and-insert path and no `root_item_id`; no migration.
+4. **Answer-key lock.** Once a task has COMPLETED attempts, a save that changes the item type
+   (`TYPE_LOCKED`: "…its type can't change. Add a new task instead."), a question's format, its
+   `correctOptionId` or its **set** of option ids is rejected ("Learners have already answered
+   this question, so its answer key can't change. Add a new task instead."). Fixing option *text*
+   is allowed. GAME → FLASHCARDS conversion counts as a type change.
+5. **Write-time validation** (created or changed tasks only; stored rows are never re-validated):
+   points are integers 0–1000; polls and MCQs need ≥ 2 options; an MCQ's correct option must exist;
+   readings, notes and games need content; lessons need a slide; a task id from another plan can't
+   be written through this one.
+
+A mid-session learner holding an older version is handled per type: FLASHCARDS rejects with
+`FLASHCARDS_STALE` (the client refetches and resumes); every other type grades against the current
+version.
+
+### 19.4 FLASHCARDS contract
+
+A first-class item type (`EngagementEnums.ItemType.FLASHCARDS`). `item_type` is `varchar(48)` with
+no CHECK, so no migration. Legacy AI decks stored as `GAME` HTML keep working as games.
+
+**Payload `flashcards/v1`** (server authoritative; the admin zod schema matches it byte for byte):
+
+```json
+{"schema":"flashcards/v1",
+ "cards":[{"id":"c_7k2m9q","front":"Impairment","back":"A problem in body function or structure","hint":"Body level"}],
+ "settings":{"shuffle":true}}
+```
+
+| Rule | Limit |
+|---|---|
+| Cards | 1–50 ("Add at least 1 card", "…at most 50 cards") |
+| `front` / `back` / `hint` | 1–200 / 1–500 / 0–150, counted in **UTF-16 units** after trimming (Java `String.length()` = JS `.length`) |
+| Lines per face | ≤ 12; more is **rejected**, never truncated |
+| Card id | `^[a-z0-9_-]{1,24}$`, unique in the deck. The client mints `c_` + 6 base36; the server mints only for a missing id and rejects duplicates ("Card 7: duplicate id"). Ids survive edits. |
+| Text | plain text, **never HTML-stripped** on the server (breaks `2 < x > 1`, chemistry, code); trim, `\r\n`→`\n`, control chars removed, horizontal whitespace collapsed. Renderers treat it as text (`dir="auto"`). |
+| Settings | only `shuffle` (default true); unknown keys dropped (`startWith`, `frontImageFileId` are deferred) |
+| Task title | ≤ 200 |
+
+**Server-forced fields** (request values ignored): `correctPoints = 0`, `hideResultUntilReveal =
+false`, `maxScore = cards.size()`, `isVerifiable = false`. Duplicate fronts are a non-blocking
+warning in the editor, import and AI de-duplication.
+
+**Submit:** `EngagementSubmitRequest.cardOutcomes: [{cardId, result: KNOWN|LEARNING}]` (the first
+rating of each card) plus `itemVersion`. Checked in order, first failure wins:
+
+| # | Condition | `reasonCode` | Message |
+|---|---|---|---|
+| 1 | never opened through `GET item` (no `startedAt`) | `FLASHCARDS_STALE` | "Open the cards first" |
+| 2 | `itemVersion` ≠ the item's current version | `FLASHCARDS_STALE` | "These cards were just updated. Reloading them now." |
+| 3 | outcomes are not exactly the current card ids, once each, each KNOWN/LEARNING (also what an old app that sends no outcomes gets) | `FLASHCARDS_INCOMPLETE` | "Study every card to finish. If you don't see the cards, update the app." |
+| 4 | `serverElapsedMs < max(5 s, min(n × 1.5 s, 60 s))` | `FLASHCARDS_TOO_FAST` | "Take a moment with each card before finishing" |
+
+- **Time gate = patience check only.** `startedAt` is the first open ever and never resets, so a
+  learner who reopens a deck later passes it immediately. It stops an instant tap-through on first
+  open, nothing more.
+- **Scoring is completion-only, in every setting.** Self-rating is effort, not a graded answer:
+  `pointsAwarded = completionPoints` (catch-up percent and late rules apply as usual; there is no
+  reveal), `score = known`, `maxScore = n`, `isCorrect = null`.
+- **Stored response** is built on the server from the validated outcomes, before the generic
+  `buildResponseJson`: `{"flashcards":{"version","total","known","outcomes":[{cardId,result}]}}`.
+  Client `extra` and `score` are never stored.
+- **Learner DTO:** no `cardCount` (read `maxScore`, sent in every state); `flashcardsResult
+  {version, known, total, learningCardIds}` when a COMPLETED attempt exists. Past/history rows
+  render "Flashcards · Knew 9 of 12" from `payloadJson` + `flashcardsResult` without calling
+  `GET item` (which refuses closed tasks).
+- **Learner client** (`E/flashcards/`): seeded shuffle (`hash(userId+itemId+version)`), flip by
+  tap/Space/Enter/button, Got it / Still learning after the first flip, Undo, swipe > 80 px with
+  `touch-action: pan-y`, RTL-mirrored arrows, keys 1/2, `motion-safe` rotateY with a 150 ms
+  crossfade under reduced motion, sessionStorage resume keyed by `itemId:version` (every access in
+  try/catch), stale-version refetch that keeps ratings for surviving card ids, and a summary with
+  a local-only "Study N again". Estimated time: `max(1, ceil(n × 12 / 60))` minutes.
+- **Tracking:** `GET item/{id}/tracking/cards` → `{cards:[{cardId, front, back, studied, gotIt,
+  stillLearning, stillLearningRate}], removedOutcomes}`, aggregated over COMPLETED attempts of all
+  versions (same id); outcomes for card ids no longer in the deck are summed into
+  `removedOutcomes`. The item CSV adds Known (first pass), Cards and Still learning (fronts).
+- **Rollout gate:** old native learner builds can't render the type and get
+  `FLASHCARDS_INCOMPLETE`'s "update the app" message. The admin type chip sat behind
+  `VITE_ENGAGEMENT_FLASHCARDS` until the learner web + OTA shipped; it is **on by default** since
+  `2e6e6dda2c` (`=false` still hides it).
+
+### 19.5 Learner feed contract (`GET /engagement/learner/v1/feed?instituteId=`)
+
+Additive: every field added in the rebuild is optional to clients, and older fields keep their
+meaning (`totalToday` is legacy = `items.length`).
+
+| Field | Meaning |
+|---|---|
+| `items[]` | openable now, ordered required → soonest `closesAt` → `sortOrder`, capped by `dailyItemCap` (default 5, 1–50), followed by the catch-ups. Today's tasks = `items` minus the ids in `catchUp`. |
+| `upcoming[]` | locked future items (7 days, incl. today's not-yet-open) — **metadata only**, never payloads |
+| `scheduledToday` | every task scheduled today across the learner's batches in any state; **constant through the day**; a catch-up never enters it. The progress denominator. |
+| `completedToday` | today's runs COMPLETED (STARTED never counts) |
+| `catchUp[]` | still-doable earlier runs at the catch-up percent; **max 2** (`CATCH_UP_FEED_CAP`), soonest-closing first; never use the cap; each carries `catchUpClosesAt` and `effectivePoints` |
+| `catchUpClosesAt` | earliest listed catch-up close (ISO instant) or null |
+| `doneToday[]` | finished today with the outcome, newest first (catch-ups finished today included) |
+| `hiddenByCap` | today's open tasks the cap is holding back; falls as the learner finishes; **never counted as missed** (`capApplied` legacy flag) |
+| `revealed[]` | QOTD/POLL only, redacted per §19.1 |
+| `today`, `serverTimeMs` | institute-local date and server clock, so countdowns correct device skew |
+| `streakDays` | deprecated — the streak comes from the points summary (§19.8) |
+
+Per item (`EngagementItemDTO`) additions: `earnablePoints`, `effectivePoints`, `pendingBonus`,
+`scoreBonusEnabled`, `claimable` (COURSE_SLIDE whose slide is already finished; computed, never
+creates an attempt), `excerpt` (160 UTF-16 units), `promptText`, `pollResults` + `responseCount`
+and `correctRate` (percentages only from **5** responses up), `minReadMs` / `minScrollPercent` /
+`minGameMs`, `flashcardsResult`. A pending reveal bonus settles on read in a `REQUIRES_NEW`
+transaction, so the feed stays read-only and on the replica. QUIZ items are left out of the feed and
+history (no learner path; a direct submit is `UNSUPPORTED_TYPE`).
+
+**Submit response** additions: `alreadyCompleted` (idempotent re-submit; no second ledger row),
+`answerAlreadyOut`, `pollResults`, `responseCount` (alongside the existing `resultPending` and
+`newTotalPoints`).
+
+**History** (`GET /history?instituteId&days=` ≤ 90): `missed` counts CLOSED occurrences only;
+still-catchable ones are reported as `catchUp`.
+
+**Pushes** carry `actionUrl`: `/engagement?slot={slotId}` for a task push,
+`/engagement?tab=answers` for a reveal push. The learner `/engagement` page has Today · Answers ·
+Past tabs; `/engagement/history` redirects to `?tab=past`.
+
+### 19.6 Admin tracking contract
+
+`GET /engagement/admin/v1/item/{id}/tracking?instituteId&status=ALL|DONE|NOT_DONE|STARTED|LATE&page&size`
+(the no-`status` form is unchanged):
+
+- Header: `completedCount`, `correctCount`, `enrolledCount`, `startedCount`, `notDoneCount`,
+  `lateCount`, `gradedCount`, `maxScore`, `optionCounts[{optionId,count}]` (one grouped query on
+  `response_json->>'selectedOptionId'`; MCQ and POLL distributions), paging fields.
+- `NOT_DONE` synthesizes rows (status `NOT_STARTED`) for **enrolled learners who never opened** the
+  task; `ALL` = every attempt followed by those rows.
+- Row: learner, status, `isCorrect`, `score`/`maxScore`, points, late, `selectedOptionId`,
+  `textAnswer`, `fileIds`, `startedAt`, `serverTimeMs` ("since first opened", computed on the
+  server), `flashcardsKnown` / `flashcardsTotal` / `learningCardIds`.
+- Accuracy is shown only for gradable tasks (QOTD + MCQ + `correctOptionId`); TEXT/UPLOAD show
+  "answers to read n".
+- `GET item/{id}/tracking/export`: CSV with a UTF-8 BOM (Hindi/Arabic names open in Excel); any
+  learner-controlled cell starting with `= + - @`, TAB or CR is prefixed with `'` (OWASP formula
+  injection). Adds selected option text and the flashcards columns.
+- `GET item/{id}/tracking/cards`: §19.4.
+
+### 19.7 Plan overview and plan list contracts
+
+`GET /engagement/admin/v1/plan/{id}/overview?instituteId` with any of `page`, `size`, `q`,
+`needsAttention` returns the new shape (no params = the legacy shape):
+
+- One aggregate query (no N+1). Per learner (`LearnerProgress`): `available`, `done`, `overdue`,
+  `missed`, points, last active, and `learnerClass` = `NOT_STARTED | BEHIND | ON_TRACK`; sorted
+  most-at-risk first; server-side paging and search. Cap-hidden tasks are **excluded from missed**.
+- Plan level: `notStarted` / `behind` / `onTrack` counts, `tasksOpened`, `tasksPastDue`,
+  `tasksCapHidden`, `dailyItemCap`, `today`, `days[]` (completion by day: tasks, completed,
+  available, rate) and `tasks[]` (per-task progress, `capHidden`, run date, state).
+- `GET plan/{id}/overview/export`: learner × task CSV, BOM + the same escaping.
+
+`GET /engagement/admin/v1/plan/list?instituteId` takes optional `packageSessionId`, `status`, `q`,
+`sort`, `page`, `size`. **No `page`/`size` = the old plain array**; with them, a page object. Rows
+carry `packageSessionLabel`, `firstDate`, `lastDate`, `dayCount`, `taskCount`, `todayState`
+(DRAFT / UPCOMING / RUNNING / ENDED / ARCHIVED), `todayTaskCount`, `learnerCount`; slot items carry
+`completedCount` so rows read "1 / 2 learners". Computed with a constant number of queries. Archive
+is a status update (→ ARCHIVED) through the normal update path.
+
+### 19.8 Points summary contract
+
+`GET /admin-core-service/points/v1/me/summary` keeps `totalPoints`, `weekPoints`, `todayPoints`,
+`level`, `pointsToNextLevel`, `breakdown`, and adds **one server-side streak**: `currentStreak`,
+`longestStreak`, `keptToday`, `last7Days[{date, active}]`, `today`, `timezone` — computed over the
+union of activity days and ledger days in the **institute timezone**. The 366-day scan is skipped
+inside a write transaction, so a submit never runs it. Every learner streak display (play heroes,
+`StreakCounterWidget`, the gamification panel, `AchievementsDialog`, the Today header) reads this
+value; the points pill reads this summary itself on every page, and a submit's `newTotalPoints`
+updates it once. Gamification-off institutes see no points, streaks or celebrations.
+
+### 19.9 `reasonCode` list
+
+Learner refusals throw `EngagementRejectedException` (a `VacademyException`, so status **510** and
+`ex` are unchanged). `EngagementExceptionAdvice` — scoped to the engagement controller package,
+ordered first, handling only this exception — returns the existing `ErrorInfo` body (`url`, `ex`,
+`responseCode`, `date`) **plus** `reasonCode`. Clients act on the code, never on message text;
+clients that ignore the field keep working.
+
+| Code | When |
+|---|---|
+| `NOT_OPEN` | the occurrence hasn't opened yet |
+| `TASK_CLOSED` | the occurrence closed and its catch-up window (if any) is over |
+| `READ_GATE` | reading/note not opened, or the dwell/scroll gate isn't met |
+| `GAME_NOT_FINISHED` | game not opened, or `minGameSeconds` hasn't passed |
+| `ANSWER_REQUIRED` | question/poll submitted without an option, text or file |
+| `LESSON_NOT_FINISHED` | COURSE_SLIDE whose slide progress isn't finished |
+| `UNSUPPORTED_TYPE` | a type this server can't grade (QUIZ) |
+| `FLASHCARDS_STALE` | deck never opened via GET, or an older version — refetch and resume |
+| `FLASHCARDS_INCOMPLETE` | outcomes don't cover the current deck exactly once (or an old app) |
+| `FLASHCARDS_TOO_FAST` | under the per-deck patience gate |
+
+Admin authoring refusals (answer-key lock, `TYPE_LOCKED`, validation) stay plain
+`VacademyException` messages; the composer maps them to i18n.
+
+### 19.10 AI planner: job flow and native decks
+
+Supersedes the "flashcard games" and "Not in this phase" parts of §16. `ai_service`,
+`/ai-service/engagement/plan`:
+
+- **Jobs** (modelled on `html_document`): `POST /draft/jobs` starts a draft that keeps running if
+  the teacher closes the tab (auth, brief checks and the 402 credit pre-flight still fail fast);
+  `GET /draft/jobs/{id}` polls (`status`, `progress {phase, days_done, days_total}`, result);
+  `GET /draft/jobs/active?kind=plan|item|any` re-attaches the wizard to a running or unacknowledged
+  job; `POST /draft/jobs/{id}/cancel` stops it (nothing charged); `POST /draft/jobs/{id}/ack`
+  marks it picked up. A job with no heartbeat past the stale window reads `INTERRUPTED` ("…you
+  weren't charged"). The same `idempotency_key` within the re-attach window returns the existing
+  job instead of a second paid draft. **Billed once, only on success.** The synchronous
+  `POST /draft` is unchanged and is the wizard's fallback. Plan-draft jobs are internal and stay out
+  of the AI task list.
+- **Brief:** `weekdays` and explicit `dates`; `single_item_type` (+ `avoid_title`) regenerates one
+  task. The response reports `days_requested`/`items_requested` vs `days_planned`/`items_planned`,
+  `missing_dates`, `short_dates` and `dropped_items`; the review warns when they differ.
+- **Native decks:** `Mix.flashcards` (with `game` kept as a deprecated alias) makes the model emit
+  `FLASHCARDS` items; `_norm_cards` strips tags (the **only** place tags are stripped), trims, drops
+  over-length or one-sided cards, de-duplicates fronts case-insensitively, caps at **20**, requires
+  **≥ 3** (else the item is dropped), mints ids, and emits the `flashcards/v1` payload with
+  `correctPoints: 0`. `render_flashcards_html` is gone.
+- **Regenerate** asks for only the requested type and returns **422 before billing** for anything of
+  another type/format or empty ("…you weren't charged"); unknown types are a 400 before the
+  pre-flight. The regenerated task keeps the teacher's point values; duplicate option ids are
+  renumbered; invented `<img src>` URLs become picture placeholders; `brief.title` wins over the
+  model's title; parse/normalise failures are 502/422, never a billed 500.
+- **Pricing:** `engagement_plan` = 3 + 0.5 per task (2 a day for a week = 10; a month of 3 a day =
+  50); `engagement_item` (regenerate one task, decks included) = flat 2. Pictures stay a separate
+  opt-in `html_document_image` charge. `ENGAGEMENT_PLAN_REASONING_EFFORT` (default `low`).
+- **Grounding** now actually works: the chapter picker read the wrong field of the modules API and
+  could never select a chapter, so before `b02e7b513a` no AI plan was ever grounded.
+
+### 19.11 Per-item attempt limitation (recurring slots)
+
+`engagement_attempt` is `UNIQUE (item_id, user_id)` (V513) with no `run_date`: **an attempt is per
+item, not per occurrence.** A recurring slot (weekday mask, multi-day window) is one item across all
+its runs, so:
+
+- a learner completes a recurring task **once**; later runs show it done and pay nothing more;
+- the feed gives no catch-up for a recurring slot whose today-run exists (the D20 stopgap), so an
+  older run can't be caught up while today's is open;
+- history files a completion under the occurrence in effect when it happened (a late one under the
+  run it caught up for); an older run is MISSED once a newer run exists;
+- tracking and the plan list count a recurring task once, by its first completion. The admin UI
+  does **not** yet say so on the tracking dialog (planned note: "recurring slot: counts first
+  completion only").
+
+Per-occurrence attempts need a product decision and a Flyway migration (a `run_date` column and a new
+unique key). Deferred; if built, number it **V531 or higher** from `origin/main`'s migration
+directory in the push worktree (V530 was the latest on 2026-09-25).
+
+### 19.12 Commits (`origin/main`, oldest first)
+
+| Commit | Wave | Summary |
+|---|---|---|
+| `4b21c1ffca` | 0 | Answer-key leak closed; no bonus after reveal; STARTED-on-GET + server-time reading/game gates (`minGameSeconds` 20); game claim waits for `vacademy:complete`; server reasons shown; missed = closed only; QUIZ out of feed |
+| `370e2a22e9` | 1A | Plan save no longer re-issues tasks: no-op detection, versioning in place, answer-key lock, write-time validation, reveal-bonus key on the answered version |
+| `ba26ac3cbe` | 1B | Tracking CSV formula-injection escaping + BOM; `revealed` is questions/polls only |
+| `a2f4377840` | 1C | AI regenerate keeps type and points, 422 before billing, title/date/effort fixes |
+| `306bd00f38` | 1D–1E | Admin stopgaps: multi-day warning + day-1 field preservation, composer reset/confirm/loading, error states with Retry, AlertDialog + StatusChip, AI draft close guard + resume, accuracy only for keyed MCQs, settings keep unknown keys + `minGameSeconds` field |
+| `705f4bf944` | 2A–2C | Server contracts: FLASHCARDS type + validator + grading, plan list/detail fields, tracking/overview/cards insight, notification `actionUrl`, server streak, learner feed fields, `reasonCode` |
+| `87d6b6eb0f` | 2D–2E | Learner data layer (React Query feed, optimistic submit, draft store), single points source, reasonCode mapping, tone/copy/visual primitives, phosphor icons for emoji |
+| `95a0a3cd02` | 2F | Admin foundations: zod composer + flashcards schemas (round-trip every DTO field), institute-tz formatters, type metadata, service additions, `MyDialog footerLeft` |
+| `9d320229e2` | 3F fix | Moving an unchanged task to another day keeps its id |
+| `31dd33ef9f` | 3A–3E | Learner Today module, one task runner (sheet), native flashcards, one streak, `/engagement` page with Today · Answers · Past |
+| `6efd34f1e8` | 3F–3H | Slot-aware composer (day rail, RHF + zod), per-type item editors, flashcards editor + import, learner-accurate preview + sandbox, batch picker by course, course picker fixed |
+| `2e6e6dda2c` | 3 | Flashcards authoring on by default |
+| `b02e7b513a` | 4A–4C, 4E | Tracking dialog, progress overview, AI planner rebuild (job flow, grounding fixed, review with real editors), plans list/card/lifecycle/duplicate |
+| `c7814cd36b` | 4D | AI emits native flashcard decks; background drafting jobs; weekdays/dates; requested vs delivered; per-task pricing |
+
+Wave 5 (i18n hi/fr/ar, the `design-lint` / `i18n-lint` rules below, this section) follows these.
+
+**Lint rules added in Wave 5** (`scripts/design-lint.mjs`, `scripts/i18n-lint.mjs`):
+- `learner-primary-out-of-scale` (**error**, learner app): `*-primary-600..950`. The learner
+  Tailwind config defines primary 50–500 only, so those classes compile to nothing and text renders
+  in the inherited colour.
+- `raw-palette-family` (warn, both apps): `(sky|violet|amber|teal|emerald|rose|orange|indigo|fuchsia|cyan|pink)-<n>`
+  colour utilities; use theme/semantic tokens, or annotate genuinely categorical colour with
+  `design-lint-ignore`.
+- `arbitrary-grid-template` (warn): `grid-cols-[…]` / `grid-rows-[…]`.
+- `undefined-locale-toLocale` (i18n, added lines): `.toLocale{Date,Time,}String(undefined, …)` —
+  the same browser-locale fallback as the no-arg call.

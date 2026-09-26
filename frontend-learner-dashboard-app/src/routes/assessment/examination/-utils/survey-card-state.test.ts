@@ -55,6 +55,24 @@ describe("surveyCardState", () => {
     expect(released.resultsPending).toBe(false);
   });
 
+  it("holds an auto-marked exam that is PENDING for a teacher (AI-graded typed answers)", () => {
+    const held = surveyCardState(
+      { play_mode: "EXAM", result_type: "AUTO_AFTER_SUBMISSION", report_release_status: "PENDING" },
+      past,
+      1
+    );
+    expect(held.canShowReport).toBe(false);
+    expect(held.resultsPending).toBe(true);
+
+    const released = surveyCardState(
+      { play_mode: "EXAM", result_type: "AUTO_AFTER_SUBMISSION", report_release_status: "RELEASED" },
+      past,
+      1
+    );
+    expect(released.canShowReport).toBe(true);
+    expect(released.resultsPending).toBe(false);
+  });
+
   it("offers nothing on an assessment that is not past yet", () => {
     const state = surveyCardState(
       { play_mode: "EXAM", result_type: "AUTO_AFTER_SUBMISSION" },

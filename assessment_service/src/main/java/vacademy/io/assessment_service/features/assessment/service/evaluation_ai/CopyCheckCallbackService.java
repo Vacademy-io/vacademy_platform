@@ -49,6 +49,7 @@ public class CopyCheckCallbackService {
     private final QuestionWiseMarksRepository questionWiseMarksRepository;
     private final StudentAttemptRepository studentAttemptRepository;
     private final AiEvaluationCancellationService cancellationService;
+    private final TypedAnswerEvaluation typedAnswerEvaluation;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -246,13 +247,12 @@ public class CopyCheckCallbackService {
                 // Recompute from the successfully-graded questions rather than
                 // trusting the AI's reported total: FAILED questions are excluded
                 // (not counted as a silent 0) until a teacher grades them, which
-                // recomputes this total via AiEvaluationReviewService.
+                // recomputes this total via AiEvaluationReviewService. An online
+                // attempt's run covers only its written answers; the objective
+                // marks scored on submit are added back in.
                 List<AiQuestionEvaluation> rows = questionEvaluationRepository
                         .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
-                double total = rows.stream()
-                        .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
-                        .mapToDouble(q -> q.getMarksAwarded().doubleValue())
-                        .sum();
+                double total = typedAnswerEvaluation.attemptTotal(attempt, rows);
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
 

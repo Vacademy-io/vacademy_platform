@@ -51,6 +51,7 @@ public class CopyCheckOrchestratorService {
     private final ObjectMapper objectMapper;
     private final OptionRepository optionRepository;
     private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
+    private final TypedAnswerEvaluation typedAnswerEvaluation;
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
@@ -65,6 +66,16 @@ public class CopyCheckOrchestratorService {
             log.error("[copy-check] process {} not found", processId);
             return;
         }
+        if (awaitingSubmitMarks(process, attemptId)) {
+            // An online attempt's question rows are written by the async marks job
+            // that runs on submit; the poller can get here first. Hand the job back
+            // unclaimed and the next tick picks it up once the rows exist.
+            process.setClaimedBy(null);
+            process.setClaimedAt(null);
+            processRepository.save(process);
+            log.info("[copy-check] attempt {} has no question rows yet; process {} requeued", attemptId, processId);
+            return;
+        }
         process.setStatus(AiEvaluationStatusEnum.PROCESSING.name());
         process.setCurrentStep("DISPATCHED");
         process.setStartedAt(new Date());
@@ -72,22 +83,37 @@ public class CopyCheckOrchestratorService {
 
         String attemptData = process.getStudentAttempt() != null ? process.getStudentAttempt().getAttemptData() : null;
         if (attemptData == null) {
-            failProcess(process, "attempt_data missing — no PDF to grade");
+            failProcess(process, "attempt_data missing — nothing to grade");
             return;
         }
-        String fileId = evaluationUtilityService.extractFileId(attemptData);
-        if (fileId == null || fileId.isEmpty()) {
-            failProcess(process, "no file_id on attempt — nothing to grade");
-            return;
-        }
-        String pdfUrl = getFileUrl(fileId);
-        if (pdfUrl == null) {
-            failProcess(process, "media-service did not return a URL for file_id=" + fileId);
-            return;
+        // No uploaded sheet = an online attempt: grade the typed written answers.
+        boolean typed = typedAnswerEvaluation.isTypedAttempt(process.getStudentAttempt(), assessmentOf(process));
+        String pdfUrl = null;
+        if (!typed) {
+            String fileId = evaluationUtilityService.extractFileId(attemptData);
+            if (fileId == null || fileId.isEmpty()) {
+                failProcess(process, "no file_id on attempt — nothing to grade");
+                return;
+            }
+            pdfUrl = getFileUrl(fileId);
+            if (pdfUrl == null) {
+                failProcess(process, "media-service did not return a URL for file_id=" + fileId);
+                return;
+            }
         }
 
         List<QuestionWiseMarks> marksList = questionWiseMarksRepository
                 .findByStudentAttemptIdWithQuestionDetails(attemptId);
+        if (typed) {
+            // Objective questions were scored exactly on submit; only the written
+            // ones need reading, and only those are charged for.
+            marksList = marksList.stream().filter(m -> TypedAnswerEvaluation.isAiGraded(m.getQuestion())).toList();
+            if (marksList.isEmpty()) {
+                failProcess(process, "no uploaded answer sheet and no written (long answer) question on attempt "
+                        + attemptId + " — nothing for the AI to grade");
+                return;
+            }
+        }
         if (marksList.isEmpty()) {
             failProcess(process, "no questions found for attempt " + attemptId);
             return;
@@ -109,7 +135,12 @@ public class CopyCheckOrchestratorService {
         List<CopyCheckGradeRequestDto.QuestionInput> questionPayloads = new ArrayList<>(marksList.size());
         int position = 0;
         for (QuestionWiseMarks marks : marksList) {
-            questionPayloads.add(buildQuestionInput(marks, ++position));
+            CopyCheckGradeRequestDto.QuestionInput input = buildQuestionInput(marks, ++position);
+            if (typed) {
+                input.setStudentAnswer(typedAnswerEvaluation.typedAnswer(marks));
+                input.setModelAnswer(referenceAnswerFor(marks.getQuestion()));
+            }
+            questionPayloads.add(input);
         }
 
         CopyCheckGradeRequestDto request = CopyCheckGradeRequestDto.builder()
@@ -117,6 +148,7 @@ public class CopyCheckOrchestratorService {
                 .attemptId(attemptId)
                 .assessmentId(process.getAssessment() != null ? process.getAssessment().getId() : null)
                 .instituteId(extractInstituteId(process))
+                .answerMode(typed ? "TYPED" : "COPY")
                 .pdfUrl(pdfUrl)
                 .preferredModel(preferredModel)
                 .callbackBaseUrl(callbackBaseUrl)
@@ -274,6 +306,24 @@ public class CopyCheckOrchestratorService {
         }
     }
 
+    /**
+     * The "Answer" a teacher writes on a Long Answer question
+     * ({data: {answer: {content}}}), for grading a typed answer. Copies still get
+     * no reference from here (see correctAnswerFor); that behaviour is unchanged.
+     */
+    String referenceAnswerFor(Question q) {
+        try {
+            String json = q.getAutoEvaluationJson();
+            if (json == null || json.isEmpty()) return null;
+            JsonNode answer = objectMapper.readTree(json).path("data").path("answer");
+            String html = answer.isTextual() ? answer.asText() : answer.path("content").asText(null);
+            String text = plainText(html);
+            return text.isEmpty() ? null : text;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String plainText(String html) {
         if (html == null) return "";
         return html.replaceAll("<[^>]+>", " ").replace("&nbsp;", " ").replaceAll("\\s+", " ").trim();
@@ -388,6 +438,26 @@ public class CopyCheckOrchestratorService {
         ordered.sort(Comparator.comparingLong(r -> r.getQuestion() == null ? Long.MAX_VALUE
                 : rank.getOrDefault(r.getQuestion().getId(), Long.MAX_VALUE)));
         return ordered;
+    }
+
+    /** How long after submit a missing set of question rows means "not written yet". */
+    static final long SUBMIT_MARKS_GRACE_MS = 10 * 60 * 1000L;
+
+    boolean awaitingSubmitMarks(AiEvaluationProcess process, String attemptId) {
+        var attempt = process.getStudentAttempt();
+        if (attempt == null || !typedAnswerEvaluation.isTypedAttempt(attempt, assessmentOf(process))) return false;
+        Date submitted = attempt.getSubmitTime();
+        if (submitted == null || System.currentTimeMillis() - submitted.getTime() > SUBMIT_MARKS_GRACE_MS) return false;
+        return questionWiseMarksRepository.findByStudentAttemptId(attemptId).isEmpty();
+    }
+
+    private static Assessment assessmentOf(AiEvaluationProcess process) {
+        if (process.getAssessment() != null) return process.getAssessment();
+        try {
+            return process.getStudentAttempt().getRegistration().getAssessment();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void failProcess(AiEvaluationProcess process, String message) {

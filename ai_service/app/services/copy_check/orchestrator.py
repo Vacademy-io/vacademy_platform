@@ -21,7 +21,7 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, locate, vision_transcript
+from . import annotator, callbacks, cancellation, locate, typed_answers, vision_transcript
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
 from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
@@ -142,12 +142,78 @@ def _mark_label_blocks(questions: list[dict[str, Any]]) -> None:
         q["label_blocks"] = runs.get(str(q.get("section") or "").strip(), 1)
 
 
+_EMPTY_LAYOUT: dict[str, Any] = {"pages": []}
+
+
+async def _grade_typed(
+    questions: list[dict[str, Any]],
+    rubric_resolver: RubricResolver,
+    grader: CopyCheckGrader,
+    preferred_model: Optional[str],
+    on_verdict,
+    check_cancelled,
+) -> tuple[float, float, int, int]:
+    """Grade every typed answer; post each verdict through `on_verdict`.
+    Returns (awarded, max, evaluated, graded) - `graded` counts the answers a
+    model actually read, which is what the institute is charged for."""
+    total_awarded = 0.0
+    total_max = 0.0
+    evaluated = 0
+    graded = 0
+    for q in questions:
+        check_cancelled()
+        answer = typed_answers.answer_text(q.get("student_answer"))
+        if not answer:
+            verdict = typed_answers.unattempted_verdict(q)
+        else:
+            graded += 1
+            try:
+                rubric = await rubric_resolver.resolve(q, preferred_model)
+                raw = await grader.grade_typed_question(q, rubric, preferred_model)
+                verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+            except cancellation.Cancelled:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Typed grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                )
+                try:
+                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
+                    raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
+                    verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                except cancellation.Cancelled:
+                    raise
+                except Exception as retry_err:
+                    logger.exception(f"Retry also failed for question {q.get('question_id')}")
+                    verdict = {
+                        "question_id": q["question_id"],
+                        "marks_awarded": 0.0,
+                        "max_marks": float(q.get("max_marks") or 0),
+                        "extracted_answer": answer,
+                        "feedback": "This answer could not be evaluated automatically and needs manual review.",
+                        "confidence": 0.0,
+                        "criteria_breakdown": [],
+                        "annotations": [],
+                        "status": "FAILED",
+                        "error_detail": describe_failure(retry_err),
+                    }
+            # What the student typed, not the model's retelling of it.
+            verdict["extracted_answer"] = answer
+            verdict["annotations"] = []
+        total_awarded += verdict["marks_awarded"]
+        total_max += verdict["max_marks"]
+        evaluated += 1
+        verdict.setdefault("question_number", q.get("question_number") or evaluated)
+        await on_verdict(verdict)
+    return total_awarded, total_max, evaluated, graded
+
+
 async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     """The actual pipeline. Designed to never raise out of the BG task — any
     failure ends in a callbacks.failed() POST so Java can surface it."""
     process_id = req["process_id"]
     callback_base = req["callback_base_url"]
-    pdf_url = req["pdf_url"]
+    pdf_url = req.get("pdf_url")
     assessment_id = req["assessment_id"]
     institute_id = req.get("institute_id")
     preferred_model = req.get("preferred_model")
@@ -239,6 +305,43 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             if model_answer:
                 q["model_answer"] = model_answer
         db.close()
+
+        if req.get("answer_mode") == "TYPED":
+            # An online attempt: the answers are exact text already. Nothing to
+            # OCR, locate or draw on - grade each answer and finish.
+            await _progress("GRADING")
+            total_awarded, total_max, evaluated, graded = await _grade_typed(
+                questions, rubric_resolver, grader, preferred_model,
+                lambda verdict: callbacks.question_done(
+                    callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                ),
+                lambda: cancellation.check(job_id, process_id),
+            )
+            await _stop_heartbeat()
+            await callbacks.complete(
+                callback_base, process_id, job_id,
+                total_marks_awarded=round(total_awarded, 2),
+                total_max_marks=round(total_max, 2),
+                questions_evaluated=evaluated,
+                evaluated_file_id=None,
+            )
+            logger.info("copy-check job %s (typed) complete: %s/%s, %d graded, %d tokens",
+                        job_id, total_awarded, total_max, graded, grader.tokens_used)
+            # Blank answers were zeroed without a model call; only the answers
+            # actually read are charged.
+            if graded:
+                record_tool_billing(
+                    tool_key="copy_check_evaluation",
+                    tool_params={"num_questions": graded},
+                    request_type=RequestType.EVALUATION,
+                    model=(preferred_model or DEFAULT_MODEL),
+                    prompt_tokens=grader.prompt_tokens,
+                    completion_tokens=grader.completion_tokens,
+                    institute_id=institute_id,
+                    request_id=job_id,
+                    idempotency_key=process_id,
+                )
+            return
 
         # 1. OCR via render_worker.
         cancellation.check(job_id, process_id)

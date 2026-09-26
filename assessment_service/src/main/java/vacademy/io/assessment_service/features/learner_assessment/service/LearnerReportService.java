@@ -166,7 +166,8 @@ public class LearnerReportService {
         // and PDF endpoints would serve the AI's (or an evaluator's) marks before
         // release to anyone who calls them directly. AUTO result types are
         // deliberately NOT gated here: the card offers "Show report" for them
-        // regardless of release status, and refusing would break that button.
+        // regardless of release status, and refusing would break that button -
+        // unless the attempt is explicitly held (PENDING) for a teacher.
         if (isHeldManualResult(registration.get().getAssessment(), attempt.get())) {
             throw new VacademyException("Result has not been released yet");
         }
@@ -175,6 +176,11 @@ public class LearnerReportService {
     }
 
     static boolean isHeldManualResult(Assessment assessment, StudentAttempt attempt) {
+        if (ReleaseResultStatusEnum.PENDING.name().equals(attempt.getReportReleaseStatus())) {
+            // Explicitly held for a teacher on any result type: an uploaded copy, or
+            // an online attempt whose written answers the AI is grading.
+            return true;
+        }
         return assessment != null
                 && ResultTypeEnum.MANUAL.name().equals(assessment.getResultType())
                 && !ReleaseResultStatusEnum.RELEASED.name().equals(attempt.getReportReleaseStatus());

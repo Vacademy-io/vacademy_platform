@@ -8,6 +8,8 @@ import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
+import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
+import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 
 import java.util.List;
 
@@ -32,16 +34,19 @@ class AiEvaluationSubmissionEnqueuerTest {
 
         private AiEvaluationProcessRepository repository;
         private AiEvaluationSubmissionEnqueuer enqueuer;
+        private QuestionAssessmentSectionMappingRepository mappingRepository;
 
         @BeforeEach
         void setUp() {
                 repository = mock(AiEvaluationProcessRepository.class);
                 // Real fileId parsing over a mocked section repository: the guard under
                 // test reads attempt_data, nothing else.
+                mappingRepository = mock(QuestionAssessmentSectionMappingRepository.class);
                 EvaluationUtilityService utility = new EvaluationUtilityService(
-                                new com.fasterxml.jackson.databind.ObjectMapper(),
-                                mock(vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository.class));
-                enqueuer = new AiEvaluationSubmissionEnqueuer(repository, utility);
+                                new com.fasterxml.jackson.databind.ObjectMapper(), mappingRepository);
+                TypedAnswerEvaluation typed = new TypedAnswerEvaluation(utility, mappingRepository,
+                                mock(QuestionWiseMarksRepository.class), new com.fasterxml.jackson.databind.ObjectMapper());
+                enqueuer = new AiEvaluationSubmissionEnqueuer(repository, typed);
                 ReflectionTestUtils.setField(enqueuer, "onSubmitEnabled", true);
                 when(repository.findActiveByAttemptId(anyString(), anyList())).thenReturn(List.of());
                 when(repository.save(any(AiEvaluationProcess.class))).thenAnswer(invocation -> {
@@ -60,11 +65,33 @@ class AiEvaluationSubmissionEnqueuerTest {
         }
 
         @Test
-        void anAttemptWithoutASubmissionFileIsNotQueued() {
+        void anOnlineAttemptWithNoWrittenQuestionIsNotQueued() {
                 StudentAttempt online = new StudentAttempt();
                 online.setId("attempt-online");
                 online.setAttemptData("{\"sections\":[]}");
+                when(mappingRepository.existsQuestionOfTypesInAssessment("assessment-1", List.of("LONG_ANSWER")))
+                                .thenReturn(false);
                 assertNull(enqueuer.enqueueIfEnabled(online, assessment(true)));
+                verify(repository, never()).save(any(AiEvaluationProcess.class));
+        }
+
+        @Test
+        void anOnlineAttemptWithAWrittenQuestionIsQueuedForItsTypedAnswers() {
+                StudentAttempt online = new StudentAttempt();
+                online.setId("attempt-essay");
+                online.setAttemptData("{\"sections\":[]}");
+                when(mappingRepository.existsQuestionOfTypesInAssessment("assessment-1", List.of("LONG_ANSWER")))
+                                .thenReturn(true);
+                assertThat(enqueuer.enqueueIfEnabled(online, assessment(true))).isEqualTo("process-1");
+        }
+
+        @Test
+        void anOnlineEssayIsNotQueuedWhenTheAssessmentDidNotOptIn() {
+                StudentAttempt online = new StudentAttempt();
+                online.setId("attempt-essay");
+                online.setAttemptData("{\"sections\":[]}");
+                assertNull(enqueuer.enqueueIfEnabled(online, assessment(null)));
+                verify(mappingRepository, never()).existsQuestionOfTypesInAssessment(anyString(), anyList());
                 verify(repository, never()).save(any(AiEvaluationProcess.class));
         }
 

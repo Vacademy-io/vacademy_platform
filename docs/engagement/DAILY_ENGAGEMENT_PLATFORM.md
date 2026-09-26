@@ -1110,3 +1110,58 @@ Wave 5 (i18n hi/fr/ar, the `design-lint` / `i18n-lint` rules below, this section
 - `arbitrary-grid-template` (warn): `grid-cols-[…]` / `grid-rows-[…]`.
 - `undefined-locale-toLocale` (i18n, added lines): `.toLocale{Date,Time,}String(undefined, …)` —
   the same browser-locale fallback as the no-arg call.
+
+## 20. Days after joining (RELATIVE plans), 2026-09-26 (`fa2451d4c7`, `82719780ae`)
+
+Clients asked for plans such as "a reading on days 1–3 after the student joins",
+counted from each student's own start rather than from calendar dates.
+
+**Model.** `engagement_plan.schedule_mode` is `CALENDAR` (the default; every older
+plan) or `RELATIVE`. The mode is chosen when the plan is created and can't change
+afterwards: the server answers "A plan's schedule type can't change. Create a new plan
+instead."
+
+- **Day 1 = the join day.** The join date is the student's batch enrolment:
+  `MIN(COALESCE(enrolled_date, created_at))` over ACTIVE
+  `student_session_institute_group_mapping` rows for the plan's package session.
+- **Students already enrolled** start Day 1 on the plan's first publish date
+  (`engagement_plan.published_at`, stamped the first time the plan is PUBLISHED;
+  V532 backfills it with `created_at` for plans that were already published).
+- Each student's Day 1 = `max(local join date, local publish date)`, in the plan's
+  timezone.
+- **Slots.** `engagement_slot.start_day` / `end_day` hold values from 1 to 366;
+  `end_day` defaults to `start_day`. `dow_mask` is always null. `start_date` /
+  `end_date` hold placeholder dates, Day N = `2000-01-01 + (N − 1)`, so
+  date-bounded queries never match a relative slot by accident. The admin form keeps
+  days as these placeholder dates, and requests carry `startDay` / `endDay`.
+
+**Resolution.** `EngagementRelativeSchedule.localize(plan, slot, dayOne)` returns a
+detached copy of the slot shifted to the student's own dates. The copy is never
+saved. Every existing rule then runs unchanged: open window, catch-up, reveal,
+history and the daily cap.
+- Learner feed and history: `EngagementLearnerService.withRelativeSlots`.
+- Item open and submit: `loadContext`.
+- Tracking: `progressFor` works per student. Plan-wide figures follow the earliest
+  student's Day 1.
+- Notify job: picks relative slots by time of day, then the students whose day it is.
+- Reveal job: `settleRelativePlan` uses a per-attempt reveal instant.
+
+**Summaries.** A relative plan's list row carries:
+- `scheduleMode: RELATIVE`
+- `lastDay` (the last Day N)
+- `firstDate` / `lastDate` = null
+- `todayTaskCount` = null
+- `todayState` = RUNNING while PUBLISHED
+
+**Admin UI.**
+- Composer: "Schedule by: Calendar dates / Days after joining" (new plans only;
+  switching keeps the days' spacing).
+- Day editor: Day, From day and To day number fields, with no weekday picker.
+- Headers read "Day 3" or "Days 1–3".
+- The publish summary, plan card ("Days 1–N after joining"), day list, duplicate
+  dialog (copies day for day) and tracking (reveal "each day") never show
+  placeholder dates.
+
+**Known limits.**
+- Item tracking's NOT_DONE list includes students whose day hasn't come yet.
+- The AI planner creates calendar plans only.

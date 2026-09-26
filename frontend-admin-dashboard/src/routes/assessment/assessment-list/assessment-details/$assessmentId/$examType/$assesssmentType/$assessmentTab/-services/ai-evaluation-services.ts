@@ -3,6 +3,7 @@ import {
     GET_COMPLETED_QUESTIONS_URL,
     GET_EVALUATION_PROCESSES_URL,
     GET_EVALUATION_PROGRESS_URL,
+    GET_WRITING_INTEGRITY_URL,
     REVIEW_EVALUATION_URL,
     STOP_EVALUATION_URL,
     TRIGGER_EVALUATION_URL,
@@ -153,6 +154,54 @@ export const getCompletedQuestions = async (processId: string): Promise<Question
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: `${GET_COMPLETED_QUESTIONS_URL}/${processId}`,
+    });
+
+    return response?.data || [];
+};
+
+/** Counts the learner app records while an answer is typed (see learner lib/writing-signals.ts). */
+export interface WritingSignals {
+    keystrokes?: number;
+    typedChars?: number;
+    deletions?: number;
+    largeInserts?: number;
+    largeInsertChars?: number;
+    blockedInjections?: number;
+    pauses?: number;
+    activeMs?: number;
+    focusLosses?: number;
+}
+
+export type WritingIntegrityFlag =
+    | 'FAST_WRITING'
+    | 'LARGE_INSERTS'
+    | 'PASTE_ATTEMPTS'
+    | 'LEFT_WINDOW'
+    | 'FEW_CORRECTIONS'
+    | 'HIGH_SIMILARITY'
+    | 'AI_STYLE_HIGH';
+
+/** How one typed answer was written. Evidence for the teacher, never a verdict. */
+export interface WritingIntegrity {
+    question_id: string;
+    question_number: number | null;
+    words: number;
+    time_taken_seconds: number | null;
+    words_per_minute: number | null;
+    signals_available: boolean;
+    signals: WritingSignals | null;
+    similar_participant: string | null;
+    similarity_percent: number | null;
+    ai_style_level: 'low' | 'medium' | 'high' | null;
+    ai_style_reason: string | null;
+    flags: WritingIntegrityFlag[];
+}
+
+/** Empty for an uploaded copy - there is no typing to report on. */
+export const getWritingIntegrity = async (processId: string): Promise<WritingIntegrity[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${GET_WRITING_INTEGRITY_URL}/${processId}`,
     });
 
     return response?.data || [];

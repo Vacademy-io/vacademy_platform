@@ -1,0 +1,31 @@
+{
+    "heading": "Intégrité de la rédaction",
+    "stats": {
+        "words": "Mots : {{value}}",
+        "minutes": "Durée : {{value}} min",
+        "wordsPerMinute": "Rythme : {{value}} mots/min",
+        "tabSwitches": "Sorties de la fenêtre du test : {{value}}",
+        "corrections": "Corrections : {{value}}",
+        "largeInserts": "Grands blocs de texte insérés : {{value}}",
+        "blockedPastes": "Tentatives de collage bloquées : {{value}}",
+        "similarity": "{{percent}} % similaire à {{name}}",
+        "aiStyle": "Indice style IA : {{level}}"
+    },
+    "aiStyleLevel": {
+        "low": "faible",
+        "medium": "moyen",
+        "high": "élevé"
+    },
+    "flags": {
+        "FAST_WRITING": "Rédigé anormalement vite",
+        "LARGE_INSERTS": "De grands blocs de texte sont apparus d'un coup",
+        "PASTE_ATTEMPTS": "A tenté de coller",
+        "LEFT_WINDOW": "A quitté le test pendant la réponse",
+        "FEW_CORRECTIONS": "Longue réponse presque sans corrections",
+        "HIGH_SIMILARITY": "Très proche de la réponse d'un autre apprenant",
+        "AI_STYLE_HIGH": "Ressemble à un texte généré par IA"
+    },
+    "aiStyleReason": "Indice IA : {{reason}}",
+    "noSignals": "Les signaux de frappe n'ont pas été enregistrés pour cette réponse (ancienne version de l'application).",
+    "disclaimer": "Ce sont des indices pour vous aider à relire, pas des preuves. Ils ne modifient pas la note."
+}

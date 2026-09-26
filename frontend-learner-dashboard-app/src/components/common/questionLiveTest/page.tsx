@@ -14,6 +14,7 @@ import { LiveTestUiProvider, useLiveTestUi } from "./live-test-ui-context";
 import { ExamCalculator } from "./tools/exam-calculator";
 import { ExamScratchpad } from "./tools/exam-scratchpad";
 import { useAssessmentStore } from "@/stores/assessment-store";
+import { snapshotWritingSignals } from "@/lib/writing-signals";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { cn } from "@/lib/utils";
 import { useImmersiveMode } from "@/hooks/use-immersive-mode";
@@ -96,6 +97,7 @@ export const formatDataFromStore = async (
       status: status,
       tabSwitchCount: state.tabSwitchCount || 0,
     },
+    writingSignals: snapshotWritingSignals(attemptId),
     sections: state.assessment?.section_dtos?.map((section, idx) => {
       const sectionTimeLeftSeconds = Math.round(
         (state.sectionTimers?.[idx]?.timeLeft || 0) / 1000

@@ -15,6 +15,8 @@ import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationReviewService;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationService;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.EvaluationAccessValidator;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.WritingIntegrityService;
+import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.WritingIntegrityDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -29,6 +31,7 @@ public class AiEvaluationController {
         private final AiEvaluationReviewService reviewService;
         private final AiEvaluationRetrofitService retrofitService;
         private final EvaluationAccessValidator accessValidator;
+        private final WritingIntegrityService writingIntegrityService;
 
         /**
          * Is this test AI-checkable, or does it only hold the manual-upload
@@ -106,6 +109,19 @@ public class AiEvaluationController {
                         @PathVariable String processId) {
                 accessValidator.requireProcessAccess(user, instituteId, processId);
                 return ResponseEntity.ok(progressService.getCompletedQuestions(processId));
+        }
+
+        /**
+         * How each typed answer of this evaluation was written - evidence for the
+         * teacher, never a verdict. Empty for an uploaded copy.
+         */
+        @GetMapping("/writing-integrity/{processId}")
+        public ResponseEntity<List<WritingIntegrityDto>> getWritingIntegrity(
+                        @RequestAttribute("user") CustomUserDetails user,
+                        @RequestHeader(value = "clientId", required = false) String instituteId,
+                        @PathVariable String processId) {
+                accessValidator.requireProcessAccess(user, instituteId, processId);
+                return ResponseEntity.ok(writingIntegrityService.forProcess(processId));
         }
 
         /**

@@ -119,3 +119,20 @@ def test_marks_are_capped_at_the_question_maximum():
     reply = {"marks_awarded": 14, "confidence": 0.9, "feedback": "x", "criteria_breakdown": []}
     (awarded, _, _, _), posted, _ = _run([_q(answer="An essay.")], reply)
     assert awarded == 10.0 and posted[0]["marks_awarded"] == 10.0
+
+
+def test_ai_style_hint_is_passed_through_and_never_touches_marks():
+    reply = {
+        "marks_awarded": 8, "confidence": 0.9, "feedback": "Good.",
+        "criteria_breakdown": [],
+        "ai_style": {"level": "HIGH", "reason": "generic, textbook phrasing"},
+    }
+    (awarded, _, _, _), posted, _ = _run([_q(answer="An essay.")], reply)
+    assert awarded == 8.0
+    assert posted[0]["ai_style"] == {"level": "high", "reason": "generic, textbook phrasing"}
+
+
+def test_an_unreadable_ai_style_hint_is_dropped():
+    assert t.ai_style_hint({"ai_style": {"level": "certain"}}) is None
+    assert t.ai_style_hint({"ai_style": "high"}) is None
+    assert t.ai_style_hint({}) is None

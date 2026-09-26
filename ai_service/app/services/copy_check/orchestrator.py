@@ -171,6 +171,7 @@ async def _grade_typed(
                 rubric = await rubric_resolver.resolve(q, preferred_model)
                 raw = await grader.grade_typed_question(q, rubric, preferred_model)
                 verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                verdict["ai_style"] = typed_answers.ai_style_hint(raw)
             except cancellation.Cancelled:
                 raise
             except Exception as e:
@@ -181,6 +182,7 @@ async def _grade_typed(
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
                     raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
                     verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                    verdict["ai_style"] = typed_answers.ai_style_hint(raw)
                 except cancellation.Cancelled:
                     raise
                 except Exception as retry_err:

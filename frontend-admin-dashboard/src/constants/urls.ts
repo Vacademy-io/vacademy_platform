@@ -1315,6 +1315,7 @@ export const TRIGGER_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment
 export const STOP_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/stop`;
 export const GET_EVALUATION_PROGRESS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/progress`;
 export const GET_COMPLETED_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/completed-questions`;
+export const GET_WRITING_INTEGRITY_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/writing-integrity`;
 export const REVIEW_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/review`;
 export const GET_EVALUATION_PROCESSES_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/processes`;
 // Course Catalogue Editor

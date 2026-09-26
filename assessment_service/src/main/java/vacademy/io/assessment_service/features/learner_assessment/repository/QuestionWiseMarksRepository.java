@@ -96,6 +96,31 @@ public interface QuestionWiseMarksRepository extends JpaRepository<QuestionWiseM
 
     List<QuestionWiseMarks> findByStudentAttemptId(String attemptId);
 
+    /** Another learner's answer to one question - the similarity check compares against these. */
+    interface PeerAnswerRow {
+        String getAttemptId();
+
+        String getRegistrationId();
+
+        String getParticipantName();
+
+        String getResponseJson();
+    }
+
+    @Query(value = """
+            SELECT sa.id AS "attemptId", aur.id AS "registrationId",
+                   aur.participant_name AS "participantName", qwm.response_json AS "responseJson"
+            FROM question_wise_marks qwm
+            JOIN student_attempt sa ON sa.id = qwm.attempt_id
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            WHERE qwm.assessment_id = :assessmentId
+              AND qwm.question_id = :questionId
+              AND sa.status = 'ENDED'
+            LIMIT 2000
+            """, nativeQuery = true)
+    List<PeerAnswerRow> findEndedAnswersForQuestion(@Param("assessmentId") String assessmentId,
+                                                    @Param("questionId") String questionId);
+
     @Query(value = """
             SELECT qwm.* FROM question_wise_marks qwm
             WHERE qwm.attempt_id = :attemptId

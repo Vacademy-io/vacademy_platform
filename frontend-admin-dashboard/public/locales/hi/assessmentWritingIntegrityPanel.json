@@ -1,0 +1,31 @@
+{
+    "heading": "लेखन की प्रामाणिकता",
+    "stats": {
+        "words": "शब्द: {{value}}",
+        "minutes": "समय: {{value}} मिनट",
+        "wordsPerMinute": "गति: {{value}} शब्द/मिनट",
+        "tabSwitches": "टेस्ट विंडो छोड़ी: {{value}}",
+        "corrections": "सुधार: {{value}}",
+        "largeInserts": "एक साथ आया बड़ा टेक्स्ट: {{value}}",
+        "blockedPastes": "रोके गए पेस्ट प्रयास: {{value}}",
+        "similarity": "{{name}} से {{percent}}% मिलता-जुलता",
+        "aiStyle": "AI-शैली संकेत: {{level}}"
+    },
+    "aiStyleLevel": {
+        "low": "कम",
+        "medium": "मध्यम",
+        "high": "अधिक"
+    },
+    "flags": {
+        "FAST_WRITING": "असामान्य रूप से तेज़ लिखा गया",
+        "LARGE_INSERTS": "बड़ा टेक्स्ट एक साथ आया",
+        "PASTE_ATTEMPTS": "पेस्ट करने की कोशिश की",
+        "LEFT_WINDOW": "उत्तर लिखते समय टेस्ट छोड़ा",
+        "FEW_CORRECTIONS": "लंबा उत्तर, लगभग कोई सुधार नहीं",
+        "HIGH_SIMILARITY": "किसी अन्य विद्यार्थी से बहुत मिलता-जुलता",
+        "AI_STYLE_HIGH": "AI द्वारा लिखा हुआ लगता है"
+    },
+    "aiStyleReason": "AI संकेत: {{reason}}",
+    "noSignals": "इस उत्तर के टाइपिंग संकेत रिकॉर्ड नहीं हुए (पुराना ऐप संस्करण)।",
+    "disclaimer": "ये समीक्षा में मदद के संकेत हैं, प्रमाण नहीं। इनसे अंक नहीं बदलते।"
+}

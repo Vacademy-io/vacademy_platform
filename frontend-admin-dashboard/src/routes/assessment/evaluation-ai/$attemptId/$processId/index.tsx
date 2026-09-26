@@ -57,6 +57,7 @@ import {
     type QuestionScoreMarker,
 } from './-components/PdfAnnotationOverlay';
 import { RubricChangedBadge } from './-components/RubricChangedBadge';
+import { WritingIntegrityPanel } from './-components/WritingIntegrityPanel';
 import { getLayoutMap } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 
 export const Route = createFileRoute('/assessment/evaluation-ai/$attemptId/$processId/')({
@@ -1035,6 +1036,9 @@ function QuestionCard({
                             </p>
                         </div>
                     )}
+
+                    {/* How a typed answer was written - renders nothing for a copy */}
+                    <WritingIntegrityPanel processId={processId} questionId={question.question_id} />
 
                     {/* Criteria Breakdown */}
                     {question.evaluation_details_json?.criteria_breakdown && (

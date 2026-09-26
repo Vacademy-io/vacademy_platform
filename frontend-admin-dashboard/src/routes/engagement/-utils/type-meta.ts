@@ -185,13 +185,13 @@ export function typeMeta(type: string | null | undefined): EngagementTypeMeta {
 }
 
 /**
- * Whether the composer shows the Flashcards type. Off until the admin editor ships
- * (`VITE_ENGAGEMENT_FLASHCARDS=true`); existing FLASHCARDS tasks always render.
+ * Whether the composer shows the Flashcards type. On by default; a build with
+ * `VITE_ENGAGEMENT_FLASHCARDS=false` hides it. Existing FLASHCARDS tasks always render.
  */
 export function isFlashcardsAuthoringEnabled(): boolean {
     const flag = (import.meta.env as Record<string, string | boolean | undefined>)
         .VITE_ENGAGEMENT_FLASHCARDS;
-    return flag === true || flag === 'true' || flag === '1';
+    return !(flag === false || flag === 'false' || flag === '0');
 }
 
 /** The types a new task can be, in order, honouring the flashcards flag. */

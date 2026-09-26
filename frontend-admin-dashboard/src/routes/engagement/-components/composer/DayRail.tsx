@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useFormState, useWatch, type Control } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowDown,
     ArrowUp,
@@ -17,7 +18,12 @@ import { MyDropdown } from '@/components/design-system/dropdown';
 import type { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { cn } from '@/lib/utils';
-import { countFormErrors, type ComposerForm, type SlotForm } from '../forms/composer-schema';
+import {
+    countFormErrors,
+    relativeDayOf,
+    type ComposerForm,
+    type SlotForm,
+} from '../forms/composer-schema';
 import {
     formatDay,
     formatDayRange,
@@ -76,13 +82,29 @@ export interface DayRailProps {
     onMove: (fromPosition: number, toPosition: number) => void;
 }
 
-/** "Thu, 25 Sep", or for a repeating day "Mon, Wed · 29 Sep – 10 Oct". */
+/**
+ * "Thu, 25 Sep", or for a repeating day "Mon, Wed · 29 Sep – 10 Oct". On a join-based
+ * plan (pass `relative`, the engagement `t`) it is "Day 3" or "Days 1–3".
+ */
 export function dayHeading(
     slot: Pick<SlotForm, 'startDate' | 'endDate' | 'dowMask'>,
-    lang: string
+    lang: string,
+    relative?: TFunction | null
 ): { label: string; repeats: boolean } {
     const last = slotLastDate(slot);
     if (!slot.startDate) return { label: '', repeats: false };
+    if (relative) {
+        const first = relativeDayOf(slot.startDate);
+        const end = relativeDayOf(last);
+        if (first == null) return { label: '', repeats: false };
+        if (end == null || end <= first) {
+            return { label: relative('composer.relative.day', { n: first }), repeats: false };
+        }
+        return {
+            label: relative('composer.relative.dayRange', { from: first, to: end }),
+            repeats: true,
+        };
+    }
     if (last === slot.startDate) return { label: formatDay(slot.startDate, lang), repeats: false };
     const weekdays = formatWeekdays(slot.dowMask, lang);
     const range = formatDayRange(slot.startDate, last, lang);
@@ -104,6 +126,7 @@ export function DayRail({
     const { t, i18n } = useTranslation('engagement');
     const lang = i18n.language;
     const slots = useWatch({ control, name: 'slots' });
+    const relative = useWatch({ control, name: 'scheduleMode' }) === 'RELATIVE';
     const { errors } = useFormState({ control, name: 'slots' });
     const slotErrors = errors.slots as SlotsErrors;
 
@@ -112,14 +135,18 @@ export function DayRail({
     const rows = order.map((index, position) => {
         const entry = days[index]!;
         const slot = slots?.[index];
-        const heading = slot ? dayHeading(slot, lang) : { label: '', repeats: false };
+        const heading = slot
+            ? dayHeading(slot, lang, relative ? t : null)
+            : { label: '', repeats: false };
         // In the narrow rail a repeating day leads with its dates; the weekdays go on the
         // second line, so truncation never hides when the day runs.
         const last = slot?.startDate ? slotLastDate(slot) : '';
         const railLabel =
-            heading.repeats && slot ? formatDayRange(slot.startDate, last, lang) : heading.label;
+            heading.repeats && slot && !relative
+                ? formatDayRange(slot.startDate, last, lang)
+                : heading.label;
         const weekdays =
-            heading.repeats && slot && !isEveryDay(slot.dowMask)
+            heading.repeats && slot && !relative && !isEveryDay(slot.dowMask)
                 ? formatWeekdays(slot.dowMask, lang)
                 : '';
         const taskCount = slot?.items?.length ?? 0;
@@ -189,7 +216,10 @@ export function DayRail({
     const subline = (row: (typeof rows)[number]) => {
         const tasks = t('composer.rail.tasks', { count: row.taskCount });
         const parts = [row.weekdays, row.theme, tasks].filter(Boolean);
-        if (row.heading.repeats) parts.push(t('composer.rail.runs', { count: row.runCount }));
+        // A join-based range already reads "Days 2–4"; a date count would repeat it.
+        if (row.heading.repeats && !relative) {
+            parts.push(t('composer.rail.runs', { count: row.runCount }));
+        }
         return parts.join(' · ');
     };
 

@@ -10,6 +10,10 @@ import {
     itemSchema,
     newComposerForm,
     newItemForm,
+    rebaseSlots,
+    relativeDate,
+    relativeDayOf,
+    RELATIVE_DAY_ONE,
     requestToForm,
     resolveSortOrders,
     slotSchema,
@@ -601,5 +605,87 @@ describe('flattenFormErrors', () => {
             { path: 'slots.1.items.0.title', message: 'composer.errors.taskTitle' },
             { path: 'slots.1.items.root', message: 'composer.errors.tasks' },
         ]);
+    });
+});
+
+describe('days after joining (RELATIVE plans)', () => {
+    function relativePlan(): EngagementPlanDTO {
+        const plan = demoPlan();
+        plan.scheduleMode = 'RELATIVE';
+        // The server stores Day N as 2000-01-01 + (N - 1) and sends startDay/endDay.
+        plan.slots![0] = {
+            ...plan.slots![0]!,
+            startDate: '2000-01-01',
+            endDate: '2000-01-03',
+            startDay: 1,
+            endDay: 3,
+        };
+        plan.slots![1] = {
+            ...plan.slots![1]!,
+            startDate: '2000-01-05',
+            endDate: null,
+            startDay: 5,
+            endDay: 5,
+        };
+        plan.slots![2] = {
+            ...plan.slots![2]!,
+            startDate: '2000-01-06',
+            endDate: null,
+            startDay: 6,
+            endDay: 6,
+        };
+        return plan;
+    }
+
+    it('round-trips Day N as startDay/endDay and never sends a mode on update', () => {
+        const request = formToRequest(dtoToForm(relativePlan()));
+        expect(request.scheduleMode).toBeUndefined();
+        expect(
+            request.slots!.map((s) => [s.startDay, s.endDay]).sort((x, y) => x[0]! - y[0]!)
+        ).toEqual([
+            [1, 3],
+            [5, 5],
+            [6, 6],
+        ]);
+    });
+
+    it('sends the mode on create and starts a new relative plan on Day 1', () => {
+        const form = newComposerForm({ scheduleMode: 'RELATIVE', packageSessionIds: ['ps-1'] });
+        const request = formToRequest({ ...form, title: 'Onboarding' });
+        expect(request.scheduleMode).toBe('RELATIVE');
+        expect(request.slots![0]!.startDay).toBe(1);
+        expect(request.slots![0]!.endDay).toBe(1);
+    });
+
+    it('calendar plans send no day numbers', () => {
+        const request = formToRequest(dtoToForm(demoPlan()));
+        expect(request.slots!.every((s) => s.startDay === undefined)).toBe(true);
+    });
+
+    it('rejects a day past 366', () => {
+        const form = dtoToForm(relativePlan());
+        form.slots[1]!.startDate = relativeDate(400);
+        const result = composerSchema.safeParse(form);
+        expect(result.success).toBe(false);
+        expect(result.error!.issues.some((i) => i.message === COMPOSER_ERRORS.dayNumber)).toBe(
+            true
+        );
+    });
+
+    it('rebases days between calendar dates and Day 1, keeping their spacing', () => {
+        const calendar = dtoToForm(demoPlan());
+        const days = rebaseSlots(calendar.slots, RELATIVE_DAY_ONE).map((s) =>
+            relativeDayOf(s.startDate)
+        );
+        const gaps = calendar.slots.map((s) => s.startDate);
+        expect(days[0]).toBe(1);
+        expect(days[1]! - days[0]!).toBe(
+            (Date.parse(gaps[1]!) - Date.parse(gaps[0]!)) / 86_400_000
+        );
+    });
+
+    it('a published relative plan reads as running, with no calendar range', () => {
+        const plan = { ...relativePlan(), status: 'PUBLISHED' as const, todayState: null };
+        expect(planLifecycle(plan)).toBe('RUNNING');
     });
 });

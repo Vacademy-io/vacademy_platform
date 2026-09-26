@@ -77,7 +77,9 @@
             "unarchiveError": "Could not restore this plan."
         },
         "untitled": "Untitled plan",
-        "created": "Created {{date}}"
+        "created": "Created {{date}}",
+        "afterJoining_one": "Day 1 after joining",
+        "afterJoining_other": "Days 1–{{count}} after joining"
     },
     "composer": {
         "titleNew": "New engagement plan",
@@ -164,7 +166,9 @@
             "cardTooLong": "This is over the character limit.",
             "cardTooManyLines": "Keep each side to 12 lines or fewer.",
             "cardId": "This card has an invalid id. Duplicate it and delete the original.",
-            "cardDuplicateId": "Two cards share an id. Duplicate one of them and delete the original."
+            "cardDuplicateId": "Two cards share an id. Duplicate one of them and delete the original.",
+            "dayNumber": "Enter a day from 1 to 366.",
+            "dayOrder": "The last day must be between the first day and 366."
         },
         "types": {
             "READING_HTML": "Reading",
@@ -489,6 +493,25 @@
                 "confirmCapped_one": "Import {{count}} card ({{left}} not imported)",
                 "confirmCapped_other": "Import {{count}} cards ({{left}} not imported)"
             }
+        },
+        "relative": {
+            "modeLabel": "Schedule by",
+            "mode": {
+                "CALENDAR": "Calendar dates",
+                "CALENDAR_hint": "Everyone gets the same days, on fixed dates.",
+                "RELATIVE": "Days after joining",
+                "RELATIVE_hint": "Each learner's Day 1 is the day they join the batch."
+            },
+            "modeLocked": "A plan's schedule type can't change after it is created.",
+            "day": "Day {{n}}",
+            "dayRange": "Days {{from}}–{{to}}",
+            "dayLabel": "Day",
+            "fromDay": "From day",
+            "toDay": "To day",
+            "repeat": "Repeat the same tasks on more days",
+            "summary": "{{days}} after each learner joins. Day 1 is the join day; learners already in the batch start on the day you publish.",
+            "publishLead": "Each learner in {{batch}} starts on Day 1: the day they join, or today if they're already in the batch. The plan runs to Day {{last}}.",
+            "cardHint": "Days count from each learner's join date (Day 1 = the join day). Learners already in the batch started on the publish day."
         }
     },
     "preview": {

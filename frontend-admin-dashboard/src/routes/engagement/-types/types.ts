@@ -20,6 +20,13 @@ export type EngagementItemType =
      */
     | 'FLASHCARDS';
 
+/**
+ * How a plan's days are dated. CALENDAR: fixed dates for everyone. RELATIVE: "Day N"
+ * counted from each learner's batch enrolment (Day 1 = the join day; learners already
+ * in the batch when the plan is published start on the publish day).
+ */
+export type ScheduleMode = 'CALENDAR' | 'RELATIVE';
+
 export type PlanStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | 'DELETED';
 
 /**
@@ -72,6 +79,9 @@ export interface EngagementSlotRequest {
     endTime: string;
     /** Mon=1, Tue=2, Wed=4, Thu=8, Fri=16, Sat=32, Sun=64. Null/0 = every day. */
     dowMask?: number;
+    /** RELATIVE plans: 1-based first and last day after joining (endDay defaults to startDay). */
+    startDay?: number;
+    endDay?: number;
     revealTime?: string;
     notifyTime?: string;
     sortOrder?: number;
@@ -86,6 +96,8 @@ export interface EngagementPlanRequest {
     packageSessionIds?: string[];
     subjectId?: string;
     status?: PlanStatus;
+    /** Set on create only; the server refuses a change. Missing = CALENDAR. */
+    scheduleMode?: ScheduleMode;
     defaultMissPolicy?: MissPolicy;
     defaultCatchUpDays?: number;
     defaultCatchUpPercent?: number;
@@ -132,6 +144,9 @@ export interface EngagementSlotDTO {
     startTime: string;
     endTime: string;
     dowMask?: number | null;
+    /** RELATIVE plans only; startDate/endDate are then placeholder dates, never shown. */
+    startDay?: number | null;
+    endDay?: number | null;
     revealTime?: string | null;
     notifyTime?: string | null;
     sortOrder: number;
@@ -151,6 +166,10 @@ export interface EngagementPlanDTO {
     status: PlanStatus;
     /** Snapshot of the institute zone at creation — windows resolve against this. */
     timezone: string;
+    /** Missing on older servers = CALENDAR. */
+    scheduleMode?: ScheduleMode | null;
+    /** When the plan was first published: Day 1 for learners already in the batch. */
+    publishedAt?: string | null;
     defaultMissPolicy: MissPolicy;
     defaultCatchUpDays?: number | null;
     defaultCatchUpPercent?: number | null;
@@ -170,6 +189,8 @@ export interface EngagementPlanDTO {
     lastDate?: string | null;
     /** Distinct dates with at least one active slot. */
     dayCount?: number | null;
+    /** RELATIVE plans: the last "Day N" any slot reaches (firstDate/lastDate are then null). */
+    lastDay?: number | null;
     /** Active slots (days or recurring schedules). */
     slotCount?: number | null;
     /** Active tasks across every slot (a recurring slot's task counts once). */

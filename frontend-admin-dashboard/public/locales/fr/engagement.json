@@ -81,7 +81,9 @@
             "unarchiveError": "Impossible de restaurer ce plan."
         },
         "untitled": "Plan sans titre",
-        "created": "Créé le {{date}}"
+        "created": "Créé le {{date}}",
+        "afterJoining_one": "Jour 1 après l'inscription",
+        "afterJoining_other": "Jours 1–{{count}} après l'inscription"
     },
     "composer": {
         "titleNew": "Nouveau plan d'engagement",
@@ -168,7 +170,9 @@
             "cardTooLong": "Ce texte dépasse la limite de caractères.",
             "cardTooManyLines": "12 lignes maximum par face.",
             "cardId": "Cette carte a un identifiant invalide. Dupliquez-la et supprimez l'originale.",
-            "cardDuplicateId": "Deux cartes ont le même identifiant. Dupliquez l'une d'elles et supprimez l'originale."
+            "cardDuplicateId": "Deux cartes ont le même identifiant. Dupliquez l'une d'elles et supprimez l'originale.",
+            "dayNumber": "Saisissez un jour entre 1 et 366.",
+            "dayOrder": "Le dernier jour doit être entre le premier jour et 366."
         },
         "types": {
             "READING_HTML": "Lecture",
@@ -523,6 +527,25 @@
                 "confirmCapped_other": "Importer {{count}} cartes (non importées : {{left}})",
                 "confirmCapped_many": "Importer {{count}} cartes (non importées : {{left}})"
             }
+        },
+        "relative": {
+            "modeLabel": "Planifier par",
+            "mode": {
+                "CALENDAR": "Dates du calendrier",
+                "CALENDAR_hint": "Tout le monde a les mêmes jours, à dates fixes.",
+                "RELATIVE": "Jours après l'inscription",
+                "RELATIVE_hint": "Le jour 1 de chaque apprenant est le jour où il rejoint le groupe."
+            },
+            "modeLocked": "Le type de planning d'un plan ne peut pas changer après sa création.",
+            "day": "Jour {{n}}",
+            "dayRange": "Jours {{from}}–{{to}}",
+            "dayLabel": "Jour",
+            "fromDay": "Du jour",
+            "toDay": "Au jour",
+            "repeat": "Répéter les mêmes tâches sur plusieurs jours",
+            "summary": "{{days}} après l'inscription de chaque apprenant. Le jour 1 est le jour d'inscription ; les apprenants déjà dans le groupe commencent le jour de la publication.",
+            "publishLead": "Chaque apprenant de {{batch}} commence au jour 1 : le jour où il rejoint le groupe, ou aujourd'hui s'il y est déjà. Le plan va jusqu'au jour {{last}}.",
+            "cardHint": "Les jours comptent à partir de l'inscription de chaque apprenant (jour 1 = jour d'inscription). Les apprenants déjà dans le groupe ont commencé le jour de la publication."
         }
     },
     "preview": {

@@ -18,7 +18,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 import {
     MAX_CATCH_UP_DAYS,
+    MAX_RELATIVE_DAY,
     MISS_POLICIES,
+    relativeDate,
+    relativeDayOf,
     type ComposerForm,
     type SlotForm,
 } from '../forms/composer-schema';
@@ -95,6 +98,8 @@ export function DayScheduleEditor({
     const policy = useWatch({ control, name: 'defaultMissPolicy' });
     const catchUpDays = useWatch({ control, name: 'defaultCatchUpDays' });
     const catchUpPercent = useWatch({ control, name: 'defaultCatchUpPercent' });
+    // A join-based plan: dates are "Day N" placeholders (see relativeDayOf).
+    const relative = useWatch({ control, name: 'scheduleMode' }) === 'RELATIVE';
 
     // A problem in a collapsed schedule must be visible (and focusable): open it.
     const { errors } = useFormState({ control });
@@ -124,7 +129,7 @@ export function DayScheduleEditor({
     const warnings = useMemo(() => {
         const out: { key: string; text: string }[] = [];
         if (!slot?.startDate) return out;
-        if (slotLastDate(slot) < today && runDates.length > 0) {
+        if (!relative && slotLastDate(slot) < today && runDates.length > 0) {
             out.push({ key: 'past', text: t('composer.schedule.pastDay') });
         }
         const horizon = runDates.slice(0, WARNING_HORIZON);
@@ -171,7 +176,9 @@ export function DayScheduleEditor({
                 out.push({
                     key: 'cap',
                     text: t('composer.schedule.overCap', {
-                        date: formatDay(worst.date, lang),
+                        date: relative
+                            ? t('composer.relative.day', { n: relativeDayOf(worst.date) ?? 1 })
+                            : formatDay(worst.date, lang),
                         count: worst.count,
                         cap: dailyItemCap,
                     }),
@@ -179,11 +186,11 @@ export function DayScheduleEditor({
             }
         }
         return out;
-    }, [slot, slots, runDates, today, dayIndex, dailyItemCap, lang, t]);
+    }, [slot, slots, runDates, today, dayIndex, dailyItemCap, lang, t, relative]);
 
     if (!slot) return null;
 
-    const heading = dayHeading(slot, lang);
+    const heading = dayHeading(slot, lang, relative ? t : null);
     const summaryParts = [
         heading.label,
         formatTimeRange(slot.startTime, slot.endTime, lang),
@@ -210,6 +217,12 @@ export function DayScheduleEditor({
         setRepeatOn(on);
         if (on) {
             if (spansDays) return;
+            if (relative) {
+                // "Days N to N+2"; join-based days have no weekday filter.
+                setValue(`${base}.endDate`, addDays(slot.startDate, 2), { shouldDirty: true });
+                setValue(`${base}.dowMask`, 0, { shouldDirty: true, shouldValidate: true });
+                return;
+            }
             setValue(`${base}.endDate`, addDays(slot.startDate, 6), { shouldDirty: true });
             // Weekdays only, the common school pattern; the teacher can add the weekend.
             setValue(`${base}.dowMask`, 31, { shouldDirty: true, shouldValidate: true });
@@ -291,43 +304,79 @@ export function DayScheduleEditor({
                             <legend className="text-subtitle font-semibold text-neutral-900">
                                 {t('composer.schedule.runs')}
                             </legend>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <Controller
-                                    control={control}
-                                    name={`${base}.startDate`}
-                                    render={({ field, fieldState }) => (
-                                        <MyInput
-                                            inputType="date"
-                                            label={
-                                                repeats
-                                                    ? t('composer.schedule.from')
-                                                    : t('composer.schedule.date')
-                                            }
-                                            aria-label={
-                                                repeats
-                                                    ? t('composer.schedule.from')
-                                                    : t('composer.schedule.date')
-                                            }
-                                            input={field.value}
-                                            onChangeFunction={(e) => field.onChange(e.target.value)}
-                                            onBlur={field.onBlur}
-                                            ref={field.ref}
-                                            error={errorText(fieldState.error?.message)}
-                                            className="sm:w-full"
-                                        />
-                                    )}
-                                />
-                                {repeats && (
+                            {relative ? (
+                                <div className="grid gap-3 sm:grid-cols-2">
                                     <Controller
                                         control={control}
-                                        name={`${base}.endDate`}
+                                        name={`${base}.startDate`}
+                                        render={({ field, fieldState }) => (
+                                            <RelativeDayInput
+                                                label={
+                                                    repeats
+                                                        ? t('composer.relative.fromDay')
+                                                        : t('composer.relative.dayLabel')
+                                                }
+                                                value={field.value}
+                                                onChange={(next) => {
+                                                    // Keep the length of a range when its first day moves.
+                                                    const span =
+                                                        slot.endDate && slot.endDate > field.value
+                                                            ? (relativeDayOf(slot.endDate) ?? 0) -
+                                                              (relativeDayOf(field.value) ?? 0)
+                                                            : 0;
+                                                    field.onChange(next);
+                                                    if (span > 0) {
+                                                        setValue(
+                                                            `${base}.endDate`,
+                                                            addDays(next, span),
+                                                            {
+                                                                shouldDirty: true,
+                                                                shouldValidate: true,
+                                                            }
+                                                        );
+                                                    }
+                                                }}
+                                                onBlur={field.onBlur}
+                                                error={errorText(fieldState.error?.message)}
+                                            />
+                                        )}
+                                    />
+                                    {repeats && (
+                                        <Controller
+                                            control={control}
+                                            name={`${base}.endDate`}
+                                            render={({ field, fieldState }) => (
+                                                <RelativeDayInput
+                                                    label={t('composer.relative.toDay')}
+                                                    value={field.value || slot.startDate}
+                                                    min={relativeDayOf(slot.startDate) ?? 1}
+                                                    onChange={field.onChange}
+                                                    onBlur={field.onBlur}
+                                                    error={errorText(fieldState.error?.message)}
+                                                />
+                                            )}
+                                        />
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Controller
+                                        control={control}
+                                        name={`${base}.startDate`}
                                         render={({ field, fieldState }) => (
                                             <MyInput
                                                 inputType="date"
-                                                label={t('composer.schedule.until')}
-                                                aria-label={t('composer.schedule.until')}
+                                                label={
+                                                    repeats
+                                                        ? t('composer.schedule.from')
+                                                        : t('composer.schedule.date')
+                                                }
+                                                aria-label={
+                                                    repeats
+                                                        ? t('composer.schedule.from')
+                                                        : t('composer.schedule.date')
+                                                }
                                                 input={field.value}
-                                                min={slot.startDate}
                                                 onChangeFunction={(e) =>
                                                     field.onChange(e.target.value)
                                                 }
@@ -338,8 +387,30 @@ export function DayScheduleEditor({
                                             />
                                         )}
                                     />
-                                )}
-                            </div>
+                                    {repeats && (
+                                        <Controller
+                                            control={control}
+                                            name={`${base}.endDate`}
+                                            render={({ field, fieldState }) => (
+                                                <MyInput
+                                                    inputType="date"
+                                                    label={t('composer.schedule.until')}
+                                                    aria-label={t('composer.schedule.until')}
+                                                    input={field.value}
+                                                    min={slot.startDate}
+                                                    onChangeFunction={(e) =>
+                                                        field.onChange(e.target.value)
+                                                    }
+                                                    onBlur={field.onBlur}
+                                                    ref={field.ref}
+                                                    error={errorText(fieldState.error?.message)}
+                                                    className="sm:w-full"
+                                                />
+                                            )}
+                                        />
+                                    )}
+                                </div>
+                            )}
                             <div className="flex items-center gap-2">
                                 <Switch
                                     id={`${uid}-repeat`}
@@ -347,10 +418,12 @@ export function DayScheduleEditor({
                                     onCheckedChange={setRepeats}
                                 />
                                 <Label htmlFor={`${uid}-repeat`} className="text-body">
-                                    {t('composer.schedule.repeat')}
+                                    {relative
+                                        ? t('composer.relative.repeat')
+                                        : t('composer.schedule.repeat')}
                                 </Label>
                             </div>
-                            {repeats && (
+                            {repeats && !relative && (
                                 <div className="space-y-2">
                                     <p
                                         id={`${uid}-weekdays`}
@@ -399,14 +472,18 @@ export function DayScheduleEditor({
                             <p className="flex items-start gap-1.5 text-caption text-neutral-600">
                                 <Info size={14} className="mt-0.5 shrink-0" aria-hidden />
                                 <span>
-                                    {repeats
-                                        ? t('composer.schedule.repeatSummary', {
-                                              count: runDates.length,
-                                              range: heading.label,
+                                    {relative
+                                        ? t('composer.relative.summary', {
+                                              days: heading.label,
                                           })
-                                        : t('composer.schedule.oneDaySummary', {
-                                              date: heading.label,
-                                          })}
+                                        : repeats
+                                          ? t('composer.schedule.repeatSummary', {
+                                                count: runDates.length,
+                                                range: heading.label,
+                                            })
+                                          : t('composer.schedule.oneDaySummary', {
+                                                date: heading.label,
+                                            })}
                                 </span>
                             </p>
                         </fieldset>
@@ -684,5 +761,57 @@ export function DayScheduleEditor({
                 </ul>
             )}
         </section>
+    );
+}
+
+/**
+ * A "Day N" number field over a placeholder date: shows N, writes the date for Day N.
+ * A blank or out-of-range entry is kept as typed until blur, so the teacher can clear
+ * the field and type a new number.
+ */
+function RelativeDayInput({
+    label,
+    value,
+    min = 1,
+    onChange,
+    onBlur,
+    error,
+}: {
+    label: string;
+    value: string;
+    min?: number;
+    onChange: (iso: string) => void;
+    onBlur: () => void;
+    error?: string;
+}) {
+    const day = relativeDayOf(value);
+    const [draft, setDraft] = useState<string | null>(null);
+    return (
+        <MyInput
+            inputType="number"
+            label={label}
+            aria-label={label}
+            input={draft ?? (day != null ? String(day) : '')}
+            min={min}
+            max={MAX_RELATIVE_DAY}
+            step={1}
+            inputMode="numeric"
+            onChangeFunction={(e) => {
+                const raw = e.target.value;
+                const n = parseCount(raw);
+                if (n != null && n >= min && n <= MAX_RELATIVE_DAY) {
+                    setDraft(null);
+                    onChange(relativeDate(n));
+                } else {
+                    setDraft(raw);
+                }
+            }}
+            onBlur={() => {
+                setDraft(null);
+                onBlur();
+            }}
+            error={error}
+            className="sm:w-full"
+        />
     );
 }

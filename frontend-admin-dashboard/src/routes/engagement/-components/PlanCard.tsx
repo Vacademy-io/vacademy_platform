@@ -536,6 +536,9 @@ export function metaLine(
     const parts = [
         hideBatch ? null : plan.packageSessionLabel?.trim() || null,
         range ? formatDayRange(range.first, range.last, lang) : null,
+        plan.scheduleMode === 'RELATIVE'
+            ? t('card.afterJoining', { count: plan.lastDay ?? plan.dayCount ?? 1 })
+            : null,
         typeof plan.dayCount === 'number' && plan.dayCount > 0
             ? t('card.days', { count: plan.dayCount })
             : null,

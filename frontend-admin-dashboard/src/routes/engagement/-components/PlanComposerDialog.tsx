@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -46,7 +47,7 @@ import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getEngagementSettings } from '@/routes/settings/-services/engagement-settings';
 import { getEngagementPlan } from '../-services/engagement-service';
-import type { EngagementPlanRequest, PlanStatus } from '../-types/types';
+import type { EngagementPlanRequest, PlanStatus, ScheduleMode } from '../-types/types';
 import { addDays, daysBetween, instituteToday, slotLastDate } from '../-utils/format';
 import {
     composerSchema,
@@ -54,6 +55,8 @@ import {
     flattenFormErrors,
     newComposerForm,
     newItemForm,
+    RELATIVE_DAY_ONE,
+    rebaseSlots,
     requestToForm,
     slotToForm,
     type ComposerForm,
@@ -226,6 +229,7 @@ export function PlanComposerDialog({
     const slotsArray = useFieldArray({ control, name: 'slots', keyName: 'rhfKey' });
     const status = useWatch({ control, name: 'status' });
     const batchIds = useWatch({ control, name: 'packageSessionIds' });
+    const relative = useWatch({ control, name: 'scheduleMode' }) === 'RELATIVE';
 
     // ── Open / reset sequencing ────────────────────────────────────────────
     // Every open starts clean: a new plan gets defaults, an edit loads the plan fresh.
@@ -501,7 +505,11 @@ export function PlanComposerDialog({
                     setValue(`slots.${saved.index}`, fresh, { shouldDirty: true });
                     if (baseline) {
                         const order = slotSaveOrders(getValues('slots'))[saved.index] ?? 0;
-                        baseline.slots[saved.dto.id] = slotSnapshot(fresh, order);
+                        baseline.slots[saved.dto.id] = slotSnapshot(
+                            fresh,
+                            order,
+                            getValues('scheduleMode')
+                        );
                     }
                 }
                 if (error.failedDayIndex != null) setSelectedDay(error.failedDayIndex);
@@ -591,11 +599,34 @@ export function PlanComposerDialog({
     }
 
     // ── Days ───────────────────────────────────────────────────────────────
+    /**
+     * Switch a new plan between calendar dates and "days after joining". The days keep
+     * their spacing: the first becomes Day 1, or today when going back to dates.
+     */
+    function changeScheduleMode(mode: ScheduleMode) {
+        if (isEdit || getValues('scheduleMode') === mode) return;
+        const rebased = rebaseSlots(
+            getValues('slots'),
+            mode === 'RELATIVE' ? RELATIVE_DAY_ONE : instituteToday()
+        );
+        const options = { shouldDirty: true, shouldValidate: form.formState.isSubmitted };
+        rebased.forEach((slot, index) => {
+            setValue(`slots.${index}.startDate`, slot.startDate, options);
+            setValue(`slots.${index}.endDate`, slot.endDate, options);
+            setValue(`slots.${index}.dowMask`, slot.dowMask, options);
+        });
+        setValue('scheduleMode', mode, options);
+    }
+
     function addDay() {
         const slots = getValues('slots');
         const source = slots[dayIndex];
         const last = planLastDate(slots);
-        const startDate = last ? addDays(last, 1) : instituteToday();
+        const startDate = last
+            ? addDays(last, 1)
+            : getValues('scheduleMode') === 'RELATIVE'
+              ? RELATIVE_DAY_ONE
+              : instituteToday();
         const fresh: SlotForm = {
             ...newComposerForm().slots[0]!,
             startDate,
@@ -692,7 +723,9 @@ export function PlanComposerDialog({
     const ranks = dayRanks(scheduleSlots);
     function dayLabel(index: number): string {
         const slot = getValues(`slots.${index}`);
-        const when = slot ? dayHeading(slot, lang).label : '';
+        const when = slot ? dayHeading(slot, lang, relative ? t : null).label : '';
+        // A join-based day's heading is already "Day N"; don't prefix a second number.
+        if (relative && when) return when;
         const label = t('composer.rail.dayN', { n: ranks.get(index) ?? index + 1 });
         return when ? `${label} · ${when}` : label;
     }
@@ -849,6 +882,7 @@ export function PlanComposerDialog({
                                             batches={selectedBatches}
                                             onPickBatches={() => setBatchPickerOpen(true)}
                                             courseFilter={courseFilter}
+                                            onScheduleModeChange={changeScheduleMode}
                                         />
 
                                         <DayHeader
@@ -1087,12 +1121,14 @@ function PlanDetails({
     batches,
     onPickBatches,
     courseFilter,
+    onScheduleModeChange,
 }: {
     control: Control<ComposerForm>;
     isEdit: boolean;
     batches: BatchOption[];
     onPickBatches: () => void;
     courseFilter?: string;
+    onScheduleModeChange: (mode: ScheduleMode) => void;
 }) {
     const { t } = useTranslation('engagement');
     const [showDescription, setShowDescription] = useState(false);
@@ -1202,6 +1238,8 @@ function PlanDetails({
                 />
             </div>
 
+            <ScheduleModeField control={control} isEdit={isEdit} onChange={onScheduleModeChange} />
+
             {foreignBatches > 0 && (
                 <p className="flex items-start gap-2 rounded-md bg-warning-50 px-3 py-2 text-caption text-warning-700">
                     <Warning size={16} className="mt-0.5 shrink-0" aria-hidden />
@@ -1242,6 +1280,79 @@ function PlanDetails({
     );
 }
 
+const SCHEDULE_MODES: ScheduleMode[] = ['CALENDAR', 'RELATIVE'];
+
+/**
+ * Calendar dates or days after joining. Picked when the plan is created; a saved plan
+ * shows its mode read-only (the server refuses a change).
+ */
+function ScheduleModeField({
+    control,
+    isEdit,
+    onChange,
+}: {
+    control: Control<ComposerForm>;
+    isEdit: boolean;
+    onChange: (mode: ScheduleMode) => void;
+}) {
+    const { t } = useTranslation('engagement');
+    const mode = useWatch({ control, name: 'scheduleMode' }) ?? 'CALENDAR';
+    if (isEdit) {
+        return (
+            <p className="flex items-start gap-2 text-caption text-neutral-600">
+                <CalendarPlus size={14} className="mt-0.5 shrink-0" aria-hidden />
+                <span>
+                    <span className="font-semibold text-neutral-800">
+                        {t(`composer.relative.mode.${mode}`)}
+                    </span>
+                    {' · '}
+                    {t('composer.relative.modeLocked')}
+                </span>
+            </p>
+        );
+    }
+    return (
+        <div className="space-y-1.5" data-composer-path="scheduleMode">
+            <p id="plan-schedule-mode" className="text-subtitle font-regular text-neutral-900">
+                {t('composer.relative.modeLabel')}
+            </p>
+            <RadioGroup
+                value={mode}
+                onValueChange={(value) => onChange(value as ScheduleMode)}
+                aria-labelledby="plan-schedule-mode"
+                className="grid gap-2 sm:grid-cols-2"
+            >
+                {SCHEDULE_MODES.map((option) => {
+                    const id = `plan-schedule-mode-${option}`;
+                    const checked = mode === option;
+                    return (
+                        <label
+                            key={option}
+                            htmlFor={id}
+                            className={cn(
+                                'flex cursor-pointer items-start gap-2 rounded-lg border p-3',
+                                checked
+                                    ? 'border-primary-300 bg-primary-50'
+                                    : 'border-neutral-200 hover:border-neutral-300'
+                            )}
+                        >
+                            <RadioGroupItem id={id} value={option} className="mt-0.5" />
+                            <span className="min-w-0">
+                                <span className="block text-body font-semibold text-neutral-900">
+                                    {t(`composer.relative.mode.${option}`)}
+                                </span>
+                                <span className="block text-caption text-neutral-500">
+                                    {t(`composer.relative.mode.${option}_hint`)}
+                                </span>
+                            </span>
+                        </label>
+                    );
+                })}
+            </RadioGroup>
+        </div>
+    );
+}
+
 function hasCourseSlide(slots: SlotForm[] | undefined): boolean {
     return (slots ?? []).some((slot) =>
         (slot?.items ?? []).some((item) => item.itemType === 'COURSE_SLIDE')
@@ -1267,8 +1378,9 @@ function DayHeader({
 }) {
     const { t, i18n } = useTranslation('engagement');
     const slot = useWatch({ control, name: `slots.${index}` }) as SlotForm | undefined;
+    const relative = useWatch({ control, name: 'scheduleMode' }) === 'RELATIVE';
     const theme = slot?.title?.trim();
-    const when = slot ? dayHeading(slot, i18n.language).label : '';
+    const when = slot ? dayHeading(slot, i18n.language, relative ? t : null).label : '';
     const label = [when, theme].filter(Boolean).join(' · ');
     return (
         <div className="flex flex-wrap items-center justify-between gap-2">

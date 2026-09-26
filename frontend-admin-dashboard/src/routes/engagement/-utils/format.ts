@@ -171,8 +171,11 @@ export function slotPhase(slot: SlotSchedule, today: string): 'PAST' | 'TODAY' |
 
 /** The first and last day a plan runs, from the list summary or its slots. */
 export function planDateRange(
-    plan: Pick<EngagementPlanDTO, 'firstDate' | 'lastDate' | 'slots'>
+    plan: Pick<EngagementPlanDTO, 'firstDate' | 'lastDate' | 'slots'> &
+        Partial<Pick<EngagementPlanDTO, 'scheduleMode'>>
 ): { first: string; last: string } | null {
+    // A join-based plan's slot dates are "Day N" placeholders, not calendar days.
+    if (plan.scheduleMode === 'RELATIVE') return null;
     if (plan.firstDate && plan.lastDate) return { first: plan.firstDate, last: plan.lastDate };
     const slots = plan.slots ?? [];
     if (slots.length === 0) return null;
@@ -196,12 +199,14 @@ export function planDateRange(
  */
 export function planLifecycle(
     plan: Pick<EngagementPlanDTO, 'status' | 'todayState' | 'firstDate' | 'lastDate' | 'slots'> &
-        Partial<Pick<EngagementPlanDTO, 'today' | 'timezone'>>,
+        Partial<Pick<EngagementPlanDTO, 'today' | 'timezone' | 'scheduleMode'>>,
     today: string = plan.today || todayInZone(plan.timezone || instituteTimeZone())
 ): PlanLifecycle | null {
     if (plan.todayState) return plan.todayState;
     if (plan.status === 'ARCHIVED' || plan.status === 'DELETED') return 'ARCHIVED';
     if (plan.status === 'DRAFT') return 'DRAFT';
+    // Each learner runs a join-based plan on their own days; published = running.
+    if (plan.scheduleMode === 'RELATIVE') return 'RUNNING';
     const range = planDateRange(plan);
     if (!range) return null;
     if (today < range.first) return 'UPCOMING';

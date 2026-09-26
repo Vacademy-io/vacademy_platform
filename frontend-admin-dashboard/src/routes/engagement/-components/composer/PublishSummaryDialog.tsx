@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { CalendarBlank, ListChecks, PaperPlaneTilt, Users, Warning } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
-import type { ComposerForm } from '../forms/composer-schema';
+import { relativeDayOf, type ComposerForm } from '../forms/composer-schema';
 import { formatDay, formatDayRange, formatNumber, slotRunDates } from '../../-utils/format';
 
 /**
@@ -31,13 +31,18 @@ export interface PublishSummary {
     /** Run dates with more tasks than the daily cap. */
     overCapDates: number;
     dailyItemCap?: number | null;
+    /**
+     * A join-based plan: first/last are "Day N" numbers, and nothing is "already over"
+     * (each learner starts on their own Day 1).
+     */
+    relative?: { firstDay: number; lastDay: number } | null;
 }
 
 const MAX_DATES = 400;
 
 /** The numbers the publish confirm shows, from the form as it will be saved. */
 export function buildPublishSummary(
-    form: Pick<ComposerForm, 'slots'>,
+    form: Pick<ComposerForm, 'slots'> & Partial<Pick<ComposerForm, 'scheduleMode'>>,
     options: {
         batchLabels: string[];
         learnerCount?: number | null;
@@ -55,6 +60,25 @@ export function buildPublishSummary(
     }
     const dates = [...perDate.keys()].sort();
     const cap = options.dailyItemCap;
+    if (form.scheduleMode === 'RELATIVE') {
+        const firstDay = relativeDayOf(dates[0]) ?? 1;
+        const lastDay = relativeDayOf(dates[dates.length - 1]) ?? firstDay;
+        return {
+            batchLabels: options.batchLabels,
+            learnerCount: options.learnerCount ?? null,
+            runDates: dates.length,
+            dayCount: form.slots.length,
+            taskCount,
+            firstDate: null,
+            lastDate: null,
+            startsOn: null,
+            pastDates: 0,
+            overCapDates:
+                cap && cap > 0 ? dates.filter((date) => perDate.get(date)! > cap).length : 0,
+            dailyItemCap: cap ?? null,
+            relative: { firstDay, lastDay },
+        };
+    }
     return {
         batchLabels: options.batchLabels,
         learnerCount: options.learnerCount ?? null,
@@ -132,12 +156,17 @@ export function PublishSummaryDialog({
             {summary && (
                 <div className="space-y-4">
                     <p className="text-body text-neutral-700">
-                        {summary.startsOn
-                            ? t('composer.publishSummary.lead', {
+                        {summary.relative
+                            ? t('composer.relative.publishLead', {
                                   batch,
-                                  date: formatDay(summary.startsOn, lang),
+                                  last: summary.relative.lastDay,
                               })
-                            : t('composer.publishSummary.leadOver', { batch })}
+                            : summary.startsOn
+                              ? t('composer.publishSummary.lead', {
+                                    batch,
+                                    date: formatDay(summary.startsOn, lang),
+                                })
+                              : t('composer.publishSummary.leadOver', { batch })}
                     </p>
 
                     <dl className="grid grid-cols-3 gap-2">

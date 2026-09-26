@@ -153,6 +153,8 @@ function revealState(
 ): RevealState | null {
     if (!holdsBack) return { kind: 'instant' };
     if (!slot.revealTime) return null;
+    // A join-based day reveals on each learner's own day: "each day at …".
+    if (slot.startDay != null) return { kind: 'daily', time: slot.revealTime };
     const reveal = padTime(slot.revealTime);
     const today = todayInZone(timeZone);
     const last = slotLastDate(slot);

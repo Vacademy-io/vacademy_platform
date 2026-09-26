@@ -88,8 +88,12 @@ function stable(value: unknown): string {
 }
 
 /** One day as it would be saved, in comparable form. */
-export function slotSnapshot(slot: SlotForm, sortOrder: number): string {
-    return stable(slotFormToRequest(slot, sortOrder));
+export function slotSnapshot(
+    slot: SlotForm,
+    sortOrder: number,
+    scheduleMode: ComposerForm['scheduleMode'] = 'CALENDAR'
+): string {
+    return stable(slotFormToRequest(slot, sortOrder, scheduleMode));
 }
 
 /** The plan's own fields (everything but the days), in comparable form. */
@@ -127,7 +131,7 @@ export function takeBaseline(form: ComposerForm): ComposerBaseline {
     const orders = slotSaveOrders(form.slots);
     const slots: Record<string, string> = {};
     form.slots.forEach((slot, index) => {
-        if (slot.id) slots[slot.id] = slotSnapshot(slot, orders[index]!);
+        if (slot.id) slots[slot.id] = slotSnapshot(slot, orders[index]!, form.scheduleMode);
     });
     return { full: formSnapshot(form), plan: planFieldsSnapshot(form), slots };
 }
@@ -159,8 +163,14 @@ export function planSaveSteps(form: ComposerForm, baseline: ComposerBaseline): S
     const upsertSlots: SlotUpsertStep[] = [];
     form.slots.forEach((slot, index) => {
         const order = orders[index]!;
-        const changed = !slot.id || baseline.slots[slot.id] !== slotSnapshot(slot, order);
-        if (changed) upsertSlots.push({ index, request: slotFormToRequest(slot, order) });
+        const changed =
+            !slot.id || baseline.slots[slot.id] !== slotSnapshot(slot, order, form.scheduleMode);
+        if (changed) {
+            upsertSlots.push({
+                index,
+                request: slotFormToRequest(slot, order, form.scheduleMode),
+            });
+        }
     });
     let planUpdate: Partial<EngagementPlanRequest> | null = null;
     if (planFieldsSnapshot(form) !== baseline.plan) {
@@ -400,7 +410,11 @@ export async function saveComposer({ planId, form, baseline }: SaveArgs): Promis
               deleteSlotIds: [],
               upsertSlots: form.slots.map((slot, index) => ({
                   index,
-                  request: slotFormToRequest(slot, slotSaveOrders(form.slots)[index]),
+                  request: slotFormToRequest(
+                      slot,
+                      slotSaveOrders(form.slots)[index],
+                      form.scheduleMode
+                  ),
               })),
               planUpdate: planFields(form),
           };

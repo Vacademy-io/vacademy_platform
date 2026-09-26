@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { getBrowserTimezoneOrUndefined, normalizeTimezone } from '@/utils/timezone';
 import type { EngagementItemDTO, EngagementPlanDTO, EngagementSlotDTO } from '../../-types/types';
 import { typeMeta } from '../../-utils/type-meta';
+import { relativeDayOf } from '../forms/composer-schema';
 import {
     formatDay,
     formatDayRange,
@@ -143,6 +144,8 @@ export function PlanDaySchedule({
     const today = plan.today || todayInZone(timeZone, now);
     const wallNow = wallClockInZone(timeZone, now);
     const slots = plan.slots;
+    // A join-based plan has no shared "today": every learner is on their own day.
+    const relative = plan.scheduleMode === 'RELATIVE';
     const groups = useMemo(() => groupSlotsByPhase(slots ?? [], today), [slots, today]);
     const [pastOpen, setPastOpen] = useState(false);
     const [showAllUpcoming, setShowAllUpcoming] = useState(false);
@@ -166,10 +169,24 @@ export function PlanDaySchedule({
             slot={slot}
             phase={phase}
             plan={plan}
-            closed={isWindowClosed(slot, phase, wallNow)}
+            closed={!relative && isWindowClosed(slot, phase, wallNow)}
             onOpenItem={onOpenItem}
         />
     );
+
+    if (relative) {
+        return (
+            <div className="space-y-4">
+                <p className="text-caption text-neutral-600">{t('composer.relative.cardHint')}</p>
+                {[...slots].sort(bySchedule).map((slot) => renderDay(slot, 'UPCOMING'))}
+                {showZone && (
+                    <p className="text-caption text-neutral-600">
+                        {t('composer.schedule.timezone', { zone })}
+                    </p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">
@@ -259,11 +276,18 @@ function DayBlock({
     const isToday = phase === 'TODAY';
     const last = slotLastDate(slot);
     const repeats = last !== slot.startDate;
-    const dates = repeats
-        ? [formatDayRange(slot.startDate, last, lang), formatWeekdays(slot.dowMask, lang)]
-              .filter(Boolean)
-              .join(' · ')
-        : formatDay(slot.startDate, lang);
+    const firstDay = plan.scheduleMode === 'RELATIVE' ? relativeDayOf(slot.startDate) : null;
+    const lastDay = firstDay != null ? relativeDayOf(last) ?? firstDay : null;
+    const dates =
+        firstDay != null && lastDay != null
+            ? lastDay > firstDay
+                ? t('composer.relative.dayRange', { from: firstDay, to: lastDay })
+                : t('composer.relative.day', { n: firstDay })
+            : repeats
+              ? [formatDayRange(slot.startDate, last, lang), formatWeekdays(slot.dowMask, lang)]
+                    .filter(Boolean)
+                    .join(' · ')
+              : formatDay(slot.startDate, lang);
     const theme = slot.title?.trim();
     const headerParts = [
         theme,

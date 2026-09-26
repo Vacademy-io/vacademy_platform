@@ -87,7 +87,11 @@ function itemToRequest(item: EngagementItemDTO): EngagementItemRequest {
     };
 }
 
-function slotToRequest(slot: EngagementSlotDTO, shift: number): EngagementSlotRequest {
+function slotToRequest(
+    slot: EngagementSlotDTO,
+    shift: number,
+    relative = false
+): EngagementSlotRequest {
     // A one-day slot runs on its date whatever the mask says, and a mask carried onto a
     // shifted date could exclude it; only a repeating day keeps its weekdays.
     const repeats = slotLastDate(slot) !== slot.startDate;
@@ -97,7 +101,11 @@ function slotToRequest(slot: EngagementSlotDTO, shift: number): EngagementSlotRe
         endDate: slot.endDate ? addDays(slot.endDate, shift) : undefined,
         startTime: slot.startTime,
         endTime: slot.endTime,
-        dowMask: repeats ? slot.dowMask ?? undefined : undefined,
+        dowMask: repeats && !relative ? slot.dowMask ?? undefined : undefined,
+        // A join-based day keeps its "Day N" (the server sends it with the slot).
+        ...(relative && slot.startDay != null
+            ? { startDay: slot.startDay, endDay: slot.endDay ?? slot.startDay }
+            : {}),
         revealTime: slot.revealTime ?? undefined,
         notifyTime: slot.notifyTime ?? undefined,
         sortOrder: slot.sortOrder,
@@ -116,8 +124,10 @@ export function buildDuplicateRequest(
     source: EngagementPlanDTO,
     options: { title: string; packageSessionIds: string[]; startDate: string }
 ): EngagementPlanRequest {
+    // A join-based plan is copied day for day; it has no calendar start to move.
+    const relative = source.scheduleMode === 'RELATIVE';
     const from = planStartDate(source);
-    const shift = from ? daysBetween(from, options.startDate) : 0;
+    const shift = from && !relative ? daysBetween(from, options.startDate) : 0;
     const safeShift = Number.isFinite(shift) ? shift : 0;
     return {
         title: options.title.trim(),
@@ -125,12 +135,13 @@ export function buildDuplicateRequest(
         packageSessionIds: options.packageSessionIds,
         subjectId: source.subjectId ?? undefined,
         status: 'DRAFT',
+        ...(relative ? { scheduleMode: 'RELATIVE' as const } : {}),
         defaultMissPolicy: source.defaultMissPolicy,
         defaultCatchUpDays: source.defaultCatchUpDays ?? undefined,
         defaultCatchUpPercent: source.defaultCatchUpPercent ?? undefined,
         slots: [...(source.slots ?? [])]
             .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.sortOrder - b.sortOrder)
-            .map((slot) => slotToRequest(slot, safeShift)),
+            .map((slot) => slotToRequest(slot, safeShift, relative)),
     };
 }
 
@@ -480,44 +491,53 @@ export function DuplicatePlanDialog({
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <FormField
-                                        control={control}
-                                        name="startDate"
-                                        render={({ field, fieldState }) => (
-                                            <MyInput
-                                                label={t('duplicate.startOn')}
-                                                required
-                                                inputType="date"
-                                                input={field.value}
-                                                min={today}
-                                                onChangeFunction={(e) =>
-                                                    field.onChange(e.target.value)
-                                                }
-                                                onBlur={field.onBlur}
-                                                ref={field.ref}
-                                                error={errorText(fieldState.error?.message)}
-                                            />
+                                {source?.scheduleMode === 'RELATIVE' ? (
+                                    <p className="text-caption text-neutral-600">
+                                        {t('composer.relative.cardHint')}
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <FormField
+                                            control={control}
+                                            name="startDate"
+                                            render={({ field, fieldState }) => (
+                                                <MyInput
+                                                    label={t('duplicate.startOn')}
+                                                    required
+                                                    inputType="date"
+                                                    input={field.value}
+                                                    min={today}
+                                                    onChangeFunction={(e) =>
+                                                        field.onChange(e.target.value)
+                                                    }
+                                                    onBlur={field.onBlur}
+                                                    ref={field.ref}
+                                                    error={errorText(fieldState.error?.message)}
+                                                />
+                                            )}
+                                        />
+                                        {newRange && (
+                                            <p className="text-caption text-neutral-600">
+                                                {shift === 0
+                                                    ? t('duplicate.sameDates', { range: newRange })
+                                                    : t(
+                                                          shift > 0
+                                                              ? 'duplicate.shiftedLater'
+                                                              : 'duplicate.shiftedEarlier',
+                                                          {
+                                                              count: Math.abs(shift),
+                                                              range: newRange,
+                                                          }
+                                                      )}
+                                            </p>
                                         )}
-                                    />
-                                    {newRange && (
-                                        <p className="text-caption text-neutral-600">
-                                            {shift === 0
-                                                ? t('duplicate.sameDates', { range: newRange })
-                                                : t(
-                                                      shift > 0
-                                                          ? 'duplicate.shiftedLater'
-                                                          : 'duplicate.shiftedEarlier',
-                                                      { count: Math.abs(shift), range: newRange }
-                                                  )}
-                                        </p>
-                                    )}
-                                    {hasWeekdays && shift % 7 !== 0 && (
-                                        <p className="text-caption text-neutral-600">
-                                            {t('duplicate.weekdaysKept')}
-                                        </p>
-                                    )}
-                                </div>
+                                        {hasWeekdays && shift % 7 !== 0 && (
+                                            <p className="text-caption text-neutral-600">
+                                                {t('duplicate.weekdaysKept')}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <p className="text-caption text-neutral-600">
                                     {t('duplicate.draftNote')}

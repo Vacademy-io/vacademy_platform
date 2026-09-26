@@ -10,6 +10,7 @@ import type {
     MissPolicy,
     PlanStatus,
     QuestionFormat,
+    ScheduleMode,
 } from '../../-types/types';
 import {
     flashcardsDeckSchema,
@@ -17,7 +18,14 @@ import {
     serializeFlashcardsPayload,
     type FlashcardsDeck,
 } from '../flashcards/flashcards-schema';
-import { instituteToday, isEveryDay, parseIsoDate, slotRunDates } from '../../-utils/format';
+import {
+    addDays,
+    daysBetween,
+    instituteToday,
+    isEveryDay,
+    parseIsoDate,
+    slotRunDates,
+} from '../../-utils/format';
 
 /**
  * The composer's form model, its zod schema, and the mappers between it and the API.
@@ -58,6 +66,8 @@ export const COMPOSER_ERRORS = {
     correct: 'composer.errors.correct',
     catchUpDays: 'composer.errors.catchUpDays',
     catchUpPercent: 'composer.errors.catchUpPercent',
+    dayNumber: 'composer.errors.dayNumber',
+    dayOrder: 'composer.errors.dayOrder',
 } as const;
 
 const K = COMPOSER_ERRORS;
@@ -65,6 +75,8 @@ const K = COMPOSER_ERRORS;
 export const MAX_POINTS = 1000;
 export const MAX_CATCH_UP_DAYS = 30;
 export const TITLE_MAX = 200;
+/** The last "Day N" a join-based plan can reach (the server's MAX_RELATIVE_DAY). */
+export const MAX_RELATIVE_DAY = 366;
 export const MISS_POLICIES: MissPolicy[] = ['EXPIRES', 'CATCH_UP_FULL', 'CATCH_UP_REDUCED'];
 export const QUESTION_FORMATS: QuestionFormat[] = ['MCQ', 'TEXT', 'UPLOAD'];
 const PLAN_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED', 'DELETED'] as const;
@@ -341,6 +353,8 @@ export const composerSchema = z
         packageSessionIds: z.array(z.string()),
         /** Read-only: the zone the plan's windows resolve in. */
         timezone: optionalText,
+        /** Chosen when the plan is created; fixed afterwards. */
+        scheduleMode: z.enum(['CALENDAR', 'RELATIVE']),
         defaultMissPolicy: missPolicy,
         defaultCatchUpDays: optionalInt,
         defaultCatchUpPercent: optionalInt,
@@ -352,6 +366,26 @@ export const composerSchema = z
                 code: z.ZodIssueCode.custom,
                 path: ['packageSessionIds'],
                 message: K.batch,
+            });
+        }
+        if (plan.scheduleMode === 'RELATIVE') {
+            // Day N is stored as a date counted from RELATIVE_DAY_ONE (see relativeDayOf).
+            plan.slots.forEach((slot, index) => {
+                const first = relativeDayOf(slot.startDate);
+                const last = slot.endDate ? relativeDayOf(slot.endDate) : first;
+                if (first == null || first < 1 || first > MAX_RELATIVE_DAY) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ['slots', index, 'startDate'],
+                        message: K.dayNumber,
+                    });
+                } else if (last == null || last < first || last > MAX_RELATIVE_DAY) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ['slots', index, 'endDate'],
+                        message: K.dayOrder,
+                    });
+                }
             });
         }
         refineCatchUp(
@@ -367,6 +401,56 @@ export type ComposerForm = z.infer<typeof composerSchema>;
 export type SlotForm = z.infer<typeof slotSchema>;
 export type ItemForm = z.infer<typeof itemSchema>;
 export type ItemFormOf<T extends EngagementItemType> = Extract<ItemForm, { itemType: T }>;
+
+// ── Join-based days ──────────────────────────────────────────────────────────
+
+/**
+ * A join-based plan keeps each day in the form as a placeholder date: Day N is
+ * RELATIVE_DAY_ONE + (N − 1), the same dates the server stores and returns. Sorting,
+ * "add next day" and duplication then work unchanged; only labels and inputs show
+ * "Day N", and the request carries startDay/endDay.
+ */
+export const RELATIVE_DAY_ONE = '2000-01-01';
+
+/** "Day N" for a placeholder date (1 = RELATIVE_DAY_ONE), or null when it isn't a date. */
+export function relativeDayOf(iso: string | null | undefined): number | null {
+    if (!iso || parseIsoDate(iso) === null) return null;
+    return daysBetween(RELATIVE_DAY_ONE, iso) + 1;
+}
+
+/** The placeholder date for "Day N". */
+export function relativeDate(day: number): string {
+    return addDays(RELATIVE_DAY_ONE, Math.max(0, Math.trunc(day) - 1));
+}
+
+function relativeDays(slot: Pick<SlotForm, 'startDate' | 'endDate'>): {
+    startDay?: number;
+    endDay?: number;
+} {
+    const startDay = relativeDayOf(slot.startDate) ?? undefined;
+    const endDay = (slot.endDate ? relativeDayOf(slot.endDate) : null) ?? startDay;
+    return { startDay, endDay };
+}
+
+/**
+ * Move a plan's days between calendar dates and "Day N" (the composer's mode switch on
+ * a new plan), keeping their spacing: the earliest day moves to `from` (RELATIVE_DAY_ONE or a real date).
+ */
+export function rebaseSlots(slots: SlotForm[], from: string): SlotForm[] {
+    const starts = slots.map((slot) => slot.startDate).filter((d) => parseIsoDate(d) !== null);
+    if (starts.length === 0) return slots;
+    const earliest = starts.reduce((a, b) => (b < a ? b : a));
+    const shift = daysBetween(earliest, from);
+    return slots.map((slot) => ({
+        ...slot,
+        dowMask: 0,
+        startDate: parseIsoDate(slot.startDate) ? addDays(slot.startDate, shift) : slot.startDate,
+        endDate:
+            slot.endDate && parseIsoDate(slot.endDate)
+                ? addDays(slot.endDate, shift)
+                : slot.endDate,
+    }));
+}
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
 
@@ -524,6 +608,7 @@ export interface NewComposerOptions {
     startDate?: string;
     /** New plans default to Draft; the teacher publishes deliberately. */
     status?: PlanStatus;
+    scheduleMode?: ScheduleMode;
     items?: ItemForm[];
 }
 
@@ -533,8 +618,15 @@ export function newComposerForm(options: NewComposerOptions = {}): ComposerForm 
         description: '',
         status: options.status ?? 'DRAFT',
         packageSessionIds: options.packageSessionIds ?? [],
+        scheduleMode: options.scheduleMode ?? 'CALENDAR',
         defaultMissPolicy: 'EXPIRES',
-        slots: [newSlotForm({ startDate: options.startDate, items: options.items })],
+        slots: [
+            newSlotForm({
+                startDate:
+                    options.scheduleMode === 'RELATIVE' ? RELATIVE_DAY_ONE : options.startDate,
+                items: options.items,
+            }),
+        ],
     };
 }
 
@@ -719,6 +811,7 @@ export function dtoToForm(plan: EngagementPlanDTO): ComposerForm {
         packageSessionId: plan.packageSessionId,
         packageSessionIds: plan.packageSessionId ? [plan.packageSessionId] : [],
         timezone: plan.timezone ?? null,
+        scheduleMode: plan.scheduleMode === 'RELATIVE' ? 'RELATIVE' : 'CALENDAR',
         defaultMissPolicy: plan.defaultMissPolicy ?? 'EXPIRES',
         defaultCatchUpDays: plan.defaultCatchUpDays ?? null,
         defaultCatchUpPercent: plan.defaultCatchUpPercent ?? null,
@@ -739,6 +832,7 @@ export function requestToForm(request: EngagementPlanRequest): ComposerForm {
         packageSessionIds:
             request.packageSessionIds ??
             (request.packageSessionId ? [request.packageSessionId] : []),
+        scheduleMode: request.scheduleMode === 'RELATIVE' ? 'RELATIVE' : 'CALENDAR',
         defaultMissPolicy: request.defaultMissPolicy ?? 'EXPIRES',
         defaultCatchUpDays: request.defaultCatchUpDays ?? null,
         defaultCatchUpPercent: request.defaultCatchUpPercent ?? null,
@@ -889,7 +983,11 @@ export function itemFormToRequest(item: ItemForm, sortOrder: number): Engagement
 }
 
 /** One day, with ALL of its tasks (the server retires any task a slot save leaves out). */
-export function slotFormToRequest(slot: SlotForm, sortOrder?: number): EngagementSlotRequest {
+export function slotFormToRequest(
+    slot: SlotForm,
+    sortOrder?: number,
+    scheduleMode: ScheduleMode = 'CALENDAR'
+): EngagementSlotRequest {
     const itemOrders = resolveSortOrders(slot.items);
     return {
         ...(slot.id ? { id: slot.id } : {}),
@@ -899,6 +997,7 @@ export function slotFormToRequest(slot: SlotForm, sortOrder?: number): Engagemen
         startTime: slot.startTime,
         endTime: slot.endTime,
         dowMask: slot.dowMask > 0 ? slot.dowMask : undefined,
+        ...(scheduleMode === 'RELATIVE' ? relativeDays(slot) : {}),
         revealTime: optional(slot.revealTime),
         notifyTime: optional(slot.notifyTime),
         sortOrder: sortOrder ?? optional(slot.sortOrder),
@@ -917,10 +1016,14 @@ export function formToRequest(form: ComposerForm): EngagementPlanRequest {
         description: form.id ? description : optional(description),
         subjectId: optional(form.subjectId),
         status: form.status,
+        // Only a new plan picks its mode; the server refuses a change on update.
+        ...(form.id ? {} : { scheduleMode: form.scheduleMode }),
         defaultMissPolicy: form.defaultMissPolicy,
         defaultCatchUpDays: optional(form.defaultCatchUpDays),
         defaultCatchUpPercent: optional(form.defaultCatchUpPercent),
-        slots: form.slots.map((slot, index) => slotFormToRequest(slot, slotOrders[index])),
+        slots: form.slots.map((slot, index) =>
+            slotFormToRequest(slot, slotOrders[index], form.scheduleMode)
+        ),
     };
     if (form.id) {
         if (form.packageSessionId) request.packageSessionId = form.packageSessionId;

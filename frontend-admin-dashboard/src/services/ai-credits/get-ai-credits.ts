@@ -99,6 +99,11 @@ export type ToolKey =
     | 'html_document'
     | 'html_document_edit'
     | 'html_document_pdf'
+    // Pictures for an HTML page or an AI-drafted reading, per picture.
+    | 'html_document_image'
+    // AI engagement planner: a drafted plan (priced per task requested) and one regenerated task.
+    | 'engagement_plan'
+    | 'engagement_item'
     | 'copy_check_evaluation'
     // Vsmart Extract: a teacher's own paper digitised verbatim (V527);
     // the _ocr surcharge applies only to scanned PDFs (MathPix, per page)

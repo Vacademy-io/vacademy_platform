@@ -670,7 +670,9 @@ public class EngagementPlanService {
         }
 
         if (!EngagementItemChangePolicy.isLearnerVisibleChange(existing, request, objectMapper)) {
-            // Order and schedule overrides only; nothing a learner sees or is graded on.
+            // Order, day and schedule overrides only; nothing a learner sees or is graded on.
+            // Moving a task to another day of the same plan keeps its id and attempts.
+            existing.setSlotId(slot.getId());
             existing.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
             existing.setMissPolicy(request.getMissPolicy() == null ? null : safeMissPolicy(request.getMissPolicy()));
             existing.setCatchUpDays(request.getCatchUpDays());

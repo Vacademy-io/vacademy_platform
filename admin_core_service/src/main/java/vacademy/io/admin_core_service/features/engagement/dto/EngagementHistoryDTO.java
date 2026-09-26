@@ -17,13 +17,34 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EngagementHistoryDTO {
+
+    public EngagementHistoryDTO(String from, String to, List<EngagementItemDTO> items,
+                                int done, int missed, int catchUp, int pointsEarned) {
+        this.from = from;
+        this.to = to;
+        this.items = items;
+        this.done = done;
+        this.missed = missed;
+        this.catchUp = catchUp;
+        this.pointsEarned = pointsEarned;
+    }
+
+    /** First date of the window (yyyy-MM-dd), institute-local. */
     private String from;
+    /** Last date of the window (yyyy-MM-dd) = {@link #today}. */
     private String to;
     private List<EngagementItemDTO> items;
     private int done;
-    /** Closed occurrences that can no longer be done. */
+    /** Occurrences that can no longer be done (closed, or superseded by a newer run). */
     private int missed;
-    /** Missed but still inside the catch-up window. */
+    /** Missed but still inside the catch-up window, and openable right now. */
     private int catchUp;
     private int pointsEarned;
+
+    // ── Learner contract (WP-2A) ───────────────────────────────────────────
+
+    /** Institute-local date the history was computed for (yyyy-MM-dd). */
+    private String today;
+    /** IANA zone {@link #today} is in (the first plan's timezone). */
+    private String timezone;
 }

@@ -13,6 +13,14 @@ import lombok.Data;
  *
  * The key is stripped before the item ever reaches a learner and MCQ grading happens
  * server-side, which is what makes that format genuinely verifiable.
+ *
+ * FLASHCARDS: payloadJson is flashcards/v1 (see FlashcardsPayloadValidator). The server
+ * validates and canonicalises it and IGNORES these request fields, forcing
+ * correctPoints=0, hideResultUntilReveal=false, maxScore=cards.size() and
+ * isVerifiable=false. Card ids are preserved across edits; send every card with its id.
+ *
+ * Every save must send ALL of the slot's items: an active item missing from the request
+ * is removed (retireItemsNotIn).
  */
 @Data
 public class EngagementItemRequest {

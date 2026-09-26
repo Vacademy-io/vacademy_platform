@@ -1,11 +1,14 @@
 package vacademy.io.admin_core_service.features.points_ledger.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.institute.service.InstituteTimezoneService;
 import vacademy.io.admin_core_service.features.points_ledger.dto.PointsBreakdownItemDTO;
 import vacademy.io.admin_core_service.features.points_ledger.dto.PointsSummaryDTO;
@@ -19,9 +22,13 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * The one way points are awarded anywhere in the platform.
@@ -46,6 +53,10 @@ public class PointsLedgerService {
 
     private final PointsLedgerRepository pointsLedgerRepository;
     private final InstituteTimezoneService instituteTimezoneService;
+
+    /** Field-injected so the constructor stays (repository, timezone service); null in unit tests. */
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /**
      * Award points, at most once per idempotency key.
@@ -150,8 +161,21 @@ public class PointsLedgerService {
         return written;
     }
 
-    /** The learner's own points state: total, windows, level and per-source breakdown. */
-    @Transactional(readOnly = true)
+    /**
+     * The learner's own points state: total, windows, level, per-source breakdown and
+     * the streak.
+     *
+     * <p>Deliberately NOT one read-only transaction. The streak reads other features'
+     * tables by native SQL, and a failed statement inside a JPA transaction marks it
+     * rollback-only, which would turn a cosmetic streak failure into a failed summary.
+     * Each repository call runs in its own read transaction instead, and the streak
+     * degrades to null on any error.
+     *
+     * <p>When the caller already holds a transaction (the engagement submit calls this
+     * for the new total), the streak is skipped and left null: a failed native statement
+     * would abort the caller's Postgres transaction and lose the learner's submission,
+     * and that caller only reads totalPoints anyway.
+     */
     public PointsSummaryDTO getSummary(String instituteId, String userId) {
         long total = pointsLedgerRepository.sumForUser(instituteId, userId);
 
@@ -177,7 +201,191 @@ public class PointsLedgerService {
         int level = (int) (safeTotal / POINTS_PER_LEVEL) + 1;
         int pointsToNextLevel = (int) (POINTS_PER_LEVEL - (safeTotal % POINTS_PER_LEVEL));
 
-        return new PointsSummaryDTO(total, weekPoints, todayPoints, level, pointsToNextLevel, breakdown);
+        PointsSummaryDTO dto = new PointsSummaryDTO(total, weekPoints, todayPoints, level, pointsToNextLevel, breakdown);
+        dto.setToday(today.toString());
+        dto.setTimezone(zone.getId());
+        Set<LocalDate> activeDays = TransactionSynchronizationManager.isActualTransactionActive()
+                ? null
+                : loadActiveDays(instituteId, userId, zone, today);
+        if (activeDays != null) {
+            StreakState streak = computeStreak(activeDays, today);
+            dto.setCurrentStreak(streak.currentStreak());
+            dto.setLongestStreak(streak.longestStreak());
+            dto.setKeptToday(streak.keptToday());
+            dto.setLast7Days(streak.last7Days());
+        }
+        return dto;
+    }
+
+    // ── Streak ───────────────────────────────────────────────────────────────
+
+    /** How far back the streak looks; longestStreak is "longest in the last year". */
+    public static final int STREAK_LOOKBACK_DAYS = 366;
+
+    /**
+     * Ledger sources that prove the learner did something that day. ENGAGEMENT_STREAK is
+     * derived from the streak itself and MANUAL is granted by staff, so neither counts.
+     */
+    static final List<String> STREAK_LEDGER_SOURCES = List.of(
+            PointsSourceType.ENGAGEMENT_ITEM.name(),
+            PointsSourceType.ASSESSMENT.name(),
+            PointsSourceType.ACTIVITY.name());
+
+    /** The streak as every learner surface shows it. */
+    public record StreakState(int currentStreak, int longestStreak, boolean keptToday,
+                              List<PointsSummaryDTO.StreakDay> last7Days) {}
+
+    /**
+     * Pure streak arithmetic over a set of institute-local active days.
+     *
+     * <p>currentStreak counts back from today when today is active, else from yesterday
+     * (a streak is not broken until the day is over). longestStreak is the longest run
+     * of consecutive days in the set, and is never below currentStreak. Days after
+     * {@code today} are ignored.
+     */
+    public static StreakState computeStreak(Collection<LocalDate> activeDays, LocalDate today) {
+        TreeSet<LocalDate> days = new TreeSet<>();
+        if (activeDays != null) {
+            for (LocalDate d : activeDays) if (d != null && !d.isAfter(today)) days.add(d);
+        }
+        boolean keptToday = days.contains(today);
+
+        int current = 0;
+        LocalDate cursor = keptToday ? today : today.minusDays(1);
+        while (days.contains(cursor)) {
+            current++;
+            cursor = cursor.minusDays(1);
+        }
+
+        int longest = 0;
+        int run = 0;
+        LocalDate previous = null;
+        for (LocalDate d : days) {
+            run = (previous != null && previous.plusDays(1).equals(d)) ? run + 1 : 1;
+            longest = Math.max(longest, run);
+            previous = d;
+        }
+        longest = Math.max(longest, current);
+
+        List<PointsSummaryDTO.StreakDay> last7 = new ArrayList<>(7);
+        for (int i = 6; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            last7.add(new PointsSummaryDTO.StreakDay(d.toString(), days.contains(d)));
+        }
+        return new StreakState(current, longest, keptToday, last7);
+    }
+
+    /**
+     * The learner's active days in the institute's zone over the look-back window: the
+     * union of learning-activity days (the activity log, same measure as ACTIVITY points
+     * and the learner hero), completed engagement tasks and earning ledger rows.
+     *
+     * <p>Each source is read on its own so one failing source only narrows the union.
+     * Returns null when every source failed, so the caller leaves the streak unset
+     * rather than reporting a false 0. Overridable for tests.
+     */
+    protected Set<LocalDate> loadActiveDays(String instituteId, String userId, ZoneId zone, LocalDate today) {
+        if (entityManager == null || userId == null || instituteId == null) return null;
+        Timestamp from = toTimestamp(today.minusDays(STREAK_LOOKBACK_DAYS), zone);
+        Timestamp to = toTimestamp(today.plusDays(1), zone);
+        String zoneId = zone.getId();
+        Set<LocalDate> days = new HashSet<>();
+        int failures = 0;
+
+        // Stored timestamps are UTC wall time (the JVM runs in UTC), hence the double AT TIME ZONE.
+        try {
+            days.addAll(toDates(entityManager.createNativeQuery("""
+                    SELECT t.d FROM (
+                        SELECT DATE(al.created_at AT TIME ZONE 'UTC' AT TIME ZONE :zone) AS d,
+                               COALESCE(
+                                   al.engaged_ms,
+                                   CASE
+                                       WHEN al.end_time IS NOT NULL AND al.start_time IS NOT NULL
+                                           THEN EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000
+                                       ELSE 0
+                                   END
+                               ) AS ms
+                        FROM activity_log al
+                        WHERE al.user_id = :userId
+                          AND al.created_at >= :from
+                          AND al.created_at < :to
+                    ) t
+                    GROUP BY t.d
+                    HAVING SUM(t.ms) > 0
+                    """)
+                    .setParameter("zone", zoneId)
+                    .setParameter("userId", userId)
+                    .setParameter("from", from)
+                    .setParameter("to", to)
+                    .getResultList()));
+        } catch (Exception e) {
+            failures++;
+            log.warn("[points] streak: activity days unavailable for user {}: {}", userId, e.getMessage());
+        }
+
+        try {
+            days.addAll(toDates(entityManager.createNativeQuery("""
+                    SELECT DISTINCT DATE(a.completed_at AT TIME ZONE 'UTC' AT TIME ZONE :zone)
+                    FROM engagement_attempt a
+                    WHERE a.user_id = :userId
+                      AND a.institute_id = :instituteId
+                      AND a.status = 'COMPLETED'
+                      AND a.completed_at >= :from
+                      AND a.completed_at < :to
+                    """)
+                    .setParameter("zone", zoneId)
+                    .setParameter("userId", userId)
+                    .setParameter("instituteId", instituteId)
+                    .setParameter("from", from)
+                    .setParameter("to", to)
+                    .getResultList()));
+        } catch (Exception e) {
+            failures++;
+            log.warn("[points] streak: engagement days unavailable for user {}: {}", userId, e.getMessage());
+        }
+
+        try {
+            days.addAll(toDates(entityManager.createNativeQuery("""
+                    SELECT DISTINCT DATE(p.awarded_at AT TIME ZONE 'UTC' AT TIME ZONE :zone)
+                    FROM points_ledger p
+                    WHERE p.institute_id = :instituteId
+                      AND p.user_id = :userId
+                      AND p.points > 0
+                      AND p.source_type IN (:sources)
+                      AND p.awarded_at >= :from
+                      AND p.awarded_at < :to
+                    """)
+                    .setParameter("zone", zoneId)
+                    .setParameter("userId", userId)
+                    .setParameter("instituteId", instituteId)
+                    .setParameter("sources", STREAK_LEDGER_SOURCES)
+                    .setParameter("from", from)
+                    .setParameter("to", to)
+                    .getResultList()));
+        } catch (Exception e) {
+            failures++;
+            log.warn("[points] streak: ledger days unavailable for user {}: {}", userId, e.getMessage());
+        }
+
+        return failures == 3 ? null : days;
+    }
+
+    private static List<LocalDate> toDates(List<?> rows) {
+        List<LocalDate> out = new ArrayList<>();
+        for (Object row : rows) {
+            Object value = row instanceof Object[] cols ? (cols.length == 0 ? null : cols[0]) : row;
+            if (value instanceof java.sql.Date d) out.add(d.toLocalDate());
+            else if (value instanceof LocalDate d) out.add(d);
+            else if (value instanceof java.util.Date d) out.add(new java.sql.Date(d.getTime()).toLocalDate());
+            else if (value != null) {
+                try {
+                    out.add(LocalDate.parse(value.toString().substring(0, 10)));
+                } catch (Exception ignored) {
+                    // an unreadable day is skipped, never fatal
+                }
+            }
+        }
+        return out;
     }
 
     /** Start-of-day in the institute's zone, as a UTC-based SQL timestamp. */

@@ -27,10 +27,16 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 /** Teacher/admin authoring: plans, slots, items. */
 @Service
@@ -151,7 +157,13 @@ public class EngagementPlanService {
     public EngagementSlotDTO upsertSlot(String planId, EngagementSlotRequest request, String instituteId) {
         EngagementPlan plan = requirePlan(planId, instituteId);
         EngagementSlot slot = upsertSlot(plan, request);
-        return toSlotDto(plan, slot);
+        List<EngagementItem> items = itemRepository.findActiveBySlot(slot.getId());
+        List<String> itemIds = new ArrayList<>();
+        for (EngagementItem item : items) itemIds.add(item.getId());
+        String psId = plan.getPackageSessionId();
+        Long learnerCount = psId == null ? null
+                : learnerCounts(List.of(psId)).getOrDefault(psId, 0L);
+        return toSlotDto(plan, slot, items, completedCounts(itemIds), learnerCount);
     }
 
     @Transactional
@@ -164,25 +176,378 @@ public class EngagementPlanService {
         slotRepository.save(slot);
     }
 
+    /**
+     * The plan with its active slots and items (admin view, unredacted), plus the list
+     * summary fields. A fixed number of queries: slots, items, completion counts,
+     * batch label, batch size and today's learners — not one per item.
+     */
     @Transactional(readOnly = true)
     public EngagementPlanDTO getPlan(String planId, String instituteId) {
         EngagementPlan plan = requirePlan(planId, instituteId);
-        List<EngagementSlotDTO> slots = new ArrayList<>();
-        for (EngagementSlot slot : slotRepository.findActiveByPlan(planId)) {
-            slots.add(toSlotDto(plan, slot));
+        List<EngagementSlot> slots = slotRepository.findActiveByPlan(planId);
+
+        Map<String, List<EngagementItem>> itemsBySlot = new LinkedHashMap<>();
+        for (EngagementSlot slot : slots) itemsBySlot.put(slot.getId(), new ArrayList<>());
+        List<String> itemIds = new ArrayList<>();
+        if (!slots.isEmpty()) {
+            List<String> slotIds = new ArrayList<>(itemsBySlot.keySet());
+            for (EngagementItem item : itemRepository.findActiveBySlots(slotIds)) {
+                List<EngagementItem> bucket = itemsBySlot.get(item.getSlotId());
+                if (bucket == null) continue;
+                bucket.add(item);
+                itemIds.add(item.getId());
+            }
         }
-        return toPlanDto(plan, slots);
+        Map<String, Long> completed = completedCounts(itemIds);
+        String psId = plan.getPackageSessionId();
+        Map<String, Long> learners = learnerCounts(psId == null ? List.of() : List.of(psId));
+        Long learnerCount = psId == null ? null : learners.getOrDefault(psId, 0L);
+
+        List<EngagementSlotDTO> slotDtos = new ArrayList<>();
+        Map<String, Long> itemCountBySlot = new HashMap<>();
+        for (EngagementSlot slot : slots) {
+            List<EngagementItem> items = itemsBySlot.get(slot.getId());
+            itemCountBySlot.put(slot.getId(), (long) items.size());
+            slotDtos.add(toSlotDto(plan, slot, items, completed, learnerCount));
+        }
+
+        EngagementPlanDTO dto = toPlanDto(plan, slotDtos);
+        PlanSchedule schedule = summarize(slots, itemCountBySlot, todayFor(plan), scheduleResolver);
+        Map<String, long[]> todayLearners = todayLearnerCounts(schedule.todaySlotIds());
+        applySummary(dto, plan, schedule, labels(psId == null ? List.of() : List.of(psId)).get(psId),
+                learnerCount, todayLearners.get(plan.getId()));
+        return dto;
     }
 
+    /**
+     * Today's behaviour, unchanged: every non-deleted plan of the institute (or of one
+     * batch), newest first, with no slots. Each DTO now also carries the summary fields.
+     */
     @Transactional(readOnly = true)
     public List<EngagementPlanDTO> listPlans(String instituteId, String packageSessionId) {
-        List<EngagementPlan> plans = (packageSessionId == null || packageSessionId.isBlank())
+        return listPlans(instituteId, packageSessionId, null, null, null, null, null).plans();
+    }
+
+    /**
+     * The plan list with optional filters.
+     *
+     * @param status   comma-separated; each value matches the derived todayState
+     *                 (DRAFT, UPCOMING, RUNNING, ENDED, ARCHIVED) or the stored status
+     *                 (e.g. PUBLISHED). Case-insensitive. Null/blank = no filter.
+     * @param q        case-insensitive substring of the title or the batch label.
+     * @param sort     CREATED (default, newest first), START_DATE (earliest first date
+     *                 first, plans with no days last) or TITLE.
+     * @param page     0-based. Paging applies only when page or size is given.
+     * @param size     page size, default 20, clamped to 1..100.
+     *
+     * With every optional argument null this returns exactly what it always did (the
+     * deployed admin list calls it that way), plus the additive summary fields.
+     * {@code total} is the filtered count before paging.
+     */
+    @Transactional(readOnly = true)
+    public PlanListResult listPlans(String instituteId, String packageSessionId, String status,
+                                    String q, String sort, Integer page, Integer size) {
+        List<EngagementPlan> found = (packageSessionId == null || packageSessionId.isBlank())
                 ? planRepository.findByInstitute(instituteId)
                 : planRepository.findByPackageSession(packageSessionId);
+        List<EngagementPlan> plans = new ArrayList<>();
+        for (EngagementPlan plan : found) {
+            if (Objects.equals(plan.getInstituteId(), instituteId)) plans.add(plan);
+        }
+
+        List<EngagementPlanDTO> out = summarizeForList(plans);
+
+        Set<String> statuses = parseStatusFilter(status);
+        String needle = q == null || q.isBlank() ? null : q.strip().toLowerCase(Locale.ROOT);
+        if (!statuses.isEmpty() || needle != null) {
+            List<EngagementPlanDTO> filtered = new ArrayList<>();
+            for (EngagementPlanDTO dto : out) {
+                if (!statuses.isEmpty()
+                        && !statuses.contains(upper(dto.getTodayState()))
+                        && !statuses.contains(upper(dto.getStatus()))) continue;
+                if (needle != null && !contains(dto.getTitle(), needle)
+                        && !contains(dto.getPackageSessionLabel(), needle)) continue;
+                filtered.add(dto);
+            }
+            out = filtered;
+        }
+
+        String sortKey = sort == null ? "" : sort.strip().toUpperCase(Locale.ROOT);
+        if ("START_DATE".equals(sortKey)) {
+            out = new ArrayList<>(out);
+            out.sort(Comparator.comparing(EngagementPlanDTO::getFirstDate,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+        } else if ("TITLE".equals(sortKey)) {
+            out = new ArrayList<>(out);
+            out.sort(Comparator.comparing(d -> d.getTitle() == null ? "" : d.getTitle().toLowerCase(Locale.ROOT)));
+        }
+
+        int total = out.size();
+        if (page == null && size == null) {
+            return new PlanListResult(out, total, 0, total);
+        }
+        int pageSize = size == null ? DEFAULT_PAGE_SIZE : Math.max(1, Math.min(MAX_PAGE_SIZE, size));
+        int pageNo = page == null ? 0 : Math.max(0, page);
+        long from = (long) pageNo * pageSize;
+        out = from >= total ? List.of()
+                : new ArrayList<>(out.subList((int) from, (int) Math.min(total, from + pageSize)));
+        return new PlanListResult(out, total, pageNo, pageSize);
+    }
+
+    /**
+     * A page of the plan list plus the filtered total (before paging). {@code page} and
+     * {@code size} are the values actually applied (size = total when not paged).
+     */
+    public record PlanListResult(List<EngagementPlanDTO> plans, int total, int page, int size) {
+        /** The paged response body: {content, page, size, totalRows, totalPages}. */
+        public PlanListPage toPage() {
+            int pages = size <= 0 ? 1 : Math.max(1, (int) Math.ceil(total / (double) size));
+            return new PlanListPage(plans, page, size, total, pages);
+        }
+    }
+
+    /** JSON body of a paged /plan/list call. */
+    public record PlanListPage(List<EngagementPlanDTO> content, int page, int size, long totalRows,
+                               int totalPages) {}
+
+    // ── list summary ─────────────────────────────────────────────────────────
+
+    static final int DEFAULT_PAGE_SIZE = 20;
+    static final int MAX_PAGE_SIZE = 100;
+    /** IN-list chunk size; keeps every query far below the bind-parameter limit. */
+    private static final int IN_CHUNK = 500;
+    /** Per-slot date walk cap (~3 years); longer ranges still get exact first/last dates. */
+    static final int MAX_DAYS_SCANNED = 1100;
+
+    /**
+     * Summary DTOs (no slots) for many plans with a constant number of queries:
+     * one for all slots, one for their item counts, one for batch labels, one for batch
+     * sizes and one for today's learners — each chunked only past 500 ids.
+     */
+    private List<EngagementPlanDTO> summarizeForList(List<EngagementPlan> plans) {
+        if (plans.isEmpty()) return new ArrayList<>();
+        List<String> planIds = new ArrayList<>();
+        Set<String> psIds = new java.util.LinkedHashSet<>();
+        for (EngagementPlan plan : plans) {
+            planIds.add(plan.getId());
+            if (plan.getPackageSessionId() != null) psIds.add(plan.getPackageSessionId());
+        }
+
+        Map<String, List<EngagementSlot>> slotsByPlan = new HashMap<>();
+        List<String> slotIds = new ArrayList<>();
+        for (List<String> chunk : chunks(planIds)) {
+            for (EngagementSlot slot : planRepository.findActiveSlotsForPlans(chunk)) {
+                slotsByPlan.computeIfAbsent(slot.getPlanId(), k -> new ArrayList<>()).add(slot);
+                slotIds.add(slot.getId());
+            }
+        }
+        Map<String, Long> itemCountBySlot = new HashMap<>();
+        for (List<String> chunk : chunks(slotIds)) {
+            for (Object[] row : planRepository.countActiveItemsBySlots(chunk)) {
+                itemCountBySlot.put((String) row[0], toLong(row[1]));
+            }
+        }
+        Map<String, String> labels = labels(new ArrayList<>(psIds));
+        Map<String, Long> learners = learnerCounts(new ArrayList<>(psIds));
+
+        Map<String, PlanSchedule> schedules = new HashMap<>();
+        List<String> todaySlotIds = new ArrayList<>();
+        for (EngagementPlan plan : plans) {
+            PlanSchedule schedule = summarize(slotsByPlan.getOrDefault(plan.getId(), List.of()),
+                    itemCountBySlot, todayFor(plan), scheduleResolver);
+            schedules.put(plan.getId(), schedule);
+            todaySlotIds.addAll(schedule.todaySlotIds());
+        }
+        Map<String, long[]> todayLearners = todayLearnerCounts(todaySlotIds);
+
         List<EngagementPlanDTO> out = new ArrayList<>();
         for (EngagementPlan plan : plans) {
-            if (!Objects.equals(plan.getInstituteId(), instituteId)) continue;
-            out.add(toPlanDto(plan, List.of()));
+            EngagementPlanDTO dto = toPlanDto(plan, List.of());
+            String psId = plan.getPackageSessionId();
+            applySummary(dto, plan, schedules.get(plan.getId()), psId == null ? null : labels.get(psId),
+                    psId == null ? null : learners.getOrDefault(psId, 0L), todayLearners.get(plan.getId()));
+            out.add(dto);
+        }
+        return out;
+    }
+
+    /**
+     * Schedule facts for one plan, computed from already-loaded slots — no queries.
+     *
+     * @param todaySlotIds the active slots that run on {@code today}
+     */
+    public record PlanSchedule(LocalDate firstDate, LocalDate lastDate, int dayCount, int slotCount,
+                               int taskCount, int todayTaskCount, List<String> todaySlotIds) {}
+
+    /**
+     * Pure: dates a slot runs on honour its weekday mask. Exposed for tests.
+     */
+    public static PlanSchedule summarize(List<EngagementSlot> slots, Map<String, Long> itemCountBySlot,
+                                         LocalDate today, EngagementScheduleResolver resolver) {
+        Set<LocalDate> days = new TreeSet<>();
+        LocalDate first = null;
+        LocalDate last = null;
+        long tasks = 0;
+        long todayTasks = 0;
+        List<String> todaySlotIds = new ArrayList<>();
+        for (EngagementSlot slot : slots) {
+            long items = itemCountBySlot == null ? 0 : itemCountBySlot.getOrDefault(slot.getId(), 0L);
+            tasks += items;
+            LocalDate start = slot.getStartDate();
+            LocalDate end = slot.effectiveEndDate();
+            if (start == null || end == null || end.isBefore(start)) continue;
+
+            LocalDate slotFirst = null;
+            LocalDate cursor = start;
+            for (int i = 0; i < 7 && !cursor.isAfter(end); i++, cursor = cursor.plusDays(1)) {
+                if (resolver.runsOn(slot, cursor)) { slotFirst = cursor; break; }
+            }
+            if (slotFirst == null) continue;   // the weekday mask never matches in range
+            LocalDate slotLast = resolver.mostRecentRunDate(slot, end);
+
+            int scanned = 0;
+            for (LocalDate d = slotFirst; !d.isAfter(end) && scanned < MAX_DAYS_SCANNED;
+                 d = d.plusDays(1), scanned++) {
+                if (resolver.runsOn(slot, d)) days.add(d);
+            }
+            if (first == null || slotFirst.isBefore(first)) first = slotFirst;
+            if (slotLast != null && (last == null || slotLast.isAfter(last))) last = slotLast;
+
+            if (today != null && resolver.runsOn(slot, today)) {
+                todayTasks += items;
+                todaySlotIds.add(slot.getId());
+            }
+        }
+        return new PlanSchedule(first, last, days.size(), slots.size(), (int) tasks, (int) todayTasks,
+                todaySlotIds);
+    }
+
+    /**
+     * DRAFT and ARCHIVED come from the stored status. A published plan is UPCOMING
+     * before its first day (or when it has no days yet), RUNNING from its first to its
+     * last day inclusive (gap days included), and ENDED after.
+     */
+    public static String todayState(String status, PlanSchedule schedule, LocalDate today) {
+        if (EngagementEnums.PlanStatus.ARCHIVED.name().equals(status)) return "ARCHIVED";
+        if (!EngagementEnums.PlanStatus.PUBLISHED.name().equals(status)) return "DRAFT";
+        if (schedule == null || schedule.firstDate() == null || today == null) return "UPCOMING";
+        if (today.isBefore(schedule.firstDate())) return "UPCOMING";
+        if (schedule.lastDate() != null && today.isAfter(schedule.lastDate())) return "ENDED";
+        return "RUNNING";
+    }
+
+    private void applySummary(EngagementPlanDTO dto, EngagementPlan plan, PlanSchedule schedule,
+                              String label, Long learnerCount, long[] todayLearners) {
+        LocalDate today = todayFor(plan);
+        dto.setPackageSessionLabel(label);
+        dto.setToday(today.toString());
+        dto.setLearnerCount(learnerCount);
+        if (schedule != null) {
+            dto.setFirstDate(schedule.firstDate() == null ? null : schedule.firstDate().toString());
+            dto.setLastDate(schedule.lastDate() == null ? null : schedule.lastDate().toString());
+            dto.setDayCount(schedule.dayCount());
+            dto.setSlotCount(schedule.slotCount());
+            dto.setTaskCount(schedule.taskCount());
+            dto.setTodayTaskCount(schedule.todayTaskCount());
+        }
+        dto.setTodayState(todayState(plan.getStatus(), schedule, today));
+        boolean runsToday = schedule != null && !schedule.todaySlotIds().isEmpty();
+        dto.setTodayStartedLearners(runsToday ? (todayLearners == null ? 0L : todayLearners[0]) : null);
+        dto.setTodayCompletedLearners(runsToday ? (todayLearners == null ? 0L : todayLearners[1]) : null);
+    }
+
+    private LocalDate todayFor(EngagementPlan plan) {
+        return LocalDate.now(scheduleResolver.zoneOf(plan));
+    }
+
+    private Map<String, Long> completedCounts(List<String> itemIds) {
+        Map<String, Long> out = new HashMap<>();
+        for (List<String> chunk : chunks(itemIds)) {
+            for (Object[] row : attemptRepository.countCompletedForItems(chunk)) {
+                out.put((String) row[0], toLong(row[1]));
+            }
+        }
+        return out;
+    }
+
+    private Map<String, Long> learnerCounts(List<String> packageSessionIds) {
+        Map<String, Long> out = new HashMap<>();
+        for (List<String> chunk : chunks(packageSessionIds)) {
+            for (Object[] row : planRepository.countActiveLearnersByPackageSessions(chunk)) {
+                out.put((String) row[0], toLong(row[1]));
+            }
+        }
+        return out;
+    }
+
+    /** planId -> [learners with any attempt, learners with a completion] on the given slots. */
+    private Map<String, long[]> todayLearnerCounts(List<String> slotIds) {
+        Map<String, long[]> out = new HashMap<>();
+        for (List<String> chunk : chunks(slotIds)) {
+            for (Object[] row : planRepository.countLearnersBySlotsGroupedByPlan(chunk)) {
+                long[] acc = out.computeIfAbsent((String) row[0], k -> new long[2]);
+                // A plan's today-slots can span two chunks; summing may then overcount a
+                // learner seen in both, which only happens past 500 slots running today.
+                acc[0] += toLong(row[1]);
+                acc[1] += toLong(row[2]);
+            }
+        }
+        return out;
+    }
+
+    /** packageSessionId -> label: the batch's own name, else "Course · Session · Level". */
+    private Map<String, String> labels(List<String> packageSessionIds) {
+        Map<String, String> out = new HashMap<>();
+        for (List<String> chunk : chunks(packageSessionIds)) {
+            for (Object[] row : planRepository.findPackageSessionLabelParts(chunk)) {
+                out.put((String) row[0], batchLabel((String) row[1], (String) row[2], (String) row[3],
+                        (String) row[4]));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The batch's own name when it has one; otherwise course, session and level joined
+     * by " · ", skipping blanks and the placeholder "DEFAULT".
+     */
+    public static String batchLabel(String name, String packageName, String sessionName, String levelName) {
+        if (name != null && !name.isBlank()) return name.strip();
+        List<String> parts = new ArrayList<>();
+        for (String part : new String[] {packageName, sessionName, levelName}) {
+            if (part == null || part.isBlank() || "DEFAULT".equalsIgnoreCase(part.strip())) continue;
+            parts.add(part.strip());
+        }
+        if (parts.isEmpty()) return packageName == null || packageName.isBlank() ? null : packageName.strip();
+        return String.join(" · ", parts);
+    }
+
+    private static Set<String> parseStatusFilter(String raw) {
+        Set<String> out = new HashSet<>();
+        if (raw == null || raw.isBlank()) return out;
+        for (String part : raw.split(",")) {
+            if (!part.isBlank()) out.add(part.strip().toUpperCase(Locale.ROOT));
+        }
+        return out;
+    }
+
+    private static String upper(String s) {
+        return s == null ? "" : s.toUpperCase(Locale.ROOT);
+    }
+
+    private static boolean contains(String haystack, String lowerNeedle) {
+        return haystack != null && haystack.toLowerCase(Locale.ROOT).contains(lowerNeedle);
+    }
+
+    private static long toLong(Object value) {
+        return value instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private static List<List<String>> chunks(List<String> ids) {
+        List<List<String>> out = new ArrayList<>();
+        if (ids == null || ids.isEmpty()) return out;
+        for (int i = 0; i < ids.size(); i += IN_CHUNK) {
+            out.add(ids.subList(i, Math.min(ids.size(), i + IN_CHUNK)));
         }
         return out;
     }
@@ -280,6 +645,10 @@ public class EngagementPlanService {
     private String upsertItem(EngagementPlan plan, EngagementSlot slot, EngagementItemRequest request) {
         boolean isNew = request.getId() == null || request.getId().isBlank();
         EngagementEnums.ItemType type = safeItemType(request.getItemType());
+        // FLASHCARDS: validate + canonicalise the deck and apply the server-forced fields
+        // BEFORE the no-op compare, so an unchanged deck re-saved with reordered keys
+        // (or different client values for the forced fields) is still a no-op.
+        EngagementItemChangePolicy.normalizeRequest(type, request, objectMapper);
 
         if (isNew) {
             EngagementItemChangePolicy.validate(type, request, objectMapper);
@@ -342,9 +711,20 @@ public class EngagementPlanService {
         // Verifiable = the SERVER can decide the outcome itself. A course slide
         // qualifies: its completion is read from the learner's own progress, not
         // reported by the page.
-        item.setIsVerifiable(type == EngagementEnums.ItemType.QUESTION_OF_DAY
-                || type == EngagementEnums.ItemType.QUIZ
-                || type == EngagementEnums.ItemType.COURSE_SLIDE);
+        // FLASHCARDS is listed explicitly as NOT verifiable: "Got it" is a self-rating,
+        // so it pays completion points only.
+        item.setIsVerifiable(type != EngagementEnums.ItemType.FLASHCARDS
+                && (type == EngagementEnums.ItemType.QUESTION_OF_DAY
+                    || type == EngagementEnums.ItemType.QUIZ
+                    || type == EngagementEnums.ItemType.COURSE_SLIDE));
+        if (type == EngagementEnums.ItemType.FLASHCARDS) {
+            // Server-forced whatever the request says (normalizeRequest already applied
+            // these; repeated here so no write path can skip them). A hidden result would
+            // make toLearnerDto show "result pending" for a deck that has no result.
+            item.setCorrectPoints(0);
+            item.setHideResultUntilReveal(false);
+            item.setMaxScore(FlashcardsPayloadValidator.readTrusted(item.getPayloadJson()).size());
+        }
         item.setMissPolicy(request.getMissPolicy() == null ? null : safeMissPolicy(request.getMissPolicy()));
         item.setCatchUpDays(request.getCatchUpDays());
         item.setCatchUpPercent(request.getCatchUpPercent());
@@ -381,9 +761,10 @@ public class EngagementPlanService {
                 .build();
     }
 
-    private EngagementSlotDTO toSlotDto(EngagementPlan plan, EngagementSlot slot) {
+    private EngagementSlotDTO toSlotDto(EngagementPlan plan, EngagementSlot slot, List<EngagementItem> slotItems,
+                                        Map<String, Long> completedByItem, Long learnerCount) {
         List<EngagementItemDTO> items = new ArrayList<>();
-        for (EngagementItem item : itemRepository.findActiveBySlot(slot.getId())) {
+        for (EngagementItem item : slotItems) {
             items.add(EngagementItemDTO.builder()
                     .id(item.getId())
                     .slotId(slot.getId())
@@ -404,7 +785,11 @@ public class EngagementPlanService {
                     .correctPoints(item.getCorrectPoints())
                     .maxScore(item.getMaxScore())
                     .hideResultUntilReveal(item.getHideResultUntilReveal())
-                    .completedCount(attemptRepository.countCompletedForItem(item.getId()))
+                    .completedCount(completedByItem.getOrDefault(item.getId(), 0L))
+                    .learnerCount(learnerCount)
+                    .missPolicy(item.getMissPolicy())
+                    .catchUpDays(item.getCatchUpDays())
+                    .catchUpPercent(item.getCatchUpPercent())
                     .build());
         }
         return EngagementSlotDTO.builder()
@@ -421,6 +806,7 @@ public class EngagementPlanService {
                 .sortOrder(slot.getSortOrder())
                 .status(slot.getStatus())
                 .items(items)
+                .learnerCount(learnerCount)
                 .build();
     }
 

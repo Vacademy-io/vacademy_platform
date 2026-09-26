@@ -26,4 +26,9 @@ public class EngagementSlotDTO {
     private Integer sortOrder;
     private String status;
     private List<EngagementItemDTO> items;
+    /**
+     * Active learners in the plan's batch, so a task row can read
+     * "{completedCount} / {learnerCount} learners". Optional.
+     */
+    private Long learnerCount;
 }

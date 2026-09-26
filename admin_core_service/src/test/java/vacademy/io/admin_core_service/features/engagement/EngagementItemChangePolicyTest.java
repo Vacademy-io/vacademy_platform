@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.engagement.service.EngagementItem
 import vacademy.io.common.exceptions.VacademyException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -135,5 +136,142 @@ class EngagementItemChangePolicyTest {
         EngagementItemRequest written = request("{\"format\":\"TEXT\",\"prompt\":\"<p>Why?</p>\"}");
         assertDoesNotThrow(() -> EngagementItemChangePolicy.validate(EngagementEnums.ItemType.QUESTION_OF_DAY, written, om));
         assertDoesNotThrow(() -> EngagementItemChangePolicy.validate(EngagementEnums.ItemType.QUESTION_OF_DAY, request(PAYLOAD), om));
+    }
+
+    // ── FLASHCARDS ───────────────────────────────────────────────────────────
+
+    private static final String DECK =
+            "{\"schema\":\"flashcards/v1\",\"cards\":[{\"id\":\"c_1\",\"front\":\"Impairment\",\"back\":\"A problem in body function\",\"hint\":\"Body level\"},"
+                    + "{\"id\":\"c_2\",\"front\":\"2 < x > 1\",\"back\":\"<b>x</b>\"}],\"settings\":{\"shuffle\":true}}";
+    /** The same deck as jsonb returns it: keys reordered, whitespace changed. */
+    private static final String DECK_REORDERED =
+            "{ \"settings\": {\"shuffle\": true}, \"cards\": [{\"hint\": \"Body level\", \"back\": \"A problem in body function\", \"front\": \"Impairment\", \"id\": \"c_1\"},"
+                    + " {\"back\": \"<b>x</b>\", \"front\": \"2 < x > 1\", \"id\": \"c_2\"}], \"schema\": \"flashcards/v1\" }";
+
+    private EngagementItemRequest flashcardsRequest(String payload) {
+        EngagementItemRequest r = new EngagementItemRequest();
+        r.setId("deck-1");
+        r.setItemType("FLASHCARDS");
+        r.setTitle("Key terms");
+        r.setPayloadJson(payload);
+        r.setCompletionPoints(10);
+        r.setIsRequired(true);
+        r.setSortOrder(1);
+        return r;
+    }
+
+    /** A stored deck exactly as a previous save left it (normalised, forced fields applied). */
+    private EngagementItem storedDeck() {
+        EngagementItemRequest saved = flashcardsRequest(DECK);
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, saved, om);
+        EngagementItem item = new EngagementItem();
+        item.setId("deck-1");
+        item.setItemType("FLASHCARDS");
+        item.setTitle(saved.getTitle());
+        item.setPayloadJson(DECK_REORDERED);
+        item.setCompletionPoints(saved.getCompletionPoints());
+        item.setCorrectPoints(saved.getCorrectPoints());
+        item.setMaxScore(saved.getMaxScore());
+        item.setIsRequired(saved.getIsRequired());
+        item.setHideResultUntilReveal(saved.getHideResultUntilReveal());
+        item.setVersion(1);
+        return item;
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: the server forces correctPoints=0, hideResultUntilReveal=false, maxScore=cards, whatever the request says")
+    void flashcardsForcedFields() {
+        EngagementItemRequest r = flashcardsRequest(DECK);
+        r.setCorrectPoints(50);
+        r.setHideResultUntilReveal(true);
+        r.setMaxScore(99);
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, r, om);
+        assertEquals(0, r.getCorrectPoints());
+        assertEquals(Boolean.FALSE, r.getHideResultUntilReveal());
+        assertEquals(2, r.getMaxScore());
+        assertDoesNotThrow(() -> EngagementItemChangePolicy.validate(EngagementEnums.ItemType.FLASHCARDS, r, om));
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: normalizeRequest leaves every other type untouched")
+    void normalizeIgnoresOtherTypes() {
+        EngagementItemRequest r = request(PAYLOAD);
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.QUESTION_OF_DAY, r, om);
+        assertEquals(PAYLOAD, r.getPayloadJson());
+        assertEquals(20, r.getCorrectPoints());
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: re-saving an unchanged deck (reordered keys, extra spaces, different forced values) is not a change")
+    void flashcardsUnchangedIsNoOp() {
+        EngagementItemRequest resave = flashcardsRequest(DECK.replace("\"Impairment\"", "\"  Impairment \""));
+        resave.setCorrectPoints(30);
+        resave.setHideResultUntilReveal(true);
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, resave, om);
+        assertFalse(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), resave, om));
+
+        // Even a caller that skipped normalizeRequest compares the canonical decks.
+        EngagementItemRequest raw = flashcardsRequest(DECK);
+        raw.setMaxScore(2);
+        assertFalse(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), raw, om));
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: a card edit, a new card, or a shuffle change is a change (version bump, same id)")
+    void flashcardsEditsAreChanges() {
+        EngagementItemRequest edited = flashcardsRequest(DECK.replace("Body level", "Body-level"));
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, edited, om);
+        assertTrue(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), edited, om));
+
+        EngagementItemRequest shuffle = flashcardsRequest(DECK.replace("\"shuffle\":true", "\"shuffle\":false"));
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, shuffle, om);
+        assertTrue(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), shuffle, om));
+
+        EngagementItemRequest added = flashcardsRequest(DECK.replace("]", ",{\"id\":\"c_3\",\"front\":\"New\",\"back\":\"Card\"}]"));
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, added, om);
+        assertEquals(3, added.getMaxScore());
+        assertTrue(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), added, om));
+
+        // Card edits stay allowed after learners completed the deck: no answer key.
+        assertDoesNotThrow(() -> EngagementItemChangePolicy.guardAnswerKey(storedDeck(), edited, 4, om));
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: an invalid deck is rejected with the teacher-facing message")
+    void flashcardsInvalidRejected() {
+        EngagementItemRequest empty = flashcardsRequest("{\"schema\":\"flashcards/v1\",\"cards\":[]}");
+        VacademyException e = assertThrows(VacademyException.class,
+                () -> EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, empty, om));
+        assertEquals("Add at least 1 card", e.getMessage());
+
+        // An invalid incoming deck compares as a change, so the save reaches validation.
+        EngagementItemRequest broken = flashcardsRequest("{\"cards\":[{\"id\":\"c_1\",\"front\":\"x\"}]}");
+        assertTrue(EngagementItemChangePolicy.isLearnerVisibleChange(storedDeck(), broken, om));
+        assertThrows(VacademyException.class,
+                () -> EngagementItemChangePolicy.validate(EngagementEnums.ItemType.FLASHCARDS, broken, om));
+
+        EngagementItemRequest longTitle = flashcardsRequest(DECK);
+        longTitle.setTitle("t".repeat(201));
+        assertThrows(VacademyException.class,
+                () -> EngagementItemChangePolicy.validate(EngagementEnums.ItemType.FLASHCARDS, longTitle, om));
+    }
+
+    @Test
+    @DisplayName("FLASHCARDS: converting a GAME to FLASHCARDS is a type change, locked once learners completed it")
+    void gameToFlashcardsLockedAfterCompletion() {
+        EngagementItem game = new EngagementItem();
+        game.setId("deck-1");
+        game.setItemType("GAME");
+        game.setTitle("Key terms");
+        game.setContentHtml("<script>var cards=[]</script>");
+        game.setCompletionPoints(10);
+        game.setIsRequired(true);
+
+        EngagementItemRequest convert = flashcardsRequest(DECK);
+        EngagementItemChangePolicy.normalizeRequest(EngagementEnums.ItemType.FLASHCARDS, convert, om);
+        assertTrue(EngagementItemChangePolicy.isLearnerVisibleChange(game, convert, om));
+        assertThrows(VacademyException.class,
+                () -> EngagementItemChangePolicy.guardAnswerKey(game, convert, 1, om));
+        assertDoesNotThrow(() -> EngagementItemChangePolicy.guardAnswerKey(game, convert, 0, om));
     }
 }

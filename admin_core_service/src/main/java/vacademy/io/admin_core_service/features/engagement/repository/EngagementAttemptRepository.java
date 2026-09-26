@@ -43,6 +43,65 @@ public interface EngagementAttemptRepository extends JpaRepository<EngagementAtt
             "AND a.status = 'COMPLETED' GROUP BY a.itemId")
     List<Object[]> countCompletedForItems(@Param("itemIds") List<String> itemIds);
 
+    /** One page of attempts in one status (DONE = COMPLETED, STARTED), newest first. */
+    @Query("SELECT a FROM EngagementAttempt a WHERE a.itemId = :itemId AND a.status = :status " +
+            "ORDER BY a.createdAt DESC")
+    Page<EngagementAttempt> findPageByItemAndStatus(@Param("itemId") String itemId,
+                                                    @Param("status") String status,
+                                                    Pageable pageable);
+
+    /** One page of completions made under catch-up, newest first. */
+    @Query("SELECT a FROM EngagementAttempt a WHERE a.itemId = :itemId AND a.status = 'COMPLETED' " +
+            "AND a.isLate = true ORDER BY a.createdAt DESC")
+    Page<EngagementAttempt> findPageLateByItem(@Param("itemId") String itemId, Pageable pageable);
+
+    /**
+     * Rows: [userId, status, isLate, isCorrect] for every attempt on one item. Scalars, not
+     * entities: the tracking counters and the not-done list need only these four.
+     */
+    @Query("SELECT a.userId, a.status, a.isLate, a.isCorrect FROM EngagementAttempt a " +
+            "WHERE a.itemId = :itemId")
+    List<Object[]> findUserStatusesByItem(@Param("itemId") String itemId);
+
+    /**
+     * Rows: [optionId, count] of COMPLETED attempts on one item, grouped on the stored
+     * selectedOptionId. One grouped query for the whole item, so a poll distribution
+     * never depends on which page of learners is on screen.
+     */
+    @Query(value = "SELECT a.response_json ->> 'selectedOptionId' AS option_id, COUNT(*) AS picks " +
+            "FROM engagement_attempt a " +
+            "WHERE a.item_id = :itemId AND a.status = 'COMPLETED' " +
+            "AND a.response_json ->> 'selectedOptionId' IS NOT NULL " +
+            "GROUP BY a.response_json ->> 'selectedOptionId'", nativeQuery = true)
+    List<Object[]> countByOption(@Param("itemId") String itemId);
+
+    /**
+     * Rows: [cardId, studied, gotIt] over the flashcards outcomes of every COMPLETED
+     * attempt on one item, across versions. The CASE guards jsonb_array_elements from a
+     * response that has no outcomes array (a legacy or non-flashcards row), which would
+     * otherwise raise an error for the whole query.
+     */
+    @Query(value = "SELECT o.elem ->> 'cardId' AS card_id, COUNT(*) AS studied, " +
+            "COUNT(*) FILTER (WHERE o.elem ->> 'result' = 'KNOWN') AS got_it " +
+            "FROM engagement_attempt a " +
+            "CROSS JOIN LATERAL jsonb_array_elements(" +
+            "CASE WHEN jsonb_typeof(a.response_json -> 'flashcards' -> 'outcomes') = 'array' " +
+            "THEN a.response_json -> 'flashcards' -> 'outcomes' " +
+            "ELSE CAST('[]' AS jsonb) END) AS o(elem) " +
+            "WHERE a.item_id = :itemId AND a.status = 'COMPLETED' " +
+            "AND o.elem ->> 'cardId' IS NOT NULL " +
+            "GROUP BY o.elem ->> 'cardId'", nativeQuery = true)
+    List<Object[]> countFlashcardOutcomes(@Param("itemId") String itemId);
+
+    /**
+     * Rows: [itemId, userId, status, isLate, isCorrect, pointsAwarded, completedAt] for
+     * every attempt on a set of items: the plan overview's single aggregate read (callers
+     * chunk the id list). Scalars rather than entities keep a 500-learner plan light.
+     */
+    @Query("SELECT a.itemId, a.userId, a.status, a.isLate, a.isCorrect, a.pointsAwarded, a.completedAt " +
+            "FROM EngagementAttempt a WHERE a.itemId IN :itemIds")
+    List<Object[]> findProgressRowsForItems(@Param("itemIds") List<String> itemIds);
+
     /** Completed attempts for a learner in an instant range — streak and history. */
     @Query("SELECT a FROM EngagementAttempt a WHERE a.userId = :userId AND a.instituteId = :instituteId " +
             "AND a.status = 'COMPLETED' AND a.completedAt >= :from AND a.completedAt < :to " +

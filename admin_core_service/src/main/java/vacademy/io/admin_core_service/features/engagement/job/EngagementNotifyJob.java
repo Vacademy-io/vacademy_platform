@@ -21,6 +21,8 @@ import vacademy.io.admin_core_service.features.engagement.service.EngagementSche
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -51,6 +53,12 @@ public class EngagementNotifyJob {
     private static final int TICK_MINUTES = 15;
 
     private static final List<String> ACTIVE_STATUSES = List.of("ACTIVE");
+
+    /**
+     * Where a tap on the reveal push lands: the learner's answers tab. Paths are relative
+     * to the learner app; the client falls back to the same URLs when a push carries none.
+     */
+    static final String REVEAL_ACTION_URL = "/engagement?tab=answers";
 
     private final EngagementPlanRepository planRepository;
     private final EngagementSlotRepository slotRepository;
@@ -126,7 +134,8 @@ public class EngagementNotifyJob {
             try {
                 notificationService.sendPushViaUnified(
                         plan.getInstituteId(), userIds, title, body,
-                        Map.of("type", "ENGAGEMENT", "slotId", slot.getId()));
+                        Map.of("type", "ENGAGEMENT", "slotId", slot.getId(),
+                                "actionUrl", taskActionUrl(slot.getId())));
                 log.info("[engagement-notify] slot {} pushed to {} learners", slot.getId(), userIds.size());
             } catch (Exception e) {
                 log.error("[engagement-notify] push failed for slot {}", slot.getId(), e);
@@ -171,12 +180,18 @@ public class EngagementNotifyJob {
                 notificationService.sendPushViaUnified(
                         plan.getInstituteId(), new java.util.ArrayList<>(recipients), title,
                         "The answer is revealed — see how you did and where you rank.",
-                        Map.of("type", "ENGAGEMENT_REVEAL", "slotId", slot.getId()));
+                        Map.of("type", "ENGAGEMENT_REVEAL", "slotId", slot.getId(),
+                                "actionUrl", REVEAL_ACTION_URL));
                 log.info("[engagement-notify] reveal for slot {} pushed to {} learners", slot.getId(), recipients.size());
             } catch (Exception e) {
                 log.error("[engagement-notify] reveal push failed for slot {}", slot.getId(), e);
             }
         }
+    }
+
+    /** Where a tap on the task push lands: the engagement page, opened on that slot. */
+    static String taskActionUrl(String slotId) {
+        return "/engagement?slot=" + URLEncoder.encode(slotId, StandardCharsets.UTF_8);
     }
 
     /** Returns false when another replica or an earlier tick already claimed this send. */

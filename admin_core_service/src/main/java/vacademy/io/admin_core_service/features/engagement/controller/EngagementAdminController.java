@@ -68,13 +68,35 @@ public class EngagementAdminController {
         return ResponseEntity.ok(planService.getPlan(planId, instituteId));
     }
 
+    /**
+     * The plan list. Every filter is optional; with none it answers exactly as before
+     * (every non-deleted plan, newest first, no slots), plus additive summary fields.
+     *
+     * status: comma-separated DRAFT | UPCOMING | RUNNING | ENDED | ARCHIVED (derived
+     * todayState) or a stored status such as PUBLISHED. q: title / batch search.
+     * sort: CREATED (default) | START_DATE | TITLE.
+     *
+     * Shape: without page and size the body is the plain array it has always been
+     * (filtered when status / q are sent). With page (0-based) or size (default 20,
+     * max 100) it is a page object: {content, page, size, totalRows, totalPages}.
+     */
     @GetMapping("/plan/list")
-    public ResponseEntity<List<EngagementPlanDTO>> listPlans(
+    public ResponseEntity<?> listPlans(
             @RequestParam String instituteId,
             @RequestParam(required = false) String packageSessionId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.requireStaffAccess(user, instituteId);
-        return ResponseEntity.ok(planService.listPlans(instituteId, packageSessionId));
+        EngagementPlanService.PlanListResult result =
+                planService.listPlans(instituteId, packageSessionId, status, q, sort, page, size);
+        if (page == null && size == null) {
+            return ResponseEntity.ok(result.plans());
+        }
+        return ResponseEntity.ok(result.toPage());
     }
 
     @DeleteMapping("/plan/{planId}")

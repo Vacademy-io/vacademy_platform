@@ -28,15 +28,50 @@ public final class EngagementItemChangePolicy {
             "Learners have already answered this question, so its answer key can't change. "
                     + "Add a new task instead.";
 
+    static final String TYPE_LOCKED =
+            "Learners have already completed this task, so its type can't change. "
+                    + "Add a new task instead.";
+
     private static final int MAX_POINTS = 1000;
+    /** Longest task title a FLASHCARDS deck accepts (UTF-16 units, same as the zod schema). */
+    static final int MAX_FLASHCARDS_TITLE = 200;
 
     private EngagementItemChangePolicy() {}
+
+    /**
+     * Bring an authoring request into its stored shape BEFORE it is compared or written,
+     * so a re-save of an unchanged task compares equal to what is stored.
+     *
+     * FLASHCARDS: the payload is validated and replaced by its canonical form
+     * (FlashcardsPayloadValidator), and the server-forced fields are applied — request
+     * values are ignored: correctPoints=0, hideResultUntilReveal=false,
+     * maxScore=cards.size(). (isVerifiable=false is set where the item is written.)
+     * Every other type is left untouched.
+     *
+     * Throws VacademyException with a teacher-facing message when the deck is invalid.
+     */
+    public static void normalizeRequest(EngagementEnums.ItemType type, EngagementItemRequest request,
+                                        ObjectMapper objectMapper) {
+        if (type != EngagementEnums.ItemType.FLASHCARDS) return;
+        FlashcardsPayloadValidator.Parsed deck =
+                FlashcardsPayloadValidator.parseAndValidate(request.getPayloadJson());
+        request.setItemType(EngagementEnums.ItemType.FLASHCARDS.name());
+        request.setPayloadJson(FlashcardsPayloadValidator.canonicalJson(deck, objectMapper));
+        request.setCorrectPoints(0);
+        request.setHideResultUntilReveal(false);
+        request.setMaxScore(deck.size());
+    }
 
     /** True when the request differs from the stored task in anything a learner sees or is graded on. */
     public static boolean isLearnerVisibleChange(EngagementItem existing, EngagementItemRequest request,
                                                  ObjectMapper objectMapper) {
         String requestedType = request.getItemType() == null ? null : request.getItemType().toUpperCase();
         String requestedTitle = request.getTitle() == null ? requestedType : request.getTitle();
+        boolean bothFlashcards = EngagementEnums.ItemType.FLASHCARDS.name().equals(existing.getItemType())
+                && EngagementEnums.ItemType.FLASHCARDS.name().equals(requestedType);
+        boolean payloadChanged = bothFlashcards
+                ? !sameFlashcards(existing.getPayloadJson(), request.getPayloadJson(), objectMapper)
+                : !sameJson(existing.getPayloadJson(), request.getPayloadJson(), objectMapper);
         return !Objects.equals(existing.getItemType(), requestedType)
                 || !Objects.equals(existing.getTitle(), requestedTitle)
                 || !Objects.equals(blankToNull(existing.getContentHtml()), blankToNull(request.getContentHtml()))
@@ -48,7 +83,7 @@ public final class EngagementItemChangePolicy {
                 || Boolean.TRUE.equals(existing.getIsRequired()) != Boolean.TRUE.equals(request.getIsRequired())
                 || Boolean.TRUE.equals(existing.getHideResultUntilReveal())
                         != Boolean.TRUE.equals(request.getHideResultUntilReveal())
-                || !sameJson(existing.getPayloadJson(), request.getPayloadJson(), objectMapper);
+                || payloadChanged;
     }
 
     /**
@@ -61,7 +96,9 @@ public final class EngagementItemChangePolicy {
         if (completedAttempts <= 0) return;
         String requestedType = request.getItemType() == null ? null : request.getItemType().toUpperCase();
         if (!Objects.equals(existing.getItemType(), requestedType)) {
-            throw new VacademyException(ANSWER_KEY_LOCKED);
+            // Includes converting a legacy GAME deck to FLASHCARDS: completions were
+            // earned against the old type, so the conversion needs a new task.
+            throw new VacademyException(TYPE_LOCKED);
         }
         JsonNode before = readTree(existing.getPayloadJson(), objectMapper);
         JsonNode after = readTree(request.getPayloadJson(), objectMapper);
@@ -97,6 +134,15 @@ public final class EngagementItemChangePolicy {
                     throw new VacademyException("The poll \"" + safeTitle(request) + "\" needs at least two options.");
                 }
             }
+            case FLASHCARDS -> {
+                if (request.getTitle() != null && request.getTitle().strip().length() > MAX_FLASHCARDS_TITLE) {
+                    throw new VacademyException("A task title can be at most " + MAX_FLASHCARDS_TITLE
+                            + " characters.");
+                }
+                // Idempotent on an already-canonical payload; re-checked here so a caller
+                // that skipped normalizeRequest still cannot store an invalid deck.
+                FlashcardsPayloadValidator.parseAndValidate(request.getPayloadJson());
+            }
             case QUESTION_OF_DAY -> {
                 if ("MCQ".equals(text(payload, "format", "MCQ"))) {
                     Set<String> ids = optionIds(payload);
@@ -130,6 +176,23 @@ public final class EngagementItemChangePolicy {
         JsonNode tb = readTree(b, objectMapper);
         if (ta == null || tb == null) return Objects.equals(a, b);
         return ta.equals(tb);
+    }
+
+    /**
+     * Two FLASHCARDS payloads are the same deck when their canonical forms are equal.
+     * The stored side is read tolerantly; an incoming payload that does not validate
+     * counts as a change, so the save goes on to validation and fails with a message.
+     */
+    static boolean sameFlashcards(String stored, String incoming, ObjectMapper objectMapper) {
+        String canonicalIncoming;
+        try {
+            canonicalIncoming = FlashcardsPayloadValidator.canonicalise(incoming, objectMapper);
+        } catch (VacademyException e) {
+            return false;
+        }
+        String canonicalStored = FlashcardsPayloadValidator.canonicalJson(
+                FlashcardsPayloadValidator.readTrusted(stored), objectMapper);
+        return sameJson(canonicalStored, canonicalIncoming, objectMapper);
     }
 
     private static JsonNode readTree(String json, ObjectMapper objectMapper) {

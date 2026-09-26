@@ -73,8 +73,37 @@ public class EngagementSettingsService {
         return data != null && Boolean.TRUE.equals(data.get("allowUnverifiedScoreBonus"));
     }
 
-    private int intSetting(String instituteId, String key, int fallback, int min, int max) {
+    /**
+     * Every learner-facing knob from ONE read of the institute row.
+     *
+     * The getters above each re-read and re-parse the institute's settings JSON; the feed
+     * needs all of them for every item, so it takes a snapshot once per request instead.
+     */
+    public Snapshot snapshot(String instituteId) {
         Map<?, ?> data = settingData(instituteId);
+        return new Snapshot(
+                intFrom(data, "dailyItemCap", DEFAULT_DAILY_ITEM_CAP, 1, 50),
+                intFrom(data, "minScrollPercent", DEFAULT_MIN_SCROLL_PERCENT, 0, 100),
+                intFrom(data, "minReadSeconds", (int) (DEFAULT_MIN_READ_MS / 1000), 0, 3600) * 1000L,
+                intFrom(data, "minGameSeconds", (int) (DEFAULT_MIN_GAME_MS / 1000), 0, 3600) * 1000L,
+                data != null && Boolean.TRUE.equals(data.get("allowUnverifiedScoreBonus")));
+    }
+
+    /** The resolved engagement settings of one institute; every value has its default applied. */
+    public record Snapshot(int dailyItemCap, int minScrollPercent, long minReadMs, long minGameMs,
+                           boolean unverifiedScoreBonusEnabled) {
+        /** All defaults: what an institute that never opened the settings screen gets. */
+        public static Snapshot defaults() {
+            return new Snapshot(DEFAULT_DAILY_ITEM_CAP, DEFAULT_MIN_SCROLL_PERCENT,
+                    DEFAULT_MIN_READ_MS, DEFAULT_MIN_GAME_MS, false);
+        }
+    }
+
+    private int intSetting(String instituteId, String key, int fallback, int min, int max) {
+        return intFrom(settingData(instituteId), key, fallback, min, max);
+    }
+
+    private static int intFrom(Map<?, ?> data, String key, int fallback, int min, int max) {
         if (data == null) return fallback;
         Object raw = data.get(key);
         if (raw == null) return fallback;

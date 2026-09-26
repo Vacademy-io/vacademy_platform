@@ -139,7 +139,9 @@ FULL_MIX = {"question_of_day": True, "text_question": True, "poll": True, "readi
         ("QUESTION_OF_DAY", "QUESTION_OF_DAY (format MCQ)"),
         ("TEXT_QUESTION", "QUESTION_OF_DAY (format TEXT)"),
         ("POLL", "POLL"),
-        ("GAME", "GAME (FLASHCARDS)"),
+        ("FLASHCARDS", "FLASHCARDS"),
+        # The pre-flashcards wizard regenerates a deck as GAME; it is a native deck now.
+        ("GAME", "FLASHCARDS"),
     ],
 )
 def test_single_item_prompt_enables_only_the_requested_type(single, label):
@@ -384,9 +386,13 @@ def test_plan_draft_keeps_its_shape_and_the_teacher_title(monkeypatch):
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert set(body) == {"title", "slots", "model", "days_planned", "items_planned", "grounded"}
+    # The old wizard's fields are all still there; the requested-vs-delivered
+    # report is additive.
+    assert {"title", "slots", "model", "days_planned", "items_planned", "grounded"} <= set(body)
     assert body["title"] == "Plants week"
     assert body["days_planned"] == 2 and body["items_planned"] == 3
+    assert body["days_requested"] == 2 and body["items_requested"] == 4
+    assert body["short_dates"] == ["2026-10-02"] and body["missing_dates"] == []
     assert [s["startDate"] for s in body["slots"]] == ["2026-10-01", "2026-10-02"]
     assert len(h.billed) == 1 and h.billed[0]["tool_key"] == "engagement_plan"
 
@@ -448,3 +454,42 @@ def test_reasoning_effort_is_env_configurable(monkeypatch, env, expected):
 
     assert sent[0].get("reasoning") == expected
     assert sent[0]["response_format"] == {"type": "json_object"}
+
+
+# ── legacy wizard compatibility ──────────────────────────────────────────────
+
+def test_legacy_game_toggle_still_enables_flashcards():
+    prompt = svc.build_prompt({"days": 1, "mix": {"question_of_day": False, "game": True}}, "")
+    assert _enabled_line(prompt) == "Enabled task types: FLASHCARDS"
+
+
+def test_prompt_asks_for_exactly_the_requested_number_of_tasks():
+    prompt = svc.build_prompt({"days": 2, "per_day_items": 3, "mix": {}}, "")
+    assert "Tasks per day: exactly 3" in prompt
+
+
+def test_timeout_is_a_502_that_says_the_ai_was_slow(monkeypatch):
+    import httpx
+
+    h = Harness(monkeypatch, _reply(_mcq()))
+
+    async def slow(prompt, api_key, base_url, model):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(router_module, "call_model", slow)
+    resp = h.draft(days=3)
+
+    assert resp.status_code == 502
+    assert "took too long" in resp.json()["detail"]
+    assert h.billed == []
+
+
+def test_plan_charge_is_sized_by_the_delivered_tasks(monkeypatch):
+    h = Harness(monkeypatch, _reply(_mcq(), _text_question()))
+    resp = h.draft(days=1, per_day_items=2)
+
+    assert resp.status_code == 200, resp.text
+    [bill] = h.billed
+    assert bill["tool_key"] == "engagement_plan"
+    assert bill["tool_params"] == {"days": 1, "num_questions": 2}
+    assert bill["idempotency_key"] == "engagement-item-0-0-test"

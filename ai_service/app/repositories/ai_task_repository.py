@@ -71,7 +71,9 @@ def ensure_ai_task_schema(db: Session) -> None:
 # Task types that are an implementation detail of one editor (not an "AI tool"
 # run the user browses in history). Kept out of the unfiltered listings — their
 # result_json is a whole HTML page, and the history UI has no card for them.
-_INTERNAL_TASK_TYPES = (AiTaskType.HTML_DOC_GENERATE.value,)
+# Engagement plan drafts run as jobs too; like HTML docs they are not user-visible
+# AI tasks, so they stay out of the task list.
+_INTERNAL_TASK_TYPES = (AiTaskType.HTML_DOC_GENERATE.value, "ENGAGEMENT_PLAN_DRAFT")
 
 
 def _not_internal():

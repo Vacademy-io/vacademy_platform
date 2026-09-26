@@ -7,11 +7,16 @@ the SAME shape the composer saves (slots with items). The draft is returned for
 review and never published by this service: draft-and-approve, not autopilot.
 
 Cost is planned, not incidental. ONE structured call produces every day's
-questions, polls, written prompts, reading text and flashcard games. It does not
+questions, polls, written prompts, reading text and flashcard decks. It does not
 produce illustrated pages: a fortnight of visual notes with pictures would cost
 14 × (page + images) before the teacher had seen any of it. Readings come back as
 plain semantic HTML with image placeholders, and the teacher upgrades the ones
 worth it through the separate illustrate step, which is billed per picture.
+
+Flashcards are native FLASHCARDS tasks: the model writes plain-text cards, and
+`_norm_cards` turns them into the `flashcards/v1` payload admin_core validates
+(FlashcardsPayloadValidator is authoritative; the limits here mirror it). There
+is no rendered HTML game any more — the learner app draws the deck itself.
 
 Models: text on z-ai/glm-5.3-flash (the same model the HTML-document generator
 uses for creative HTML); pictures on qwen/qwen-image-3 via illustrate_document.
@@ -23,8 +28,10 @@ import json
 import logging
 import os
 import re
+import secrets
+import unicodedata
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -41,13 +48,144 @@ MAX_GROUNDING_CHARS = 24000
 # so a model value out of range would only surface as a failed publish later.
 MAX_POINTS = 1000
 
+# Flashcards. admin_core's FlashcardsPayloadValidator is authoritative; these
+# mirror its limits (UTF-16 units, like Java String.length and JS .length) so a
+# drafted deck never fails the save the teacher makes after review.
+FLASHCARDS_SCHEMA = "flashcards/v1"
+CARD_MAX_FRONT = 200
+CARD_MAX_BACK = 500
+CARD_MAX_HINT = 150
+CARD_MAX_LINES = 12
+CARD_ID_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
+# The planner's own bounds on a drafted deck, tighter than the 1..50 the server
+# allows: fewer than 3 cards is not a study session, and more than 20 is a chore.
+DECK_MIN_CARDS = 3
+DECK_MAX_CARDS = 20
+
+# "GAME" is accepted from the model only as the old flashcards shape (a GAME
+# item carrying `cards`); it is emitted as FLASHCARDS or dropped.
 ITEM_TYPES = {
     "QUESTION_OF_DAY",
     "POLL",
     "READING_HTML",
     "VISUAL_NOTE",
+    "FLASHCARDS",
     "GAME",
 }
+
+
+# ── schedule ─────────────────────────────────────────────────────────────────
+
+_WEEKDAY_NAMES = {
+    "mon": 1, "monday": 1,
+    "tue": 2, "tues": 2, "tuesday": 2,
+    "wed": 3, "wednesday": 3,
+    "thu": 4, "thur": 4, "thurs": 4, "thursday": 4,
+    "fri": 5, "friday": 5,
+    "sat": 6, "saturday": 6,
+    "sun": 7, "sunday": 7,
+}
+_WEEKDAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def parse_weekdays(value: Any) -> Optional[List[int]]:
+    """The weekdays a plan runs on, as sorted ISO numbers (Mon=1 … Sun=7).
+
+    None means every day. Accepted: a list of numbers — ISO 1-7, with 0 also
+    meaning Sunday so JS getDay() values work too — or of names ("mon",
+    "Tuesday"); a comma-separated string of either; or the composer's dowMask
+    bitmask (Mon=1, Tue=2, … Sun=64) as a single integer. An empty list is
+    returned as [] (no day selected) for the caller to refuse. Anything else
+    raises ValueError.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("weekdays must be a list of days")
+    if isinstance(value, int):
+        if not 1 <= value <= 127:
+            raise ValueError("a weekday mask is 1..127")
+        return [d + 1 for d in range(7) if value & (1 << d)]
+    if isinstance(value, str):
+        value = [part for part in re.split(r"[\s,]+", value) if part]
+    if not isinstance(value, (list, tuple, set)):
+        raise ValueError("weekdays must be a list of days")
+    out: Set[int] = set()
+    for v in value:
+        if isinstance(v, bool):
+            raise ValueError("weekdays must be a list of days")
+        if isinstance(v, int):
+            n = v
+        elif isinstance(v, str):
+            s = v.strip().lower()
+            if s.isdigit():
+                n = int(s)
+            elif s in _WEEKDAY_NAMES:
+                n = _WEEKDAY_NAMES[s]
+            else:
+                raise ValueError(f"unknown weekday {v!r}")
+        else:
+            raise ValueError("weekdays must be a list of days")
+        n = 7 if n == 0 else n
+        if not 1 <= n <= 7:
+            raise ValueError(f"weekday {v!r} is out of range")
+        out.add(n)
+    return sorted(out)
+
+
+def plan_dates(brief: Dict[str, Any]) -> List[date]:
+    """The dates a draft covers, in order.
+
+    An explicit `dates` list (the wizard's institute-local run dates, already
+    filtered to the chosen weekdays) wins: those dates, de-duplicated, sorted,
+    at most MAX_DAYS. Otherwise `days` is the calendar span from `start_date`
+    and `weekdays`, when given, keeps only the matching dates in that span
+    (Mon–Fri over 7 days = 5 dates). A single-task regenerate is always one
+    date: the start date.
+    """
+    start = _as_date(brief["start_date"])
+    if brief.get("single_item_type"):
+        return [start]
+    explicit = brief.get("dates")
+    if explicit:
+        return sorted({_as_date(d) for d in explicit})[:MAX_DAYS]
+    span = max(1, min(_int(brief.get("days"), 1), MAX_DAYS))
+    every = [start + timedelta(days=i) for i in range(span)]
+    wanted = parse_weekdays(brief.get("weekdays"))
+    if wanted is None:
+        return every
+    return [d for d in every if d.isoweekday() in wanted]
+
+
+def _date_label(d: date) -> str:
+    return f"{_WEEKDAY_ABBR[d.weekday()]} {d.day} {_MONTH_ABBR[d.month - 1]}"
+
+
+# ── chrome (the planner's own words inside a draft) ─────────────────────────
+
+# Fallback titles the planner writes when the model leaves one blank. They land
+# in the teacher's plan and the learner's app, so they follow the brief's
+# language rather than always being English.
+_CHROME: Dict[str, Dict[str, str]] = {
+    "en": {"day": "Day {n}", "task": "Day {n} task", "plan": "AI engagement plan"},
+    "hi": {"day": "दिन {n}", "task": "दिन {n} का कार्य", "plan": "AI सहभागिता योजना"},
+    "fr": {"day": "Jour {n}", "task": "Tâche du jour {n}", "plan": "Plan d'engagement IA"},
+    "ar": {"day": "اليوم {n}", "task": "مهمة اليوم {n}", "plan": "خطة تفاعل بالذكاء الاصطناعي"},
+}
+_LANG_ALIASES = {
+    "hi": "hi", "hindi": "hi", "हिन्दी": "hi", "हिंदी": "hi",
+    "fr": "fr", "french": "fr", "français": "fr", "francais": "fr",
+    "ar": "ar", "arabic": "ar", "العربية": "ar",
+}
+
+
+def chrome(language: Any, key: str, **kw: Any) -> str:
+    """One of the planner's own strings in the brief's language (English for
+    anything it has no translation for)."""
+    raw = str(language or "").strip().lower()
+    code = _LANG_ALIASES.get(raw) or _LANG_ALIASES.get(raw.split("-")[0].split("_")[0]) or "en"
+    return _CHROME[code][key].format(**kw)
 
 
 # ── prompt ────────────────────────────────────────────────────────────────────
@@ -96,12 +234,10 @@ Return ONLY a JSON object, no prose, no code fence, of this exact shape:
           "completionPoints": 10
         },
         {
-          "type": "GAME",
-          "game": "FLASHCARDS",
+          "type": "FLASHCARDS",
           "title": "...",
-          "cards": [{"front":"term or question","back":"definition or answer"}, ...6 to 10 cards],
-          "completionPoints": 10,
-          "correctPoints": 10
+          "cards": [{"front":"term or question (at most 120 characters)","back":"definition or answer (at most 300 characters)","hint":"optional nudge (at most 100 characters)"}, ...6 to 12 cards],
+          "completionPoints": 10
         }
       ]
     }
@@ -109,12 +245,13 @@ Return ONLY a JSON object, no prose, no code fence, of this exact shape:
 }
 
 Rules:
-- Every day MUST have between 1 and the requested number of items.
+- Every day MUST have exactly the requested number of items, and the days array MUST have exactly the requested number of days, in date order.
 - Use only the task types the teacher enabled. Vary types across days so no two consecutive days feel the same.
 - MCQ: exactly 4 options with ids a,b,c,d; exactly one correctOptionId; distractors must be plausible, not silly.
 - Questions must be answerable from the provided material when material is given; never invent facts.
 - Language: write everything in the requested language.
 - Difficulty: honour the requested level.
+- FLASHCARDS: 6 to 12 cards; plain text only (no HTML, no markdown); every front different; every card answerable from the material.
 - Keep prompts and explanations concise. No markdown anywhere — HTML only inside HTML fields, plain text elsewhere.
 """.strip()
 
@@ -130,7 +267,10 @@ SINGLE_ITEM_TARGETS: Dict[str, Tuple[str, str, Optional[str]]] = {
     "POLL": ("POLL", "POLL", None),
     "READING_HTML": ("READING_HTML", "READING_HTML", None),
     "VISUAL_NOTE": ("READING_HTML", "VISUAL_NOTE", None),
-    "GAME": ("GAME (FLASHCARDS)", "GAME", None),
+    "FLASHCARDS": ("FLASHCARDS", "FLASHCARDS", None),
+    # The wizard before native flashcards regenerated a deck as "GAME"; the
+    # replacement is a native deck either way.
+    "GAME": ("FLASHCARDS", "FLASHCARDS", None),
 }
 
 
@@ -159,18 +299,22 @@ def build_prompt(brief: Dict[str, Any], grounding: str) -> str:
             enabled_types.append("POLL")
         if mix.get("reading"):
             enabled_types.append("READING_HTML")
-        if mix.get("game"):
-            enabled_types.append("GAME (FLASHCARDS)")
+        # `game` is the pre-flashcards wizard's name for the same toggle.
+        if mix.get("flashcards") or mix.get("game"):
+            enabled_types.append("FLASHCARDS")
     if not enabled_types:
         enabled_types = ["QUESTION_OF_DAY (format MCQ)"]
 
     avoid = brief.get("avoid_title")
+    dates = plan_dates(brief) if brief.get("start_date") else None
+    n_days = 1 if single else (len(dates) if dates is not None else brief["days"])
+    per_day = 1 if single else brief.get("per_day_items", 2)
     parts = [
         "You are planning daily engagement tasks for a class. A teacher will review and edit "
         "everything you produce before learners see it.",
         "",
-        f"Number of days: {brief['days']}",
-        f"Tasks per day: up to {brief.get('per_day_items', 2)}",
+        f"Number of days: {n_days}",
+        f"Tasks per day: exactly {per_day}",
         f"Enabled task types: {', '.join(enabled_types)}",
         f"Difficulty: {brief.get('difficulty', 'medium')}",
         f"Language: {brief.get('language', 'English')}",
@@ -178,6 +322,12 @@ def build_prompt(brief: Dict[str, Any], grounding: str) -> str:
         "",
         f"Topic / instructions from the teacher:\n{brief.get('topic') or '(none given — use the material below)'}",
     ]
+    if dates and not single:
+        parts += [
+            "",
+            "The days, in order (days[0] is Day 1): "
+            + "; ".join(f"Day {i + 1} = {_date_label(d)}" for i, d in enumerate(dates)),
+        ]
     if single:
         parts += [
             "",
@@ -253,7 +403,7 @@ def reasoning_effort() -> str:
     return effort
 
 
-async def call_model(prompt: str, api_key: str, base_url: str, model: str) -> Tuple[str, dict]:
+def _payload(prompt: str, model: str) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -266,6 +416,12 @@ async def call_model(prompt: str, api_key: str, base_url: str, model: str) -> Tu
     effort = reasoning_effort()
     if effort:
         payload["reasoning"] = {"effort": effort}
+    return payload
+
+
+async def call_model(prompt: str, api_key: str, base_url: str, model: str) -> Tuple[str, dict]:
+    """One non-streamed call (the synchronous draft endpoint)."""
+    payload = _payload(prompt, model)
     async with httpx.AsyncClient(timeout=240.0) as client:
         resp = await client.post(
             base_url,
@@ -288,6 +444,87 @@ async def call_model(prompt: str, api_key: str, base_url: str, model: str) -> Tu
     return content, (data.get("usage") or {})
 
 
+# Per read, not per call: a streamed draft keeps the connection busy for
+# minutes, and OpenRouter sends keep-alive comments while the model reasons.
+_STREAM_TIMEOUT = httpx.Timeout(connect=20.0, read=180.0, write=30.0, pool=20.0)
+
+OnDelta = Callable[[str, Any], None]
+
+
+async def stream_model(
+    prompt: str,
+    api_key: str,
+    base_url: str,
+    model: str,
+    on_delta: Optional[OnDelta] = None,
+) -> Tuple[str, dict]:
+    """The same call, streamed, so a background job can report progress.
+
+    `on_delta("reasoning", n_chars)` fires while the model thinks and
+    `on_delta("content", text)` for every piece of the JSON it writes. Returns
+    the whole reply and the usage from the final chunk. Raises on a non-200, a
+    mid-stream provider error, or an empty reply.
+    """
+    payload = _payload(prompt, model)
+    payload["stream"] = True
+    # A final usage chunk, so a job bills on actual tokens like the sync path.
+    payload["stream_options"] = {"include_usage": True}
+    pieces: List[str] = []
+    usage: dict = {}
+    async with httpx.AsyncClient(timeout=_STREAM_TIMEOUT) as client:
+        async with client.stream(
+            "POST",
+            base_url,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        ) as resp:
+            if resp.status_code != 200:
+                detail = (await resp.aread()).decode(errors="ignore")[:500]
+                raise httpx.HTTPStatusError(
+                    f"OpenRouter {resp.status_code}: {detail}", request=resp.request, response=resp
+                )
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data_str = line[len("data:"):].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                except ValueError:
+                    continue
+                if not isinstance(chunk, dict):
+                    continue
+                if chunk.get("error"):
+                    raise RuntimeError(f"OpenRouter stream error: {str(chunk['error'])[:300]}")
+                if chunk.get("usage"):
+                    usage = chunk["usage"]
+                choices = chunk.get("choices") or []
+                delta = (choices[0].get("delta") or {}) if choices else {}
+                reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                if reasoning and on_delta:
+                    on_delta("reasoning", len(reasoning))
+                piece = delta.get("content")
+                if piece:
+                    pieces.append(piece)
+                    if on_delta:
+                        on_delta("content", piece)
+    text = "".join(pieces)
+    if not text.strip():
+        raise RuntimeError("OpenRouter returned empty content")
+    return text, usage
+
+
+_DAY_ITEMS_KEY_RE = re.compile(r'"items"\s*:')
+
+
+def drafted_days(partial: str, total: int) -> int:
+    """Days fully written so far in a streamed reply. Every day object has one
+    "items" key; the newest one is still being written."""
+    started = len(_DAY_ITEMS_KEY_RE.findall(partial or ""))
+    return max(0, min(total, started - 1))
+
+
 def parse_json_lenient(text: str) -> Dict[str, Any]:
     """Accept a bare object, a fenced object, or prose around an object."""
     s = text.strip()
@@ -302,60 +539,61 @@ def parse_json_lenient(text: str) -> Dict[str, Any]:
         raise
 
 
-# ── flashcard game renderer ──────────────────────────────────────────────────
+_DAYS_ARRAY_RE = re.compile(r'"days"\s*:\s*\[')
+_TITLE_RE = re.compile(r'"title"\s*:\s*("(?:[^"\\]|\\.)*")')
 
-def render_flashcards_html(title: str, cards: List[Dict[str, str]]) -> str:
-    """A self-contained flashcard game that reports its score with the same
-    postMessage the HTML slide renderer already understands, so it works both as
-    an engagement task and as a slide."""
-    safe_cards = [
-        {"front": html_lib.escape(str(c.get("front", ""))), "back": html_lib.escape(str(c.get("back", "")))}
-        for c in cards
-        if c.get("front") and c.get("back")
-    ]
-    data = json.dumps(safe_cards)
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html_lib.escape(title)}</title>
-<style>
-  body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:16px;background:#f8fafc;color:#0f172a}}
-  h1{{font-size:18px;margin:0 0 4px}} .sub{{color:#64748b;font-size:13px;margin-bottom:12px}}
-  .card{{position:relative;height:180px;perspective:1000px;cursor:pointer;margin-bottom:12px}}
-  .face{{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;border-radius:14px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 4px 14px rgba(15,23,42,.06);backface-visibility:hidden;transition:transform .5s;font-size:17px}}
-  .back{{transform:rotateY(180deg);background:#eef2ff}}
-  .flipped .front{{transform:rotateY(180deg)}} .flipped .back{{transform:rotateY(0)}}
-  .row{{display:flex;gap:8px;justify-content:center}}
-  button{{border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}}
-  .know{{background:#dcfce7;color:#166534}} .again{{background:#fee2e2;color:#991b1b}}
-  .done{{text-align:center;padding:24px;font-size:18px}} .bar{{height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin:8px 0 14px}}
-  .fill{{height:100%;background:#6366f1;width:0;transition:width .3s}}
-</style></head><body>
-<h1>{html_lib.escape(title)}</h1>
-<div class="sub">Tap a card to flip it. Mark whether you knew it.</div>
-<div class="bar"><div class="fill" id="fill"></div></div>
-<div id="stage"></div>
-<script>
-(function(){{
-  var cards={data}, i=0, known=0, flipped=false;
-  var stage=document.getElementById('stage'), fill=document.getElementById('fill');
-  function render(){{
-    fill.style.width=Math.round(i/cards.length*100)+'%';
-    if(i>=cards.length){{
-      stage.innerHTML='<div class="done">Done — you knew <strong>'+known+'</strong> of '+cards.length+'</div>';
-      try{{parent.postMessage({{type:'vacademy:complete',score:known,maxScore:cards.length}},'*');}}catch(e){{}}
-      return;
-    }}
-    var c=cards[i];
-    stage.innerHTML='<div class="card" id="card"><div class="face front">'+c.front+'</div><div class="face back">'+c.back+'</div></div>'
-      +'<div class="row"><button class="again" id="again">Didn\\'t know</button><button class="know" id="know">Knew it</button></div>';
-    flipped=false;
-    document.getElementById('card').onclick=function(){{flipped=!flipped;this.classList.toggle('flipped',flipped);}};
-    document.getElementById('know').onclick=function(){{known++;i++;render();}};
-    document.getElementById('again').onclick=function(){{i++;render();}};
-  }}
-  render();
-}})();
-</script></body></html>"""
+
+def salvage_partial_plan(text: str) -> Optional[Dict[str, Any]]:
+    """The complete days of a reply that was cut off (the token cap on a long
+    plan, or a stream that dropped near the end), or None when not even one
+    day object is complete.
+
+    Throwing away six finished days because the seventh was cut mid-sentence
+    wastes minutes of the teacher's wait; the review reports the missing dates
+    instead, and the charge follows what was delivered.
+    """
+    s = text or ""
+    m = _DAYS_ARRAY_RE.search(s)
+    if not m:
+        return None
+    decoder = json.JSONDecoder()
+    days: List[Any] = []
+    i = m.end()
+    while True:
+        while i < len(s) and s[i] in " \t\r\n,":
+            i += 1
+        if i >= len(s) or s[i] != "{":
+            break
+        try:
+            day, i = decoder.raw_decode(s, i)
+        except ValueError:
+            break
+        days.append(day)
+    if not days:
+        return None
+    title = ""
+    head = _TITLE_RE.search(s[: m.start()])
+    if head:
+        try:
+            title = str(json.loads(head.group(1)))
+        except ValueError:
+            title = ""
+    return {"title": title, "days": days}
+
+
+def parse_draft_reply(text: str) -> Dict[str, Any]:
+    """The model's reply as an object: the whole JSON when it parses, else the
+    complete days of a truncated one. Raises when neither works."""
+    try:
+        return parse_json_lenient(text)
+    except (ValueError, TypeError):
+        salvaged = salvage_partial_plan(text)
+        if salvaged is None:
+            raise
+        logger.warning(
+            "[engagement-plan] reply was cut off; kept %d complete day(s)", len(salvaged["days"])
+        )
+        return salvaged
 
 
 # ── validation / normalisation ───────────────────────────────────────────────
@@ -381,6 +619,104 @@ def _norm_options(raw: Any) -> List[Dict[str, str]]:
         seen.add(oid)
         out.append({"id": oid, "text": text})
     return out
+
+
+_BREAK_TAG_RE = re.compile(r"<\s*(?:br\s*/?|/p|/li|/div|/h[1-6])\s*>", re.IGNORECASE)
+# Only things shaped like real tags: "2 < x > 1" survives, "<b>x</b>" does not.
+_CARD_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1")
+_H_SPACE_RE = re.compile(r"[^\S\n]+")
+
+
+def _card_text(raw: Any) -> str:
+    """One card face as the plain text the deck stores.
+
+    This is the ONLY place card text is tag-stripped: the model was asked for
+    plain text, so markup here is a slip, not content (admin_core keeps a
+    teacher's "<b>x</b>" verbatim). Then the server's normalisation: newlines
+    kept, other whitespace one space, control characters removed, trimmed.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (str, int, float)):
+        return ""
+    s = str(raw)
+    s = _BREAK_TAG_RE.sub("\n", s)
+    s = _CARD_TAG_RE.sub(" ", s)
+    s = html_lib.unescape(s)
+    s = _MD_BOLD_RE.sub(r"\2", s)
+    s = s.replace("\r\n", "\n").replace("\r", "\n").replace("\ufeff", " ")
+    s = "".join(ch for ch in s if ch == "\n" or ch.isspace() or unicodedata.category(ch) != "Cc")
+    s = _H_SPACE_RE.sub(" ", s)
+    s = re.sub(r" ?\n ?", "\n", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+def _utf16_len(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _fits(text: str, limit: int) -> bool:
+    return _utf16_len(text) <= limit and text.count("\n") + 1 <= CARD_MAX_LINES
+
+
+def mint_card_id(taken: Set[str]) -> str:
+    """`c_` plus 6 base36 characters, unique within the deck."""
+    alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+    while True:
+        cid = "c_" + "".join(secrets.choice(alphabet) for _ in range(6))
+        if cid not in taken:
+            return cid
+
+
+def _face(card: Dict[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if card.get(k) not in (None, ""):
+            return card.get(k)
+    return None
+
+
+def _norm_cards(raw: Any) -> Optional[List[Dict[str, str]]]:
+    """The model's cards → a deck admin_core will accept, or None when fewer
+    than DECK_MIN_CARDS survive.
+
+    Strips tags, trims, drops a card that is missing a face or over a length
+    or line limit (an over-long hint loses only the hint), drops a repeated
+    front (case-insensitive), caps the deck at DECK_MAX_CARDS and mints fresh
+    ids — the model's own ids are never trusted.
+    """
+    if not isinstance(raw, list):
+        return None
+    cards: List[Dict[str, str]] = []
+    fronts: Set[str] = set()
+    ids: Set[str] = set()
+    for c in raw:
+        if len(cards) >= DECK_MAX_CARDS:
+            break
+        if not isinstance(c, dict):
+            continue
+        front = _card_text(_face(c, "front", "term", "question"))
+        back = _card_text(_face(c, "back", "definition", "answer"))
+        if not front or not back:
+            continue
+        if not _fits(front, CARD_MAX_FRONT) or not _fits(back, CARD_MAX_BACK):
+            continue
+        key = " ".join(front.casefold().split())
+        if key in fronts:
+            continue
+        fronts.add(key)
+        cid = mint_card_id(ids)
+        ids.add(cid)
+        card = {"id": cid, "front": front, "back": back}
+        hint = _card_text(c.get("hint"))
+        if hint and _fits(hint, CARD_MAX_HINT):
+            card["hint"] = hint
+        cards.append(card)
+    return cards if len(cards) >= DECK_MIN_CARDS else None
+
+
+def flashcards_payload(cards: List[Dict[str, str]]) -> Dict[str, Any]:
+    """The v1 payload, in the shape admin_core canonicalises to."""
+    return {"schema": FLASHCARDS_SCHEMA, "cards": cards, "settings": {"shuffle": True}}
 
 
 def _int(value: Any, default: int) -> int:
@@ -410,6 +746,7 @@ def _normalise_item(
     default_completion: int,
     default_correct: int,
     keep_points: bool = False,
+    language: Any = "English",
 ) -> Optional[Dict[str, Any]]:
     """One model item → one composer item, or None when it is malformed.
 
@@ -421,7 +758,7 @@ def _normalise_item(
     itype = str(it.get("type") or "").upper()
     if itype not in ITEM_TYPES:
         return None
-    title = str(it.get("title") or "").strip() or f"Day {day_index + 1} task"
+    title = str(it.get("title") or "").strip() or chrome(language, "task", n=day_index + 1)
     base: Dict[str, Any] = {
         "itemType": itype,
         "title": title[:200],
@@ -470,25 +807,26 @@ def _normalise_item(
         base["itemType"] = "READING_HTML"
         base["contentHtml"] = content
 
-    elif itype == "GAME":
-        cards = it.get("cards") if isinstance(it.get("cards"), list) else []
-        cards = [c for c in cards if isinstance(c, dict)]
-        if len(cards) < 3:
+    elif itype in ("FLASHCARDS", "GAME"):
+        # A deck is completion-scored: studying it earns the completion points,
+        # and there is no "correct" reward (admin_core forces correctPoints 0).
+        cards = _norm_cards(it.get("cards"))
+        if cards is None:
             return None
-        base["contentHtml"] = render_flashcards_html(title, cards)
+        base["itemType"] = "FLASHCARDS"
+        base["payloadJson"] = json.dumps(flashcards_payload(cards), ensure_ascii=False)
         base["maxScore"] = len(cards)
-        base["correctPoints"] = (
-            default_correct if keep_points else _points(it.get("correctPoints"), default_correct // 2)
-        )
+        base["correctPoints"] = 0
+        base["hideResultUntilReveal"] = False
 
     return base
 
 
-def _slot(brief: Dict[str, Any], start: date, day_index: int, day: Any, items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    theme = day.get("theme") if isinstance(day, dict) else None
+def _slot(brief: Dict[str, Any], when: date, day_index: int, day: Any, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    theme = str(day.get("theme") or "").strip() if isinstance(day, dict) else ""
     return {
-        "title": str(theme or f"Day {day_index + 1}")[:200],
-        "startDate": (start + timedelta(days=day_index)).isoformat(),
+        "title": (theme or chrome(brief.get("language"), "day", n=day_index + 1))[:200],
+        "startDate": when.isoformat(),
         "startTime": brief.get("start_time", "06:00"),
         "endTime": brief.get("end_time", "20:00"),
         "revealTime": brief.get("reveal_time") or None,
@@ -500,7 +838,7 @@ def _slot(brief: Dict[str, Any], start: date, day_index: int, day: Any, items: L
 def _plan_title(raw: Dict[str, Any], brief: Dict[str, Any]) -> str:
     # The teacher's own title wins; the model's is only a fallback for a blank one.
     title = str(brief.get("title") or "").strip() or str(raw.get("title") or "").strip()
-    return (title or "AI engagement plan")[:200]
+    return (title or chrome(brief.get("language"), "plan"))[:200]
 
 
 def normalise_draft(
@@ -511,28 +849,52 @@ def normalise_draft(
 
     Anything malformed is dropped rather than repaired into something wrong: a
     question with no correct option is not a question, and the teacher reviews
-    the result anyway.
+    the result anyway. What was dropped is REPORTED, not hidden: the result
+    carries the requested counts and the dates that came back empty or short,
+    so the review can say "5 of 7 days drafted".
+
+    The model's days map onto `plan_dates(brief)` in order: day 1 → the first
+    date the plan runs on, skipping weekdays the teacher left out.
     """
     if not isinstance(raw, dict):
         raw = {}
-    start = _as_date(brief["start_date"])
+    dates = plan_dates(brief)
     per_day = max(1, min(_int(brief.get("per_day_items"), 2), MAX_ITEMS_PER_DAY))
     default_completion = _int(brief.get("completion_points"), 10)
     default_correct = _int(brief.get("correct_points"), 20)
+    language = brief.get("language")
 
     slots: List[Dict[str, Any]] = []
+    missing: List[str] = []
+    short: List[str] = []
+    dropped = 0
     days = raw.get("days") if isinstance(raw.get("days"), list) else []
-    for day_index, day in enumerate(days[: brief["days"]]):
+    for day_index, when in enumerate(dates):
+        day = days[day_index] if day_index < len(days) else None
         items_in = day.get("items") if isinstance(day, dict) else []
         items_out: List[Dict[str, Any]] = []
         for it in (items_in if isinstance(items_in, list) else [])[:per_day]:
-            item = _normalise_item(it, day_index, default_completion, default_correct)
+            item = _normalise_item(it, day_index, default_completion, default_correct, language=language)
             if item:
                 items_out.append(item)
+            else:
+                dropped += 1
         if items_out:
-            slots.append(_slot(brief, start, day_index, day, items_out))
+            slots.append(_slot(brief, when, day_index, day, items_out))
+        if not items_out:
+            missing.append(when.isoformat())
+        elif len(items_out) < per_day:
+            short.append(when.isoformat())
 
-    return {"title": _plan_title(raw, brief), "slots": slots}
+    return {
+        "title": _plan_title(raw, brief),
+        "slots": slots,
+        "requested_days": len(dates),
+        "requested_items": len(dates) * per_day,
+        "missing_dates": missing,
+        "short_dates": short,
+        "dropped_items": dropped,
+    }
 
 
 def _matches_target(item: Dict[str, Any], target: Tuple[str, str, Optional[str]]) -> bool:
@@ -543,6 +905,12 @@ def _matches_target(item: Dict[str, Any], target: Tuple[str, str, Optional[str]]
         return item["itemType"] == "READING_HTML" and "data-img-prompt" in (item.get("contentHtml") or "")
     if item["itemType"] != want_type:
         return False
+    if want_type == "FLASHCARDS":
+        try:
+            cards = json.loads(item.get("payloadJson") or "{}").get("cards")
+        except (TypeError, ValueError):
+            return False
+        return isinstance(cards, list) and len(cards) >= DECK_MIN_CARDS
     if want_format:
         try:
             fmt = json.loads(item.get("payloadJson") or "{}").get("format")
@@ -569,15 +937,26 @@ def normalise_single_item(raw: Dict[str, Any], brief: Dict[str, Any]) -> Optiona
     start = _as_date(brief["start_date"])
     default_completion = _int(brief.get("completion_points"), 10)
     default_correct = _int(brief.get("correct_points"), 20)
+    language = brief.get("language")
 
     days = raw.get("days") if isinstance(raw.get("days"), list) else []
     for day in days:
         items_in = day.get("items") if isinstance(day, dict) else []
         for it in items_in if isinstance(items_in, list) else []:
-            item = _normalise_item(it, 0, default_completion, default_correct, keep_points=True)
+            item = _normalise_item(
+                it, 0, default_completion, default_correct, keep_points=True, language=language
+            )
             if item and _matches_target(item, target):
                 item["itemType"] = target[1]
-                return {"title": _plan_title(raw, brief), "slots": [_slot(brief, start, 0, day, [item])]}
+                return {
+                    "title": _plan_title(raw, brief),
+                    "slots": [_slot(brief, start, 0, day, [item])],
+                    "requested_days": 1,
+                    "requested_items": 1,
+                    "missing_dates": [],
+                    "short_dates": [],
+                    "dropped_items": 0,
+                }
     return None
 
 

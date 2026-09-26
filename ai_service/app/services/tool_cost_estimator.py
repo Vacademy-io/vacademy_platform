@@ -182,19 +182,24 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
     # AI engagement planner — ONE structured call drafts a whole run of daily
-    # tasks (questions, polls, prompts, readings, flashcard games). Flat per
-    # draft, charged as max(flat, actual × markup). Readings come back with
-    # image placeholders only; pictures are a separate opt-in charge
-    # (html_document_image) so a fortnight of illustrated pages is never billed
-    # before the teacher has reviewed the draft.
+    # tasks (questions, polls, prompts, readings, flashcard decks). Priced by
+    # size: base + per task, where tasks = days × tasks per day. The preview
+    # quotes the tasks REQUESTED (params.num_questions — the "questions" unit,
+    # which the admin's local cost mirror already understands); the charge uses
+    # the tasks DELIVERED, as max(estimate, actual × markup). The usual week at
+    # 2 a day (14 tasks) stays 10 credits; one day of 3 is 5; a month of 3 a
+    # day is 50. Readings come back with image placeholders only; pictures are
+    # a separate opt-in charge (html_document_image) so a fortnight of
+    # illustrated pages is never billed before the teacher has reviewed it.
     "engagement_plan": {
         "request_type": "content",
-        "flat_base_credits": Decimal("10"),
-        "per_unit_credits": Decimal("0"),
-        "unit_field": "flat",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "questions",
         "params": {},
     },
-    # Regenerate ONE task inside a draft — a small call, priced so a teacher can
+    # Regenerate ONE task inside a draft (any type, a flashcards deck included)
+    # — a small call, priced so a teacher can
     # reject and retry a few items without it costing as much as the plan.
     "engagement_item": {
         "request_type": "content",

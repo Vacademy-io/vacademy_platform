@@ -347,6 +347,7 @@
     "assessmentInstructions": {
       "attachment": "مرفق",
       "attemptOf": "المحاولة {{used}} من {{max}}",
+      "downloadPaper": "تنزيل",
       "instructionsFromInstitute": "تعليمات من مؤسستك",
       "no": "لا",
       "noAdditionalInstructions": "لم تُقدَّم أي تعليمات إضافية لهذا التقييم.",

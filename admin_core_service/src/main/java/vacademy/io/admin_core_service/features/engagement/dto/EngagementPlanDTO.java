@@ -21,6 +21,11 @@ public class EngagementPlanDTO {
     private String subjectId;
     private String status;
     private String timezone;
+    /** CALENDAR or RELATIVE. */
+    private String scheduleMode;
+    private String publishedAt;
+    /** RELATIVE plans: the last day number any slot runs on. */
+    private Integer lastDay;
     private String defaultMissPolicy;
     private Integer defaultCatchUpDays;
     private Integer defaultCatchUpPercent;

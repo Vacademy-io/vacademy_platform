@@ -92,4 +92,25 @@ public interface EngagementPlanRepository extends JpaRepository<EngagementPlan, 
             "WHERE i.slot_id IN (:slotIds) AND i.status = 'ACTIVE' " +
             "GROUP BY s.plan_id", nativeQuery = true)
     List<Object[]> countLearnersBySlotsGroupedByPlan(@Param("slotIds") List<String> slotIds);
+
+    /**
+     * A learner's join date per batch (enrollment date, else when the enrollment row was
+     * created), for RELATIVE plans. Rows: [packageSessionId, Timestamp joinedAt].
+     */
+    @Query(value = "SELECT m.package_session_id, MIN(COALESCE(m.enrolled_date, m.created_at)) " +
+            "FROM student_session_institute_group_mapping m " +
+            "WHERE m.user_id = :userId AND m.package_session_id IN (:packageSessionIds) " +
+            "AND m.status = 'ACTIVE' GROUP BY m.package_session_id", nativeQuery = true)
+    List<Object[]> findJoinDatesForUser(@Param("userId") String userId,
+                                        @Param("packageSessionIds") List<String> packageSessionIds);
+
+    /** Every active learner's join date in one batch. Rows: [userId, Timestamp joinedAt]. */
+    @Query(value = "SELECT m.user_id, MIN(COALESCE(m.enrolled_date, m.created_at)) " +
+            "FROM student_session_institute_group_mapping m " +
+            "WHERE m.package_session_id = :packageSessionId AND m.status = 'ACTIVE' " +
+            "AND m.user_id IS NOT NULL GROUP BY m.user_id", nativeQuery = true)
+    List<Object[]> findJoinDatesForBatch(@Param("packageSessionId") String packageSessionId);
+
+    @Query("SELECT p FROM EngagementPlan p WHERE p.status = 'PUBLISHED' AND p.scheduleMode = 'RELATIVE'")
+    List<EngagementPlan> findAllPublishedRelative();
 }

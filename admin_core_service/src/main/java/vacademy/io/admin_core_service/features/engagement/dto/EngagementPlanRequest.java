@@ -21,6 +21,8 @@ public class EngagementPlanRequest {
     /** DRAFT | PUBLISHED | ARCHIVED */
     private String status;
     private String defaultMissPolicy;
+    /** CALENDAR (default) or RELATIVE (days after each learner joins). Fixed at creation. */
+    private String scheduleMode;
     private Integer defaultCatchUpDays;
     private Integer defaultCatchUpPercent;
     private List<EngagementSlotRequest> slots;

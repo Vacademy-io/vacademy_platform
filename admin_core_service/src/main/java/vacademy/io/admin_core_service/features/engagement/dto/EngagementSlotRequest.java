@@ -17,6 +17,9 @@ public class EngagementSlotRequest {
     private String endTime;
     /** Mon=1..Sun=64 bitmask; null/0 = every day in the range. */
     private Integer dowMask;
+    /** RELATIVE plans: 1-based first/last day after the learner joins (endDay defaults to startDay). */
+    private Integer startDay;
+    private Integer endDay;
     private String revealTime;
     private String notifyTime;
     private Integer sortOrder;

@@ -17,6 +17,9 @@ public class EngagementSlotDTO {
     private String planId;
     private String title;
     private String startDate;
+    /** RELATIVE plans only; startDate/endDate are then virtual. */
+    private Integer startDay;
+    private Integer endDay;
     private String endDate;
     private String startTime;
     private String endTime;

@@ -49,6 +49,9 @@ public class EngagementRevealJob {
     private final EngagementAttemptRepository attemptRepository;
     private final EngagementScheduleResolver scheduleResolver;
     private final PointsLedgerService pointsLedgerService;
+    /** Plans scheduled in days after joining. Optional so hand-built tests need not wire it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vacademy.io.admin_core_service.features.engagement.service.EngagementRelativeSchedule relativeSchedule;
 
     @Scheduled(cron = "0 5/15 * * * ?")
     @SchedulerLock(name = "EngagementRevealTick", lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
@@ -72,6 +75,10 @@ public class EngagementRevealJob {
     }
 
     private void settleForPlan(EngagementPlan plan) {
+        if (plan.isRelative()) {
+            if (relativeSchedule != null) settleRelativePlan(plan);
+            return;
+        }
         LocalDate today = LocalDate.now(scheduleResolver.zoneOf(plan));
 
         for (EngagementSlot slot : slotRepository.findActiveByPlan(plan.getId())) {
@@ -93,10 +100,44 @@ public class EngagementRevealJob {
         }
     }
 
+    /**
+     * Days-after-joining plans: every learner has their own reveal moment, so each
+     * correct hidden answer is checked against the reveal of the learner's own run —
+     * the one in effect when they answered.
+     */
+    private void settleRelativePlan(EngagementPlan plan) {
+        java.time.ZoneId zone = scheduleResolver.zoneOf(plan);
+        java.util.Map<String, LocalDate> dayOnes = relativeSchedule.dayOnesForBatch(plan);
+        for (EngagementSlot stored : slotRepository.findActiveByPlan(plan.getId())) {
+            for (EngagementItem item : itemRepository.findActiveBySlot(stored.getId())) {
+                if (!Boolean.TRUE.equals(item.getHideResultUntilReveal())) continue;
+                int bonus = item.getCorrectPoints() == null ? 0 : item.getCorrectPoints();
+                if (bonus <= 0) continue;
+                settleItem(plan, item, bonus, attempt -> {
+                    LocalDate dayOne = dayOnes.get(attempt.getUserId());
+                    if (dayOne == null || attempt.getCompletedAt() == null) return null;
+                    EngagementSlot mine = relativeSchedule.localize(plan, stored, dayOne);
+                    LocalDate answered = attempt.getCompletedAt().toInstant().atZone(zone).toLocalDate();
+                    LocalDate run = scheduleResolver.mostRecentRunDate(mine, answered);
+                    if (run == null || !scheduleResolver.isRevealed(plan, mine, run)) return null;
+                    return java.time.LocalDateTime.of(run, mine.effectiveRevealTime()).atZone(zone).toInstant();
+                });
+            }
+        }
+    }
+
     private void settleItem(EngagementPlan plan, EngagementItem item, int fullBonus,
                             java.time.Instant revealAt) {
+        settleItem(plan, item, fullBonus, attempt -> revealAt);
+    }
+
+    /** {@code revealAtFor} returns null when this attempt's reveal has not happened yet. */
+    private void settleItem(EngagementPlan plan, EngagementItem item, int fullBonus,
+                            java.util.function.Function<EngagementAttempt, java.time.Instant> revealAtFor) {
         for (EngagementAttempt attempt : attemptRepository.findByItem(item.getId())) {
             if (!EngagementEnums.AttemptStatus.COMPLETED.name().equals(attempt.getStatus())) continue;
+            java.time.Instant revealAt = revealAtFor.apply(attempt);
+            if (revealAt == null) continue;
             if (!Boolean.TRUE.equals(attempt.getIsCorrect())) continue;
             // Answered after the reveal: submit already paid completion only, and the
             // answer was public by then. Without this a learner answering in the gap

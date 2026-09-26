@@ -108,6 +108,8 @@ public class EngagementPlanService {
         plan.setDefaultMissPolicy(safeMissPolicy(request.getDefaultMissPolicy()));
         plan.setDefaultCatchUpDays(request.getDefaultCatchUpDays());
         plan.setDefaultCatchUpPercent(request.getDefaultCatchUpPercent());
+        plan.setScheduleMode(safeScheduleMode(request.getScheduleMode()));
+        stampPublished(plan);
         plan.setCreatedByUserId(userId);
         plan.setUpdatedAt(now());
         plan = planRepository.save(plan);
@@ -127,6 +129,13 @@ public class EngagementPlanService {
         if (request.getDescription() != null) plan.setDescription(request.getDescription());
         if (request.getSubjectId() != null) plan.setSubjectId(request.getSubjectId());
         if (request.getStatus() != null) plan.setStatus(safeStatus(request.getStatus()));
+        stampPublished(plan);
+        if (request.getScheduleMode() != null
+                && !safeScheduleMode(request.getScheduleMode()).equals(plan.getScheduleMode())) {
+            // Every learner's timeline, attempt and reveal is computed from the mode;
+            // switching it under a running plan would move tasks around for everyone.
+            throw new VacademyException("A plan's schedule type can't change. Create a new plan instead.");
+        }
         if (request.getDefaultMissPolicy() != null) {
             plan.setDefaultMissPolicy(safeMissPolicy(request.getDefaultMissPolicy()));
         }
@@ -212,7 +221,8 @@ public class EngagementPlanService {
         }
 
         EngagementPlanDTO dto = toPlanDto(plan, slotDtos);
-        PlanSchedule schedule = summarize(slots, itemCountBySlot, todayFor(plan), scheduleResolver);
+        PlanSchedule schedule = summarize(slots, itemCountBySlot, plan.isRelative() ? null : todayFor(plan),
+                scheduleResolver);
         Map<String, long[]> todayLearners = todayLearnerCounts(schedule.todaySlotIds());
         applySummary(dto, plan, schedule, labels(psId == null ? List.of() : List.of(psId)).get(psId),
                 learnerCount, todayLearners.get(plan.getId()));
@@ -354,7 +364,7 @@ public class EngagementPlanService {
         List<String> todaySlotIds = new ArrayList<>();
         for (EngagementPlan plan : plans) {
             PlanSchedule schedule = summarize(slotsByPlan.getOrDefault(plan.getId(), List.of()),
-                    itemCountBySlot, todayFor(plan), scheduleResolver);
+                    itemCountBySlot, plan.isRelative() ? null : todayFor(plan), scheduleResolver);
             schedules.put(plan.getId(), schedule);
             todaySlotIds.addAll(schedule.todaySlotIds());
         }
@@ -451,6 +461,16 @@ public class EngagementPlanService {
             dto.setTodayTaskCount(schedule.todayTaskCount());
         }
         dto.setTodayState(todayState(plan.getStatus(), schedule, today));
+        if (plan.isRelative()) {
+            // Every learner is on their own day: no shared first/last date or "today".
+            dto.setFirstDate(null);
+            dto.setLastDate(null);
+            dto.setLastDay(schedule == null || schedule.lastDate() == null ? null
+                    : (int) java.time.temporal.ChronoUnit.DAYS.between(EngagementRelativeSchedule.VIRTUAL_DAY_ONE,
+                            schedule.lastDate()) + 1);
+            dto.setTodayTaskCount(null);
+            if (EngagementEnums.PlanStatus.PUBLISHED.name().equals(plan.getStatus())) dto.setTodayState("RUNNING");
+        }
         boolean runsToday = schedule != null && !schedule.todaySlotIds().isEmpty();
         dto.setTodayStartedLearners(runsToday ? (todayLearners == null ? 0L : todayLearners[0]) : null);
         dto.setTodayCompletedLearners(runsToday ? (todayLearners == null ? 0L : todayLearners[1]) : null);
@@ -562,12 +582,32 @@ public class EngagementPlanService {
 
         slot.setPlanId(plan.getId());
         slot.setTitle(request.getTitle());
-        slot.setStartDate(parseDate(request.getStartDate(), "startDate"));
-        slot.setEndDate(request.getEndDate() == null || request.getEndDate().isBlank()
-                ? null : parseDate(request.getEndDate(), "endDate"));
+        if (plan.isRelative()) {
+            // Days after joining: stored on a virtual calendar (Day 1 = 2000-01-01) so the
+            // date columns stay valid; each learner sees it shifted onto their own Day 1.
+            int startDay = request.getStartDay() == null ? 0 : request.getStartDay();
+            int endDay = request.getEndDay() == null ? startDay : request.getEndDay();
+            if (startDay < 1 || startDay > MAX_RELATIVE_DAY) {
+                throw new VacademyException("Pick a start day between 1 and " + MAX_RELATIVE_DAY + ".");
+            }
+            if (endDay < startDay || endDay > MAX_RELATIVE_DAY) {
+                throw new VacademyException("The last day must be between the start day and " + MAX_RELATIVE_DAY + ".");
+            }
+            slot.setStartDay(startDay);
+            slot.setEndDay(endDay);
+            slot.setStartDate(EngagementRelativeSchedule.virtualDate(startDay));
+            slot.setEndDate(EngagementRelativeSchedule.virtualDate(endDay));
+        } else {
+            slot.setStartDay(null);
+            slot.setEndDay(null);
+            slot.setStartDate(parseDate(request.getStartDate(), "startDate"));
+            slot.setEndDate(request.getEndDate() == null || request.getEndDate().isBlank()
+                    ? null : parseDate(request.getEndDate(), "endDate"));
+        }
         slot.setStartTime(parseTime(request.getStartTime(), "startTime"));
         slot.setEndTime(parseTime(request.getEndTime(), "endTime"));
-        slot.setDowMask(request.getDowMask());
+        // Days after joining are consecutive; a weekday mask does not apply.
+        slot.setDowMask(plan.isRelative() ? null : request.getDowMask());
         slot.setRevealTime(request.getRevealTime() == null || request.getRevealTime().isBlank()
                 ? null : parseTime(request.getRevealTime(), "revealTime"));
         slot.setNotifyTime(request.getNotifyTime() == null || request.getNotifyTime().isBlank()
@@ -734,6 +774,21 @@ public class EngagementPlanService {
         item.setUpdatedAt(now());
     }
 
+    /** Longest "days after joining" a slot may reach. */
+    static final int MAX_RELATIVE_DAY = 366;
+
+    private static String safeScheduleMode(String raw) {
+        return "RELATIVE".equalsIgnoreCase(raw == null ? "" : raw.trim()) ? "RELATIVE" : "CALENDAR";
+    }
+
+    /** The first time a plan goes live; RELATIVE plans start existing learners on this day. */
+    private void stampPublished(EngagementPlan plan) {
+        if (plan.getPublishedAt() == null
+                && EngagementEnums.PlanStatus.PUBLISHED.name().equals(plan.getStatus())) {
+            plan.setPublishedAt(now());
+        }
+    }
+
     private EngagementPlan requirePlan(String planId, String instituteId) {
         EngagementPlan plan = planRepository.findById(planId)
                 .orElseThrow(() -> new VacademyException("Plan not found"));
@@ -754,6 +809,8 @@ public class EngagementPlanService {
                 .subjectId(plan.getSubjectId())
                 .status(plan.getStatus())
                 .timezone(plan.getTimezone())
+                .scheduleMode(plan.getScheduleMode())
+                .publishedAt(plan.getPublishedAt() == null ? null : plan.getPublishedAt().toInstant().toString())
                 .defaultMissPolicy(plan.getDefaultMissPolicy())
                 .defaultCatchUpDays(plan.getDefaultCatchUpDays())
                 .defaultCatchUpPercent(plan.getDefaultCatchUpPercent())
@@ -799,6 +856,8 @@ public class EngagementPlanService {
                 .planId(slot.getPlanId())
                 .title(slot.getTitle())
                 .startDate(slot.getStartDate().toString())
+                .startDay(slot.getStartDay())
+                .endDay(slot.getEndDay())
                 .endDate(slot.getEndDate() == null ? null : slot.getEndDate().toString())
                 .startTime(slot.getStartTime().toString())
                 .endTime(slot.getEndTime().toString())

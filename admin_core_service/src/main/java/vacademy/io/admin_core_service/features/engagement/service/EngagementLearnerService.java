@@ -136,6 +136,9 @@ public class EngagementLearnerService {
     private final PointsLedgerRepository pointsLedgerRepository;
     /** For the one write the read-only feed can make: a settled bonus on the attempt row. */
     private final PlatformTransactionManager transactionManager;
+    /** Plans scheduled in days after joining. Optional so hand-built tests need not wire it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private EngagementRelativeSchedule relativeSchedule;
 
     /** The service's clock. Every "now" goes through it so tests can pin the time. */
     private Clock clock = Clock.systemUTC();
@@ -185,8 +188,9 @@ public class EngagementLearnerService {
         LocalDate utcToday = LocalDate.now(clock.withZone(ZoneId.of("UTC")));
         LocalDate probeFrom = utcToday.minusDays(1L + catchUpLookbackDays(plans));
         LocalDate probeTo = utcToday.plusDays(UPCOMING_DAYS + 1);
-        List<EngagementSlot> slots =
-                slotRepository.findInRange(new ArrayList<>(plansById.keySet()), probeFrom, probeTo);
+        List<EngagementSlot> slots = withRelativeSlots(
+                slotRepository.findInRange(new ArrayList<>(plansById.keySet()), probeFrom, probeTo),
+                plansById, userId);
         if (slots.isEmpty()) {
             return emptyFeed(feedToday);
         }
@@ -420,8 +424,9 @@ public class EngagementLearnerService {
         for (EngagementPlan plan : plans) plansById.put(plan.getId(), plan);
         Map<String, String> batchNames = batchNames(plans);
 
-        List<EngagementSlot> slots = slotRepository.findInRange(
-                new ArrayList<>(plansById.keySet()), headToday.minusDays(window + 1), headToday.plusDays(1));
+        List<EngagementSlot> slots = withRelativeSlots(slotRepository.findInRange(
+                new ArrayList<>(plansById.keySet()), headToday.minusDays(window + 1), headToday.plusDays(1)),
+                plansById, userId);
         if (slots.isEmpty()) return empty;
         Map<String, EngagementSlot> slotsById = new HashMap<>();
         for (EngagementSlot slot : slots) slotsById.put(slot.getId(), slot);
@@ -1529,6 +1534,10 @@ public class EngagementLearnerService {
         if (enrolled == null || !enrolled.contains(plan.getPackageSessionId())) {
             throw new VacademyException("Task not found");
         }
+        if (plan.isRelative() && relativeSchedule != null) {
+            slot = relativeSchedule.localize(plan, slot,
+                    relativeSchedule.dayOnesForUser(userId, List.of(plan)).get(plan.getId()));
+        }
 
         ZonedDateTime now = nowIn(plan);
         LocalDate today = now.toLocalDate();
@@ -1544,6 +1553,32 @@ public class EngagementLearnerService {
     }
 
     // ── small helpers ────────────────────────────────────────────────────────
+
+    /**
+     * Calendar slots as loaded, plus every active slot of the learner's RELATIVE plans
+     * shifted onto this learner's own days. (A RELATIVE slot's stored dates are virtual,
+     * so the date-bounded query never returns it.)
+     */
+    private List<EngagementSlot> withRelativeSlots(List<EngagementSlot> loaded,
+                                                   Map<String, EngagementPlan> plansById, String userId) {
+        List<EngagementSlot> out = new ArrayList<>();
+        for (EngagementSlot slot : loaded) {
+            EngagementPlan plan = plansById.get(slot.getPlanId());
+            if (plan != null && !plan.isRelative()) out.add(slot);
+        }
+        if (relativeSchedule == null) return out;
+        List<EngagementPlan> relative = plansById.values().stream().filter(EngagementPlan::isRelative).toList();
+        if (relative.isEmpty()) return out;
+        Map<String, LocalDate> dayOnes = relativeSchedule.dayOnesForUser(userId, relative);
+        for (EngagementPlan plan : relative) {
+            LocalDate dayOne = dayOnes.get(plan.getId());
+            if (dayOne == null) continue;
+            for (EngagementSlot slot : slotRepository.findActiveByPlan(plan.getId())) {
+                out.add(relativeSchedule.localize(plan, slot, dayOne));
+            }
+        }
+        return out;
+    }
 
     private Map<String, String> batchNames(List<EngagementPlan> plans) {
         // A learner in several batches needs each card to say which batch it is from.

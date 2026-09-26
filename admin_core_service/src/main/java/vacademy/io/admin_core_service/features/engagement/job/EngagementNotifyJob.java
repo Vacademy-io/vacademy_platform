@@ -68,6 +68,9 @@ public class EngagementNotifyJob {
     private final EngagementScheduleResolver scheduleResolver;
     private final StudentSessionInstituteGroupMappingRepository enrollmentRepository;
     private final NotificationService notificationService;
+    /** Plans scheduled in days after joining. Optional so hand-built tests need not wire it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vacademy.io.admin_core_service.features.engagement.service.EngagementRelativeSchedule relativeSchedule;
 
     @Scheduled(cron = "0 0/15 * * * ?")
     @SchedulerLock(name = "EngagementNotifyTick", lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
@@ -102,20 +105,31 @@ public class EngagementNotifyJob {
         // skip it rather than mis-send. The next tick covers it correctly.
         if (windowStart.isAfter(windowEnd)) return;
 
-        List<EngagementSlot> slots =
-                slotRepository.findDueForNotification(today, windowStart, windowEnd);
+        // Days-after-joining slots store virtual dates, so the date-bounded query never
+        // returns them: take the plan's slots whose notify time falls in this window and
+        // send each to the learners for whom it runs today.
+        java.util.Map<String, LocalDate> dayOnes = plan.isRelative() && relativeSchedule != null
+                ? relativeSchedule.dayOnesForBatch(plan) : null;
+        List<EngagementSlot> slots = plan.isRelative()
+                ? slotRepository.findActiveByPlan(plan.getId()).stream()
+                    .filter(s -> s.getNotifyTime() != null
+                            && !s.getNotifyTime().isBefore(windowStart) && s.getNotifyTime().isBefore(windowEnd))
+                    .toList()
+                : slotRepository.findDueForNotification(today, windowStart, windowEnd);
         if (slots.isEmpty()) return;
+        if (plan.isRelative() && dayOnes == null) return;
 
         for (EngagementSlot slot : slots) {
             if (!plan.getId().equals(slot.getPlanId())) continue;
-            if (!scheduleResolver.runsOn(slot, today)) continue;
+            if (!plan.isRelative() && !scheduleResolver.runsOn(slot, today)) continue;
             if (notificationLogRepository.existsBySlotIdAndRunDateAndKind(slot.getId(), today, "NOTIFY")) continue;
 
             List<EngagementItem> items = itemRepository.findActiveBySlot(slot.getId());
             if (items.isEmpty()) continue;
 
-            List<String> userIds = enrollmentRepository
-                    .findDistinctUserIdsByPackageSessionAndStatus(
+            List<String> userIds = plan.isRelative()
+                    ? learnersOnToday(plan, slot, dayOnes, today)
+                    : enrollmentRepository.findDistinctUserIdsByPackageSessionAndStatus(
                             plan.getPackageSessionId(), ACTIVE_STATUSES);
             if (userIds == null || userIds.isEmpty()) continue;
 
@@ -155,9 +169,21 @@ public class EngagementNotifyJob {
         LocalTime windowStart = windowEnd.minusMinutes(TICK_MINUTES);
         if (windowStart.isAfter(windowEnd)) return;
 
-        for (EngagementSlot slot : slotRepository.findDueForReveal(today, windowStart, windowEnd)) {
+        java.util.Map<String, LocalDate> dayOnes = plan.isRelative() && relativeSchedule != null
+                ? relativeSchedule.dayOnesForBatch(plan) : null;
+        if (plan.isRelative() && dayOnes == null) return;
+        List<EngagementSlot> due = plan.isRelative()
+                ? slotRepository.findActiveByPlan(plan.getId()).stream()
+                    .filter(s -> !s.effectiveRevealTime().isBefore(windowStart)
+                            && s.effectiveRevealTime().isBefore(windowEnd))
+                    .toList()
+                : slotRepository.findDueForReveal(today, windowStart, windowEnd);
+        for (EngagementSlot slot : due) {
             if (!plan.getId().equals(slot.getPlanId())) continue;
-            if (!scheduleResolver.runsOn(slot, today)) continue;
+            if (!plan.isRelative() && !scheduleResolver.runsOn(slot, today)) continue;
+            java.util.Set<String> onToday = plan.isRelative()
+                    ? new java.util.HashSet<>(learnersOnToday(plan, slot, dayOnes, today)) : null;
+            if (onToday != null && onToday.isEmpty()) continue;
             if (notificationLogRepository.existsBySlotIdAndRunDateAndKind(slot.getId(), today, "REVEAL")) continue;
 
             List<EngagementItem> items = itemRepository.findActiveBySlot(slot.getId());
@@ -169,7 +195,9 @@ public class EngagementNotifyJob {
             java.util.Set<String> recipients = new java.util.HashSet<>();
             for (EngagementItem item : items) {
                 for (EngagementAttempt a : attemptRepository.findByItem(item.getId())) {
-                    if ("COMPLETED".equals(a.getStatus())) recipients.add(a.getUserId());
+                    if (!"COMPLETED".equals(a.getStatus())) continue;
+                    if (onToday != null && !onToday.contains(a.getUserId())) continue;
+                    recipients.add(a.getUserId());
                 }
             }
             if (recipients.isEmpty()) continue;
@@ -187,6 +215,17 @@ public class EngagementNotifyJob {
                 log.error("[engagement-notify] reveal push failed for slot {}", slot.getId(), e);
             }
         }
+    }
+
+    /** Learners for whom a days-after-joining slot runs today, on their own days. */
+    private List<String> learnersOnToday(EngagementPlan plan, EngagementSlot slot,
+                                         java.util.Map<String, LocalDate> dayOnes, LocalDate today) {
+        List<String> out = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, LocalDate> e : dayOnes.entrySet()) {
+            EngagementSlot mine = relativeSchedule.localize(plan, slot, e.getValue());
+            if (scheduleResolver.runsOn(mine, today)) out.add(e.getKey());
+        }
+        return out;
     }
 
     /** Where a tap on the task push lands: the engagement page, opened on that slot. */

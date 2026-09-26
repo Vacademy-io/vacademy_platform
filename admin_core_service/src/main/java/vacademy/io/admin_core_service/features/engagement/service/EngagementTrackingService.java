@@ -83,6 +83,9 @@ public class EngagementTrackingService {
     private final vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository enrollmentRepository;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final EngagementSettingsService settingsService;
+    /** Plans scheduled in days after joining. Optional so hand-built tests need not wire it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private EngagementRelativeSchedule relativeSchedule;
 
     /** Server-side paging, search and filter for the plan overview's learner rows. */
     public record OverviewQuery(Integer page, Integer size, String q, boolean needsAttention) {
@@ -515,6 +518,10 @@ public class EngagementTrackingService {
         /** Enrolled (ACTIVE) learner ids, in enrolment-query order. */
         List<String> learners = new ArrayList<>();
         Map<String, UserDTO> users = new HashMap<>();
+        /** RELATIVE plans: each learner's Day 1. Empty for calendar plans. */
+        Map<String, LocalDate> dayOnes = new HashMap<>();
+        /** RELATIVE plans: stored slots (virtual dates), kept for per-learner shifting. */
+        Map<String, EngagementSlot> storedSlots = new HashMap<>();
         /** userId -> itemId -> attempt. */
         Map<String, Map<String, AttemptLite>> attempts = new HashMap<>();
         private final Map<LocalDate, Set<String>> visibleByDate = new HashMap<>();
@@ -550,7 +557,20 @@ public class EngagementTrackingService {
         m.cap = dailyCap(plan.getInstituteId());
 
         List<EngagementSlot> slots = slotRepository.findActiveByPlan(plan.getId());
-        for (EngagementSlot slot : slots) m.slots.put(slot.getId(), slot);
+        if (plan.isRelative() && relativeSchedule != null) {
+            // Every learner is on their own days. Plan-wide figures (tasks closed, the
+            // by-day series) follow the earliest learner — the furthest anyone has got;
+            // each learner's own progress is computed on their own days in progressFor.
+            m.dayOnes = relativeSchedule.dayOnesForBatch(plan);
+            LocalDate earliest = m.dayOnes.values().stream().min(LocalDate::compareTo).orElse(m.today);
+            for (EngagementSlot slot : slots) {
+                m.storedSlots.put(slot.getId(), slot);
+                slot = relativeSchedule.localize(plan, slot, earliest);
+                m.slots.put(slot.getId(), slot);
+            }
+        } else {
+            for (EngagementSlot slot : slots) m.slots.put(slot.getId(), slot);
+        }
         List<EngagementItem> items = slots.isEmpty()
                 ? List.of()
                 : itemRepository.findActiveBySlots(new ArrayList<>(m.slots.keySet()));
@@ -620,8 +640,19 @@ public class EngagementTrackingService {
                 available++;
                 continue;
             }
-            Occurrence o = m.occurrences.get(item.getId());
-            if (!o.opened() || m.capHidden(item)) continue;
+            Occurrence o;
+            boolean capHidden;
+            if (m.plan.isRelative() && relativeSchedule != null) {
+                LocalDate dayOne = m.dayOnes.get(userId);
+                if (dayOne == null) continue;
+                EngagementSlot learnerSlot = relativeSchedule.localize(m.plan, m.storedSlots.get(item.getSlotId()), dayOne);
+                o = occurrenceOf(m.plan, learnerSlot, item, m.now);
+                capHidden = false;
+            } else {
+                o = m.occurrences.get(item.getId());
+                capHidden = m.capHidden(item);
+            }
+            if (!o.opened() || capHidden) continue;
             available++;
             if (o.pastDue()) overdue++;
             if (o.closed()) missed++;

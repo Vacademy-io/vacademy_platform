@@ -181,6 +181,9 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             self._gen = None
             self.runs = 0
             self.prompts: List[str] = []       # last user message per run (cues included)
+            # The tail of the history each run SAW — (role, text) — so a check
+            # can prove the model's own last reply is in it, whole and in order.
+            self.contexts: List[list] = []
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             await super().process_frame(frame, direction)
@@ -191,6 +194,8 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                 msgs = frame.context.get_messages()
                 last_user = next((m.get("content") for m in reversed(msgs)
                                   if isinstance(m, dict) and m.get("role") == "user"), "")
+                self.contexts.append([(m.get("role"), str(m.get("content") or ""))
+                                      for m in msgs[-6:] if isinstance(m, dict)])
                 self._gen = self.create_task(self._generate(str(last_user)))
                 return
             await self.push_frame(frame, direction)
@@ -543,6 +548,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "ended_at": None if ended_at is None else round(ended_at, 2),
         "interruptions_at_output": transport.output().interruptions,
         "llm_runs": providers["llm"].runs,
+        "contexts": providers["llm"].contexts,
         "llm_prompts": providers["llm"].prompts,
         "nudges": getattr(d, "nudges", 0) or 0,
         "replies_scripted": list(scenario.replies),
@@ -939,6 +945,33 @@ S_CACHED_HEAD = "Thank you."
 S_LIVE_Q = "Would you agree with that?"
 
 
+def chk_history_holds_last_reply(res):
+    """The question the parent is answering must be in the model's history —
+    whole, and BEFORE the answer. Gemini re-said its whole previous turn after
+    the parent answered it in every founder test call on 2026-09-26; a model
+    that does that has usually not seen its own last turn."""
+    f = []
+    ctxs = res.get("contexts") or []
+    if len(ctxs) < 2:
+        return [f"expected 2 LLM runs, saw {len(ctxs)}"]
+    tail = ctxs[1]
+    roles = [r for r, _ in tail]
+    try:
+        last_user = max(i for i, (r, t) in enumerate(tail) if r == "user" and not t.startswith("["))
+    except ValueError:
+        return ["run 2 saw no caller message"]
+    before = [t for r, t in tail[:last_user] if r == "assistant"]
+    if not before:
+        f.append(f"run 2's history has no assistant reply before the answer: roles {roles}")
+    elif "What marks did he get" not in " ".join(before):
+        f.append("the question the parent answered is missing from the model's history — saw "
+                 + repr(" | ".join(before)[-200:]))
+    after = [t for r, t in tail[last_user + 1:] if r == "assistant"]
+    if any("What marks" in t for t in after):
+        f.append("the question sits AFTER the parent's answer in the history")
+    return f
+
+
 def _norm_ws(t: str) -> str:
     return " ".join(t.split())
 
@@ -1091,6 +1124,21 @@ SCENARIOS: List[Scenario] = [
                                           leading_filler=True),
              max_secs=30, cache_warm=[S_CACHED_TAIL], engine="smallest", filler=1.0,
              note="a6252b5c57's gate: a 'Hmm…' filler, then the reply must still come whole"),
+    Scenario("smallest_history_holds_last_reply",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("He got eighty three percent last year", 1.6, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2]), "Okay, eighty three is good."],
+             checks=chk_history_holds_last_reply, max_secs=35, engine="smallest",
+             note="2026-09-26: Gemini re-said its whole previous turn after the parent answered it"),
+    Scenario("smallest_history_holds_last_reply_cache_on",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("He got eighty three percent last year", 1.6, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2]), "Okay, eighty three is good."],
+             checks=chk_history_holds_last_reply, max_secs=35, engine="smallest",
+             cache_warm=["Thank you."],
+             note="the same with the speech cache installed: per-sentence contexts, as Shreya runs"),
     Scenario("long_cached_then_live",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[LONG_CACHED + " " + LIVE_AFTER_CACHED],

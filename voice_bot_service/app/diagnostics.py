@@ -237,6 +237,9 @@ class CallDiagnostics:
     placeholders_filled: int = 0
     # "करतो/करते"-style either-or pairs reduced to one form before the TTS.
     alternatives_collapsed: int = 0
+    # Replies whose later sentences had to be committed to the model's history
+    # after their response ended (per-sentence TTS contexts).
+    late_reply_commits: int = 0
     floor_holds: int = 0
     floor_holds_dropped: int = 0
     floor_holds_released: int = 0
@@ -965,6 +968,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "acksTalkedThrough": d.acks_talked_through,
                 "placeholdersFilled": d.placeholders_filled,
                 "alternativesCollapsed": d.alternatives_collapsed,
+                "lateReplyCommits": d.late_reply_commits,
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
                 "floorHoldsReleased": d.floor_holds_released,

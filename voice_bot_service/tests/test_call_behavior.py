@@ -6479,3 +6479,27 @@ def test_the_next_step_cue_names_the_line_that_was_repeated():
     assert what == "all-repeat"
     assert "generally जब parents" in cue and "AFTER it" in cue
     assert "]" not in cue[:-1], "the quoted line must not close the cue early"
+
+
+
+@pytest.mark.asyncio
+async def test_a_reply_that_asked_for_a_fresh_line_does_not_also_speak_its_held_question():
+    """Call 30cfc538 (2026-09-26): one reply repeated the whole previous turn;
+    the repeat branch asked for a fresh line AND the held question was spoken
+    — "क्या परमजीत के साथ भी ऐसा ही है सर? जी सर, समझ सकती हूँ।"."""
+    rec = _NRRec()
+    asked = []
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    caller = {"t": "हाँ जी ma'am बिल्कुल ऐसे ही है।"}
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    first = ("Generally कम marks आने के दो major reasons होते हैं, concepts clear नहीं होते। "
+             "क्या परमजीत के साथ भी ऐसा ही है सर?")
+    await _reply(g, first)
+    rec.text.clear()
+    await _reply(g, first)              # the whole previous turn, again
+    assert asked, "a fresh line should have been requested"
+    assert not any("क्या परमजीत" in t for t in rec.text), rec.text

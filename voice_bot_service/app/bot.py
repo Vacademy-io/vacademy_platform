@@ -1800,6 +1800,54 @@ class FloorGate(FrameProcessor):
             pass
 
 
+class LateReplyCommitter(FrameProcessor):
+    """Right before aggregators.assistant(): make sure EVERY sentence the caller
+    heard is written to the model's history before they can answer it.
+
+    pipecat's assistant aggregator commits its buffer on LLMFullResponseEndFrame.
+    With one audio context per sentence (what the speech cache switches on) the
+    TTS service releases that End as soon as the FIRST sentence's context ends,
+    so the later sentences' words reach the buffer after the commit and sit
+    there, unwritten, until some later End. Timing sim
+    smallest_history_holds_last_reply_cache_on: the parent heard "Rajeev is in
+    class seven right now. What marks did he get in his previous class?" and the
+    history held only the first sentence — the model never knew it had asked,
+    and re-asked (every founder test call, 2026-09-26; ~20-25 repeats per 100
+    replies since the FIXED tier went on).
+
+    Words that arrive with no open LLM response are committed as soon as the bot
+    stops speaking — before the caller's answer. An interruption already makes
+    the aggregator commit what played, so a cut sentence is covered too.
+    """
+
+    def __init__(self, diag=None):
+        super().__init__()
+        self._open = False
+        self._late = False
+        self._diag = diag
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM:
+            if isinstance(frame, LLMFullResponseStartFrame):
+                self._open = True
+            elif isinstance(frame, LLMFullResponseEndFrame):
+                self._open = False
+            elif isinstance(frame, InterruptionFrame):
+                self._late = False
+            elif (isinstance(frame, TTSTextFrame) and not self._open
+                  and getattr(frame, "append_to_context", True) and (frame.text or "").strip()):
+                self._late = True
+        await self.push_frame(frame, direction)
+        if isinstance(frame, BotStoppedSpeakingFrame) and self._late:
+            self._late = False
+            from pipecat.frames.frames import LLMAssistantPushAggregationFrame
+            if self._diag is not None:
+                self._diag.bump("late_reply_commits")
+            logger.info("history: committing reply text that arrived after its response ended")
+            await self.push_frame(LLMAssistantPushAggregationFrame(), FrameDirection.DOWNSTREAM)
+
+
 class TtfbObserver:
     """Corr-tagged per-turn latency telemetry. pipecat already computes per-service
     TTFB (enable_metrics=True) but only logs it uncorrelated at DEBUG inside the
@@ -1964,6 +2012,9 @@ class NoRepeatGate(FrameProcessor):
         # How the bot addresses the caller so far ("f" madam / "m" sir): picks
         # the side of a "सर/मॅडम" pair the model copies from its prompt.
         self._address = ""
+        # Set when THIS reply's end-of-reply handling asked for a fresh line, so
+        # its own held restatement is not spoken on top of it (call 30cfc538).
+        self._next_step_this_reply = False
         self._emitted = 0
         # Characters spoken this reply — the length budget (max_reply_chars).
         self._body_chars = 0
@@ -2368,6 +2419,7 @@ class NoRepeatGate(FrameProcessor):
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._body_chars = 0
+            self._next_step_this_reply = False
             self._capped = []
             self._said_real = False
             self._cf_held = ""
@@ -2624,6 +2676,7 @@ class NoRepeatGate(FrameProcessor):
                     logger.info("no-repeat: whole reply was a repeat but the caller asked a "
                                 "question — asking the model to answer it")
                     try:
+                        self._next_step_this_reply = True
                         await self._request_next_step(self._last_caller_text() or "",
                                                       kind="answer-question",
                                                       attempt=self._next_steps)
@@ -2649,6 +2702,7 @@ class NoRepeatGate(FrameProcessor):
                                 "— asking for the next step instead of handing back")
                     if self._diag is not None:
                         self._diag.bump("handbacks")
+                    self._next_step_this_reply = True
                     try:
                         await self._request_next_step(self._held_tail, kind="all-repeat",
                                                       attempt=self._next_steps)
@@ -2694,6 +2748,14 @@ class NoRepeatGate(FrameProcessor):
                     except Exception:
                         logger.exception("no-echo: next-step request failed — speaking the restatement")
                         await self._emit(held, direction)
+                elif self._next_step_this_reply:
+                    # A fresh line was requested while handling THIS reply (the
+                    # repeat branch above): it is on its way, and speaking the
+                    # held line too glued an already-answered question onto it —
+                    # call 30cfc538 (2026-09-26): "क्या परमजीत के साथ भी ऐसा ही
+                    # है सर? जी सर, समझ सकती हूँ।".
+                    logger.info("no-echo: a fresh line is already requested for this turn — "
+                                "dropping the restatement %r", held.strip()[:40])
                 else:
                     # Nothing but the restatement came and the budget is spent:
                     # better a weak line than silence.
@@ -5335,6 +5397,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
           if settings.ambience_enabled else []),
         transport.output(),
         played_transcript,
+        LateReplyCommitter(diag),   # every heard sentence reaches the history
         aggregators.assistant(),
     ])
 

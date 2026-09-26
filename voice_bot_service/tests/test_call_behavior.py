@@ -6429,3 +6429,33 @@ def test_an_opening_cut_at_pickup_and_said_again_is_not_a_replay():
                       {"role": "user", "text": "बरोबर, बोला।"},
                       {"role": "assistant", "text": opening}]
     assert rp._played_invariants(_Replayed())[0] == 1, "a real replay must still count"
+
+
+
+# ── call 83735c51 (2026-09-26): a mostly-heard sentence un-recorded → repeat loop ──
+def test_a_sentence_mostly_heard_before_the_cut_counts_as_said():
+    from app.turntake import spoken_key
+    sent = ("लेकिन इस level पर हमारा focus सिर्फ marks improve करने का नहीं होता focus यह होता है "
+            "कि उसके concepts और मजबूत हों, weaknesses identify हों।")
+    played = spoken_key("अच्छा! यह तो अच्छी बात है सर। लेकिन इस level पर हमारा focus सिर्फ marks "
+                        "improve करने का नहीं होता focus यह होता है कि उसके concepts और मजबूत")
+    assert b.mostly_played(sent, played)
+    assert not b.mostly_played(sent, spoken_key("अच्छा! यह तो अच्छी बात है सर। लेकिन इस"))
+    assert not b.mostly_played("क्या नाम है?", spoken_key("क्या"))
+    assert b.mostly_played("क्या नाम है?", spoken_key("हाँ क्या नाम है?"))
+
+
+
+def test_a_filler_after_the_opening_does_not_make_it_unheard():
+    """Timing sim smallest_filler_then_live_and_cached: opening played in full,
+    then "Hmm…" — the last-entry check read the opening as unheard and every
+    reply was swallowed."""
+    opening = "Hi, is this Bhawana Jain? Aarushi from Vacademy. We came to know you take yoga classes."
+    heard = [{"role": "assistant", "text": opening},
+             {"role": "user", "text": "Yes, go ahead."},
+             {"role": "assistant", "text": "Hmm…"}]
+    assert not b._opening_barely_heard(opening, heard, 0.0)
+    cut = [{"role": "assistant", "text": "Hi,"}, {"role": "user", "text": "Hello?"}]
+    assert b._opening_barely_heard(opening, cut, 0.0), "a real cut at the start is still unheard"
+    assert b._opening_barely_heard(opening, [], 0.0)
+    assert not b._opening_barely_heard(opening, cut, 12.0), "once a reply ran, never"

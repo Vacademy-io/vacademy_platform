@@ -197,6 +197,18 @@ def fill_template_slots(text: str):
     return out, n
 
 
+def mostly_played(sentence: str, played_key: str, share: float = 0.6) -> bool:
+    """Did at least `share` of this sentence (from its start) reach the caller?
+    played_key is spoken_key() of the played transcript. Short sentences need
+    all of it — a cut two words in is not "heard"."""
+    k = spoken_key(sentence)
+    if not k or k in played_key:
+        return bool(k)
+    if len(k) < 24:
+        return False
+    return k[:int(len(k) * share)] in played_key
+
+
 # "करतो/करते", "सर/मॅडम", "शिकतो/शिकते": a prompt's either-or written as a
 # slash pair, copied into a reply — the voice reads the slash or both words
 # (call 7f86df90, 2026-09-25: "…खूप छान करतो/करते पण…"). Keep ONE: the address
@@ -2395,6 +2407,16 @@ class NoRepeatGate(FrameProcessor):
                     played = spoken_key(played_raw)
                     unplayed = []
                     for norm, topic, prev_exemplar, said in self._pending:
+                        # MOSTLY heard is heard. Call 83735c51 (2026-09-26): a
+                        # cut near the END of "लेकिन इस level पर हमारा focus …"
+                        # un-recorded the whole sentence; the model said it
+                        # again out of context 45 s later, then kept repeating
+                        # it, and the repeat filter's fallback became a
+                        # "जी, बोलिए।" / "हाँ जी?" handback loop.
+                        if norm and mostly_played(norm, played):
+                            logger.info("no-repeat: %r was mostly heard before the cut — "
+                                        "keeping it as said", norm[:40])
+                            continue
                         if norm and spoken_key(norm) not in played:
                             # Only REAL words are worth resuming: a hand-back
                             # ("जी, बोलिए।") or an acknowledgement carries
@@ -3788,12 +3810,21 @@ def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
     Call 9e566e32 (2026-09-09): played "Hi," of a 109-char opening."""
     if not opening or reply_started_t:
         return False
-    played = ""
-    for entry in reversed(transcript or []):
-        if entry.get("role") == "assistant":
-            played = entry.get("text") or ""
-            break
-    return len(played) < len(opening) * heard_ratio
+    # How much of THE OPENING played — not whatever the bot said last. A
+    # "Hmm…" filler after a fully-played opening made the last entry 4 chars,
+    # the opening read as unheard, and RunGuard swallowed every reply as "the
+    # opening is the reply": the caller heard "Hmm…", then only nudges (timing
+    # sim smallest_filler_then_live_and_cached, 7 of 8 runs; 36 held runs in
+    # production logs 22-25 Sep).
+    ok = spoken_key(opening)
+    best = 0
+    for entry in transcript or []:
+        if entry.get("role") != "assistant":
+            continue
+        k = spoken_key(entry.get("text") or "")
+        if k and ok.startswith(k[:min(len(k), 12)]):
+            best = max(best, len(k))
+    return best < len(ok) * heard_ratio
 
 
 _NAME_NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}")

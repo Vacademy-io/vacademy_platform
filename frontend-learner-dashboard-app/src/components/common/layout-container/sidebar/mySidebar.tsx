@@ -36,10 +36,12 @@ import {
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
+import { CONVERSATIONS_KEY, UNREAD_COUNT_KEY, getUnreadCount, listConversations } from "@/services/chat/chatApi";
+import type { ChatConversationResponse } from "@/services/chat/chatApi";
 import { getInstituteId } from "@/constants/helper";
 import {
   handleGetMyMentors,
@@ -182,6 +184,34 @@ export const MySidebar = ({
   // Whether the institute's chat FEATURE is on (independent of the In-App
   // Messages tab's visibility) — gates the per-mentor chat entries.
   const [chatFeatureEnabled, setChatFeatureEnabled] = useState(false);
+
+  // Unread badge on the In-App Messages tab. On /chat, ChatScreen keeps the conversation list live over
+  // SSE, so the badge reads that cached list (this observer never fetches). Elsewhere it polls the cheap
+  // unread-count aggregate — never the full list — and only while the chat tab is actually rendered.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
+  const { data: liveUnread } = useQuery({
+    // Observe the shared list only on /chat; elsewhere a mounted observer would pin a stale list in the
+    // cache indefinitely (no gc), which ChatScreen would then open with.
+    queryKey: onChatRoute ? CONVERSATIONS_KEY : (["chat", "conversations", "sidebar-idle"] as const),
+    // Same fetcher as ChatScreen (never run from here: enabled=false) so the shared query can't pick up
+    // a different queryFn from this observer.
+    queryFn: () => listConversations(undefined, 30),
+    enabled: false,
+    // Community excluded, as in the server's unread total: an unopened community would pin the badge at 99+.
+    select: (convs: ChatConversationResponse[]) =>
+      convs.reduce((sum, c) => sum + (c.type === "COMMUNITY" ? 0 : c.unreadCount || 0), 0),
+  });
+  const { data: polledUnread = 0 } = useQuery({
+    queryKey: UNREAD_COUNT_KEY,
+    queryFn: getUnreadCount,
+    enabled: chatFeatureEnabled && !onChatRoute && !sidebarComponent && !hideSidebar
+      && sideBarState !== sideBarStateType.HAMBURGER,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const chatUnreadCount = onChatRoute ? liveUnread ?? polledUnread : polledUnread;
 
   // The learner's assigned mentors drive the My Mentors tab (see
   // ensureMentorTab). Shares the widget's query cache key.
@@ -329,6 +359,7 @@ export const MySidebar = ({
         ).trim();
         const firstLetter = (computedLabel.charAt(0) || "?").toUpperCase();
         return {
+          id: t.id,
           icon: iconByTabId[t.id] || createLetterIcon(firstLetter),
           title: t.label || labelByTabId[t.id] || humanizeText(t.id),
           to: subItems
@@ -746,6 +777,7 @@ export const MySidebar = ({
                     }
                     title={obj.title}
                     to={(obj.to || "/") as string}
+                    badgeCount={obj.id === "chat" ? chatUnreadCount : undefined}
                   />
                 </div>
               ));

@@ -48,6 +48,15 @@ public class ChatConversationController {
                 conversationService.listConversations(id.userId(), id.instituteId(), id.role(), type, limit));
     }
 
+    /** Unread total for the sidebar badge — a cheap aggregate, so clients don't poll the full list. */
+    @GetMapping("/conversations/unread-count")
+    public ResponseEntity<Map<String, Long>> unreadCount(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestHeader(value = "clientId", required = false) String clientId) {
+        ChatIdentity id = ChatIdentity.from(user, clientId);
+        return ResponseEntity.ok(Map.of("count", conversationService.getUnreadTotal(id.userId(), id.instituteId())));
+    }
+
     @GetMapping("/conversations/{conversationId}/messages")
     public ResponseEntity<ChatMessagePageResponse> getMessages(
             @PathVariable String conversationId,

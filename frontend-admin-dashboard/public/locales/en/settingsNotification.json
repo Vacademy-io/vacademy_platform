@@ -92,7 +92,8 @@
         },
         "base64Label": "Or paste Base64-encoded JSON",
         "base64Placeholder": "Base64 string",
-        "validateAndSave": "Validate & Save"
+        "validateAndSave": "Validate & Save",
+        "keyConfigured": "A service account key is saved for this institute. It is never shown again; paste a new key only to replace it."
     },
     "streams": {
         "title": "Streams",

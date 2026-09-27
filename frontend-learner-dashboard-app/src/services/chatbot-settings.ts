@@ -13,6 +13,7 @@ export const DEFAULT_CHATBOT_SETTINGS: ChatbotSettingsData = {
   enable: false,
   enabled_modes: ['general', 'doubt', 'practice'],
   chatbot_pages: ['dashboard', 'all_courses', 'course_details', 'study_material'],
+  show_ai_settings_shortcut: false,
   voice_settings: {
     default_language: 'en-IN',
     default_voice: 'shubh',
@@ -154,6 +155,12 @@ export interface ChatbotSettingsData {
   avatar_url?: string;
   enabled_modes?: string[];
   chatbot_pages?: string[];
+  /**
+   * Institute-wide switch (Admin -> Settings -> AI Settings -> Student AI) for
+   * the gear in the chatbot header that opens /ai-settings. Absent or false
+   * keeps it hidden, which is what every learner should see.
+   */
+  show_ai_settings_shortcut?: boolean;
   voice_settings?: {
     default_language: string;
     default_voice: string;

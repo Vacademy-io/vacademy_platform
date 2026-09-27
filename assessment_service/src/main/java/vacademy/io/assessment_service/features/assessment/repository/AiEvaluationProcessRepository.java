@@ -36,6 +36,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
 
         List<AiEvaluationProcess> findByAssessmentId(String assessmentId);
 
+        /** Every run, of any status, for a set of attempts - one query for a whole table page. */
+        List<AiEvaluationProcess> findByStudentAttempt_IdIn(List<String> attemptIds);
+
         /**
          * Non-terminal processes that started before {@code cutoff} — i.e. jobs the
          * stale-job sweeper should mark FAILED because ai_service died / never sent
@@ -46,6 +49,53 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         "WHERE p.status IN :statuses AND p.startedAt < :cutoff")
         List<AiEvaluationProcess> findStaleNonTerminal(@Param("statuses") List<String> statuses,
                         @Param("cutoff") Date cutoff);
+
+        /**
+         * Dispatched rows with no heartbeat since the cutoff. Uses updated_at, which
+         * every progress callback touches, so a copy that is genuinely being graded
+         * is never mistaken for one whose worker died with it.
+         */
+        @Query("SELECT p FROM AiEvaluationProcess p " +
+                        "WHERE p.status IN :statuses AND COALESCE(p.updatedAt, p.startedAt) < :cutoff")
+        List<AiEvaluationProcess> findSilentDispatched(@Param("statuses") List<String> statuses,
+                        @Param("cutoff") Date cutoff);
+
+        /**
+         * Heartbeat: move updated_at and nothing else, and only while the process
+         * is still running. A bulk UPDATE so it cannot overwrite a concurrent
+         * status change the way a full entity save would.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("UPDATE AiEvaluationProcess p SET p.updatedAt = :now WHERE p.id = :id AND p.status NOT IN :terminal")
+        int touch(@Param("id") String id, @Param("now") Date now, @Param("terminal") List<String> terminal);
+
+        /**
+         * Settled (COMPLETED/FAILED) checks nobody has been told about yet, oldest
+         * first. The completion notifier groups them per assessment.
+         */
+        @Query("SELECT DISTINCT p FROM AiEvaluationProcess p " +
+                        "LEFT JOIN FETCH p.assessment " +
+                        "LEFT JOIN FETCH p.studentAttempt sa " +
+                        "LEFT JOIN FETCH sa.registration " +
+                        "WHERE p.notifiedAt IS NULL AND p.status IN :terminal ORDER BY p.completedAt ASC")
+        List<AiEvaluationProcess> findUnnotifiedSettled(@Param("terminal") List<String> terminal);
+
+        /** Whether any check for the assessment is still running (the notice waits for it). */
+        @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.assessment.id = :assessmentId AND p.status IN :active")
+        long countActiveForAssessment(@Param("assessmentId") String assessmentId, @Param("active") List<String> active);
+
+        /**
+         * Claim a set of settled checks for one notice. Replica-safe: the WHERE on
+         * notified_at IS NULL means the first replica to run this wins and the
+         * others update zero rows, so the same copies are never announced twice.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("UPDATE AiEvaluationProcess p SET p.notifiedAt = :now WHERE p.id IN :ids AND p.notifiedAt IS NULL")
+        int claimForNotice(@Param("ids") List<String> ids, @Param("now") Date now);
+
+        /** How many copies are with the AI service right now (dispatched, not finished). */
+        @Query("SELECT COUNT(p) FROM AiEvaluationProcess p WHERE p.status IN :statuses")
+        long countByStatusIn(@Param("statuses") List<String> statuses);
 
         /**
          * All AI-evaluation processes for an assessment within one institute,
@@ -113,7 +163,9 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         @Param("batchSize") int batchSize);
 
         /** The rows this instance just claimed, to hand to the async worker. */
-        @Query("SELECT p FROM AiEvaluationProcess p WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
+        @Query("SELECT p FROM AiEvaluationProcess p "
+                        + "JOIN FETCH p.studentAttempt LEFT JOIN FETCH p.assessment "
+                        + "WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
                         + "ORDER BY p.createdAt")
         List<AiEvaluationProcess> findClaimedPending(@Param("claimedBy") String claimedBy);
 }

@@ -1,0 +1,14 @@
+{
+    "edit": "संपादित करें",
+    "markingCriteria": "अंकन मानदंड",
+    "totalMarks": "कुल अंक:",
+    "criteriaLabel": "मानदंड:",
+    "criteriaColumn": "मानदंड",
+    "marksColumn": "अंक",
+    "actionColumn": "कार्रवाई",
+    "emptyCriteria": "कोई मानदंड नहीं। नीचे एक जोड़ें।",
+    "addNewCriteria": "नया मानदंड जोड़ें:",
+    "criteriaDescriptionPlaceholder": "मानदंड विवरण दर्ज करें",
+    "cancel": "रद्द करें",
+    "save": "सहेजें"
+}

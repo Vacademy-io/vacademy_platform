@@ -7,10 +7,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService;
+import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.BulkRunSummary;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueItemView;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueSummary;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,11 +37,23 @@ public class AiCallQueueController {
     public ResponseEntity<Page<QueueItemView>> list(
             @RequestParam String instituteId,
             @RequestParam(value = "status", required = false) String status,
+            /** Optional bulk-run (audience) id — narrows the list to one campaign. */
+            @RequestParam(value = "sourceRef", required = false) String sourceRef,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "25") int size,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(queueService.list(instituteId, status, page, size));
+        return ResponseEntity.ok(queueService.list(instituteId, status, sourceRef, page, size));
+    }
+
+    /** Bulk runs this institute has queued, newest first — the campaign filter's options. */
+    @GetMapping("/runs")
+    public ResponseEntity<List<Map<String, Object>>> runs(
+            @RequestParam String instituteId,
+            @RequestParam(value = "limit", defaultValue = "20") int limit,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.recentRuns(instituteId, limit));
     }
 
     /** Depth, in-flight, the lane's share of the fleet, and a rough time-to-clear. */
@@ -51,14 +65,30 @@ public class AiCallQueueController {
         return ResponseEntity.ok(queueService.summary(instituteId));
     }
 
-    /** Queue-side counts for one bulk run, for the campaign progress dialog. */
+    /**
+     * Progress of one bulk run, counted from the QUEUE rather than the call log — so a
+     * 100-lead run reports 100, not just the handful that have dialled so far, and a
+     * lead the queue cancelled still counts toward "finished".
+     */
     @GetMapping("/bulk-run")
-    public ResponseEntity<Map<String, Long>> bulkRun(
+    public ResponseEntity<BulkRunSummary> bulkRun(
             @RequestParam String instituteId,
             @RequestParam String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(queueService.bulkRunCounts(instituteId, audienceId));
+        return ResponseEntity.ok(queueService.bulkRunSummary(instituteId, audienceId));
+    }
+
+    /** Every lead the run enqueued, in dial order — waiting ones included. */
+    @GetMapping("/bulk-run/items")
+    public ResponseEntity<Page<QueueItemView>> bulkRunItems(
+            @RequestParam String instituteId,
+            @RequestParam String audienceId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "200") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.bulkRunItems(instituteId, audienceId, page, size));
     }
 
     @Data

@@ -5273,14 +5273,11 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 f"source={model_source}"
             )
 
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://vacademy.io",
-                },
-                json={
+            from .llm_router import post_chat_sync
+
+            response = post_chat_sync(
+                api_key=settings.openrouter_api_key,
+                payload={
                     "model": resolved_model,
                     "messages": [
                         {"role": "system", "content": system_prompt},

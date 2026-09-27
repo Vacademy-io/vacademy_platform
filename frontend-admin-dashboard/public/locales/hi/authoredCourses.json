@@ -42,5 +42,8 @@
     "auditLogs": "ऑडिट लॉग",
     "byActor": "द्वारा: {{actor}}",
     "commentLabel": "टिप्पणी: {{comment}}",
-    "noHistoryAvailable": "कोई इतिहास उपलब्ध नहीं है।"
+    "noHistoryAvailable": "कोई इतिहास उपलब्ध नहीं है।",
+    "publish": "प्रकाशित करें",
+    "published": "कोर्स प्रकाशित किया गया",
+    "publishFailed": "कोर्स प्रकाशित करने में विफल"
 }

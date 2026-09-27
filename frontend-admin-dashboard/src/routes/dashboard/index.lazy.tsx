@@ -609,18 +609,15 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                     })}
                 </span>
             </div>
-            {/* Role-shaped quick actions strip - shortcuts above the fold */}
+            <AssistantLaunchBar />
+            {/* Familiar shortcuts remain one click away below the assistant. */}
             {roleBundle.showQuickActions && isWidgetVisible('quickActions') && (
                 <TrackedWidget widgetId="quickActions">
-                    <div className="mt-3">
+                    <div className="mt-4">
                         <QuickActionsStrip roles={userRoles} />
                     </div>
                 </TrackedWidget>
             )}
-            {/* Assistant launch bar — self-gates on the institute's assistant settings */}
-            <div className="mt-3">
-                <AssistantLaunchBar />
-            </div>
             {getValue() && (
                 <>
                     <p className="mt-0.5 text-2xs text-neutral-600 sm:text-xs">
@@ -654,12 +651,6 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                 <TrackedWidget widgetId="superAdminWidgets">
                     <SuperAdminWidgetsRegion />
                 </TrackedWidget>
-                {/* Role-shaped KPI band - operational metrics above the fold */}
-                {roleBundle.showKpiBand && isWidgetVisible('kpiBand') && !isFreshTenant && (
-                    <TrackedWidget widgetId="kpiBand">
-                        <KpiBand instituteId={instituteDetails?.id || ''} roles={userRoles} />
-                    </TrackedWidget>
-                )}
                 {/* Pending Actions - role-shaped inbox of work-to-do */}
                 {isWidgetVisible('pendingActions') && (
                     <TrackedWidget widgetId="pendingActions">
@@ -668,6 +659,11 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                             userId={getUserId() || ''}
                             onOpenAllAlerts={onOpenAllAlerts}
                         />
+                    </TrackedWidget>
+                )}
+                {roleBundle.showKpiBand && isWidgetVisible('kpiBand') && !isFreshTenant && (
+                    <TrackedWidget widgetId="kpiBand">
+                        <KpiBand instituteId={instituteDetails?.id || ''} roles={userRoles} />
                     </TrackedWidget>
                 )}
                 {/* Finance row - snapshot + recent transactions side-by-side for admin */}

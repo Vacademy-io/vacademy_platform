@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.domain_routing.dto.DomainRoutingUpsertRequest;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.domain_routing.enums.PhoneCountryGeoMode;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.domain_routing.service.DomainRoutingAdminService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -399,6 +400,16 @@ public class WhiteLabelService {
                         .windowsAppLink(r.getWindowsAppLink())
                         .macAppLink(r.getMacAppLink())
                         .commaSeparatedPreferredCountry(r.getCommaSeparatedPreferredCountry())
+                        // Raw, NOT resolved. This payload feeds an editor that posts
+                        // every field back verbatim, so resolving a null here would
+                        // stamp INSTITUTE_FIRST onto the column the first time an
+                        // admin saved an unrelated change — and "this portal never
+                        // chose a mode" would stop being distinguishable from "this
+                        // portal chose the default". The public resolve endpoint,
+                        // whose consumers need an answer rather than a round-trip,
+                        // does resolve it. The settings field treats absent as the
+                        // default on its own.
+                        .phoneCountryGeoMode(r.getPhoneCountryGeoMode())
                         // Logo / institute-name display
                         .hideInstituteName(r.getHideInstituteName())
                         .logoWidthPx(r.getLogoWidthPx())
@@ -737,6 +748,7 @@ public class WhiteLabelService {
                             ? cfg.getConvertUsernamePasswordToLowercase()
                             : false);
             r.setCommaSeparatedPreferredCountry(cfg.getCommaSeparatedPreferredCountry());
+            r.setPhoneCountryGeoMode(PhoneCountryGeoMode.normalizeForStorage(cfg.getPhoneCountryGeoMode()));
             r.setHideInstituteName(cfg.getHideInstituteName());
             r.setLogoWidthPx(cfg.getLogoWidthPx());
             r.setLogoHeightPx(cfg.getLogoHeightPx());

@@ -46,6 +46,7 @@ public class AiEvaluationSubmissionEnqueuer {
                         AiEvaluationStatusEnum.EVALUATING.name());
 
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
+        private final TypedAnswerEvaluation typedAnswerEvaluation;
 
         /**
          * Kill switch. Turning this off stops all automatic evaluation without touching
@@ -79,6 +80,16 @@ public class AiEvaluationSubmissionEnqueuer {
                         // NULL means off. Every assessment that existed before V43 reads as
                         // NULL here, so none of them start spending credits on their own.
                         if (!Boolean.TRUE.equals(assessment.getAiEvaluationEnabled())) {
+                                return null;
+                        }
+                        // With an uploaded copy the AI grades the sheet. Without one it grades
+                        // only the typed written answers - so an online paper with nothing
+                        // written would be dispatched only to fail with "nothing to grade";
+                        // 88 such rows sat in the queue on one institute before this guard.
+                        if (!typedAnswerEvaluation.hasAnswerSheet(attempt)
+                                        && !typedAnswerEvaluation.awaitsAiGrading(attempt, assessment)) {
+                                log.info("[AI-EVAL-ENQUEUE] Attempt {} has no submission file and no written question; not queued",
+                                                attempt.getId());
                                 return null;
                         }
 

@@ -26,7 +26,9 @@
             "trueFalse": "सही / गलत",
             "oneWord": "एक शब्द",
             "longAnswer": "दीर्घ उत्तर",
-            "numeric": "संख्यात्मक"
+            "numeric": "संख्यात्मक",
+            "passage": "गद्यांश / बोध",
+            "assertionReason": "कथन–कारण"
         },
         "difficultyOptions": {
             "easy": "आसान",

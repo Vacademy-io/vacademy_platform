@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
@@ -9,11 +10,24 @@ import { LeadCollectionModal } from "../../-components/LeadCollectionModal";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
+import { OPEN_COURSE_ENROLLMENT_EVENT } from "../../-components/components/HtmlPageSection";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
+import { resolveCourseView } from "../../-utils/course-page-routing";
+import { useInstituteNamingSettings } from "../../-utils/institute-naming-seed";
+import {
+  resolveLearnerStructureVariant,
+  type LearnerCourseDetailsSettings,
+} from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { InviteUnavailableMessage } from "@/components/common/enroll-by-invite/-components/InviteUnavailableMessage";
 import {
   resolveInviteAvailability,
@@ -27,6 +41,12 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { cn, sanitizeHtml } from "@/lib/utils";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  type CourseAuthor as CourseInstructor,
+  mapCourseAuthors,
+  visibleCourseAuthors,
+} from "../../-utils/course-authors";
 import {
   BookOpen,
   CaretDown,
@@ -58,6 +78,51 @@ const displayLevelName = (raw?: string | null): string => {
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+// Profile photo resolved through the public media endpoint (no login on this
+// page); the author's initial stands in while it loads or when there is none.
+const AuthorAvatar: React.FC<{ author: CourseInstructor; sizeClass: string }> = ({
+  author,
+  sizeClass,
+}) => {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    setUrl("");
+    if (!author.profilePicId) return;
+    getPublicUrlWithoutLogin(author.profilePicId)
+      .then((resolved) => {
+        if (!cancelled && resolved) setUrl(resolved);
+      })
+      .catch(() => {
+        /* fall back to the initial */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [author.profilePicId]);
+  const initial = author.name ? author.name.charAt(0).toUpperCase() : "I";
+  return url ? (
+    <img
+      src={url}
+      alt={author.name}
+      className={cn(
+        "shrink-0 rounded-full object-cover bg-catalogue-bg-subtle",
+        sizeClass,
+      )}
+    />
+  ) : (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-500 text-xs font-semibold text-white",
+        sizeClass,
+      )}
+    >
+      {initial}
+    </span>
+  );
+};
+
 const hasContent = (htmlString: string | undefined | null): boolean => {
   if (!htmlString) return false;
   // Strip HTML tags and decode HTML entities
@@ -150,24 +215,66 @@ const HighlightSectionCard: React.FC<{
   </div>
 );
 
+const CourseHighlightDialog: React.FC<{
+  title: string;
+  children: React.ReactNode;
+}> = ({ title, children }) => {
+  const { t } = useTranslation("coursePlayerB");
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="mt-3 text-sm font-medium text-primary-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 rounded"
+        >
+          {t("common.viewMore")}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // Course highlights panel — collapsible accordion that wraps the
 // "What you'll learn / About / Who should learn / Instructors" sections
 // so they appear compactly at the top of the course page instead of
 // stacking as separate cards below.
-const CourseHighlightsAccordion: React.FC<{
+export const CourseHighlightsAccordion: React.FC<{
   whyLearn: string;
   aboutCourse: string | null;
   whoShouldLearn: string;
-  instructors: Array<{ name: string; email: string }>;
+  instructors: Array<CourseInstructor>;
   showInstructors: boolean;
-}> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors, showInstructors }) => {
+  primaryInstructor?: string | null;
+}> = ({
+  whyLearn,
+  aboutCourse,
+  whoShouldLearn,
+  instructors,
+  showInstructors,
+  primaryInstructor,
+}) => {
   const { t } = useTranslation("coursePlayerB");
   const [open, setOpen] = useState(true);
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
   const hasWho = hasContent(whoShouldLearn);
-  // Instructors only render when the institute opts in (default hidden).
-  const hasInstructors = showInstructors && instructors && instructors.length > 0;
+  // Student Display Settings > "Show Teachers" decides whether the WHOLE
+  // roster is listed. Off (the default) still shows the first author -- the
+  // overview always has -- and now with the profile the admin wrote for them
+  // (photo, subtitle, description), not just the bare name.
+  const visibleInstructors = visibleCourseAuthors(
+    instructors,
+    showInstructors,
+    primaryInstructor,
+  );
+  const hasInstructors = visibleInstructors.length > 0;
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
@@ -217,6 +324,16 @@ const CourseHighlightsAccordion: React.FC<{
                 html={aboutCourse || ""}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog
+                title={t("courseDetails.accordion.aboutThisCourse", {
+                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                })}
+              >
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(aboutCourse || "") }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasWhy && (
@@ -236,6 +353,12 @@ const CourseHighlightsAccordion: React.FC<{
                 html={whyLearn}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog title={t("courseDetails.accordion.whatYoullLearn")}>
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whyLearn) }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasWho && (
@@ -255,6 +378,12 @@ const CourseHighlightsAccordion: React.FC<{
                 html={whoShouldLearn}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
+              <CourseHighlightDialog title={t("courseDetails.accordion.whoShouldJoin")}>
+                <div
+                  className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whoShouldLearn) }}
+                />
+              </CourseHighlightDialog>
             </HighlightSectionCard>
           )}
           {hasInstructors && (
@@ -274,25 +403,64 @@ const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-primary-500/5 to-transparent"
             >
               <div className="space-y-2">
-                {instructors.map((inst, idx) => (
-                  <div
-                    key={`${inst.email}-${idx}`}
-                    className="flex items-center gap-3 p-2.5 bg-catalogue-bg-subtle/80 rounded-catalogue-md hover:bg-catalogue-bg-muted/80 transition-all duration-300"
-                  >
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                      {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-catalogue-text-primary">
-                        {inst.name ||
-                          getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
-                      </h4>
-                      <p className="text-xs text-catalogue-text-secondary">
-                        {inst.email || t("courseDetails.noEmailProvided")}
-                      </p>
-                    </div>
+                {/* Name + subtitle inline, so an author is recognisable without
+                    a click; the dialog below carries the full description. A
+                    bare "1 teachers" count used to be all that showed here. */}
+                <ul className="space-y-1.5">
+                  {visibleInstructors.map((inst, idx) => (
+                    <li
+                      key={`${inst.id}-${idx}`}
+                      className="flex items-center gap-2.5"
+                    >
+                      <AuthorAvatar author={inst} sizeClass="size-7" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-catalogue-text-primary">
+                          {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                        </span>
+                        {inst.subtitle && (
+                          <span className="block truncate text-xs text-catalogue-text-secondary">
+                            {inst.subtitle}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <CourseHighlightDialog
+                  title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
+                >
+                  <div className="space-y-2">
+                    {visibleInstructors.map((inst, idx) => (
+                      <div
+                        key={`${inst.id}-${idx}`}
+                        className="flex items-start gap-3 rounded-catalogue-md bg-catalogue-bg-subtle/80 p-2.5"
+                      >
+                        <AuthorAvatar author={inst} sizeClass="size-10" />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-semibold text-catalogue-text-primary">
+                            {inst.name || getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                          </h4>
+                          {inst.subtitle && (
+                            <p className="text-xs text-catalogue-text-secondary">
+                              {inst.subtitle}
+                            </p>
+                          )}
+                          {/* The admin writes the bio in a rich-text editor,
+                              so this is HTML: sanitise and render it, the way
+                              the About / What-you'll-learn sections do. */}
+                          {inst.description && (
+                            <div
+                              className="richtext-content mt-1 text-xs leading-relaxed text-catalogue-text-secondary"
+                              dangerouslySetInnerHTML={{
+                                __html: sanitizeHtml(inst.description),
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </CourseHighlightDialog>
               </div>
             </HighlightSectionCard>
           )}
@@ -340,10 +508,7 @@ interface CourseData {
   whoShouldLearn: string;
   whyLearn: string;
   aboutCourse: string | null;
-  instructors: Array<{
-    name: string;
-    email: string;
-  }>;
+  instructors: Array<CourseInstructor>;
   rating: number;
   tags: string[];
   curriculum: Array<{
@@ -382,6 +547,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   productPageCode,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  // Institute terminology must be seeded before the first paint — see
+  // institute-naming-seed.ts.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
@@ -416,11 +584,64 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
   // because this catalogue page is unauthenticated.
   const [showInstructors, setShowInstructors] = useState(false);
+  /**
+   * How the institute has configured the course page for its LOGGED-IN
+   * learners (Settings -> Student Display Settings -> courseDetails). The
+   * logged-out page reads the same record so a visitor and an enrolled
+   * learner see the course laid out the same way.
+   *
+   * - `enrolledLayout: "contentOnly"` means the learner's page IS the content
+   *   card grid, so the public page shows cards too.
+   * - otherwise the opening tab decides: CONTENT_STRUCTURE is the card grid,
+   *   OUTLINE is the folder-row list.
+   * Null until the settings land, or when the request fails — the outline is
+   * the safe fallback either way.
+   */
+  const [learnerCourseDetails, setLearnerCourseDetails] =
+    useState<LearnerCourseDetailsSettings | null>(null);
 
   // Debug catalogue data changes
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
   }, [catalogueData]);
+
+  // A catalogue can give a course its own authored page instead of this shared
+  // details layout (globalSettings.coursePages). The catalogue's own cards
+  // already navigate straight there, so this only catches the ways a visitor
+  // can still land on the raw /<tag>/<courseId> URL — a bookmark, a link
+  // shared before the page existed, a back-navigation. `replace` keeps that
+  // dead URL out of history so Back does not bounce them right back here.
+  const courseView = resolveCourseView(catalogueData?.globalSettings, {
+    courseId,
+    packageSessionId,
+  });
+  const customCoursePageRoute =
+    courseView.mode === "PAGE" ? courseView.route : null;
+  // Syllabus-first: the marketing accordion (why learn / about / who should
+  // learn / instructors) is dropped and the course structure leads, for
+  // courses where the syllabus IS the pitch. Same URL, so pricing, enrolment
+  // and the site chrome are untouched. TILES is the same page with the
+  // subjects drawn as artwork cards rather than folder rows.
+  const isOutlineView =
+    courseView.mode === "OUTLINE" || courseView.mode === "TILES";
+  // The course structure follows whatever the institute set for its logged-in
+  // learners, so the page reads the same signed in or out. A per-course
+  // OUTLINE/TILES mode is an explicit override and wins over the inherited
+  // setting; DETAILS (and no configuration at all) inherits.
+  const structureVariant: "outline" | "tiles" =
+    courseView.mode === "OUTLINE"
+      ? "outline"
+      : courseView.mode === "TILES"
+        ? "tiles"
+        : resolveLearnerStructureVariant(learnerCourseDetails);
+  useEffect(() => {
+    if (!customCoursePageRoute) return;
+    navigate({
+      to: `${RouteMatcher.basePath(tagName)}/${customCoursePageRoute}`,
+      search: { enrollInviteId, packageSessionId, bannerImage, level },
+      replace: true,
+    });
+  }, [customCoursePageRoute, tagName, navigate, enrollInviteId, packageSessionId, bannerImage, level]);
 
   useEffect(() => {
     if (!instituteId) return;
@@ -433,12 +654,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       .then((res) => {
         if (cancelled) return;
         const cd = (
-          res.data as { courseDetails?: { showInstructors?: boolean } } | null
+          res.data as { courseDetails?: LearnerCourseDetailsSettings } | null
         )?.courseDetails;
         setShowInstructors(cd?.showInstructors ?? false);
+        setLearnerCourseDetails(cd ?? null);
       })
       .catch(() => {
-        if (!cancelled) setShowInstructors(false);
+        if (cancelled) return;
+        setShowInstructors(false);
+        setLearnerCourseDetails(null);
       });
     return () => {
       cancelled = true;
@@ -836,14 +1060,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             "Internet connection",
             "Motivation to learn",
           ],
-          whoShouldLearn:
-            rawHtmlContent(course.who_should_learn) ||
-            t("courseDetails.defaultWhoShouldLearn", {
-              subject: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
-            }),
-          whyLearn:
-            rawHtmlContent(course.why_learn) ||
-            t("courseDetails.defaultWhyLearn"),
+          // No canned fallback copy: the overview hides "What you'll learn" /
+          // "Who should learn" when the admin left them blank. The generic
+          // "Gain valuable skills and knowledge" placeholder used to make the
+          // section appear on every course, filled or not.
+          whoShouldLearn: rawHtmlContent(course.who_should_learn),
+          whyLearn: rawHtmlContent(course.why_learn),
           // "About this course" must show the dedicated About field (rich text),
           // falling back to the course description. Previously read the wrong field
           // (course_html_description) and stripped all formatting.
@@ -851,29 +1073,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             rawHtmlContent(course.about_the_course) ||
             rawHtmlContent(course.course_html_description) ||
             null,
-          instructors:
-            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map(
-              (inst: any) => ({
-                name:
-                  inst.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email: inst.email || t("courseDetails.noEmailProvided"),
-              }),
-            ) || [
-              {
-                name:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.full_name ||
-                  t("courseDetails.unknownTeacher", {
-                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
-                  }),
-                email:
-                  courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.email || t("courseDetails.noEmailProvided"),
-              },
-            ],
+          // Authors = the batch's faculty, each with the profile fields the
+          // admin wrote (subtitle, rich-text bio, photo). Email is not carried
+          // to the page at all. No faculty -> no authors; the hero's author
+          // line (`instructor`) has its own fallback.
+          instructors: mapCourseAuthors(
+            courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors,
+            t("courseDetails.unknownTeacher", {
+              teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            }),
+          ),
           rating: course.rating || 5,
           tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet
@@ -1004,6 +1213,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
   }, [detailsPrimaryColor]);
 
+  // data-vacademy="enrol" inside an html `details` page (HtmlPageSection)
+  // dispatches this; the handler itself is defined after the loading/error
+  // returns below, so reach it through a ref that is refreshed every render.
+  const enrollClickRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const onOpenEnrollment = () => enrollClickRef.current();
+    window.addEventListener(OPEN_COURSE_ENROLLMENT_EVENT, onOpenEnrollment);
+    return () => window.removeEventListener(OPEN_COURSE_ENROLLMENT_EVENT, onOpenEnrollment);
+  }, []);
+
   // Listen for openLeadCollection event from HeaderComponent
   useEffect(() => {
     const handleOpenLeadCollection = () => {
@@ -1028,7 +1247,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     setShowLeadCollection(false);
   };
 
-  if (isLoading) {
+  if (isLoading || !namingReady) {
     return <DashboardLoader />;
   }
 
@@ -1047,7 +1266,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             })}
           </p>
           <button
-            onClick={() => navigate({ to: `/${tagName}` })}
+            onClick={() => navigate({ to: RouteMatcher.pagePath(tagName) })}
             className="px-4 py-2 bg-primary-500 text-white rounded-catalogue-sm hover:bg-primary-400 transition-colors"
           >
             {t("courseDetails.backToCatalog")}
@@ -1102,6 +1321,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       setShowLeadCollection(true);
     }
   };
+  enrollClickRef.current = handleEnrollClick;
 
   // Honor the catalogue's light/dark mode, exactly like CourseCataloguePage.
   // Without this the details page kept light tokens under a dark catalogue:
@@ -1109,6 +1329,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // resolved text-catalogue-text-primary to near-black (dark on dark), and the
   // content below stayed white.
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === "dark";
+
+  // The syllabus tree. Rendered once, but at a different point in the column
+  // depending on the view (see isOutlineView), so it is bound here rather than
+  // written out twice — courseData is guaranteed non-null past the guard above.
+  const courseStructure = (
+    <CourseStructureDetails
+      courseDepth={courseData.courseDepth}
+      courseId={courseData.courseId || courseId}
+      instituteId={instituteId}
+      packageSessionId={courseData.packageSessionId}
+      levelId={courseData.levelId}
+      variant={structureVariant}
+    />
+  );
 
   return (
     <div
@@ -1213,14 +1447,24 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 {/* Course highlights accordion — collapsed by default,
                     wraps the what-you'll-learn / about / who-should-learn /
                     instructors sections that used to stack as separate cards
-                    below the structure. */}
-                <CourseHighlightsAccordion
-                  whyLearn={courseData.whyLearn}
-                  aboutCourse={courseData.aboutCourse}
-                  whoShouldLearn={courseData.whoShouldLearn}
-                  instructors={courseData.instructors || []}
-                  showInstructors={showInstructors}
-                />
+                    below the structure. Outline view drops it: the syllabus
+                    is the pitch there, and the marketing copy pushes it below
+                    the fold. */}
+                {!isOutlineView && (
+                  <CourseHighlightsAccordion
+                    whyLearn={courseData.whyLearn}
+                    aboutCourse={courseData.aboutCourse}
+                    whoShouldLearn={courseData.whoShouldLearn}
+                    instructors={courseData.instructors || []}
+                    showInstructors={showInstructors}
+                    primaryInstructor={courseData.instructor}
+                  />
+                )}
+
+                {/* Outline view leads with the syllabus, above the mobile
+                    price card; every other view keeps it below (see the same
+                    block further down). */}
+                {isOutlineView && courseStructure}
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
@@ -1312,21 +1556,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       )}
 
-                      {/* Instructor */}
-                      {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
-                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            {getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher,
-                            )}
-                          </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
-                            {courseData.instructor}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Enroll Button */}
@@ -1355,13 +1584,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 </div>
 
                 {/* Course Structure */}
-                <CourseStructureDetails
-                  courseDepth={courseData.courseDepth}
-                  courseId={courseData.courseId || courseId}
-                  instituteId={instituteId}
-                  packageSessionId={courseData.packageSessionId}
-                  levelId={courseData.levelId}
-                />
+                {!isOutlineView && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the
@@ -1461,21 +1684,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       )}
 
-                      {/* Instructor */}
-                      {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
-                          <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
-                            <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            {getTerminology(
-                              RoleTerms.Teacher,
-                              SystemTerms.Teacher,
-                            )}
-                          </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
-                            {courseData.instructor}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Enroll Button */}

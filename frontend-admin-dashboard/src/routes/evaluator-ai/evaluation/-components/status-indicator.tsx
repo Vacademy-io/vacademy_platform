@@ -1,5 +1,6 @@
 import { CheckCircle, FileSearch, Loader2, Scale, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 type Status = 'EXTRACTING_ANSWER' | 'EVALUATING' | 'EVALUATION_COMPLETED' | 'WAITING';
 
@@ -9,30 +10,31 @@ interface StatusIndicatorProps {
 }
 
 export default function StatusIndicator({ status, className }: StatusIndicatorProps) {
+    const { t } = useTranslation('evaluatorAiStatusIndicator');
     const statusConfig = {
         EXTRACTING_ANSWER: {
-            label: 'Extracting answers',
+            label: t('extractingAnswers'),
             icon: FileSearch,
             color: 'text-blue-500',
             bgColor: 'bg-blue-100',
             loading: true,
         },
         EVALUATING: {
-            label: 'Evaluating',
+            label: t('evaluating'),
             icon: Scale,
             color: 'text-amber-500',
             bgColor: 'bg-amber-100',
             loading: true,
         },
         EVALUATION_COMPLETED: {
-            label: 'Completed',
+            label: t('completed'),
             icon: CheckCircle,
             color: 'text-green-500',
             bgColor: 'bg-green-100',
             loading: false,
         },
         WAITING: {
-            label: 'Queued',
+            label: t('queued'),
             icon: Timer,
             color: 'text-gray-500',
             bgColor: 'bg-gray-100',

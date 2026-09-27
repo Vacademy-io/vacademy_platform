@@ -17,19 +17,22 @@ import java.util.Set;
  * Store Connect JWT or holding a Google service-account key client-side would expose the private
  * key to anyone with devtools.
  *
- * <p>All four platforms route through {@link StoreStatusSyncService}, which resolves a credential
- * per institute (see {@code StoreCredentialResolver}) — whether a given app actually gets a live
- * answer depends on whether that institute (or the shared default) has a credential on file, not
- * on the platform itself. When none exists, or the app record has no bundle/package/store id
- * filled in, or {@code getReviews} is requested (not implemented for any provider yet), this
- * answers <b>501 Not Implemented</b> with a plain explanation — a dashboard that invents "Live"
- * for a store it can't actually reach is worse than one that says "go and look". The client
- * renders that as "Manual action required" and links to the right console.
+ * <p>All four platforms route through {@link StoreStatusSyncService}, which tries a credentialed
+ * client first (resolved per institute — see {@code StoreCredentialResolver}) and then, for iOS
+ * and Android only, the public store listing. When neither can answer — no credential and no
+ * public listing, or the app record has no bundle/package/store id filled in, or
+ * {@code getReviews} is requested (not implemented for any provider yet) — this answers
+ * <b>501 Not Implemented</b> with a plain explanation. A dashboard that invents "Live" for a store
+ * it can't actually reach is worse than one that says "go and look". The client renders that as
+ * "Manual action required" and links to the right console.
  *
- * <p>When a new provider is wired up, it must use the official API and documented auth only —
- * Play Developer API via a service account, App Store Connect via a JWT-signed .p8, Partner Center
- * via Azure AD. Never a scraped console session, a reused browser cookie, or an undocumented
- * endpoint.
+ * <p><b>Credentialed automation must use the official API and documented auth only</b> — Play
+ * Developer API via a service account, App Store Connect via a JWT-signed .p8, Partner Center via
+ * Azure AD. Never a scraped console session, a reused browser cookie, or an undocumented
+ * privileged endpoint. The public-listing tier is not an exception to that rule: it holds no
+ * credential, reads only the page any customer sees, and is therefore confined to public facts —
+ * the published version, its date and its listing URL. See {@code PublicStoreListingClient} for
+ * why it covers neither macOS nor Windows.
  */
 @RestController
 @RequestMapping("/community-service/super-admin/v1/app-registry/providers")
@@ -101,18 +104,21 @@ public class AppRegistryProviderController {
             return "Review sync isn't implemented yet — check the store console directly.";
         }
         return switch (platformKey) {
-            case "android" -> "Couldn't sync live status. Either no Play Developer credential is on file for "
-                    + "this institute (add one via /store-credentials), the app's Package Name isn't filled in, "
-                    + "or the account can't see this package — check the store console and record the result "
-                    + "in the dashboard.";
+            case "android" -> "Couldn't sync live status: no Play Developer credential is on file for this "
+                    + "institute (add one via /store-credentials) AND the package has no public Play listing "
+                    + "either — so the Package Name may be wrong, or the app isn't published. Check the store "
+                    + "console and record the result in the dashboard.";
             case "windows" -> "Couldn't sync live status. Either no Partner Center credential is on file for "
                     + "this institute (add one via /store-credentials), the app's Store ID isn't filled in, or "
                     + "the account can't see this application — check the store console and record the result "
                     + "in the dashboard.";
-            default -> "Couldn't sync live status. Either no App Store Connect credential is on file for this "
-                    + "institute (add one via /store-credentials), the app's Bundle ID isn't filled in, or the "
-                    + "account can't see this bundle — check the store console and record the result in the "
-                    + "dashboard.";
+            case "macos" -> "Couldn't sync live status. macOS needs a real App Store Connect credential — the "
+                    + "public lookup keys on bundle id and hands back the iPhone app, which on a Mac row is just "
+                    + "a wrong version number. Add a credential via /store-credentials, or record the result by "
+                    + "hand from the console.";
+            default -> "Couldn't sync live status: no App Store Connect credential can see this bundle AND it has "
+                    + "no public App Store listing either — so the Bundle ID may be wrong, or the app isn't "
+                    + "published yet. Check the store console and record the result in the dashboard.";
         };
     }
 }

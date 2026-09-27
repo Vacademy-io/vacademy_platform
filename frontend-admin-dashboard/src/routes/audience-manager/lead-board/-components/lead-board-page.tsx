@@ -34,11 +34,20 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { NO_STATUS_KEY, useLeadStatuses, type LeadStatus } from '@/hooks/use-lead-statuses';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import { toUtmFiltersPayload, utmValueLabel } from '@/components/shared/leads/utm-filter-encoding';
+import {
+    UTM_FILTER_DIMENSIONS,
+    type UtmFilterDimension,
+    type UtmFilterSelection,
+} from '@/services/utm-list-filters';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import {
     decodeSelectionToEntries,
@@ -150,11 +159,13 @@ const LeadBoardContent = () => {
     const { t } = useTranslation('audienceManagerLeadBoardPage');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
     const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
-    const tierLabels: Record<string, string> = {
-        HOT: t('filters.tier.hot'),
-        WARM: t('filters.tier.warm'),
-        COLD: t('filters.tier.cold'),
-    };
+    // Institute tier catalog (custom tiers + labels) and its own name for "Tier".
+    const tierCatalog = useLeadTiers();
+    const terminology = useLeadTerminology();
+    const tierLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
+        [tierCatalog.tiers]
+    );
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -223,6 +234,20 @@ const LeadBoardContent = () => {
                 .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
+
+    // Campaign (UTM) filters — one value list per dimension. The controls
+    // render nothing while the institute's UTM setting is off.
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const { t: tUtm } = useTranslation('utmListFilters');
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) => {
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    };
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
 
     // Write applied filters back to the URL (replace — filter tweaks shouldn't
     // pollute browser history). The board has no status param: columns ARE the
@@ -352,6 +377,7 @@ const LeadBoardContent = () => {
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            utm_filters: utmFiltersPayload,
         }),
         [
             instituteId,
@@ -366,6 +392,7 @@ const LeadBoardContent = () => {
             sourceFilter,
             callHistoryFilter,
             customFieldFiltersPayload,
+            utmFiltersPayload,
         ]
     );
 
@@ -435,6 +462,7 @@ const LeadBoardContent = () => {
         setSourceFilter('');
         setCallHistoryFilter('');
         setCustomFieldFilters({});
+        setUtmFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -474,7 +502,9 @@ const LeadBoardContent = () => {
         chips.push({
             // tierFilters holds raw enum values (HOT/WARM/COLD) — map through
             // tierLabels so the chip shows the translated label, not the enum.
-            label: t('chips.tier', { tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', ') }),
+            label: t('chips.tier', {
+                tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', '),
+            }),
             onRemove: () => setTierFilters([]),
         });
     if (slaFilters.length > 0)
@@ -490,7 +520,8 @@ const LeadBoardContent = () => {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
                 ? t('chips.unassigned')
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? t('chips.fallbackSelected'))
+                : counsellorOptions.find((c) => c.id === id)?.full_name ??
+                  t('chips.fallbackSelected')
         );
         chips.push({
             label: t('chips.counsellor', { names: cLabels.join(', ') }),
@@ -513,6 +544,23 @@ const LeadBoardContent = () => {
                     f.field_id,
                     removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
                 ),
+        });
+    });
+    UTM_FILTER_DIMENSIONS.forEach((dimension) => {
+        (utmFilters[dimension] ?? []).forEach((value) => {
+            chips.push({
+                label: tUtm('chip', {
+                    dimension: tUtm(
+                        `dimensions.${dimension === 'source_type' ? 'sourceType' : dimension}`
+                    ),
+                    value: utmValueLabel(value, tUtm('untagged')),
+                }),
+                onRemove: () =>
+                    setUtmFilter(
+                        dimension,
+                        (utmFilters[dimension] ?? []).filter((v) => v !== value)
+                    ),
+            });
         });
     });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
@@ -550,13 +598,12 @@ const LeadBoardContent = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <MultiSelectFilter
-                            label={t('filters.tier.label')}
+                            label={terminology.tier}
                             icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                            options={[
-                                { value: 'HOT', label: tierLabels.HOT ?? 'HOT' },
-                                { value: 'WARM', label: tierLabels.WARM ?? 'WARM' },
-                                { value: 'COLD', label: tierLabels.COLD ?? 'COLD' },
-                            ]}
+                            options={tierCatalog.tiers.map((tier) => ({
+                                value: tier.tier_key,
+                                label: tier.label,
+                            }))}
                             selected={tierFilters}
                             onChange={setTierFilters}
                             widthClass="w-36"
@@ -643,6 +690,12 @@ const LeadBoardContent = () => {
                             />
                         )
                     )}
+                    <UtmFilterControls
+                        surface="LEADS"
+                        instituteId={instituteId ?? ''}
+                        selection={utmFilters}
+                        onChange={setUtmFilter}
+                    />
                     <ManageListFiltersLink surface="LEADS" />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">

@@ -244,4 +244,61 @@ export const flavorConfig: FlavorConfigs = {
     domain: "soullifee.com",
     subdomain: "learner",
   },
+
+  // Agilore Global iOS app
+  "io.agilore.app": {
+    appName: "Agilore Global",
+    domain: "agilore.com",
+    subdomain: "learner",
+  },
+
+  // Oui Académie iOS app
+  "com.ouiacademie.app": {
+    appName: "Oui Académie",
+    domain: "oui-academie.com",
+    subdomain: "student",
+  },
+
+  // Agilore Global Android app
+  "com.agilore.app": {
+    appName: "Agilore Global",
+    domain: "agilore.com",
+    subdomain: "learner",
+  },
+
+  // Oui Académie Android app
+  "com.ouiacademie.io": {
+    appName: "Oui Académie",
+    domain: "oui-academie.com",
+    subdomain: "student",
+  },
+
+  // Sreedhar's TTS Android app
+  "com.sreedhar.app": {
+    appName: "Sreedhar's TTS",
+    domain: "ttsedu.co.in",
+    subdomain: "learn",
+  },
+
+  // Sreedhar's TTS iOS app
+  "io.sreedhar.app": {
+    appName: "Sreedhar's TTS",
+    domain: "ttsedu.co.in",
+    subdomain: "learn",
+  },
+
+  // Smart AI Academy iOS app
+  "io.smartaiacademy.app": {
+    appName: "Smart AI Academy",
+    domain: "smartaiacademy.co.in",
+    subdomain: "student",
+  },
+
+  // Smart AI Academy Android app (gradle flavor `smartaiacademy` existed without
+  // this entry, so its builds fell back to generic Vacademy branding)
+  "com.smartaiacademy.app": {
+    appName: "Smart AI Academy",
+    domain: "smartaiacademy.co.in",
+    subdomain: "student",
+  },
 };

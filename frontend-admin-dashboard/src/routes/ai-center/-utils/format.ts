@@ -134,7 +134,12 @@ export const friendlyHeading = (rawHeading: string, t: TFunction): string => {
     return key ? t(key) : rawHeading;
 };
 
-// input_type values that produce questions viewable via AIQuestionsPreview.
+// The task's AiTaskType. `input_type` is NOT it — that field only ever holds
+// PROMPT_ID/PDF_ID/IMAGE_ID/AUDIO_ID, which a topic-question task and a lecture
+// plan share — so anything keyed off the tool must read `type`.
+export const taskType = (task: AITaskIndividualListInterface): string => task.type ?? '';
+
+// Task types that produce questions viewable via AIQuestionsPreview.
 // Chat, lecture-plan, and lecture-review tasks use their own preview components.
 export const QUESTION_TASK_TYPES = new Set<string>([
     'PDF_TO_QUESTIONS',
@@ -145,9 +150,25 @@ export const QUESTION_TASK_TYPES = new Set<string>([
 ]);
 
 export const isQuestionTask = (task: AITaskIndividualListInterface): boolean =>
-    QUESTION_TASK_TYPES.has(task.input_type);
+    QUESTION_TASK_TYPES.has(taskType(task));
 
-// Map input_type → display heading for AIQuestionsPreview's export filename.
+// Task types worth surfacing in the aggregated history. The task table also
+// carries background rows (translation, KB ingestion, per-turn chat) that are
+// not a piece of work the user can reopen from here.
+const HISTORY_TASK_TYPES = new Set<string>([
+    ...QUESTION_TASK_TYPES,
+    'SORT_QUESTIONS_TOPIC_WISE',
+    'LECTURE_PLANNER',
+    'LECTURE_FEEDBACK',
+    'KB_PAPER_GENERATE',
+]);
+
+// Rows from before ai_service started sending `type` have no type at all; they
+// stay listed (they were listed before) rather than silently vanishing.
+export const isHistoryTask = (task: AITaskIndividualListInterface): boolean =>
+    !task.type || HISTORY_TASK_TYPES.has(task.type);
+
+// Map task type → display heading for AIQuestionsPreview's export filename.
 const QUESTION_HEADING_BY_TYPE: Record<string, string> = {
     PDF_TO_QUESTIONS: 'Vsmart Upload',
     PDF_TO_QUESTIONS_WITH_TOPIC: 'Vsmart Organizer',
@@ -157,4 +178,22 @@ const QUESTION_HEADING_BY_TYPE: Record<string, string> = {
 };
 
 export const headingForQuestionTask = (task: AITaskIndividualListInterface): string =>
-    QUESTION_HEADING_BY_TYPE[task.input_type] ?? 'Vsmart';
+    QUESTION_HEADING_BY_TYPE[taskType(task)] ?? 'Vsmart';
+
+// Where a task that can't be previewed inline should send the user. Keyed by
+// task type first (the tool that made it); the file family is only a fallback
+// for rows with no type.
+const ROUTE_BY_TASK_TYPE: Record<string, string> = {
+    TEXT_TO_QUESTIONS: '/ai-center/ai-tools/vsmart-prompt',
+    PDF_TO_QUESTIONS: '/ai-center/ai-tools/vsmart-upload',
+    PDF_TO_QUESTIONS_WITH_TOPIC: '/ai-center/ai-tools/vsmart-organizer',
+    IMAGE_TO_QUESTIONS: '/ai-center/ai-tools/vsmart-image',
+    AUDIO_TO_QUESTIONS: '/ai-center/ai-tools/vsmart-audio',
+    SORT_QUESTIONS_TOPIC_WISE: '/ai-center/ai-tools/vsmart-sorter',
+    LECTURE_PLANNER: '/ai-center/ai-tools/vsmart-lecture',
+    LECTURE_FEEDBACK: '/ai-center/ai-tools/vsmart-feedback',
+    CHAT_WITH_PDF: '/ai-center/ai-tools/vsmart-chat',
+};
+
+export const routeForTask = (task: AITaskIndividualListInterface): string =>
+    ROUTE_BY_TASK_TYPE[taskType(task)] ?? routeForFamily[classifyFile(task.file_detail?.file_type)];

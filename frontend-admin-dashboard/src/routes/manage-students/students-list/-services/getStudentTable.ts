@@ -70,6 +70,15 @@ export const useStudentList = (
                         `${b.field_id}:${b.operator ?? 'IN'}`
                     )
                 ),
+            // Campaign (UTM) filters — sorted per dimension so selection order
+            // never splits the cache.
+            utm_filters: filters.utm_filters
+                ? Object.fromEntries(
+                      Object.entries(filters.utm_filters)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([k, v]) => [k, Array.isArray(v) ? [...v].sort() : v])
+                  )
+                : undefined,
         });
     }, [filters]);
 

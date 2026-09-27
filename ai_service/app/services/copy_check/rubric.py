@@ -158,6 +158,7 @@ class RubricResolver:
             question_type=question.get("question_type", "LONG_ANSWER"),
             max_marks=float(question.get("max_marks") or 10),
             question_text=question["question_text"],
+            has_options=bool(question.get("options")),
         )
         try:
             data = await self.llm_call(CRITERIA_SYSTEM, prompt, preferred_model)

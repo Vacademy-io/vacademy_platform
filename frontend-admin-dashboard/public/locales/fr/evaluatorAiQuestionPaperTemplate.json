@@ -1,0 +1,12 @@
+{
+    "common": {
+        "save": "Enregistrer",
+        "exit": "Quitter",
+        "addQuestion": "Ajouter une question",
+        "questionIncomplete": "La question n'est pas complète",
+        "noQuestionExists": "Aucune question n'existe."
+    },
+    "toast": {
+        "questionPaperUpdated": "Sujet d'examen mis à jour avec succès"
+    }
+}

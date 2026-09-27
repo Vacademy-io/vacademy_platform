@@ -14,6 +14,8 @@
         "botSilent": "L'agent n'a jamais parlé — l'appelant n'a rien entendu",
         "replyLoop": "L'agent n'a cessé de relancer la même réponse",
         "handbackLoop": "L'agent n'avait rien à dire et n'a cessé de demander à l'appelant de parler",
+        "openingReplayed": "L'agent a répété son introduction en pleine conversation",
+        "repeatedLine": "L'agent a dit deux fois la même phrase",
         "deadAir": "Long silence pendant l'appel",
         "falseReask": "L'agent a redemandé des réponses qu'il avait déjà entendues",
         "likelyMachine": "Probablement un répondeur, pas une personne",
@@ -31,6 +33,8 @@
         "botSilent": "Agent silencieux",
         "replyLoop": "Boucle de réponse",
         "handbackLoop": "Rien à dire",
+        "openingReplayed": "Introduction répétée",
+        "repeatedLine": "Phrase répétée",
         "deadAir": "Silence",
         "falseReask": "Fausse relance",
         "likelyMachine": "Répondeur probable",
@@ -109,7 +113,12 @@
         "sttReconnect_many": "{{count}} reconnexions de reconnaissance vocale",
         "sttReconnect_other": "{{count}} reconnexions de reconnaissance vocale",
         "transferFailed": "transfert demandé, jamais enregistré auprès du fournisseur",
-        "promptUnresolved": "non résolu : {{fields}}"
+        "promptUnresolved": "non résolu : {{fields}}",
+        "openingReplayed_one": "introduction répétée {{count}} fois",
+        "openingReplayed_other": "introduction répétée {{count}} fois",
+        "repeatedLine_one": "{{count}} phrase dite deux fois",
+        "repeatedLine_other": "{{count}} phrases dites deux fois",
+        "repeatedLineSample": "p. ex. « {{text}} »"
     },
     "faultBlock": {
         "unrecognisedCode": "Code de défaut non reconnu — cet appel a été signalé par un bot plus récent que ce tableau de bord."

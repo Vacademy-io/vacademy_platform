@@ -84,11 +84,22 @@ REPLY_LOOP = "REPLY_LOOP"
 # fragment, DEAD_AIR named the symptom, LIKELY_MACHINE was simply wrong. The
 # thing that actually broke the call had no counter at all.
 HANDBACK_LOOP = "HANDBACK_LOOP"
+# 2026-09-15, six founder-found defects in one day that the counters above did
+# not name. Both computed from the PLAYED transcript at report time — what the
+# caller actually heard, the same invariants sim.replay checks offline.
+# The opening was said again after the person had already spoken (call
+# 196838de: a screener flag left armed; the father's "Hello?" 2 min in
+# replayed the whole opening and he hung up).
+OPENING_REPLAYED = "OPENING_REPLAYED"
+# A sentence of five or more words was played twice and the caller had not
+# asked for it (calls f28888b2, af7e93bd: heard lines un-recorded and said
+# again; 71e8f39b: the same restatement five times).
+REPEATED_LINE = "REPEATED_LINE"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
-    BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP,
+    BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP, OPENING_REPLAYED, REPEATED_LINE,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -99,9 +110,9 @@ ALL_FAULTS = (
 # HANDBACK_LOOP outranks ANSWER_DELETED and DEAD_AIR deliberately: on call
 # 3148ccd4 all three fired, and the other two describe consequences of it.
 HEADLINE_PRIORITY = (
-    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, HANDBACK_LOOP, TTS_WEDGE, REPLY_UNPLAYED,
-    ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM,
-    TRANSFER_FAILED, PROMPT_UNFILLED,
+    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, OPENING_REPLAYED, HANDBACK_LOOP, REPEATED_LINE,
+    TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE,
+    SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
 )
 
 GREEN, AMBER, RED = "GREEN", "AMBER", "RED"
@@ -211,6 +222,47 @@ class CallDiagnostics:
     # unchanged — call 17be14f2). Each one is a reply-to-nothing that used to
     # re-deliver the intro. Evidence, not a fault.
     empty_runs_blocked: int = 0
+    # Runs held because the scripted opening had not been heard yet and the
+    # caller's words did not take over (room chatter at pickup, call 4243a436).
+    runs_held_for_opening: int = 0
+    # Short-answer holds released because the line never went quiet (noise).
+    short_answer_noise_releases: int = 0
+    # Voice-mode barge-in: acknowledgements the bot talked straight through, and
+    # stops made because the caller kept talking past barge_in_voice_secs.
+    acks_talked_through: int = 0
+    # FloorGate: replies held because the caller was talking when they were
+    # ready; then dropped (caller took the turn), released (caller stopped) or
+    # capped (the line never went quiet).
+    # "<name>" copied from the prompt's script lines, replaced before the TTS.
+    placeholders_filled: int = 0
+    # "करतो/करते"-style either-or pairs reduced to one form before the TTS.
+    alternatives_collapsed: int = 0
+    # Replies whose later sentences had to be committed to the model's history
+    # after their response ended (per-sentence TTS contexts).
+    late_reply_commits: int = 0
+    floor_holds: int = 0
+    floor_holds_dropped: int = 0
+    floor_holds_released: int = 0
+    floor_holds_capped: int = 0
+    voice_cuts: int = 0
+    # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
+    # resumed inside the grace — the whole turn was answered once instead
+    # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
+    short_answer_holds: int = 0
+    # Resumed words that had to be sent to the TTS twice because the first
+    # frame was swallowed by the vendor socket reconnecting after the
+    # interruption (call 3b5fb592). Evidence, not a fault.
+    resume_respoken: int = 0
+    # Resumed words that never reached the line at all and were handed back to
+    # the model (call b41b481f). A fault symptom, not a fault by itself.
+    resume_lost: int = 0
+    sentences_capped: int = 0
+    # From the PLAYED transcript at report time (report._played_invariants):
+    # the opening said again after a substantive caller turn; 5+-word
+    # sentences played twice without a caller "hello?"/"say again" between.
+    opening_replays: int = 0
+    repeated_lines: int = 0
+    repeated_line_samples: List[str] = field(default_factory=list)
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -247,6 +299,10 @@ class CallDiagnostics:
     # a bare 0 would read as a free call, which is a lie we would then bill on.
     tts_vendor: str = ""
     tts_vendor_credits: Optional[float] = None
+    # "provider/model" the call's replies came from (bot.run_bot). Exists so a
+    # per-agent LLM POC (config.sarvam_llm_agents) is visible in the report and
+    # a latency comparison can be made per vendor instead of by memory.
+    llm_vendor: str = ""
     tts_meter_frames: int = 0
     tts_audio_secs: float = 0.0
     tts_chars: int = 0
@@ -264,6 +320,20 @@ class CallDiagnostics:
 
     # ── infrastructure ──
     stt_reconnects: int = 0
+    # The STT waterfall took over mid-call (STT_FALLBACK_PROVIDER): primary
+    # failed audibly (no transcript for a heard utterance) or on its socket.
+    stt_failovers: int = 0
+    stt_vendor_final: str = ""
+    llm_failovers: int = 0
+    llm_vendor_final: str = ""
+    # Token usage summed over the call's LLM runs, from pipecat's usage
+    # metrics. cached = prompt tokens the vendor served from its prompt cache
+    # (Gemini implicit caching bills them at ~10%; Sarvam reports none) — the
+    # only per-call answer to "is caching lowering the LLM bill?".
+    llm_runs: int = 0
+    llm_prompt_tokens: int = 0
+    llm_cached_tokens: int = 0
+    llm_completion_tokens: int = 0
     hearing_failures: int = 0     # times we gave up and closed out honestly
     # Caller utterances DETECTED by VAD that produced no transcript at all. This
     # is the only signal that separates "nobody answered" from "we went deaf".
@@ -277,6 +347,12 @@ class CallDiagnostics:
     # and skips ahead — see bot._greet_when_ready. Counted, not scored: it is a
     # normal thing for a caller to do, and the correction handles it.
     opening_truncated: int = 0
+    # The caller's pickup "hello" cut the opening at its start and the opening
+    # was spoken again (call 9e566e32, 2026-09-09). At most 1 per call.
+    opening_resaid: int = 0
+    # "Just a second." spoken because a reply was composing with no audio for
+    # LLM_BRIDGE_AFTER_SECS (call c130e39f, 2026-09-09). One per slow reply.
+    llm_bridges: int = 0
     prompt_unfilled: List[str] = field(default_factory=list)
     crash: Optional[str] = None
     transfer_requested: bool = False
@@ -496,6 +572,20 @@ def _lost_carries_meaning(text: str) -> bool:
     return len(_norm_answer(words[0])) > _SCRAP_MAX_CHARS
 
 
+def _consume_words(words: List[List[Optional[str]]], seq: List[str]) -> bool:
+    """Find `seq` as a contiguous run of still-unconsumed words in one of the
+    delivered messages; blank those words (None) and return True. Whole words
+    only — "हाँ" never matches inside "हाय", which is what the substring pass
+    could not promise for short keys."""
+    n = len(seq)
+    for ws in words:
+        for i in range(len(ws) - n + 1):
+            if ws[i:i + n] == seq:
+                ws[i:i + n] = [None] * n
+                return True
+    return False
+
+
 class Lost(NamedTuple):
     """What the reconciliation found, split by whether losing it cost anything."""
     answers: int
@@ -592,11 +682,24 @@ def split_lost(heard: List[str], delivered: List[str]) -> Lost:
     # message that exact-matched is spoken for and must not also absorb fragments,
     # so only UNCONSUMED copies are searchable).
     spans: List[str] = []
+    # Whole-word view of the same unconsumed messages, for the short tokens
+    # the substring pass must not touch. Verified live (call ee6f561c,
+    # 2026-09-11): saaras emitted "But." / "बच्चा भी।" / "ठीक।" / "fifth class
+    # में पढ़ रहा है।" as four finals, the aggregator joined them into one
+    # message and the model answered "fifth class" — yet "ठीक।" was reported
+    # DELETED, because it normalizes to 2 chars and substring matching is
+    # (rightly) off below 4. Over 7 days the top "deleted answers" were
+    # "Yes." x8, "हाँ।" x3, "Yeah." x3 — every one a 3-char-or-shorter key that
+    # this pass can now place as a whole word, so the fault reports real
+    # losses only. A word is consumed once, so a repeated "yes" still needs
+    # its own copy.
+    words: List[List[Optional[str]]] = []
     for m in delivered:
         k = _norm_answer(m)
         if k and pool.get(k, 0) > 0:
             pool[k] -= 1
             spans.append(k)
+            words.append([w for w in (_norm_answer(t) for t in m.split()) if w])
     missing: List[str] = []
     for h, k in leftovers:
         if len(k) >= _CONTAIN_MIN_CHARS:
@@ -607,8 +710,27 @@ def split_lost(heard: List[str], delivered: List[str]) -> Lost:
                     break
             else:
                 missing.append(h)
-        else:
-            missing.append(h)
+            continue
+        hw = [w for w in (_norm_answer(t) for t in h.split()) if w]
+        if hw and _consume_words(words, hw):
+            continue
+        missing.append(h)
+    # Pass 3, the reverse split: the transcript JOINS a fragment continuation
+    # onto its head ("मेरा बच्चा mobile" + "बाईस से।" -> one entry) while the
+    # model received the pieces as separate messages. Call 2983bf1f
+    # (2026-09-24) reported that line lost; the run that followed had all 17
+    # of the caller's words. Search the unconsumed messages joined in order.
+    if missing and spans:
+        joined = "".join(spans)
+        still: List[str] = []
+        for h in missing:
+            k = _norm_answer(h)
+            j = joined.find(k) if len(k) >= _CONTAIN_MIN_CHARS else -1
+            if j >= 0:
+                joined = joined[:j] + joined[j + len(k):]
+            else:
+                still.append(h)
+        missing = still
     answers = [h for h in missing if _lost_carries_meaning(h)]
     scraps = [h for h in missing if not _lost_carries_meaning(h)]
     return Lost(len(answers), answers[:_MAX_DELETED_ANSWERS],
@@ -666,6 +788,13 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
         fire(TTS_WEDGE, RED)
     elif d.tts_stalls == 1 or d.tts_wedges >= 1 or d.tts_letterless_skipped >= 1:
         fire(TTS_WEDGE, AMBER)
+
+    if d.opening_replays >= 1:
+        fire(OPENING_REPLAYED, RED)
+    if d.repeated_lines >= 2:
+        fire(REPEATED_LINE, RED)
+    elif d.repeated_lines == 1:
+        fire(REPEATED_LINE, AMBER)
 
     if d.replies_never_played >= 2:
         fire(REPLY_UNPLAYED, RED)
@@ -771,6 +900,8 @@ _HEADLINE_TEXT = {
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
     BOT_SILENT: "The agent never spoke — the caller heard nothing",
     REPLY_LOOP: "The agent kept restarting the same reply",
+    OPENING_REPLAYED: "The agent said its opening again mid-call",
+    REPEATED_LINE: "The agent said the same line twice",
     HANDBACK_LOOP: "The agent had nothing to say and kept asking the caller to talk",
 }
 
@@ -787,6 +918,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "faultLevels": v["faults"],
             "headline": v["headline"],
             "headlineText": _HEADLINE_TEXT.get(v["headline"]) if v["headline"] else None,
+            "llm": {"vendor": d.llm_vendor or None},
             "tts": {
                 "letterlessSkipped": d.tts_letterless_skipped,
                 "wedges": d.tts_wedges,
@@ -831,6 +963,24 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
+                "runsHeldForOpening": d.runs_held_for_opening,
+                "shortAnswerNoiseReleases": d.short_answer_noise_releases,
+                "acksTalkedThrough": d.acks_talked_through,
+                "placeholdersFilled": d.placeholders_filled,
+                "alternativesCollapsed": d.alternatives_collapsed,
+                "lateReplyCommits": d.late_reply_commits,
+                "floorHolds": d.floor_holds,
+                "floorHoldsDropped": d.floor_holds_dropped,
+                "floorHoldsReleased": d.floor_holds_released,
+                "floorHoldsCapped": d.floor_holds_capped,
+                "voiceCuts": d.voice_cuts,
+                "shortAnswerHolds": d.short_answer_holds,
+                "resumeRespoken": d.resume_respoken,
+                "resumeLost": d.resume_lost,
+                "sentencesCapped": d.sentences_capped,
+                "openingReplays": d.opening_replays,
+                "repeatedLines": d.repeated_lines,
+                "repeatedLineSamples": d.repeated_line_samples[:3],
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
@@ -857,6 +1007,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "greetDelaySecs": d.greet_delay_secs,
                 "setupSecs": d.setup_secs,
                 "openingTruncated": d.opening_truncated,
+                "openingResaid": d.opening_resaid,
+                "llmBridges": d.llm_bridges,
             },
             "machine": {
                 "score": machine_score(d),
@@ -867,6 +1019,18 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             },
             "infra": {
                 "sttReconnects": d.stt_reconnects,
+                "sttFailovers": d.stt_failovers,
+                "sttVendorFinal": d.stt_vendor_final or None,
+                "llmFailovers": d.llm_failovers,
+                "llmVendorFinal": d.llm_vendor_final or None,
+                "llmUsage": {
+                    "runs": d.llm_runs,
+                    "promptTokens": d.llm_prompt_tokens,
+                    "cachedTokens": d.llm_cached_tokens,
+                    "completionTokens": d.llm_completion_tokens,
+                    "cachedPct": (round(100.0 * d.llm_cached_tokens / d.llm_prompt_tokens, 1)
+                                  if d.llm_prompt_tokens else None),
+                } if d.llm_runs else None,
                 "hearingFailures": d.hearing_failures,
                 "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,

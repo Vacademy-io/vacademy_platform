@@ -1,0 +1,21 @@
+{
+    "trigger": {
+        "createBatch": "Create Batch"
+    },
+    "toast": {
+        "studyMaterialCopiedSuccess": "Study material copied successfully",
+        "studyMaterialCopyFailed": "Failed to copy study material",
+        "batchCreatedSuccess": "Batch created successfully",
+        "batchCreateFailed": "Failed to create batch"
+    },
+    "button": {
+        "back": "Back",
+        "nextStep": "Next Step"
+    },
+    "step": {
+        "selectTerm": "Select {{term}}"
+    },
+    "dialog": {
+        "heading": "Create {{batchTerm}} - Step {{step}}: {{title}}"
+    }
+}

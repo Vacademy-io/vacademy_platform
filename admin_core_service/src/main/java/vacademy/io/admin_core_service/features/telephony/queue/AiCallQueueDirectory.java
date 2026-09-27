@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallingSettingsService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
@@ -42,6 +44,8 @@ public class AiCallQueueDirectory {
     private static final Logger log = LoggerFactory.getLogger(AiCallQueueDirectory.class);
 
     private final InstituteRepository instituteRepository;
+    private final AudienceRepository audienceRepository;
+    private final AudienceResponseRepository audienceResponseRepository;
     private final AiAgentRepository aiAgentRepository;
     private final TelephonyCallLogRepository callLogRepository;
     private final AiCallingSettingsService settingsService;
@@ -83,8 +87,26 @@ public class AiCallQueueDirectory {
             if (notBlank(item.getInstituteId())) instituteIds.add(item.getInstituteId());
             if (notBlank(item.getCampaignId())) campaignIds.add(item.getCampaignId());
         }
+        // Which bulk run a row belongs to. Without this the queue tab shows a hundred
+        // rows all reading "Bulk campaign" with no way to tell two concurrent runs
+        // apart — and no way to find the run whose progress dialog you just closed.
+        Set<String> runRefs = new HashSet<>();
+        for (AiCallQueueItem item : items) {
+            if (notBlank(item.getSourceRef()) && "BULK".equals(item.getSource())) {
+                runRefs.add(item.getSourceRef());
+            }
+        }
+        // The lead's own name. A queue row stores only ids and, often, not even a phone
+        // — the number is resolved downstream at dial time — so without this the Lead
+        // column showed a bare number, or a raw uuid, for every row.
+        Set<String> responseIds = new HashSet<>();
+        for (AiCallQueueItem item : items) {
+            if (notBlank(item.getResponseId())) responseIds.add(item.getResponseId());
+        }
         Map<String, String> institutes = instituteNames(instituteIds);
         Map<String, String> agents = agentNames(campaignIds);
+        Map<String, String> runs = campaignNamesFor(runRefs);
+        Map<String, LeadRef> leads = leadNames(responseIds);
 
         // Only reach for an institute's settings when a campaign id is STILL unnamed
         // after ai_agent — i.e. an Aavtaar campaign. Most deployments never pay for this.
@@ -112,7 +134,42 @@ public class AiCallQueueDirectory {
                         + "naming agents: {}", instituteId, e.getMessage());
             }
         }
-        return new Names(institutes, agents);
+        return new Names(institutes, agents, runs, leads);
+    }
+
+    /** A lead's display name and the number on its CRM record. */
+    public record LeadRef(String name, String mobile) {}
+
+    /** Lead ids (audience_response ids) → name + number. */
+    public Map<String, LeadRef> leadNames(Collection<String> responseIds) {
+        Map<String, LeadRef> out = new HashMap<>();
+        if (responseIds == null || responseIds.isEmpty()) return out;
+        try {
+            for (Object[] row : audienceResponseRepository.findIdNameAndMobileByIds(responseIds)) {
+                if (row[0] != null) {
+                    out.put((String) row[0], new LeadRef((String) row[1], (String) row[2]));
+                }
+            }
+        } catch (Exception e) {
+            // A deleted lead must not blank out the names on the rest of the page.
+            log.debug("ai-call queue: could not resolve lead names: {}", e.getMessage());
+        }
+        return out;
+    }
+
+    /** Bulk-run ids (audience ids) → campaign name. */
+    public Map<String, String> campaignNamesFor(Collection<String> audienceIds) {
+        Map<String, String> out = new HashMap<>();
+        if (audienceIds == null || audienceIds.isEmpty()) return out;
+        try {
+            for (Object[] row : audienceRepository.findIdAndCampaignNameByIds(audienceIds)) {
+                if (row[0] != null && row[1] != null) out.put((String) row[0], (String) row[1]);
+            }
+        } catch (Exception e) {
+            // A deleted audience must not blank out the rest of the page.
+            log.debug("ai-call queue: could not resolve campaign names: {}", e.getMessage());
+        }
+        return out;
     }
 
     public Map<String, String> instituteNames(Collection<String> instituteIds) {
@@ -138,10 +195,32 @@ public class AiCallQueueDirectory {
     public static final class Names {
         private final Map<String, String> institutes;
         private final Map<String, String> agents;
+        private final Map<String, String> runs;
+        private final Map<String, LeadRef> leads;
 
-        Names(Map<String, String> institutes, Map<String, String> agents) {
+        Names(Map<String, String> institutes, Map<String, String> agents,
+              Map<String, String> runs, Map<String, LeadRef> leads) {
             this.institutes = institutes;
             this.agents = agents;
+            this.runs = runs;
+            this.leads = leads;
+        }
+
+        /** The lead's name, or null when the CRM record has none. */
+        public String leadName(String responseId) {
+            LeadRef ref = responseId == null ? null : leads.get(responseId);
+            return ref == null || ref.name() == null || ref.name().isBlank() ? null : ref.name();
+        }
+
+        /** The number on the lead's CRM record — a fallback when the queue row has none. */
+        public String leadMobile(String responseId) {
+            LeadRef ref = responseId == null ? null : leads.get(responseId);
+            return ref == null ? null : ref.mobile();
+        }
+
+        /** The campaign a bulk row came from, or null when it is not a bulk row. */
+        public String runName(String sourceRef) {
+            return sourceRef == null ? null : runs.get(sourceRef);
         }
 
         public String instituteName(String instituteId) {

@@ -60,6 +60,14 @@ export type StudentDashboardWidgetId =
     // widget and the "go buy more" button can be controlled independently.
     | 'exploreMemberships'
     | 'exploreBooks'
+    // "Get the app" download card. Shows the store links configured on the
+    // institute's domain-routing row — the same source the learner sidebar
+    // footer uses, so an institute can carry them in the sidebar, the
+    // dashboard, both, or neither (see `sidebar.appLinks`).
+    | 'getApp'
+    // Today's teacher-scheduled tasks (the Daily Engagement module). The
+    // learner dashboard renders nothing for an institute with no plan running.
+    | 'todayTasks'
     | 'custom';
 
 /**
@@ -94,6 +102,8 @@ export const WIDGET_LABELS: Record<string, string> = {
     gamification: 'Gamification (XP, streak, badges)',
     exploreMemberships: 'Explore Memberships (button)',
     exploreBooks: 'Explore Books (button)',
+    getApp: 'Get the app (download links card)',
+    todayTasks: "Today's tasks (daily engagement plan)",
     custom: 'Custom',
 };
 
@@ -216,7 +226,11 @@ export interface StudentCourseDetailsSettings {
     ratingsAndReviewsVisible: boolean;
     /** Hide the "Author" row in the course-details Course Overview panel. Default false (author shown). */
     hideAuthorName?: boolean;
-    /** Show the Teachers/Instructors section on the course-details page. Default false (hidden). */
+    /**
+     * List EVERY teacher of the batch on the course-details page. Default false:
+     * only the first author is shown (with photo, subtitle and bio). Learners
+     * never see email addresses either way.
+     */
     showInstructors?: boolean;
     // New toggles
     showCourseConfiguration: boolean;
@@ -271,8 +285,8 @@ export interface StudentCourseDetailsSettings {
      * follows enrolledLayout (content-only skips the list), explicit wins.
      */
     chapterOpensFirstSlide?: boolean;
-  /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
-  contentCardImageFit?: ContentCardImageFit;
+    /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
+    contentCardImageFit?: ContentCardImageFit;
 }
 
 // Course Settings
@@ -406,11 +420,38 @@ export interface StudentLiveClassesSettings {
     showClassMaterials: boolean;
 }
 
+// Periodic "Active Focus Check" shown over video slides in the learner app: the
+// learner must tap a highlighted number to keep watching. The learner app owns
+// the whole behaviour; the admin app only needs to round-trip the block so that
+// saving Student Display settings never drops an institute's opt-out.
+export interface StudentConcentrationSettings {
+    enabled: boolean;
+    frequency: {
+        min_minutes: number;
+        max_minutes: number;
+    };
+    behavior: {
+        allow_skip: boolean;
+        penalty_type: 'pause' | 'flag_only';
+    };
+    appearance: {
+        title: string;
+        subtitle: string;
+    };
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
         visible: boolean; // toggle to show/hide entire sidebar
         tabs: StudentSidebarTabConfig[];
+        /**
+         * Whether the learner sidebar footer carries the "Apps & Portals"
+         * download row. Defaults to true (the historical behaviour). Turn it
+         * off to move those links to the dashboard's getApp widget instead of
+         * showing both.
+         */
+        appLinks?: boolean;
     };
     dashboard: {
         widgets: StudentDashboardWidgetConfig[];
@@ -431,5 +472,6 @@ export interface StudentDisplaySettingsData {
     };
     liveClasses: StudentLiveClassesSettings;
     tutorials: StudentTutorialSettings;
+    concentration: StudentConcentrationSettings;
     postLoginRedirectRoute: string;
 }

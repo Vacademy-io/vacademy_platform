@@ -1,0 +1,22 @@
+{
+    "questionPaperIdRequired": "L'ID du sujet d'examen est requis",
+    "questionPaperIdMustBeNumber": "L'ID du sujet d'examen doit être un nombre",
+    "questionFieldRequired": "Le champ Question est requis",
+    "questionFieldMustBeString": "Le champ Question doit être une chaîne de caractères",
+    "optionFieldRequired": "Le champ Option est requis",
+    "optionFieldMustBeString": "Le champ Option doit être une chaîne de caractères",
+    "answerFieldRequired": "Le champ Réponse est requis",
+    "answerFieldMustBeString": "Le champ Réponse doit être une chaîne de caractères",
+    "explanationFieldRequired": "Le champ Explication est requis",
+    "explanationFieldMustBeString": "Le champ Explication doit être une chaîne de caractères",
+    "fileUploadRequired": "Le téléversement d'un fichier valide est requis",
+    "questionNameRequired": "Le nom de la question est requis",
+    "mcqsMustHaveSingleChoiceOptions": "Les questions MCQS doivent avoir singleChoiceOptions",
+    "mcqsMustHaveAtLeast2Options": "Une question MCQS doit avoir au moins 2 options",
+    "mcqsMustHaveExactlyOneSelected": "Une question MCQS doit avoir exactement une option sélectionnée",
+    "optionIsRequired": "L'option {{number}} est requise",
+    "mcqmMustHaveMultipleChoiceOptions": "Les questions MCQM doivent avoir multipleChoiceOptions",
+    "mcqmMustHaveAtLeast2Options": "Une question MCQM doit avoir au moins 2 options",
+    "mcqmMustHaveAtLeastOneSelected": "Une question MCQM doit avoir au moins une option sélectionnée",
+    "incorrectAnswerTypeEntered": "Le type de réponse saisi n'est pas correct {{numericType}}"
+}

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { StudentRow } from '../-types/mentorship-types';
 
 /**
@@ -65,8 +66,16 @@ const isPlaceholderLevel = (level: PickerBatch['level']) => {
  * The session name is appended only when the institute actually runs more than
  * one — on a single-session institute it is the same suffix on every row, which
  * is noise that pushes the part that distinguishes them out of the truncation.
+ *
+ * `t` is optional (namespace `mentorshipMenteePickerUtils`) because this is a
+ * plain function, not a hook — a caller that hasn't been wired for i18n yet can
+ * still call it and gets the English "Course" fallback; a caller that has a `t`
+ * in scope should pass it through so the fallback is translated.
  */
-export function buildBatchOptions(batches: PickerBatch[] | undefined | null): BatchOption[] {
+export function buildBatchOptions(
+    batches: PickerBatch[] | undefined | null,
+    t?: TFunction
+): BatchOption[] {
     const live = (batches ?? []).filter(
         (b) => !!b?.id && (b.status ?? '').toUpperCase() !== 'DELETED'
     );
@@ -74,7 +83,9 @@ export function buildBatchOptions(batches: PickerBatch[] | undefined | null): Ba
     const showSession = sessionIds.size > 1;
 
     const options = live.map((batch) => {
-        const course = stripDefaultPrefix(batch.package_dto?.package_name ?? '') || 'Course';
+        const course =
+            stripDefaultPrefix(batch.package_dto?.package_name ?? '') ||
+            (t ? t('courseFallback') : 'Course');
         const parts = [course];
         if (!isPlaceholderLevel(batch.level)) {
             parts.push(stripDefaultPrefix(batch.level?.level_name ?? ''));

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,6 +23,7 @@ interface HoldEntryDialogProps {
  * the total moved. The backend stores it on the entry and it is shown on the row.
  */
 export const HoldEntryDialog = ({ entry, onClose, onHold }: HoldEntryDialogProps) => {
+    const { t } = useTranslation('erpHoldEntryDialog');
     const [reason, setReason] = useState('');
 
     useEffect(() => {
@@ -32,7 +34,7 @@ export const HoldEntryDialog = ({ entry, onClose, onHold }: HoldEntryDialogProps
         if (!entry?.id) return;
         const trimmed = reason.trim();
         if (trimmed.length < MIN_REASON) {
-            toast.error('Give a reason for the hold — it is stored against the payslip.');
+            toast.error(t('reasonRequired'));
             return;
         }
         const message = await onHold(entry.id, trimmed);
@@ -43,48 +45,47 @@ export const HoldEntryDialog = ({ entry, onClose, onHold }: HoldEntryDialogProps
 
     return (
         <MyDialog
-            heading={`Hold payslip${entry?.employee_code ? ` — ${entry.employee_code}` : ''}`}
+            heading={
+                entry?.employee_code
+                    ? t('headingWithCode', { code: entry.employee_code })
+                    : t('heading')
+            }
             open={!!entry}
             onOpenChange={(open) => !open && onClose()}
             dialogWidth="max-w-lg"
             footer={
                 <>
                     <MyButton buttonType="secondary" scale="medium" onClick={onClose}>
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={submit}
-                        loadingText="Holding…"
+                        loadingText={t('holding')}
                     >
-                        Hold payslip
+                        {t('holdPayslip')}
                     </MyButton>
                 </>
             }
         >
             <div className="flex flex-col gap-4">
-                <p className="text-body text-neutral-600">
-                    Holding removes this employee&apos;s net pay from the run total. Their payslip
-                    stays computed, so releasing it later needs no recalculation.
-                </p>
+                <p className="text-body text-neutral-600">{t('description')}</p>
                 <div className="flex flex-col gap-2">
                     <label
                         htmlFor="hold-reason"
                         className="text-body font-semibold text-neutral-700"
                     >
-                        Reason <span className="text-danger-600">*</span>
+                        {t('reasonLabel')} <span className="text-danger-600">*</span>
                     </label>
                     <Textarea
                         id="hold-reason"
                         value={reason}
                         onChange={(event) => setReason(event.target.value)}
                         rows={3}
-                        placeholder="e.g. Bank details unverified — awaiting cancelled cheque."
+                        placeholder={t('reasonPlaceholder')}
                     />
-                    <p className="text-caption text-neutral-500">
-                        Shown on the payroll register and to whoever reconciles the transfer.
-                    </p>
+                    <p className="text-caption text-neutral-500">{t('reasonHint')}</p>
                 </div>
             </div>
         </MyDialog>

@@ -12,6 +12,8 @@ import {
   ImageSquare,
   SpinnerGap,
   Microphone,
+  ArrowsOutSimple,
+  ArrowsInSimple,
 } from "@phosphor-icons/react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -36,6 +38,10 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -54,6 +60,10 @@ type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 
 export const ChatbotSidePanel: React.FC = () => {
   const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
@@ -80,6 +90,7 @@ export const ChatbotSidePanel: React.FC = () => {
     activeToolCall,
     streamingContent,
     isStreaming,
+    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,
@@ -91,9 +102,16 @@ export const ChatbotSidePanel: React.FC = () => {
     voiceLanguage,
   } = useChatbotContext();
 
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
+
   const {
     panelWidth,
     setPanelWidth,
+    viewMode,
+    toggleViewMode,
     setIsOpen: setStorePanelOpen,
   } = useChatbotPanelStore();
 
@@ -220,9 +238,11 @@ export const ChatbotSidePanel: React.FC = () => {
   return (
     <div
       ref={panelRef}
-      style={{ width: panelWidth }}
+      // In the popup the wrapper decides the width; docked keeps the drag-resized width.
+      style={viewMode === "popup" ? undefined : { width: panelWidth }}
       className={cn(
-        "h-full flex flex-col bg-background/95 backdrop-blur-sm border-s border-border/50 relative shrink-0 shadow-xl",
+        "h-full flex flex-col bg-background/95 backdrop-blur-sm relative shrink-0 shadow-xl",
+        viewMode === "popup" ? "w-full" : "border-s border-border/50",
         isDragOver && "ring-2 ring-inset ring-primary/50"
       )}
       onDrop={handleDrop}
@@ -237,6 +257,7 @@ export const ChatbotSidePanel: React.FC = () => {
           "absolute start-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
           "hover:bg-primary/20 transition-colors",
           isResizing && "bg-primary/30",
+          viewMode === "popup" && "hidden",
         )}
       >
         <div className="absolute start-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ms-1.5 opacity-0 hover:opacity-100 transition-opacity">
@@ -284,21 +305,36 @@ export const ChatbotSidePanel: React.FC = () => {
             variant="ghost"
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+            onClick={toggleViewMode}
+            title={viewMode === "popup" ? t("common.dockView") : t("common.popupView")}
+          >
+            {viewMode === "popup" ? (
+              <ArrowsInSimple className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowsOutSimple className="h-3.5 w-3.5" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
             onClick={closeSession}
             title={t("common.closeSession")}
           >
             <Trash className="h-3.5 w-3.5" />
           </Button>
-          <Link to="/ai-settings">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-              title={t("common.aiGear")}
-            >
-              <Gear className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+          {showAiSettingsShortcut && (
+            <Link to="/ai-settings">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                title={t("common.aiGear")}
+              >
+                <Gear className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -313,7 +349,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
       {/* Messages Area */}
       <CardContent className="flex-1 min-h-0 p-0 overflow-hidden bg-gradient-to-b from-muted/20 to-background">
-        <ScrollArea className="h-full px-2.5 py-2">
+        <ScrollArea className="h-full px-2 py-2 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
           <div className="flex flex-col space-y-2.5">
             {isInitializing && messages.length === 0 && (
               <div className="w-full bg-muted/40 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 text-center">
@@ -398,14 +434,14 @@ export const ChatbotSidePanel: React.FC = () => {
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex w-full max-w-pct-92",
+                    "flex w-full",
                     msg.role === "user"
-                      ? "ms-auto justify-end"
-                      : "me-auto justify-start",
+                      ? "ms-auto max-w-pct-92 justify-end"
+                      : "me-auto max-w-full justify-start",
                   )}
                 >
                   {msg.role === "assistant" && (
-                    <Avatar className="h-6 w-6 me-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
+                    <Avatar className="h-6 w-6 me-1 mt-0.5 shrink-0 ring-1 ring-border/40">
                       {avatarUrl ? (
                         <AvatarImage
                           src={avatarUrl}
@@ -420,10 +456,10 @@ export const ChatbotSidePanel: React.FC = () => {
                       </AvatarFallback>
                     </Avatar>
                   )}
-                  <div className="flex items-end gap-1">
+                  <div className="flex min-w-0 max-w-full items-end gap-1">
                     <div
                       className={cn(
-                        "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
+                        "min-w-0 max-w-full overflow-hidden rounded-xl px-2.5 py-1.5 text-caption leading-relaxed [overflow-wrap:anywhere]",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-ee-sm shadow-sm"
                           : "bg-card text-card-foreground rounded-es-sm shadow-sm ring-1 ring-border/30",
@@ -437,7 +473,7 @@ export const ChatbotSidePanel: React.FC = () => {
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       ) : (
-                        <div className="max-w-none group relative">
+                        <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-4 [&_ul]:ps-4 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                           <button
                             className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() =>
@@ -456,19 +492,19 @@ export const ChatbotSidePanel: React.FC = () => {
                             components={{
                               h1: ({ ...props }) => (
                                 <h1
-                                  className="text-2xl font-bold mt-4 mb-3"
+                                  className="text-base font-bold mt-3 mb-1.5"
                                   {...props}
                                 />
                               ),
                               h2: ({ ...props }) => (
                                 <h2
-                                  className="text-xl font-bold mt-3 mb-2"
+                                  className="text-sm font-bold mt-2.5 mb-1"
                                   {...props}
                                 />
                               ),
                               h3: ({ ...props }) => (
                                 <h3
-                                  className="text-lg font-semibold mt-3 mb-2"
+                                  className="text-sm font-semibold mt-2 mb-1"
                                   {...props}
                                 />
                               ),
@@ -508,7 +544,7 @@ export const ChatbotSidePanel: React.FC = () => {
                                   >{children}</code>
                                 ) : (
                                   <code
-                                    className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                    className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                     {...rest}
                                   >{children}</code>
                                 );
@@ -624,10 +660,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 <p className="text-xs text-destructive">{t("sidePanel.errorTitle")}</p>
                 <div className="flex gap-2 justify-center">
                   <button
-                    onClick={() => {
-                      const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                      if (lastUserMsg) sendMessage(lastUserMsg.content);
-                    }}
+                    onClick={reconnectStream}
                     className="text-xs text-primary underline"
                   >
                     {t("common.retry")}

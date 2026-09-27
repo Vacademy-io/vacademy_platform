@@ -1,4 +1,5 @@
 import { StepContentProps } from '@/types/assessments/step-content-props';
+import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { BasicInfoFormSchema } from '../-utils/basic-info-form-schema';
@@ -19,6 +20,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     handleCompleteCurrentStep,
     completedSteps,
 }) => {
+    const { t } = useTranslation('evaluatorAiStep1BasicInfo');
     const { setSavedAssessmentId, setSavedAssessmentName } = useSavedAssessmentStore();
     const form = useForm<z.infer<typeof BasicInfoFormSchema>>({
         resolver: zodResolver(BasicInfoFormSchema),
@@ -58,7 +60,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             console.log(data);
             setSavedAssessmentId(data);
             setSavedAssessmentName(getValues('testCreation.assessmentName'));
-            toast.success('Step 1 data has been saved successfully!', {
+            toast.success(t('step1SavedSuccess'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -98,14 +100,14 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
         <FormProvider {...form}>
             <form>
                 <div className="m-0 flex items-center justify-between p-0">
-                    <h1>Basic Information</h1>
+                    <h1>{t('basicInformation')}</h1>
                     <MyButton
                         type="button"
                         scale="large"
                         buttonType="primary"
                         onClick={handleSubmit(onSubmit, onInvalid)}
                     >
-                        {'Next'}
+                        {t('next')}
                     </MyButton>
                 </div>
                 <Separator className="my-4" />
@@ -120,7 +122,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                         <FormControl>
                                             <MyInput
                                                 inputType="text"
-                                                inputPlaceholder="Add Title"
+                                                inputPlaceholder={t('addTitlePlaceholder')}
                                                 input={field.value}
                                                 labelStyle="font-thin"
                                                 onChangeFunction={field.onChange}
@@ -130,7 +132,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 }
                                                 required={true}
                                                 size="large"
-                                                label="Assessment Name"
+                                                label={t('assessmentNameLabel')}
                                                 {...field}
                                             />
                                         </FormControl>
@@ -142,7 +144,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         {/* //TODO: Need to add subject input field here */}
                     </div>
                     <div className="flex flex-col gap-6" id="assessment-instructions">
-                        <h1 className="-mb-5 font-thin">Assessment Instructions</h1>
+                        <h1 className="-mb-5 font-thin">{t('assessmentInstructions')}</h1>
                         <FormField
                             control={control}
                             name="testCreation.assessmentInstructions"

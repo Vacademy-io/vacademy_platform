@@ -169,7 +169,12 @@
             "cancelSuccessTitle": "ऑटोपे रद्द किया गया",
             "cancelSuccessDescription": "आपका एक्सेस आपकी वर्तमान अवधि समाप्त होने तक बना रहेगा।",
             "cancelErrorTitle": "ऑटोपे रद्द नहीं किया जा सका",
-            "cancelErrorDescription": "कृपया थोड़ी देर बाद फिर से प्रयास करें।"
+            "cancelErrorDescription": "कृपया थोड़ी देर बाद फिर से प्रयास करें।",
+            "planChangeOrderFailed": "We couldn't create the payment order.",
+            "planChangeFailedTitle": "Couldn't change the plan",
+            "planChangeFailedDescription": "Please try again in a moment.",
+            "planChangePaidTitle": "Payment received",
+            "planChangePaidDescription": "Your new plan will be active shortly."
         },
         "dialog": {
             "title": "क्या ऑटोपे रद्द करें?",
@@ -179,7 +184,10 @@
             "defaultEndDate": "आपकी वर्तमान अवधि की समाप्ति",
             "keepAutopay": "ऑटोपे जारी रखें",
             "cancelling": "रद्द किया जा रहा है..."
-        }
+        },
+        "changePlan": "Change plan",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeCancelScheduled": "Cancel this change"
     },
     "cardUpdate": {
         "success": "आपका कार्ड अपडेट हो गया है",

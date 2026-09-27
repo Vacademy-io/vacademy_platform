@@ -13,7 +13,11 @@ import {
     viewStudentReport,
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 import { MyPagination } from '@/components/design-system/pagination';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { AssessmentReportStudentInterface } from '@/types/assessments/assessment-overview';
 import { getAssessmentDetailsData } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
@@ -241,6 +245,18 @@ export const StudentTestRecord = ({
         }
     }, [data]);
 
+    // Subject labels. Must run before the guards below (hook order), and cannot come from
+    // the institute list alone: that list keeps one subject per distinct name and drops
+    // subjects whose course was deleted, so most stored ids need the direct lookup.
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(
+            instituteDetails?.subjects,
+            (studentReportData.content ?? []).map(
+                (report: AssessmentReportStudentInterface) => report.subject_id
+            )
+        )
+    );
+
     // ── Four-state guards ──────────────────────────────────────────────────────
 
     if (isLoading || instituteLoading || viewStudentTestReportMutation.status === 'pending') {
@@ -368,8 +384,9 @@ export const StudentTestRecord = ({
                             const isPending = studentReport.attempt_status === 'PENDING';
 
                             const subjectName =
-                                getSubjectNameById(
-                                    instituteDetails?.subjects || [],
+                                resolveSubjectName(
+                                    instituteDetails?.subjects,
+                                    subjectNamesById,
                                     studentReport.subject_id
                                 ) || t('list.subjectFallback');
 

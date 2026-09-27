@@ -265,7 +265,10 @@ export const Invite = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <p className="text-body font-semibold">{t('card.inviteLink')}</p>
-                                        <InviteLink inviteCode={obj.invite_code || ''} />
+                                        <InviteLink
+                                            inviteCode={obj.invite_code || ''}
+                                            inviteName={obj.name}
+                                        />
                                     </div>
                                 </div>
                             )

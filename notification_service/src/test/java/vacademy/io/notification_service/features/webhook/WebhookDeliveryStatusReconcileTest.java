@@ -104,6 +104,34 @@ class WebhookDeliveryStatusReconcileTest {
     }
 
     @Test
+    @DisplayName("the event row itself records the verdict, so a later send row can still find it")
+    void statusRowCarriesTheVerdict() {
+        processor.processEvent(event(UnifiedWebhookEvent.EventType.DELIVERED)
+                .externalMessageId("wamid.EARLY_ONE").build());
+
+        ArgumentCaptor<NotificationLog> saved = ArgumentCaptor.forClass(NotificationLog.class);
+        verify(notificationLogRepository).save(saved.capture());
+        // Without this the verdict lives only inside the vendor's raw payload, and a send row
+        // written after its own webhook (every blast does this) can never be back-filled.
+        assertThat(saved.getValue().getDeliveryStatus()).isEqualTo("DELIVERED");
+        assertThat(saved.getValue().getDeliveryUpdatedAt())
+                .isEqualTo(Instant.parse("2026-08-31T06:51:48Z"));
+    }
+
+    @Test
+    @DisplayName("an inbound reply is not a verdict and leaves the status columns alone")
+    void replyRowCarriesNoDeliveryStatus() {
+        processor.processEvent(event(UnifiedWebhookEvent.EventType.REPLY)
+                .externalMessageId("wamid.INBOUND_ONE")
+                .messageText("is the class today?")
+                .build());
+
+        ArgumentCaptor<NotificationLog> saved = ArgumentCaptor.forClass(NotificationLog.class);
+        verify(notificationLogRepository).save(saved.capture());
+        assertThat(saved.getValue().getDeliveryStatus()).isNull();
+    }
+
+    @Test
     @DisplayName("a status with no provider message id has nothing to join on and is skipped")
     void noProviderMessageIdSkipsReconciliation() {
         processor.processEvent(event(UnifiedWebhookEvent.EventType.DELIVERED)

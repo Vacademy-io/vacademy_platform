@@ -13,6 +13,7 @@ import vacademy.io.community_service.feature.appregistry.repository.AppRegistrat
 import vacademy.io.community_service.feature.appregistry.store.AppStoreConnectClient;
 import vacademy.io.community_service.feature.appregistry.store.GooglePlayClient;
 import vacademy.io.community_service.feature.appregistry.store.MicrosoftPartnerCenterClient;
+import vacademy.io.community_service.feature.appregistry.store.PublicStoreListingClient;
 import vacademy.io.community_service.feature.appregistry.store.StoreCredentialResolver;
 
 import java.time.Instant;
@@ -44,8 +45,13 @@ import java.util.Map;
 @Slf4j
 public class StoreStatusSyncService {
 
+    /** Where a synced answer came from, recorded so the dashboard never implies more than it knows. */
+    private static final String SOURCE_STORE_API = "STORE_API";
+    private static final String SOURCE_PUBLIC_LISTING = "PUBLIC_LISTING";
+
     private final AppRegistrationRepository repository;
     private final StoreCredentialResolver storeCredentialResolver;
+    private final PublicStoreListingClient publicStoreListingClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -99,7 +105,8 @@ public class StoreStatusSyncService {
                 // OTA (Capacitor bundle) rollout status is a separate system this integration has
                 // no visibility into — never fabricated, always reported as unknown.
                 "otaStatus", "NONE",
-                "storeUrl", result.storeUrl);
+                "storeUrl", result.storeUrl,
+                "source", result.source);
     }
 
     /**
@@ -184,10 +191,15 @@ public class StoreStatusSyncService {
 
     /** Common shape every provider branch reduces to before the shared persist/response step. */
     private record Result(String status, String version, String build, String storeUrl, String releasedAt,
-                          Rejection rejection) {
+                          Rejection rejection, String source) {
 
         Result(String status, String version, String build, String storeUrl, String releasedAt) {
-            this(status, version, build, storeUrl, releasedAt, null);
+            this(status, version, build, storeUrl, releasedAt, null, SOURCE_STORE_API);
+        }
+
+        Result(String status, String version, String build, String storeUrl, String releasedAt,
+               Rejection rejection) {
+            this(status, version, build, storeUrl, releasedAt, rejection, SOURCE_STORE_API);
         }
     }
 
@@ -209,19 +221,17 @@ public class StoreStatusSyncService {
             return null;
         }
         AppStoreConnectClient client = storeCredentialResolver.resolveAppStoreConnect(instituteId, platformKey);
-        if (client == null) {
-            return null;
-        }
         // App Store Connect names the Mac platform MAC_OS; the registry calls it MACOS.
         String ascPlatform = "MACOS".equals(platformKey) ? "MAC_OS" : "IOS";
-        AppStoreConnectClient.AppStatus ascStatus = client.fetchStatus(bundleId, ascPlatform);
+        AppStoreConnectClient.AppStatus ascStatus = client == null ? null : client.fetchStatus(bundleId, ascPlatform);
         if (ascStatus == null) {
             // The bundle isn't visible to THIS credential — which is not the same as "no app
             // exists". Vidyayatan's key cannot see Shiksha Nation's or ZOE's apps, because those
             // live in a second Apple team; writing NOT_REGISTERED here would overwrite a verified
             // Live release with a falsehood, on a schedule, for exactly the institutes whose apps
             // are hardest to check by hand. Say nothing instead — see #unsyncable.
-            return unsyncable(bundleId, platformKey, "App Store Connect");
+            Result publicResult = fromPublicAppStore(bundleId, platformKey);
+            return publicResult != null ? publicResult : unsyncable(bundleId, platformKey, "App Store Connect");
         }
         String status = mapAppStoreState(ascStatus.appStoreState());
         String storeUrl = "https://appstoreconnect.apple.com/apps/" + ascStatus.ascAppId() + "/appstore";
@@ -252,17 +262,52 @@ public class StoreStatusSyncService {
             return null;
         }
         GooglePlayClient client = storeCredentialResolver.resolveGooglePlay(instituteId);
-        if (client == null) {
-            return null;
-        }
-        GooglePlayClient.AppStatus playStatus = client.fetchStatus(packageName);
+        GooglePlayClient.AppStatus playStatus = client == null ? null : client.fetchStatus(packageName);
         if (playStatus == null) {
-            return unsyncable(packageName, "ANDROID", "Google Play");
+            // No Play credential exists anywhere in prod today, so without this the Android half of
+            // the sync button could never do anything at all.
+            Result publicResult = fromPublicPlayStore(packageName);
+            return publicResult != null ? publicResult : unsyncable(packageName, "ANDROID", "Google Play");
         }
         return new Result(mapPlayReleaseStatus(playStatus.releaseStatus()),
                 playStatus.releaseName(),
                 playStatus.versionCode(),
                 "https://play.google.com/console/developers/app/" + packageName, "");
+    }
+
+    /**
+     * What the public App Store page says, when no credential can answer.
+     *
+     * <p>A publicly listed app is, by definition, live — that is the one status this tier is
+     * entitled to assert. It says nothing about review state, so it never fabricates a rejection,
+     * and it is refused outright for MACOS: Apple's public lookup keys on bundle id and hands back
+     * the iPhone app for a bundle that ships both, which on a Mac App Store row is simply a wrong
+     * version number. See {@link PublicStoreListingClient}.
+     */
+    private Result fromPublicAppStore(String bundleId, String platformKey) {
+        if (!"IOS".equals(platformKey)) {
+            return null;
+        }
+        PublicStoreListingClient.Listing listing = publicStoreListingClient.lookupAppStore(bundleId);
+        if (listing == null) {
+            return null;
+        }
+        log.info("[StoreStatusSync] {} resolved from the public App Store listing (no credential could see it)",
+                bundleId);
+        return new Result("LIVE", listing.version(), "", listing.storeUrl(), listing.releasedAt(),
+                null, SOURCE_PUBLIC_LISTING);
+    }
+
+    /** The same public tier for Play — see {@link #fromPublicAppStore}. */
+    private Result fromPublicPlayStore(String packageName) {
+        PublicStoreListingClient.Listing listing = publicStoreListingClient.lookupPlayStore(packageName);
+        if (listing == null) {
+            return null;
+        }
+        log.info("[StoreStatusSync] {} resolved from the public Play listing (no credential could see it)",
+                packageName);
+        return new Result("LIVE", listing.version(), "", listing.storeUrl(), listing.releasedAt(),
+                null, SOURCE_PUBLIC_LISTING);
     }
 
     private Result syncPartnerCenter(JsonNode platformNode, String instituteId) {
@@ -307,6 +352,7 @@ public class StoreStatusSyncService {
             rejection.put("decidedAt", result.rejection.decidedAt());
         }
         platformNode.put("lastSyncedAt", syncedAt);
+        platformNode.put("lastSyncedSource", result.source);
         record.put("updatedAt", syncedAt);
 
         try {

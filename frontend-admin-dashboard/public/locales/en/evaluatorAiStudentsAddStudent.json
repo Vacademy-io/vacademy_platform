@@ -1,0 +1,69 @@
+{
+    "title": "Student List",
+    "enrollTriggerButton": "Enroll {{term}}",
+    "dialog": {
+        "editHeading": "Edit Student",
+        "addHeading": "Student Enrollment"
+    },
+    "form": {
+        "nameLabel": "Name",
+        "namePlaceholder": "Name",
+        "enrollIdLabel": "Enrollment ID",
+        "enrollIdPlaceholder": "Enrollment ID",
+        "replaceResponseLabel": "Replace Response (optional)",
+        "uploadResponseLabel": "Upload Response (optional)",
+        "currentPdfId": "Current PDF ID: {{pdfId}}",
+        "updateButton": "Update",
+        "enrollButton": "Enroll"
+    },
+    "attemptDialog": {
+        "heading": "Add New Attempt",
+        "fileLabel": "Upload Response PDF",
+        "submitButton": "Add Attempt"
+    },
+    "common": {
+        "uploading": "Uploading...",
+        "uploadFile": "Upload file"
+    },
+    "table": {
+        "name": "Name",
+        "enrollmentId": "Enrollment ID",
+        "attemptCount": "Attempt Count",
+        "viewPdf": "View PDF",
+        "actions": "Actions",
+        "attemptsCount_one": "{{count}} Attempt",
+        "attemptsCount_other": "{{count}} Attempts",
+        "attemptLabel": "Attempt {{number}}",
+        "noFile": "No file",
+        "openMenu": "Open menu",
+        "edit": "Edit",
+        "addAttempt": "Add Attempt",
+        "deleteCurrentAttempt": "Delete Current Attempt",
+        "deleteStudent": "Delete Student",
+        "emptyState": "No enrolled students found.",
+        "submitSelected": "Submit Selected ({{count}})"
+    },
+    "toast": {
+        "fileUploaded": "File uploaded successfully",
+        "uploadFailed": "Upload failed",
+        "fillAllFields": "Please fill in all fields and upload a file.",
+        "studentUpdated": "Student updated successfully!",
+        "studentEnrolled": "Student enrolled successfully!",
+        "failedUpdateStudent": "Failed to update student",
+        "failedEnrollStudent": "Failed to enroll student",
+        "studentDeleted": "Student deleted successfully!",
+        "noFileAvailable": "No file available",
+        "noFileIdAvailable": "No file ID available",
+        "couldNotRetrievePdfUrl": "Could not retrieve PDF URL",
+        "failedRetrievePdf": "Failed to retrieve PDF",
+        "uploadRequired": "Please upload a file.",
+        "attemptAdded": "New attempt added successfully!",
+        "failedAddAttempt": "Failed to add attempt",
+        "studentNotFound": "Student not found.",
+        "cannotDeleteOnlyAttempt": "Cannot delete the only attempt. Delete the student instead.",
+        "attemptDeleted": "Attempt deleted successfully!",
+        "selectAtLeastOneStudent": "Please select at least one student",
+        "submittedStudents_one": "Submitted {{count}} student",
+        "submittedStudents_other": "Submitted {{count}} students"
+    }
+}

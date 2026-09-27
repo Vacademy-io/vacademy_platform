@@ -14,6 +14,7 @@ import type {
   ProductPageData,
   ProductPageSettings,
 } from "../-types/product-page-types";
+import { clampRedirectDelay, resolveRedirectTarget } from "../-utils/redirect-settings";
 
 interface ProductPageSuccessProps {
   pageData: ProductPageData;
@@ -44,7 +45,10 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
       })()
     : {};
 
-  const redirectUrl = settings.afterPaymentRedirectUrl?.trim() ?? "";
+  const redirectTarget = resolveRedirectTarget(
+    settings.afterPaymentRedirectUrl?.trim() ?? "",
+  );
+  const redirectDelayMs = clampRedirectDelay(settings.afterPaymentRedirectDelaySeconds) * 1000;
   const showLoginButton = settings.showLoginButton ?? true;
   const successPageContent = settings.successPageContent?.trim() ?? "";
 
@@ -99,6 +103,43 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
       });
     }
   }, [utmParams]);
+
+  // "Redirect Path" in the product page's Post Enrollment Configuration: once
+  // the enrolment is through, hand the buyer over to the institute's own
+  // thank-you page instead of this receipt.
+  useEffect(() => {
+    if (!redirectTarget) return;
+    const timer = window.setTimeout(() => {
+      // replace(), not assign() — Back from the thank-you page must not walk
+      // the buyer into a checkout they have already paid for.
+      window.location.replace(redirectTarget);
+    }, redirectDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [redirectTarget, redirectDelayMs]);
+
+  // While the handover is pending, the receipt below would only flash past, so
+  // show the one thing that matters — the enrolment went through — plus a link
+  // for the case where the automatic navigation is blocked.
+  if (redirectTarget) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">
+        <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-green-100">
+          <CheckCircle className="size-10 text-green-600" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900">{t("success.title")}</h1>
+        <p className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+          <span className="size-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+          {t("success.redirecting")}
+        </p>
+        <a
+          href={redirectTarget}
+          className="mt-6 text-sm font-medium text-blue-600 underline underline-offset-2 hover:text-blue-700"
+        >
+          {t("success.redirectNow")}
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">

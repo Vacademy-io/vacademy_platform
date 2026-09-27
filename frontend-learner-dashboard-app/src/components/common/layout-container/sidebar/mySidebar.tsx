@@ -25,6 +25,8 @@ import {
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
   getTerminologyPlural,
+  readEngagementPlanFlag,
+  ENGAGEMENT_PLAN_FLAG_EVENT,
 } from "./utils";
 import {
   ContentTerms,
@@ -34,10 +36,12 @@ import {
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
+import { CONVERSATIONS_KEY, UNREAD_COUNT_KEY, getUnreadCount, listConversations } from "@/services/chat/chatApi";
+import type { ChatConversationResponse } from "@/services/chat/chatApi";
 import { getInstituteId } from "@/constants/helper";
 import {
   handleGetMyMentors,
@@ -53,6 +57,7 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
+  ListChecks,
 } from "@phosphor-icons/react";
 import {
   NavHouseIcon,
@@ -90,6 +95,18 @@ const createLetterIcon =
       </div>
     );
 
+/**
+ * "Daily tasks" nav icon. Phosphor's light weight matches the thin-line custom
+ * nav set (nav-icons.tsx); the sidebar's active/inactive `weight` is ignored
+ * the same way those icons ignore it, since state is carried by colour.
+ */
+const NavDailyTasksIcon = ({ className }: { className?: string; weight?: unknown }) => (
+  <ListChecks weight="light" className={className} aria-hidden />
+);
+
+/** Sidebar tab id of the injected "Daily tasks" entry. */
+const DAILY_TASKS_TAB_ID = "daily-tasks";
+
 const humanizeText = (text: string) => {
   if (!text) return "";
   return text
@@ -110,6 +127,7 @@ export const MySidebar = ({
   hideBrandingHeader?: boolean;
 }) => {
   const { t, i18n } = useTranslation("layoutCommonA");
+  const { t: tEngagement } = useTranslation("dashboardEngagement");
   const navigate = useNavigate();
   const { state, isMobile, toggleSidebar } = useSidebar();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -147,10 +165,53 @@ export const MySidebar = ({
     getHamBurgerSidebarItemsData(t)
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
+  // Institutes that moved their downloads to the dashboard's getApp widget turn
+  // this off. Starts true so the links do not flicker out on every load while
+  // the settings request is in flight.
+  const [showAppLinks, setShowAppLinks] = useState<boolean>(true);
+  // One gate for the footer's presence check and its contents, so the two can
+  // never disagree and leave an empty bordered strip above the profile row.
+  const hasAppLinks =
+    showAppLinks &&
+    Boolean(
+      playStoreAppLink ||
+        appStoreAppLink ||
+        windowsAppLink ||
+        macAppLink ||
+        learnerPortalUrl
+    );
   const [studentData, setStudentData] = useState<Student | null>(null);
   // Whether the institute's chat FEATURE is on (independent of the In-App
   // Messages tab's visibility) — gates the per-mentor chat entries.
   const [chatFeatureEnabled, setChatFeatureEnabled] = useState(false);
+
+  // Unread badge on the In-App Messages tab. On /chat, ChatScreen keeps the conversation list live over
+  // SSE, so the badge reads that cached list (this observer never fetches). Elsewhere it polls the cheap
+  // unread-count aggregate — never the full list — and only while the chat tab is actually rendered.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
+  const { data: liveUnread } = useQuery({
+    // Observe the shared list only on /chat; elsewhere a mounted observer would pin a stale list in the
+    // cache indefinitely (no gc), which ChatScreen would then open with.
+    queryKey: onChatRoute ? CONVERSATIONS_KEY : (["chat", "conversations", "sidebar-idle"] as const),
+    // Same fetcher as ChatScreen (never run from here: enabled=false) so the shared query can't pick up
+    // a different queryFn from this observer.
+    queryFn: () => listConversations(undefined, 30),
+    enabled: false,
+    // Community excluded, as in the server's unread total: an unopened community would pin the badge at 99+.
+    select: (convs: ChatConversationResponse[]) =>
+      convs.reduce((sum, c) => sum + (c.type === "COMMUNITY" ? 0 : c.unreadCount || 0), 0),
+  });
+  const { data: polledUnread = 0 } = useQuery({
+    queryKey: UNREAD_COUNT_KEY,
+    queryFn: getUnreadCount,
+    enabled: chatFeatureEnabled && !onChatRoute && !sidebarComponent && !hideSidebar
+      && sideBarState !== sideBarStateType.HAMBURGER,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const chatUnreadCount = onChatRoute ? liveUnread ?? polledUnread : polledUnread;
 
   // The learner's assigned mentors drive the My Mentors tab (see
   // ensureMentorTab). Shares the widget's query cache key.
@@ -159,6 +220,19 @@ export const MySidebar = ({
     getInstituteId().then((id) => setInstituteId(id ?? undefined));
   }, []);
   const myMentorsQuery = useQuery(handleGetMyMentors(instituteId));
+
+  // "Daily tasks" shows only to learners whose institute runs a daily-task
+  // plan. The dashboard records that from the feed (see readEngagementPlanFlag),
+  // so the sidebar never polls the feed itself on every page.
+  const [hasEngagementPlan, setHasEngagementPlan] = useState<boolean>(() =>
+    readEngagementPlanFlag()
+  );
+  useEffect(() => {
+    const sync = () => setHasEngagementPlan(readEngagementPlanFlag(instituteId));
+    sync();
+    window.addEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+    return () => window.removeEventListener(ENGAGEMENT_PLAN_FLAG_EVENT, sync);
+  }, [instituteId]);
   // A learner with no mentor still needs a way in to Find a mentor, so the tab
   // also appears when their institute lists mentors for browsing. The directory
   // is only fetched in that case — learners who already have a mentor see the
@@ -212,6 +286,7 @@ export const MySidebar = ({
       referral: NavGiftIcon,
       attendance: NavCalendarCheckIcon,
       "my-mentors": NavUsersIcon,
+      [DAILY_TASKS_TAB_ID]: NavDailyTasksIcon,
     }),
     []
   );
@@ -223,6 +298,7 @@ export const MySidebar = ({
       attendance: "/learning-centre/attendance",
       chat: "/chat",
       "my-mentors": "/my-mentors",
+      [DAILY_TASKS_TAB_ID]: "/engagement",
     }),
     []
   );
@@ -237,10 +313,11 @@ export const MySidebar = ({
       attendance: t("sidebar.tabs.attendance"),
       chat: t("sidebar.tabs.inAppMessages"),
       "my-mentors": t("sidebar.tabs.myMentors"),
+      [DAILY_TASKS_TAB_ID]: tEngagement("nav.dailyTasks"),
     }),
     // t's identity is stable across a language switch in react-i18next; key
     // off i18n.language too so this fallback map actually re-translates.
-    [t, i18n.language]
+    [t, tEngagement, i18n.language]
   );
 
   const transformTabsToSidebarItems = (
@@ -282,6 +359,7 @@ export const MySidebar = ({
         ).trim();
         const firstLetter = (computedLabel.charAt(0) || "?").toUpperCase();
         return {
+          id: t.id,
           icon: iconByTabId[t.id] || createLetterIcon(firstLetter),
           title: t.label || labelByTabId[t.id] || humanizeText(t.id),
           to: subItems
@@ -397,14 +475,38 @@ export const MySidebar = ({
     return next;
   };
 
+  // The "Daily tasks" entry (/engagement, active on every /engagement page) is
+  // data-driven like My Mentors: injected right after the dashboard while the
+  // learner has a plan, and absent otherwise. A saved tab with this id (should
+  // an institute ever configure one) keeps its own position and visibility.
+  const ensureDailyTasksTab = (
+    tabs: StudentSidebarTabConfig[],
+    hasPlan: boolean
+  ): StudentSidebarTabConfig[] => {
+    if (!hasPlan) return tabs.filter((tab) => tab.id !== DAILY_TASKS_TAB_ID);
+    if (tabs.some((tab) => tab.id === DAILY_TASKS_TAB_ID)) return tabs;
+    const dashboardIndex = tabs.findIndex((tab) => tab.id === "dashboard");
+    const next = tabs.slice();
+    next.splice(dashboardIndex >= 0 ? dashboardIndex + 1 : 0, 0, {
+      id: DAILY_TASKS_TAB_ID,
+      route: "/engagement",
+      order: 0,
+      visible: true,
+    });
+    return next;
+  };
+
   const filteredSidebarItems = useMemo(
     () =>
       transformTabsToSidebarItems(
-        ensureMentorTab(
-          configuredTabs,
-          myMentorsQuery.data ?? [],
-          chatFeatureEnabled,
-          (mentorDirectoryQuery.data?.length ?? 0) > 0
+        ensureDailyTasksTab(
+          ensureMentorTab(
+            configuredTabs,
+            myMentorsQuery.data ?? [],
+            chatFeatureEnabled,
+            (mentorDirectoryQuery.data?.length ?? 0) > 0
+          ),
+          hasEngagementPlan
         )
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,6 +515,8 @@ export const MySidebar = ({
       myMentorsQuery.data,
       mentorDirectoryQuery.data,
       chatFeatureEnabled,
+      hasEngagementPlan,
+      labelByTabId,
     ]
   );
 
@@ -424,6 +528,9 @@ export const MySidebar = ({
       ([settings, chatEnabled]) => {
         const shouldHide = settings?.sidebar?.visible === false;
         setHideSidebar(!!shouldHide);
+        // Only an explicit false hides the footer links: settings saved before
+        // this flag existed have no value here and must keep showing them.
+        setShowAppLinks(settings?.sidebar?.appLinks !== false);
         setChatFeatureEnabled(chatEnabled);
         setConfiguredTabs(
           ensureChatTab((settings?.sidebar?.tabs || []).slice(), chatEnabled)
@@ -670,24 +777,16 @@ export const MySidebar = ({
                     }
                     title={obj.title}
                     to={(obj.to || "/") as string}
+                    badgeCount={obj.id === "chat" ? chatUnreadCount : undefined}
                   />
                 </div>
               ));
             })()}
         </SidebarMenu>
       </SidebarContent>
-      {(playStoreAppLink ||
-        appStoreAppLink ||
-        windowsAppLink ||
-        macAppLink ||
-        learnerPortalUrl ||
-        studentData) && (
+      {(hasAppLinks || studentData) && (
           <SidebarFooter className="border-t border-border">
-            {(playStoreAppLink ||
-              appStoreAppLink ||
-              windowsAppLink ||
-              macAppLink ||
-              learnerPortalUrl) &&
+            {hasAppLinks &&
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
                 <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">

@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.chatbot_flow.dto.EscalationDTO;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxConversationDTO;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxMessageDTO;
+import vacademy.io.notification_service.features.chatbot_flow.dto.InboxSendRequest;
+import vacademy.io.notification_service.features.chatbot_flow.dto.SessionWindowDTO;
 import vacademy.io.notification_service.features.chatbot_flow.service.ChatbotEscalationService;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppInboxService;
 
@@ -23,9 +25,9 @@ public class WhatsAppInboxController {
     private final ChatbotEscalationService escalationService;
 
     /**
-     * @param filter UNANSWERED — only conversations the chatbot handed over that nobody has
-     *               answered; FAILED — only conversations with an undelivered message; omitted
-     *               or ALL — everything.
+     * @param filter UNANSWERED — only conversations where the learner spoke last and nobody has
+     *               replied, plus any open chatbot hand-over; FAILED — only conversations with an
+     *               undelivered message; omitted or ALL — everything.
      */
     @GetMapping("/conversations")
     public ResponseEntity<List<InboxConversationDTO>> getConversations(
@@ -56,19 +58,42 @@ public class WhatsAppInboxController {
         return ResponseEntity.ok(results);
     }
 
+    /**
+     * Send a reply on an open conversation.
+     * <p>
+     * Text-only requests are unchanged. Adding {@code mediaType} + {@code mediaUrl} sends an image,
+     * video, audio clip or document instead, with {@code text} as its caption — free-form media is
+     * allowed inside Meta's 24-hour customer service window with no template and no approval.
+     */
     @PostMapping("/send")
-    public ResponseEntity<InboxMessageDTO> sendReply(@RequestBody Map<String, String> body) {
-        String phone = body.get("phone");
-        String text = body.get("text");
-        String instituteId = body.get("instituteId");
-
-        if (phone == null || text == null || instituteId == null) {
+    public ResponseEntity<InboxMessageDTO> sendReply(@RequestBody InboxSendRequest request) {
+        if (isBlank(request.getPhone()) || isBlank(request.getInstituteId())) {
             return ResponseEntity.badRequest().build();
         }
 
-        // Sending the reply also resolves any open escalation on this conversation.
-        InboxMessageDTO sent = inboxService.sendReply(phone, text, instituteId, body.get("repliedBy"));
+        // Either half can carry the message: text alone, or media with the text as its caption.
+        if (request.hasMedia()) {
+            // Sending the reply also resolves any open escalation on this conversation.
+            return ResponseEntity.ok(inboxService.sendMediaReply(request));
+        }
+
+        if (isBlank(request.getText())) {
+            return ResponseEntity.badRequest().build();
+        }
+        InboxMessageDTO sent = inboxService.sendReply(
+                request.getPhone(), request.getText(), request.getInstituteId(), request.getRepliedBy());
         return ResponseEntity.ok(sent);
+    }
+
+    /**
+     * Whether free-form replies (text and media) are still allowed on this conversation, so the UI
+     * can show the remaining time and disable the attachment button once the window lapses.
+     */
+    @GetMapping("/conversations/{phone}/session-window")
+    public ResponseEntity<SessionWindowDTO> getSessionWindow(
+            @PathVariable String phone,
+            @RequestParam String instituteId) {
+        return ResponseEntity.ok(inboxService.sessionWindow(phone, instituteId));
     }
 
     // ==================== Escalations (learners waiting for a human) ====================
@@ -94,5 +119,9 @@ public class WhatsAppInboxController {
         boolean resolved = escalationService.resolveById(escalationId, resolvedBy);
         if (!resolved) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("id", escalationId, "status", "RESOLVED"));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

@@ -1,3 +1,7 @@
+import i18n from '@/i18n';
+
+const NAMESPACE = 'evaluatorAiEvaluationUtils';
+
 interface EvaluationData {
     user_id: string;
     name: string;
@@ -87,9 +91,9 @@ export function transformEvaluationData(
     return pasrsedData.map((result, index) => {
         return {
             id: result.user_id || `temp-${index + 1}`,
-            name: result.name || 'Unknown Student',
+            name: result.name || i18n.t(`${NAMESPACE}:unknownStudent`),
             enrollmentId: result.user_id || `enroll-${index + 1}`,
-            assessment: 'Section 1',
+            assessment: i18n.t(`${NAMESPACE}:section1`),
             responseId: result.response_id,
             assessmentId: assessmentId,
             status: result.status,

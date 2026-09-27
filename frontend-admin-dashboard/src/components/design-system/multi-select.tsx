@@ -6,6 +6,7 @@ import { X, Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Command,
     CommandEmpty,
@@ -34,6 +35,11 @@ interface MultiSelectProps {
      * portalled list can't be scrolled from within a modal.
      */
     portal?: boolean;
+    /**
+     * Show a checkbox in front of every option instead of the bare tick, so it reads as
+     * "pick several" at a glance. Opt-in to keep existing screens unchanged.
+     */
+    checkboxes?: boolean;
 }
 
 export function MultiSelect({
@@ -44,6 +50,7 @@ export function MultiSelect({
     className,
     disabled = false,
     portal = true,
+    checkboxes = false,
 }: MultiSelectProps) {
     const [open, setOpen] = React.useState(false);
 
@@ -119,15 +126,26 @@ export function MultiSelect({
                                     // so same-named options stay distinct.
                                     value={`${option.label} ${option.value}`}
                                     onSelect={() => handleSelect(option.value)}
+                                    aria-checked={selected.includes(option.value)}
                                 >
-                                    <Check
-                                        className={cn(
-                                            'mr-2 h-4 w-4',
-                                            selected.includes(option.value)
-                                                ? 'opacity-100'
-                                                : 'opacity-0'
-                                        )}
-                                    />
+                                    {checkboxes ? (
+                                        // Passive indicator: the row itself toggles the value.
+                                        <Checkbox
+                                            checked={selected.includes(option.value)}
+                                            className="me-2 shrink-0"
+                                            tabIndex={-1}
+                                            aria-hidden
+                                        />
+                                    ) : (
+                                        <Check
+                                            className={cn(
+                                                'me-2 h-4 w-4',
+                                                selected.includes(option.value)
+                                                    ? 'opacity-100'
+                                                    : 'opacity-0'
+                                            )}
+                                        />
+                                    )}
                                     {option.label}
                                 </CommandItem>
                             ))}

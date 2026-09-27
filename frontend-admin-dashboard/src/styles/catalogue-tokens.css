@@ -652,7 +652,7 @@
 
   .catalogue-btn-primary {
     background-color: hsl(var(--primary-500));
-    color: hsl(var(--primary-foreground));
+    color: hsl(var(--catalogue-btn-primary-ink, var(--primary-foreground)));
   }
 
   .catalogue-btn-primary:hover {
@@ -1273,6 +1273,13 @@
      --brand-ink-l inline via buildPrimaryScaleVars. */
   [data-catalogue-theme] {
     --catalogue-brand-ink: var(--brand-ink-l, var(--primary-500, var(--catalogue-text-primary)));
+    /* Ink for the brand-filled button, frozen at the wrapper. The button used
+       to read --primary-foreground directly, and the app's global .dark rule
+       re-declares that token as near-black — so a brand button inside a dark
+       BAND (a navy hero marked `dark` on a light site) rendered dark-on-blue.
+       Substituting here means a nested .dark cannot reach it; a wrapper that is
+       itself .dark (site-wide dark mode) resolves exactly as before. */
+    --catalogue-btn-primary-ink: var(--primary-foreground);
   }
 
   /* On a dark canvas ink must go LIGHTER, not darker. */

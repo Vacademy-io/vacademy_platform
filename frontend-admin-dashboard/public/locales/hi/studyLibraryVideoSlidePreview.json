@@ -1,0 +1,19 @@
+{
+    "loadingVideo": "वीडियो लोड हो रहा है...",
+    "retry": "पुनः प्रयास करें",
+    "workInProgress": "कार्य प्रगति पर है",
+    "videoBeingGenerated": "वीडियो बनाया जा रहा है...",
+    "generatingHint": "इसमें कुछ मिनट लग सकते हैं। कृपया बाद में फिर से देखें।",
+    "vimeoPlayerTitle": "Vimeo वीडियो प्लेयर",
+    "toast": {
+        "jumpedTo": "वीडियो {{time}} पर पहुँच गया"
+    },
+    "errors": {
+        "refreshFailed": "वीडियो URL रीफ़्रेश करने में विफल",
+        "loadFailed": "वीडियो लोड करने में विफल",
+        "loadUrlsFailed": "वीडियो URL लोड करने में विफल",
+        "urlExpiredRefreshing": "वीडियो URL की समयसीमा समाप्त हो गई है। रीफ़्रेश किया जा रहा है...",
+        "playbackError": "वीडियो प्लेबैक त्रुटि: {{message}}",
+        "unknownError": "अज्ञात त्रुटि"
+    }
+}

@@ -223,7 +223,9 @@
         "certificate": "प्रमाणपत्र",
         "earnedOn": "{{date}} को अर्जित",
         "completed": "{{percent}}% पूर्ण",
-        "summary_one": "{{name}} ने {{count}} बैज अर्जित किया है।"
+        "summary_one": "{{name}} ने {{count}} बैज अर्जित किया है।",
+        "awardedByInstitute": "संस्थान द्वारा प्रदान किया गया",
+        "awardReason": "“{{reason}}”"
     },
     "childView": {
         "exiting": "स्टूडेंट व्यू से बाहर निकल रहे हैं…",

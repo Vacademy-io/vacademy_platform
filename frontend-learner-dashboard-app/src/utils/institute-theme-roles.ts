@@ -77,6 +77,7 @@ export function applyInstituteBackground(): void {
   const root = document.documentElement;
   if (!background) {
     root.style.removeProperty("--background");
+    root.style.removeProperty("--canvas");
     root.style.removeProperty("--cp-bg");
     return;
   }
@@ -84,6 +85,10 @@ export function applyInstituteBackground(): void {
     const [h, s, l] = convert.hex.hsl(background.replace("#", ""));
     const value = hslVar([h, s, l]);
     root.style.setProperty("--background", value);
+    // --canvas too: a skin may tint the canvas (Corporate does), and an
+    // institute's explicit page background has to win over a skin default.
+    // Inline beats the stylesheet, so writing it here restores that precedence.
+    root.style.setProperty("--canvas", value);
     root.style.setProperty("--cp-bg", value);
   } catch {
     // ignore malformed institute-authored hex
@@ -136,8 +141,8 @@ export function applyInstituteUiAxes(): void {
   // An always-present attribute would make "institute picked the default" and
   // "institute never opened the Appearance tab" indistinguishable in CSS, and a
   // skin could then never supply its own house defaults — the Corporate skin
-  // wants 4px corners and tighter spacing out of the box, but must still lose to
-  // an institute that explicitly picked "pill".
+  // proposes 10px corners and a tinted canvas out of the box, but must still
+  // lose to an institute that explicitly picked "sharp".
   //
   // Omitting the attribute falls through to :root, whose values are identical to
   // the documented defaults, so this is a no-op for every institute that has not

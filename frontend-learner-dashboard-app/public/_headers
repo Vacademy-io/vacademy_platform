@@ -122,3 +122,8 @@
 
 /manifest.webmanifest
   Cache-Control: no-cache, no-store, must-revalidate
+
+# WebAssembly core of the premium teacher avatar (@spatius/avatarkit)
+/assets/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable

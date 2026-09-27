@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChatSlash, WarningCircle, UsersThree } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +14,8 @@ import {
   sendMessage,
   deleteMessage,
   markRead,
+  CONVERSATIONS_KEY,
+  UNREAD_COUNT_KEY,
   type ChatConversationResponse,
   type ChatMessagePayload,
 } from "@/services/chat/chatApi";
@@ -102,6 +105,19 @@ export function BatchChatPanel({
   const pendingSeqRef = useRef(0);
   // Conversation id in a ref so SSE callbacks read the latest value.
   const conversationIdRef = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // The sidebar unread badge reads the shared conversation list (on /chat) or the polled unread total
+  // (elsewhere); after reading this batch here, clear its unread in the former and refresh the latter.
+  const syncReadToBadge = useCallback(
+    (convId: string) => {
+      queryClient.setQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY, (prev) =>
+        prev?.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c)),
+      );
+      void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+    },
+    [queryClient],
+  );
   conversationIdRef.current = conversation?.id ?? null;
 
   // ── Resolve current user once (learner getChatUser is async) ───────────────
@@ -147,7 +163,9 @@ export function BatchChatPanel({
         // Mark the newest message read if there's anything unread.
         const newest = page.messages[page.messages.length - 1];
         if (newest && conv.unreadCount > 0) {
-          markRead(conv.id, newest.id).catch(() => undefined);
+          markRead(conv.id, newest.id)
+            .then(() => syncReadToBadge(conv.id))
+            .catch(() => undefined);
         }
       } catch (err) {
         if (cancelled) return;
@@ -166,7 +184,7 @@ export function BatchChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [packageSessionId]);
+  }, [packageSessionId, syncReadToBadge]);
 
   // ── Load older messages ────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
@@ -265,9 +283,17 @@ export function BatchChatPanel({
           return next;
         });
         if (page.latestSeq != null) latestSeqRef.current = page.latestSeq;
+        // Messages that arrived while the stream was paused are on screen now — mark them read so the
+        // server doesn't push them and the badge doesn't count them.
+        const newest = page.messages[page.messages.length - 1];
+        if (newest && !document.hidden) {
+          markRead(convId, newest.id)
+            .then(() => syncReadToBadge(convId))
+            .catch(() => undefined);
+        }
       })
       .catch(() => undefined);
-  }, []);
+  }, [syncReadToBadge]);
 
   useChatStream({
     enabled: currentUserId.length > 0 && !!conversation,

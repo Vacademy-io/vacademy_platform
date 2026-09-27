@@ -1,0 +1,14 @@
+{
+    "toast": {
+        "sessionEditedSuccess": "تم تعديل {{term}} بنجاح",
+        "sessionEditFailed": "فشل تعديل {{term}}"
+    },
+    "button": {
+        "saveChanges": "حفظ التغييرات"
+    },
+    "card": {
+        "startDate": "تاريخ البدء",
+        "editButton": "تعديل {{term}}",
+        "deleteButton": "حذف {{term}}"
+    }
+}

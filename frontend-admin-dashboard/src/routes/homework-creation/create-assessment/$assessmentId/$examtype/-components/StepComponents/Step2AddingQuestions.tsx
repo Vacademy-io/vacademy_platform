@@ -165,7 +165,15 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
         console.log(err);
     };
 
-    const { append } = useFieldArray({
+    // The one owner of the section list: cards keyed by react-hook-form's
+    // field id and deleted through this instance, so a card never keeps
+    // showing a section that moved out from under its index (see the
+    // assessment wizard's Step2AddingQuestions).
+    const {
+        fields: sectionFields,
+        append,
+        remove,
+    } = useFieldArray({
         control,
         name: 'section', // Matches the key in defaultValues
     });
@@ -655,13 +663,14 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                         )}
                         <Separator className="my-4" />
                         <Accordion type="single" collapsible defaultValue={`section-0`}>
-                            {allSections.map((_, index) => (
+                            {sectionFields.map((sectionField, index) => (
                                 <Step2SectionInfo
-                                    key={index}
+                                    key={sectionField.id}
                                     form={form}
                                     index={index}
                                     currentStep={currentStep}
                                     oldData={oldData}
+                                    onDelete={remove}
                                 />
                             ))}
                         </Accordion>

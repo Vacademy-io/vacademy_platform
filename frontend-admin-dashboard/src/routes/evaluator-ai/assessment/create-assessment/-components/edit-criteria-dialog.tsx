@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
+import { useTranslation } from 'react-i18next';
 
 interface EditCriteriaDialogProps {
     markingJson: string;
@@ -11,6 +12,7 @@ interface EditCriteriaDialogProps {
 }
 
 const EditCriteriaDialog = ({ markingJson, onSave }: EditCriteriaDialogProps) => {
+    const { t } = useTranslation('evaluatorAiEditCriteriaDialog');
     const [open, setOpen] = useState(false);
     const [totalMarks, setTotalMarks] = useState(0);
     const [criteria, setCriteria] = useState<Array<{ name: string; marks: number }>>([]);
@@ -49,15 +51,15 @@ const EditCriteriaDialog = ({ markingJson, onSave }: EditCriteriaDialogProps) =>
     return (
         <>
             <Button variant="outline" onClick={handleOpen} className="ml-2">
-                Edit
+                {t('edit')}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-h-[80vh] min-w-[600px] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Marking Criteria</DialogTitle>
+                        <DialogTitle>{t('markingCriteria')}</DialogTitle>
                     </DialogHeader>
                     <div className="my-4 flex items-center gap-2">
-                        <Label className="text-base font-medium">Total Marks:</Label>
+                        <Label className="text-base font-medium">{t('totalMarks')}</Label>
                         <Input
                             type="number"
                             value={totalMarks}
@@ -67,12 +69,12 @@ const EditCriteriaDialog = ({ markingJson, onSave }: EditCriteriaDialogProps) =>
                         />
                     </div>
                     <div className="mb-4">
-                        <h3 className="mb-2 font-semibold">Criteria:</h3>
+                        <h3 className="mb-2 font-semibold">{t('criteriaLabel')}</h3>
                         <div className="rounded-md border">
                             <div className="flex justify-between border-b bg-muted/50 p-3">
-                                <div className="font-medium">Criteria</div>
-                                <div className="font-medium">Marks</div>
-                                <div className="font-medium">Action</div>
+                                <div className="font-medium">{t('criteriaColumn')}</div>
+                                <div className="font-medium">{t('marksColumn')}</div>
+                                <div className="font-medium">{t('actionColumn')}</div>
                             </div>
                             {criteria.length > 0 ? (
                                 criteria.map((c, idx) => (
@@ -95,22 +97,22 @@ const EditCriteriaDialog = ({ markingJson, onSave }: EditCriteriaDialogProps) =>
                                 ))
                             ) : (
                                 <div className="p-4 text-center text-muted-foreground">
-                                    No criteria. Add one below.
+                                    {t('emptyCriteria')}
                                 </div>
                             )}
                         </div>
                     </div>
                     <div className="mb-6">
-                        <h3 className="mb-2 font-semibold">Add New Criteria:</h3>
+                        <h3 className="mb-2 font-semibold">{t('addNewCriteria')}</h3>
                         <div className="flex items-center gap-4">
                             <Input
-                                placeholder="Enter criteria description"
+                                placeholder={t('criteriaDescriptionPlaceholder')}
                                 className="flex-1"
                                 value={newCriteriaName}
                                 onChange={(e) => setNewCriteriaName(e.target.value)}
                             />
                             <Input
-                                placeholder="Marks"
+                                placeholder={t('marksColumn')}
                                 type="number"
                                 className="w-24"
                                 value={newCriteriaMarks}
@@ -130,10 +132,10 @@ const EditCriteriaDialog = ({ markingJson, onSave }: EditCriteriaDialogProps) =>
                     </div>
                     <div className="flex justify-end gap-2">
                         <Button variant="outline" onClick={() => setOpen(false)}>
-                            Cancel
+                            {t('cancel')}
                         </Button>
                         <Button variant="default" onClick={handleSave}>
-                            Save
+                            {t('save')}
                         </Button>
                     </div>
                 </DialogContent>

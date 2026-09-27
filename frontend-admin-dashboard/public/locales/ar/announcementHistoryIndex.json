@@ -1,0 +1,130 @@
+{
+    "heading": "سجل الإعلانات",
+    "tabs": {
+        "all": "الكل",
+        "planned": "مخطط لها",
+        "past": "سابقة"
+    },
+    "toolbar": {
+        "searchLabel": "البحث بالعنوان",
+        "searchPlaceholder": "بحث…",
+        "statusLabel": "الحالة",
+        "statusAll": "الكل",
+        "fromLabel": "من",
+        "toLabel": "إلى"
+    },
+    "status": {
+        "DRAFT": "مسودة",
+        "PENDING_APPROVAL": "بانتظار الموافقة",
+        "REJECTED": "مرفوضة",
+        "SCHEDULED": "مجدولة",
+        "ACTIVE": "نشطة",
+        "INACTIVE": "غير نشطة",
+        "DELIVERED": "تم التسليم",
+        "CANCELLED": "ملغاة"
+    },
+    "results_zero": "لا توجد نتائج ({{count}})",
+    "results_one": "نتيجة واحدة",
+    "results_two": "نتيجتان",
+    "results_few": "{{count}} نتائج",
+    "results_many": "{{count}} نتيجة",
+    "results_other": "{{count}} نتيجة",
+    "sizeLabel": "الحجم",
+    "prev": "السابق",
+    "next": "التالي",
+    "page": "صفحة {{page}}",
+    "table": {
+        "title": "العنوان",
+        "status": "الحالة",
+        "modes": "الأنماط",
+        "mediums": "الوسائط",
+        "schedule": "الجدولة",
+        "createdBy": "أنشأه",
+        "createdAt": "تاريخ الإنشاء",
+        "actions": "الإجراءات",
+        "loading": "جارٍ التحميل…",
+        "empty": "لا توجد إعلانات",
+        "recipientsPrefix": "المستلمون:",
+        "recipientsMore": "+{{count}}"
+    },
+    "actions": {
+        "view": "عرض",
+        "stats": "الإحصاءات",
+        "approve": "موافقة",
+        "reject": "رفض",
+        "deliverNow": "إرسال الآن",
+        "delete": "حذف"
+    },
+    "toasts": {
+        "statsLoadFailed": "فشل تحميل الإحصاءات",
+        "approved": "تمت الموافقة",
+        "approveFailed": "فشلت الموافقة",
+        "rejected": "تم الرفض",
+        "rejectFailed": "فشل الرفض",
+        "deliveryTriggered": "تم بدء التسليم",
+        "triggerFailed": "فشل بدء التسليم",
+        "deleted": "تم الحذف",
+        "deleteFailed": "فشل الحذف"
+    },
+    "detailsDialog": {
+        "title": "تفاصيل الإعلان",
+        "content": "المحتوى",
+        "modes": "الأنماط",
+        "mediums": "الوسائط",
+        "recipients": "المستلمون"
+    },
+    "statsDialog": {
+        "title": "إحصاءات التسليم",
+        "loading": "جارٍ تحميل الإحصاءات...",
+        "overviewTitle": "نظرة عامة على التسليم",
+        "tiles": {
+            "recipients": "المستلمون",
+            "delivered": "تم التسليم",
+            "read": "تمت القراءة",
+            "failed": "فشل",
+            "dismissed": "تم التجاهل",
+            "dismissRate": "معدل التجاهل"
+        },
+        "emailEventsTitle": "أحداث البريد الإلكتروني",
+        "viaSes": "عبر SES",
+        "emailTiles": {
+            "emailsSent": "الرسائل المرسلة",
+            "delivered": "تم التسليم",
+            "opened": "تم الفتح",
+            "clicked": "تم النقر",
+            "bounced": "مرتدة",
+            "rejected": "مرفوضة",
+            "complained": "تم الإبلاغ عنها كسبام",
+            "awaitingEvents": "بانتظار الأحداث"
+        },
+        "pendingNote": "تم إرسال الرسائل ولكن لم تصل أي أحداث من SES بعد. إذا كنت تعمل محليًا، تأكد من تكوين الويب هوك SES → SNS → notification_service.",
+        "noEmails": "لم يتم إرسال أي بريد إلكتروني لهذا الإعلان.",
+        "recipientsSection": {
+            "title": "المستلمون",
+            "loadFailed": "فشل تحميل المستلمين",
+            "loading": "جارٍ تحميل المستلمين...",
+            "empty": "لم يتم العثور على مستلمين لهذا الإعلان.",
+            "table": {
+                "name": "الاسم",
+                "mode": "النمط",
+                "status": "الحالة",
+                "seenAt": "وقت المشاهدة",
+                "dismissedAt": "وقت التجاهل"
+            },
+            "pagePagination": "صفحة {{page}} من {{totalPages}}"
+        }
+    },
+    "rejectDialog": {
+        "title": "رفض الإعلان",
+        "reasonPlaceholder": "السبب",
+        "cancel": "إلغاء",
+        "reject": "رفض"
+    },
+    "schedule": {
+        "none": "-",
+        "immediate": "فوري",
+        "oneTime": "مرة واحدة",
+        "recurring": "متكرر",
+        "cron": "CRON: {{expr}}"
+    }
+}

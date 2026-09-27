@@ -190,7 +190,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 ps.status AS batchStatus,
                 ps.start_time AS startDate,
                 COUNT(ssigm.id) AS countStudents,
-                ei.invite_code AS inviteCode,
+                (SELECT ei.invite_code
+                   FROM package_session_learner_invitation_to_payment_option psli
+                   JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
+                  WHERE psli.package_session_id = ps.id
+                    AND psli.status = 'ACTIVE'
+                    AND ei.tag = 'DEFAULT'
+                    AND ei.status = 'ACTIVE'
+                  ORDER BY ei.created_at DESC
+                  LIMIT 1) AS inviteCode,
                 ps.is_parent AS isParent,
                 ps.parent_id AS parentId
             FROM package_session ps
@@ -199,16 +207,9 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             LEFT JOIN student_session_institute_group_mapping ssigm
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.status IN (:studentSessionStatuses)
-            LEFT JOIN package_session_learner_invitation_to_payment_option psli
-                ON psli.package_session_id = ps.id
-                AND psli.status = 'ACTIVE'
-            LEFT JOIN enroll_invite ei
-                ON ei.id = psli.enroll_invite_id
-                AND ei.tag = 'DEFAULT'
-                AND ei.status = 'ACTIVE'
             WHERE p.id = :packageId
               AND ps.status IN (:packageSessionStatuses)
-            GROUP BY ps.id, batchName, ps.status, ps.start_time, ei.invite_code, ps.is_parent, ps.parent_id
+            GROUP BY ps.id, batchName, ps.status, ps.start_time, ps.is_parent, ps.parent_id
             ORDER BY ps.start_time DESC
             """, nativeQuery = true)
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(

@@ -75,7 +75,7 @@ export interface RecentLeadsRequest {
     submitted_to_local?: string;
     // Substring match against parent_name / parent_email / parent_mobile.
     search_query?: string;
-    // Lead temperature bucket — 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
+    // Lead tier key(s) from the institute's lead_tier catalog (HOT/WARM/COLD by default), comma-separated. Omitted = all tiers.
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;
@@ -115,6 +115,9 @@ export interface RecentLeadsRequest {
      *  custom_field_values row for {field_id} matches one of {values} (OR within
      *  the entry); across entries the backend AND-combines them. Omitted = none. */
     custom_field_filters?: LeadCustomFieldFilter[];
+    /** Campaign (UTM) attribution filter — same wire shape on every list
+     *  surface; see services/utm-list-filters. Omitted = none. */
+    utm_filters?: import('@/services/utm-list-filters').UtmListFiltersPayload;
     /** Column to sort by — SUBMITTED_AT (default) | LEAD_SCORE | LEAD_TIER | STATUS. */
     sort_by?: string;
     sort_direction?: 'ASC' | 'DESC';

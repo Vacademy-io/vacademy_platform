@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Plus, X } from '@phosphor-icons/react';
+import { Plus, Sparkle, X } from '@phosphor-icons/react';
 import {
     AlertDialog,
     AlertDialogCancel,
@@ -9,7 +9,8 @@ import {
 import { QuestionPaperUpload } from './QuestionPaperUpload';
 import { useIsMobile } from '@/hooks/use-mobile';
 import useDialogStore from '../-global-states/question-paper-dialogue-close';
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
+import { GenerateWithAiDialog } from './GenerateWithAiDialog';
 import { useTranslation } from 'react-i18next';
 
 interface QuestionPaperHeadingInterface {
@@ -22,6 +23,7 @@ export const QuestionPapersHeading = ({
     setCurrentQuestionIndex,
 }: QuestionPaperHeadingInterface) => {
     const { t } = useTranslation('assessmentQuestionPapersHeading');
+    const [generateOpen, setGenerateOpen] = useState(false);
     const isMobile = useIsMobile();
     const {
         isMainQuestionPaperAddDialogOpen,
@@ -67,6 +69,20 @@ export const QuestionPapersHeading = ({
                         </AlertDialogCancel>
                     </div>
                     <div className="mb-6 mt-2 flex flex-col items-center justify-center gap-6">
+                        {/* Generate with AI — the Acadine-style path: pick a book or
+                            knowledge base, then configure syllabus, question mix and
+                            test details in the paper wizard. */}
+                        <Button
+                            variant="outline"
+                            className="w-40 border-primary-300 text-primary-600"
+                            onClick={() => {
+                                setIsMainQuestionPaperAddDialogOpen(false);
+                                setGenerateOpen(true);
+                            }}
+                        >
+                            <Sparkle className="mr-1 size-4" />
+                            {t('generateWithAi')}
+                        </Button>
                         {/* Create Manually Dialog */}
                         <AlertDialog
                             open={isManualQuestionPaperDialogOpen}
@@ -129,6 +145,7 @@ export const QuestionPapersHeading = ({
                     </div>
                 </AlertDialogContent>
             </AlertDialog>
+            <GenerateWithAiDialog open={generateOpen} onOpenChange={setGenerateOpen} />
         </div>
     );
 };

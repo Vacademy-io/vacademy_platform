@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.dto.UserAudienceMembershipDTO;
 import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
@@ -67,6 +68,7 @@ public class UserLeadProfileService {
     private final AuthService authService;
     private final LeadSlaConfigService leadSlaConfigService;
     private final LeadStatusMirrorService leadStatusMirrorService;
+    private final LeadTierService leadTierService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -280,8 +282,11 @@ public class UserLeadProfileService {
                         .build());
 
         String oldTier = profile.getLeadTier();
-        String requested = tier.toUpperCase();
-        String scoreDerived = profile.computeTier();
+        String requested = tier.trim().toUpperCase();
+        if (!leadTierService.isKnownTier(instituteId, requested)) {
+            throw new VacademyException("Unknown lead tier: " + requested);
+        }
+        String scoreDerived = leadTierService.deriveTier(instituteId, profile.getBestScore());
 
         // If the admin is requesting the tier the score would derive anyway, clear
         // lead_tier instead of storing it. The frontend falls back to score-derived

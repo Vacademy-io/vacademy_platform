@@ -19,6 +19,17 @@ import { useToast } from '@/hooks/use-toast';
 import { MyButton } from '@/components/design-system/button';
 import { StatusChip } from '@/components/design-system/status-chips';
 import type { ProductPageResponse } from '../-types/product-page-types';
+import { DotsThreeVertical } from '@phosphor-icons/react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
+import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
+import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getLearnerPortalUrl } from '@/lib/learner-portal-url';
 
 const GRADIENTS = [
     'from-primary-400 to-primary-600',
@@ -55,6 +66,27 @@ export const ProductPagesList = () => {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deleteConfirmPage, setDeleteConfirmPage] = useState<ProductPageResponse | null>(null);
+    const [utmPage, setUtmPage] = useState<ProductPageResponse | null>(null);
+    const { instituteDetails } = useInstituteDetailsStore();
+    // One action in the ⋮ menu today, so hide the trigger entirely rather than
+    // opening an empty popover for institutes that never enabled the builder.
+    const { enabled: utmEnabled } = useUtmBuilderEnabled();
+
+    /**
+     * Public URL of a product page, on the institute's OWN learner domain.
+     * A link built on the shared learner.vacademy.io fallback shows Vacademy
+     * branding in the message and in WhatsApp's unfurl — see
+     * lib/learner-portal-url.
+     */
+    const productPageUrl = (page: ProductPageResponse) =>
+        page.code
+            ? getLearnerPortalUrl(
+                  `/product-pages/${encodeURIComponent(page.code)}?instituteId=${encodeURIComponent(
+                      instituteId || ''
+                  )}`,
+                  instituteDetails?.learner_portal_base_url
+              )
+            : '';
 
     const {
         data: pages,
@@ -216,6 +248,27 @@ export const ProductPagesList = () => {
                                             Edit
                                         </MyButton>
 
+                                        {utmEnabled && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <MyButton
+                                                        scale="small"
+                                                        buttonType="secondary"
+                                                        layoutVariant="icon"
+                                                        title="More actions"
+                                                    >
+                                                        <DotsThreeVertical className="size-3.5" />
+                                                    </MyButton>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <UtmLinkMenuItem
+                                                        hidden={!page.code}
+                                                        onSelect={() => setUtmPage(page)}
+                                                    />
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+
                                         <MyButton
                                             scale="small"
                                             buttonType="secondary"
@@ -248,6 +301,14 @@ export const ProductPagesList = () => {
                     </button>
                 </div>
             )}
+
+            <UtmBuilderDialog
+                open={!!utmPage}
+                onOpenChange={(open) => !open && setUtmPage(null)}
+                baseUrl={utmPage ? productPageUrl(utmPage) : ''}
+                sourceType="PRODUCT_PAGE"
+                entityName={utmPage?.name}
+            />
 
             <CreateProductPageDialog
                 open={isCreateDialogOpen}

@@ -120,15 +120,22 @@ export function SkinPreview({
     radiusPx,
     accent,
     bold,
+    elevated,
 }: {
     radiusPx: number;
     accent: string;
     bold?: boolean;
+    /** Raised white surface with a soft layered shadow and a quiet edge —
+     *  the defining cue of the Corporate skin (layering, not outlines). */
+    elevated?: boolean;
 }) {
     return (
         <div className="flex w-full flex-col gap-1.5 px-1">
             <div
-                className="h-4 w-full border border-neutral-300 bg-white"
+                className={cn(
+                    'h-4 w-full border bg-white',
+                    elevated ? 'border-neutral-200 shadow-sm' : 'border-neutral-300'
+                )}
                 style={{ /* design-lint-ignore: preview renders the skin's own radius */ borderRadius: `${radiusPx}px` }}
             />
             <div

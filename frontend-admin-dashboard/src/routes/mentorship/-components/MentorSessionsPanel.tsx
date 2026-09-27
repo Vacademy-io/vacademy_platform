@@ -11,6 +11,8 @@ import {
     WarningCircle,
     XCircle,
 } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,14 +26,16 @@ import { MentorAvatar } from './MentorAvatar';
 import type { MentorSessionDTO } from '../-types/mentorship-types';
 
 /** The lifecycle states an admin filters by, in the order they matter. */
-const FILTERS = [
-    { key: '', label: 'All' },
-    { key: 'UPCOMING', label: 'Upcoming' },
-    { key: 'AWAITING_REVIEW', label: 'Awaiting review' },
-    { key: 'COMPLETED', label: 'Completed' },
-    { key: 'NO_SHOW', label: 'No-shows' },
-    { key: 'CANCELLED', label: 'Cancelled' },
-] as const;
+function buildFilters(t: TFunction) {
+    return [
+        { key: '', label: t('filters.all') },
+        { key: 'UPCOMING', label: t('filters.upcoming') },
+        { key: 'AWAITING_REVIEW', label: t('filters.awaitingReview') },
+        { key: 'COMPLETED', label: t('filters.completed') },
+        { key: 'NO_SHOW', label: t('filters.noShows') },
+        { key: 'CANCELLED', label: t('filters.cancelled') },
+    ] as const;
+}
 
 /**
  * Every mentorship session in one place: who, when, what happened, and how the
@@ -48,6 +52,8 @@ export function MentorSessionsPanel({
     mentorId?: string;
     studentUserId?: string;
 }) {
+    const { t } = useTranslation('mentorshipMentorSessionsPanel');
+    const FILTERS = useMemo(() => buildFilters(t), [t]);
     const [lifecycle, setLifecycle] = useState<string>('');
     // Only offered when the panel isn't already scoped to one mentor — inside a
     // mentor's own detail view the filter would be a no-op.
@@ -80,17 +86,17 @@ export function MentorSessionsPanel({
     const mentorOptions = useMemo(
         () =>
             (mentorsQuery.data?.mentors ?? []).map((m) => ({
-                label: m.display_name || m.name || 'Mentor',
+                label: m.display_name || m.name || t('fallback.mentor'),
                 value: m.id,
             })),
-        [mentorsQuery.data]
+        [mentorsQuery.data, t]
     );
 
     const columns = useMemo<ColumnDef<MentorSessionDTO>[]>(
         () => [
             {
                 id: 'mentor',
-                header: 'Mentor',
+                header: t('columns.mentor'),
                 size: 200,
                 cell: ({ row }) => {
                     const s = row.original;
@@ -105,9 +111,9 @@ export function MentorSessionsPanel({
                                 type="button"
                                 onClick={() => setDetail(s)}
                                 className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
-                                title="Open session details"
+                                title={t('openSessionDetails')}
                             >
-                                {s.mentor_name || 'Mentor'}
+                                {s.mentor_name || t('fallback.mentor')}
                             </button>
                         </div>
                     );
@@ -115,17 +121,17 @@ export function MentorSessionsPanel({
             },
             {
                 id: 'mentee',
-                header: 'Mentee',
+                header: t('columns.mentee'),
                 size: 170,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-neutral-600">
-                        {row.original.student_name || 'Learner'}
+                        {row.original.student_name || t('fallback.learner')}
                     </span>
                 ),
             },
             {
                 id: 'when',
-                header: 'Date & time',
+                header: t('columns.when'),
                 size: 170,
                 cell: ({ row }) => {
                     const s = row.original;
@@ -149,19 +155,19 @@ export function MentorSessionsPanel({
             },
             {
                 id: 'duration',
-                header: 'Duration',
+                header: t('columns.duration'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="text-body tabular-nums text-neutral-600">
                         {row.original.duration_minutes
-                            ? `${row.original.duration_minutes} min`
+                            ? t('durationMinutes', { count: row.original.duration_minutes })
                             : '—'}
                     </span>
                 ),
             },
             {
                 id: 'topic',
-                header: 'Topic',
+                header: t('columns.topic'),
                 size: 180,
                 cell: ({ row }) => (
                     <span
@@ -174,13 +180,13 @@ export function MentorSessionsPanel({
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 150,
                 cell: ({ row }) => <LifecycleBadge lifecycle={row.original.lifecycle} />,
             },
             {
                 id: 'rating',
-                header: 'Rating',
+                header: t('columns.rating'),
                 size: 100,
                 cell: ({ row }) =>
                     typeof row.original.rating === 'number' ? (
@@ -194,11 +200,14 @@ export function MentorSessionsPanel({
             },
             {
                 id: 'actions',
-                header: 'Actions',
+                header: t('columns.actions'),
                 size: 140,
                 cell: ({ row }) => {
                     const s = row.original;
-                    const who = `${s.mentor_name || 'mentor'} and ${s.student_name || 'learner'}`;
+                    const who = t('whoAndTemplate', {
+                        mentor: s.mentor_name || t('fallback.mentorLower'),
+                        student: s.student_name || t('fallback.learnerLower'),
+                    });
                     if (s.lifecycle !== 'UPCOMING') {
                         return (
                             <MyButton
@@ -207,8 +216,8 @@ export function MentorSessionsPanel({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setDetail(s)}
-                                aria-label={`View session with ${who}`}
-                                title="View session details"
+                                aria-label={t('viewSessionAria', { who })}
+                                title={t('viewSessionDetailsTitle')}
                             >
                                 <Eye size={18} />
                             </MyButton>
@@ -231,16 +240,14 @@ export function MentorSessionsPanel({
                                 }
                                 aria-label={
                                     s.meet_link
-                                        ? `Join session with ${who}`
-                                        : `No meeting link yet for the session with ${who}`
+                                        ? t('joinSessionAria', { who })
+                                        : t('noMeetingLinkAria', { who })
                                 }
                                 // Shown disabled rather than hidden: a missing link means
                                 // Meet allocation hasn't landed (or failed), and that is
                                 // something an admin needs to see, not something to hide.
                                 title={
-                                    s.meet_link
-                                        ? 'Join the meeting'
-                                        : 'No meeting link yet — check the mentor’s Google connection'
+                                    s.meet_link ? t('joinMeetingTitle') : t('noMeetingLinkTitle')
                                 }
                             >
                                 <VideoCamera size={18} />
@@ -251,8 +258,8 @@ export function MentorSessionsPanel({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setActing({ session: s, action: 'reschedule' })}
-                                aria-label="Reschedule"
-                                title="Move this session to another slot"
+                                aria-label={t('rescheduleAria')}
+                                title={t('rescheduleTitle')}
                             >
                                 <CalendarPlus size={18} />
                             </MyButton>
@@ -262,8 +269,8 @@ export function MentorSessionsPanel({
                                 scale="small"
                                 layoutVariant="icon"
                                 onClick={() => setActing({ session: s, action: 'cancel' })}
-                                aria-label="Cancel"
-                                title="Cancel this session"
+                                aria-label={t('cancelAria')}
+                                title={t('cancelTitle')}
                             >
                                 <XCircle size={18} className="text-danger-500" />
                             </MyButton>
@@ -272,7 +279,7 @@ export function MentorSessionsPanel({
                 },
             },
         ],
-        []
+        [t]
     );
 
     return (
@@ -297,11 +304,11 @@ export function MentorSessionsPanel({
                 {!mentorId && (
                     <div className="pb-2">
                         <MultiSelectFilter
-                            label="Mentors"
+                            label={t('mentorsFilterLabel')}
                             options={mentorOptions}
                             selected={mentorFilter}
                             onChange={setMentorFilter}
-                            placeholder="Search mentors…"
+                            placeholder={t('mentorsSearchPlaceholder')}
                             widthClass="w-52"
                         />
                     </div>
@@ -318,7 +325,7 @@ export function MentorSessionsPanel({
                 <div className="flex flex-col items-start gap-3 rounded-lg border border-danger-100 bg-danger-50 p-4">
                     <div className="flex items-center gap-2">
                         <WarningCircle size={18} weight="fill" className="text-danger-600" />
-                        <p className="text-body text-danger-600">Couldn&apos;t load sessions.</p>
+                        <p className="text-body text-danger-600">{t('loadError')}</p>
                     </div>
                     <MyButton
                         type="button"
@@ -326,18 +333,16 @@ export function MentorSessionsPanel({
                         scale="small"
                         onClick={() => refetch()}
                     >
-                        Retry
+                        {t('retry')}
                     </MyButton>
                 </div>
             ) : sessions.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <CalendarBlank size={36} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-700">
-                        {lifecycle ? 'No sessions in this state' : 'No mentor sessions yet'}
+                        {lifecycle ? t('emptyStateFiltered') : t('emptyStateAll')}
                     </p>
-                    <p className="max-w-md text-caption text-neutral-500">
-                        Sessions appear here once learners book time with a mentor.
-                    </p>
+                    <p className="max-w-md text-caption text-neutral-500">{t('emptyStateHint')}</p>
                 </div>
             ) : (
                 <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
@@ -375,34 +380,35 @@ export function MentorSessionsPanel({
 
 /** One word for a session's state, coloured by whether it needs attention. */
 export function LifecycleBadge({ lifecycle }: { lifecycle: string }) {
+    const { t } = useTranslation('mentorshipMentorSessionsPanel');
     const map: Record<string, { label: string; tone: string; icon: React.ReactNode }> = {
         COMPLETED: {
-            label: 'Completed',
+            label: t('lifecycle.completed'),
             tone: 'bg-success-50 text-success-600',
             icon: <CheckCircle size={12} weight="fill" />,
         },
         NO_SHOW: {
-            label: 'No-show',
+            label: t('lifecycle.noShow'),
             tone: 'bg-danger-50 text-danger-600',
             icon: <UserMinus size={12} weight="fill" />,
         },
         CANCELLED: {
-            label: 'Cancelled',
+            label: t('lifecycle.cancelled'),
             tone: 'bg-neutral-100 text-neutral-500',
             icon: <XCircle size={12} weight="fill" />,
         },
         RESCHEDULED: {
-            label: 'Rescheduled',
+            label: t('lifecycle.rescheduled'),
             tone: 'bg-neutral-100 text-neutral-500',
             icon: <Clock size={12} weight="fill" />,
         },
         UPCOMING: {
-            label: 'Upcoming',
+            label: t('lifecycle.upcoming'),
             tone: 'bg-info-50 text-info-600',
             icon: <CalendarBlank size={12} weight="fill" />,
         },
         AWAITING_REVIEW: {
-            label: 'Awaiting review',
+            label: t('lifecycle.awaitingReview'),
             tone: 'bg-warning-50 text-warning-700',
             icon: <Clock size={12} weight="fill" />,
         },
@@ -430,10 +436,11 @@ function SessionDetailDialog({
     session: MentorSessionDTO | null;
     onOpenChange: (open: boolean) => void;
 }) {
+    const { t } = useTranslation('mentorshipMentorSessionsPanel');
     if (!session) return null;
     return (
         <MyDialog
-            heading="Session details"
+            heading={t('detailDialog.heading')}
             open={!!session}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -441,25 +448,39 @@ function SessionDetailDialog({
             <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
                     <span className="text-body font-semibold text-neutral-700">
-                        {session.title || 'Mentor session'}
+                        {session.title || t('detailDialog.defaultTitle')}
                     </span>
                     <LifecycleBadge lifecycle={session.lifecycle} />
                 </div>
 
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-                    <Field label="Mentor" value={session.mentor_name} sub={session.mentor_email} />
                     <Field
-                        label="Learner"
+                        label={t('fieldLabels.mentor')}
+                        value={session.mentor_name}
+                        sub={session.mentor_email}
+                    />
+                    <Field
+                        label={t('fieldLabels.learner')}
                         value={session.student_name}
                         sub={session.student_email}
                     />
-                    <Field label="When" value={sessionDateTime(session.scheduled_start_utc)} />
                     <Field
-                        label="Duration"
-                        value={session.duration_minutes ? `${session.duration_minutes} min` : '—'}
+                        label={t('fieldLabels.when')}
+                        value={sessionDateTime(session.scheduled_start_utc)}
                     />
-                    <Field label="Topic" value={session.topic || '—'} />
-                    <Field label="Booking status" value={session.booking_status || '—'} />
+                    <Field
+                        label={t('fieldLabels.duration')}
+                        value={
+                            session.duration_minutes
+                                ? t('durationMinutesShort', { count: session.duration_minutes })
+                                : '—'
+                        }
+                    />
+                    <Field label={t('fieldLabels.topic')} value={session.topic || '—'} />
+                    <Field
+                        label={t('fieldLabels.bookingStatus')}
+                        value={session.booking_status || '—'}
+                    />
                 </dl>
 
                 {session.meet_link && (
@@ -469,14 +490,14 @@ function SessionDetailDialog({
                         rel="noopener noreferrer"
                         className="flex w-fit items-center gap-1.5 text-caption font-medium text-primary-600 hover:text-primary-700"
                     >
-                        <VideoCamera size={14} /> Open meeting link
+                        <VideoCamera size={14} /> {t('detailDialog.openMeetingLink')}
                     </a>
                 )}
 
                 {session.notes && (
                     <div className="flex flex-col gap-1">
                         <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                            Mentor&apos;s notes
+                            {t('detailDialog.mentorNotesLabel')}
                         </span>
                         <p className="rounded-md bg-neutral-50 p-3 text-caption text-neutral-600">
                             {session.notes}
@@ -487,11 +508,11 @@ function SessionDetailDialog({
                 {typeof session.rating === 'number' && (
                     <div className="flex flex-col gap-1">
                         <span className="text-caption font-semibold uppercase tracking-wide text-neutral-400">
-                            Learner feedback
+                            {t('detailDialog.learnerFeedbackLabel')}
                         </span>
                         <span className="flex items-center gap-1.5 text-body text-neutral-700">
                             <Star size={14} weight="fill" className="text-warning-500" />
-                            {session.rating}/5
+                            {t('detailDialog.ratingOutOfFive', { rating: session.rating })}
                         </span>
                         {session.feedback_comment && (
                             <p className="rounded-md bg-neutral-50 p-3 text-caption text-neutral-600">

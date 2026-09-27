@@ -37,7 +37,10 @@ import {
     storeEvaluationDataInStorage,
     triggerAIEvaluation,
 } from '../../-services/ai-evaluation-services';
-import { buildModelDisplayNames } from '@/routes/ai-center/-types/ai-models';
+import {
+    DEFAULT_EVALUATION_MODEL,
+    buildModelDisplayNames,
+} from '@/routes/ai-center/-types/ai-models';
 import {
     Select,
     SelectContent,
@@ -47,6 +50,7 @@ import {
 } from '@/components/ui/select';
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
+import { ProctoringReviewDialog } from './ProctoringReviewDialog';
 
 const isEvaluatedStatus = (status?: string | null) => {
     const s = (status || '').toUpperCase();
@@ -268,7 +272,11 @@ const StudentEvaluateWithAIComponent = ({
     const { assessmentId } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
-    const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
+    // Must stay DEFAULT_EVALUATION_MODEL: this picker always sends
+    // preferred_model, so whatever it defaults to silently overrides the
+    // grading pipeline's own default. An ultra-tier default here billed one
+    // copy 133.62 credits against a 10-credit estimate.
+    const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_EVALUATION_MODEL);
     const modelDisplayNames = buildModelDisplayNames(t);
 
     // Credit cost preview for this evaluation (per graded question).
@@ -526,6 +534,7 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+    const [proctoringOpen, setProctoringOpen] = useState(false);
     const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
@@ -888,6 +897,14 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     >
                         {t('dropdown.releaseResult')}
                     </DropdownMenuItem>
+                    {/* Always offered: an unproctored attempt simply shows an
+                        empty log, and the reviewer learns that at a glance. */}
+                    <DropdownMenuItem
+                        className="cursor-pointer"
+                        onClick={() => setProctoringOpen(true)}
+                    >
+                        {t('dropdown.proctoring')}
+                    </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
 
@@ -900,6 +917,13 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                 open={uploadDialogOpen}
                 onOpenChange={setUploadDialogOpen}
                 onUploaded={handleAnswerSheetUploaded}
+            />
+
+            <ProctoringReviewDialog
+                attemptId={student.attempt_id}
+                studentName={student.full_name}
+                open={proctoringOpen}
+                onOpenChange={setProctoringOpen}
             />
 
             {/* Dialog should be controlled by openDialog state */}

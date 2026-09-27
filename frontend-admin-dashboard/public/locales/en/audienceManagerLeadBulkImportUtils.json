@@ -6,7 +6,8 @@
         "unknownLeadStatus": "Unknown lead status: {{status}}.",
         "validStatuses": "Valid: {{statuses}}",
         "fieldRequired": "{{field}} is required",
-        "invalidEmail": "Invalid email: {{email}}"
+        "invalidEmail": "Invalid email: {{email}}",
+        "invalidMobile": "Invalid mobile number: {{mobile}}"
     },
     "csvTemplate": {
         "leadOwnerColumn": "Lead Owner (Counsellor Email)",

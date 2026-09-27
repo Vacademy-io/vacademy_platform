@@ -20,6 +20,12 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import {
+    readUtmSelection,
+    utmFilterId,
+    utmValueLabel,
+} from '@/components/shared/leads/utm-filter-encoding';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import { sentinelLabel } from '@/components/shared/leads/custom-field-filter-encoding';
 import { useTranslation } from 'react-i18next';
@@ -54,6 +60,12 @@ export const StudentFilters = ({
     const { instituteDetails } = useInstituteDetailsStore();
     const { isCompact } = useCompactMode();
     const { t } = useTranslation('manageStudentsFilters');
+    const { t: tUtm } = useTranslation('utmListFilters');
+    // Campaign (UTM) filters — rendered only while the institute's UTM setting
+    // is on and the Students surface isn't hidden in display settings. Their
+    // selections ride columnFilters under `utm:<dimension>` like every other
+    // chip, so Apply / Reset / the course learners tab all just work.
+    const utmSelection = readUtmSelection(columnFilters);
 
     const handleAddSession = (sessionData: AddSessionDataType) => {
         const processedData = structuredClone(sessionData);
@@ -303,6 +315,21 @@ export const StudentFilters = ({
                                 )}
                             </div>
                         ))}
+                        <UtmFilterControls
+                            surface="STUDENTS"
+                            instituteId={instituteDetails?.id || ''}
+                            variant="pill"
+                            selection={utmSelection}
+                            onChange={(dimension, values) =>
+                                onFilterChange(
+                                    utmFilterId(dimension),
+                                    values.map((v) => ({
+                                        id: v,
+                                        label: utmValueLabel(v, tUtm('untagged')),
+                                    }))
+                                )
+                            }
+                        />
                         <ManageListFiltersLink surface="STUDENTS" />
                     </div>
 

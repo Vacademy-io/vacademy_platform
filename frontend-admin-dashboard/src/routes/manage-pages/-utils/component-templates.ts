@@ -77,7 +77,11 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         props: {
             title: t('courseCatalog.title'),
             showFilters: true,
-            filtersConfig: [{ id: 'level', label: t('courseCatalog.filterLevelLabel'), type: 'checkbox', field: 'level_name' }],
+            filtersConfig: [
+                { id: 'level', type: 'checkbox', field: 'level_name' },
+                { id: 'session', type: 'checkbox', field: 'session_name' },
+                { id: 'tags', type: 'checkbox', field: 'comma_separeted_tags' },
+            ],
             render: {
                 layout: 'grid',
                 cardFields: ['package_name', 'course_preview_image_media_id', 'price'],
@@ -167,6 +171,23 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             media: [],
             layout: 'carousel',
             styles: { backgroundColor: '#F0F9FF', roundedEdges: true }, // design-lint-ignore: page-builder template default color
+        },
+    },
+
+    courseShowcase: {
+        type: 'courseShowcase',
+        enabled: true,
+        props: {
+            title: 'New courses',
+            subtitle: '',
+            // 'newest' | 'onSale' | 'tag' | 'picked' — what fills the strip.
+            source: 'newest',
+            tag: '',
+            courseIds: [],
+            limit: 3,
+            layout: 'row',
+            badgeText: '',
+            badgeTone: 'hot',
         },
     },
 
@@ -300,6 +321,25 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             aspectRatio: '16:9',
             autoplay: false,
             backgroundColor: '#000000', // design-lint-ignore: page-builder template default color
+        },
+    },
+
+    documentViewer: {
+        type: 'documentViewer',
+        enabled: true,
+        props: {
+            heading: t('documentViewer.heading'),
+            subheading: t('documentViewer.subheading'),
+            // Public CDN URL of the PDF — set by DocumentUploadField.
+            documentUrl: '',
+            fileName: '',
+            // 'button' opens a full-screen reader from one CTA; 'inline'
+            // embeds the reader in the page.
+            display: 'button',
+            buttonText: t('documentViewer.buttonText'),
+            coverImage: '',
+            height: '70vh',
+            showDownload: true,
         },
     },
 
@@ -452,6 +492,37 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             showDate: true,
             showTag: true,
             backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+        },
+    },
+
+    // Blog — reads the institute's published posts live (Manage Pages → Blog,
+    // or an AI app over MCP). ONE section serves both faces: the post list on
+    // /<site>/<page>, and a single article on /<site>/<page>/<slug>. Nothing
+    // editorial is stored on the page — only how the list looks — so a new
+    // article never needs the site republished.
+    blog: {
+        type: 'blog',
+        enabled: true,
+        props: {
+            heading: t('blog.heading'),
+            subheading: t('blog.subheading'),
+            layout: 'grid',
+            columns: 3,
+            pageSize: 9,
+            // '' shows every category; a name pins the section to one.
+            category: '',
+            showCoverImage: true,
+            showExcerpt: true,
+            showDate: true,
+            showAuthor: true,
+            showCategory: true,
+            showReadingTime: true,
+            showCategoryFilter: true,
+            readMoreLabel: t('blog.readMoreLabel'),
+            backLabel: t('blog.backLabel'),
+            emptyMessage: t('blog.emptyMessage'),
+            backgroundColor: '',
+            textColor: '',
         },
     },
 

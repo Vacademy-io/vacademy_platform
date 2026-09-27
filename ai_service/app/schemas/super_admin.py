@@ -2,7 +2,7 @@
 Super Admin schemas for platform-wide credit and AI usage views.
 """
 
-from typing import Any, List, Optional
+from typing import Dict, Any, List, Optional
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
@@ -131,6 +131,8 @@ class AiSettingEntry(BaseModel):
     options: List[str] = []
     value: Optional[Any] = None
     default: Optional[Any] = None
+    # What the replica that answered this request resolves right now.
+    effective: Optional[Any] = None
     source: str  # "portal" | "default"
     updated_by: Optional[str] = None
     updated_at: Optional[str] = None
@@ -152,14 +154,29 @@ class TtsProviderOption(BaseModel):
     default_voice_example: str
 
 
+class ModelOption(BaseModel):
+    model_id: str
+    name: str
+    provider: str
+    category: str
+    tier: Optional[str] = None
+    is_free: bool = False
+
+
 class AiSettingsCatalog(BaseModel):
     llm_models: List[LlmModelOption]
+    # Image-generation models (ai_models.category = 'image').
+    image_models: List[LlmModelOption] = []
+    # Every active model with its category, for the use-case defaults editor.
+    all_models: List[ModelOption] = []
     tts_providers: List[TtsProviderOption]
 
 
 class AiSettingsResponse(BaseModel):
     settings: List[AiSettingEntry]
     catalog: AiSettingsCatalog
+    # This replica's settings cache: loaded / failed / last error / age.
+    cache: Optional[Dict[str, Any]] = None
 
 
 class AiSettingUpdateRequest(BaseModel):

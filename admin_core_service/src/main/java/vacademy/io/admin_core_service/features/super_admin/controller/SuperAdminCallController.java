@@ -160,6 +160,30 @@ public class SuperAdminCallController {
                 dryRun, user.getUserId()));
     }
 
+    /** Every AI agent and its speech-cache tier (OFF | FIXED | FULL), for the switch. */
+    @GetMapping("/tts-cache/agent-modes")
+    public ResponseEntity<List<TtsCacheDTOs.AgentMode>> ttsCacheAgentModes(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String instituteId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.agentModes(instituteId));
+    }
+
+    /** Set one agent's speech-cache tier; effective from its next call. */
+    @PutMapping("/tts-cache/agents/{agentId}/mode")
+    public ResponseEntity<?> ttsCacheSetMode(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String agentId,
+            @RequestBody TtsCacheDTOs.ModeRequest body) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        try {
+            return ResponseEntity.ok(ttsCache.setMode(agentId, body == null ? null : body.getMode(),
+                    user.getUserId()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Every flush ever queued, and what it did. */
     @GetMapping("/tts-cache/flush-log")
     public ResponseEntity<List<TtsCacheDTOs.FlushResult>> ttsCacheFlushLog(

@@ -1,5 +1,6 @@
 {
   "menu": {
+    "editProfile": "Edit team member",
     "changeRoleType": "Change Role Type",
     "disableUser": "Disable user",
     "enableUser": "Enable user",
@@ -44,6 +45,27 @@
     "confirmButton": "Yes",
     "toast": {
       "success": "User has been deleted successfully!"
+    }
+  },
+  "editProfile": {
+    "title": "{{name}}'s profile",
+    "hint": "The photo, designation, and bio are shown wherever {{name}} appears on a course.",
+    "nameLabel": "Name",
+    "emailLabel": "Email",
+    "mobileNumberLabel": "Mobile number",
+    "photoLabel": "Profile photo",
+    "designationLabel": "Designation",
+    "designationPlaceholder": "e.g. Physics educator",
+    "bioLabel": "Bio",
+    "bioPlaceholder": "Short bio",
+    "cancel": "Cancel",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "toast": {
+      "notImage": "Please choose an image file.",
+      "uploadFailed": "Image upload failed.",
+      "success": "Profile updated.",
+      "error": "Could not update the profile."
     }
   }
 }

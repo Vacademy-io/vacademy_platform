@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router';
+import { Trans, useTranslation } from 'react-i18next';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { cn } from '@/lib/utils';
 import type { Money } from '@/routes/erp/-shared/hr-types';
@@ -21,17 +22,22 @@ import type { Money } from '@/routes/erp/-shared/hr-types';
  * is created from an existing staff account, so the note goes straight there
  * instead of describing the fix in prose.
  */
-export const NoProfileNote = ({ className }: { className?: string }) => (
-    <span className={cn('text-caption text-neutral-500', className)}>
-        Not linked to an employee record —{' '}
-        <Link
-            to="/erp/people/staff-bridge"
-            className="text-primary-500 underline-offset-2 hover:underline"
-        >
-            create one in Staff Coverage
-        </Link>
-    </span>
-);
+export const NoProfileNote = ({ className }: { className?: string }) => {
+    const { t } = useTranslation('erpVariablePayShared');
+    return (
+        <span className={cn('text-caption text-neutral-500', className)}>
+            <Trans i18nKey="noProfileNote" t={t}>
+                Not linked to an employee record —{' '}
+                <Link
+                    to="/erp/people/staff-bridge"
+                    className="text-primary-500 underline-offset-2 hover:underline"
+                >
+                    create one in Staff Coverage
+                </Link>
+            </Trans>
+        </span>
+    );
+};
 
 /**
  * The note on a teacher whose pay cannot be computed.
@@ -40,13 +46,18 @@ export const NoProfileNote = ({ className }: { className?: string }) => (
  * on the employee, and an admin who is told only "no rate" has to go and find out
  * which field that means.
  */
-export const UnratedNote = ({ className }: { className?: string }) => (
-    <span className={cn('text-caption text-warning-700', className)}>
-        No rate set — add <span className="font-mono">teaching_rate_per_session</span> or{' '}
-        <span className="font-mono">teaching_rate_per_hour</span> to this employee&apos;s custom
-        fields
-    </span>
-);
+export const UnratedNote = ({ className }: { className?: string }) => {
+    const { t } = useTranslation('erpVariablePayShared');
+    return (
+        <span className={cn('text-caption text-warning-700', className)}>
+            <Trans i18nKey="unratedNote" t={t}>
+                No rate set — add <span className="font-mono">teaching_rate_per_session</span> or{' '}
+                <span className="font-mono">teaching_rate_per_hour</span> to this
+                employee&apos;s custom fields
+            </Trans>
+        </span>
+    );
+};
 
 /** A headline figure above a preview table. Mirrors ERP → Compliance's stat tiles. */
 export const VariablePayStat = ({

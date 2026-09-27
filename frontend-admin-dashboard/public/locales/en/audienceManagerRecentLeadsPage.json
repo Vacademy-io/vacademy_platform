@@ -97,7 +97,8 @@
         "assignLeads": "Assign leads",
         "unassignLeads": "Unassign leads",
         "restoreLeads": "Restore leads",
-        "deleteLeads": "Delete leads"
+        "deleteLeads": "Delete leads",
+        "moveLeads": "Move to another list"
     },
     "emptyState": {
         "errorTitle": "Couldn't load leads",

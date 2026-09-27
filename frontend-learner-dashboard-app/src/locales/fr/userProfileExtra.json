@@ -171,7 +171,12 @@
             "cancelSuccessTitle": "Paiement automatique annulé",
             "cancelSuccessDescription": "Vous conservez l'accès jusqu'à la fin de votre période en cours.",
             "cancelErrorTitle": "Impossible d'annuler le paiement automatique",
-            "cancelErrorDescription": "Veuillez réessayer dans un instant."
+            "cancelErrorDescription": "Veuillez réessayer dans un instant.",
+            "planChangeOrderFailed": "We couldn't create the payment order.",
+            "planChangeFailedTitle": "Couldn't change the plan",
+            "planChangeFailedDescription": "Please try again in a moment.",
+            "planChangePaidTitle": "Payment received",
+            "planChangePaidDescription": "Your new plan will be active shortly."
         },
         "dialog": {
             "title": "Annuler le paiement automatique ?",
@@ -181,7 +186,10 @@
             "defaultEndDate": "la fin de votre période en cours",
             "keepAutopay": "Conserver le paiement automatique",
             "cancelling": "Annulation..."
-        }
+        },
+        "changePlan": "Change plan",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeCancelScheduled": "Cancel this change"
     },
     "cardUpdate": {
         "success": "Votre carte a été mise à jour",

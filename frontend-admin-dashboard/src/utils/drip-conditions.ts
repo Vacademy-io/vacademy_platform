@@ -11,6 +11,15 @@ import {
 } from '@/types/course-settings';
 
 /**
+ * Rules that wait on the learner doing something, as opposed to the clock.
+ *
+ * Only these sit behind the institute's "apply progress rules" opt-in on the
+ * learner side; date and day-wise rules are enforced as soon as they are saved.
+ */
+export const isProgressRule = (rule: DripConditionRule): boolean =>
+    rule.type !== 'date_based' && rule.type !== 'relative_date';
+
+/**
  * Generate a unique ID for drip conditions
  */
 export const generateDripConditionId = (): string => {

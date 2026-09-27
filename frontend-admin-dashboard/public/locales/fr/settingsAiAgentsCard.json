@@ -59,6 +59,17 @@
             "label": "Expressivité",
             "hint": "À quel point la voix varie son intonation et son émotion."
         },
+        "voiceModulation": {
+            "label": "Modulation de la voix",
+            "hint": "Amplitude des montées et descentes de la hauteur. Appliquée à l'audio lui-même, elle fonctionne avec toutes les voix et tous les moteurs — un ton plat et lu devient conversationnel.",
+            "options": {
+                "default": "Valeur par défaut",
+                "off": "Désactivée",
+                "subtle": "Subtile",
+                "conversational": "Conversationnelle",
+                "lively": "Vive"
+            }
+        },
         "voiceTester": {
             "label": "Tester cette voix",
             "stop": "Arrêter",

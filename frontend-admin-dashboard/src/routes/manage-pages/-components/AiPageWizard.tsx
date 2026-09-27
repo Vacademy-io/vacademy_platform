@@ -95,6 +95,7 @@ export const AiPageWizard = ({
     const [pendingUrl, setPendingUrl] = useState('');
     const [inspiration, setInspiration] = useState<string[]>([]);
     const [sourceUrl, setSourceUrl] = useState('');
+    const [referenceUrl, setReferenceUrl] = useState('');
     const [pendingInsp, setPendingInsp] = useState('');
     // The brief step was reached from the assistant rather than typed by hand,
     // so its fields are a proposal to review — chiefly the page type.
@@ -183,6 +184,7 @@ export const AiPageWizard = ({
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
                 inspiration_image_urls: inspiration,
+                reference_url: referenceUrl.trim() || undefined,
                 global_settings: keepTheme ? siteTheme : undefined,
                 source_url: sourceUrl.trim() || undefined,
                 courses: useRealData ? courseSnapshot : [],
@@ -226,6 +228,12 @@ export const AiPageWizard = ({
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
                 source_url: sourceUrl.trim() || undefined,
+                // Same reference + theme contract as the single-page build: the
+                // site call silently dropped both before, so a whole-site run
+                // ignored the screenshots and always proposed a fresh theme.
+                inspiration_image_urls: inspiration,
+                reference_url: referenceUrl.trim() || undefined,
+                global_settings: keepTheme ? siteTheme : undefined,
                 auto_images: autoImages,
             }),
         onSuccess: (data) => { setSiteResult(data); setStep('review'); },
@@ -551,6 +559,21 @@ export const AiPageWizard = ({
                                 value={sourceUrl}
                                 onChange={(e) => setSourceUrl(e.target.value)}
                                 placeholder={t('assets.rebuildUrlPlaceholder')}
+                            />
+                        </div>
+
+                        {/* Reference website — "make mine look like THAT": captured server-side */}
+                        <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700">{t('assets.referenceHeading')}</p>
+                            <p className="text-caption text-gray-400">
+                                {keepTheme && siteTheme
+                                    ? t('assets.referenceDescriptionLocked')
+                                    : t('assets.referenceDescriptionFree')}
+                            </p>
+                            <Input
+                                value={referenceUrl}
+                                onChange={(e) => setReferenceUrl(e.target.value)}
+                                placeholder={t('assets.referenceUrlPlaceholder')}
                             />
                         </div>
 

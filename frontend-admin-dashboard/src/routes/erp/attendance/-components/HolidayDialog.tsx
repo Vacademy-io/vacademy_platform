@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -22,15 +24,16 @@ import type { HolidayDTO } from '@/routes/erp/-shared/hr-types';
 import { useSaveHoliday } from '../-hooks/use-attendance';
 import { HOLIDAY_TYPES, monthOf } from './attendance-meta';
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Give the holiday a name'),
-    date: z.string().min(1, 'Pick the date'),
-    type: z.enum(HOLIDAY_TYPES),
-    is_optional: z.boolean(),
-    description: z.string().trim().max(500, 'Keep the description under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().trim().min(1, t('validation.nameRequired')),
+        date: z.string().min(1, t('validation.dateRequired')),
+        type: z.enum(HOLIDAY_TYPES),
+        is_optional: z.boolean(),
+        description: z.string().trim().max(500, t('validation.descriptionTooLong')),
+    });
 
-type HolidayForm = z.infer<typeof schema>;
+type HolidayForm = z.infer<ReturnType<typeof buildSchema>>;
 
 interface HolidayDialogProps {
     open: boolean;
@@ -49,11 +52,12 @@ interface HolidayDialogProps {
  * disagree with the date.
  */
 export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDialogProps) => {
+    const { t } = useTranslation('erpHolidayDialog');
     const mutation = useSaveHoliday(year);
     const isEdit = !!holiday?.id;
 
     const form = useForm<HolidayForm>({
-        resolver: zodResolver(schema),
+        resolver: zodResolver(buildSchema(t)),
         defaultValues: {
             name: '',
             date: '',
@@ -100,20 +104,20 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                 year: monthOf(values.date).year,
                 description: values.description || undefined,
             });
-            toast.success(isEdit ? 'Holiday updated' : 'Holiday added');
+            toast.success(isEdit ? t('toast.updated') : t('toast.added'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-attendance',
                 tags: { action: isEdit ? 'update-holiday' : 'create-holiday' },
-                fallbackMessage: 'Could not save the holiday.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit holiday' : 'Add holiday'}
+            heading={isEdit ? t('headingEdit') : t('headingAdd')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -125,16 +129,16 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('actions.saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Add holiday'}
+                        {isEdit ? t('actions.saveChanges') : t('actions.addHoliday')}
                     </MyButton>
                 </div>
             }
@@ -145,14 +149,14 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                         <HrTextField
                             control={form.control}
                             name="name"
-                            label="Name"
+                            label={t('fields.name')}
                             required
-                            placeholder="Independence Day"
+                            placeholder={t('fields.namePlaceholder')}
                         />
                         <HrTextField
                             control={form.control}
                             name="date"
-                            label="Date"
+                            label={t('fields.date')}
                             inputType="date"
                             required
                         />
@@ -161,7 +165,7 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                     <SelectField
                         control={form.control}
                         name="type"
-                        label="Type"
+                        label={t('fields.type')}
                         className="w-full sm:w-full"
                         labelStyle="text-body font-regular text-foreground"
                         options={HOLIDAY_TYPES.map((type, index) => ({
@@ -178,12 +182,10 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                             <FormItem className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
                                 <div className="flex flex-col gap-1">
                                     <FormLabel className="text-body font-regular text-foreground">
-                                        Optional holiday
+                                        {t('fields.optionalHoliday')}
                                     </FormLabel>
                                     <FormDescription className="text-caption text-muted-foreground">
-                                        Employees choose whether to take it, up to the allowance
-                                        your leave policy sets — it isn&apos;t a closed day for
-                                        everyone.
+                                        {t('fields.optionalHolidayDescription')}
                                     </FormDescription>
                                 </div>
                                 <FormControl>
@@ -199,8 +201,8 @@ export const HolidayDialog = ({ open, onOpenChange, holiday, year }: HolidayDial
                     <HrTextareaField
                         control={form.control}
                         name="description"
-                        label="Description"
-                        placeholder="Anything staff should know about the day"
+                        label={t('fields.description')}
+                        placeholder={t('fields.descriptionPlaceholder')}
                     />
                 </form>
             </Form>

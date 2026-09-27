@@ -20,7 +20,9 @@
         "priceLabel": "السعر",
         "featuresLabel": "الميزات",
         "removeInterval": "إزالة الفترة",
-        "intervalPlanFallback": "خطة {{value}} {{unit}}"
+        "intervalPlanFallback": "خطة {{value}} {{unit}}",
+        "planChangeLabel": "Members can switch to this plan",
+        "planChangeHint": "(turn on plan switching for this option first)"
     },
     "donation": {
         "title": "إعداد التبرع",

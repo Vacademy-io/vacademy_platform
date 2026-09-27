@@ -1,5 +1,9 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, Navigate } from "@tanstack/react-router";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { getCachedRootCatalogueTag } from "@/services/domain-routing";
+import { RouteMatcher } from "./-services/route-matcher";
+import { CatalogueTagContext } from "./-components/CatalogueTagContext";
+import { RootMountedSegment } from "./-components/RootMountedSegment";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState, lazy, Suspense } from "react";
@@ -121,13 +125,38 @@ function RouteComponent() {
   //   instituteThemeCode: domainRouting.instituteThemeCode,
   // });
 
-  return (
-    <Suspense fallback={<DashboardLoader />}>
-      <CourseCataloguePage
-        tagName={resolvedTagName}
+  const classic = (
+    <CatalogueTagContext.Provider value={resolvedTagName}>
+      <Suspense fallback={<DashboardLoader />}>
+        <CourseCataloguePage
+          tagName={resolvedTagName}
+          instituteId={domainRouting.instituteId}
+          instituteThemeCode={domainRouting.instituteThemeCode}
+        />
+      </Suspense>
+    </CatalogueTagContext.Provider>
+  );
+
+  // Root-mounted host (institute_domain_routing.root_catalogue_tag): the
+  // catalogue answers on "/" so a URL that still carries its tag is a legacy
+  // link — forward it to the clean address. Any other single segment is
+  // read as a page or course of the root catalogue first, and only then as a
+  // second catalogue's tag.
+  const rootTag = getCachedRootCatalogueTag();
+  if (rootTag) {
+    if (RouteMatcher.isRootMounted(resolvedTagName)) {
+      return <Navigate to="/" replace />;
+    }
+    return (
+      <RootMountedSegment
+        rootTag={rootTag}
+        segment={resolvedTagName}
         instituteId={domainRouting.instituteId}
         instituteThemeCode={domainRouting.instituteThemeCode}
+        fallback={classic}
       />
-    </Suspense>
-  );
+    );
+  }
+
+  return classic;
 }

@@ -9,6 +9,9 @@ export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
 // Read-only product roadmap shown in the Assist Dock (community-service feature/roadmap).
 export const ROADMAP_BASE_URL = `${BASE_URL}/community-service/roadmap/v1`;
+// LMS training videos played in the Assist Dock "Training" popup (community-service
+// feature/trainingvideo). Super admins publish them from the health-check dashboard.
+export const TRAINING_VIDEOS_BASE_URL = `${BASE_URL}/community-service/training/v1/videos`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -37,6 +40,19 @@ export const ASSISTANT_ACTION_CONFIRM = (sessionId: string, actionId: string) =>
 export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
+
+// Vacademy MCP server (Model Context Protocol). These back the MCP settings tab
+// and the OAuth consent page; all require Authorization + clientId headers
+// except MCP_OAUTH_TXN, which the consent page reads before the user logs in.
+// See ai_service app/mcp/consent.py.
+export const MCP_OAUTH_BASE = `${AI_SERVICE_BASE_URL}/mcp/oauth`;
+export const MCP_CONNECTION_INFO = `${MCP_OAUTH_BASE}/connection-info`;
+export const MCP_OAUTH_CONSENT = `${MCP_OAUTH_BASE}/consent`;
+export const MCP_OAUTH_TXN = (txn: string) => `${MCP_OAUTH_BASE}/txn/${txn}`;
+export const MCP_MANUAL_CLIENT = `${MCP_OAUTH_BASE}/manual-client`;
+export const MCP_MANUAL_CLIENT_DELETE = (clientId: string) =>
+    `${MCP_OAUTH_BASE}/manual-client/${clientId}`;
+export const MCP_CONNECTION_REVOKE = (pairId: string) => `${MCP_OAUTH_BASE}/connection/${pairId}`;
 
 // AI coding-question generation. POST an idea + options, returns a full
 // coding-question config (problem + tests + starter code + reference solution).
@@ -85,6 +101,10 @@ export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/transl
 export const QUIZ_RESULTS_OVERVIEW = `${BASE_URL}/admin-core-service/quiz-results/overview`;
 export const QUIZ_RESULTS_QUIZ = `${BASE_URL}/admin-core-service/quiz-results/quiz`;
 export const QUIZ_RESULTS_QUESTIONS = `${BASE_URL}/admin-core-service/quiz-results/questions`;
+// Learner-wise pivot of the same data: the roster, one learner's quizzes, and their answers.
+export const QUIZ_RESULTS_LEARNERS = `${BASE_URL}/admin-core-service/quiz-results/learners`;
+export const QUIZ_RESULTS_LEARNER = `${BASE_URL}/admin-core-service/quiz-results/learner`;
+export const QUIZ_RESULTS_LEARNER_ANSWERS = `${BASE_URL}/admin-core-service/quiz-results/learner/answers`;
 
 export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse/summary`;
 export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;
@@ -210,6 +230,11 @@ export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
+// "Can this person call, and if not why" — always 200, unlike CALL_OPTIONS which
+// throws when the institute has calling off. Used to decide whether a Call button
+// renders at all, on pages that are not about calling.
+export const TELEPHONY_CALL_AVAILABILITY = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/availability?instituteId=${encodeURIComponent(instituteId)}`;
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
@@ -295,6 +320,11 @@ export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
 export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
+// Who may be given an extension: this institute's counsellors AND admins.
+// Deliberately not the lead-counsellor picker — an extension is a phone-system
+// fact, so an admin who never touches the CRM still needs one to call a learner.
+export const TELEPHONY_ENDPOINT_ELIGIBLE_USERS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}/eligible-users`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
@@ -333,6 +363,11 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
 /** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
 export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
+/**
+ * Move leads to another lead list (ADMIN only). Partial success — the response reports how many
+ * moved and which were skipped, with a reason each.
+ */
+export const MIGRATE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/migrate`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 
@@ -342,6 +377,18 @@ export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiri
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
 export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
+// Campaign attribution recorded against a learner (utm_source/medium/campaign),
+// written by the learner app on a successful submission. Base path, the userId
+// is appended by the caller.
+export const GET_USER_UTM_ATTRIBUTION = `${BASE_URL}/admin-core-service/v1/utm/user`;
+export const GET_UTM_CAMPAIGN_SUMMARY = `${BASE_URL}/admin-core-service/v1/utm/summary`;
+// Distinct values per UTM dimension across the institute's recorded touches —
+// the option lists behind the campaign filter dropdowns on the list pages.
+export const GET_UTM_FILTER_OPTIONS = `${BASE_URL}/admin-core-service/v1/utm/filter-options`;
+// Campaign-attribution dashboard (people / enrolments per source, medium,
+// campaign …, daily trend, campaign matrix) over a date window.
+export const GET_UTM_DASHBOARD = `${BASE_URL}/admin-core-service/v1/utm/dashboard`;
+
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
@@ -359,6 +406,8 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 // dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+// Manual STUDENT-scoped events (notes, call logs, meetings) by type + typeId.
+export const GET_TIMELINE_EVENTS = `${BASE_URL}/admin-core-service/timeline/v1/events`;
 // Guardian-student linking — student side-view "Guardian" tab.
 export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
 export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;
@@ -404,6 +453,8 @@ export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/assignment`;
 export const COUNSELOR_POOL_AUDIENCES = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences`;
 export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
@@ -515,6 +566,9 @@ export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-pa
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
 export const STEP2_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections`;
+export const STEP2_QUESTIONS_FULL_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/questions-of-sections/full`;
+export const STEP2_EDIT_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/edit-questions`;
+export const COPY_INTAKE_BASE_URL = `${BASE_URL}/assessment-service/assessment/copy-intake/v1`;
 export const STEP3_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-participants/create/v1/submit`;
 export const STEP4_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-access/create/v1/submit`;
 export const GET_ASSESSMENT_INIT_DETAILS = `${BASE_URL}/assessment-service/assessment/admin/assessment-admin-list-init`;
@@ -522,6 +576,9 @@ export const GET_ASSESSMENT_LISTS = `${BASE_URL}/assessment-service/assessment/a
 export const PUBLISH_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/publish/v1/`;
 export const PRIVATE_ADD_QUESTIONS = `${BASE_URL}/assessment-service/question-paper/public/manage/v1/add-only-question`;
 export const GET_OVERVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/get-overview`;
+// Proctoring review (V48): per-attempt timeline and per-page flag counts.
+export const PROCTORING_ATTEMPT_REVIEW_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/attempt`;
+export const PROCTORING_SUMMARIES_URL = `${BASE_URL}/assessment-service/assessment/admin/proctoring/summaries`;
 export const GET_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/admin/get-leaderboard`;
 export const GET_EXPORT_PDF_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/pdf/leaderboard`;
 export const GET_EXPORT_CSV_URL_LEADERBOARD = `${BASE_URL}/assessment-service/assessment/export/csv/leaderboard`;
@@ -529,6 +586,18 @@ export const GET_EXPORT_PDF_URL_RANK_MARK = `${BASE_URL}/assessment-service/asse
 export const GET_EXPORT_CSV_URL_RANK_MARK = `${BASE_URL}/assessment-service/assessment/export/csv/marks-rank`;
 export const GET_EXPORT_PDF_URL_QUESTION_INSIGHTS = `${BASE_URL}/assessment-service/assessment/export/pdf/question-insights`;
 export const GET_EXPORT_PDF_URL_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/student-report`;
+// AI diagnostic report (teacher copy). The PDF endpoint generates the analysis
+// when it does not exist yet, which spends the institute's AI credits — the
+// status endpoint says which of the two a download would be, and is free.
+// ONE AI diagnostic report for a whole assessment. The FIRST generation makes a
+// real model call and spends AI credits; the result is stored and every later
+// download re-serves it free. regenerate=true is a deliberate paid refresh.
+// Free, read-only: does a report already exist, is it stale, and what would a
+// new one cost. Asked before offering Generate so the price is shown up front.
+export const GET_AI_ASSESSMENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-assessment-report/status`;
+export const GET_EXPORT_PDF_URL_AI_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-assessment-report`;
+export const GET_EXPORT_PDF_URL_AI_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-student-report`;
+export const GET_AI_STUDENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-student-report/status`;
 export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/respondent-list`;
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
@@ -594,6 +663,7 @@ export const UPDATE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/update-
 export const ADD_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/add-subject`;
 export const DELETE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/delete-subject`;
 export const UPDATE_SUBJECT_ORDER = `${BASE_URL}/admin-core-service/subject/v1/update-subject-order`;
+export const GET_SUBJECTS_BY_IDS = `${BASE_URL}/admin-core-service/subject/v1/subjects-by-ids`;
 
 export const ADD_MODULE = `${BASE_URL}/admin-core-service/subject/v1/add-module`;
 export const DELETE_MODULE = `${BASE_URL}/admin-core-service/subject/v1/delete-module`;
@@ -654,6 +724,7 @@ export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course
 export const TEACHER_CREATE_EDITABLE_COPY = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/create-editable-copy`;
 export const TEACHER_SUBMIT_FOR_REVIEW = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/submit-for-review`;
 export const TEACHER_WITHDRAW_FROM_REVIEW = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/withdraw-from-review`;
+export const TEACHER_PUBLISH_COURSE = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/publish`;
 export const TEACHER_CAN_EDIT_COURSE = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/can-edit`;
 export const TEACHER_COURSE_HISTORY = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-course-history`;
 
@@ -893,6 +964,10 @@ export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-ses
 export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3`;
 // Google Meet: on-demand pull of conferenceRecords.recordings (bypasses the hourly poll).
 export const SYNC_GOOGLE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/sync`;
+// Google Meet: attach an admin-uploaded copy of a Drive recording (no server-side Drive access).
+export const ATTACH_GOOGLE_RECORDING_FILE = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/attach-file`;
+// Google Meet: server downloads the recording from Drive into the library (needs Drive access on the account).
+export const SAVE_GOOGLE_RECORDING_TO_LIBRARY = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/save-to-library`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).
@@ -981,6 +1056,12 @@ export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
 
 // Chatbot Flow Builder
 export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
+
+// AI credits consumed by those flows' AI_RESPONSE nodes. Lives in admin-core, not
+// notification-service: credit_transactions is in the admin-core database, and the
+// flow id travels on the transaction as batch_id so the rollup needs no join.
+export const CHATBOT_FLOW_AI_USAGE = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/usage`;
+export const CHATBOT_FLOW_AI_USAGE_LOGS = `${BASE_URL}/admin-core-service/ai-usage/v1/chatbot-flows/logs`;
 
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
@@ -1115,6 +1196,11 @@ export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;
 export const GET_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const GET_PAYMENT_COLLECTION_SUMMARY = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/collection-summary`;
+// Plan change (admin override — applies immediately, takes no payment).
+export const GET_USER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-options`;
+export const CHANGE_USER_PLAN = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-plan`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;
@@ -1180,6 +1266,9 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+/** DELETE ?instituteId=… — permanent delete, gated by Display Settings (off by default). */
+export const DELETE_INVOICE = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
@@ -1254,6 +1343,19 @@ export const CATALOGUE_REVISION_GET = (revisionId: string) =>
 // Catalogue site analytics (first-party page views, joined to leads)
 export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
     `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+// Catalogue blog posts — rows an admin writes in Manage Pages → Blog, read live
+// by the `blog` section of any of the institute's sites.
+export const CATALOGUE_BLOG_BASE_URL = `${BASE_URL}/admin-core-service/v1/catalogue-blog`;
+export const CATALOGUE_BLOG_POSTS = (instituteId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/posts?instituteId=${instituteId}`;
+export const CATALOGUE_BLOG_POST = (instituteId: string, postId?: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post?instituteId=${instituteId}${postId ? `&postId=${postId}` : ''}`;
+export const CATALOGUE_BLOG_POST_PUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/publish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_UNPUBLISH = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/unpublish?instituteId=${instituteId}&postId=${postId}`;
+export const CATALOGUE_BLOG_POST_ARCHIVE = (instituteId: string, postId: string) =>
+    `${CATALOGUE_BLOG_BASE_URL}/post/archive?instituteId=${instituteId}&postId=${postId}`;
 
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
@@ -1432,6 +1534,8 @@ export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
 export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
+export const POST_SPLIT_INSTALLMENT = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}/split`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

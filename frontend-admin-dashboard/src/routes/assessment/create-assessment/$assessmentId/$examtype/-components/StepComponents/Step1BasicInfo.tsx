@@ -4,11 +4,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight, Sparkle } from '@phosphor-icons/react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useFilterDataForAssesment } from '../../../../../assessment-list/-utils.ts/useFiltersData';
-import { FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -19,13 +19,21 @@ import { BasicInfoFormSchema } from '../../-utils/basic-info-form-schema';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getAssessmentDetailsData, handlePostStep1Data } from '../../-services/assessment-services';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { getStepKey, getTimeLimitString, syncStep1DataWithStore } from '../../-utils/helper';
+import {
+    convertDateFormat,
+    defaultResultTypeFor,
+    defaultSubmissionTypeFor,
+    flattenFormErrors,
+    getStepKey,
+    isBasicInfoStepComplete,
+    resultTypeForEdit,
+    showsResultReleaseSettings,
+    getTimeLimitString,
+    isOpenEndedExamType,
+    syncStep1DataWithStore,
+} from '../../-utils/helper';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import {
-    getIdBySubjectName,
-    getSubjectNameById,
-} from '@/routes/assessment/question-papers/-utils/helper';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { toast } from 'sonner';
@@ -36,27 +44,13 @@ import { useParams } from '@tanstack/react-router';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_PROCTORING_FORM, proctoringFormFromWire } from '@/types/assessments/proctoring';
+import { ProctoringSettingsCard } from './-components/ProctoringSettingsCard';
 
-export function convertDateFormat(dateStr: string) {
-    if (dateStr === '') return '';
-
-    // Backend sends timestamps as UTC but sometimes omits the trailing 'Z'.
-    // `new Date("2026-07-11T12:37:00")` without a zone marker is parsed as
-    // *local* time by browsers, silently shifting the instant. Force UTC
-    // interpretation when no zone marker is present.
-    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(dateStr);
-    const normalized = hasTimezone ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
-    const date = new Date(normalized);
-    if (isNaN(date.getTime())) return '';
-
-    // Emit LOCAL wall-clock components for the datetime-local input, which
-    // interprets its value as local time. Using toISOString() here would leak
-    // UTC digits into the form, shifting the shown time by the TZ offset and
-    // corrupting the stored instant on re-save.
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+// convertDateFormat lives in -utils/helper; Step 3 still imports it from here.
+export { convertDateFormat } from '../../-utils/helper';
 
 const SectionCard = ({
     icon: Icon,
@@ -605,12 +599,16 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                     storeDataStep1.assessmentPreview?.previewTimeLimit || timeLimit[0], // Default preview time
             },
             reattemptCount: storeDataStep1.reattemptCount || '1',
-            submissionType: storeDataStep1.submissionType || '',
+            submissionType: storeDataStep1.submissionType || defaultSubmissionTypeFor(examType),
             durationDistribution: storeDataStep1.durationDistribution || '',
             evaluationType: storeDataStep1.evaluationType || '',
+            // Preselected by assessment type so the radio never sits empty and
+            // silently saves as MANUAL (Mock/Practice/Exam/Survey grade themselves).
+            resultType: storeDataStep1.resultType || defaultResultTypeFor(examType),
             // `??` not `||`: a stored `false` must survive a remount. Off by default
             // because AI evaluation charges institute credits per graded question.
             aiEvaluationEnabled: storeDataStep1.aiEvaluationEnabled ?? false,
+            proctoring: storeDataStep1.proctoring ?? DEFAULT_PROCTORING_FORM,
             switchSections: storeDataStep1.switchSections || true, // Default to false
             raiseReattemptRequest: storeDataStep1.raiseReattemptRequest || true, // Default to true
             raiseTimeIncreaseRequest: storeDataStep1.raiseTimeIncreaseRequest || true, // Default to false
@@ -621,20 +619,38 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     const { handleSubmit, control, watch } = form;
 
     // Watch form fields
+    const selectedSubjectId = watch('testCreation.subject');
+    // The dropdown comes from a list admin_core deduplicates by subject name, so a
+    // perfectly valid saved subject id is often absent from it — its name lost the dedup,
+    // or its course was deleted. Radix renders a value with no matching item as the empty
+    // placeholder, which is what made an already-chosen subject look unset on reopening
+    // the wizard. Resolve the name and keep the saved id as an option of its own.
+    const missingSubjectNames = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [selectedSubjectId])
+    );
+    const subjectOptions = useMemo(() => {
+        const options = SubjectFilterData.map((option, index) => ({
+            value: option.id,
+            label: convertCapitalToTitleCase(option.name),
+            _id: index,
+        }));
+        if (selectedSubjectId && !options.some((option) => option.value === selectedSubjectId)) {
+            const savedName = missingSubjectNames[selectedSubjectId];
+            if (savedName) {
+                options.push({
+                    value: selectedSubjectId,
+                    label: convertCapitalToTitleCase(savedName),
+                    _id: options.length,
+                });
+            }
+        }
+        return options;
+    }, [SubjectFilterData, selectedSubjectId, missingSubjectNames]);
+
     const assessmentName = watch('testCreation.assessmentName');
     const liveDateRangeStartDate = watch('testCreation.liveDateRange.startDate');
     const liveDateRangeEndDate = watch('testCreation.liveDateRange.endDate');
     const reattemptCount = watch('reattemptCount');
-
-    // Determine if all fields are filled
-    const isFormValid =
-        (examType === 'EXAM' || examType === 'SURVEY') && assessmentId === 'defaultId'
-            ? !!assessmentName &&
-              !!liveDateRangeStartDate &&
-              !!liveDateRangeEndDate &&
-              !!Number(reattemptCount) &&
-              Object.entries(form.formState.errors).length === 0
-            : !!assessmentName && Object.entries(form.formState.errors).length === 0;
 
     const handleSubmitStep1Form = useMutation({
         mutationFn: ({
@@ -678,14 +694,17 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     });
 
     const onSubmit = (data: z.infer<typeof BasicInfoFormSchema>) => {
+        // The field already holds the subject *id*. It used to hold the name and be
+        // converted here, which meant an unselected subject was posted as the literal
+        // string "N/A" (448 assessments in production carry that as their subject_id),
+        // and a selected one resolved through a name-deduplicated lookup whose winner
+        // Postgres is free to change — after which the saved id no longer matched
+        // anything and the subject read "N/A" again.
         const modifiedData = {
             ...data,
             testCreation: {
                 ...data.testCreation,
-                subject: getIdBySubjectName(
-                    instituteDetails?.subjects || [],
-                    data.testCreation.subject
-                ),
+                subject: data.testCreation.subject === 'N/A' ? '' : data.testCreation.subject,
             },
         };
         handleSubmitStep1Form.mutate({
@@ -697,17 +716,23 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     };
 
     const onInvalid = (errors: unknown) => {
-        // Was an empty stub, so a blocked submit looked like a dead button. Step 3 already
-        // scrolls to the first error; this does the same.
-        const firstField = Object.keys((errors as Record<string, unknown>) ?? {})[0];
-        toast.error('Please fix the highlighted fields before continuing.', {
-            className: 'error-toast',
-            duration: 3000,
-        });
-        if (firstField) {
-            document
-                .querySelector(`[name="${firstField}"]`)
-                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Name the failing rules. Several of this form's fields are hidden for
+        // some assessment types, so "fix the highlighted fields" could point at
+        // nothing on screen and the Update button just looked dead.
+        const problems = flattenFormErrors(errors);
+        const shown = problems.slice(0, 3).map((p) => p.message);
+        toast.error(
+            shown.length
+                ? `${t('validation.cannotSave')}: ${shown.join(' · ')}`
+                : t('validation.cannotSaveGeneric'),
+            { className: 'error-toast', duration: 6000 }
+        );
+        const firstPath = problems[0]?.path;
+        if (firstPath) {
+            const target =
+                document.querySelector(`[name="${firstPath}"]`) ??
+                document.querySelector(`[name="${firstPath.split('.')[0]}"]`);
+            target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     };
 
@@ -718,6 +743,33 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     // TipTap mounts empty (before the async fetch) and never picks up the value that
     // arrives via form.reset — so saved instructions look blank when editing.
     const [editorHydrationKey, setEditorHydrationKey] = useState(0);
+
+    // The live-window card renders only when the backend declares either
+    // boundation date for this assessment type (see the SectionCard below), and
+    // SURVEY declares neither — AssessmentBasicDetail.getStepsForSurvey lists
+    // only subject/visibility/expected-participants/reattempt. Demanding the
+    // dates unconditionally therefore left "Next" permanently disabled on a new
+    // survey, with nothing on screen to fill in. Require them only when they are
+    // actually on screen. (The zod schema already treats both as optional.)
+    // A survey renders both dates as OPTIONAL, an exam as REQUIRED. Gate the
+    // "Next" rule on REQUIRED only — keying it off mere presence would make a
+    // survey's optional dates mandatory again.
+    const liveDateRule = (key: string) => getStepKey({ assessmentDetails, currentStep, key });
+    const requiresLiveDateRange =
+        liveDateRule('boundation_start_date') === 'REQUIRED' ||
+        liveDateRule('boundation_end_date') === 'REQUIRED';
+
+    // Determine if all fields are filled
+    const isFormValid = isBasicInfoStepComplete({
+        examType,
+        isNewAssessment: assessmentId === 'defaultId',
+        requiresLiveDateRange,
+        assessmentName,
+        liveDateRangeStartDate,
+        liveDateRangeEndDate,
+        reattemptCount,
+        errorCount: Object.entries(form.formState.errors).length,
+    });
 
     useEffect(() => {
         setIsLoading(true);
@@ -753,15 +805,23 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
 
         return {
             assessmentName: savedData?.name || '',
-            subject: getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                savedData?.subject_selection || ''
-                        ) || '',
+            // Raw id: the select is keyed by id, so no name round-trip is needed.
+            // A stored "N/A" is an older save with no real subject — treat it as empty
+            // rather than feeding the sentinel back into the next update.
+            subject:
+                savedData?.subject_selection && savedData.subject_selection !== 'N/A'
+                    ? savedData.subject_selection
+                    : '',
             assessmentInstructions: savedData?.instructions?.content || '',
-                    liveDateRange: {
-                startDate: convertDateFormat(savedData?.boundation_start_date || '') || '',
-                endDate: convertDateFormat(savedData?.boundation_end_date || '') || '',
-            },
+            // A mock/practice test has no live window (the server regenerates
+            // "now until 9999" on every save), so the form carries none: a
+            // stale one here can only fail the date rule behind a hidden field.
+            liveDateRange: isOpenEndedExamType(examType)
+                ? { startDate: '', endDate: '' }
+                : {
+                      startDate: convertDateFormat(savedData?.boundation_start_date || '') || '',
+                      endDate: convertDateFormat(savedData?.boundation_end_date || '') || '',
+                  },
         };
     };
 
@@ -790,7 +850,15 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             durationDistribution: savedData?.duration_distribution || '',
             evaluationType: savedData?.evaluation_type || '',
             aiEvaluationEnabled: savedData?.ai_evaluation_enabled ?? false,
-            resultType: savedData?.result_type || 'MANUAL',
+            proctoring: proctoringFormFromWire(savedData?.proctoring_config),
+            // 27 older exams carry no result_type; they are all AUTO-evaluated,
+            // and preselecting MANUAL for them (the old fallback) flipped a working
+            // exam to teacher-checked on any Step 1 edit.
+            resultType: resultTypeForEdit(
+                examType,
+                savedData?.result_type ||
+                    (savedData?.evaluation_type === 'MANUAL' ? 'MANUAL' : undefined)
+            ),
             switchSections: savedData?.can_switch_section,
             raiseReattemptRequest: savedData?.reattempt_consent,
             raiseTimeIncreaseRequest: savedData?.add_time_consent,
@@ -882,11 +950,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     )}
                                     name="testCreation.subject"
                                     labelStyle="font-thin"
-                                    options={SubjectFilterData.map((option, index) => ({
-                                        value: option.name,
-                                        label: convertCapitalToTitleCase(option.name),
-                                        _id: index,
-                                    }))}
+                                    options={subjectOptions}
                                     control={form.control}
                                     className="!w-full font-thin"
                                 />
@@ -1061,6 +1125,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             )}
                         />
                     )}
+                    {showsResultReleaseSettings(examType) && (
                     <div className="flex flex-col gap-6" id="evaluation-type">
                         <div className="flex flex-col gap-3">
                             <p className="text-sm font-medium">
@@ -1115,7 +1180,18 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                             'attemptSettingsSection.resultEvaluationType.options.manual.help'
                                                         ),
                                                     },
-                                                ].map((option) => (
+                                                ]
+                                                    // A mock/practice test never ends, so "after the
+                                                    // assessment ends" would mean never: not offered.
+                                                    .filter(
+                                                        (option) =>
+                                                            !(
+                                                                isOpenEndedExamType(examType) &&
+                                                                option.value ===
+                                                                    'AUTO_AFTER_ASSESSMENT_END'
+                                                            )
+                                                    )
+                                                    .map((option) => (
                                                     <label
                                                         key={option.value}
                                                         className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
@@ -1140,6 +1216,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 ))}
                                             </RadioGroup>
                                         </FormControl>
+                                        <FormMessage />
                                     </FormItem>
                                 )}
                             />
@@ -1181,6 +1258,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 </div>
                             )}
                     </div>
+                    )}
 
                     <div className="flex flex-col gap-6" id="attempt-settings">
                         {/*
@@ -1216,6 +1294,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 </FormItem>
                             )}
                         />
+                        {/* Surveys have nothing to cheat on. */}
+                        {examType !== 'SURVEY' && <ProctoringSettingsCard control={form.control} />}
                         {getStepKey({
                             assessmentDetails,
                             currentStep,

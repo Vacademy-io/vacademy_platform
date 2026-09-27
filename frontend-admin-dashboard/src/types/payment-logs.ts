@@ -1,7 +1,8 @@
 export interface PaymentLog {
     id: string;
     status: string;
-    payment_status: 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | null;
+    /** VOIDED: an admin voided a payment recorded by mistake (listing reports it as CANCELLED). */
+    payment_status: 'PAID' | 'FAILED' | 'PAYMENT_PENDING' | 'VOIDED' | null;
     user_id: string;
     vendor: string;
     vendor_id: string;
@@ -118,10 +119,18 @@ export interface PaymentLogEntry {
     /** Null on rows that ARE an invoice rather than a payment — those have no plan. */
     user_plan: UserPlan;
     /**
-     * PAID | FAILED | PAYMENT_PENDING | NOT_INITIATED, or CANCELLED for a voided invoice —
+     * PAID | FAILED | PAYMENT_PENDING | NOT_INITIATED; ABANDONED for a PAYMENT_PENDING row too
+     * old to complete (server-derived, never persisted); or CANCELLED for a voided invoice —
      * which is shown but never counted toward collected or due.
      */
-    current_payment_status: 'PAID' | 'FAILED' | 'NOT_INITIATED' | 'CANCELLED' | string;
+    current_payment_status:
+        | 'PAID'
+        | 'FAILED'
+        | 'PAYMENT_PENDING'
+        | 'NOT_INITIATED'
+        | 'ABANDONED'
+        | 'CANCELLED'
+        | string;
     user: User;
     /**
      * Set only when this row IS an invoice that has been raised but never paid against (no

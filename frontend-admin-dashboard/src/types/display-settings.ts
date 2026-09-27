@@ -95,7 +95,8 @@ export type CourseDetailsTabId =
     | 'REPORTS'
     | 'CERTIFICATES'
     | 'DOWNLOADS'
-    | 'SETTINGS';
+    | 'SETTINGS'
+    | 'TUTOR_MODE';
 
 export interface CourseDetailsTabConfig {
     id: CourseDetailsTabId;
@@ -219,6 +220,17 @@ export interface StudentSideViewSettings {
     // (ONBOARDING_SETTING feature). Optional for backward-compat with
     // settings saved before this tab existed.
     onboardingTab?: boolean;
+    /**
+     * The Resend control on each outbound row of the Notifications tab, which
+     * sends that message to the learner a second time. Not a tab toggle — the
+     * tab itself is `notificationTab` — so it is kept out of
+     * StudentSideViewVisibilityKey and rendered as its own option.
+     *
+     * Optional for backward-compat: an institute whose saved settings pre-date
+     * this flag falls through to the role's default (on for admin, off for
+     * teacher and custom roles).
+     */
+    allowResendMessage?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.
@@ -309,6 +321,11 @@ export interface LearnerManagementSettings {
     // Only meaningful when allowViewPassword is on — the card it lives in is
     // hidden otherwise.
     allowEditCredentials?: boolean;
+    // Lets the role PERMANENTLY delete an offline/manual payment or an invoice from the learner's
+    // payment tab and Manage Payments. OFF by default for every role, including admin — an institute
+    // opts in here. Absent (every settings blob saved before this flag) means OFF, and the server
+    // enforces the same rule, so hiding the button is not the only guard.
+    allowDeletePayments?: boolean;
 }
 
 // What a custom header button links to.
@@ -493,6 +510,36 @@ export type ListCustomFieldControls = Partial<
     Record<ListCustomFieldSurface, ListCustomFieldSurfaceControls>
 >;
 
+// Campaign (UTM) attribution filters on the same list surfaces. Which
+// dimensions can be offered lives in services/utm-list-filters
+// (UTM_FILTER_DIMENSIONS); this is the per-surface admin override.
+export type ListUtmFilterDimension =
+    | 'source'
+    | 'medium'
+    | 'campaign'
+    | 'content'
+    | 'term'
+    | 'source_type';
+
+export interface ListUtmFilterSurfaceControls {
+    // Explicit on/off for this surface. ABSENT = follow the institute's
+    // campaign-link (UTM) setting: the filters appear the moment that is
+    // switched on and vanish when it is switched off, with nothing to
+    // configure here. `false` hides them even while UTM is on (a role that
+    // never needs them); `true` still requires UTM to be on — without it
+    // there is nothing to filter by.
+    enabled?: boolean;
+    // Dimensions rendered as dropdowns. ABSENT = automatic: source, medium and
+    // campaign always; content, term and channel only once the institute's
+    // data actually holds a value for them. An explicit list pins exactly
+    // these (a dimension with no data still renders, empty).
+    dimensions?: ListUtmFilterDimension[];
+}
+
+export type ListUtmFilterControls = Partial<
+    Record<ListCustomFieldSurface, ListUtmFilterSurfaceControls>
+>;
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -563,6 +610,12 @@ export interface DisplaySettingsData {
         // courses and the Copy-to-Edit / Submit-for-Review approval flow —
         // they can edit and publish published courses directly.
         directEditPublishedCourse?: boolean;
+        // When true (default — the long-standing behaviour), a non-admin's new
+        // DRAFT course must go through Submit for Review -> admin approval
+        // before it becomes ACTIVE. Set false per role to give that role a
+        // "Publish" button instead. Read sites test `!== false` so a saved
+        // blob that predates this key keeps requiring review.
+        requireCourseApproval?: boolean;
         // When true, Edit buttons on Subject / Module / Chapter rows in the
         // Outline & Content Structure tabs are visible regardless of course
         // status. Admin always sees these; this flag is for non-admin roles.
@@ -654,6 +707,13 @@ export interface DisplaySettingsData {
     //        STUDENTS → legacy auto-expose (all TEXT + dropdown fields)
     //        CONTACTS → none
     listCustomFieldControls?: ListCustomFieldControls;
+
+    // 12e) Campaign (UTM) attribution filters per list surface — the same
+    //      surfaces as 12d. Institute-wide, stored on the ADMIN blob. Absent
+    //      surface entry = follow the UTM setting (see
+    //      ListUtmFilterSurfaceControls). Edited from the same "Manage
+    //      filters" popup / Display Settings card as the custom-field filters.
+    listUtmFilterControls?: ListUtmFilterControls;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

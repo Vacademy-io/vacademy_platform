@@ -20,6 +20,7 @@ import { useAiCallButtonEnabled } from '@/components/shared/leads';
 import { AiCallChooserFields } from '@/components/shared/leads/ai-call-chooser';
 import { startAiCallCampaign } from '@/components/shared/leads/services/start-ai-campaign';
 import { CampaignProgressDialog } from './campaign-progress-dialog';
+import { fetchBulkRunSummary } from '@/components/shared/leads/services/start-ai-campaign';
 
 interface CallAllWithAiButtonProps {
     /** Audience/campaign id — the lead list to call. */
@@ -52,6 +53,23 @@ export function CallAllWithAiButton({
     // Chooser: '' = default agent / auto number (only shown when >1 exists).
     const [agentId, setAgentId] = useState('');
     const [numberId, setNumberId] = useState('');
+    // Is a run for this audience still going? Drives the "view progress" button, so a
+    // run outlives the dialog that started it.
+    const activeRun = useQuery({
+        queryKey: ['ai-bulk-run-summary', audienceId, instituteId],
+        queryFn: () => fetchBulkRunSummary(audienceId, instituteId!),
+        enabled: !!instituteId && !!audienceId,
+        refetchInterval: 15000,
+        retry: false,
+    });
+
+    /** Names for the rows we know; unknown leads fall back to their number. */
+    const buildLeadNames = () => {
+        const names = new Map<string, string>();
+        selectedLeads?.forEach((v, k) => names.set(k, v.name));
+        return names;
+    };
+
     // Scope: when rows are checked, default to calling only those.
     const selectedCount = selectedLeads?.size ?? 0;
     const [scope, setScope] = useState<'selected' | 'all'>('selected');
@@ -104,12 +122,10 @@ export function CallAllWithAiButton({
             setOpen(false);
             // Live progress: names for the rows we know (selected scope has them all;
             // 'all' scope labels rows for leads on the loaded page, others fall back).
-            const names = new Map<string, string>();
-            selectedLeads?.forEach((v, k) => names.set(k, v.name));
             setProgress({
                 startedAtMs: Date.now() - 30_000, // small skew guard for server clock
                 expectedTotal: res.eligible,
-                leadNames: names,
+                leadNames: buildLeadNames(),
                 parallel: Number(parallel) || 1,
             });
             queryClient.invalidateQueries({ queryKey: ['campaignUsers', audienceId] });
@@ -123,7 +139,10 @@ export function CallAllWithAiButton({
     const totalInList = preview.data?.total ?? totalElements;
     // The number the button will actually dial under the chosen scope. Selected rows
     // are re-checked server-side for eligibility, so this is an upper bound there.
-    const callCount = effectiveScope === 'selected' ? Math.min(selectedCount, eligible || selectedCount) : eligible;
+    const callCount =
+        effectiveScope === 'selected'
+            ? Math.min(selectedCount, eligible || selectedCount)
+            : eligible;
     const previewError = preview.isError ? errMsg(preview.error, t) : null;
 
     const footer = (
@@ -158,6 +177,29 @@ export function CallAllWithAiButton({
                 <Robot className="mr-1.5 size-4" />
                 {t('button.label')}
             </Button>
+
+            {/* A run outlives the dialog by hours, and closing it used to lose the only
+                view of it. This brings it back for as long as anything is unfinished. */}
+            {activeRun.data && !activeRun.data.runFinished && activeRun.data.total > 0 && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10"
+                    onClick={() =>
+                        setProgress({
+                            startedAtMs: Date.now(),
+                            expectedTotal: activeRun.data?.total ?? 0,
+                            leadNames: buildLeadNames(),
+                            parallel: Number(parallel) || 1,
+                        })
+                    }
+                >
+                    <Robot className="mr-1.5 size-4 animate-pulse text-primary-500" />
+                    {t('button.viewProgress', {
+                        defaultValue: 'View AI call progress',
+                    })}
+                </Button>
+            )}
 
             <MyDialog
                 heading={t('dialog.heading')}
@@ -195,9 +237,17 @@ export function CallAllWithAiButton({
                                         className="gap-1.5"
                                     >
                                         <div className="flex items-center gap-2">
-                                            <RadioGroupItem value="selected" id="ai-scope-selected" />
-                                            <Label htmlFor="ai-scope-selected" className="font-normal">
-                                                {t('body.scope.selectedOption', { count: selectedCount })}
+                                            <RadioGroupItem
+                                                value="selected"
+                                                id="ai-scope-selected"
+                                            />
+                                            <Label
+                                                htmlFor="ai-scope-selected"
+                                                className="font-normal"
+                                            >
+                                                {t('body.scope.selectedOption', {
+                                                    count: selectedCount,
+                                                })}
                                             </Label>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -252,10 +302,8 @@ export function CallAllWithAiButton({
                     onOpenChange={(o) => !o && setProgress(null)}
                     audienceId={audienceId}
                     instituteId={instituteId!}
-                    startedAtMs={progress.startedAtMs}
                     expectedTotal={progress.expectedTotal}
                     leadNames={progress.leadNames}
-                    parallel={progress.parallel}
                 />
             )}
         </>

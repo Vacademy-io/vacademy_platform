@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 import type { PnlSnapshotDTO } from '@/routes/erp/-shared/hr-types';
 
 /**
@@ -140,7 +141,7 @@ const readDepartment = (raw: unknown, index: number): NormalizedDepartmentCost =
     const record = asRecord(raw);
     const name =
         firstString(record, ['department_name', 'name', 'department', 'department_code']) ??
-        'Unassigned';
+        i18next.t('erpPnlShape:unassignedDepartment');
     return {
         key: firstString(record, ['department_id', 'id']) ?? `${name}-${index}`,
         name,

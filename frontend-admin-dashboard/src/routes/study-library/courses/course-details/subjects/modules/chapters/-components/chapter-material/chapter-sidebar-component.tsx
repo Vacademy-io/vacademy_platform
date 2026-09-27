@@ -4,6 +4,7 @@ import { getSubjectName } from '@/utils/helpers/study-library-helpers.ts/get-nam
 import { CaretRight } from '@phosphor-icons/react';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { Dispatch, SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ChapterSidebarComponentProps {
     currentModuleId: string;
@@ -14,13 +15,14 @@ export const ChapterSidebarComponent = ({
     currentModuleId,
     setCurrentModuleId,
 }: ChapterSidebarComponentProps) => {
+    const { t } = useTranslation('studyLibraryChapterSidebarComponent');
     const router = useRouter();
     const navigate = useNavigate();
     const { courseId, levelId, subjectId, moduleId, sessionId } = router.state.location.search;
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
 
     if (!courseId || !levelId || !subjectId || !moduleId || !sessionId)
-        return <p>Error in route</p>;
+        return <p>{t('errorInRoute')}</p>;
 
     const handleSubjectRoute = () => {
         navigate({

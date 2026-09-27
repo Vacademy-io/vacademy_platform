@@ -66,6 +66,9 @@ import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
+import vacademy.io.admin_core_service.features.common.util.PostalAddressFormatter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -122,6 +125,9 @@ public class InvoiceService {
 
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
 
     // Installment line items name themselves after their fee type ("Registration Fee",
     // "GP Rating Course Installments") rather than the course. student_fee_payment.fee_type_id
@@ -982,10 +988,79 @@ public class InvoiceService {
                 .paymentDate(paymentDate)
                 .lineItems(allLineItems)
                 .aggregatedTaxComponents(aggregatedTaxComponents)
+                .overrides(organisationBillTo(firstPaymentLog.getUserPlan(), user))
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
         return invoiceData;
+    }
+
+    /**
+     * BILL TO for a channel-partner (sub-org) subscription: the organisation, not the person
+     * who clicked pay.
+     *
+     * <p>The registration wizard collects the ORGANISATION's address and stamps it on the spawned
+     * sub-org institute — never on the admin's own auth user record. So the default
+     * {@code {{user_address}}} (auth {@code address_line}) rendered blank on every VLE invoice,
+     * and {@code {{user_name}}} named the admin rather than the company being invoiced.
+     *
+     * <p>Keyed on the org-level invite (tag {@code SUB_ORG}) rather than {@code UserPlan.source}:
+     * learners enrolled under a partner also carry {@code source=SUB_ORG}, and they must keep
+     * being billed personally. Returns null — "derive everything as before" — for every other
+     * purchase, so no other institute's invoice changes.
+     */
+    private Map<String, String> organisationBillTo(UserPlan plan, UserDTO admin) {
+        try {
+            if (plan == null) {
+                return null;
+            }
+            EnrollInvite invite = plan.getEnrollInvite();
+            if (invite == null || !EnrollInviteTag.SUB_ORG.name().equals(invite.getTag())) {
+                return null;
+            }
+            String subOrgId = StringUtils.hasText(invite.getSubOrgId()) ? invite.getSubOrgId() : plan.getSubOrgId();
+            if (!StringUtils.hasText(subOrgId)) {
+                return null;
+            }
+            Institute org = instituteRepository.findById(subOrgId).orElse(null);
+            if (org == null) {
+                return null;
+            }
+
+            Map<String, String> billTo = new HashMap<>();
+            if (StringUtils.hasText(org.getInstituteName())) {
+                billTo.put("user_name", org.getInstituteName().trim());
+            }
+            List<String> lines = new ArrayList<>();
+            if (admin != null && StringUtils.hasText(admin.getFullName())) {
+                lines.add("Attn: " + admin.getFullName().trim());
+            }
+            String postal = composePostalAddress(org.getAddress(), org.getCity(), org.getState(),
+                    org.getPinCode(), org.getCountry());
+            if (StringUtils.hasText(postal)) {
+                lines.add(postal);
+            }
+            if (!lines.isEmpty()) {
+                billTo.put("user_address", String.join("\n", lines));
+            }
+            return billTo.isEmpty() ? null : billTo;
+        } catch (Exception e) {
+            // Best-effort: a lookup failure must not stop the invoice — fall back to the user.
+            log.warn("Could not resolve organisation bill-to for plan {}: {}",
+                    plan.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** See {@link PostalAddressFormatter#compose}; kept here so the invoice tests read naturally. */
+    static String composePostalAddress(String street, String city, String state, String pinCode,
+            String country) {
+        return PostalAddressFormatter.compose(street, city, state, pinCode, country);
+    }
+
+    /** See {@link PostalAddressFormatter#dedupeSegments}. */
+    static String dedupeAddressSegments(String street) {
+        return PostalAddressFormatter.dedupeSegments(street);
     }
 
     /**
@@ -2179,6 +2254,17 @@ public class InvoiceService {
      * The gross line is omitted when nothing was discounted, because then it is
      * the same number as the total and repeating it reads as an error.
      */
+    /**
+     * Money as it should read on a document: two decimals, thousands grouped — "8,000.00", not
+     * the "8000.0" that {@code BigDecimal.toString()} produced from a double-sourced amount.
+     */
+    static String money(BigDecimal value) {
+        if (value == null) {
+            return "0.00";
+        }
+        return String.format(Locale.ENGLISH, "%,.2f", value.setScale(2, RoundingMode.HALF_UP));
+    }
+
     static String buildTotalsRowsHtml(InvoiceData invoiceData, String currencySymbol) {
         if (invoiceData == null) {
             return "";
@@ -2195,15 +2281,15 @@ public class InvoiceService {
                 "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
                         + "style=\"width:100%;font-size:13px;color:#222;\">");
         if (hasDiscount) {
-            rows.append(totalsRow("Amount", currencySymbol + gross.toPlainString(), false));
-            rows.append(totalsRow("Discount", "-" + currencySymbol + discount.toPlainString(), false));
+            rows.append(totalsRow("Amount", currencySymbol + money(gross), false));
+            rows.append(totalsRow("Discount", "-" + currencySymbol + money(discount), false));
         }
         if (hasTax) {
             String taxLabel = StringUtils.hasText(invoiceData.getTaxLabel()) ? invoiceData.getTaxLabel() : "Tax";
-            rows.append(totalsRow(taxLabel, currencySymbol + tax.toPlainString(), false));
+            rows.append(totalsRow(taxLabel, currencySymbol + money(tax), false));
         }
         rows.append(totalsRow("Total Paid",
-                currencySymbol + (total != null ? total.toPlainString() : "0.00"), true));
+                currencySymbol + money(total), true));
         return rows.append("</table>").toString();
     }
 
@@ -2367,8 +2453,7 @@ public class InvoiceService {
         log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
 
         filled = filled.replace("{{subtotal}}",
-                invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getSubtotal()));
 
         // Original price + discount. {{discount_amount}} was being rendered literally on live
         // invoices because nothing ever substituted it — it was neither in this block nor in
@@ -2379,21 +2464,19 @@ public class InvoiceService {
         BigDecimal invoiceDiscount = invoiceData.getDiscountAmount();
         boolean hasDiscount = invoiceDiscount != null && invoiceDiscount.compareTo(BigDecimal.ZERO) > 0;
         filled = filled.replace("{{plan_price}}",
-                invoiceData.getPlanPrice() != null ? currencySymbol + invoiceData.getPlanPrice().toString()
+                invoiceData.getPlanPrice() != null ? currencySymbol + money(invoiceData.getPlanPrice())
                         : "");
         filled = filled.replace("{{discount_amount}}",
-                hasDiscount ? currencySymbol + invoiceDiscount.toString() : "");
+                hasDiscount ? currencySymbol + money(invoiceDiscount) : "");
         filled = filled.replace("{{discount_row}}",
                 hasDiscount
                         ? "<div class=\"invoice-discount-row\">Discount: -" + currencySymbol
-                                + invoiceDiscount.toString() + "</div>"
+                                + money(invoiceDiscount) + "</div>"
                         : "");
         filled = filled.replace("{{tax_amount}}",
-                invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getTaxAmount()));
         filled = filled.replace("{{total_amount}}",
-                invoiceData.getTotalAmount() != null ? currencySymbol + invoiceData.getTotalAmount().toString()
-                        : currencySymbol + "0.00");
+                currencySymbol + money(invoiceData.getTotalAmount()));
         filled = filled.replace("{{currency}}", invoiceCurrency);
         // Replace currency_symbol placeholder if template uses it
         filled = filled.replace("{{currency_symbol}}", currencySymbol);
@@ -2825,11 +2908,11 @@ public class InvoiceService {
             html.append("<td class=\"right text-center\" style=\"text-align:center\">")
                     .append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
             // Format unit price with currency symbol
-            String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
+            String unitPrice = money(item.getUnitPrice());
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(unitPrice).append("</td>");
             // Format amount with currency symbol
-            String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
+            String amount = money(item.getAmount());
             html.append("<td class=\"right text-right\" style=\"text-align:right\">")
                     .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
@@ -3900,6 +3983,10 @@ public class InvoiceService {
         // allocation per SFP because a partial payment can produce multiple ledger
         // rows over time; the latest one corresponds to the invoice the admin wants.
         Map<String, String[]> sfpIdToPdfInfo = new HashMap<>();
+        // userPlanId -> currency, resolved in ONE query below. The synthetic rows used to
+        // report "INR" unconditionally, which rendered every AUD installment with a rupee
+        // symbol in the manage-students payment-history tab.
+        Map<String, String> userPlanIdToCurrency = new HashMap<>();
         try {
             List<String> sfpIds = sfps.stream()
                     .map(StudentFeePayment::getId)
@@ -3928,12 +4015,30 @@ public class InvoiceService {
                                         ? mediaService.getFilePublicUrlById(pdfFileId)
                                         : null;
                                 sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url});
+                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency()});
                             });
                 }
             }
         } catch (Exception e) {
             log.warn("Could not enrich SFP DTOs with invoice PDFs for user {}: {}", userId, e.getMessage());
+        }
+        try {
+            List<String> userPlanIds = sfps.stream()
+                    .map(StudentFeePayment::getUserPlanId)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!userPlanIds.isEmpty()) {
+                for (Object[] row : userPlanRepository.findPlanCurrencyByUserPlanIds(userPlanIds)) {
+                    String planId = row[0] != null ? row[0].toString() : null;
+                    String planCurrency = row[1] != null ? row[1].toString() : null;
+                    if (StringUtils.hasText(planId) && StringUtils.hasText(planCurrency)) {
+                        userPlanIdToCurrency.put(planId, planCurrency.trim().toUpperCase());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve plan currency for SFP rows of user {}: {}", userId, e.getMessage());
         }
         List<InvoiceDTO> dtos = new ArrayList<>();
         for (StudentFeePayment sfp : sfps) {
@@ -3970,6 +4075,12 @@ public class InvoiceService {
             String realInvoiceId = pdfInfo != null ? pdfInfo[0] : null;
             String pdfFileId = pdfInfo != null ? pdfInfo[1] : null;
             String pdfUrl = pdfInfo != null ? pdfInfo[2] : null;
+            // The real Invoice is authoritative; otherwise the plan the installment belongs
+            // to. INR only as a last resort, for rows with neither.
+            String invoiceCurrency = pdfInfo != null ? pdfInfo[3] : null;
+            String currency = StringUtils.hasText(invoiceCurrency)
+                    ? invoiceCurrency
+                    : userPlanIdToCurrency.getOrDefault(sfp.getUserPlanId(), "INR");
             // When a real Invoice exists for this SFP, expose its id so the FE's
             // existing /v1/invoices/{id}/download path can resolve (and regenerate
             // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
@@ -3988,7 +4099,7 @@ public class InvoiceService {
                     .dueDate(dueDate)
                     .subtotal(displayAmount)
                     .totalAmount(displayAmount)
-                    .currency("INR")
+                    .currency(currency)
                     .status(mapSfpStatusToInvoiceStatus(status))
                     .createdAt(createdAt)
                     .updatedAt(sfp.getUpdatedAt())
@@ -4966,6 +5077,64 @@ public class InvoiceService {
                 userDetails != null ? userDetails.getUserId() : "system", reason);
 
         return mapToDTO(invoice);
+    }
+
+    /**
+     * Unwinds the invoices tied to a payment an admin has voided (recorded by mistake). Two
+     * kinds are told apart by source, because they mean opposite things:
+     * <ul>
+     *   <li>A BILL raised before the payment (ADMIN_MANUAL / LIVE_SESSION — it carries its own
+     *       DEBIT_ACCRUAL) is still owed. It loses its link to the voided payment and goes back
+     *       to PENDING_PAYMENT, so the Due figures count it again and it can be paid again.</li>
+     *   <li>An invoice generated FROM the payment documents money that never arrived. It is
+     *       voided as REJECTED — the same terminal state as a cancelled admin invoice — and
+     *       keeps its link so the audit trail still shows which payment it belonged to.</li>
+     * </ul>
+     * No ledger rows are written here; the caller reverses the payment's own credit.
+     *
+     * @return how many invoices were changed
+     */
+    @Transactional
+    public int unwindInvoicesForVoidedPayment(String paymentLogId, String reason, String voidedBy) {
+        List<InvoicePaymentLogMapping> mappings =
+                invoicePaymentLogMappingRepository.findAllByPaymentLogId(paymentLogId);
+        int touched = 0;
+        for (InvoicePaymentLogMapping mapping : mappings) {
+            Invoice invoice = mapping.getInvoice();
+            if (invoice == null || INVOICE_STATUS_REJECTED.equalsIgnoreCase(invoice.getStatus())) {
+                continue;
+            }
+            Map<String, Object> audit = new HashMap<>();
+            audit.put("voidedPaymentLogId", paymentLogId);
+            audit.put("voidedBy", StringUtils.hasText(voidedBy) ? voidedBy : "system");
+            audit.put("voidedAt", LocalDateTime.now().toString());
+            if (StringUtils.hasText(reason)) {
+                audit.put("voidReason", reason);
+            }
+
+            boolean isBill = "ADMIN_MANUAL".equals(invoice.getSource())
+                    || INVOICE_SOURCE_LIVE_SESSION.equals(invoice.getSource());
+            if (isBill) {
+                invoicePaymentLogMappingRepository.delete(mapping);
+                // Another, still-valid payment may cover the same bill; only reopen it if not.
+                boolean stillPaid = invoicePaymentLogMappingRepository.findByInvoiceId(invoice.getId()).stream()
+                        .map(InvoicePaymentLogMapping::getPaymentLog)
+                        .anyMatch(pl -> pl != null
+                                && !paymentLogId.equals(pl.getId())
+                                && INVOICE_STATUS_PAID.equalsIgnoreCase(pl.getPaymentStatus()));
+                if (!stillPaid) {
+                    invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
+                }
+            } else {
+                invoice.setStatus(INVOICE_STATUS_REJECTED);
+            }
+            invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), audit));
+            invoiceRepository.save(invoice);
+            touched++;
+            log.info("[PaymentVoid] invoice {} ({}) -> {} after payment {} was voided",
+                    invoice.getInvoiceNumber(), invoice.getSource(), invoice.getStatus(), paymentLogId);
+        }
+        return touched;
     }
 
     /**
@@ -5986,7 +6155,13 @@ public class InvoiceService {
 
     private byte[] fetchPdfBytesFromS3(String pdfFileId) {
         try {
-            String pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            // Presigned first: deployments that keep Block Public Access on (vet) answer an
+            // unsigned object URL with 403, which silently produced invoice emails with no
+            // PDF attached. The permanent URL stays as a fallback for the CDN-fronted case.
+            String pdfUrl = mediaService.getFilePublicUrlById(pdfFileId);
+            if (!StringUtils.hasText(pdfUrl)) {
+                pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            }
             if (!StringUtils.hasText(pdfUrl)) return null;
             java.net.URL url = new java.net.URL(pdfUrl);
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();

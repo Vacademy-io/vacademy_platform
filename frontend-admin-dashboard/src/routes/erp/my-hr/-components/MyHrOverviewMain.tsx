@@ -7,6 +7,7 @@ import {
     IdentificationCard,
     UserCircle,
 } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { currentMonthValue, formatMonthValue } from '@/components/design-system/month-picker';
 import { Card } from '@/components/ui/card';
@@ -50,6 +51,7 @@ import {
  * fields that always fail to save.
  */
 export const MyHrOverviewMain = () => {
+    const { t } = useTranslation('erpMyHrOverviewMain');
     const { profile, employeeId, isProfileLoading, hasNoProfile } = useMyHrIdentity();
     const period = useMemo(() => currentMonthValue(), []);
     const year = period.year;
@@ -117,44 +119,42 @@ export const MyHrOverviewMain = () => {
 
     return (
         <div className="flex flex-col gap-6">
-            <p className="max-w-3xl text-body text-muted-foreground">
-                Everything your institute holds about you as an employee, in one place. Your details
-                here are maintained by your HR team — if something is wrong, tell them rather than
-                waiting for it to change.
-            </p>
+            <p className="max-w-3xl text-body text-muted-foreground">{t('pageIntro')}</p>
 
             <Card className="flex flex-col gap-4 p-4 sm:p-6">
                 <div className="flex items-center gap-2">
                     <UserCircle size={18} className="text-primary-500" />
                     <h2 className="text-title text-foreground">
-                        {profile?.full_name?.trim() || 'Your profile'}
+                        {profile?.full_name?.trim() || t('yourProfileFallback')}
                     </h2>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <MyHrDetail label="Employee code" value={profile?.employee_code} />
-                    <MyHrDetail label="Department" value={profile?.department_name} />
-                    <MyHrDetail label="Designation" value={profile?.designation_name} />
+                    <MyHrDetail label={t('employeeCodeLabel')} value={profile?.employee_code} />
+                    <MyHrDetail label={t('departmentLabel')} value={profile?.department_name} />
+                    <MyHrDetail label={t('designationLabel')} value={profile?.designation_name} />
                     <MyHrDetail
-                        label="Joined"
+                        label={t('joinedLabel')}
                         value={profile?.join_date ? formatDate(profile.join_date) : ''}
                     />
-                    <MyHrDetail label="Reporting to" value={profile?.reporting_manager_name} />
-                    <MyHrDetail label="Work email" value={profile?.email} />
+                    <MyHrDetail
+                        label={t('reportingToLabel')}
+                        value={profile?.reporting_manager_name}
+                    />
+                    <MyHrDetail label={t('workEmailLabel')} value={profile?.email} />
                 </div>
                 {(profile?.pan_number || profile?.uan_number) && (
                     <div className="flex flex-col gap-3 border-t border-border pt-4">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {profile?.pan_number && (
-                                <MyHrDetail label="PAN" value={profile.pan_number} />
+                                <MyHrDetail label={t('panLabel')} value={profile.pan_number} />
                             )}
                             {profile?.uan_number && (
-                                <MyHrDetail label="UAN" value={profile.uan_number} />
+                                <MyHrDetail label={t('uanLabel')} value={profile.uan_number} />
                             )}
                         </div>
                         <p className="flex items-start gap-2 text-caption text-muted-foreground">
                             <IdentificationCard size={14} className="mt-0.5 shrink-0" />
-                            Only the last few digits are shown, on purpose. To correct either
-                            number, ask your HR team.
+                            {t('idNumberNote')}
                         </p>
                     </div>
                 )}
@@ -172,35 +172,41 @@ export const MyHrOverviewMain = () => {
                 <div className="flex items-center gap-2">
                     <CalendarCheck size={18} className="text-primary-500" />
                     <h2 className="text-title text-foreground">
-                        {formatMonthValue(period)} so far
+                        {t('monthSoFarHeading', { period: formatMonthValue(period) })}
                     </h2>
                 </div>
                 {attendanceQuery.isLoading ? (
                     <HrLoadingRows rows={1} />
                 ) : attendanceQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load this month's attendance."
+                        message={t('attendanceLoadError')}
                         onRetry={() => void attendanceQuery.refetch()}
                     />
                 ) : records.length === 0 ? (
                     <HrEmptyState
-                        title="Nothing recorded this month yet"
-                        description={`Your days for ${formatMonthValue(period)} appear here as they are marked — by you checking in, or by your HR team.`}
+                        title={t('nothingRecordedTitle')}
+                        description={t('nothingRecordedDescription', {
+                            period: formatMonthValue(period),
+                        })}
                     />
                 ) : (
                     <div className="flex flex-wrap gap-3">
-                        <MyHrStat label="Present" value={monthCounts.present} tone="positive" />
-                        <MyHrStat label="On leave" value={monthCounts.leave} />
                         <MyHrStat
-                            label="Absent"
+                            label={t('presentLabel')}
+                            value={monthCounts.present}
+                            tone="positive"
+                        />
+                        <MyHrStat label={t('onLeaveLabel')} value={monthCounts.leave} />
+                        <MyHrStat
+                            label={t('absentLabel')}
                             value={monthCounts.absent}
                             tone={monthCounts.absent > 0 ? 'negative' : 'default'}
                         />
                         {monthCounts.halfDay > 0 && (
-                            <MyHrStat label="Half days" value={monthCounts.halfDay} />
+                            <MyHrStat label={t('halfDaysLabel')} value={monthCounts.halfDay} />
                         )}
                         <MyHrStat
-                            label="Days recorded"
+                            label={t('daysRecordedLabel')}
                             value={records.length}
                             hint={monthKey(period.year, period.month)}
                         />
@@ -210,10 +216,12 @@ export const MyHrOverviewMain = () => {
 
             <section className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-title text-foreground">Leave left in {year}</h2>
+                    <h2 className="text-title text-foreground">
+                        {t('leaveLeftHeading', { year })}
+                    </h2>
                     <Link to="/erp/my-hr/leave">
                         <MyButton buttonType="text" scale="small" type="button">
-                            Apply for leave <ArrowRight size={14} />
+                            {t('applyForLeaveButton')} <ArrowRight size={14} />
                         </MyButton>
                     </Link>
                 </div>
@@ -221,13 +229,13 @@ export const MyHrOverviewMain = () => {
                     <MyHrLoadingCards />
                 ) : balancesQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load your leave balance."
+                        message={t('leaveBalanceLoadError')}
                         onRetry={() => void balancesQuery.refetch()}
                     />
                 ) : balances.length === 0 ? (
                     <HrEmptyState
-                        title="No leave balance for you yet"
-                        description="Balances appear once your HR team has a leave policy running for your employment type. Until then there is nothing to spend."
+                        title={t('noLeaveBalanceTitle')}
+                        description={t('noLeaveBalanceDescription')}
                     />
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -237,18 +245,20 @@ export const MyHrOverviewMain = () => {
                                 className="flex flex-col gap-1 p-4"
                             >
                                 <span className="text-caption text-muted-foreground">
-                                    {balance.leave_type_name || 'Leave'}
+                                    {balance.leave_type_name || t('leaveFallback')}
                                 </span>
                                 <span className="text-h3 font-semibold tabular-nums text-foreground">
                                     {formatDays(balance.closing_balance)}
                                 </span>
                                 <span className="text-caption text-muted-foreground">
-                                    days left · {formatDays(balance.used)} used of{' '}
-                                    {formatDays(
-                                        toCount(balance.opening_balance) +
-                                            toCount(balance.accrued) +
-                                            toCount(balance.carried_forward)
-                                    )}
+                                    {t('daysLeftUsedOf', {
+                                        used: formatDays(balance.used),
+                                        total: formatDays(
+                                            toCount(balance.opening_balance) +
+                                                toCount(balance.accrued) +
+                                                toCount(balance.carried_forward)
+                                        ),
+                                    })}
                                 </span>
                             </Card>
                         ))}
@@ -257,23 +267,23 @@ export const MyHrOverviewMain = () => {
             </section>
 
             <section className="flex flex-col gap-3">
-                <h2 className="text-title text-foreground">Your latest payslip</h2>
+                <h2 className="text-title text-foreground">{t('latestPayslipHeading')}</h2>
                 {payslipsQuery.isLoading ? (
                     <HrLoadingRows rows={1} />
                 ) : payslipsQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load your payslips."
+                        message={t('payslipsLoadError')}
                         onRetry={() => void payslipsQuery.refetch()}
                     />
                 ) : !latestPayslip ? (
                     <HrEmptyState
                         icon={<FileText size={32} className="text-muted-foreground" />}
-                        title={`No payslip for ${year} yet`}
-                        description="A payslip appears once your institute has run payroll for the month and generated the slips."
+                        title={t('noPayslipTitle', { year })}
+                        description={t('noPayslipDescription')}
                     >
                         <Link to="/erp/my-hr/payslips">
                             <MyButton buttonType="secondary" scale="small" type="button">
-                                Check another year
+                                {t('checkAnotherYearButton')}
                             </MyButton>
                         </Link>
                     </HrEmptyState>
@@ -288,13 +298,13 @@ export const MyHrOverviewMain = () => {
                             </span>
                             <span className="text-caption text-muted-foreground">
                                 {latestPayslip.generated_at
-                                    ? `Issued ${formatDate(latestPayslip.generated_at)}`
-                                    : 'Ready to download'}
+                                    ? t('issuedOn', { date: formatDate(latestPayslip.generated_at) })
+                                    : t('readyToDownload')}
                             </span>
                         </div>
                         <Link to="/erp/my-hr/payslips">
                             <MyButton buttonType="secondary" scale="medium" type="button">
-                                <FileText size={16} /> Go to my payslips
+                                <FileText size={16} /> {t('goToPayslipsButton')}
                             </MyButton>
                         </Link>
                     </Card>

@@ -1,0 +1,14 @@
+{
+    "edit": "Modifier",
+    "markingCriteria": "Critères de notation",
+    "totalMarks": "Total des points :",
+    "criteriaLabel": "Critères :",
+    "criteriaColumn": "Critère",
+    "marksColumn": "Points",
+    "actionColumn": "Action",
+    "emptyCriteria": "Aucun critère. Ajoutez-en un ci-dessous.",
+    "addNewCriteria": "Ajouter un nouveau critère :",
+    "criteriaDescriptionPlaceholder": "Saisissez la description du critère",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
+}

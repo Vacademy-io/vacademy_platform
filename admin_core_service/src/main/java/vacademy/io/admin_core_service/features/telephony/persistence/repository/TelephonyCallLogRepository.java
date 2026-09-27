@@ -99,6 +99,27 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
                                      @Param("excludeId") String excludeId);
 
     /**
+     * Outbound dials to ONE lead in a rolling window.
+     *
+     * <p>Backs the per-lead daily cap. The bulk campaign's own cooldown only looks back
+     * a few minutes, which was enough when a run finished in minutes; a queued run
+     * spans hours, so re-firing it mid-flight re-enqueued every lead that had already
+     * been called and dialled them a second time. Unlike
+     * {@link #countRecentOutboundAttempts} this excludes nothing — it is a ceiling, not
+     * an attempt counter.
+     */
+    @Query("""
+            SELECT COUNT(t) FROM TelephonyCallLog t
+            WHERE t.instituteId = :instituteId AND t.userId = :userId
+              AND t.providerType = :providerType AND t.direction = 'OUTBOUND'
+              AND t.createdAt >= :since
+            """)
+    long countOutboundToLeadSince(@Param("instituteId") String instituteId,
+                                  @Param("userId") String userId,
+                                  @Param("providerType") String providerType,
+                                  @Param("since") java.sql.Timestamp since);
+
+    /**
      * All outbound dials this institute placed on a provider since {@code since}
      * (rolling-window daily-cap guardrail — see {@code AiCallingSettingsPojo.maxCallsPerDay}).
      * Provider-scoped so an institute's Exotel/Airtel human calls never count

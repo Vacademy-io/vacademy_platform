@@ -24,10 +24,9 @@ import {
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { capitalise } from "@/utils/custom-field";
 import {
-  getCountryCode,
+  lookupCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { cn } from "@/lib/utils";
 import type { AudienceCampaignResponse } from "../-services/audience-campaign-services";
 import {
@@ -35,6 +34,8 @@ import {
   handleSubmitAudienceLead,
   extractRespondentIdentity,
 } from "../-services/audience-campaign-services";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
+import { identityFromFormValues } from "@/lib/learner-identity";
 import {
   parsePostSubmitConfiguration,
   applyPostSubmitTokens,
@@ -283,19 +284,23 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically, falling back to the institute's
-  // configured preferred country (commaSeparatedPreferredCountry) instead of
-  // a hardcoded default so the phone input honors institute settings.
-  const getPhoneCountryCode = () => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are.
+  //
+  // Undefined means "no such signal", and PhoneInputField then resolves the
+  // country itself through the portal's chain (institute preference, else the
+  // region the form is opened in). It has to be undefined rather than that
+  // chain's answer read here: a `country` prop overrides the field's own
+  // resolution, so passing a value read before domain routing replied would
+  // pin the field to the platform fallback (+91) even after the real
+  // preference arrived.
+  const getPhoneCountryCode = (): string | undefined => {
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
-      const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue, fallback);
+      return lookupCountryCode(formValues[countryFieldKey]?.value);
     }
-    return fallback;
+    return undefined;
   };
 
   /**
@@ -346,6 +351,27 @@ const AudienceResponseForm = ({
       );
 
       await submitAudienceLead(payload);
+
+      // Attribute the lead to the campaign that produced it. Fired after the
+      // submit succeeded and before the reset, while the identity is still in
+      // scope; it never throws, so it cannot turn a successful submission into
+      // an error toast.
+      // Fall back to the shared resolver when the payload's own lookup came up
+      // empty. That lookup asks "does the field key contain 'email'?", which
+      // finds nothing on an institute naming the field `cf_9812` or
+      // `whatsapp_no` — and a touch with no identity is dropped by the server,
+      // so that institute's campaign reporting stays silently empty with no
+      // error to explain it. Additive: the payload sent to the lead API is
+      // deliberately untouched.
+      const resolvedIdentity = identityFromFormValues(values);
+      trackUtmAttribution({
+        instituteId,
+        email: payload.user_dto?.email || resolvedIdentity.email || undefined,
+        mobileNumber:
+          payload.user_dto?.mobile_number || resolvedIdentity.phone || undefined,
+        sourceType: "AUDIENCE",
+        sourceId: audienceId,
+      });
 
       // Capture identity BEFORE the reset — the thank-you screen and the
       // redirect URL both interpolate it.

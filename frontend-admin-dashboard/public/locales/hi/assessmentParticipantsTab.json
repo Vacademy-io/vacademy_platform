@@ -7,7 +7,8 @@
         "count_other": "{{count}} प्रतिभागी (आंतरिक)"
     },
     "joinLink": {
-        "title": "जॉइन लिंक"
+        "title": "जॉइन लिंक",
+        "privateWarning": "यह लिंक तभी काम करता है जब असेसमेंट Public हो। शेयर करने से पहले Step 3 में इसे Public करें।"
     },
     "qrCode": {
         "title": "क्यूआर कोड"

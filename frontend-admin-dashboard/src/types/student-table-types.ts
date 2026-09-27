@@ -26,6 +26,9 @@ export interface StudentFilterRequest {
     // Operator-aware custom-field filters (CONTAINS / IS_EMPTY / NOT_EMPTY /
     // BETWEEN / GTE / LTE). Coexists with the legacy values-IN map above.
     custom_field_typed_filters?: { field_id: string; operator?: string; values: string[] }[];
+    // Campaign (UTM) attribution filter — same wire shape on every list
+    // surface; see services/utm-list-filters.
+    utm_filters?: import('@/services/utm-list-filters').UtmListFiltersPayload;
     [key: string]: any;
 }
 

@@ -173,6 +173,51 @@ export interface OffersSettings {
     heading?: string;
 }
 
+/**
+ * One button on the learner-facing Course Finder ("Class 6", "Class 12 NEET").
+ *
+ * Membership is stored as package_session_ids, chosen by the admin from this
+ * page's own courses. Nothing is parsed out of a course or level name: a page
+ * selling one scholarship test per class carries all of them under a single
+ * level with the class only in the course name, so a name-derived group would
+ * reveal the whole catalogue behind every button.
+ */
+export interface CourseFinderGroup {
+    /** Stable id — survives renaming the button. */
+    id: string;
+    label: string;
+    /** Optional line under the label ("For CBSE & ICSE students"). */
+    description?: string;
+    /** package_session_ids this button reveals. */
+    packageSessionIds?: string[];
+    /** Level names, for pages that genuinely model a class AS a level. */
+    levelNames?: string[];
+}
+
+/**
+ * A "choose your class" screen shown before the course grid. Presentation
+ * only — the server neither reads nor recomputes it, unlike basket pricing.
+ */
+export interface CourseFinderSettings {
+    enabled: boolean;
+    heading?: string;
+    subheading?: string;
+    /** Lets the visitor past the screen to the whole catalogue. Off by default. */
+    allowSkip?: boolean;
+    skipLabel?: string;
+    /** Wording for the undo affordance above the catalogue. */
+    changeLabel?: string;
+    /**
+     * SHOW_COURSES (default) reveals the restricted catalogue. GO_TO_FORM
+     * selects the class's course and skips the cart, but only where the class
+     * resolves to exactly one course.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /** Confirm-button wording. `{{class}}` becomes the label the learner picked. */
+    ctaLabel?: string;
+    groups: CourseFinderGroup[];
+}
+
 export interface ProductPageSettings {
     defaultStep: 'CATALOG' | 'CART' | 'PAYMENT';
     allowCourseDeselection: boolean;
@@ -196,8 +241,11 @@ export interface ProductPageSettings {
         enabled: boolean;
     };
     basketPricing?: BasketPricingSettings;
+    courseFinder?: CourseFinderSettings;
     offers?: OffersSettings;
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
 }
@@ -211,6 +259,7 @@ export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
     disableBackNavigation: false,
     coupon: { enabled: false },
     afterPaymentRedirectUrl: '',
+    afterPaymentRedirectDelaySeconds: 3,
     showLoginButton: true,
     successPageContent: '',
 };

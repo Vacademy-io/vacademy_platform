@@ -1,0 +1,15 @@
+{
+    "uploadQuestionPaper": "Téléverser le sujet d'examen",
+    "uploadFromDevice": "Téléverser depuis l'appareil",
+    "uploadQuestionPaperFromDevice": "Téléverser le sujet d'examen depuis l'appareil",
+    "createManually": "Créer manuellement",
+    "createQuestionPaperManually": "Créer le sujet d'examen manuellement",
+    "marksPerQuestion": "Points par question",
+    "defaultLabel": "(Par défaut)",
+    "adaptiveMarkingRules": "Règles de notation adaptative",
+    "columnQNo": "N° Q.",
+    "columnQuestion": "Question",
+    "columnMarks": "Points",
+    "columnCriteria": "Critères",
+    "totalMarks": "Total des points"
+}

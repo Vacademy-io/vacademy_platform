@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -44,6 +45,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PhoneIdentifierInviteSubmissionGuard;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -124,6 +126,9 @@ public class LearnerEnrollRequestService {
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
 
     @Autowired
+    private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
+
+    @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
 
     @Autowired
@@ -140,6 +145,10 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgPartnerOnboardingService subOrgPartnerOnboardingService;
 
     @Autowired
     private FacultyService facultyService;
@@ -314,6 +323,13 @@ public class LearnerEnrollRequestService {
         validateEnrollmentReferences(enrollInvite, paymentOption, paymentPlan,
                 enrollDTO.getPackageSessionIds());
 
+        // Defense in depth for clients that skip form-submit: the same phone-based
+        // account cannot create another plan/payment for this exact invite.
+        phoneIdentifierInviteSubmissionGuard.validateNotAlreadySubmitted(
+                enrollInvite,
+                learnerEnrollRequestDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getInstituteId());
+
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();
         String subOrgId = null;
@@ -475,6 +491,14 @@ public class LearnerEnrollRequestService {
                     enrollDTO.getPackageSessionIds(),
                     enrollInvite,
                     userPlan);
+
+            // A FREE partner plan is active right here; paid ones become active in the payment
+            // webhook (UserPlanService.applyOperationsOnFirstPayment), which runs the same
+            // onboarding there. Best-effort by contract: the service never throws.
+            if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+                subOrgPartnerOnboardingService.onPartnerActivated(
+                        enrollInvite.getSubOrgId(), enrollInvite.getInstituteId(), userPlan);
+            }
         }
 
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)

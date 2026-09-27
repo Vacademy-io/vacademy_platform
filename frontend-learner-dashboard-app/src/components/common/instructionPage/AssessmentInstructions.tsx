@@ -320,7 +320,18 @@ export const AssessmentInstructions = ({
           key={att.url}
           className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
         >
-          <div className="flex items-center gap-2 border-b border-neutral-100 p-4">
+          {/* The filename doubles as a direct link to the paper. The inline
+              viewer below fetches the PDF from the CDN in a series of range
+              requests, and a single dropped request leaves the learner with an
+              error box and — because the source anchor was stripped out of the
+              instructions — no other way to reach the question paper. This
+              link never goes through pdf.js, so it survives that failure. */}
+          <a
+            href={att.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 border-b border-neutral-100 p-4 transition-colors hover:bg-primary-50"
+          >
             <FilePdf size={16} weight="duotone" className="text-danger-500" />
             <h2
               className="truncate text-caption font-bold uppercase tracking-wide text-neutral-500"
@@ -328,7 +339,11 @@ export const AssessmentInstructions = ({
             >
               {att.fileName}
             </h2>
-          </div>
+            <span className="ms-auto flex shrink-0 items-center gap-1 text-caption font-semibold text-primary-500">
+              {t("instructionPage.assessmentInstructions.downloadPaper")}
+              <ArrowSquareOut size={14} />
+            </span>
+          </a>
           <div className="h-screen-70 w-full">
             <SimplePDFViewer pdfUrl={att.url} />
           </div>

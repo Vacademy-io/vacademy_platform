@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Form } from '@/components/ui/form';
@@ -24,11 +26,11 @@ export type RegularizationDecision = 'APPROVED' | 'REJECTED';
  * them with a wrong record and nothing to do about it. An approval explains
  * itself: the record now says what they asked for.
  */
-const schema = (decision: RegularizationDecision) =>
+const buildSchema = (decision: RegularizationDecision, t: TFunction) =>
     z.object({
         remarks:
             decision === 'REJECTED'
-                ? z.string().trim().min(1, 'Tell them why this was rejected')
+                ? z.string().trim().min(1, t('errors.remarksRequired'))
                 : z.string().trim(),
     });
 
@@ -47,11 +49,12 @@ export const RegularizationActionDialog = ({
     request,
     decision,
 }: RegularizationActionDialogProps) => {
+    const { t } = useTranslation('erpRegularizationActionDialog');
     const mutation = useActOnRegularization();
     const isReject = decision === 'REJECTED';
 
     const form = useForm<ActionForm>({
-        resolver: zodResolver(schema(decision)),
+        resolver: zodResolver(buildSchema(decision, t)),
         defaultValues: { remarks: '' },
         mode: 'onBlur',
     });
@@ -71,20 +74,20 @@ export const RegularizationActionDialog = ({
                     ...(values.remarks.trim() ? { remarks: values.remarks.trim() } : {}),
                 },
             });
-            toast.success(isReject ? 'Request rejected' : 'Request approved');
+            toast.success(isReject ? t('toasts.rejected') : t('toasts.approved'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-attendance',
                 tags: { action: isReject ? 'reject-regularization' : 'approve-regularization' },
-                fallbackMessage: 'Could not record the decision.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isReject ? 'Reject this request' : 'Approve this request'}
+            heading={isReject ? t('rejectHeading') : t('approveHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -96,16 +99,16 @@ export const RegularizationActionDialog = ({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('saving')}
                     >
-                        {isReject ? 'Reject request' : 'Approve request'}
+                        {isReject ? t('rejectRequest') : t('approveRequest')}
                     </MyButton>
                 </div>
             }
@@ -115,21 +118,23 @@ export const RegularizationActionDialog = ({
                     {request && (
                         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
                             <p className="text-body font-semibold text-foreground">
-                                {request.employee_name || request.employee_code || 'Employee'}
+                                {request.employee_name || request.employee_code || t('employee')}
                             </p>
                             <p className="text-caption text-muted-foreground">
                                 {request.attendance_date
                                     ? formatDate(request.attendance_date)
-                                    : 'Unknown date'}
+                                    : t('unknownDate')}
                                 {' · '}
-                                {humanizeToken(request.original_status) || 'No record'} →{' '}
+                                {humanizeToken(request.original_status) || t('noRecord')} →{' '}
                                 {humanizeToken(request.requested_status) || '—'}
                             </p>
                             <p className="text-caption text-muted-foreground">
-                                Times {formatClockTime(request.original_check_in)}–
-                                {formatClockTime(request.original_check_out)} →{' '}
-                                {formatClockTime(request.requested_check_in)}–
-                                {formatClockTime(request.requested_check_out)}
+                                {t('times', {
+                                    originalIn: formatClockTime(request.original_check_in),
+                                    originalOut: formatClockTime(request.original_check_out),
+                                    requestedIn: formatClockTime(request.requested_check_in),
+                                    requestedOut: formatClockTime(request.requested_check_out),
+                                })}
                             </p>
                             {request.reason && (
                                 <p className="text-body text-foreground">“{request.reason}”</p>
@@ -138,20 +143,16 @@ export const RegularizationActionDialog = ({
                     )}
 
                     <p className="text-caption text-muted-foreground">
-                        {isReject
-                            ? 'The attendance record stays exactly as it is. Your remarks are what the employee sees.'
-                            : 'Approving rewrites the attendance record for that day — the requested status and times replace what is stored, and the day counts that way in payroll.'}
+                        {isReject ? t('rejectNotice') : t('approveNotice')}
                     </p>
 
                     <HrTextareaField
                         control={form.control}
                         name="remarks"
-                        label="Remarks"
+                        label={t('remarksLabel')}
                         required={isReject}
                         placeholder={
-                            isReject
-                                ? 'Why this cannot be accepted'
-                                : 'Optional note for the record'
+                            isReject ? t('remarksPlaceholderReject') : t('remarksPlaceholderApprove')
                         }
                     />
                 </form>

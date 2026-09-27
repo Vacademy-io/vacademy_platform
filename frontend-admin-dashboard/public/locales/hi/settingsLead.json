@@ -19,7 +19,7 @@
     },
     "visibilityCard": {
         "title": "स्कोर बैज दृश्यता",
-        "description": "चुनें कि HOT / WARM / COLD स्कोर बैज कहाँ दिखे।",
+        "description": "तय करें कि लीड स्कोर बैज कहाँ दिखे।",
         "options": {
             "enquiryTable": "पूछताछ तालिका (प्रवेश → पूछताछ)",
             "contactsTable": "संपर्क तालिका (संपर्क प्रबंधित करें)",
@@ -58,5 +58,14 @@
     "saveButton": {
         "saving": "सहेजा जा रहा है…",
         "save": "स्कोरिंग सेटिंग्स सहेजें"
+    },
+    "terminologyCard": {
+        "title": "शब्दावली",
+        "description": "बिल्ट-इन लीड विशेषताओं को वही नाम दें जो आपकी टीम इस्तेमाल करती है। डिफ़ॉल्ट रखने के लिए खाली छोड़ें।",
+        "tierLabel": "\"Tier\" का नाम",
+        "tierPlaceholder": "जैसे Interest Level",
+        "leadStatusLabel": "\"Lead status\" का नाम",
+        "leadStatusPlaceholder": "जैसे Action Label",
+        "hint": "लीड टेबल हेडर, फ़िल्टर, लीड साइड-व्यू और इन सेटिंग्स में उपयोग होता है। नीचे दिए बटन से सहेजें।"
     }
 }

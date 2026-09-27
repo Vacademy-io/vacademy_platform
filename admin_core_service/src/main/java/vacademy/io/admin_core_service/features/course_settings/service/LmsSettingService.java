@@ -155,13 +155,45 @@ public class LmsSettingService {
                 && inner.path("connections").isArray() && inner.get("connections").size() > 0;
 
         if (instituteHasNewConnections) {
-            // The institute has curated its connection list — that's authoritative.
-            connections = (ArrayNode) inner.get("connections");
+            // The institute has a curated connection list — but it is a SNAPSHOT, not the whole
+            // truth. It was seeded from discovery (ids like disc-ld-… / legacy-…) plus whatever
+            // an admin added by hand, and nothing re-syncs it. A course wired to a NEW LMS after
+            // that snapshot was taken has a live, enrolling connection that never enters the list.
+            //
+            // Real case: Vet Education's list held 7 connections while its courses referenced 6
+            // distinct endpoints, and "Practice Membership - Apiam" (learning.apiam.com.au) was
+            // in the courses but not the list — so it was invisible on the LMS settings page and
+            // to the dashboard health widget, despite actively enrolling learners.
+            //
+            // So union the two rather than letting the snapshot short-circuit discovery. Curated
+            // entries are inserted FIRST, so an admin's own id/name wins the dedup and only
+            // genuinely new endpoints are appended. This is strictly additive — connKey dedups on
+            // type + normalised URL + auth key, so nothing already listed is removed or renamed.
+            //
+            // It also matches what the rest of this class already does: findConnection() has
+            // always fallen through to discoverConnectionsFromCourses(), so a discovered
+            // connection could already be APPLIED to a course — it just could not be SEEN.
+            ArrayNode curated = (ArrayNode) inner.get("connections");
+            java.util.LinkedHashMap<String, ObjectNode> byKey = new java.util.LinkedHashMap<>();
+            for (JsonNode c : curated) {
+                if (c.isObject()) {
+                    byKey.put(connKey(c), (ObjectNode) c);
+                }
+            }
+            for (ObjectNode c : discoverConnectionsFromCourses(instituteId)) {
+                byKey.putIfAbsent(connKey(c), c);
+            }
+            connections = objectMapper.createArrayNode();
+            byKey.values().forEach(connections::add);
+
             configSource = "INSTITUTE";
-            activeLms = inner.path("activeLms").asText(connections.get(0).path("type").asText(activeLms));
+            // Read the active/default off the CURATED list, not the union: which connection is
+            // the institute's default is the admin's decision, and appending a discovered one
+            // must not be able to change it.
+            activeLms = inner.path("activeLms").asText(curated.get(0).path("type").asText(activeLms));
             defaultConnectionId = inner.hasNonNull("defaultConnectionId")
                     ? inner.get("defaultConnectionId").asText()
-                    : connections.get(0).path("id").asText(null);
+                    : curated.get(0).path("id").asText(null);
         } else {
             // No curated list yet: discover EVERY distinct connection — from a legacy institute
             // config AND from each course's settings — deduped by (type, base URL, auth username).

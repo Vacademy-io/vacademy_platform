@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -44,6 +45,7 @@ import {
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
+import { resolveCoursePageRoute } from "../../-utils/course-page-routing";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -535,7 +537,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
-  // Derive filter options from loaded courses (before shouldShow* checks)
+  // Derive filter options from loaded courses (before shouldShow* checks).
+  // Sentinel level names ("DEFAULT") are dropped here as well as on the card
+  // badge: a public "Level: Default" checkbox is noise. An institute that
+  // wants its single level filterable renames it in Admin > Levels.
   const levels = useMemo(
     () =>
       [...new Set(courses.map((c) => c.level).filter(Boolean))]
@@ -547,15 +552,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         .sort(compareByNameNatural),
     [courses],
   );
+  // Same sentinel rule as levels: the placeholder "DEFAULT" session must not
+  // surface as a "Default" checkbox next to real streams, and an institute
+  // whose only session is the placeholder gets no Session filter at all.
   const sessions = useMemo(() => {
     const byId = new Map<string, string>();
     courses.forEach((c) => {
       if (c.sessionId && !byId.has(c.sessionId)) {
-        byId.set(c.sessionId, c.sessionName || c.sessionId);
+        const name = displayLevelName(c.sessionName || c.sessionId);
+        if (name) byId.set(c.sessionId, name);
       }
     });
     return Array.from(byId.entries())
-      .map(([id, name]) => ({ id, name: toTitleCase(name) }))
+      .map(([id, name]) => ({ id, name }))
       .sort(compareByNameNatural);
   }, [courses]);
   const tags = useMemo(
@@ -574,12 +583,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       ].map((tag) => ({ id: tag, name: tag })),
     [courses],
   );
+  // Courses with no instructor carry the "Unknown Teacher" placeholder as
+  // their instructor (see the fetch mapping). Keep it off the filter list so a
+  // catalogue of author-less courses does not offer an "Unknown" checkbox.
+  const unknownInstructorLabel = t("courseCatalog.unknownInstructor", {
+    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+  });
   const instructors = useMemo(
     () =>
-      [...new Set(courses.map((c) => c.instructor).filter(Boolean))].map(
-        (instructor) => ({ id: instructor, name: instructor }),
-      ),
-    [courses],
+      [...new Set(courses.map((c) => c.instructor).filter(Boolean))]
+        .filter((instructor) => instructor !== unknownInstructorLabel)
+        .map((instructor) => ({ id: instructor, name: instructor })),
+    [courses, unknownInstructorLabel],
   );
 
   // Broadcast this block's own filter options up to the page-level Course
@@ -664,7 +679,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     () => new Set((filtersConfig ?? []).map((filter) => filter.id)),
     [filtersConfig],
   );
-  const defaultToAllFilters = filterIds.size === 0;
+  // Pages created before filter configuration existed have no value at all and
+  // retain the historic "show every useful filter" behaviour. An explicit
+  // empty array, however, is an admin decision to show none.
+  const defaultToAllFilters = !Array.isArray(filtersConfig);
 
   // How a course preview image sits in the card's image band. `cover` (default)
   // fills it but crops — fine for photos, destructive for wide marketing
@@ -676,25 +694,30 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       ?.imageFit === "contain"
       ? "contain"
       : "cover";
+  // Level and Session render as soon as there is one real option to pick,
+  // the same rule the admin All Courses panel uses. They used to need two,
+  // which hid both on the many institutes that run a single level or session.
   const shouldShowLevelFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
-    levels.length > 1;
+    levels.length > 0;
   const shouldShowSessionFilter =
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("session")) &&
-    sessions.length > 1;
-  // Tags are intentionally NOT gated on filtersConfig: the page-builder default
-  // template ships filtersConfig=[{level}] and there is no admin UI to add a
-  // "tags" entry yet, so gating would hide tags on every catalogue. Show the Tags
-  // filter whenever filters are enabled and the loaded courses carry any tags.
-  const shouldShowTagsFilter = filtersEnabled && tags.length > 0;
+    sessions.length > 0;
+  const shouldShowTagsFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("tags") || filterIds.has("tag")) &&
+    tags.length > 0;
+  // Same one-option rule as Level/Session, now that the placeholder author is
+  // excluded above. It used to need two distinct authors, so an institute with
+  // a single author never saw the section it had enabled.
   const shouldShowInstructorFilter =
     filtersEnabled &&
     (defaultToAllFilters ||
       filterIds.has("instructors") ||
       filterIds.has("authors")) &&
-    instructors.length > 1;
+    instructors.length > 0;
   const priceFilterConfig = useMemo(
     () =>
       filtersEnabled
@@ -1128,6 +1151,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const handleCourseClick = (course: Course) => {
     // All courses navigate to details page with enroll_invite_id
     // Pass enroll_invite_id, banner image, and level as search params so details page can use them
+    // ...unless this catalogue gives the course its own authored page, in which
+    // case that page replaces the details page entirely. The course params ride
+    // along so a checkout CTA placed on that page still knows what to sell.
+    const customPageRoute = resolveCoursePageRoute(globalSettings, {
+      courseId: course.id,
+      packageSessionId: course.packageSessionId,
+    });
+
     const searchParams = new URLSearchParams();
     if (course.enrollInviteId) {
       searchParams.set("enrollInviteId", course.enrollInviteId);
@@ -1143,7 +1174,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${course.id}`,
+      to: `${RouteMatcher.basePath(tagName)}/${customPageRoute ?? course.id}`,
       search: searchParams.toString()
         ? {
             enrollInviteId: course.enrollInviteId,
@@ -1285,13 +1316,16 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       </div>
                     </div>
 
+                    {/* Plural headings, as on the admin All Courses panel
+                        ("Categories" / "Streams" for an institute that renamed
+                        Level / Session). Resolved from Naming Settings, which
+                        institute-naming-seed.ts guarantees are loaded first. */}
                     {shouldShowLevelFilter && (
                       <FilterSection
-                        title={
-                          filtersConfig?.find((filter) => filter.id === "level")
-                            ?.label ??
-                          getTerminology(ContentTerms.Level, SystemTerms.Level)
-                        }
+                        title={getTerminologyPlural(
+                          ContentTerms.Level,
+                          SystemTerms.Level,
+                        )}
                         items={levels}
                         selectedItems={selectedLevels}
                         handleChange={(id) =>
@@ -1303,11 +1337,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                     {shouldShowSessionFilter && (
                       <FilterSection
-                        title={
-                          filtersConfig?.find((filter) => filter.id === "session")
-                            ?.label ??
-                          getTerminology(ContentTerms.Session, SystemTerms.Session)
-                        }
+                        title={getTerminologyPlural(
+                          ContentTerms.Session,
+                          SystemTerms.Session,
+                        )}
                         items={sessions}
                         selectedItems={selectedSessions}
                         handleChange={(id) =>
@@ -1320,8 +1353,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowTagsFilter && (
                       <FilterSection
                         title={
-                          filtersConfig?.find((filter) => filter.id === "tags")
-                            ?.label ??
                           getTerminologyPlural(
                             ContentTerms.PopularTag,
                             SystemTerms.PopularTag,
@@ -1792,7 +1823,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       {/* Floating Cart Button - Fixed at bottom right */}
       {/* {cartButtonConfig?.enabled && <div className="fixed bottom-14 right-3 z-50">
         <Button
-          onClick={() => navigate({ to: `/${tagName}/cart` })}
+          onClick={() => navigate({ to: `${RouteMatcher.basePath(tagName)}/cart` })}
           className="h-12 w-12 rounded-full bg-primary hover:bg-primary-700 text-white shadow-lg flex items-center justify-center relative"
           size="sm"
         >

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
@@ -49,6 +50,9 @@ public class Step1Service {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    @Autowired
+    private LiveSessionInstructorService instructorService;
+
     public LiveSession step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
         return step1AddService(request, user, true);
     }
@@ -63,9 +67,25 @@ public class Step1Service {
     public LiveSession step1AddService(LiveSessionStep1RequestDTO request,
                                        CustomUserDetails user,
                                        boolean fireWorkflow) {
+        boolean isCreate = !StringUtils.hasText(request.getSessionId());
         LiveSession session = getOrCreateSession(request, user);
         updateSessionFields(session, request, user);
         LiveSession savedSession = sessionRepository.save(session);
+
+        if (isCreate) {
+            // The person scheduling the class is its instructor until somebody
+            // says otherwise in step 2. Seeding here rather than relying on the
+            // creator fallback means the admin sees a pre-filled, editable list
+            // instead of an empty one.
+            try {
+                instructorService.seedCreatorAsInstructor(savedSession.getId(), user.getUserId());
+            } catch (Exception e) {
+                // The creator fallback covers this, so a failed seed must not
+                // fail the scheduling request.
+                log.warn("Failed to seed creator as live-session instructor sessionId={}: {}",
+                        savedSession.getId(), e.getMessage());
+            }
+        }
 
         // Handle all schedule operations intelligently
         if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
@@ -593,7 +613,15 @@ public class Step1Service {
             }
         }
 
-        session.setCreatedByUserId(user.getUserId());
+        // Only stamp the creator on first create. This used to run on every
+        // step-1 call, so editing somebody else's class silently transferred
+        // ownership of it. That was invisible before V524; now that
+        // created_by_user_id decides who can see a session (and who is its
+        // implicit instructor), an admin opening a teacher's class to fix a
+        // typo would have taken it away from that teacher.
+        if (!StringUtils.hasText(session.getCreatedByUserId())) {
+            session.setCreatedByUserId(user.getUserId());
+        }
 
         Object learnerButtonConfig = request.getLearnerButtonConfig();
 

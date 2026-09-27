@@ -61,7 +61,7 @@ import { createMessageTemplate } from '@/services/message-template-service';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
-import { SAMPLE_TEMPLATES } from '@/routes/workflow/create/-components/sample-email-templates';
+import { buildSampleTemplates } from '@/routes/workflow/create/-components/sample-email-templates';
 
 const LEAD_STATUS_CHANGED = 'LEAD_STATUS_CHANGED';
 /** Sentinel for the "any status change" option in the status picker. */
@@ -108,6 +108,11 @@ export function TriggerWorkflowDialog({
     scopeLabel,
 }: TriggerWorkflowDialogProps) {
     const { t } = useTranslation('settingsTriggerWorkflow');
+    const { t: tSampleTemplate } = useTranslation('workflowSampleEmailTemplates');
+    const SAMPLE_TEMPLATES = useMemo(
+        () => buildSampleTemplates(tSampleTemplate),
+        [tSampleTemplate]
+    );
     const queryClient = useQueryClient();
     const leadEvents = buildLeadEvents(t);
 

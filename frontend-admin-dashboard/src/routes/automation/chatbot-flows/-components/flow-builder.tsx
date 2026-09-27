@@ -16,11 +16,13 @@ import { FlowSettingsPanel } from './flow-settings-panel';
 import { Gear } from '@phosphor-icons/react';
 import { updateChatbotFlow, createChatbotFlow, activateChatbotFlow, deactivateChatbotFlow } from '../-services/chatbot-flow-api';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 const nodeTypes = { chatbotNode: ChatbotCustomNode };
 const edgeTypes = { chatbotEdge: ChatbotCustomEdge };
 
 function FlowBuilderInner() {
+    const { t } = useTranslation('automationFlowBuilder');
     const {
         nodes,
         edges,
@@ -59,26 +61,26 @@ function FlowBuilderInner() {
                 saved = await createChatbotFlow(dto);
             }
             loadFlow(saved);
-            toast.success('Flow saved successfully');
+            toast.success(t('toast.saveSuccess'));
         } catch (err: unknown) {
             // Extract backend error message if available (axios error)
             const axiosErr = err as { response?: { data?: { message?: string } } };
             const backendMsg = axiosErr?.response?.data?.message;
             if (backendMsg?.includes('ACTIVE')) {
-                toast.error('Cannot save an active flow. Deactivate it first, then save.');
+                toast.error(t('toast.activeSaveBlocked'));
             } else {
-                toast.error(backendMsg || 'Failed to save flow');
+                toast.error(backendMsg || t('toast.saveFailed'));
             }
             console.error(err);
             throw err; // Re-throw so handleActivate's catch works
         } finally {
             setIsSaving(false);
         }
-    }, [flowId, toDTO, loadFlow, setIsSaving]);
+    }, [flowId, toDTO, loadFlow, setIsSaving, t]);
 
     const handleActivate = useCallback(async () => {
         if (!flowId) {
-            toast.error('Save the flow first');
+            toast.error(t('toast.saveFlowFirst'));
             return;
         }
         try {
@@ -86,7 +88,7 @@ function FlowBuilderInner() {
                 // Deactivate first, then save pending changes
                 const result = await deactivateChatbotFlow(flowId);
                 loadFlow(result);
-                toast.success('Flow deactivated');
+                toast.success(t('toast.deactivated'));
                 // Now save pending changes if dirty (flow is INACTIVE now, so PUT will work)
                 if (isDirty) {
                     try { await handleSave(); } catch { /* save failed but deactivate succeeded */ }
@@ -98,13 +100,13 @@ function FlowBuilderInner() {
                 }
                 const result = await activateChatbotFlow(flowId);
                 loadFlow(result);
-                toast.success('Flow activated');
+                toast.success(t('toast.activated'));
             }
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Validation failed';
+            const msg = err instanceof Error ? err.message : t('toast.validationFailed');
             toast.error(msg);
         }
-    }, [flowId, flowStatus, isDirty, handleSave, loadFlow]);
+    }, [flowId, flowStatus, isDirty, handleSave, loadFlow, t]);
 
     const onNodeClick = useCallback((_: React.MouseEvent, node: { id: string }) => {
         selectNode(node.id);
@@ -131,9 +133,9 @@ function FlowBuilderInner() {
                         className="text-xs border rounded px-2 py-1"
                     >
                         <option value="WHATSAPP_COMBOT">COMBOT</option>
-                        <option value="WHATSAPP_META">Meta Direct</option>
+                        <option value="WHATSAPP_META">{t('channelSelect.metaDirect')}</option>
                         <option value="WHATSAPP_WATI">WATI</option>
-                        <option value="WHATSAPP">All Providers</option>
+                        <option value="WHATSAPP">{t('channelSelect.allProviders')}</option>
                     </select>
                     <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -151,9 +153,9 @@ function FlowBuilderInner() {
                     <button
                         onClick={() => setShowSettings(true)}
                         className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-                        title="Flow settings — including who is notified when the bot hands over"
+                        title={t('settingsButton.title')}
                     >
-                        <Gear size={14} /> Settings
+                        <Gear size={14} /> {t('settingsButton.label')}
                         {notifyRecipientCount > 0 && (
                             <span className="ml-0.5 rounded-full bg-gray-100 px-1.5 text-caption text-gray-600">
                                 {notifyRecipientCount}
@@ -165,7 +167,7 @@ function FlowBuilderInner() {
                         disabled={isSaving}
                         className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                     >
-                        {isSaving ? 'Saving...' : isDirty ? 'Save *' : 'Save'}
+                        {isSaving ? t('saveButton.saving') : isDirty ? t('saveButton.dirty') : t('saveButton.default')}
                     </button>
                     <button
                         onClick={handleActivate}
@@ -175,7 +177,7 @@ function FlowBuilderInner() {
                                 : 'bg-green-600 text-white hover:bg-green-700'
                         }`}
                     >
-                        {flowStatus === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        {flowStatus === 'ACTIVE' ? t('activateButton.deactivate') : t('activateButton.activate')}
                     </button>
                 </div>
             </div>

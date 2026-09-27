@@ -7,6 +7,9 @@ import { classifySections, convertStep2Data } from '../-utils/helper';
 import { ApiResponse, SectionResponse } from '../-hooks/getQuestionsDataForSection';
 import axios from 'axios';
 import { toast } from 'sonner';
+import i18n from '@/i18n';
+
+const NAMESPACE = 'evaluatorAiAssessmentServices';
 
 export const getAssessmentDetailsData = async ({
     assessmentId,
@@ -50,7 +53,7 @@ export const handleUpdateCriteria = async ({
             data: sectionDetails,
         });
         if (response.status === 200) {
-            toast.success('Criteria has been updated');
+            toast.success(i18n.t(`${NAMESPACE}:criteriaUpdated`));
         }
         return response.data;
     } catch (error) {

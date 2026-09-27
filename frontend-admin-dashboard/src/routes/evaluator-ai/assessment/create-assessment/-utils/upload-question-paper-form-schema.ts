@@ -1,34 +1,48 @@
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import i18n from '@/i18n';
 import { isQuillContentEmpty } from './helper';
+
+/**
+ * This zod schema is a module-scope singleton consumed via
+ * `zodResolver(uploadQuestionPaperFormSchema)` in AddQuestion/QuestionPaperUpload.tsx,
+ * which is outside this i18n batch. Converting it to a `buildXxx(t)` factory would
+ * require touching that call site too, so — per the rollout's established fallback
+ * for exactly this situation (see studyLibraryScheduleSchema) — we call the shared
+ * i18next singleton directly with a fixed namespace instead of threading `t`.
+ */
+const NAMESPACE = 'evaluatorAiUploadQuestionPaperFormSchema';
+const t: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
 
 export const uploadQuestionPaperFormSchema = z.object({
     questionPaperId: z
         .string({
-            required_error: 'Question Paper ID is required',
-            invalid_type_error: 'Question Paper ID must be a number',
+            required_error: t('questionPaperIdRequired'),
+            invalid_type_error: t('questionPaperIdMustBeNumber'),
         })
         .optional(),
     isFavourite: z.boolean().default(false),
     createdOn: z.date().default(() => new Date()),
     questionsType: z.string({
-        required_error: 'Question field is required',
-        invalid_type_error: 'Question field must be a string',
+        required_error: t('questionFieldRequired'),
+        invalid_type_error: t('questionFieldMustBeString'),
     }),
     optionsType: z.string({
-        required_error: 'Option field is required',
-        invalid_type_error: 'Option field must be a string',
+        required_error: t('optionFieldRequired'),
+        invalid_type_error: t('optionFieldMustBeString'),
     }),
     answersType: z.string({
-        required_error: 'Answer field is required',
-        invalid_type_error: 'Answer field must be a string',
+        required_error: t('answerFieldRequired'),
+        invalid_type_error: t('answerFieldMustBeString'),
     }),
     explanationsType: z.string({
-        required_error: 'Explanation field is required',
-        invalid_type_error: 'Explanation field must be a string',
+        required_error: t('explanationFieldRequired'),
+        invalid_type_error: t('explanationFieldMustBeString'),
     }),
     fileUpload: z
         .instanceof(File, {
-            message: 'File upload is required and must be a valid file',
+            message: t('fileUploadRequired'),
         })
         .optional(),
     questions: z.array(
@@ -36,7 +50,7 @@ export const uploadQuestionPaperFormSchema = z.object({
             .object({
                 questionId: z.string().optional(),
                 questionName: z.string().refine((val) => !isQuillContentEmpty(val), {
-                    message: 'Question name is required',
+                    message: t('questionNameRequired'),
                 }),
                 explanation: z.string().optional(),
                 questionType: z.string().default('MCQS'),
@@ -81,7 +95,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     ) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQS questions must have singleChoiceOptions',
+                            message: t('mcqsMustHaveSingleChoiceOptions'),
                             path: ['singleChoiceOptions'],
                         });
                         return;
@@ -90,7 +104,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     if (question.singleChoiceOptions.length < 2) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQS must have at least 2 options',
+                            message: t('mcqsMustHaveAtLeast2Options'),
                             path: ['singleChoiceOptions'],
                         });
                     }
@@ -101,7 +115,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     if (selectedCount !== 1) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQS must have exactly one option selected',
+                            message: t('mcqsMustHaveExactlyOneSelected'),
                             path: ['singleChoiceOptions'],
                         });
                     }
@@ -110,7 +124,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                         if (!opt?.name?.trim()) {
                             ctx.addIssue({
                                 code: z.ZodIssueCode.custom,
-                                message: `Option ${index + 1} is required`,
+                                message: t('optionIsRequired', { number: index + 1 }),
                                 path: ['singleChoiceOptions', index, 'name'],
                             });
                         }
@@ -123,7 +137,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     ) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQM questions must have multipleChoiceOptions',
+                            message: t('mcqmMustHaveMultipleChoiceOptions'),
                             path: ['multipleChoiceOptions'],
                         });
                         return;
@@ -132,7 +146,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     if (question.multipleChoiceOptions.length < 2) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQM must have at least 2 options',
+                            message: t('mcqmMustHaveAtLeast2Options'),
                             path: ['multipleChoiceOptions'],
                         });
                     }
@@ -143,7 +157,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     if (selectedCount < 1) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
-                            message: 'MCQM must have at least one option selected',
+                            message: t('mcqmMustHaveAtLeastOneSelected'),
                             path: ['multipleChoiceOptions'],
                         });
                     }
@@ -152,7 +166,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                         if (!opt.name?.trim()) {
                             ctx.addIssue({
                                 code: z.ZodIssueCode.custom,
-                                message: `Option ${index + 1} is required`,
+                                message: t('optionIsRequired', { number: index + 1 }),
                                 path: ['multipleChoiceOptions', index, 'name'],
                             });
                         }
@@ -176,7 +190,7 @@ export const uploadQuestionPaperFormSchema = z.object({
                     ctx.addIssue({
                         path: ['validAnswers'],
                         code: z.ZodIssueCode.custom,
-                        message: `Not correct answer type is entered ${numericType}`,
+                        message: t('incorrectAnswerTypeEntered', { numericType }),
                     });
                 }
             })

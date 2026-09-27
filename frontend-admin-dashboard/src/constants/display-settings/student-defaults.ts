@@ -80,6 +80,14 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
         { id: 'exploreBooks', visible: true },
         // Declared LAST on purpose — see FRACTIONAL_ORDERS below.
         { id: 'enrolledCourses', visible: true },
+        // On by default. It self-hides for any institute with no app link on
+        // its domain-routing row, so the only institutes it reaches are the
+        // ones that actually ship an app. Note this means those institutes
+        // advertise the downloads twice until they turn `sidebar.appLinks` off.
+        { id: 'getApp', visible: true },
+        // Today's teacher-scheduled tasks. Declared last and given a fractional
+        // order, like enrolledCourses above. Renders nothing without a plan.
+        { id: 'todayTasks', visible: true },
     ];
     // Widgets added after this list shipped cannot simply be spliced in: order
     // comes from the array index, and an institute that saved earlier already
@@ -94,7 +102,18 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     // belongs, and can never equal an integer order a saved institute holds.
     // Swapping preserves the set of orders, so reordering cannot create a
     // duplicate either.
-    const FRACTIONAL_ORDERS: Record<string, number> = { enrolledCourses: 2.5 };
+    // getApp is a rail widget. 12.5 puts it last in the rail — after
+    // upcomingLiveClasses (10), myMentors (11) and thisWeekAttendance (12) —
+    // without colliding with gamification (13) in the main column.
+    // todayTasks sits in whichever column the learner's screen width picks (the
+    // rail at lg and up, else the main column right under the hero). 0.5 sorts
+    // it first in both, ahead of every order a saved institute can hold (the
+    // lowest ever written is 1), so it also leads this settings list.
+    const FRACTIONAL_ORDERS: Record<string, number> = {
+        enrolledCourses: 2.5,
+        getApp: 12.5,
+        todayTasks: 0.5,
+    };
     return defaults.map((w, idx) => ({
         ...w,
         order: FRACTIONAL_ORDERS[w.id] ?? idx + 1,
@@ -105,6 +124,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     sidebar: {
         visible: true,
         tabs: defaultSidebarTabs(),
+        appLinks: true,
     },
     dashboard: {
         widgets: defaultDashboardWidgets(),
@@ -148,7 +168,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         outlineMode: 'expanded',
         ratingsAndReviewsVisible: true,
         hideAuthorName: false,
-        // Teachers/Instructors section hidden by default; admins opt-in to show it.
+        // Full teacher roster is opt-in; the first author always shows.
         showInstructors: false,
         showCourseConfiguration: true,
         showCourseContentPrefixes: true,
@@ -203,6 +223,21 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         enabled: false,
         enabledTours: [...LEARNER_TOUR_KEYS],
         pdfGuideEnabled: false,
+    },
+    concentration: {
+        enabled: true,
+        frequency: {
+            min_minutes: 5,
+            max_minutes: 7,
+        },
+        behavior: {
+            allow_skip: false,
+            penalty_type: 'pause',
+        },
+        appearance: {
+            title: 'Focus Check',
+            subtitle: 'Select the matching number to continue your streak',
+        },
     },
     postLoginRedirectRoute: '/dashboard',
 };

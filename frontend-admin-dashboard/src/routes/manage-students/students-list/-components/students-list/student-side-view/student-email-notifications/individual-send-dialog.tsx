@@ -38,6 +38,7 @@ import {
     TemplateSearchableSelect,
     toTemplateOptions,
 } from '@/components/templates/TemplateSearchableSelect';
+import { WhatsAppTemplatePreview } from '@/components/templates/WhatsAppTemplatePreview';
 import { sendNotification, getDeliveryStatus } from '@/services/unified-send-service';
 import type { DeliveryStatus, UnifiedSendResponse } from '@/services/unified-send-service';
 import {
@@ -654,6 +655,37 @@ export function IndividualSendDialog({
 
     // ------- render helpers -------
 
+    const waPreviewLabels = useMemo(
+        () => ({
+            image: t('waPreview.image'),
+            video: t('waPreview.video'),
+            document: t('waPreview.document'),
+            emptyBody: t('waPreview.emptyBody'),
+        }),
+        [t]
+    );
+
+    /**
+     * The message as it will land on the phone, with whatever the mapping has resolved so far.
+     * Shown on every WhatsApp step after the template is picked: the admin is sending a message
+     * they cannot edit, so the only protection against sending the wrong one is seeing it.
+     */
+    const renderWaMessagePreview = (label: string) =>
+        // The mapping and review steps are shared by both channels. Today's callers mount a fresh
+        // dialog per channel so a WhatsApp template cannot survive into an email flow, but the
+        // channel check keeps that true no matter how the dialog is mounted later.
+        channel === 'WHATSAPP' && selectedWaTemplate ? (
+            <div className="space-y-2">
+                <Label>{label}</Label>
+                <WhatsAppTemplatePreview
+                    template={selectedWaTemplate}
+                    values={resolvedVariables}
+                    mediaUrl={headerMediaUrl}
+                    labels={waPreviewLabels}
+                />
+            </div>
+        ) : null;
+
     const renderStepIndicator = () => (
         <div className="mb-6 flex w-full min-w-0 items-center gap-1 overflow-hidden">
             {STEP_TITLES.map((title, i) => {
@@ -709,6 +741,8 @@ export function IndividualSendDialog({
                         placeholder={t('emailTemplateStep.selectPlaceholder')}
                         emptyText={t('emailTemplateStep.emptyText')}
                         noneOption={{ value: 'custom', label: t('emailTemplateStep.customOption') }}
+                        expandLabel={t('templatePicker.showFullMessage')}
+                        collapseLabel={t('templatePicker.showLess')}
                         disabled={loadingTemplateContent}
                         portal={false}
                     />
@@ -814,6 +848,8 @@ export function IndividualSendDialog({
                         onChange={handleWaTemplateSelect}
                         placeholder={t('waTemplateStep.selectPlaceholder')}
                         emptyText={t('waTemplateStep.emptyText')}
+                        expandLabel={t('templatePicker.showFullMessage')}
+                        collapseLabel={t('templatePicker.showLess')}
                         portal={false}
                     />
                 )}
@@ -829,10 +865,36 @@ export function IndividualSendDialog({
             </div>
             {selectedWaTemplate && (
                 <div className="space-y-2">
-                    <Label>{t('waTemplateStep.templatePreviewLabel')}</Label>
-                    <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm">
-                        {selectedWaTemplate.bodyText}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Label>{t('waTemplateStep.templatePreviewLabel')}</Label>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {selectedWaTemplate.category && (
+                                <span className="rounded bg-primary-50 px-1.5 py-0.5 text-2xs text-primary-500">
+                                    {selectedWaTemplate.category}
+                                </span>
+                            )}
+                            {selectedWaTemplate.language && (
+                                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-2xs text-neutral-500">
+                                    {selectedWaTemplate.language}
+                                </span>
+                            )}
+                            {waHeaderKind && (
+                                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-2xs text-neutral-500">
+                                    {t('waTemplateStep.headerBadge', {
+                                        kind: t(`mediaKind.${waHeaderKind}`),
+                                    })}
+                                </span>
+                            )}
+                        </div>
                     </div>
+                    {/* No values yet — every placeholder shows the field it will be filled from. */}
+                    <WhatsAppTemplatePreview
+                        template={selectedWaTemplate}
+                        labels={waPreviewLabels}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        {t('waTemplateStep.previewHint')}
+                    </p>
                 </div>
             )}
         </div>
@@ -872,12 +934,13 @@ export function IndividualSendDialog({
     const renderVariableMappingStep = () => {
         if (variableKeys.length === 0) {
             return (
-                <div>
+                <div className="space-y-4">
                     {renderHeaderMediaField()}
-                    <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
                         <CheckCircle className="size-8" />
                         <p className="text-sm">{t('variableMappingStep.noVariables')}</p>
                     </div>
+                    {renderWaMessagePreview(t('variableMappingStep.livePreviewLabel'))}
                 </div>
             );
         }
@@ -966,6 +1029,9 @@ export function IndividualSendDialog({
                             </div>
                         );
                     })}
+                </div>
+                <div className="pt-4">
+                    {renderWaMessagePreview(t('variableMappingStep.livePreviewLabel'))}
                 </div>
             </div>
         );
@@ -1121,6 +1187,7 @@ export function IndividualSendDialog({
                         </div>
                     )}
                 </div>
+                {renderWaMessagePreview(t('reviewStep.messagePreviewLabel'))}
                 <Button className="w-full" onClick={handleSend} disabled={isSending}>
                     {isSending ? (
                         <>
@@ -1154,8 +1221,13 @@ export function IndividualSendDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-dialog-tall w-dialog-md overflow-y-auto overflow-x-hidden">
-                <DialogHeader>
+            {/* A column, not the base grid: the header, the step rail and the Back/Next bar hold
+                still while only the step's own content scrolls. Before this the whole dialog
+                scrolled, so opening the template list pushed Next out of sight and the list itself
+                was read through a letterbox. `min-h-dialog-md` stops the panel collapsing to the
+                height of a closed picker and jumping on every step. */}
+            <DialogContent className="flex max-h-dialog-tall min-h-dialog-md w-dialog-lg flex-col overflow-hidden">
+                <DialogHeader className="shrink-0">
                     <DialogTitle>
                         {t('dialogTitle', {
                             channelLabel:
@@ -1178,10 +1250,13 @@ export function IndividualSendDialog({
                 </DialogHeader>
 
                 {renderStepIndicator()}
-                {renderStep()}
+
+                {/* min-h-0: without it a flex child refuses to shrink below its content and the
+                    scroll lands on the dialog again. */}
+                <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">{renderStep()}</div>
 
                 {!sendResult && (
-                    <div className="mt-6 flex items-center justify-between">
+                    <div className="mt-4 flex shrink-0 items-center justify-between border-t pt-4">
                         <div>
                             {step > 1 && (
                                 <Button variant="ghost" size="sm" onClick={handleBack}>

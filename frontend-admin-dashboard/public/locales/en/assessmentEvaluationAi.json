@@ -16,7 +16,7 @@
         "loading": "Loading..."
     },
     "nav": {
-        "heading": "Evaluation Progress"
+        "heading": "AI evaluation"
     },
     "error": {
         "title": "Error Loading Progress",
@@ -51,12 +51,14 @@
     "filters": {
         "all": "All",
         "completed": "Completed",
-        "pending": "Pending"
+        "pending": "Pending",
+        "ariaLabel": "Filter questions"
     },
     "answerSheet": {
         "loading": "Loading...",
         "button": "Answer Sheet",
-        "panelTitle": "Student Answer Sheet"
+        "panelTitle": "Student Answer Sheet",
+        "close": "Close"
     },
     "banners": {
         "aiDrafted": "AI has drafted this evaluation. Review each question, adjust any marks or feedback, then release the result.",

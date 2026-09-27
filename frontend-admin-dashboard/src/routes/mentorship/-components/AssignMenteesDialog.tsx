@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -24,6 +25,7 @@ export function AssignMenteesDialog({
     open,
     onOpenChange,
 }: AssignMenteesDialogProps) {
+    const { t } = useTranslation('mentorshipAssignMenteesDialog');
     const [selected, setSelected] = useState<StudentRow[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const assign = useAssignMentees();
@@ -39,7 +41,7 @@ export function AssignMenteesDialog({
 
     const submit = async () => {
         if (selected.length === 0) {
-            toast.error('Select at least one student');
+            toast.error(t('selectAtLeastOneStudent'));
             return;
         }
         setSubmitting(true);
@@ -62,7 +64,7 @@ export function AssignMenteesDialog({
                 feature: 'mentorship',
                 tags: { 'mentorship.action': 'assign-mentees' },
                 extra: { mentorId: mentor.id, studentCount: selected.length },
-                fallbackMessage: 'Failed to assign students',
+                fallbackMessage: t('assignmentResultFailed'),
             });
         } finally {
             setSubmitting(false);
@@ -71,7 +73,9 @@ export function AssignMenteesDialog({
 
     return (
         <MyDialog
-            heading={`Assign students to ${mentor.display_name || mentor.name || 'mentor'}`}
+            heading={t('assignHeading', {
+                mentorName: mentor.display_name || mentor.name || t('mentorFallback'),
+            })}
             open={open}
             onOpenChange={(o) => {
                 if (!o) reset();
@@ -81,8 +85,10 @@ export function AssignMenteesDialog({
             footer={
                 <div className="flex w-full flex-wrap items-center justify-between gap-2">
                     <span className="text-caption text-neutral-500">
-                        {selected.length} selected
-                        {slots != null ? ` · ${slots} of ${mentor.max_mentees} seats free` : ''}
+                        {t('selectedCount', { count: selected.length })}
+                        {slots != null
+                            ? t('seatsFreeSuffix', { slots, max: mentor.max_mentees })
+                            : ''}
                     </span>
                     <div className="flex gap-2">
                         <MyButton
@@ -91,7 +97,7 @@ export function AssignMenteesDialog({
                             scale="medium"
                             onClick={() => onOpenChange(false)}
                         >
-                            Cancel
+                            {t('cancel')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -100,26 +106,19 @@ export function AssignMenteesDialog({
                             onClick={submit}
                             disable={submitting}
                             title={
-                                selected.length === 0
-                                    ? 'Select at least one student below'
-                                    : undefined
+                                selected.length === 0 ? t('selectAtLeastOneBelow') : undefined
                             }
                         >
                             {submitting
-                                ? 'Assigning…'
-                                : selected.length > 1
-                                  ? `Assign ${selected.length} students`
-                                  : 'Assign student'}
+                                ? t('assigning')
+                                : t('assignStudent', { count: selected.length })}
                         </MyButton>
                     </div>
                 </div>
             }
         >
             <div className="flex flex-col gap-3">
-                <p className="text-caption text-neutral-500">
-                    Filter by batch to take a whole class at once, or search by name. Everything you
-                    tick stays selected as you move between batches.
-                </p>
+                <p className="text-caption text-neutral-500">{t('filterHelp')}</p>
                 {overCapacity && (
                     <p className="flex items-start gap-1.5 rounded-lg border border-warning-300 bg-warning-50 p-3 text-caption text-neutral-700">
                         <WarningCircle
@@ -128,20 +127,9 @@ export function AssignMenteesDialog({
                             className="mt-0.5 shrink-0 text-warning-600"
                         />
                         <span>
-                            {slots === 0 ? (
-                                <>
-                                    This mentor is already at their limit of {mentor.max_mentees}.
-                                    Nothing here will be assigned — raise their capacity, or spread
-                                    the group across mentors with Bulk assign.
-                                </>
-                            ) : (
-                                <>
-                                    This mentor has {slots} {slots === 1 ? 'seat' : 'seats'} left.
-                                    The first {slots} will be assigned and the rest skipped — raise
-                                    their capacity, or spread the group across mentors with Bulk
-                                    assign.
-                                </>
-                            )}
+                            {slots === 0
+                                ? t('atLimit', { max: mentor.max_mentees })
+                                : t('seatsLeft', { count: slots })}
                         </span>
                     </p>
                 )}

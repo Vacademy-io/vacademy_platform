@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDo
 import vacademy.io.common.institute.entity.Institute;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -18,7 +19,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -40,7 +40,9 @@ import java.util.Set;
  * <p><b>The rules, per role.</b> In order, first match wins:
  * <ol>
  *   <li>The row the admin flagged {@code is_primary}, if ACTIVE — a deliberate
- *       choice, so it overrides even a working incumbent.</li>
+ *       choice, so it overrides even a working incumbent. Unless legacy data
+ *       flagged two rows for the same role, in which case there is no choice to
+ *       honour and a live incumbent is kept instead of a coin flip.</li>
  *   <li>The stored column, if it names a configured host that is ACTIVE — leave it
  *       alone. Without this the columns would flap between equally-live domains
  *       every time an admin opened the settings page.</li>
@@ -126,7 +128,41 @@ public class PortalUrlReconciler {
     public final class ActivationProbe {
         private final Map<String, String> statusCache = new HashMap<>();
 
+        /**
+         * Projects whose custom domains have been listed in full. A host missing
+         * from the cache for one of these is <em>known</em> to be unattached, so it
+         * must not trigger a lookup that can only confirm that.
+         */
+        private final Set<String> enumeratedProjects = new LinkedHashSet<>();
+
         private ActivationProbe() {
+        }
+
+        /**
+         * Records Cloudflare's complete custom-domain listing for a Pages project,
+         * so every host on it — and every host absent from it — is answered without
+         * a further round trip. Used by the reconcile sweep, which asks about every
+         * configured host on the platform and would otherwise pay one HTTP call per
+         * routing row.
+         *
+         * @param statusByHost host → raw status, as returned by
+         *                     {@code CloudflareService.listPagesCustomDomains}. Pass
+         *                     null (a listing that failed) to leave the project
+         *                     un-enumerated and fall back to per-host lookups; an
+         *                     incomplete listing recorded as complete would read as
+         *                     "nothing is attached" and quietly stop all adoption.
+         */
+        public void seedProjectListing(String project, Map<String, String> statusByHost) {
+            if (!StringUtils.hasText(project) || statusByHost == null) {
+                return;
+            }
+            statusByHost.forEach((host, status) -> {
+                String normalized = normalizeHost(host);
+                if (normalized != null) {
+                    statusCache.put(project + "|" + normalized, status);
+                }
+            });
+            enumeratedProjects.add(project);
         }
 
         /**
@@ -160,6 +196,10 @@ public class PortalUrlReconciler {
             // would be re-fetched on every consultation. The unattached host is
             // exactly the one a status page asks about twice.
             if (!statusCache.containsKey(key)) {
+                if (enumeratedProjects.contains(project)) {
+                    // The full listing was seeded and this host was not in it.
+                    return null;
+                }
                 statusCache.put(key, cloudflareService.getPagesCustomDomainStatus(project, normalized));
             }
             return statusCache.get(key);
@@ -265,15 +305,41 @@ public class PortalUrlReconciler {
             List<InstituteDomainRouting> routings, ActivationProbe probe, List<String> warnings) {
 
         // Rule 1 — the admin's flagged choice, once it serves.
-        Optional<String> primary = primaryHostForRole(routings, role);
-        if (primary.isPresent()) {
-            String host = primary.get();
-            Activation activation = probe.of(host, role);
-            if (activation == Activation.ACTIVE) {
+        List<String> primaries = primaryHostsForRole(routings, role);
+        if (!primaries.isEmpty()) {
+            // "At most one primary per role token" is enforced on write, but legacy
+            // rows violate it — three institutes did as of 2026-09-09, courtesy of a
+            // V486 backfill row plus a later setup flagging a second host. When the
+            // invariant is broken there is no admin choice to honour, only a tie, and
+            // breaking it by sort order demotes whichever branded host happens to sort
+            // late: EduStream's teacher portal would have moved teacher.edustream.ae →
+            // admin.edustream.ae, and Brahm Varchas' learners would have been mailed
+            // brahmvarchas.vacademy.io instead of learning.brahmvarchas.org. The
+            // column already names one of the tied hosts, and that is real evidence of
+            // intent where alphabetical order is none — so a live incumbent holds.
+            if (primaries.size() > 1
+                    && StringUtils.hasText(storedHost)
+                    && primaries.contains(storedHost)
+                    && probe.of(storedHost, role) == Activation.ACTIVE) {
+                warnings.add("More than one " + role.toLowerCase(Locale.ROOT)
+                        + " domain is marked as the portal URL (" + String.join(", ", primaries)
+                        + "). Keeping " + storedHost
+                        + ", which is the one currently in use — clear the extra stars to change it.");
+                return null;
+            }
+            // Prefer a primary that actually serves over one that merely sorts first;
+            // with the invariant intact there is only ever one to choose from.
+            String host = primaries.stream()
+                    .filter(h -> probe.of(h, role) == Activation.ACTIVE)
+                    .findFirst()
+                    .orElse(null);
+            if (host != null) {
                 return host;
             }
-            warnings.add(host + " is marked as the " + role.toLowerCase(Locale.ROOT)
-                    + " portal URL but is not serving yet (" + activation.name().toLowerCase(Locale.ROOT)
+            String stalled = primaries.get(0);
+            warnings.add(stalled + " is marked as the " + role.toLowerCase(Locale.ROOT)
+                    + " portal URL but is not serving yet ("
+                    + probe.of(stalled, role).name().toLowerCase(Locale.ROOT)
                     + "). It will be applied automatically once Cloudflare activates it; "
                     + "until then links keep using the current portal URL.");
             // Fall through: a pending choice must not block rules 2-4 from healing a
@@ -328,22 +394,23 @@ public class PortalUrlReconciler {
     }
 
     /**
-     * The one host flagged {@code is_primary} for {@code role}. The
-     * "at most one primary per role token" invariant is enforced on write in
-     * {@code WhiteLabelService}; if legacy data violates it, the alphabetically
-     * first wins so the outcome is at least deterministic.
+     * The hosts flagged {@code is_primary} for {@code role}, alphabetical so the
+     * outcome is deterministic. Normally one; {@code choose} handles the legacy
+     * rows that break the "at most one primary per role token" invariant enforced
+     * on write in {@code WhiteLabelService}.
      */
-    private Optional<String> primaryHostForRole(List<InstituteDomainRouting> routings, String role) {
+    private List<String> primaryHostsForRole(List<InstituteDomainRouting> routings, String role) {
         if (routings == null) {
-            return Optional.empty();
+            return List.of();
         }
         return routings.stream()
                 .filter(InstituteDomainRouting::isPrimary)
                 .filter(r -> servesRole(r, role))
                 .map(PortalUrlReconciler::hostOf)
                 .filter(StringUtils::hasText)
+                .distinct()
                 .sorted()
-                .findFirst();
+                .toList();
     }
 
     /** True when the row's comma-separated role list contains {@code role}. */
@@ -461,6 +528,28 @@ public class PortalUrlReconciler {
             }
         }
         return trimToNull(adminPagesProject);
+    }
+
+    /**
+     * The distinct Pages projects configured on this deployment — at most the
+     * learner one and the admin one, and empty when Pages provisioning is off.
+     * Everything {@link #pagesProjectForRole} can return comes from here, so a
+     * caller that lists all of these has covered every host the probe can be asked
+     * about.
+     */
+    public Set<String> configuredPagesProjects() {
+        // Arrays.asList, not List.of: List.of throws on a null element, and these
+        // fields are null whenever Spring has not injected them — which is every
+        // unit test that builds this class directly, and any deployment whose
+        // property is bound to a literal null rather than the empty default.
+        Set<String> projects = new LinkedHashSet<>();
+        for (String p : Arrays.asList(learnerPagesProject, adminPagesProject)) {
+            String trimmed = trimToNull(p);
+            if (trimmed != null) {
+                projects.add(trimmed);
+            }
+        }
+        return projects;
     }
 
     /** The {@code <project>.pages.dev} CNAME target for a role, or null. */

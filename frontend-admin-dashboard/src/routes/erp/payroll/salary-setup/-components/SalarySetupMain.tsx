@@ -1,4 +1,5 @@
 import { Lock } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useHrRole } from '@/hooks/use-hr-role';
@@ -14,6 +15,7 @@ import { AssignTab } from './AssignTab';
  * can't happen without a template.
  */
 export const SalarySetupMain = () => {
+    const { t } = useTranslation('erpSalarySetupMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
 
     if (!isHrStaff) {
@@ -23,11 +25,10 @@ export const SalarySetupMain = () => {
                     <span className="flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
                         <Lock size={20} />
                     </span>
-                    <CardTitle className="text-title">Salary setup is restricted</CardTitle>
+                    <CardTitle className="text-title">{t('restricted.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-body text-neutral-600">
-                    Salary structures and pay components are visible to HR roles only. Ask an
-                    administrator to grant you HR Manager or HR Admin access in this institute.
+                    {t('restricted.description')}
                 </CardContent>
             </Card>
         );
@@ -35,17 +36,13 @@ export const SalarySetupMain = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="max-w-3xl text-body text-neutral-600">
-                Define what your institute pays, how each element is calculated, and which employee
-                sits on which structure. Payroll reads this configuration every time it runs — a
-                change here affects the next run, never a run that has already been processed.
-            </p>
+            <p className="max-w-3xl text-body text-neutral-600">{t('intro')}</p>
 
             <Tabs defaultValue="components" className="flex flex-col gap-2">
                 <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-                    <TabsTrigger value="components">Components</TabsTrigger>
-                    <TabsTrigger value="templates">Templates</TabsTrigger>
-                    <TabsTrigger value="assign">Assign</TabsTrigger>
+                    <TabsTrigger value="components">{t('tabs.components')}</TabsTrigger>
+                    <TabsTrigger value="templates">{t('tabs.templates')}</TabsTrigger>
+                    <TabsTrigger value="assign">{t('tabs.assign')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="components" className="mt-4">

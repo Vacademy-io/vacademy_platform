@@ -34,6 +34,7 @@ import { StudentWorkflows } from './student-workflows/student-workflows';
 import { StudentParentProfile } from './student-parent/student-parent-profile';
 import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
+import { StudentAttribution } from './student-attribution/student-attribution';
 import { LeadMeetingsSection } from '@/components/shared/leads/lead-meetings-section';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
@@ -723,6 +724,18 @@ export const StudentSidebar = ({
                         row (campaign-users / recent-leads); manage-students
                         rows don't carry the attached metadata. */}
                     {category === 'lead' && <LeadFormResponseCard />}
+                    {/* Where this lead came from. The campaign lives in utm_attribution,
+                        not in the form answers, so the card above cannot show it — without
+                        this the Lead tab has no campaign anywhere on it. Renders nothing
+                        when the lead arrived untagged, same as on the learner Overview. */}
+                    {category === 'lead' && (
+                        <StudentAttribution
+                            userId={selectedStudent?.user_id}
+                            instituteId={instituteDetails?.id}
+                            email={selectedStudent?.email}
+                            mobileNumber={selectedStudent?.mobile_number}
+                        />
+                    )}
                     {/* Meetings linked to this lead (by response id / user id / email) —
                         renders alongside the form-response card on the Lead tab. */}
                     {category === 'lead' && <LeadMeetingsSection className="my-3" />}

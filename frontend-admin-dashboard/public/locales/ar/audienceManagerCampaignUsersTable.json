@@ -91,7 +91,8 @@
         "bulkActions": "إجراءات جماعية",
         "assignLeads": "تعيين العملاء المحتملين",
         "unassignLeads": "إلغاء تعيين العملاء المحتملين",
-        "deleteLeads": "حذف العملاء المحتملين"
+        "deleteLeads": "حذف العملاء المحتملين",
+        "sendMessage": "إرسال رسالة"
     },
     "emptyState": {
         "errorTitle": "تعذَّر تحميل المستجيبين",

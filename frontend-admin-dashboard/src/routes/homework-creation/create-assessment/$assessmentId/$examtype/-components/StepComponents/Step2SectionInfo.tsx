@@ -1,7 +1,8 @@
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { resolveSubjectName } from '@/services/subject-names';
 import React, { MutableRefObject, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFieldArray, UseFormReturn } from 'react-hook-form';
+import { UseFormReturn } from 'react-hook-form';
 import { PencilSimpleLine, TrashSimple, X } from '@phosphor-icons/react';
 import {
     AlertDialog,
@@ -37,7 +38,6 @@ import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { Route } from '../..';
 import { useQuestionsForSection } from '../../-hooks/getQuestionsDataForSection';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { calculateAveragePenalty } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import Step2GenerateQuestionsFromAIHomework from './-components/Step2GenerateQuestionsFromAIHomework';
@@ -49,11 +49,14 @@ export const Step2SectionInfo = ({
     index,
     currentStep,
     oldData,
+    onDelete,
 }: {
     form: UseFormReturn<SectionFormType>;
     index: number;
     currentStep: number;
     oldData: MutableRefObject<SectionFormType>;
+    /** Removes this section — the parent's field array owns the list. */
+    onDelete: (index: number) => void;
 }) => {
     const { t } = useTranslation('homeworkCreationStep2SectionInfo');
     const { assessmentId, examtype } = Route.useParams();
@@ -71,13 +74,17 @@ export const Step2SectionInfo = ({
 
     // Get subject name from Step 1 context (Zustand store or saved assessment details)
     const basicInfoStore = useBasicInfoStore();
-    const defaultSubject =
+    // Step 1 stores the subject *id*; the question-paper form below is keyed by name, so
+    // resolve it here. Unresolvable ids (a subject whose course was deleted, or the "N/A"
+    // sentinel older saves wrote) yield '', which leaves the paper's own subject picker
+    // visible instead of pinning it to a bogus value.
+    const defaultSubject = resolveSubjectName(
+        instituteDetails?.subjects,
+        {},
         basicInfoStore.testCreation?.subject ||
-        getSubjectNameById(
-            instituteDetails?.subjects || [],
-            assessmentDetails?.[0]?.saved_data?.subject_selection ?? ''
-        ) ||
-        '';
+            assessmentDetails?.[0]?.saved_data?.subject_selection ||
+            ''
+    );
 
     const adaptiveMarking = useQuestionsForSection(
         assessmentId,
@@ -96,14 +103,9 @@ export const Step2SectionInfo = ({
     const { setValue, getValues, control, watch } = form;
     const allSections = getValues('section');
 
-    const { remove } = useFieldArray({
-        control,
-        name: 'section', // Matches the key in defaultValues
-    });
-
     const handleDeleteSection = (e: React.MouseEvent, index: number) => {
         e.stopPropagation();
-        remove(index);
+        onDelete(index);
     };
 
     useEffect(() => {

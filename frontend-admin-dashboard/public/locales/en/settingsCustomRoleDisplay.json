@@ -46,7 +46,8 @@
         "canEditCourseStructure": "Can edit subject / module / chapter",
         "canDeleteCourseStructure": "Can delete subject / module / chapter",
         "showBulkUpload": "Show Bulk Upload (ZIP) button",
-        "canDeleteCourse": "Can delete course"
+        "canDeleteCourse": "Can delete course",
+        "requireCourseApproval": "Require admin approval before publishing new courses (Submit for Review)"
     },
     "authoredCoursesCard": {
         "title": "Authored Courses Card",
@@ -69,7 +70,7 @@
     },
     "courseListTabs": {
         "title": "Course List Tabs",
-        "description": "Configure visible tabs, their order, and the default tab. Note: Course In Review is always visible for Teachers; Course Approval is hidden."
+        "description": "Configure visible tabs, their order, and the default tab. Course Approval is admin-only and stays hidden for this role."
     },
     "courseDetailsTabs": {
         "title": "Course Details Tabs",
@@ -86,7 +87,7 @@
         "showSettings": "Show Settings",
         "showSettingsDescription": "Hides the Settings gear in the sidebar rail. You can still open Settings directly at /settings.",
         "showAssistDock": "Show Right Side Rail",
-        "showAssistDockDescription": "Guides, Assist, Issues, What's new, Explore & Admin App. Hidden for this role by default."
+        "showAssistDockDescription": "Guides, Training, Assist, Issues, What's new, Explore & Admin App. Hidden for this role by default."
     },
     "sidebarCategories": {
         "title": "Sidebar Categories",
@@ -151,7 +152,8 @@
         "allowViewPassword": "Allow Viewing Learner Password",
         "allowEditCredentials": "Allow Editing Learner Username & Password",
         "allowSendResetPasswordMail": "Allow Sending Reset Password Mail",
-        "showApprovalToggle": "Show Approval Requests toggle on Learners list"
+        "showApprovalToggle": "Show Approval Requests toggle on Learners list",
+        "allowDeletePayments": "Allow permanently deleting payments & invoices (cannot be undone)"
     },
     "dashboardWidgets": {
         "title": "Dashboard Widgets",

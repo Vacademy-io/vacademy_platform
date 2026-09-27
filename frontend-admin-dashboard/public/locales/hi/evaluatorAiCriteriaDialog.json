@@ -1,0 +1,16 @@
+{
+    "viewEditCriteria": "मानदंड देखें/संपादित करें",
+    "markingCriteriaForMarks_one": "{{count}} अंक के लिए अंकन मानदंड",
+    "markingCriteriaForMarks_other": "{{count}} अंकों के लिए अंकन मानदंड",
+    "removeAll": "सभी हटाएं",
+    "selectAll": "सभी चुनें",
+    "selectedCriteria": "चयनित मानदंड:",
+    "columnCriteria": "मानदंड",
+    "columnMarks": "अंक",
+    "columnAction": "कार्रवाई",
+    "noCriteriaSelected": "कोई मानदंड चयनित नहीं है, कृपया उपलब्ध सूची से मानदंड चुनें",
+    "customCriteria": "कस्टम मानदंड",
+    "addCustomCriteria": "कस्टम मानदंड जोड़ें:",
+    "enterCriteriaDescription": "मानदंड विवरण दर्ज करें",
+    "predefinedCriteria": "पूर्वनिर्धारित मानदंड"
+}

@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
@@ -13,14 +15,15 @@ import { useSaveDepartment } from '../-hooks/use-hr-people';
 import { NONE_VALUE, type SelectOption } from './EmployeeFields';
 import { HrTextField, HrTextareaField } from './HrFormFields';
 
-const departmentSchema = z.object({
-    name: z.string().min(1, 'Give the department a name'),
-    code: z.string(),
-    parent_id: z.string(),
-    description: z.string(),
-});
+const buildDepartmentSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().min(1, t('errors.nameRequired')),
+        code: z.string(),
+        parent_id: z.string(),
+        description: z.string(),
+    });
 
-type DepartmentFormValues = z.infer<typeof departmentSchema>;
+type DepartmentFormValues = z.infer<ReturnType<typeof buildDepartmentSchema>>;
 
 interface DepartmentFormDialogProps {
     open: boolean;
@@ -37,8 +40,10 @@ export function DepartmentFormDialog({
     department,
     departments,
 }: DepartmentFormDialogProps) {
+    const { t } = useTranslation('erpDepartmentFormDialog');
     const isEdit = !!department?.id;
     const saveDepartment = useSaveDepartment();
+    const departmentSchema = buildDepartmentSchema(t);
 
     const form = useForm<DepartmentFormValues>({
         resolver: zodResolver(departmentSchema),
@@ -66,7 +71,7 @@ export function DepartmentFormDialog({
     // A department cannot be its own parent, and offering it would create a cycle.
     const parentOptions = useMemo<SelectOption[]>(
         () => [
-            { _id: NONE_VALUE, value: NONE_VALUE, label: 'No parent (top level)' },
+            { _id: NONE_VALUE, value: NONE_VALUE, label: t('noParent') },
             ...departments
                 .filter((row) => !!row.id && row.id !== department?.id)
                 .map((row) => ({
@@ -75,7 +80,7 @@ export function DepartmentFormDialog({
                     label: row.name || (row.id as string),
                 })),
         ],
-        [departments, department?.id]
+        [departments, department?.id, t]
     );
 
     const onSubmit = async (values: DepartmentFormValues) => {
@@ -87,21 +92,21 @@ export function DepartmentFormDialog({
                 parent_id: values.parent_id === NONE_VALUE ? undefined : values.parent_id,
                 description: values.description.trim() || undefined,
             });
-            toast.success(isEdit ? 'Department updated' : 'Department added');
+            toast.success(isEdit ? t('toasts.updated') : t('toasts.added'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-people',
                 tags: { 'erp.action': isEdit ? 'update-department' : 'create-department' },
                 extra: { departmentId: department?.id },
-                fallbackMessage: 'Could not save this department',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit department' : 'Add department'}
+            heading={isEdit ? t('editHeading') : t('addHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-lg"
@@ -113,16 +118,16 @@ export function DepartmentFormDialog({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Add department'}
+                        {isEdit ? t('saveChanges') : t('addHeading')}
                     </MyButton>
                 </>
             }
@@ -136,29 +141,29 @@ export function DepartmentFormDialog({
                     <HrTextField
                         control={form.control}
                         name="name"
-                        label="Name"
-                        placeholder="e.g. Academics"
+                        label={t('fields.nameLabel')}
+                        placeholder={t('fields.namePlaceholder')}
                         required
                     />
                     <HrTextField
                         control={form.control}
                         name="code"
-                        label="Code"
-                        placeholder="e.g. ACAD"
-                        description="Short code used in reports and payroll exports."
+                        label={t('fields.codeLabel')}
+                        placeholder={t('fields.codePlaceholder')}
+                        description={t('fields.codeHelp')}
                     />
                     <SelectField
                         control={form.control}
                         name="parent_id"
-                        label="Parent department"
+                        label={t('fields.parentLabel')}
                         options={parentOptions}
                         className="w-full sm:w-full"
                     />
                     <HrTextareaField
                         control={form.control}
                         name="description"
-                        label="Description"
-                        placeholder="What this department is responsible for"
+                        label={t('fields.descriptionLabel')}
+                        placeholder={t('fields.descriptionPlaceholder')}
                     />
                 </form>
             </Form>

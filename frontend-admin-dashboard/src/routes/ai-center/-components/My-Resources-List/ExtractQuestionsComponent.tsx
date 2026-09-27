@@ -30,7 +30,13 @@ const ExtractQuestionsComponent = ({ fileId }: { fileId: string }) => {
             taskName: string;
             taskId?: string;
         }) => {
-            return handleGenerateAssessmentQuestions(pdfId, userPrompt, taskName, taskId || '');
+            return handleGenerateAssessmentQuestions(
+                pdfId,
+                userPrompt,
+                taskName,
+                taskId || '',
+                'extract'
+            );
         },
         onSuccess: () => {
             setPrompt('');
@@ -76,7 +82,6 @@ const ExtractQuestionsComponent = ({ fileId }: { fileId: string }) => {
                             inputPlaceholder={t('dialog.promptPlaceholder')}
                             input={prompt}
                             onChangeFunction={(e) => setPrompt(e.target.value)}
-                            required={true}
                             label={t('dialog.promptLabel')}
                             className="w-full"
                         />
@@ -98,7 +103,6 @@ const ExtractQuestionsComponent = ({ fileId }: { fileId: string }) => {
                                 layoutVariant="default"
                                 className="text-sm"
                                 onClick={handleExtractQuestions}
-                                disable={!prompt}
                             >
                                 {t('dialog.extractButton')}
                             </MyButton>

@@ -114,6 +114,10 @@ export interface QuestionResponse {
     evaluation_type: string;
     explanation_text: ExplanationText;
     explanation_text_data?: ExplanationText;
+    /** Where a question came from (e.g. KNOWLEDGE_BASE) — assessment_service V42. */
+    source_type?: string | null;
+    /** JSON provenance for KNOWLEDGE_BASE questions: kb_id, generation_id, marks, section, page. */
+    source_meta?: string | null;
     new_question?: boolean;
     default_question_time_mins: number | null;
     options: OptionText[];

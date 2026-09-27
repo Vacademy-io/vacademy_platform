@@ -1,201 +1,78 @@
-export const marking_10 = {
-    criteria: [
-        {
-            name: 'complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 200–250 words or more and no off-topic/irrelevant content',
-            marks: 10,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 200–250 words or more and no off-topic/irrelevant content',
-            marks: 8,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 150-200 words and no off-topic/irrelevant content',
-            marks: 7,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 100-150 words and no off-topic/irrelevant content',
-            marks: 6,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words with some off-topic/irrelevant content',
-            marks: 5,
-        },
-    ],
-};
+import type { TFunction } from 'i18next';
 
-export const marking_1 = {
-    criteria: [
-        {
-            name: 'complete answer including definition, explanation, examples, having clear structure/presentation and correct grammar/language with a word count of 20-40 words or more and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including definition, explanation, examples, having no clear structure/presentation and incorrect grammar/language with a word count of 20-40 words or more and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 10-20words and no off-topic/irrelevant content',
-            marks: 0.5,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and some off-topic/irrelevant content',
-            marks: 0,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and all off-topic/irrelevant content',
-            marks: 0,
-        },
-    ],
-};
-
-export const marking_2 = {
-    criteria: [
-        {
-            name: 'complete answer including definition, explanation, examples, having clear structure/presentation and correct grammar/language with a word count of 40-60 words or more and no off-topic/irrelevant content',
-            marks: 2,
-        },
-        {
-            name: 'answer including definition, explanation, examples, having no clear structure/presentation and incorrect grammar/language with a word count of 40-60 words or more and no off-topic/irrelevant content',
-            marks: 1.5,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 30-40 words and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 30-40 words and some off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including definition, with or without a clear structure/presentation and correct grammar/language having a word count of 20-30 words and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and all off-topic/irrelevant content',
-            marks: 0,
-        },
-    ],
-};
-
-export const marking_8 = {
-    criteria: [
-        {
-            name: 'complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 150-200 words or more and no off-topic/irrelevant content',
-            marks: 8,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 150-200 words or more and no off-topic/irrelevant content',
-            marks: 7,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 120-150 words and no off-topic/irrelevant content',
-            marks: 5,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 100-150 words and some off-topic/irrelevant content',
-            marks: 4,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and no off-topic/irrelevant content',
-            marks: 3,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and some off-topic/irrelevant content',
-            marks: 2,
-        },
-        {
-            name: 'answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 50-100 words and no off-topic/irrelevant content',
-            marks: 1.5,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 50 words and no off-topic/irrelevant content',
-            marks: 0.5,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 50 words and some/all off-topic/irrelevant content',
-            marks: 0,
-        },
-    ],
-};
-
-export const marking_5 = {
-    criteria: [
-        {
-            name: 'complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 100-150 words or more and no off-topic/irrelevant content',
-            marks: 5,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 100-150 words or more and no off-topic/irrelevant content',
-            marks: 4.5,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words and no off-topic/irrelevant content',
-            marks: 4,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 80-100 words and some off-topic/irrelevant content',
-            marks: 3,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-80 words and no off-topic/irrelevant content',
-            marks: 2,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 50-80 words and some off-topic/irrelevant content',
-            marks: 1.5,
-        },
-        {
-            name: 'answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 30-50 words and no off-topic/irrelevant content',
-            marks: 1.5,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20-50 words and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 30 words and some/all off-topic/irrelevant content',
-            marks: 0,
-        },
-    ],
-};
-
-export const marking_4 = {
-    criteria: [
-        {
-            name: 'complete answer including introduction, definition, explanation, examples, conclusion having clear structure/presentation and correct grammar/language with a word count of 80-100 words or more and no off-topic/irrelevant content',
-            marks: 4,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, examples, conclusion having no clear structure/presentation and incorrect grammar/language with a word count of 80-100 words or more and no off-topic/irrelevant content',
-            marks: 3,
-        },
-        {
-            name: 'answer including introduction, definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 60-80 words and no off-topic/irrelevant content',
-            marks: 2.5,
-        },
-        {
-            name: 'answer including definition, explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 60-80 words and some off-topic/irrelevant content',
-            marks: 2,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 40-60 words and no off-topic/irrelevant content',
-            marks: 1.5,
-        },
-        {
-            name: 'answer including explanation, with or without a clear structure/presentation and correct grammar/language having a word count of 40-60 words and some off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including definition and example, with or without a clear structure/presentation and correct grammar/language having a word count of 20-40 words and no off-topic/irrelevant content',
-            marks: 1,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20-40 words and no off-topic/irrelevant content',
-            marks: 0.5,
-        },
-        {
-            name: 'answer including explanation with or without a clear structure/presentation and correct grammar/language having a word count of less than 20 words and some/all off-topic/irrelevant content',
-            marks: 0,
-        },
-    ],
-};
+/**
+ * These marking-scheme criteria lists are shown as selectable rows inside
+ * CriteriaDialog.tsx (their only consumer in this codebase). Converted to a
+ * `buildMarkingCriteria(t)` factory per the i18n rollout's module-scope-constant
+ * convention: CriteriaDialog calls this with its own `t` instead of importing
+ * static objects.
+ */
+export const buildMarkingCriteria = (t: TFunction) => ({
+    marking_10: {
+        criteria: [
+            { name: t('marking10.criterion1'), marks: 10 },
+            { name: t('marking10.criterion2'), marks: 8 },
+            { name: t('marking10.criterion3'), marks: 7 },
+            { name: t('marking10.criterion4'), marks: 6 },
+            { name: t('marking10.criterion5'), marks: 5 },
+        ],
+    },
+    marking_1: {
+        criteria: [
+            { name: t('marking1.criterion1'), marks: 1 },
+            { name: t('marking1.criterion2'), marks: 1 },
+            { name: t('marking1.criterion3'), marks: 0.5 },
+            { name: t('marking1.criterion4'), marks: 0 },
+            { name: t('marking1.criterion5'), marks: 0 },
+        ],
+    },
+    marking_2: {
+        criteria: [
+            { name: t('marking2.criterion1'), marks: 2 },
+            { name: t('marking2.criterion2'), marks: 1.5 },
+            { name: t('marking2.criterion3'), marks: 1 },
+            { name: t('marking2.criterion4'), marks: 1 },
+            { name: t('marking2.criterion5'), marks: 1 },
+            { name: t('marking2.criterion6'), marks: 0 },
+        ],
+    },
+    marking_8: {
+        criteria: [
+            { name: t('marking8.criterion1'), marks: 8 },
+            { name: t('marking8.criterion2'), marks: 7 },
+            { name: t('marking8.criterion3'), marks: 5 },
+            { name: t('marking8.criterion4'), marks: 4 },
+            { name: t('marking8.criterion5'), marks: 3 },
+            { name: t('marking8.criterion6'), marks: 2 },
+            { name: t('marking8.criterion7'), marks: 1.5 },
+            { name: t('marking8.criterion8'), marks: 0.5 },
+            { name: t('marking8.criterion9'), marks: 0 },
+        ],
+    },
+    marking_5: {
+        criteria: [
+            { name: t('marking5.criterion1'), marks: 5 },
+            { name: t('marking5.criterion2'), marks: 4.5 },
+            { name: t('marking5.criterion3'), marks: 4 },
+            { name: t('marking5.criterion4'), marks: 3 },
+            { name: t('marking5.criterion5'), marks: 2 },
+            { name: t('marking5.criterion6'), marks: 1.5 },
+            { name: t('marking5.criterion7'), marks: 1.5 },
+            { name: t('marking5.criterion8'), marks: 1 },
+            { name: t('marking5.criterion9'), marks: 0 },
+        ],
+    },
+    marking_4: {
+        criteria: [
+            { name: t('marking4.criterion1'), marks: 4 },
+            { name: t('marking4.criterion2'), marks: 3 },
+            { name: t('marking4.criterion3'), marks: 2.5 },
+            { name: t('marking4.criterion4'), marks: 2 },
+            { name: t('marking4.criterion5'), marks: 1.5 },
+            { name: t('marking4.criterion6'), marks: 1 },
+            { name: t('marking4.criterion7'), marks: 1 },
+            { name: t('marking4.criterion8'), marks: 0.5 },
+            { name: t('marking4.criterion9'), marks: 0 },
+        ],
+    },
+});

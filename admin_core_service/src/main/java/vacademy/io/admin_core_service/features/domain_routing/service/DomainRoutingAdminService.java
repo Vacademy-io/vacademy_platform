@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.domain_routing.dto.DomainRoutingUpsertRequest;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.domain_routing.enums.PhoneCountryGeoMode;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 
 import java.util.Optional;
@@ -136,11 +137,15 @@ public class DomainRoutingAdminService {
                                 .commaSeparatedPreferredCountry(
                                                 request.getCommaSeparatedPreferredCountry() == null ? null
                                                                 : request.getCommaSeparatedPreferredCountry().trim())
+                                .phoneCountryGeoMode(
+                                                PhoneCountryGeoMode.normalizeForStorage(
+                                                                request.getPhoneCountryGeoMode()))
                                 .hideInstituteName(request.getHideInstituteName())
                                 .logoWidthPx(request.getLogoWidthPx())
                                 .logoHeightPx(request.getLogoHeightPx())
                                 .stackNameBelowLogo(request.getStackNameBelowLogo())
                                 .applyNamingSetting(Boolean.TRUE.equals(request.getApplyNamingSetting()))
+                                .rootCatalogueTag(normalizeRootTag(request.getRootCatalogueTag()))
                                 .primary(Boolean.TRUE.equals(request.getPrimary()))
                                 .build();
                 return repository.save(entity);
@@ -206,6 +211,19 @@ public class DomainRoutingAdminService {
                         existing.setCommaSeparatedPreferredCountry(
                                         request.getCommaSeparatedPreferredCountry() == null ? null
                                                         : request.getCommaSeparatedPreferredCountry().trim());
+                        // Keep on null, like subOrgId and primary below, rather than
+                        // blanking. The white-label wizard is the only thing that can set
+                        // this, and it round-trips through THIS method — so a caller that
+                        // predates the field (the generic CRUD, a script, a stale frontend
+                        // bundle saving an unrelated change) would otherwise silently reset
+                        // a portal's chosen mode by simply not mentioning it. Nothing is
+                        // lost: clearing to null and choosing INSTITUTE_FIRST mean the same
+                        // thing, and the wizard always sends a concrete value.
+                        if (StringUtils.hasText(request.getPhoneCountryGeoMode())) {
+                                existing.setPhoneCountryGeoMode(
+                                                PhoneCountryGeoMode.normalizeForStorage(
+                                                                request.getPhoneCountryGeoMode()));
+                        }
                         existing.setHideInstituteName(request.getHideInstituteName());
                         existing.setLogoWidthPx(request.getLogoWidthPx());
                         existing.setLogoHeightPx(request.getLogoHeightPx());
@@ -217,6 +235,11 @@ public class DomainRoutingAdminService {
                         // silently demote the row the white-label wizard chose as the portal URL.
                         if (request.getPrimary() != null) {
                                 existing.setPrimary(request.getPrimary());
+                        }
+                        // Same contract as primary: absent means untouched, so a caller that
+                        // predates the field cannot silently un-mount a root catalogue.
+                        if (request.getRootCatalogueTag() != null) {
+                                existing.setRootCatalogueTag(normalizeRootTag(request.getRootCatalogueTag()));
                         }
                         return repository.save(existing);
                 });
@@ -233,5 +256,12 @@ public class DomainRoutingAdminService {
                         throw new IllegalArgumentException(
                                         "All fields domain, subdomain, role, instituteId are required");
                 }
+        }
+
+        /** Trim, strip any leading slash, and turn blank into null (= not mounted). */
+        private static String normalizeRootTag(String raw) {
+                if (raw == null) return null;
+                String t = raw.trim().replaceFirst("^/+", "");
+                return t.isEmpty() ? null : t;
         }
 }

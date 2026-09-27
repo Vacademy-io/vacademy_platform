@@ -286,6 +286,7 @@ const Step2GenerateQuestionsFromAI = ({
                                             <GenerateAiQuestionPaperComponent
                                                 form={form}
                                                 currentSectionIndex={index}
+                                                sectionSplit
                                             />
                                         </AICenterProvider>
                                     </DialogContent>

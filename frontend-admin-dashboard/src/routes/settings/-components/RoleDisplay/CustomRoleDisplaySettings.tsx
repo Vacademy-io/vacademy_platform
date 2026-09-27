@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RoleDisplayPanelProps } from './panel-props';
+import { applyRoleConstraints } from '@/lib/display-settings/role-constraints';
 import { useTranslation } from 'react-i18next';
+import { useNamingSettingsVersion } from '@/hooks/useNamingSettingsVersion';
 import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
+import { getSidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +28,7 @@ import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
-import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import {
     DEFAULT_HIDDEN_COURSE_DETAILS_TABS,
     OFFLINE_GATED_COURSE_DETAILS_TABS,
@@ -88,6 +91,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     progressTab: true,
     coursesTab: true,
     notificationTab: false,
+    allowResendMessage: false,
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,
@@ -222,6 +226,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowSendResetPasswordMail: true,
     showApprovalToggle: false,
     allowEditCredentials: false,
+    // Permanent delete of payments & invoices — OFF by default for every role.
+    allowDeletePayments: false,
 };
 
 // Built inside the component (not module scope) so labels stay reactive to
@@ -258,19 +264,48 @@ const buildLearnerManagementOptions = (
         label: t('learnerManagement.showApprovalToggle'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
     },
+    {
+        key: 'allowDeletePayments',
+        label: t('learnerManagement.allowDeletePayments'),
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
+    },
 ];
 
 export default function CustomRoleDisplaySettings({
     roleId,
     roleName,
-}: {
+    onDirtyChange,
+}: RoleDisplayPanelProps & {
     roleId: string;
     roleName?: string;
 }) {
     const { t } = useTranslation('settingsCustomRoleDisplay');
+    // Built-in tab names come from getSidebarItemsData(), which resolves them
+    // through the i18next singleton and through the institute's naming settings.
+    // Neither is available while modules are being evaluated, so this has to be
+    // read during render — a value captured at module scope is simply blank, and
+    // that is what left every Tab Name / Label box in this editor empty.
+    //
+    // `ready` flips when the sidebar catalog lands and `namingVersion` bumps on a
+    // rename or a language switch; between them the memo can never hold on to
+    // stale labels, and the lookup stays off the per-keystroke render path (it
+    // re-reads localStorage once per built-in entry).
+    const { ready: sidebarCatalogReady } = useTranslation('sidebar');
+    const namingVersion = useNamingSettingsVersion();
+    const sidebarItems = useMemo(
+        () => getSidebarItemsData(),
+        [sidebarCatalogReady, namingVersion]
+    );
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+
+    // Surface unsaved state to the page header so "Copy to other roles" can block
+    // on it — copying while dirty would send the last saved settings, not what the
+    // admin is looking at.
+    useEffect(() => {
+        onDirtyChange?.(hasChanges);
+    }, [hasChanges, onDirtyChange]);
     const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Recomputed every render (cheap arrays) so labels stay in sync with the
@@ -440,7 +475,7 @@ export default function CustomRoleDisplaySettings({
         updateSettings((prev) => {
             const categoryTabs = prev.sidebar
                 .filter((t) => {
-                    const baseItem = SidebarItemsData.find((i) => i.id === t.id);
+                    const baseItem = sidebarItems.find((i) => i.id === t.id);
                     const cat = baseItem?.category || t.category || 'CRM';
                     return cat === activeCategory;
                 })
@@ -495,17 +530,9 @@ export default function CustomRoleDisplaySettings({
         if (!settings) return;
         setIsSaving(true);
         try {
-            // Enforce teacher constraints before save
-            const fixed: DisplaySettingsData = {
-                ...settings,
-                sidebar: settings.sidebar.filter((t) => t.id !== 'settings'),
-                permissions: {
-                    ...settings.permissions,
-                    canViewInstituteDetails: settings.permissions.canViewInstituteDetails ?? false,
-                    canEditInstituteDetails: false,
-                    canEditProfileDetails: settings.permissions.canEditProfileDetails ?? false,
-                },
-            };
+            // Shared with the "copy to other roles" action, so a rule added here
+            // applies however these settings are written.
+            const fixed: DisplaySettingsData = applyRoleConstraints(settings, 'custom');
             await saveDisplaySettings(displaySettingsKey, fixed);
             // Reflect the persisted (constrained) version locally so future
             // discards return to the same baseline.
@@ -541,7 +568,7 @@ export default function CustomRoleDisplaySettings({
                     <MyButton
                         buttonType="secondary"
                         scale="small"
-                        onClick={() => setSettings(DEFAULT_TEACHER_DISPLAY_SETTINGS)}
+                        onClick={() => setSettings(getDefaultTeacherDisplaySettings())}
                     >
                         {t('common.resetToDefaults')}
                     </MyButton>
@@ -720,6 +747,48 @@ export default function CustomRoleDisplaySettings({
                                         showAddChapter: prev.coursePage?.showAddChapter ?? true,
                                         showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         directEditPublishedCourse: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            {t('coursePermission.requireCourseApproval')}
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.requireCourseApproval !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        ...prev.coursePage,
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? false,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? false,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
+                                        requireCourseApproval: checked,
                                     },
                                 }))
                             }
@@ -1112,14 +1181,13 @@ export default function CustomRoleDisplaySettings({
 
                         return sorted.map((cfg, idx) => {
                             const id = cfg.id;
-                            const isForcedVisible = id === 'CourseInReview';
+                            // The tab that belongs to the OTHER role stays hidden; the
+                            // review/approval tab for this role is a normal toggle so an
+                            // institute that does not use the approval flow can hide it
+                            // (Neeraj, 2026-09-19).
                             const isForcedHidden = id === 'CourseApproval';
-                            const disabledToggle = isForcedVisible || isForcedHidden;
-                            const enforcedVisible = isForcedVisible
-                                ? true
-                                : isForcedHidden
-                                  ? false
-                                  : cfg.visible;
+                            const disabledToggle = isForcedHidden;
+                            const enforcedVisible = isForcedHidden ? false : cfg.visible;
                             return (
                                 <div key={id} className="flex items-center gap-3 rounded border p-3">
                                     <div className="flex flex-col items-center gap-0.5">
@@ -1203,6 +1271,7 @@ export default function CustomRoleDisplaySettings({
                             'CERTIFICATES',
                             'DOWNLOADS',
                             'SETTINGS',
+                            'TUTOR_MODE',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
@@ -1274,6 +1343,7 @@ export default function CustomRoleDisplaySettings({
                                                         CERTIFICATES: 11,
                                                         DOWNLOADS: 12,
                                                         SETTINGS: 13,
+                                                        TUTOR_MODE: 13.5,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>
@@ -1642,13 +1712,15 @@ export default function CustomRoleDisplaySettings({
                         {(() => {
                             const categoryTabs = settings.sidebar
                                 .filter((tab) => {
-                                    const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
+                                    const baseItem = sidebarItems.find((i) => i.id === tab.id);
                                     const cat = baseItem?.category || tab.category || 'CRM';
                                     return cat === activeCategory;
                                 })
                                 .sort((a, b) => a.order - b.order);
 
-                            return categoryTabs.map((tab, tabIdx) => (
+                            return categoryTabs.map((tab, tabIdx) => {
+                                const baseItem = sidebarItems.find((i) => i.id === tab.id);
+                                return (
                                 <div key={tab.id} className="mb-3 rounded border p-3">
                                     <div className="flex items-start gap-3">
                                         <div className="flex flex-col items-center gap-1 pt-6">
@@ -1680,7 +1752,7 @@ export default function CustomRoleDisplaySettings({
                                                 <div className="col-span-2">
                                                     <Label>{t('common.tabName')}</Label>
                                                     <Input
-                                                        value={tab.label || ''}
+                                                        value={tab.label || baseItem?.title || ''}
                                                         onChange={(e) =>
                                                             updateSettings((prev) => ({
                                                                 ...prev,
@@ -1782,7 +1854,12 @@ export default function CustomRoleDisplaySettings({
                                                         .slice()
                                                         .sort((a, b) => a.order - b.order);
 
-                                                    return sortedSubs.map((sub, subIdx) => (
+                                                    return sortedSubs.map((sub, subIdx) => {
+                                                    const baseSub = baseItem?.subItems?.find(
+                                                        (i) =>
+                                                            (i.subItemId || i.subItem) === sub.id
+                                                    );
+                                                    return (
                                                         <div
                                                             key={sub.id}
                                                             className="flex items-center gap-3 rounded border p-2"
@@ -1817,7 +1894,11 @@ export default function CustomRoleDisplaySettings({
                                                             <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-4 md:items-center">
                                                                 <div className="col-span-2">
                                                                     <Input
-                                                                        value={sub.label || ''}
+                                                                        value={
+                                                                            sub.label ||
+                                                                            baseSub?.subItem ||
+                                                                            ''
+                                                                        }
                                                                         placeholder={t('common.labelPlaceholder')}
                                                                         onChange={(e) =>
                                                                             updateSettings((prev) => ({
@@ -1974,13 +2055,15 @@ export default function CustomRoleDisplaySettings({
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    ));
+                                                    );
+                                                    });
                                                 })()}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            ));
+                            );
+                            });
                         })()}
                     </Tabs>
                     <div className="pt-2">
@@ -2234,6 +2317,13 @@ export default function CustomRoleDisplaySettings({
                     updateSettings((prev) => ({
                         ...prev,
                         listCustomFieldControls: next,
+                    }))
+                }
+                utmValue={settings.listUtmFilterControls}
+                onUtmChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        listUtmFilterControls: next,
                     }))
                 }
             />

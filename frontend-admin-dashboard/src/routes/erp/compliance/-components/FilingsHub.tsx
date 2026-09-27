@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DownloadSimple, Eye, FileText } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { Card } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -43,57 +45,57 @@ interface FilingDef {
     fileHint?: string;
 }
 
-const FILINGS: FilingDef[] = [
+const buildFilings = (t: TFunction): FilingDef[] => [
     {
         key: 'ECR',
-        title: 'PF ECR',
-        blurb: 'Monthly EPFO electronic challan-cum-return. Uploaded to the EPFO employer portal.',
+        title: t('filings.ecr.title'),
+        blurb: t('filings.ecr.blurb'),
         period: 'month',
         countries: ['IND'],
         downloadUrl: HR_COMPLIANCE_PF_ECR_DOWNLOAD,
-        fileHint: 'ECR v2 text — validate against the EPFO portal before your first live upload.',
+        fileHint: t('filings.ecr.fileHint'),
     },
     {
         key: 'ESI',
-        title: 'ESI Return',
-        blurb: 'Monthly ESIC contribution return for insured persons.',
+        title: t('filings.esi.title'),
+        blurb: t('filings.esi.blurb'),
         period: 'month',
         countries: ['IND'],
         downloadUrl: HR_COMPLIANCE_ESI_RETURN_DOWNLOAD,
     },
     {
         key: 'PT',
-        title: 'Professional Tax Return',
-        blurb: 'Monthly state professional-tax return, slab-wise.',
+        title: t('filings.pt.title'),
+        blurb: t('filings.pt.blurb'),
         period: 'month',
         countries: ['IND'],
         downloadUrl: HR_COMPLIANCE_PT_RETURN_DOWNLOAD,
     },
     {
         key: 'FORM24Q',
-        title: 'Form 24Q',
-        blurb: 'Quarterly salary-TDS return, reconciled against the challans you have recorded.',
+        title: t('filings.form24q.title'),
+        blurb: t('filings.form24q.blurb'),
         period: 'fy-quarter',
         countries: ['IND'],
         downloadUrl: HR_COMPLIANCE_24Q_DOWNLOAD,
-        fileHint: 'CSV for a return preparer — not the FVU e-TDS file itself.',
+        fileHint: t('filings.form24q.fileHint'),
     },
     {
         key: 'FORM16',
-        title: 'Form 16 (Part B)',
-        blurb: "An employee's annual salary and TDS statement. Part A comes from TRACES.",
+        title: t('filings.form16.title'),
+        blurb: t('filings.form16.blurb'),
         period: 'fy',
         countries: ['IND'],
         downloadUrl: HR_COMPLIANCE_FORM16_DOWNLOAD,
     },
     {
         key: 'WPS',
-        title: 'WPS Salary File',
-        blurb: 'Wage Protection System file for the bank / labour ministry.',
+        title: t('filings.wps.title'),
+        blurb: t('filings.wps.blurb'),
         period: 'month',
         countries: ['ARE', 'SAU'],
         downloadUrl: HR_COMPLIANCE_WPS_DOWNLOAD,
-        fileHint: 'v1 layout — validate with your WPS agent bank before your first live submission.',
+        fileHint: t('filings.wps.fileHint'),
     },
 ];
 
@@ -107,11 +109,14 @@ const FILINGS: FilingDef[] = [
  * not information.
  */
 export const FilingsHub = () => {
+    const { t } = useTranslation('erpFilingsHub');
     const { isHrAdmin } = useHrRole();
     const [month, setMonth] = useState<MonthValue>(() => previousMonthValue());
     const [financialYear, setFinancialYear] = useState<string>(() => financialYearOf());
     const [quarter, setQuarter] = useState<string>('Q1');
     const [openFiling, setOpenFiling] = useState<FilingKey | null>(null);
+
+    const FILINGS = useMemo(() => buildFilings(t), [t]);
 
     const { data: taxConfig } = useQuery({
         queryKey: hrKeys.taxConfig(),
@@ -161,11 +166,11 @@ export const FilingsHub = () => {
                 params,
                 `${filing.key.toLowerCase()}_${stamp}.${ext}`
             );
-            toast.success(`${filing.title} downloaded`);
+            toast.success(t('downloadedToast', { title: filing.title }));
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-compliance',
-                fallbackMessage: `Could not download the ${filing.title}.`,
+                fallbackMessage: t('downloadErrorFallback', { title: filing.title }),
             });
         }
     };
@@ -173,20 +178,16 @@ export const FilingsHub = () => {
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-3">
-                <p className="text-body text-neutral-500">
-                    Statutory outputs built from the payroll runs you have already approved. Preview
-                    one to see what it contains and what is missing, then download the file for the
-                    portal.
-                </p>
+                <p className="text-body text-neutral-500">{t('intro')}</p>
                 <div className="flex flex-wrap items-center gap-3">
                     <MonthPicker
                         value={month}
                         onChange={setMonth}
                         disableFuture
-                        label="Monthly filings"
+                        label={t('monthlyFilingsLabel')}
                     />
                     <div className="flex items-center gap-2">
-                        <span className="text-body text-neutral-500">TDS:</span>
+                        <span className="text-body text-neutral-500">{t('tdsLabel')}</span>
                         <MyDropdown
                             currentValue={financialYear}
                             dropdownList={recentFinancialYears()}
@@ -234,7 +235,7 @@ export const FilingsHub = () => {
                                 onClick={() => setOpenFiling(filing.key)}
                             >
                                 <Eye size={15} />
-                                Preview
+                                {t('preview')}
                             </MyButton>
                             <MyButton
                                 buttonType="text"
@@ -242,10 +243,10 @@ export const FilingsHub = () => {
                                 onAsyncClick={async () => {
                                     await handleDownload(filing);
                                 }}
-                                loadingText="Preparing…"
+                                loadingText={t('preparing')}
                             >
                                 <DownloadSimple size={15} />
-                                Download
+                                {t('download')}
                             </MyButton>
                         </div>
                     </Card>

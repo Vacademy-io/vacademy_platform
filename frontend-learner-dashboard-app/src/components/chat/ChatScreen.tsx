@@ -16,6 +16,8 @@ import { CourseLeaderboard } from "@/routes/study-library/courses/course-details
 import { toast } from "sonner";
 import { getChatUser } from "@/services/chat/getChatUser";
 import {
+  CONVERSATIONS_KEY,
+  UNREAD_COUNT_KEY,
   listConversations,
   getMessages,
   sendMessage,
@@ -39,8 +41,6 @@ import {
 import { NewChatModal } from "./NewChatModal";
 import { CommunityRulesPanel } from "./CommunityRulesPanel";
 import { initialsOf } from "./chatUtils";
-
-const CONVERSATIONS_KEY = ["chat", "conversations"] as const;
 
 /**
  * Known rule-rejection reason codes the backend returns as the
@@ -98,6 +98,9 @@ export function ChatScreen({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [currentUserId, setCurrentUserId] = useState("");
+  // Read from callbacks (loadThread) without making them depend on it.
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
 
@@ -185,9 +188,11 @@ export function ChatScreen({
         latestSeqRef.current =
           page.latestSeq ?? page.messages[page.messages.length - 1]?.seq;
 
-        // Mark the newest message read.
+        // Mark the newest message read. Not gated on the (possibly stale, cached) unreadCount alone: a
+        // newest message from someone else may be unread even when the cached row says 0. markRead is
+        // idempotent server-side.
         const newest = page.messages[page.messages.length - 1];
-        if (newest && conv.unreadCount > 0) {
+        if (newest && (conv.unreadCount > 0 || newest.senderId !== currentUserIdRef.current)) {
           markRead(conv.id, newest.id).catch(() => undefined);
           queryClient.setQueryData<ChatConversationResponse[]>(
             CONVERSATIONS_KEY,
@@ -365,10 +370,14 @@ export function ChatScreen({
   );
 
   const handleReconnect = useCallback(() => {
-    // After a reconnect, refetch the list and the open thread to catch up.
-    void refetchConversations();
+    // After a reconnect, catch up the open thread, mark what arrived while paused as read (the user is
+    // looking at it — otherwise the server pushes it and the list/badge show it unread), THEN refetch
+    // the list so its unread counts reflect that read.
     const openId = selectedIdRef.current;
-    if (!openId) return;
+    if (!openId) {
+      void refetchConversations();
+      return;
+    }
     // sinceCursor must be the NEWEST loaded seq so we fetch only messages that
     // arrived while disconnected (read from a ref — threadMeta here is stale).
     getMessages(openId, { sinceCursor: latestSeqRef.current, limit: 40 })
@@ -406,9 +415,26 @@ export function ChatScreen({
           return { ...prev, [openId]: next };
         });
         if (page.latestSeq != null) latestSeqRef.current = page.latestSeq;
+        const newest = page.messages[page.messages.length - 1];
+        if (newest && selectedIdRef.current === openId && !document.hidden) {
+          return markRead(openId, newest.id).catch(() => undefined);
+        }
+        return undefined;
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        void refetchConversations();
+      });
   }, [refetchConversations]);
+
+  // Leaving /chat: the sidebar badge switches back to the polled unread total, which may predate what was
+  // read here — refresh it.
+  useEffect(
+    () => () => {
+      void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY });
+    },
+    [queryClient],
+  );
 
   // ── SSE: an existing message changed in place (edited / deleted) ───────────
   // Deliberately NOT handleIncoming: that path treats the payload as a new arrival — it bumps the
@@ -694,7 +720,8 @@ export function ChatScreen({
       <div
         className={cn(
           "flex w-full flex-col items-center justify-center gap-3 bg-background p-6 text-center",
-          "h-[calc(100dvh-3.5rem)]", // design-lint-ignore: full viewport height minus the 3.5rem top navbar; no token equivalent
+          // Fills the fillViewport column LayoutContainer gives the /chat route.
+          "min-h-0 flex-1",
         )}
       >
         <ChatSlash size={40} weight="duotone" className="text-muted-foreground" />
@@ -712,7 +739,8 @@ export function ChatScreen({
     <div
       className={cn(
         "flex w-full overflow-hidden",
-        "h-[calc(100dvh-3.5rem)]", // design-lint-ignore: full viewport height minus the 3.5rem top navbar; no token equivalent
+        // Fills the fillViewport column LayoutContainer gives the /chat route.
+        "min-h-0 flex-1",
       )}
     >
       {/* ── Conversation list pane ── */}

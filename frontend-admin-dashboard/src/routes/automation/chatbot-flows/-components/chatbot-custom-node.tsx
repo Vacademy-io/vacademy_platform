@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
+import { useTranslation } from 'react-i18next';
 import { useChatbotFlowStore } from '../-stores/chatbot-flow-store';
 
 interface ChatbotNodeData {
@@ -17,6 +18,7 @@ interface Branch {
 }
 
 function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
+    const { t } = useTranslation('automationChatbotCustomNode');
     const selectNode = useChatbotFlowStore((s) => s.selectNode);
     const removeNode = useChatbotFlowStore((s) => s.removeNode);
 
@@ -59,7 +61,7 @@ function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
                 {data.nodeType === 'SEND_MESSAGE' && (
                     <p className="text-xs text-gray-500 mt-1 truncate">
                         💬 {(data.config.messageType as string) === 'text'
-                            ? ((data.config.text as string) || 'Text message').substring(0, 40)
+                            ? ((data.config.text as string) || t('fallback.textMessage')).substring(0, 40)
                             : (data.config.messageType as string)}
                     </p>
                 )}
@@ -75,12 +77,12 @@ function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
                 )}
                 {data.nodeType === 'TRIGGER' && (
                     <p className="text-xs text-gray-500 mt-1">
-                        ⚡ {((data.config.keywords as string[]) || []).join(', ') || 'Any message'}
+                        ⚡ {((data.config.keywords as string[]) || []).join(', ') || t('fallback.anyMessage')}
                     </p>
                 )}
                 {data.nodeType === 'AI_RESPONSE' && (
                     <p className="text-xs text-gray-500 mt-1">
-                        🤖 {(data.config.modelId as string)?.split('/').pop() || 'AI'}
+                        🤖 {(data.config.modelId as string)?.split('/').pop() || t('fallback.ai')}
                     </p>
                 )}
             </div>
@@ -91,7 +93,7 @@ function ChatbotCustomNode({ id, data, selected }: NodeProps<ChatbotNodeData>) {
                     {branches.map((branch, i) => (
                         <div key={branch.id} className="flex flex-col items-center relative" style={{ minWidth: 50 }}>
                             <span className="text-[9px] text-gray-500 mb-1 truncate max-w-[60px]">
-                                {branch.label || (branch.isDefault ? 'Default' : `Branch ${i + 1}`)}
+                                {branch.label || (branch.isDefault ? t('branch.default') : t('branch.numbered', { number: i + 1 }))}
                             </span>
                             <Handle
                                 type="source"

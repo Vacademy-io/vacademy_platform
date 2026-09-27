@@ -57,6 +57,79 @@ export interface AggregatedCustomField {
     enroll_invite_ids: string[];
 }
 
+/**
+ * One button on the Course Finder screen — "Class 6", "Class 12 NEET".
+ *
+ * Membership is admin-authored and stored as ids, never derived from the
+ * course or level name. Real names drift ("UnlockX Scholarship Test - Class 6",
+ * "Cyber AI- Class 6", "Social Science Class - 5"), and a page whose classes
+ * all share one level (every scholarship test sitting under "Scholarship Test")
+ * cannot be split by name at all. `levelNames` is the shortcut for pages that
+ * genuinely model a class AS a level; ids win where both are present.
+ */
+export interface ProductPageFinderGroup {
+    /** Stable id — survives renaming the button, and keys the saved pick. */
+    id: string;
+    label: string;
+    /** Optional line under the label ("For CBSE & ICSE students"). */
+    description?: string;
+    /** package_session_ids this button reveals. The authoritative matcher. */
+    packageSessionIds?: string[];
+    /** Level names this button reveals, for level-modelled pages. */
+    levelNames?: string[];
+}
+
+/**
+ * A "choose your class" screen shown BEFORE the course grid, for pages whose
+ * visitors only ever want the one course meant for them. Picking a button
+ * restricts the catalogue to that group's courses for the rest of the visit.
+ *
+ * Presentation only — no pricing or enrolment behaviour rides on it, so the
+ * server neither knows nor needs to know about it.
+ */
+export interface ProductPageCourseFinder {
+    enabled: boolean;
+    /**
+     * DIALOG (default) — a modal over the course grid, the same shell the
+     * catalogue's CourseFinderWizard uses, so a visitor meets one finder across
+     * both surfaces. FULLSCREEN — the picker replaces the page until answered,
+     * for a page that is purely a funnel.
+     */
+    display?: 'DIALOG' | 'FULLSCREEN';
+    heading?: string;
+    subheading?: string;
+    /** Lets the visitor past the screen to the whole catalogue. Off by default. */
+    allowSkip?: boolean;
+    skipLabel?: string;
+    /** Wording for the undo affordance above the catalogue ("Change class"). */
+    changeLabel?: string;
+    /**
+     * What picking a class does.
+     *
+     * SHOW_COURSES (default) reveals the restricted catalogue, leaving the
+     * visitor to add the course themselves. GO_TO_FORM selects it and jumps
+     * straight to the details step — for pages where a class resolves to
+     * exactly ONE course and the cart would only ask the visitor to confirm
+     * the single thing they just asked for. Safe because the details step
+     * shows the order summary too (it leads, on mobile), so nothing about
+     * what they are enrolling in is hidden by skipping the cart.
+     *
+     * A group covering several courses always falls back to SHOW_COURSES:
+     * choosing among them is the visitor's decision, not the page's.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /**
+     * Wording for the dialog's confirm button.
+     *
+     * `{{class}}` is replaced with the label the visitor picked, so a page can
+     * say "Register for Class 9" rather than a fixed phrase. Left empty the
+     * default follows `onPick`: a button that opens a registration form must
+     * not promise to show courses.
+     */
+    ctaLabel?: string;
+    groups: ProductPageFinderGroup[];
+}
+
 export interface ProductPageSettings {
     defaultStep: 'CATALOG' | 'CART' | 'PAYMENT';
     allowCourseDeselection: boolean;
@@ -113,8 +186,11 @@ export interface ProductPageSettings {
         showNudge?: boolean;
     };
     afterPaymentRedirectUrl?: string;
+    /** Seconds the success screen stays up before the redirect fires. */
+    afterPaymentRedirectDelaySeconds?: number;
     showLoginButton?: boolean;
     successPageContent?: string;
+    courseFinder?: ProductPageCourseFinder;
 }
 
 export interface ProductPageData {

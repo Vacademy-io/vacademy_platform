@@ -17,12 +17,14 @@ import { toast } from 'sonner';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface SessionCardProps {
     data: SessionData;
 }
 
 export function SessionCard({ data }: SessionCardProps) {
+    const { t } = useTranslation('manageInstituteSessionCard');
     const [disableAddButton, setDisableAddButton] = useState(true);
     const editSessionMutation = useEditSession();
 
@@ -64,20 +66,21 @@ export function SessionCard({ data }: SessionCardProps) {
             {
                 onSuccess: () => {
                     toast.success(
-                        ` ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        )} edited successfully`
+                        t('toast.sessionEditedSuccess', {
+                            term: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                        })
                     );
                     setIsAddSessionDiaogOpen(false);
                 },
                 onError: (error) => {
                     toast.error(
                         error.message ||
-                        `Failed to edit ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        ).toLocaleLowerCase()}`
+                            t('toast.sessionEditFailed', {
+                                term: getTerminology(
+                                    ContentTerms.Session,
+                                    SystemTerms.Session
+                                ).toLocaleLowerCase(),
+                            })
                     );
                 },
             }
@@ -97,7 +100,7 @@ export function SessionCard({ data }: SessionCardProps) {
                 disable={disableAddButton}
                 onClick={() => formSubmitRef.current()}
             >
-                Save Changes
+                {t('button.saveChanges')}
             </MyButton>
         </div>
     );
@@ -121,7 +124,7 @@ export function SessionCard({ data }: SessionCardProps) {
                     <div className="text-lg font-[600]">
                         {convertCapitalToTitleCase(data?.session?.session_name)}
                     </div>
-                    <div className="text-sm text-neutral-500">Start Date</div>
+                    <div className="text-sm text-neutral-500">{t('card.startDate')}</div>
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger>
@@ -136,7 +139,12 @@ export function SessionCard({ data }: SessionCardProps) {
                             handleSubmit={handleEditSession}
                             trigger={
                                 <MyButton buttonType="text" className="text-neutral-600">
-                                    Edit {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                                    {t('card.editButton', {
+                                        term: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ),
+                                    })}
                                 </MyButton>
                             }
                             initialValues={data}
@@ -151,8 +159,12 @@ export function SessionCard({ data }: SessionCardProps) {
                             <DeleteSessionDialog
                                 triggerButton={
                                     <MyButton buttonType="text" className="text-neutral-600">
-                                        Delete{' '}
-                                        {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                                        {t('card.deleteButton', {
+                                            term: getTerminology(
+                                                ContentTerms.Session,
+                                                SystemTerms.Session
+                                            ),
+                                        })}
                                     </MyButton>
                                 }
                                 session={data}

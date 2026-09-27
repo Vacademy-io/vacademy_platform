@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { CourseRecommendationsProps } from "../../-types/course-catalogue-types";
@@ -102,7 +103,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
   }, [instituteId, limit]);
 
   const handleCourseClick = (courseId: string) => {
-    navigate({ to: `/${tagName}/${courseId}` });
+    navigate({ to: `${RouteMatcher.basePath(tagName)}/${courseId}` });
   };
 
   if (isLoading) {

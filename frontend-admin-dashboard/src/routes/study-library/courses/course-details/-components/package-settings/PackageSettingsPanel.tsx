@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PackageCourseSettingEditor } from './PackageCourseSettingEditor';
 import { LmsSettingsCard } from './LmsSettingsCard';
@@ -16,13 +17,14 @@ interface PackageSettingsPanelProps {
  * Settings (the raw course_setting JSON editor).
  */
 export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ packageId }) => {
+    const { t } = useTranslation('studyLibraryPackageSettingsPanel');
     // Bumped after a JSON save so the LMS card re-derives its state.
     const [refreshKey, setRefreshKey] = useState(0);
 
     if (!packageId) {
         return (
             <div className="p-6 text-sm text-muted-foreground">
-                Save the course first to configure its settings.
+                {t('saveCourseFirst')}
             </div>
         );
     }
@@ -31,10 +33,10 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
         <div className="p-2">
             <Tabs defaultValue="lms" className="w-full">
                 <TabsList>
-                    <TabsTrigger value="lms">LMS Integration</TabsTrigger>
-                    <TabsTrigger value="workflows">Workflow Triggers</TabsTrigger>
-                    <TabsTrigger value="suborg">Sub-organization</TabsTrigger>
-                    <TabsTrigger value="json">Advanced Settings (JSON)</TabsTrigger>
+                    <TabsTrigger value="lms">{t('tabs.lms')}</TabsTrigger>
+                    <TabsTrigger value="workflows">{t('tabs.workflows')}</TabsTrigger>
+                    <TabsTrigger value="suborg">{t('tabs.suborg')}</TabsTrigger>
+                    <TabsTrigger value="json">{t('tabs.json')}</TabsTrigger>
                 </TabsList>
                 {/* key={packageId} remounts the cards when you switch courses, so prefilled
                     connection/courseId/triggers never leak from a previously-open course. */}

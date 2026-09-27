@@ -113,6 +113,7 @@ public class AiAgentSpeechWarmer {
             body.put("voice", agent.getVoice() == null ? "" : agent.getVoice());
             body.put("pace", agent.getPace());
             body.put("temperature", agent.getTemperature());
+            body.put("language", agent.getLanguage());
             body.put("texts", texts);
 
             String url = botBaseUrl.trim().replaceAll("/$", "")
@@ -172,7 +173,7 @@ public class AiAgentSpeechWarmer {
         String m = agent.getTtsModel() == null ? "" : agent.getTtsModel().trim().toLowerCase();
         if (m.startsWith("google") || m.startsWith("chirp")) return "google";
         if (m.startsWith("edge")) return "edge";
-        if (m.startsWith("smallest") || m.startsWith("lightning")) return "smallest";
+        if (m.startsWith("smallest") || m.startsWith("lightning")) return m; // retain pro/model selection
         if (m.startsWith("rumik") || m.startsWith("silk")) return "rumik";
         if (m.startsWith("deepgram") || m.startsWith("aura")) return "deepgram";
         return "sarvam";

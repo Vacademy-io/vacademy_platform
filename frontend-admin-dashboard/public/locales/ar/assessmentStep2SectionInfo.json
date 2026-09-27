@@ -36,7 +36,8 @@
         "confirmBulkGenerate_two": "إنشاء معايير الذكاء الاصطناعي للسؤالين ({{count}}) في هذا القسم؟",
         "confirmBulkGenerate_few": "إنشاء معايير الذكاء الاصطناعي لجميع الأسئلة الـ{{count}} في هذا القسم؟",
         "confirmBulkGenerate_many": "إنشاء معايير الذكاء الاصطناعي لجميع الأسئلة الـ{{count}} في هذا القسم؟",
-        "confirmBulkGenerate_other": "إنشاء معايير الذكاء الاصطناعي لجميع الأسئلة الـ{{count}} في هذا القسم؟"
+        "confirmBulkGenerate_other": "إنشاء معايير الذكاء الاصطناعي لجميع الأسئلة الـ{{count}} في هذا القسم؟",
+        "cancel": "إلغاء"
     },
     "toasts": {
         "noQuestionsInSection": "لا توجد أسئلة في هذا القسم",
@@ -55,7 +56,10 @@
         "failedGenerateCriteriaCount_two": "فشل إنشاء المعايير للسؤالين ({{count}})",
         "failedGenerateCriteriaCount_few": "فشل إنشاء المعايير لـ {{count}} أسئلة",
         "failedGenerateCriteriaCount_many": "فشل إنشاء المعايير لـ {{count}} سؤالاً",
-        "failedGenerateCriteriaCount_other": "فشل إنشاء المعايير لـ {{count}} سؤال"
+        "failedGenerateCriteriaCount_other": "فشل إنشاء المعايير لـ {{count}} سؤال",
+        "questionUpdated": "تم تحديث السؤال",
+        "questionUpdateFailed": "تعذّر تحديث السؤال",
+        "questionInvalid": "أكمل السؤال وخياراته قبل الحفظ."
     },
     "sectionDescription": {
         "title": "وصف القسم",
@@ -96,7 +100,12 @@
             "penalty": "الخصم",
             "time": "الوقت",
             "criteria": "المعايير"
-        }
+        },
+        "editQuestion": "تعديل السؤال",
+        "editQuestionMissing": "تعذّر تحميل هذا السؤال.",
+        "saveQuestion": "حفظ السؤال",
+        "savingQuestion": "جارٍ الحفظ…",
+        "correctOption": "الخيار الصحيح"
     },
     "totalMarks": {
         "label": "إجمالي الدرجات"

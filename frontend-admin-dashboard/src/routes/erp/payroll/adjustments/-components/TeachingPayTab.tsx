@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { CalendarCheck, Sparkle, Calculator } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import {
@@ -124,21 +126,24 @@ function mergeTeachingRows(
     return [...byKey.values()];
 }
 
-const PAY_STATUS_LABEL: Record<string, { text: string; status: 'SUCCESS' | 'INFO' | 'WARNING' }> = {
-    ELIGIBLE: { text: 'Will be created', status: 'INFO' },
-    CREATED: { text: 'Adjustment created', status: 'SUCCESS' },
-    SKIPPED_EXISTING: { text: 'Already created', status: 'SUCCESS' },
-    UNRATED: { text: 'No rate', status: 'WARNING' },
-    ZERO_QUANTITY: { text: 'Nothing taught', status: 'INFO' },
-    NO_EMPLOYEE_PROFILE: { text: 'No HR profile', status: 'WARNING' },
-};
+const buildPayStatusLabel = (
+    t: TFunction
+): Record<string, { text: string; status: 'SUCCESS' | 'INFO' | 'WARNING' }> => ({
+    ELIGIBLE: { text: t('statusWillBeCreated'), status: 'INFO' },
+    CREATED: { text: t('statusAdjustmentCreated'), status: 'SUCCESS' },
+    SKIPPED_EXISTING: { text: t('statusAlreadyCreated'), status: 'SUCCESS' },
+    UNRATED: { text: t('statusNoRate'), status: 'WARNING' },
+    ZERO_QUANTITY: { text: t('statusNothingTaught'), status: 'INFO' },
+    NO_EMPLOYEE_PROFILE: { text: t('statusNoHrProfile'), status: 'WARNING' },
+});
 
-const BASIS_LABEL: Record<string, string> = {
-    PER_SESSION: 'per session',
-    PER_HOUR: 'per hour',
-};
+const buildBasisLabel = (t: TFunction): Record<string, string> => ({
+    PER_SESSION: t('basisPerSession'),
+    PER_HOUR: t('basisPerHour'),
+});
 
 export const TeachingPayTab = () => {
+    const { t } = useTranslation('erpTeachingPayTab');
     const { isHrAdmin } = useHrRole();
     const [month, setMonth] = useState<MonthValue>(() => previousMonthValue());
     const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
@@ -162,14 +167,16 @@ export const TeachingPayTab = () => {
             reportApiError(result.error, {
                 feature: 'erp-teaching',
                 tags: { action: 'pay-preview' },
-                fallbackMessage: 'Could not compute teaching pay for this month.',
+                fallbackMessage: t('previewError'),
             });
             return;
         }
         const unrated = result.data?.unrated_count ?? 0;
         toast.success(
-            `Priced ${formatCount(result.data?.eligible_count)} teacher(s) for ${formatMonthValue(month)}` +
-                (unrated ? ` · ${unrated} skipped for having no rate` : '')
+            t('pricedToast', {
+                count: result.data?.eligible_count ?? 0,
+                period: formatMonthValue(month),
+            }) + (unrated ? ` · ${t('skippedNoRateSuffix', { count: unrated })}` : '')
         );
     };
 
@@ -178,10 +185,14 @@ export const TeachingPayTab = () => {
             const result = await syncMutation.mutateAsync();
             const withoutProfile = result.teachers_without_profile?.length ?? 0;
             toast.success(
-                `Attendance synced for ${formatMonthValue(month)} — ${result.created ?? 0} created, ` +
-                    `${result.updated ?? 0} updated, ${result.skipped ?? 0} left as they were` +
+                t('syncedToast', {
+                    period: formatMonthValue(month),
+                    created: result.created ?? 0,
+                    updated: result.updated ?? 0,
+                    skipped: result.skipped ?? 0,
+                }) +
                     (withoutProfile
-                        ? ` · ${withoutProfile} teacher(s) skipped for having no HR profile`
+                        ? ` · ${t('skippedNoProfileSuffix', { count: withoutProfile })}`
                         : '')
             );
             setSyncConfirmOpen(false);
@@ -192,7 +203,7 @@ export const TeachingPayTab = () => {
             reportApiError(error, {
                 feature: 'erp-teaching',
                 tags: { action: 'attendance-sync' },
-                fallbackMessage: 'Could not sync teaching attendance for this month.',
+                fallbackMessage: t('syncError'),
             });
             setSyncConfirmOpen(false);
         }
@@ -204,9 +215,12 @@ export const TeachingPayTab = () => {
             const skipped = result.skipped_existing_count ?? 0;
             const unrated = result.unrated_count ?? 0;
             toast.success(
-                `${result.created_count ?? 0} teaching pay adjustment(s) created for ${formatMonthValue(month)}` +
-                    (skipped ? ` · ${skipped} already existed` : '') +
-                    (unrated ? ` · ${unrated} skipped for having no rate` : '')
+                t('materializedToast', {
+                    count: result.created_count ?? 0,
+                    period: formatMonthValue(month),
+                }) +
+                    (skipped ? ` · ${t('alreadyExistedSuffix', { count: skipped })}` : '') +
+                    (unrated ? ` · ${t('skippedNoRateSuffix', { count: unrated })}` : '')
             );
             // Invalidation alone would not refresh a query that never auto-runs, and
             // the statuses in the table have just changed from "will be created" to
@@ -216,16 +230,19 @@ export const TeachingPayTab = () => {
             reportApiError(error, {
                 feature: 'erp-teaching',
                 tags: { action: 'pay-materialize' },
-                fallbackMessage: 'Could not create the teaching pay adjustments.',
+                fallbackMessage: t('materializeError'),
             });
         }
     };
+
+    const payStatusLabel = useMemo(() => buildPayStatusLabel(t), [t]);
+    const basisLabel = useMemo(() => buildBasisLabel(t), [t]);
 
     const columns = useMemo<ColumnDef<TeachingRow>[]>(() => {
         const base: ColumnDef<TeachingRow>[] = [
             {
                 id: 'teacher',
-                header: 'Teacher',
+                header: t('columnTeacher'),
                 cell: ({ row }) => {
                     const r = row.original;
                     const isUnrated = (r.pay?.status ?? '') === 'UNRATED';
@@ -247,7 +264,7 @@ export const TeachingPayTab = () => {
             },
             {
                 id: 'sessions_scheduled',
-                header: 'Sessions scheduled',
+                header: t('columnSessionsScheduled'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -263,7 +280,7 @@ export const TeachingPayTab = () => {
             },
             {
                 id: 'sessions_attended',
-                header: 'Sessions attended',
+                header: t('columnSessionsAttended'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -279,7 +296,7 @@ export const TeachingPayTab = () => {
             },
             {
                 id: 'taught_hours',
-                header: 'Taught hours',
+                header: t('columnTaughtHours'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -303,7 +320,7 @@ export const TeachingPayTab = () => {
             ...base,
             {
                 id: 'rate',
-                header: 'Rate',
+                header: t('columnRate'),
                 cell: ({ row }) => {
                     const line = row.original.pay;
                     if (!line?.basis) {
@@ -313,7 +330,7 @@ export const TeachingPayTab = () => {
                         <span className="flex flex-col items-end">
                             <MoneyCell value={line.rate ?? null} />
                             <span className="text-caption text-neutral-500">
-                                {BASIS_LABEL[line.basis] ?? line.basis}
+                                {basisLabel[line.basis] ?? line.basis}
                             </span>
                         </span>
                     );
@@ -321,18 +338,18 @@ export const TeachingPayTab = () => {
             },
             {
                 id: 'amount',
-                header: 'Pay',
+                header: t('columnPay'),
                 cell: ({ row }) => (
                     <MoneyCell value={row.original.pay?.amount ?? null} dashOnZero />
                 ),
             },
             {
                 id: 'pay_status',
-                header: 'Status',
+                header: t('columnStatus'),
                 cell: ({ row }) => {
                     const status = row.original.pay?.status;
                     if (!status) return <span className="text-caption text-neutral-400">—</span>;
-                    const meta = PAY_STATUS_LABEL[status];
+                    const meta = payStatusLabel[status];
                     return (
                         <StatusChip
                             text={meta?.text ?? status}
@@ -344,7 +361,7 @@ export const TeachingPayTab = () => {
                 },
             },
         ];
-    }, [hasPreview]);
+    }, [hasPreview, t, basisLabel, payStatusLabel]);
 
     const tableData: TableData<TeachingRow> = {
         content: rows,
@@ -359,16 +376,11 @@ export const TeachingPayTab = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <p className="max-w-3xl text-body text-neutral-600">
-                What each teacher actually taught this month, and what that is worth. Pay is priced
-                from a per-session or per-hour rate on the employee record; materializing it writes
-                a TEACHING_PAY adjustment that the next regular payroll run for the month picks up
-                and pays. Nothing here pays anyone on its own.
-            </p>
+            <p className="max-w-3xl text-body text-neutral-600">{t('pageDescription')}</p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <MonthPicker
-                    label="Teaching month"
+                    label={t('teachingMonthLabel')}
                     value={month}
                     onChange={setMonth}
                     disableFuture
@@ -380,7 +392,7 @@ export const TeachingPayTab = () => {
                         onClick={() => setSyncConfirmOpen(true)}
                     >
                         <CalendarCheck size={16} />
-                        Sync attendance
+                        {t('syncAttendanceButton')}
                     </MyButton>
                 )}
             </div>
@@ -388,13 +400,10 @@ export const TeachingPayTab = () => {
             <Card className="flex flex-wrap items-end justify-between gap-3 p-4">
                 <div className="flex flex-col gap-1">
                     <span className="text-subtitle font-medium text-neutral-700">
-                        Teaching pay for {formatMonthValue(month)}
+                        {t('cardHeading', { period: formatMonthValue(month) })}
                     </span>
                     <span className="max-w-xl text-caption text-neutral-500">
-                        Preview prices every attended session against the teacher&apos;s rate
-                        without writing anything. Materialize creates one TEACHING_PAY adjustment
-                        per rated teacher, and running it twice for the same month is safe — the
-                        second run creates nothing.
+                        {t('cardSubtitle')}
                     </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -402,21 +411,21 @@ export const TeachingPayTab = () => {
                         buttonType="secondary"
                         scale="medium"
                         onAsyncClick={runPreview}
-                        loadingText="Computing…"
+                        loadingText={t('computingLoading')}
                     >
                         <Calculator size={16} />
-                        {hasPreview ? 'Recompute preview' : 'Preview pay'}
+                        {hasPreview ? t('recomputePreviewButton') : t('previewPayButton')}
                     </MyButton>
                     {isHrAdmin && (
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onAsyncClick={handleMaterialize}
-                            loadingText="Creating…"
+                            loadingText={t('creatingLoading')}
                             disabled={!hasPreview || eligibleCount === 0}
                         >
                             <Sparkle size={16} />
-                            Materialize pay
+                            {t('materializePayButton')}
                         </MyButton>
                     )}
                 </div>
@@ -424,11 +433,15 @@ export const TeachingPayTab = () => {
 
             {hasPreview && (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <VariablePayStat label="Teachers priced" value={pay?.eligible_count ?? 0} />
-                    <VariablePayStat label="Total teaching pay" value={pay?.total_amount} isMoney />
-                    <VariablePayStat label="No rate set" value={pay?.unrated_count ?? 0} />
+                    <VariablePayStat label={t('statTeachersPriced')} value={pay?.eligible_count ?? 0} />
                     <VariablePayStat
-                        label="Already materialized"
+                        label={t('statTotalTeachingPay')}
+                        value={pay?.total_amount}
+                        isMoney
+                    />
+                    <VariablePayStat label={t('statNoRateSet')} value={pay?.unrated_count ?? 0} />
+                    <VariablePayStat
+                        label={t('statAlreadyMaterialized')}
                         value={pay?.skipped_existing_count ?? 0}
                     />
                 </div>
@@ -436,13 +449,13 @@ export const TeachingPayTab = () => {
 
             {summaryQuery.isError ? (
                 <HrErrorState
-                    message="Could not load teaching activity for this month."
+                    message={t('summaryLoadError')}
                     onRetry={() => void summaryQuery.refetch()}
                 />
             ) : !summaryQuery.isLoading && rows.length === 0 ? (
                 <HrEmptyState
-                    title="Nobody taught this month"
-                    description={`No live sessions were hosted in ${formatMonthValue(month)}, so there is nothing to pay for. Pick another month if you were expecting classes here.`}
+                    title={t('nobodyTaughtTitle')}
+                    description={t('nobodyTaughtDescription', { period: formatMonthValue(month) })}
                 />
             ) : (
                 <MyTable<TeachingRow>
@@ -464,25 +477,21 @@ export const TeachingPayTab = () => {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>
-                            Mark teaching days as present in {formatMonthValue(month)}?
+                            {t('syncConfirmTitle', { period: formatMonthValue(month) })}
                         </AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Every day a teacher has a session with an attendance log gets a PRESENT
-                            attendance record. Days already marked present or on leave are left
-                            exactly as they are, and teachers with no HR profile are skipped. If
-                            payroll for this month is already locked, the sync will be refused and
-                            you will see the reason.
-                        </AlertDialogDescription>
+                        <AlertDialogDescription>{t('syncConfirmDescription')}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t('cancelButton')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={(event) => {
                                 event.preventDefault();
                                 void handleSync();
                             }}
                         >
-                            {syncMutation.isPending ? 'Syncing…' : 'Sync attendance'}
+                            {syncMutation.isPending
+                                ? t('syncingLoading')
+                                : t('syncAttendanceButton')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

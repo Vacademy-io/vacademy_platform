@@ -58,6 +58,7 @@ import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
+  "/try", // Public demo tutor lesson (tutezy.ai)
   "/login",
   "/signup",
   "/register",
@@ -924,8 +925,28 @@ export const Route = createRootRouteWithContext<{
       throw redirect({ to: authed ? "/dashboard" : "/login" });
     }
 
+    // The public tutor lesson reuses the tutor route with a guest token.
+    // During a client-side navigate, window.location.search still holds the PREVIOUS
+    // url, so the parsed location.search is checked too. And the router's default
+    // stringifier JSON-encodes values that are themselves valid JSON, so the flag
+    // arrives as demo="1" (quoted) from /try and as demo=1 when typed by hand —
+    // getting this wrong sends a guest to the login screen, which is what the
+    // "no sign-up" lesson promises will never happen.
+    const demoFlagIsSet = (value: unknown): boolean =>
+      value === 1 || (typeof value === "string" && value.replace(/^"|"$/g, "") === "1");
+    const rawDemoParam =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("demo")
+        : null;
+    const parsedDemoParam =
+      location.search && typeof location.search === "object"
+        ? (location.search as Record<string, unknown>).demo
+        : null;
+    const isGuestTutor =
+      location.pathname.startsWith("/study-library/courses/course-details/tutor") &&
+      (demoFlagIsSet(rawDemoParam) || demoFlagIsSet(parsedDemoParam));
     // Skip all logic for public routes - they should work without any redirects
-    if (isPublicRoute(location.pathname)) {
+    if (isPublicRoute(location.pathname) || isGuestTutor) {
       console.log("[__root] Route is public, skipping authentication check");
       return;
     }
@@ -966,6 +987,13 @@ export const Route = createRootRouteWithContext<{
         );
 
         if (domainRoutingResult) {
+          // A host with a root-mounted catalogue serves it right here at "/"
+          // (routes/index.tsx) — bouncing to "/<tag>" is exactly what that
+          // flag exists to stop. resolveDomainRouting has already cached the
+          // tag for the route component and every link builder.
+          if ((domainRoutingResult.rootCatalogueTag || "").trim()) {
+            return;
+          }
           // API returned valid institute data, use the redirect field from API response
           const redirectPath = domainRoutingResult.redirect || "/courses";
           throw redirect({ to: redirectPath as never });

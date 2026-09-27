@@ -1,0 +1,16 @@
+{
+    "viewEditCriteria": "View/Edit Criteria",
+    "markingCriteriaForMarks_one": "Marking Criteria for {{count}} mark",
+    "markingCriteriaForMarks_other": "Marking Criteria for {{count}} marks",
+    "removeAll": "Remove All",
+    "selectAll": "Select All",
+    "selectedCriteria": "Selected Criteria:",
+    "columnCriteria": "Criteria",
+    "columnMarks": "Marks",
+    "columnAction": "Action",
+    "noCriteriaSelected": "No criteria selected, please select criteria from available list",
+    "customCriteria": "Custom Criteria",
+    "addCustomCriteria": "Add Custom Criteria:",
+    "enterCriteriaDescription": "Enter criteria description",
+    "predefinedCriteria": "Predefined Criteria"
+}

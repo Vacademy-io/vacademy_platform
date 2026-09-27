@@ -169,7 +169,12 @@
             "cancelSuccessTitle": "Autopay cancelled",
             "cancelSuccessDescription": "You keep access until the end of your current period.",
             "cancelErrorTitle": "Couldn't cancel autopay",
-            "cancelErrorDescription": "Please try again in a moment."
+            "cancelErrorDescription": "Please try again in a moment.",
+            "planChangeOrderFailed": "We couldn't create the payment order.",
+            "planChangeFailedTitle": "Couldn't change the plan",
+            "planChangeFailedDescription": "Please try again in a moment.",
+            "planChangePaidTitle": "Payment received",
+            "planChangePaidDescription": "Your new plan will be active shortly."
         },
         "dialog": {
             "title": "Cancel autopay?",
@@ -179,7 +184,10 @@
             "defaultEndDate": "the end of your current period",
             "keepAutopay": "Keep autopay",
             "cancelling": "Cancelling..."
-        }
+        },
+        "changePlan": "Change plan",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeCancelScheduled": "Cancel this change"
     },
     "cardUpdate": {
         "success": "Your card has been updated",

@@ -2,7 +2,7 @@ import { Steps } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 // Removed unused icon imports to improve modularity and avoid linter warnings
-import { toTitleCase } from "@/lib/utils";
+import { sanitizeHtml, toTitleCase } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Select,
@@ -56,6 +56,7 @@ import { SlideCountEntry } from "@/utils/courseTime";
 import { CourseStatsSidebar } from "@/routes/study-library/courses/course-details/-components/course-stats-sidebar";
 import { useCatalogStore } from "@/routes/courses/-store/catalogStore";
 import { formatTotalCourseDuration, getBackendCourseDuration } from "@/utils/courseTime";
+import { useCourseDisplaySettings } from "@/routes/study-library/courses/course-details/-hooks/use-course-display-settings";
 
 type SlideType = {
     id: string;
@@ -166,6 +167,7 @@ const mockCourses: Course[] = [
 ];
 
 export const CourseDetailsPage = () => {
+    const { showInstructors } = useCourseDisplaySettings();
     const { t } = useTranslation("coursesRouteB");
     const [selectedSession, setSelectedSession] = useState<string>("");
     const [selectedLevel, setSelectedLevel] = useState<string>("");
@@ -376,9 +378,16 @@ export const CourseDetailsPage = () => {
         return undefined; // Change null to undefined to match the expected type
     }, [form, courseData, searchParams.courseId]);
 
-    const getInitials = (email: string) => {
-        const name = email.split("@")[0];
-        return name?.slice(0, 2).toUpperCase();
+    // Initials from the author's NAME. This used to take the email's local
+    // part, and the avatar's alt text was the email itself -- a staff address
+    // must not reach the learner's DOM at all.
+    const getInitials = (name: string) => {
+        const parts = name.trim().split(/\s+/).filter(Boolean);
+        const initials =
+            parts.length >= 2
+                ? `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`
+                : (parts[0] ?? "").slice(0, 2);
+        return initials.toUpperCase() || "?";
     };
 
     const [levelOptions, setLevelOptions] = useState<
@@ -1052,7 +1061,8 @@ export const CourseDetailsPage = () => {
                             )}
 
                             {/* Instructors Section */}
-                            {form.getValues("courseData").instructors &&
+                            {showInstructors &&
+                                form.getValues("courseData").instructors &&
                                 form.getValues("courseData").instructors
                                     .length > 0 && (
                                     <div className="mb-6 sm:mb-8 space-y-stack">
@@ -1070,22 +1080,41 @@ export const CourseDetailsPage = () => {
                                                         >
                                                             <Avatar className="size-6 sm:size-8 flex-shrink-0">
                                                                 <AvatarImage
-                                                                    src=""
+                                                                    src={instructor.profilePicUrl || ""}
                                                                     alt={
-                                                                        instructor.email
+                                                                        instructor.name
                                                                     }
                                                                 />
                                                                 <AvatarFallback className="bg-info-500 text-xs font-medium text-white">
                                                                     {getInitials(
-                                                                        instructor.email
+                                                                        instructor.name
                                                                     )}
                                                                 </AvatarFallback>
                                                             </Avatar>
-                                                            <h3 className="text-base sm:text-lg font-medium">
-                                                                {
-                                                                    instructor.name
-                                                                }
-                                                            </h3>
+                                                            <div className="min-w-0 flex-1">
+                                                                <h3 className="text-base sm:text-lg font-medium">
+                                                                    {
+                                                                        instructor.name
+                                                                    }
+                                                                </h3>
+                                                                {instructor.authorSubtitle && (
+                                                                    <p className="text-xs sm:text-sm text-gray-500">
+                                                                        {
+                                                                            instructor.authorSubtitle
+                                                                        }
+                                                                    </p>
+                                                                )}
+                                                                {instructor.authorDescription && (
+                                                                    <div
+                                                                        className="text-xs sm:text-sm leading-relaxed text-gray-600 mt-1"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: sanitizeHtml(
+                                                                                instructor.authorDescription
+                                                                            ),
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )
                                                 )}

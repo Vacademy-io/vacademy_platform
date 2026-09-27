@@ -1,0 +1,15 @@
+{
+    "uploadQuestionPaper": "Upload Question Paper",
+    "uploadFromDevice": "Upload from Device",
+    "uploadQuestionPaperFromDevice": "Upload Question Paper From Device",
+    "createManually": "Create Manually",
+    "createQuestionPaperManually": "Create Question Paper Manually",
+    "marksPerQuestion": "Marks Per Question",
+    "defaultLabel": "(Default)",
+    "adaptiveMarkingRules": "Adaptive Marking Rules",
+    "columnQNo": "Q.No.",
+    "columnQuestion": "Question",
+    "columnMarks": "Marks",
+    "columnCriteria": "Criteria",
+    "totalMarks": "Total Marks"
+}

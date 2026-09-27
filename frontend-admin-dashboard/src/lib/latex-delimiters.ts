@@ -16,8 +16,12 @@ import katex from 'katex';
 // word-bearing fragment such as `b = Cl`, never a bare amount like `5-`.
 const LATEX_SIGNAL = /[\\^_{}]/;
 const SHORT_MATH_FRAGMENT = /^(?=.{1,30}$).*[a-zA-Z].*$/s;
+// A coordinate pair or a bare arithmetic expression — `$(2,0)$`, `$2+2$` — is
+// maths too, letters or not; a price never comes bracketed or with an operator.
+const NUMERIC_EXPRESSION = /^[([].*[)\]]$|[=+×÷<>≤≥]/;
 
-const looksLikeMath = (body: string) => LATEX_SIGNAL.test(body) || SHORT_MATH_FRAGMENT.test(body);
+const looksLikeMath = (body: string) =>
+    LATEX_SIGNAL.test(body) || SHORT_MATH_FRAGMENT.test(body) || NUMERIC_EXPRESSION.test(body);
 
 // Only these constructs are worth centring as display math; short chemistry /
 // symbol fragments read better inline even when authored with `$$`.

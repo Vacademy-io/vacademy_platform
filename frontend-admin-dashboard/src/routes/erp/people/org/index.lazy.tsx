@@ -3,6 +3,7 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Buildings, IdentificationBadge, PencilSimple, Plus, Trash } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
@@ -67,10 +68,11 @@ function OrgSection({
 }
 
 function OrgPage() {
+    const { t } = useTranslation('erpPeopleOrgIndex');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">People</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const { isHrAdmin, isHrStaff } = useHrRole();
     const departments = useDepartments();
@@ -108,13 +110,15 @@ function OrgPage() {
         if (!department.id) return;
         try {
             await deactivateDepartment.mutateAsync(department.id);
-            toast.success(`${department.name || 'Department'} deactivated`);
+            toast.success(
+                t('departmentDeactivated', { name: department.name || t('departmentFallback') })
+            );
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-people',
                 tags: { 'erp.action': 'deactivate-department' },
                 extra: { departmentId: department.id },
-                fallbackMessage: 'Could not deactivate this department',
+                fallbackMessage: t('deactivateError'),
             });
         }
     };
@@ -123,7 +127,7 @@ function OrgPage() {
         const columns: ColumnDef<DepartmentDTO>[] = [
             {
                 id: 'name',
-                header: 'Department',
+                header: t('columnDepartment'),
                 size: 180,
                 cell: ({ row }) => (
                     <div className="flex min-w-0 flex-col">
@@ -143,7 +147,7 @@ function OrgPage() {
             },
             {
                 id: 'code',
-                header: 'Code',
+                header: t('columnCode'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -153,19 +157,19 @@ function OrgPage() {
             },
             {
                 id: 'parent',
-                header: 'Parent',
+                header: t('columnParent'),
                 size: 140,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-muted-foreground">
                         {row.original.parent_id
                             ? departmentNameById.get(row.original.parent_id) || '—'
-                            : 'Top level'}
+                            : t('topLevel')}
                     </span>
                 ),
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columnStatus'),
                 size: 110,
                 cell: ({ row }) => {
                     const active = (row.original.status ?? 'ACTIVE').toUpperCase() === 'ACTIVE';
@@ -184,7 +188,7 @@ function OrgPage() {
         if (isHrAdmin) {
             columns.push({
                 id: 'actions',
-                header: 'Actions',
+                header: t('columnActions'),
                 size: 100,
                 cell: ({ row }) => (
                     <div className="flex items-center gap-1">
@@ -193,7 +197,9 @@ function OrgPage() {
                             buttonType="text"
                             scale="small"
                             layoutVariant="icon"
-                            aria-label={`Edit ${row.original.name || 'department'}`}
+                            aria-label={t('editDepartmentAria', {
+                                name: row.original.name || t('departmentFallback'),
+                            })}
                             onClick={() => openDepartmentDialog(row.original)}
                         >
                             <PencilSimple size={16} />
@@ -203,7 +209,9 @@ function OrgPage() {
                             buttonType="text"
                             scale="small"
                             layoutVariant="icon"
-                            aria-label={`Deactivate ${row.original.name || 'department'}`}
+                            aria-label={t('deactivateDepartmentAria', {
+                                name: row.original.name || t('departmentFallback'),
+                            })}
                             onClick={() => setConfirmDeactivate(row.original)}
                         >
                             <Trash size={16} className="text-danger-600" />
@@ -215,13 +223,13 @@ function OrgPage() {
 
         return columns;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [departmentNameById, isHrAdmin]);
+    }, [departmentNameById, isHrAdmin, t]);
 
     const designationColumns = useMemo<ColumnDef<DesignationDTO>[]>(() => {
         const columns: ColumnDef<DesignationDTO>[] = [
             {
                 id: 'name',
-                header: 'Designation',
+                header: t('columnDesignation'),
                 size: 180,
                 cell: ({ row }) => (
                     <div className="flex min-w-0 flex-col">
@@ -241,7 +249,7 @@ function OrgPage() {
             },
             {
                 id: 'code',
-                header: 'Code',
+                header: t('columnCode'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -251,7 +259,7 @@ function OrgPage() {
             },
             {
                 id: 'level',
-                header: 'Level',
+                header: t('columnLevel'),
                 size: 80,
                 cell: ({ row }) => (
                     <span className="block text-end text-body tabular-nums text-foreground">
@@ -261,7 +269,7 @@ function OrgPage() {
             },
             {
                 id: 'grade',
-                header: 'Grade',
+                header: t('columnGrade'),
                 size: 100,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -274,7 +282,7 @@ function OrgPage() {
         if (isHrAdmin) {
             columns.push({
                 id: 'actions',
-                header: 'Actions',
+                header: t('columnActions'),
                 size: 80,
                 cell: ({ row }) => (
                     <MyButton
@@ -282,7 +290,9 @@ function OrgPage() {
                         buttonType="text"
                         scale="small"
                         layoutVariant="icon"
-                        aria-label={`Edit ${row.original.name || 'designation'}`}
+                        aria-label={t('editDesignationAria', {
+                            name: row.original.name || t('designationFallback'),
+                        })}
                         onClick={() => openDesignationDialog(row.original)}
                     >
                         <PencilSimple size={16} />
@@ -293,7 +303,7 @@ function OrgPage() {
 
         return columns;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isHrAdmin]);
+    }, [isHrAdmin, t]);
 
     if (!isHrStaff) {
         return (
@@ -306,17 +316,14 @@ function OrgPage() {
     return (
         <div className="flex flex-col gap-6 p-4 sm:p-6">
             <div className="flex flex-col gap-1">
-                <h2 className="text-h2-semibold text-foreground">Departments &amp; designations</h2>
-                <p className="text-body text-muted-foreground">
-                    The structure every employee profile, salary template and payroll report is
-                    grouped by.
-                </p>
+                <h2 className="text-h2-semibold text-foreground">{t('pageTitle')}</h2>
+                <p className="text-body text-muted-foreground">{t('pageDescription')}</p>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
                 <OrgSection
-                    title="Departments"
-                    description="Teams and their reporting hierarchy."
+                    title={t('departmentsTitle')}
+                    description={t('departmentsDescription')}
                     action={
                         isHrAdmin && (
                             <MyButton
@@ -325,7 +332,7 @@ function OrgPage() {
                                 scale="medium"
                                 onClick={() => openDepartmentDialog(null)}
                             >
-                                <Plus size={16} /> Add
+                                <Plus size={16} /> {t('add')}
                             </MyButton>
                         )
                     }
@@ -334,14 +341,14 @@ function OrgPage() {
                         <HrLoadingRows rows={3} />
                     ) : departments.isError ? (
                         <HrErrorState
-                            message="Couldn't load departments."
+                            message={t('departmentsLoadError')}
                             onRetry={() => departments.refetch()}
                         />
                     ) : departmentRows.length === 0 ? (
                         <HrEmptyState
                             icon={<Buildings size={32} className="text-muted-foreground" />}
-                            title="No departments yet"
-                            description="Add one so employees can be grouped for payroll and reporting."
+                            title={t('noDepartmentsTitle')}
+                            description={t('noDepartmentsDescription')}
                         >
                             {isHrAdmin && (
                                 <MyButton
@@ -350,7 +357,7 @@ function OrgPage() {
                                     scale="medium"
                                     onClick={() => openDepartmentDialog(null)}
                                 >
-                                    <Plus size={16} /> Add department
+                                    <Plus size={16} /> {t('addDepartment')}
                                 </MyButton>
                             )}
                         </HrEmptyState>
@@ -375,8 +382,8 @@ function OrgPage() {
                 </OrgSection>
 
                 <OrgSection
-                    title="Designations"
-                    description="Job titles, their seniority level and grade."
+                    title={t('designationsTitle')}
+                    description={t('designationsDescription')}
                     action={
                         isHrAdmin && (
                             <MyButton
@@ -385,7 +392,7 @@ function OrgPage() {
                                 scale="medium"
                                 onClick={() => openDesignationDialog(null)}
                             >
-                                <Plus size={16} /> Add
+                                <Plus size={16} /> {t('add')}
                             </MyButton>
                         )
                     }
@@ -394,7 +401,7 @@ function OrgPage() {
                         <HrLoadingRows rows={3} />
                     ) : designations.isError ? (
                         <HrErrorState
-                            message="Couldn't load designations."
+                            message={t('designationsLoadError')}
                             onRetry={() => designations.refetch()}
                         />
                     ) : designationRows.length === 0 ? (
@@ -402,8 +409,8 @@ function OrgPage() {
                             icon={
                                 <IdentificationBadge size={32} className="text-muted-foreground" />
                             }
-                            title="No designations yet"
-                            description="Add the job titles you hire for — salary templates key off them."
+                            title={t('noDesignationsTitle')}
+                            description={t('noDesignationsDescription')}
                         >
                             {isHrAdmin && (
                                 <MyButton
@@ -412,7 +419,7 @@ function OrgPage() {
                                     scale="medium"
                                     onClick={() => openDesignationDialog(null)}
                                 >
-                                    <Plus size={16} /> Add designation
+                                    <Plus size={16} /> {t('addDesignation')}
                                 </MyButton>
                             )}
                         </HrEmptyState>
@@ -465,16 +472,16 @@ function OrgPage() {
                         <AlertDialogContent>
                             <AlertDialogHeader>
                                 <AlertDialogTitle>
-                                    Deactivate {confirmDeactivate?.name || 'this department'}?
+                                    {t('deactivateConfirmTitle', {
+                                        name: confirmDeactivate?.name || t('thisDepartment'),
+                                    })}
                                 </AlertDialogTitle>
                                 <AlertDialogDescription>
-                                    It stops being offered when assigning employees. Existing
-                                    employees keep their department on record, so payroll history
-                                    stays intact.
+                                    {t('deactivateConfirmDescription')}
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                                 <AlertDialogAction
                                     className="bg-danger-500 hover:bg-danger-600"
                                     onClick={() => {
@@ -483,7 +490,7 @@ function OrgPage() {
                                         setConfirmDeactivate(null);
                                     }}
                                 >
-                                    Deactivate
+                                    {t('deactivate')}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>

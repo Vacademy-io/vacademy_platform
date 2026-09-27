@@ -614,20 +614,14 @@ export const CourseStructureDetails = ({
     packageSessionId,
   );
   const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
-  // Anchors plus the first-item strictness flag, spread into every
-  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
-  // rest: institutes that have not turned this on keep today's behaviour.
+  // Day-1 anchors for day-wise rules, spread into every LearnerProgressData
+  // below.
   const dripAnchors = useMemo(
     () => ({
       enrollmentDate: dripSchedule.enrollmentDate,
       sessionStartDate: dripSchedule.sessionStartDate,
-      strictFirstItem: dripSchedule.applyConfiguredRules,
     }),
-    [
-      dripSchedule.enrollmentDate,
-      dripSchedule.sessionStartDate,
-      dripSchedule.applyConfiguredRules,
-    ],
+    [dripSchedule.enrollmentDate, dripSchedule.sessionStartDate],
   );
 
   // Drill-down state for Content Structure tab

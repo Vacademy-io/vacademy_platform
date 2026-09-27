@@ -159,3 +159,142 @@ export interface QuizQuestionAnalysisResponse {
     attemptedLearners: number;
     questions: QuizQuestionStat[];
 }
+
+/* -------------------------------------------------------------------------- */
+/* Learner-wise views                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** How one learner is doing across every quiz in the course. */
+export interface LearnerQuizRow {
+    userId: string;
+    fullName: string | null;
+    email: string | null;
+    mobileNumber: string | null;
+    enrollmentStatus: string | null;
+
+    quizzesInCourse: number;
+    quizzesAttempted: number;
+    totalAttempts: number;
+
+    /** marks earned on the quizzes they attempted (latest attempt of each). */
+    marksObtained: number | null;
+    /** marks available in just those attempted quizzes — the average's denominator. */
+    attemptedMaxMarks: number | null;
+    /** marks available across every quiz in the course. */
+    courseMaxMarks: number | null;
+
+    avgScorePercent: number | null;
+    bestScorePercent: number | null;
+    lowestScorePercent: number | null;
+
+    correctCount: number;
+    wrongCount: number;
+    skippedCount: number;
+    ungradedCount: number;
+
+    passedQuizzes: number;
+    quizzesWithPassMark: number;
+    lastAttemptAtEpochMillis: number | null;
+}
+
+export interface LearnerQuizOverviewResponse {
+    summary: {
+        enrolledLearners: number;
+        quizzesInCourse: number;
+        learnersAttempted: number;
+        learnersNotStarted: number;
+        avgScorePercent: number | null;
+    };
+    learners: LearnerQuizRow[];
+    returned: number;
+    truncated: boolean;
+}
+
+/** One quiz as it appears inside a learner's side view. */
+export interface LearnerQuizDetailRow {
+    slideId: string;
+    title: string | null;
+    subjectName: string | null;
+    moduleName: string | null;
+    chapterName: string | null;
+
+    questionCount: number;
+    totalMarks: number | null;
+    passPercentage: number | null;
+
+    status: QuizLearnerStatus;
+    attemptCount: number;
+
+    marksObtained: number | null;
+    scorePercent: number | null;
+    correctCount: number;
+    wrongCount: number;
+    skippedCount: number;
+    ungradedCount: number;
+    unansweredCount: number;
+
+    timeSpentSeconds: number | null;
+    lastAttemptAtEpochMillis: number | null;
+}
+
+export interface LearnerQuizDetailResponse {
+    learner: LearnerQuizRow;
+    quizzes: LearnerQuizDetailRow[];
+}
+
+/** Per-question verdict on one attempt. NOT_ANSWERED = no response row at all. */
+export type AnswerVerdict = 'CORRECT' | 'WRONG' | 'SKIPPED' | 'UNGRADED' | 'NOT_ANSWERED';
+
+export interface LearnerAnswerOption {
+    optionId: string;
+    text: string;
+    correct: boolean;
+    selected: boolean;
+}
+
+export interface LearnerAnswer {
+    questionId: string;
+    order: number;
+    questionText: string;
+    questionType: string | null;
+    explanation: string;
+    verdict: AnswerVerdict;
+    /** what the learner picked, as text; empty when skipped. */
+    learnerAnswer: string;
+    /** the answer key as text; empty when not auto-gradable. */
+    correctAnswer: string;
+    marks: number;
+    marksAwarded: number;
+    options: LearnerAnswerOption[];
+}
+
+export interface LearnerQuizAttempt {
+    /** 1-based, oldest first. */
+    attemptNumber: number;
+    activityId: string;
+    attemptedAtEpochMillis: number | null;
+    timeSpentSeconds: number | null;
+    /** the attempt every other screen reports on. */
+    latest: boolean;
+
+    marksObtained: number | null;
+    scorePercent: number | null;
+    correctCount: number;
+    wrongCount: number;
+    skippedCount: number;
+    ungradedCount: number;
+    unansweredCount: number;
+
+    answers: LearnerAnswer[];
+}
+
+export interface LearnerQuizAnswersResponse {
+    slideId: string;
+    quizTitle: string | null;
+    userId: string;
+    fullName: string | null;
+    questionCount: number;
+    totalMarks: number | null;
+    passPercentage: number | null;
+    attempts: LearnerQuizAttempt[];
+}

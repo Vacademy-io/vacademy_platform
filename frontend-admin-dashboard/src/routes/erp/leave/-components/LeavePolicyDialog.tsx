@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Info } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
@@ -22,35 +24,36 @@ import { HrTextField } from '@/routes/erp/people/-components/HrFormFields';
 import { useSaveLeavePolicy } from '@/routes/erp/leave/-hooks/use-leave';
 import { ACCRUAL_TYPE_LABELS, ACCRUAL_TYPE_OPTIONS, RECORD_STATUS_OPTIONS } from './leave-meta';
 
-const schema = z
-    .object({
-        leave_type_id: z.string().min(1, 'Pick the leave type this policy governs'),
-        annual_quota: z
-            .string()
-            .trim()
-            .min(1, 'Enter the annual quota in days')
-            .regex(/^\d+(\.\d+)?$/, 'Days only, e.g. 12 or 12.5'),
-        accrual_type: z.string().min(1, 'Pick how the quota is credited'),
-        accrual_amount: z
-            .string()
-            .trim()
-            .min(1, 'Enter how many days each period credits')
-            .regex(/^\d+(\.\d+)?$/, 'Days only, e.g. 1 or 1.5'),
-        pro_rata_enabled: z.boolean(),
-        applicable_after_days: z.string().trim().regex(/^\d*$/, 'Whole days only'),
-        effective_from: z.string().min(1, 'A policy needs a start date'),
-        effective_to: z.string(),
-        status: z.string().min(1, 'Pick a status'),
-    })
-    .refine(
-        (values) =>
-            !values.effective_to || !values.effective_from
-                ? true
-                : values.effective_to >= values.effective_from,
-        { path: ['effective_to'], message: 'The end date cannot be before the start date' }
-    );
+const buildSchema = (t: TFunction) =>
+    z
+        .object({
+            leave_type_id: z.string().min(1, t('validation.leaveTypeRequired')),
+            annual_quota: z
+                .string()
+                .trim()
+                .min(1, t('validation.annualQuotaRequired'))
+                .regex(/^\d+(\.\d+)?$/, t('validation.annualQuotaFormat')),
+            accrual_type: z.string().min(1, t('validation.accrualTypeRequired')),
+            accrual_amount: z
+                .string()
+                .trim()
+                .min(1, t('validation.accrualAmountRequired'))
+                .regex(/^\d+(\.\d+)?$/, t('validation.accrualAmountFormat')),
+            pro_rata_enabled: z.boolean(),
+            applicable_after_days: z.string().trim().regex(/^\d*$/, t('validation.wholeDaysOnly')),
+            effective_from: z.string().min(1, t('validation.effectiveFromRequired')),
+            effective_to: z.string(),
+            status: z.string().min(1, t('validation.statusRequired')),
+        })
+        .refine(
+            (values) =>
+                !values.effective_to || !values.effective_from
+                    ? true
+                    : values.effective_to >= values.effective_from,
+            { path: ['effective_to'], message: t('validation.endBeforeStart') }
+        );
 
-type PolicyFormValues = z.infer<typeof schema>;
+type PolicyFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: PolicyFormValues = {
     leave_type_id: '',
@@ -88,8 +91,11 @@ export const LeavePolicyDialog = ({
     policy,
     leaveTypes,
 }: LeavePolicyDialogProps) => {
+    const { t } = useTranslation('erpLeavePolicyDialog');
     const mutation = useSaveLeavePolicy();
     const isEdit = !!policy?.id;
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<PolicyFormValues>({
         resolver: zodResolver(schema),
@@ -131,7 +137,9 @@ export const LeavePolicyDialog = ({
         .map((type) => ({
             _id: type.id as string,
             value: type.id as string,
-            label: type.code ? `${type.name || type.code} (${type.code})` : type.name || 'Leave',
+            label: type.code
+                ? `${type.name || type.code} (${type.code})`
+                : type.name || t('fields.leaveType.fallback'),
         }));
 
     const accrualType = form.watch('accrual_type');
@@ -154,20 +162,20 @@ export const LeavePolicyDialog = ({
                 effective_to: values.effective_to || undefined,
                 status: values.status,
             });
-            toast.success(isEdit ? 'Policy updated' : 'Policy created');
+            toast.success(isEdit ? t('toast.updated') : t('toast.created'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-leave',
                 tags: { action: isEdit ? 'update-leave-policy' : 'create-leave-policy' },
-                fallbackMessage: 'Could not save the leave policy.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit leave policy' : 'Add leave policy'}
+            heading={isEdit ? t('dialog.editHeading') : t('dialog.addHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -179,16 +187,16 @@ export const LeavePolicyDialog = ({
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('actions.saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Create policy'}
+                        {isEdit ? t('actions.saveChanges') : t('actions.createPolicy')}
                     </MyButton>
                 </div>
             }
@@ -198,24 +206,19 @@ export const LeavePolicyDialog = ({
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                         <span>
-                            The accrual type decides how the scheduled job credits the quota:{' '}
-                            <b>{accrualLabel.toLowerCase()}</b> means each run adds the accrual
-                            amount to every eligible employee&apos;s balance. Pro-rata prorates a
-                            mid-period joiner&apos;s first period, so someone who joins halfway
-                            through a month is credited half of it rather than all of it.
+                            {t('info.accrualExplanationPrefix')}
+                            <b>{accrualLabel.toLowerCase()}</b>
+                            {t('info.accrualExplanationSuffix')}
                         </span>
                     </div>
 
                     {leaveTypeOptions.length === 0 ? (
-                        <p className="text-body text-danger-600">
-                            No leave types yet — create one on the Leave types tab first. A policy
-                            has to attach to a type.
-                        </p>
+                        <p className="text-body text-danger-600">{t('noLeaveTypes')}</p>
                     ) : (
                         <SelectField
                             control={form.control}
                             name="leave_type_id"
-                            label="Leave type"
+                            label={t('fields.leaveType.label')}
                             required
                             options={leaveTypeOptions}
                             className="w-full sm:w-full"
@@ -226,15 +229,15 @@ export const LeavePolicyDialog = ({
                         <HrTextField
                             control={form.control}
                             name="annual_quota"
-                            label="Annual quota (days)"
-                            placeholder="12"
+                            label={t('fields.annualQuota.label')}
+                            placeholder={t('fields.annualQuota.placeholder')}
                             required
-                            description="The whole year's entitlement."
+                            description={t('fields.annualQuota.description')}
                         />
                         <SelectField
                             control={form.control}
                             name="accrual_type"
-                            label="Accrual type"
+                            label={t('fields.accrualType.label')}
                             required
                             options={ACCRUAL_TYPE_OPTIONS}
                             className="w-full sm:w-full"
@@ -242,36 +245,38 @@ export const LeavePolicyDialog = ({
                         <HrTextField
                             control={form.control}
                             name="accrual_amount"
-                            label="Accrual amount (days)"
-                            placeholder="1"
+                            label={t('fields.accrualAmount.label')}
+                            placeholder={t('fields.accrualAmount.placeholder')}
                             required
-                            description={`Credited on each ${accrualLabel.toLowerCase()} run.`}
+                            description={t('fields.accrualAmount.description', {
+                                accrualLabel: accrualLabel.toLowerCase(),
+                            })}
                         />
                         <HrTextField
                             control={form.control}
                             name="applicable_after_days"
-                            label="Applicable after (days of service)"
-                            placeholder="90"
-                            description="Blank means it applies from the joining date."
+                            label={t('fields.applicableAfterDays.label')}
+                            placeholder={t('fields.applicableAfterDays.placeholder')}
+                            description={t('fields.applicableAfterDays.description')}
                         />
                         <HrTextField
                             control={form.control}
                             name="effective_from"
-                            label="Effective from"
+                            label={t('fields.effectiveFrom.label')}
                             inputType="date"
                             required
                         />
                         <HrTextField
                             control={form.control}
                             name="effective_to"
-                            label="Effective to"
+                            label={t('fields.effectiveTo.label')}
                             inputType="date"
-                            description="Blank leaves the policy open-ended."
+                            description={t('fields.effectiveTo.description')}
                         />
                         <SelectField
                             control={form.control}
                             name="status"
-                            label="Status"
+                            label={t('fields.status.label')}
                             required
                             options={RECORD_STATUS_OPTIONS}
                             className="w-full sm:w-full"
@@ -293,12 +298,11 @@ export const LeavePolicyDialog = ({
                                         />
                                     </FormControl>
                                     <FormLabel className="!mt-0 text-body text-foreground">
-                                        Pro-rata for mid-period joiners
+                                        {t('checkbox.proRata.label')}
                                     </FormLabel>
                                 </div>
                                 <FormDescription className="text-caption text-muted-foreground">
-                                    Off means a joiner gets the full period&apos;s accrual on their
-                                    first run, however few days of it they worked.
+                                    {t('checkbox.proRata.description')}
                                 </FormDescription>
                             </FormItem>
                         )}

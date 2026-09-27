@@ -14,7 +14,9 @@
         "creditsExhausted": "لقد نفدت أرصدة OpenRouter الخاصة بك. يرجى إعادة شحن رصيدك لمتابعة استخدام مساعد الذكاء الاصطناعي.",
         "attachmentAlt": "مرفق",
         "attachedImageAlt": "مرفق",
-        "copy": "نسخ"
+        "copy": "نسخ",
+        "popupView": "فتح كنافذة منبثقة",
+        "dockView": "تثبيت في الجانب"
     },
     "voiceModeLabels": {
         "interview": "مقابلة تجريبية",

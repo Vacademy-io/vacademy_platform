@@ -69,7 +69,8 @@
       "notAttempted": "Not attempted",
       "liveNow": "Live now",
       "closesIn": "Closes in {{time}}",
-      "startsIn": "Starts in {{time}}"
+      "startsIn": "Starts in {{time}}",
+      "surveySubmitted": "Response submitted"
     },
     "common": {
       "cancel": "Cancel"

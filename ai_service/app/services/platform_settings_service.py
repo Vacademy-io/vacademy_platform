@@ -46,12 +46,22 @@ class SettingSpec:
     label: str
     description: str
     # "model" (validated against ai_models), "enum" (validated against options),
-    # "bool", "string".
+    # "bool", "string", "number" (bounded by min_value / max_value).
     type: str
     default: Callable[[], Any]
     options: tuple = ()
     # A "model" setting may be blank, meaning "same as the text chatbot".
     nullable: bool = False
+    # For "model" settings: which slice of ai_models the portal offers and the
+    # server accepts — "llm" (chat-capable) or "image" (category = image).
+    catalog: str = "llm"
+    # What a blank value means, shown by the portal for nullable settings.
+    blank_label: str = "Same as chatbot model"
+    # Bounds for "number" settings.
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    # Longest accepted "string" value (JSON-valued settings need more room).
+    max_length: int = 200
 
 
 def _env_bool(name: str, fallback: bool) -> bool:
@@ -150,13 +160,212 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             type="bool",
             default=lambda: get_settings().voice_require_auth,
         ),
+        SettingSpec(
+            key="tutor.compile.model",
+            group="tutor",
+            label="Tutor compile model",
+            description=(
+                "OpenRouter model that compiles a slide into a Live AI Tutor teaching plan "
+                "(topics, concepts, board, checks). Flash by default: under this platform's "
+                "token pricing a single failed Pro compile cost 35 credits (2026-09-03). Raise "
+                "it here when the economics allow; the compiler falls back to the institute "
+                "default if the chosen model is rejected by the provider."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-flash",
+        ),
+        SettingSpec(
+            key="tutor.live.model",
+            group="tutor",
+            label="Tutor live model",
+            description=(
+                "Model for the live teaching turns: grading the learner's answer, hints, doubts "
+                "(~1.3k tokens per turn). Blank = the chatbot model. A course or institute "
+                "'Live model' setting still wins over this."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_LIVE_MODEL") or None,
+            nullable=True,
+        ),
+        SettingSpec(
+            key="tutor.image.model",
+            group="tutor",
+            label="Tutor board image model",
+            description=(
+                "Image model for AI pictures on whiteboards (up to 4 per slide, billed per image). "
+                "Blank = the platform image model below. Dedicated image models (Qwen, Seedream, "
+                "FLUX) take 30-70 s per image; Gemini image models a few seconds."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_IMAGE_MODEL") or None,
+            nullable=True,
+            catalog="image",
+            blank_label="Platform image model",
+        ),
+        SettingSpec(
+            key="tutor.voice.provider",
+            group="tutor",
+            label="Tutor voice provider",
+            description="TTS engine for the Live AI Tutor's browser sessions. Smallest.ai when its key is present, else Sarvam. Institutes and courses can override; a failing engine falls back to Sarvam per line.",
+            type="enum",
+            default=lambda: os.environ.get("TUTOR_TTS_PROVIDER") or ("smallest" if os.environ.get("SMALLEST_API_KEY") else "sarvam"),
+            options=("smallest", "sarvam", "google", "edge"),
+        ),
+        SettingSpec(
+            key="tutor.transcription.provider",
+            group="tutor",
+            label="Tutor transcription provider",
+            description="Speech-to-text for uploaded lecture videos in Tutor Mode. openrouter = Whisper large-v3-turbo via OpenRouter (an 82-minute lecture in a few minutes; the render worker is the fallback). render = Whisper small on the render worker's CPU (hours for a lecture).",
+            type="enum",
+            default=lambda: "openrouter",
+            options=("openrouter", "render"),
+        ),
+        SettingSpec(
+            key="tutor.transcription.model",
+            group="tutor",
+            label="Tutor transcription model",
+            description="OpenRouter transcription model id used when the provider is openrouter.",
+            type="string",
+            default=lambda: "openai/whisper-large-v3-turbo",
+        ),
+        SettingSpec(
+            key="tutor.voice.voice",
+            group="tutor",
+            label="Tutor voice",
+            description="Default (female) voice id for the tutor's provider. Blank = provider default. Hindi verb gender follows the voice.",
+            type="string",
+            default=lambda: os.environ.get("TUTOR_TTS_VOICE") or "",
+            nullable=True,
+        ),
+        SettingSpec(
+            key="tutor.live.preflight_minutes",
+            group="tutor",
+            label="Voice lesson: minutes of credit required to start",
+            description=(
+                "A voice lesson starts only if the institute can afford this many minutes at the "
+                "tutor_live_minute rate (see Credits & pricing below). 0 disables the check."
+            ),
+            type="number",
+            default=lambda: 5,
+            min_value=0, max_value=60,
+        ),
+        SettingSpec(
+            key="tutor.demo.enabled",
+            group="tutor",
+            label="Public 3-minute demo lesson (tutezy.ai)",
+            description="Lets unauthenticated visitors take one short lesson on the demo batch, unbilled. Needs the institute, batch and topics below.",
+            type="bool",
+            default=lambda: False,
+        ),
+        SettingSpec(
+            key="tutor.demo.institute_id",
+            group="tutor",
+            label="Demo lesson: institute id",
+            description="The institute whose settings (teacher name, voice, avatar) the public demo teaches with.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.package_session_id",
+            group="tutor",
+            label="Demo lesson: batch (package session) id",
+            description="The batch that holds the demo slides. Every topic's slide must belong to it.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.topics",
+            group="tutor",
+            label="Demo lesson: topics (JSON)",
+            description='A list like [{"key":"force","title":"What is a force?","emoji":"🚀","slide_id":"…","language":"en"}]. Slides must be compiled.',
+            type="string",
+            default=lambda: "[]",
+            max_length=6000,
+        ),
+        SettingSpec(
+            key="tutor.demo.teacher_name",
+            group="tutor",
+            label="Demo lesson: teacher name shown to visitors",
+            description="Blank = the demo institute's own teacher name.",
+            type="string",
+            default=lambda: "",
+        ),
+        SettingSpec(
+            key="tutor.demo.minutes",
+            group="tutor",
+            label="Demo lesson: length (minutes)",
+            description="The public lesson ends politely at this length.",
+            type="number",
+            default=lambda: 3,
+            min_value=1, max_value=10,
+        ),
+        SettingSpec(
+            key="tutor.demo.per_ip_per_day",
+            group="tutor",
+            label="Demo lesson: sessions per visitor (IP) per day",
+            description="0 disables the per-visitor limit (not recommended).",
+            type="number",
+            default=lambda: 1,
+            min_value=0, max_value=20,
+        ),
+        SettingSpec(
+            key="tutor.demo.daily_cap",
+            group="tutor",
+            label="Demo lesson: total sessions per day",
+            description="A global ceiling on free lessons across all visitors; 0 = no cap.",
+            type="number",
+            default=lambda: 200,
+            min_value=0, max_value=10000,
+        ),
+        SettingSpec(
+            key="tutor.live.max_minutes",
+            group="tutor",
+            label="Voice/text lesson: maximum length (minutes)",
+            description="A lesson is closed politely when it reaches this wall-clock length; the learner's place is saved.",
+            type="number",
+            default=lambda: 90,
+            min_value=10, max_value=240,
+        ),
+        SettingSpec(
+            key="image.model",
+            group="images",
+            label="Image generation model",
+            description=(
+                "Model behind every generated picture: course banners and previews, copilot slide "
+                "images, question figures, tutor boards (unless overridden above). Dedicated image "
+                "models (qwen/qwen-image-3, Seedream, FLUX) go through OpenRouter's images API; "
+                "Gemini/GPT image models through chat completions — routing is automatic."
+            ),
+            type="model",
+            default=lambda: os.environ.get("IMAGE_MODEL") or "qwen/qwen-image-3",
+            catalog="image",
+        ),
     )
 }
+
+
+SETTING_SPECS["llm.model_routes"] = SettingSpec(
+    key="llm.model_routes",
+    group="routing",
+    label="Model routing (JSON)",
+    description=(
+        'Models served by a gateway other than OpenRouter, e.g. {"z-ai/glm-5.3-flash": "isoquant"} '
+        'or {"z-ai/glm-5.3-flash": {"router": "isoquant", "model": "glm-5.3-flash", "reasoning_effort": "low"}}. '
+        "Unlisted models stay on OpenRouter. Institutes using their own OpenRouter key always stay "
+        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes."
+    ),
+    type="string",
+    default=lambda: os.getenv("LLM_MODEL_ROUTES", "") or "{}",
+    max_length=6000,
+)
 
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",
+    "tutor": "Live AI Tutor",
+    "images": "Image generation",
     "rollout": "Rollout & safety",
+    "routing": "Model routing",
 }
 
 
@@ -167,8 +376,12 @@ GROUP_LABELS = {
 @dataclass
 class _Cache:
     values: Dict[str, Any] = field(default_factory=dict)
-    loaded_at: float = 0.0
+    # None = never loaded. (A 0.0 sentinel compared against time.monotonic()
+    # reads as "loaded just now" wherever the monotonic clock starts near zero.)
+    loaded_at: Optional[float] = None
+    loaded_wall: Optional[datetime] = None
     load_failed: bool = False
+    last_error: Optional[str] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -184,43 +397,64 @@ def _load_overrides(db: Session) -> Dict[str, Any]:
     return out
 
 
-def _refresh_if_stale() -> None:
+def _is_fresh(now: float) -> bool:
+    return _cache.loaded_at is not None and (now - _cache.loaded_at) < CACHE_TTL_SECONDS
+
+
+def _refresh_if_stale(db: Optional[Session] = None) -> None:
+    """
+    Reload the overrides once per TTL.
+
+    Prefer the caller's session: the chatbot and the voice socket call this
+    while already holding a pooled connection, and opening a second one from
+    inside that request is how a busy pool turns a saved setting into a silent
+    env default. Only fall back to a fresh session when no caller session exists.
+    """
     now = time.monotonic()
-    if now - _cache.loaded_at < CACHE_TTL_SECONDS:
+    if _is_fresh(now):
         return
     with _cache.lock:
-        if now - _cache.loaded_at < CACHE_TTL_SECONDS:
+        if _is_fresh(now):
             return
         try:
-            with db_session() as db:
-                _cache.values = _load_overrides(db)
+            if db is not None:
+                values = _load_overrides(db)
+            else:
+                with db_session() as fresh:
+                    values = _load_overrides(fresh)
+            _cache.values = values
             if _cache.load_failed:
                 logger.info("ai_platform_settings loaded; overrides active again")
             _cache.load_failed = False
-        except Exception:
-            # Table not migrated yet, or DB blip: serve defaults and retry later.
-            if not _cache.load_failed:
-                logger.warning(
-                    "ai_platform_settings unavailable; using environment defaults", exc_info=True
-                )
+            _cache.last_error = None
+            _cache.loaded_wall = datetime.utcnow()
+        except Exception as exc:
+            # Table not migrated yet, pool busy, DB blip: serve defaults, retry
+            # after the TTL, and say so EVERY time — a one-off warning at pod
+            # start is not enough to notice a setting that never takes effect.
             _cache.values = {}
             _cache.load_failed = True
+            _cache.last_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.warning(
+                "ai_platform_settings unavailable; using environment defaults (%s)",
+                _cache.last_error,
+            )
         _cache.loaded_at = time.monotonic()
 
 
 def invalidate_platform_settings_cache() -> None:
-    _cache.loaded_at = 0.0
+    _cache.loaded_at = None
 
 
-def get_platform_setting(key: str, default: Any = None) -> Any:
+def get_platform_setting(key: str, default: Any = None, db: Optional[Session] = None) -> Any:
     """
     Current effective value: the portal override if set, else the spec default,
-    else `default`. Safe to call on every request.
+    else `default`. Pass the request's `db` session when you have one.
     """
     spec = SETTING_SPECS.get(key)
     if spec is None:
         raise KeyError(f"Unknown platform setting: {key}")
-    _refresh_if_stale()
+    _refresh_if_stale(db)
     if key in _cache.values:
         return _cache.values[key]
     try:
@@ -228,6 +462,64 @@ def get_platform_setting(key: str, default: Any = None) -> Any:
     except Exception:
         value = None
     return default if value is None else value
+
+
+# --------------------------------------------------------------------------
+# Model health — why the configured model failed, and what answered instead
+# --------------------------------------------------------------------------
+
+_model_health: Dict[str, Dict[str, Any]] = {}
+_MODEL_HEALTH_MAX = 8
+
+
+def record_model_failure(model: str, reason: str, fallback_model: Optional[str] = None) -> None:
+    """Remember the last failure for `model` so the portal can show it."""
+    entry = _model_health.setdefault(model, {"failures": 0})
+    entry["failures"] = int(entry.get("failures", 0)) + 1
+    entry["last_error"] = (reason or "")[:300]
+    entry["last_failed_at"] = datetime.utcnow().isoformat() + "Z"
+    if fallback_model:
+        entry["fallback_model"] = fallback_model
+    while len(_model_health) > _MODEL_HEALTH_MAX:
+        oldest = min(_model_health, key=lambda k: _model_health[k].get("last_failed_at", ""))
+        _model_health.pop(oldest, None)
+
+
+def record_model_success(model: str) -> None:
+    """A successful call clears a model's failure record."""
+    _model_health.pop(model, None)
+
+
+_model_notes: Dict[str, str] = {}
+
+
+def record_model_note(model: str, note: str) -> None:
+    """Informational, not a failure: e.g. 'runs with reasoning on'."""
+    _model_notes[model] = (note or "")[:200]
+
+
+def get_model_notes() -> Dict[str, str]:
+    return dict(_model_notes)
+
+
+def get_model_health() -> Dict[str, Dict[str, Any]]:
+    return {k: dict(v) for k, v in _model_health.items()}
+
+
+def get_cache_status() -> Dict[str, Any]:
+    """What this process is serving from — for the portal's 'effective' view."""
+    age = None if _cache.loaded_at is None else round(time.monotonic() - _cache.loaded_at, 1)
+    return {
+        "model_health": get_model_health(),
+        "model_notes": get_model_notes(),
+        "loaded": _cache.loaded_at is not None and not _cache.load_failed,
+        "load_failed": _cache.load_failed,
+        "last_error": _cache.last_error,
+        "age_seconds": age,
+        "loaded_at": _cache.loaded_wall.isoformat() + "Z" if _cache.loaded_wall else None,
+        "ttl_seconds": CACHE_TTL_SECONDS,
+        "override_keys": sorted(_cache.values.keys()),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -256,18 +548,31 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
 
     if spec.type in ("model", "string"):
         v = str(value).strip()
-        if len(v) > 200:
-            raise ValueError(f"{spec.key} is too long")
+        if len(v) > spec.max_length:
+            raise ValueError(f"{spec.key} is too long (max {spec.max_length} characters)")
         return v
+
+    if spec.type == "number":
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{spec.key} must be a number")
+        if spec.min_value is not None and n < spec.min_value:
+            raise ValueError(f"{spec.key} must be at least {spec.min_value:g}")
+        if spec.max_value is not None and n > spec.max_value:
+            raise ValueError(f"{spec.key} must be at most {spec.max_value:g}")
+        return int(n) if n.is_integer() else n
 
     raise ValueError(f"Unsupported setting type {spec.type}")
 
 
-def _model_exists(db: Session, model_id: str) -> bool:
-    row = db.execute(
-        text("SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE LIMIT 1"),
-        {"m": model_id},
-    ).fetchone()
+def _model_exists(db: Session, model_id: str, catalog: str = "llm") -> bool:
+    if catalog == "image":
+        sql = "SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE AND category = 'image' LIMIT 1"
+    else:
+        sql = ("SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE "
+               "AND category NOT IN ('embedding', 'image', 'tts', 'video') LIMIT 1")
+    row = db.execute(text(sql), {"m": model_id}).fetchone()
     return row is not None
 
 
@@ -290,15 +595,26 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
         else:
             value, updated_by, updated_at = default, None, None
             source = "default"
+        # What THIS process resolves right now (via its cache) — differs from
+        # `value` when the cache could not load or is still within its TTL.
+        try:
+            effective = get_platform_setting(spec.key, db=db)
+        except Exception:
+            effective = None
         out.append(
             {
                 "key": spec.key,
+                "effective": effective,
                 "group": spec.group,
                 "group_label": GROUP_LABELS.get(spec.group, spec.group),
                 "label": spec.label,
                 "description": spec.description,
                 "type": spec.type,
                 "nullable": spec.nullable,
+                "catalog": spec.catalog,
+                "blank_label": spec.blank_label,
+                "min_value": spec.min_value,
+                "max_value": spec.max_value,
                 "options": list(spec.options),
                 "value": value,
                 "default": default,
@@ -310,14 +626,137 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
     return out
 
 
+def _check_model_routes(raw: Any) -> Optional[str]:
+    """None if the map parses and every routed model answers one token through
+    its gateway with the platform key; else why not. A route whose gateway key
+    is missing would silently stay on OpenRouter, so that is refused too."""
+    from .llm_router import ROUTERS, parse_routes
+
+    try:
+        routes = parse_routes(raw)
+    except Exception as exc:  # noqa: BLE001
+        return str(exc)
+    for model_id, entry in routes.items():
+        spec = ROUTERS[entry["router"]]
+        if entry["router"] == "openrouter":
+            continue
+        if not spec.api_key():
+            return f"{spec.label} API key is not configured on ai-service (needed for {model_id})"
+        err = _openrouter_one_token(model_id, "on-low", get_settings().openrouter_api_key or "", 25.0, routes)
+        if err:
+            return f"{model_id} failed through {spec.label}: {err}"
+    return None
+
+
+def _openrouter_one_token(
+    model_id: str, mode: str, api_key: str, timeout_seconds: float, routes: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
+    """
+    One-token completion in the chatbot's request shape; None if it worked,
+    else the provider's error (with OpenRouter's upstream text unwrapped).
+    mode: "disabled" (reasoning off), "on-low" (on at low effort), "on"
+    (explicitly on, as the owner's working curl), "on-no-temp" (on, and no
+    temperature parameter) — the same ladder the runtime client walks.
+    """
+    import httpx
+    from .chat_llm_client import openrouter_error_text
+
+    payload: Dict[str, Any] = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+        "max_tokens": 5,
+        "temperature": 0,
+    }
+    if mode == "disabled":
+        payload["reasoning"] = {"enabled": False}
+    else:
+        payload["reasoning"] = {"enabled": True, "effort": "low"} if mode == "on-low" else {"enabled": True}
+        payload["max_tokens"] = 256  # room for thinking before the one visible token
+        if mode == "on-no-temp":
+            payload.pop("temperature", None)
+    from .llm_router import route_chat
+
+    # Probe the gateway that will actually serve the model (llm_router).
+    url, headers, wire, route = route_chat(payload, api_key, routes)
+    gw = route.label
+    try:
+        resp = httpx.post(url, json=wire, headers=headers, timeout=timeout_seconds)
+    except Exception as exc:
+        return f"could not reach {gw}: {exc}"
+    if resp.status_code >= 400:
+        return f"{gw} {resp.status_code}: {openrouter_error_text(resp.text)}"
+    try:
+        data = resp.json()
+        if data.get("error"):
+            return f"{gw} error: {openrouter_error_text(resp.text)}"
+        if not (data.get("choices") or []):
+            return f"{gw} returned no choices"
+    except Exception as exc:
+        return f"unreadable {gw} response: {exc}"
+    return None
+
+
+def probe_model_live(model_id: str, timeout_seconds: float = 25.0) -> Optional[str]:
+    """
+    Ask OpenRouter for one token from `model_id` in the chatbot's request shape.
+    Returns None when some shape works, else the provider's error text.
+
+    Saving a model the account cannot actually call took the chatbot down for
+    every institute (2026-09-04, z-ai/glm-5.3-flash). The registry knows the id
+    exists; only a real call knows whether OUR key may use it, in OUR shape.
+
+    Shapes are tried in the order the runtime client uses them: as configured
+    (reasoning off when suppression is on), then reasoning explicitly on, then
+    on without a temperature parameter. A model that only works with reasoning
+    on is saved, the client is told which shape to use, and the portal shows
+    the note.
+    """
+    from .chat_llm_client import mark_reasoning_required, _mode_note
+
+    settings = get_settings()
+    api_key = getattr(settings, "openrouter_api_key", None)
+    if not api_key:
+        return None  # nothing to test against; don't block the save
+    disable = bool(get_platform_setting("chatbot.llm.disable_reasoning", default=settings.llm_disable_reasoning))
+    modes = (["disabled"] if disable else []) + ["on-low", "on", "on-no-temp"]
+    last_error: Optional[str] = None
+    for mode in modes:
+        err = _openrouter_one_token(model_id, mode, api_key, timeout_seconds)
+        if err is None:
+            if mode != "disabled" and disable:
+                mark_reasoning_required(model_id, mode)
+                record_model_success(model_id)
+                record_model_note(model_id, f"{_mode_note(mode)}. Provider said: {(last_error or '')[:120]}")
+            return None
+        last_error = err
+        if mode == "disabled" and "reasoning" not in err.lower():
+            # Not a reasoning complaint: a different shape won't help.
+            return err
+    return last_error
+
+
 def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional[str]) -> None:
     """Validate and upsert one setting, then drop the cache so it applies at once."""
     spec = SETTING_SPECS.get(key)
     if spec is None:
         raise KeyError(f"Unknown platform setting: {key}")
     coerced = _coerce(spec, value)
-    if spec.type == "model" and coerced and not _model_exists(db, coerced):
-        raise ValueError(f"{coerced} is not an active model in the ai_models registry")
+    if key == "llm.model_routes":
+        problem = _check_model_routes(coerced)
+        if problem:
+            raise ValueError(f"llm.model_routes not saved — {problem}")
+    if spec.type == "model" and coerced and not _model_exists(db, coerced, spec.catalog):
+        what = "an active image model" if spec.catalog == "image" else "an active chat model"
+        raise ValueError(f"{coerced} is not {what} in the ai_models registry")
+    # Only chat models are exercised live: image models don't take a chat
+    # completion, and the runtime fallback is for the chatbot path.
+    if spec.type == "model" and coerced and getattr(spec, "catalog", "chat") != "image":
+        problem = probe_model_live(coerced)
+        if problem:
+            raise ValueError(
+                f"{coerced} cannot be used with the platform's OpenRouter account — not saved. {problem}"
+            )
+        record_model_success(coerced)
 
     db.execute(
         text(
@@ -349,6 +788,13 @@ __all__ = [
     "SETTING_SPECS",
     "GROUP_LABELS",
     "get_platform_setting",
+    "get_cache_status",
+    "record_model_failure",
+    "record_model_success",
+    "record_model_note",
+    "get_model_notes",
+    "get_model_health",
+    "probe_model_live",
     "invalidate_platform_settings_cache",
     "list_platform_settings",
     "set_platform_setting",

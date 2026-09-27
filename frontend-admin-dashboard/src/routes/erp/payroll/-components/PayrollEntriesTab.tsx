@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { CaretDown, CaretRight, PauseCircle, PlayCircle, Users } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { StatusChip } from '@/components/design-system/status-chips';
@@ -13,11 +15,11 @@ import { HrEmptyState, HrErrorState } from '@/routes/erp/people/-components/HrSt
 import { EntryBreakdown } from './EntryBreakdown';
 import { HoldEntryDialog } from './HoldEntryDialog';
 
-const ENTRY_STATUS_LABELS: Record<string, string> = {
-    CALCULATED: 'Calculated',
-    HELD: 'Held',
-    PAID: 'Paid',
-};
+const buildEntryStatusLabels = (t: TFunction): Record<string, string> => ({
+    CALCULATED: t('status.calculated'),
+    HELD: t('status.held'),
+    PAID: t('status.paid'),
+});
 
 /** Days arrive as BigDecimal (half-days exist), so 21.5 must survive and 21 must not read "21.00". */
 const formatDays = (value: number | string | null | undefined) => {
@@ -55,6 +57,7 @@ export const PayrollEntriesTab = ({
     onHold,
     onRelease,
 }: PayrollEntriesTabProps) => {
+    const { t } = useTranslation('erpPayrollEntriesTab');
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [holdTarget, setHoldTarget] = useState<PayrollEntryDTO | null>(null);
 
@@ -78,6 +81,7 @@ export const PayrollEntriesTab = ({
     };
 
     const columns = useMemo<ColumnDef<PayrollEntryDTO>[]>(() => {
+        const entryStatusLabels = buildEntryStatusLabels(t);
         /** A held entry is muted everywhere so the eye skips it while scanning totals. */
         const muted = (entry: PayrollEntryDTO) =>
             (entry.status ?? '').toUpperCase() === 'HELD' ? 'text-neutral-400' : '';
@@ -94,7 +98,7 @@ export const PayrollEntriesTab = ({
                             buttonType="text"
                             scale="small"
                             layoutVariant="icon"
-                            aria-label={isOpen ? 'Hide breakdown' : 'Show breakdown'}
+                            aria-label={isOpen ? t('table.hideBreakdown') : t('table.showBreakdown')}
                             aria-expanded={isOpen}
                             onClick={() => setExpandedId(isOpen ? null : row.original.id ?? null)}
                         >
@@ -105,7 +109,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'employee_code',
-                header: 'Employee',
+                header: t('table.columns.employee'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span
@@ -127,7 +131,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'total_working_days',
-                header: 'Working',
+                header: t('table.columns.working'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -141,7 +145,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'days_present',
-                header: 'Present',
+                header: t('table.columns.present'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -155,7 +159,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'days_absent',
-                header: 'Absent',
+                header: t('table.columns.absent'),
                 cell: ({ row }) => {
                     const numeric = Number(row.original.days_absent ?? 0);
                     return (
@@ -173,7 +177,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'days_on_leave',
-                header: 'Leave',
+                header: t('table.columns.leave'),
                 cell: ({ row }) => (
                     <span
                         className={cn(
@@ -187,7 +191,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'gross_salary',
-                header: 'Gross',
+                header: t('table.columns.gross'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.gross_salary}
@@ -198,7 +202,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'total_deductions',
-                header: 'Deductions',
+                header: t('table.columns.deductions'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.total_deductions}
@@ -211,7 +215,7 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'net_pay',
-                header: 'Net pay',
+                header: t('table.columns.netPay'),
                 cell: ({ row }) => (
                     <MoneyCell
                         value={row.original.net_pay}
@@ -225,12 +229,12 @@ export const PayrollEntriesTab = ({
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('table.columns.status'),
                 cell: ({ row }) => {
                     const status = (row.original.status ?? '').toUpperCase();
                     return (
                         <StatusChip
-                            text={ENTRY_STATUS_LABELS[status] ?? row.original.status ?? '—'}
+                            text={entryStatusLabels[status] ?? row.original.status ?? '—'}
                             textSize="text-caption"
                             status={entryStatusChipType(status)}
                             showIcon={false}
@@ -258,10 +262,10 @@ export const PayrollEntriesTab = ({
                                     buttonType="text"
                                     scale="small"
                                     onAsyncClick={() => release(row.original)}
-                                    loadingText="Releasing…"
+                                    loadingText={t('actions.releasing')}
                                 >
                                     <PlayCircle size={14} />
-                                    Release
+                                    {t('actions.release')}
                                 </MyButton>
                             ) : (
                                 <MyButton
@@ -270,7 +274,7 @@ export const PayrollEntriesTab = ({
                                     onClick={() => setHoldTarget(row.original)}
                                 >
                                     <PauseCircle size={14} />
-                                    Hold
+                                    {t('actions.hold')}
                                 </MyButton>
                             )}
                         </div>
@@ -280,12 +284,12 @@ export const PayrollEntriesTab = ({
         ];
         // `release` closes over onRelease, which the hook keeps referentially stable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [expandedId, showRowActions]);
+    }, [expandedId, showRowActions, t]);
 
     if (isError) {
         return (
             <HrErrorState
-                message="Could not load the payroll entries for this run."
+                message={t('errors.loadFailed')}
                 onRetry={onRetry}
             />
         );
@@ -295,8 +299,8 @@ export const PayrollEntriesTab = ({
         return (
             <HrEmptyState
                 icon={<Users size={32} className="text-neutral-300" />}
-                title="No entries yet"
-                description="Entries appear once the run is processed. If the run is already processed and this is still empty, every employee failed — check the Errors tab."
+                title={t('empty.title')}
+                description={t('empty.description')}
             />
         );
     }
@@ -313,11 +317,8 @@ export const PayrollEntriesTab = ({
     return (
         <div className="flex flex-col gap-3">
             <p className="text-caption text-neutral-500">
-                Expand a row to see the payslip: earnings, deductions and employer contributions
-                with subtotals.
-                {showRowActions
-                    ? ' Holding an employee removes their net pay from the run total until released.'
-                    : ''}
+                {t('description.base')}
+                {showRowActions ? t('description.holdHint') : ''}
             </p>
 
             <MyTable<PayrollEntryDTO>

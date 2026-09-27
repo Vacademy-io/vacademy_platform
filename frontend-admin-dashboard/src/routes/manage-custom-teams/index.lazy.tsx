@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Helmet } from 'react-helmet';
@@ -18,6 +19,7 @@ export const Route = createLazyFileRoute('/manage-custom-teams/')({
 });
 
 function ManageCustomTeams() {
+    const { t } = useTranslation('manageCustomTeamsIndex');
     const [selectedTab, setSelectedTab] = useState<string>('subOrgs');
 
     const subOrgTermPlural = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg);
@@ -35,7 +37,7 @@ function ManageCustomTeams() {
             : [
                   {
                       value: 'registrationLinks',
-                      label: 'Registration Links',
+                      label: t('tabs.registrationLinks'),
                       icon: LinkSimple,
                   },
               ]),
@@ -44,7 +46,7 @@ function ManageCustomTeams() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Manage {subOrgTermPlural}</title>
+                <title>{t('helmetTitle', { termPlural: subOrgTermPlural })}</title>
             </Helmet>
             <div className="p-5">
                 {/* Title and the headline figures share one row: the cards are page
@@ -53,10 +55,10 @@ function ManageCustomTeams() {
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-bold text-neutral-900">
-                            Manage {subOrgTermPlural}
+                            {t('heading', { termPlural: subOrgTermPlural })}
                         </h1>
                         <p className="mt-1 text-sm text-neutral-500">
-                            Manage and monitor all your {subOrgTermPlural} portals in one place.
+                            {t('subtitle', { termPlural: subOrgTermPlural })}
                         </p>
                     </div>
                     <SubOrgSummaryCards />

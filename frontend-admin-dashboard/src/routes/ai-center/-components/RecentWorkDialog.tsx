@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +22,7 @@ import {
     classifyFile,
     isQuestionTask,
     relativeTime,
-    routeForFamily,
+    routeForTask,
     statusLabel,
     statusStyles,
     taskDisplayName,
@@ -175,18 +175,12 @@ export const RecentWorkDialog = ({ open, onOpenChange, tasks, onPreviewTask }: P
     const rangeEnd = Math.min(safePage * ITEMS_PER_PAGE, sortedFiltered.length);
 
     const handleOpenTask = (task: AITaskIndividualListInterface) => {
-        if (
-            onPreviewTask &&
-            isQuestionTask(task) &&
-            task.status === 'COMPLETED'
-        ) {
+        if (onPreviewTask && isQuestionTask(task) && task.status === 'COMPLETED') {
             onPreviewTask(task);
             return;
         }
-        const family = classifyFile(task.file_detail?.file_type);
-        const route = routeForFamily[family];
         onOpenChange(false);
-        navigate({ to: route });
+        navigate({ to: routeForTask(task) });
     };
 
     const hasAny = tasks.length > 0;
@@ -201,14 +195,17 @@ export const RecentWorkDialog = ({ open, onOpenChange, tasks, onPreviewTask }: P
                 <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-neutral-200 bg-white p-5">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex flex-col gap-0.5">
-                            <h2 className="text-lg font-semibold text-gray-900">
+                            {/* Radix requires a Title (and warns without a
+                                Description) on every DialogContent — these are
+                                the same two lines, just as the primitives. */}
+                            <DialogTitle className="text-lg font-semibold text-gray-900">
                                 {t('dialog.title')}
-                            </h2>
-                            <p className="text-xs text-neutral-500">
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-neutral-500">
                                 {tasks.length === 0
                                     ? t('emptyState.nothingHereYet')
                                     : t('dialog.itemCount', { count: tasks.length })}
-                            </p>
+                            </DialogDescription>
                         </div>
                         <button
                             type="button"

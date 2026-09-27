@@ -248,5 +248,17 @@
         "cartCtaLabel": "أضف إلى السلة",
         "checkoutCtaLabel": "المتابعة إلى الدفع",
         "viewCourseLabel": "عرض الدورة"
+    },
+    "documentViewer": {
+        "heading": "تصفّح الكتالوج",
+        "subheading": "تصفّح كل صفحة هنا مباشرة.",
+        "buttonText": "فتح الكتالوج"
+    },
+    "blog": {
+        "heading": "من المدونة",
+        "subheading": "نصائح للدراسة وتحديثات الامتحانات وقصص من فصولنا.",
+        "readMoreLabel": "اقرأ المزيد",
+        "backLabel": "كل المقالات",
+        "emptyMessage": "لا توجد مقالات بعد — عُد قريبًا."
     }
 }

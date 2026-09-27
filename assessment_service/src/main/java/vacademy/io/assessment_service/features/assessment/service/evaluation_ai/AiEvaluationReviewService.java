@@ -34,6 +34,7 @@ public class AiEvaluationReviewService {
     private final AiQuestionEvaluationRepository questionEvaluationRepository;
     private final QuestionWiseMarksRepository questionWiseMarksRepository;
     private final StudentAttemptRepository studentAttemptRepository;
+    private final TypedAnswerEvaluation typedAnswerEvaluation;
 
     @Transactional
     public void overrideQuestion(String processId, String questionId, Double marks, String feedback,
@@ -97,10 +98,7 @@ public class AiEvaluationReviewService {
         }
         var rows = questionEvaluationRepository
                 .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
-        double total = rows.stream()
-                .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
-                .mapToDouble(q -> q.getMarksAwarded().doubleValue())
-                .sum();
+
         // Non-COMPLETED, not just FAILED: a PENDING row mid-run counts as
         // ungraded, otherwise a teacher tweaking one already-graded question
         // while the AI is still working would promote the attempt (and its
@@ -110,6 +108,7 @@ public class AiEvaluationReviewService {
         StudentAttempt attempt = studentAttemptRepository.findById(process.getStudentAttempt().getId())
                 .orElse(null);
         if (attempt != null) {
+            double total = typedAnswerEvaluation.attemptTotal(attempt, rows);
             attempt.setTotalMarks(total);
             attempt.setResultMarks(total);
             // Counterpart of CopyCheckCallbackService.onComplete leaving the

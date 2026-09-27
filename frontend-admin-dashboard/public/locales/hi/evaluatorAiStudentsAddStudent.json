@@ -1,0 +1,69 @@
+{
+    "title": "छात्र सूची",
+    "enrollTriggerButton": "{{term}} नामांकित करें",
+    "dialog": {
+        "editHeading": "छात्र संपादित करें",
+        "addHeading": "छात्र नामांकन"
+    },
+    "form": {
+        "nameLabel": "नाम",
+        "namePlaceholder": "नाम",
+        "enrollIdLabel": "नामांकन आईडी",
+        "enrollIdPlaceholder": "नामांकन आईडी",
+        "replaceResponseLabel": "उत्तर बदलें (वैकल्पिक)",
+        "uploadResponseLabel": "उत्तर अपलोड करें (वैकल्पिक)",
+        "currentPdfId": "वर्तमान पीडीएफ आईडी: {{pdfId}}",
+        "updateButton": "अपडेट करें",
+        "enrollButton": "नामांकित करें"
+    },
+    "attemptDialog": {
+        "heading": "नया प्रयास जोड़ें",
+        "fileLabel": "उत्तर पीडीएफ अपलोड करें",
+        "submitButton": "प्रयास जोड़ें"
+    },
+    "common": {
+        "uploading": "अपलोड हो रहा है...",
+        "uploadFile": "फ़ाइल अपलोड करें"
+    },
+    "table": {
+        "name": "नाम",
+        "enrollmentId": "नामांकन आईडी",
+        "attemptCount": "प्रयासों की संख्या",
+        "viewPdf": "पीडीएफ देखें",
+        "actions": "क्रियाएँ",
+        "attemptsCount_one": "{{count}} प्रयास",
+        "attemptsCount_other": "{{count}} प्रयास",
+        "attemptLabel": "प्रयास {{number}}",
+        "noFile": "कोई फ़ाइल नहीं",
+        "openMenu": "मेनू खोलें",
+        "edit": "संपादित करें",
+        "addAttempt": "प्रयास जोड़ें",
+        "deleteCurrentAttempt": "वर्तमान प्रयास हटाएँ",
+        "deleteStudent": "छात्र हटाएँ",
+        "emptyState": "कोई नामांकित छात्र नहीं मिला।",
+        "submitSelected": "चयनित सबमिट करें ({{count}})"
+    },
+    "toast": {
+        "fileUploaded": "फ़ाइल सफलतापूर्वक अपलोड हुई",
+        "uploadFailed": "अपलोड विफल रहा",
+        "fillAllFields": "कृपया सभी फ़ील्ड भरें और एक फ़ाइल अपलोड करें।",
+        "studentUpdated": "छात्र सफलतापूर्वक अपडेट किया गया!",
+        "studentEnrolled": "छात्र सफलतापूर्वक नामांकित किया गया!",
+        "failedUpdateStudent": "छात्र को अपडेट करने में विफल",
+        "failedEnrollStudent": "छात्र को नामांकित करने में विफल",
+        "studentDeleted": "छात्र सफलतापूर्वक हटाया गया!",
+        "noFileAvailable": "कोई फ़ाइल उपलब्ध नहीं",
+        "noFileIdAvailable": "कोई फ़ाइल आईडी उपलब्ध नहीं",
+        "couldNotRetrievePdfUrl": "पीडीएफ यूआरएल प्राप्त नहीं किया जा सका",
+        "failedRetrievePdf": "पीडीएफ प्राप्त करने में विफल",
+        "uploadRequired": "कृपया एक फ़ाइल अपलोड करें।",
+        "attemptAdded": "नया प्रयास सफलतापूर्वक जोड़ा गया!",
+        "failedAddAttempt": "प्रयास जोड़ने में विफल",
+        "studentNotFound": "छात्र नहीं मिला।",
+        "cannotDeleteOnlyAttempt": "एकमात्र प्रयास नहीं हटाया जा सकता। इसके बजाय छात्र को हटाएँ।",
+        "attemptDeleted": "प्रयास सफलतापूर्वक हटाया गया!",
+        "selectAtLeastOneStudent": "कृपया कम से कम एक छात्र चुनें",
+        "submittedStudents_one": "{{count}} छात्र सबमिट किया गया",
+        "submittedStudents_other": "{{count}} छात्र सबमिट किए गए"
+    }
+}

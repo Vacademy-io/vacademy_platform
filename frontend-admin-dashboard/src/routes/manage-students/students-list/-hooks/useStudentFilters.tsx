@@ -17,6 +17,7 @@ import {
     sentinelLabel,
     splitLegacyAndTyped,
 } from '@/components/shared/leads/custom-field-filter-encoding';
+import { readUtmSelection, toUtmFiltersPayload } from '@/components/shared/leads/utm-filter-encoding';
 
 export const ALL_SESSIONS_ID = '__ALL__';
 
@@ -751,6 +752,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 ? { custom_field_typed_filters: typedCfFilters }
                 : {}),
         };
+        // Campaign (UTM) filters ride columnFilters under `utm:<dimension>`
+        // (set by the UtmFilterControls pills) and apply with the same button.
+        const utmFilters = toUtmFiltersPayload(readUtmSelection(columnFilters));
+        if (utmFilters) newFilters.utm_filters = utmFilters;
 
         setAppliedFilters(newFilters);
 

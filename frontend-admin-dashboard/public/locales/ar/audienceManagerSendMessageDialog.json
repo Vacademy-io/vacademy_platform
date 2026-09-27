@@ -75,7 +75,8 @@
         "previewEmptyState": "اختر قالبًا أو انتقل إلى تحرير HTML لكتابة المحتوى.",
         "bodyPlaceholder": "أدخل نص HTML للبريد الإلكتروني... استخدم {{token}} للمتغيرات",
         "placeholderHintPrefix": "المتغيرات مثل",
-        "placeholderHintSuffix": "يتم استبدالها لكل مستلم عند الإرسال. اربطها في الخطوة التالية."
+        "placeholderHintSuffix": "يتم استبدالها لكل مستلم عند الإرسال. اربطها في الخطوة التالية.",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "العنوان",
@@ -135,10 +136,22 @@
         "statusValues": {
             "success": "ناجح",
             "failed": "فشل"
-        }
+        },
+        "recipientsSelected_zero": "لا عملاء محتملين محددين ({{count}})",
+        "recipientsSelected_one": "عميل محتمل محدد واحد ({{count}})",
+        "recipientsSelected_two": "عميلان محتملان محددان ({{count}})",
+        "recipientsSelected_few": "{{count}} عملاء محتملين محددين",
+        "recipientsSelected_many": "{{count}} عميلًا محتملًا محددًا",
+        "recipientsSelected_other": "{{count}} عميل محتمل محدد"
     },
     "footer": {
         "back": "رجوع",
         "next": "التالي"
-    }
+    },
+    "dialogDescriptionSelected_zero": "إرسال رسالة إلى العملاء المحتملين المحددين ({{count}})",
+    "dialogDescriptionSelected_one": "إرسال رسالة إلى عميل محتمل محدد واحد ({{count}})",
+    "dialogDescriptionSelected_two": "إرسال رسالة إلى عميلين محتملين محددين ({{count}})",
+    "dialogDescriptionSelected_few": "إرسال رسالة إلى {{count}} عملاء محتملين محددين",
+    "dialogDescriptionSelected_many": "إرسال رسالة إلى {{count}} عميلًا محتملًا محددًا",
+    "dialogDescriptionSelected_other": "إرسال رسالة إلى {{count}} عميل محتمل محدد"
 }

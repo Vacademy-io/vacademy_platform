@@ -7,7 +7,6 @@ import {
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { capitalise } from "@/utils/custom-field";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { useTranslation } from "react-i18next";
 
@@ -29,7 +28,6 @@ const BookingCustomFields = ({
   control,
 }: BookingCustomFieldsProps) => {
   const { t } = useTranslation("liveClassGuest");
-  const phoneCountry = getCachedPreferredCountries()[0] ?? "in";
 
   return (
     <>
@@ -54,7 +52,6 @@ const BookingCustomFields = ({
                       placeholder={t("common.phoneExamplePlaceholder")}
                       name={name}
                       control={control}
-                      country={phoneCountry}
                       required={field.is_mandatory}
                       labelClassName="text-subtitle font-regular"
                       inputClassName="!text-subtitle placeholder:!text-body"

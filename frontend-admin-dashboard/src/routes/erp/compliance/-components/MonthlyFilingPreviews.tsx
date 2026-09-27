@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getInstituteId } from '@/constants/helper';
 import { MoneyCell } from '@/components/design-system/money-cell';
 import { ERP_KEY } from '@/routes/erp/-shared/hr-service';
@@ -32,11 +33,12 @@ const PreviewFrame = ({
     emptyText: string;
     children: React.ReactNode;
 }) => {
+    const { t } = useTranslation('erpMonthlyFilingPreviews');
     if (isLoading) return <HrLoadingRows rows={5} />;
     if (isError) {
-        return <HrErrorState message="Could not build this filing." onRetry={onRetry} />;
+        return <HrErrorState message={t('errors.build')} onRetry={onRetry} />;
     }
-    if (isEmpty) return <HrEmptyState title="Nothing to file" description={emptyText} />;
+    if (isEmpty) return <HrEmptyState title={t('empty.nothingToFile')} description={emptyText} />;
     return <>{children}</>;
 };
 
@@ -67,6 +69,7 @@ const TableShell = ({
 );
 
 export const EcrPreview = ({ period }: { period: MonthValue }) => {
+    const { t } = useTranslation('erpMonthlyFilingPreviews');
     const query = useQuery({
         queryKey: [...ERP_KEY, 'ecr', period.year, period.month],
         queryFn: () => fetchPfEcr(period.month, period.year),
@@ -82,19 +85,38 @@ export const EcrPreview = ({ period }: { period: MonthValue }) => {
             isError={query.isError}
             onRetry={() => void query.refetch()}
             isEmpty={rows.length === 0 && !data?.skipped?.length}
-            emptyText="No PF contributions were recorded for this month."
+            emptyText={t('ecr.emptyText')}
         >
             <div className="flex flex-col gap-4">
                 <ComplianceWarnings warnings={data?.warnings} />
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <ComplianceStat label="Members" value={data?.memberCount ?? rows.length} />
-                    <ComplianceStat label="EPF wages" value={data?.totalEpfWages} isMoney />
-                    <ComplianceStat label="EPF contribution" value={data?.totalEpfContri} isMoney />
-                    <ComplianceStat label="EPS contribution" value={data?.totalEpsContri} isMoney />
+                    <ComplianceStat
+                        label={t('stats.members')}
+                        value={data?.memberCount ?? rows.length}
+                    />
+                    <ComplianceStat label={t('stats.epfWages')} value={data?.totalEpfWages} isMoney />
+                    <ComplianceStat
+                        label={t('stats.epfContribution')}
+                        value={data?.totalEpfContri}
+                        isMoney
+                    />
+                    <ComplianceStat
+                        label={t('stats.epsContribution')}
+                        value={data?.totalEpsContri}
+                        isMoney
+                    />
                 </div>
                 <ComplianceSkipped skipped={data?.skipped} />
                 <TableShell
-                    headers={['Member', 'UAN', 'EPF wages', 'Employee', 'EPS', 'Diff', 'NCP']}
+                    headers={[
+                        t('table.member'),
+                        t('table.uan'),
+                        t('table.epfWages'),
+                        t('table.employeeShare'),
+                        t('table.eps'),
+                        t('table.diff'),
+                        t('table.ncp'),
+                    ]}
                 >
                     {rows.map((r, i) => (
                         <tr
@@ -131,6 +153,7 @@ export const EcrPreview = ({ period }: { period: MonthValue }) => {
 };
 
 export const EsiPreview = ({ period }: { period: MonthValue }) => {
+    const { t } = useTranslation('erpMonthlyFilingPreviews');
     const query = useQuery({
         queryKey: [...ERP_KEY, 'esi', period.year, period.month],
         queryFn: () => fetchEsiReturn(period.month, period.year),
@@ -146,22 +169,38 @@ export const EsiPreview = ({ period }: { period: MonthValue }) => {
             isError={query.isError}
             onRetry={() => void query.refetch()}
             isEmpty={rows.length === 0 && !data?.skipped?.length}
-            emptyText="No employees were within the ESI wage ceiling this month."
+            emptyText={t('esi.emptyText')}
         >
             <div className="flex flex-col gap-4">
                 <ComplianceWarnings warnings={data?.warnings} />
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <ComplianceStat label="Insured persons" value={data?.ipCount ?? rows.length} />
-                    <ComplianceStat label="Total wages" value={data?.totalWages} isMoney />
-                    <ComplianceStat label="IP contribution" value={data?.totalIpContribution} isMoney />
                     <ComplianceStat
-                        label="Employer contribution"
+                        label={t('stats.insuredPersons')}
+                        value={data?.ipCount ?? rows.length}
+                    />
+                    <ComplianceStat label={t('stats.totalWages')} value={data?.totalWages} isMoney />
+                    <ComplianceStat
+                        label={t('stats.ipContribution')}
+                        value={data?.totalIpContribution}
+                        isMoney
+                    />
+                    <ComplianceStat
+                        label={t('stats.employerContribution')}
                         value={data?.totalEmployerContribution}
                         isMoney
                     />
                 </div>
                 <ComplianceSkipped skipped={data?.skipped} />
-                <TableShell headers={['Employee', 'IP number', 'Days', 'Wage', 'IP', 'Employer']}>
+                <TableShell
+                    headers={[
+                        t('table.employee'),
+                        t('table.ipNumber'),
+                        t('table.days'),
+                        t('table.wage'),
+                        t('table.ip'),
+                        t('table.employer'),
+                    ]}
+                >
                     {rows.map((r, i) => (
                         <tr
                             key={`${r.ipNumber ?? r.employeeCode ?? i}`}
@@ -194,6 +233,7 @@ export const EsiPreview = ({ period }: { period: MonthValue }) => {
 };
 
 export const PtPreview = ({ period }: { period: MonthValue }) => {
+    const { t } = useTranslation('erpMonthlyFilingPreviews');
     const query = useQuery({
         queryKey: [...ERP_KEY, 'pt', period.year, period.month],
         queryFn: () => fetchPtReturn(period.month, period.year),
@@ -209,20 +249,27 @@ export const PtPreview = ({ period }: { period: MonthValue }) => {
             isError={query.isError}
             onRetry={() => void query.refetch()}
             isEmpty={rows.length === 0}
-            emptyText="No professional tax was deducted this month."
+            emptyText={t('pt.emptyText')}
         >
             <div className="flex flex-col gap-4">
                 <ComplianceWarnings warnings={data?.warnings} />
                 <div className="grid gap-3 sm:grid-cols-3">
-                    <ComplianceStat label="State" value={data?.stateCode ?? '—'} />
-                    <ComplianceStat label="Employees" value={data?.employeeCount ?? rows.length} />
-                    <ComplianceStat label="Total PT" value={data?.grandTotalPt} isMoney />
+                    <ComplianceStat label={t('stats.state')} value={data?.stateCode ?? '—'} />
+                    <ComplianceStat
+                        label={t('stats.employees')}
+                        value={data?.employeeCount ?? rows.length}
+                    />
+                    <ComplianceStat label={t('stats.totalPt')} value={data?.grandTotalPt} isMoney />
                 </div>
 
                 {data?.slabs?.length ? (
                     <div className="flex flex-col gap-2">
-                        <span className="text-caption uppercase text-neutral-500">Slab summary</span>
-                        <TableShell headers={['Slab amount', 'Employees', 'Total']}>
+                        <span className="text-caption uppercase text-neutral-500">
+                            {t('pt.slabSummary')}
+                        </span>
+                        <TableShell
+                            headers={[t('table.slabAmount'), t('table.employees'), t('table.total')]}
+                        >
                             {data.slabs.map((s, i) => (
                                 <tr key={i} className="border-b border-neutral-100 last:border-0">
                                     <td className="px-3 py-2">
@@ -240,7 +287,7 @@ export const PtPreview = ({ period }: { period: MonthValue }) => {
                     </div>
                 ) : null}
 
-                <TableShell headers={['Employee', 'Gross', 'PT']}>
+                <TableShell headers={[t('table.employee'), t('table.gross'), t('table.pt')]}>
                     {rows.map((r, i) => (
                         <tr
                             key={`${r.employeeCode ?? i}`}
@@ -264,6 +311,7 @@ export const PtPreview = ({ period }: { period: MonthValue }) => {
 };
 
 export const WpsPreview = ({ period }: { period: MonthValue }) => {
+    const { t } = useTranslation('erpMonthlyFilingPreviews');
     const query = useQuery({
         queryKey: [...ERP_KEY, 'wps', period.year, period.month],
         queryFn: () => fetchWpsExport(period.month, period.year),
@@ -280,24 +328,39 @@ export const WpsPreview = ({ period }: { period: MonthValue }) => {
             isError={query.isError}
             onRetry={() => void query.refetch()}
             isEmpty={rows.length === 0 && !data?.skipped?.length}
-            emptyText="No approved payroll entries for this month."
+            emptyText={t('wps.emptyText')}
         >
             <div className="flex flex-col gap-4">
                 <ComplianceWarnings warnings={data?.warnings} />
                 <div className="grid gap-3 sm:grid-cols-3">
-                    <ComplianceStat label="Employees" value={data?.employeeCount ?? rows.length} />
                     <ComplianceStat
-                        label="Total net pay"
+                        label={t('stats.employees')}
+                        value={data?.employeeCount ?? rows.length}
+                    />
+                    <ComplianceStat
+                        label={t('stats.totalNetPay')}
                         value={data?.totalNetPay}
                         currency={data?.currency}
                         isMoney
                     />
-                    <ComplianceStat label="Establishment" value={data?.establishmentId ?? '—'} />
+                    <ComplianceStat
+                        label={t('stats.establishment')}
+                        value={data?.establishmentId ?? '—'}
+                    />
                 </div>
                 <ComplianceSkipped skipped={data?.skipped} />
 
                 {isSaudi ? (
-                    <TableShell headers={['Employee', 'IBAN', 'Basic', 'Other', 'Deductions', 'Net']}>
+                    <TableShell
+                        headers={[
+                            t('table.employee'),
+                            t('table.iban'),
+                            t('table.basic'),
+                            t('table.other'),
+                            t('table.deductions'),
+                            t('table.net'),
+                        ]}
+                    >
                         {(data?.saudiRows ?? []).map((r, i) => (
                             <tr
                                 key={`${r.employeeCode ?? i}`}
@@ -325,7 +388,16 @@ export const WpsPreview = ({ period }: { period: MonthValue }) => {
                         ))}
                     </TableShell>
                 ) : (
-                    <TableShell headers={['Employee', 'IBAN', 'Days', 'Fixed', 'Variable', 'Net']}>
+                    <TableShell
+                        headers={[
+                            t('table.employee'),
+                            t('table.iban'),
+                            t('table.days'),
+                            t('table.fixed'),
+                            t('table.variable'),
+                            t('table.net'),
+                        ]}
+                    >
                         {(data?.edrRows ?? []).map((r, i) => (
                             <tr
                                 key={`${r.employeeCode ?? i}`}

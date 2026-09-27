@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRes
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
+import vacademy.io.admin_core_service.features.live_session.service.LiveSessionVisibilityService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
@@ -28,6 +29,7 @@ public class GetSessionsListController {
     private final GetLiveSessionService getLiveSessionService;
     private final GetSessionByIdService getSessionByIdService;
     private final LearnerPastSessionService learnerPastSessionService;
+    private final LiveSessionVisibilityService visibilityService;
 
     @GetMapping("/live")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
@@ -97,6 +99,10 @@ public class GetSessionsListController {
     @GetMapping("/by-session-id")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE)
     ResponseEntity<GetSessionByIdService.SessionDetailsResponse> getSessionById(@RequestParam("sessionId") String sessionId , @RequestAttribute("user") CustomUserDetails user){
+        // Role-based visibility is enforced here too, not just in the lists
+        // (V524) -- otherwise anyone holding a session URL could open a session
+        // their role was configured not to see.
+        visibilityService.assertCanAccessSession(sessionId, user);
         return ResponseEntity.ok(getSessionByIdService.getFullSessionDetails(sessionId));
     }
 

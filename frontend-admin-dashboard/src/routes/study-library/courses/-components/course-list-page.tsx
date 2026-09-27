@@ -45,7 +45,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { convertCapitalToTitleCase } from '@/lib/utils';
+import { compareByNameNatural, convertCapitalToTitleCase } from '@/lib/utils';
 import { CourseImageShimmer, InstructorAvatarShimmer } from '@/components/ui/shimmer';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -63,6 +63,7 @@ interface CourseListPageProps {
     handleApply: () => void;
     levels: Array<{ id: string; name: string }>;
     handleLevelChange: (levelId: string) => void;
+    handleSessionChange: (sessionId: string) => void;
     tags: string[];
     accessControlUsers: UserRolesDataEntry[];
     handleUserChange: (userId: string) => void;
@@ -95,6 +96,7 @@ const CourseListPage = ({
     handleApply,
     levels,
     handleLevelChange,
+    handleSessionChange,
     tags,
     accessControlUsers,
     handleUserChange,
@@ -125,7 +127,13 @@ const CourseListPage = ({
     const { instituteDetails } = useInstituteDetailsStore();
 
     const sessions = useMemo(
-        () => instituteDetails?.sessions?.filter((s) => s.status !== 'DELETED') ?? [],
+        () =>
+            (instituteDetails?.sessions ?? [])
+                .filter((s) => s.status !== 'DELETED')
+                .map((s) => ({ id: s.id, name: s.session_name }))
+                // Natural sort so "2024-25" precedes "2025-26" and numeric
+                // batch names read in order, like the Levels filter.
+                .sort(compareByNameNatural),
         [instituteDetails]
     );
 
@@ -187,36 +195,51 @@ const CourseListPage = ({
                     )}
                 </div>
             </div>
-            {/* Academic Session Filter — at top, only if >1 session */}
-            {sessions.length > 1 && (
-                <div className="mb-1">
-                    <div className="mb-1 text-sm font-semibold">{t('academicSession')}</div>
-                    <Select
-                        value={selectedFilters.session_ids[0] ?? 'all'}
-                        onValueChange={(val) =>
-                            setSelectedFilters((prev) => ({
-                                ...prev,
-                                session_ids: val === 'all' ? [] : [val],
-                            }))
-                        }
-                    >
-                        <SelectTrigger className="w-full">
-                            <SelectValue
-                                placeholder={t('allTerm', { term: getTerminologyPlural(ContentTerms.Session, SystemTerms.Session) })}
-                            />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">{t('allTerm', { term: getTerminologyPlural(ContentTerms.Session, SystemTerms.Session) })}</SelectItem>
-                            {sessions.map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                    {s.session_name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
             <Accordion type="multiple" defaultValue={[]} className="w-full">
+                {/* Session filter. The heading comes from Naming Settings
+                    (ContentTerms.Session) so an institute that calls sessions
+                    "Batches" / "Academic Years" sees its own word here, exactly
+                    like the Levels / Teachers headings below. Multi-select —
+                    the catalog API takes `session_ids: string[]`. */}
+                {sessions.length > 0 && (
+                    <AccordionItem value="sessions" className="border-b-0">
+                        <AccordionTrigger className="py-2 hover:no-underline">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">
+                                    {getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}
+                                </span>
+                                {selectedFilters.session_ids.length > 0 && (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-2xs">
+                                        {selectedFilters.session_ids.length}
+                                    </Badge>
+                                )}
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-2">
+                            <div className="flex flex-col gap-2">
+                                {sessions.map((session) => (
+                                    <label
+                                        key={session.id}
+                                        className="group flex cursor-pointer items-center gap-2"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.session_ids.includes(
+                                                session.id
+                                            )}
+                                            onChange={() => handleSessionChange(session.id)}
+                                            className="scale-110 accent-primary-500 transition-transform"
+                                        />
+                                        <span className="text-sm transition-colors group-hover:text-primary-500">
+                                            {session.name}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                )}
+
                 <AccordionItem value="levels" className="border-b-0">
                     <AccordionTrigger className="py-2 hover:no-underline">
                         <div className="flex items-center gap-2">

@@ -84,6 +84,38 @@ public class CustomFieldListFilterResolver {
         public String excludedIdsCsv() {
             return (excludedIds == null || excludedIds.isEmpty()) ? null : String.join(",", excludedIds);
         }
+
+        /**
+         * AND this resolution with another one produced for the SAME surface —
+         * e.g. the custom-field match set with the UTM-attribution match set.
+         * Matched sets intersect (null = unconstrained on that side); exclusion
+         * sets union. When both a matched and an exclusion set survive, the
+         * exclusions are folded into the matched set so the surface query
+         * applies each id set exactly once.
+         */
+        public Resolution and(Resolution other) {
+            if (other == null) return this;
+            Set<String> matched;
+            if (matchedIds == null) {
+                matched = other.matchedIds == null ? null : new HashSet<>(other.matchedIds);
+            } else if (other.matchedIds == null) {
+                matched = new HashSet<>(matchedIds);
+            } else {
+                matched = new HashSet<>(matchedIds);
+                matched.retainAll(other.matchedIds);
+            }
+            Set<String> excluded = null;
+            if (excludedIds != null && !excludedIds.isEmpty()) excluded = new HashSet<>(excludedIds);
+            if (other.excludedIds != null && !other.excludedIds.isEmpty()) {
+                if (excluded == null) excluded = new HashSet<>(other.excludedIds);
+                else excluded.addAll(other.excludedIds);
+            }
+            if (matched != null && excluded != null) {
+                matched.removeAll(excluded);
+                excluded = null;
+            }
+            return new Resolution(matched, excluded);
+        }
     }
 
     private static final Resolution NO_FILTERS = new Resolution(null, null);

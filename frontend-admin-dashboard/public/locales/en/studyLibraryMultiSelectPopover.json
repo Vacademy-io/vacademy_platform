@@ -1,0 +1,9 @@
+{
+    "noOptions": "No options",
+    "allLabel": "All {{label}}",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "searchPlaceholder": "Search {{label}}…",
+    "allSelected": "All selected",
+    "clear": "Clear"
+}

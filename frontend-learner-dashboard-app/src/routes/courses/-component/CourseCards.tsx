@@ -12,6 +12,9 @@ interface Instructor {
     id: string;
     full_name: string;
     image_url?: string;
+    profile_pic_file_id?: string | null;
+    author_subtitle?: string;
+    author_description?: string;
 }
 
 interface CourseCardProps {
@@ -47,10 +50,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const { t } = useTranslation("coursesRouteA");
     const [courseImageUrl, setCourseImageUrl] = useState("");
     const [loadingImage, setLoadingImage] = useState(true);
+    const [instructorImageUrl, setInstructorImageUrl] = useState("");
 
     const instructor = instructors[0];
     const instructorName = instructor?.full_name || t("common.unknownInstructor");
-    const instructorImage = instructor?.image_url || fallbackInstructorImage;
+    const instructorImage = instructorImageUrl || fallbackInstructorImage;
 
     const ratingValue = rating || 0;
 
@@ -79,6 +83,33 @@ const CourseCard: React.FC<CourseCardProps> = ({
     useEffect(() => {
         loadImage();
     }, [courseImageUrl]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadInstructorImage = async () => {
+            if (instructor?.image_url) {
+                if (isMounted) setInstructorImageUrl(instructor.image_url);
+                return;
+            }
+            if (!instructor?.profile_pic_file_id) {
+                if (isMounted) setInstructorImageUrl("");
+                return;
+            }
+
+            try {
+                const url = await getPublicUrlWithoutLogin(instructor.profile_pic_file_id);
+                if (isMounted) setInstructorImageUrl(url || "");
+            } catch {
+                if (isMounted) setInstructorImageUrl("");
+            }
+        };
+
+        void loadInstructorImage();
+        return () => {
+            isMounted = false;
+        };
+    }, [instructor?.image_url, instructor?.profile_pic_file_id]);
 
     const getLevelColor = () => {
         switch (level_name.toLowerCase()) {
@@ -164,6 +195,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                     </span>
                                 ))}
                             </div>
+                            {instructor?.author_subtitle && (
+                                <p className="text-[11px] sm:text-xs text-gray-500 truncate">
+                                    {instructor.author_subtitle}
+                                </p>
+                            )}
                         </div>
                     </div>
                 )}

@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -22,33 +24,31 @@ import { Textarea } from '@/components/ui/textarea';
 import { reportApiError } from '@/lib/report-api-error';
 import { EmployeePicker } from '@/routes/erp/-shared/EmployeePicker';
 import { createAdjustment, hrKeys } from '@/routes/erp/-shared/hr-service';
-import { ADJUSTMENT_TYPE_OPTIONS, CURRENCY_OPTIONS, RUN_SCOPE_OPTIONS } from './adjustment-meta';
+import { ADJUSTMENT_TYPE_OPTIONS, CURRENCY_OPTIONS, buildRunScopeOptions } from './adjustment-meta';
 
-const schema = z.object({
-    employee_id: z.string().min(1, 'Pick an employee'),
-    type: z.enum(['EARNING', 'DEDUCTION']),
-    code: z
-        .string()
-        .trim()
-        .min(2, 'Codes are at least 2 characters')
-        .regex(
-            /^[A-Z0-9_]+$/,
-            'Uppercase letters, digits and underscores only — no spaces (e.g. INCENTIVE, ARREARS)'
-        ),
-    label: z.string().trim().min(1, 'Give it a label the employee will recognise'),
-    amount: z
-        .string()
-        .min(1, 'Enter the amount')
-        .refine(
-            (value) => Number.isFinite(Number(value)) && Number(value) > 0,
-            'Enter an amount above zero'
-        ),
-    currency: z.enum(['INR', 'AED', 'SAR']),
-    run_scope: z.enum(['REGULAR', 'OFF_CYCLE', 'FNF', 'BONUS']),
-    notes: z.string().trim().max(500, 'Keep the notes under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        employee_id: z.string().min(1, t('validation.employeeRequired')),
+        type: z.enum(['EARNING', 'DEDUCTION']),
+        code: z
+            .string()
+            .trim()
+            .min(2, t('validation.codeMinLength'))
+            .regex(/^[A-Z0-9_]+$/, t('validation.codeFormat')),
+        label: z.string().trim().min(1, t('validation.labelRequired')),
+        amount: z
+            .string()
+            .min(1, t('validation.amountRequired'))
+            .refine(
+                (value) => Number.isFinite(Number(value)) && Number(value) > 0,
+                t('validation.amountPositive')
+            ),
+        currency: z.enum(['INR', 'AED', 'SAR']),
+        run_scope: z.enum(['REGULAR', 'OFF_CYCLE', 'FNF', 'BONUS']),
+        notes: z.string().trim().max(500, t('validation.notesMaxLength')),
+    });
 
-type AdjustmentFormValues = z.infer<typeof schema>;
+type AdjustmentFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const defaultValues: AdjustmentFormValues = {
     employee_id: '',
@@ -76,7 +76,11 @@ interface AdjustmentDialogProps {
  * failure mode of a second date control here.
  */
 export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialogProps) => {
+    const { t } = useTranslation(['erpAdjustmentDialog', 'erpPayrollStatus']);
     const queryClient = useQueryClient();
+
+    const schema = useMemo(() => buildSchema(t), [t]);
+    const runScopeOptions = useMemo(() => buildRunScopeOptions(t), [t]);
 
     const form = useForm<AdjustmentFormValues>({
         resolver: zodResolver(schema),
@@ -94,14 +98,14 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
             queryClient.invalidateQueries({
                 queryKey: hrKeys.adjustments(month.year, month.month),
             });
-            toast.success('Adjustment added');
+            toast.success(t('toast.added'));
             onOpenChange(false);
         },
         onError: (error) => {
             reportApiError(error, {
                 feature: 'erp-adjustments',
                 tags: { action: 'create-adjustment' },
-                fallbackMessage: 'Could not add the adjustment.',
+                fallbackMessage: t('errors.addFailed'),
             });
         },
     });
@@ -123,7 +127,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
 
     return (
         <MyDialog
-            heading={`Add adjustment — ${formatMonthValue(month)}`}
+            heading={t('dialog.heading', { month: formatMonthValue(month) })}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -135,15 +139,15 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Adding…"
+                        loadingText={t('actions.adding')}
                     >
-                        Add adjustment
+                        {t('actions.addAdjustment')}
                     </MyButton>
                 </>
             }
@@ -160,7 +164,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                             name="employee_id"
                             render={({ field }) => (
                                 <FormItem className="sm:col-span-2">
-                                    <FormLabel>Employee</FormLabel>
+                                    <FormLabel>{t('fields.employee.label')}</FormLabel>
                                     <FormControl>
                                         <EmployeePicker
                                             value={field.value}
@@ -176,7 +180,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                         <SelectField
                             control={form.control}
                             name="type"
-                            label="Type"
+                            label={t('fields.type.label')}
                             required
                             options={ADJUSTMENT_TYPE_OPTIONS}
                             className="w-full sm:w-full"
@@ -187,11 +191,11 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                             name="code"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Code</FormLabel>
+                                    <FormLabel>{t('fields.code.label')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="text"
-                                            inputPlaceholder="INCENTIVE"
+                                            inputPlaceholder={t('fields.code.placeholder')}
                                             className="w-full font-mono sm:w-full"
                                             required
                                             input={field.value}
@@ -207,7 +211,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        Becomes the payslip line&apos;s component code.
+                                        {t('fields.code.description')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -219,11 +223,11 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                             name="label"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Label</FormLabel>
+                                    <FormLabel>{t('fields.label.label')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="text"
-                                            inputPlaceholder="Q2 performance incentive"
+                                            inputPlaceholder={t('fields.label.placeholder')}
                                             className="w-full sm:w-full"
                                             required
                                             input={field.value}
@@ -235,7 +239,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        What the employee sees on their payslip.
+                                        {t('fields.label.description')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -247,11 +251,11 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                             name="amount"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Amount</FormLabel>
+                                    <FormLabel>{t('fields.amount.label')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="number"
-                                            inputPlaceholder="5000"
+                                            inputPlaceholder={t('fields.amount.placeholder')}
                                             className="w-full sm:w-full"
                                             required
                                             input={field.value}
@@ -263,7 +267,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        Always a positive number — the type decides the direction.
+                                        {t('fields.amount.description')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -273,7 +277,7 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                         <SelectField
                             control={form.control}
                             name="currency"
-                            label="Currency"
+                            label={t('fields.currency.label')}
                             required
                             options={CURRENCY_OPTIONS}
                             className="w-full sm:w-full"
@@ -282,9 +286,9 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                         <SelectField
                             control={form.control}
                             name="run_scope"
-                            label="Run scope"
+                            label={t('fields.runScope.label')}
                             required
-                            options={RUN_SCOPE_OPTIONS}
+                            options={runScopeOptions}
                             className="w-full sm:w-full"
                         />
                     </div>
@@ -294,11 +298,11 @@ export const AdjustmentDialog = ({ open, onOpenChange, month }: AdjustmentDialog
                         name="notes"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Notes</FormLabel>
+                                <FormLabel>{t('fields.notes.label')}</FormLabel>
                                 <FormControl>
                                     <Textarea
                                         {...field}
-                                        placeholder="Internal context — why this was granted or recovered."
+                                        placeholder={t('fields.notes.placeholder')}
                                         className="text-body"
                                     />
                                 </FormControl>

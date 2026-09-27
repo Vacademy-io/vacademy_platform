@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
 import type { CalculationType, ComponentType } from '@/routes/erp/-shared/hr-types';
 
@@ -74,9 +75,17 @@ export function componentTypeChipStatus(type: string | null | undefined): Status
     }
 }
 
+const COMPONENT_TYPE_LABEL_KEYS: Record<ComponentType, string> = {
+    EARNING: 'componentType.earning',
+    DEDUCTION: 'componentType.deduction',
+    EMPLOYER_CONTRIBUTION: 'componentType.employerContribution',
+};
+
 export const ComponentTypeChip = ({ type }: { type: string | null | undefined }) => {
+    const { t } = useTranslation('erpSalaryMeta');
     const upper = (type ?? '').toUpperCase();
-    const label = COMPONENT_TYPE_LABELS[upper as ComponentType] ?? (upper || '—');
+    const labelKey = COMPONENT_TYPE_LABEL_KEYS[upper as ComponentType];
+    const label = labelKey ? t(labelKey) : upper || '—';
     return (
         <StatusChip
             text={label}

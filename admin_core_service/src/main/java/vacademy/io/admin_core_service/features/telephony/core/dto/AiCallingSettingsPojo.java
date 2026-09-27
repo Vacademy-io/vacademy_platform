@@ -48,6 +48,16 @@ public class AiCallingSettingsPojo {
     private int maxCallsPerDayPerLead = 3;
 
     /**
+     * A connected call in which the caller said at least this many words is treated as
+     * ENGAGED: if it still lands on a "no conclusion" disposition (Incomplete, an
+     * unmapped label, a refused booking) it is handed to a human instead of re-dialed.
+     * Measured by the bot from the transcript, not judged by the model. 40 is the
+     * threshold at which the 2026-09-09 audit found every call was a real two-sided
+     * conversation rather than a greeting exchange; voicemail greetings run 25–35.
+     */
+    private int engagedCallerWords = 40;
+
+    /**
      * Hard ceiling on AI dials for the WHOLE institute in a rolling 24h window
      * (across every lead, campaign and click-to-call — all funnel through
      * {@code AiCallService.placeCall}). The cheapest runaway-spend guardrail: one

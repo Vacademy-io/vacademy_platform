@@ -237,20 +237,26 @@ export function useVoiceRecorder(
 
       const isStreamingMode = !!onAudioChunk;
 
+      // Chunks are encoded and emitted through one promise chain so they leave
+      // in the order MediaRecorder produced them. Independent FileReaders could
+      // complete out of order, and a webm stream with a swapped chunk is a
+      // corrupt file to the server-side decoder.
+      let encodeChain: Promise<void> = Promise.resolve();
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
           if (isStreamingMode) {
-            // Convert chunk to base64 and send via callback
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              // Strip the data URL prefix to get raw base64
-              const base64 = result.split(',')[1];
-              if (base64) {
-                onAudioChunk(base64);
+            const blob = event.data;
+            encodeChain = encodeChain.then(async () => {
+              const buffer = await blob.arrayBuffer();
+              const bytes = new Uint8Array(buffer);
+              let binary = '';
+              for (let i = 0; i < bytes.length; i += 0x8000) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
               }
-            };
-            reader.readAsDataURL(event.data);
+              onAudioChunk(btoa(binary));
+            }).catch(() => {
+              // A failed chunk read is dropped; the next one still goes out in order.
+            });
           }
           chunksRef.current.push(event.data);
         }

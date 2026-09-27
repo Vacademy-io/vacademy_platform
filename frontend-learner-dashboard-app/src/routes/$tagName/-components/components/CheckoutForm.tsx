@@ -7,7 +7,10 @@ import { SpinnerGap, User, Envelope, Phone, CaretRight, CheckCircle } from "@pho
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import {
+    phoneFieldHasInput,
+    usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -81,13 +84,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [emailError, setEmailError] = useState("");
     const [phoneError, setPhoneError] = useState("");
 
-    // Institute-configured preferred countries (sourced from domain routing).
-    // First entry is the default selected country; the full list orders the dropdown.
-    const preferredCountries = React.useMemo(() => {
-        const cached = getCachedPreferredCountries();
-        return cached.length > 0 ? cached : ["in", "us", "gb", "au", "ae"];
-    }, []);
-    const defaultPhoneCountry = preferredCountries[0] ?? "in";
+    // What this phone field starts on: the institute's configured preferred
+    // countries, or — when it configured none, or the portal is on GEO_FIRST —
+    // the country the visitor is opening this page from.
+    //
+    // A hook rather than a one-shot read: these pages are public and routinely
+    // render before domain routing replies, which used to leave the field on the
+    // platform fallback (+91) for every visitor. It takes the institute's answer
+    // whenever it lands, and never once a number has been typed into the box.
+    const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+        usePreferredPhoneCountries({ freeze: phoneFieldHasInput(phone) });
     const [nameError, setNameError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);

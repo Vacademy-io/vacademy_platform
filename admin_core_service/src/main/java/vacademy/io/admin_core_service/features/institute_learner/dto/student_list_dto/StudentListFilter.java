@@ -40,6 +40,10 @@ public class StudentListFilter {
     // CustomFieldListFilterDTO). Coexists with the legacy values-IN map above;
     // both AND together when sent.
     private List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> customFieldTypedFilters;
+    // Campaign (UTM) attribution filter — same shape on every list surface.
+    // Pre-resolved into user ids and folded into cfTypedMatchedUserIds /
+    // cfTypedExcludedUserIds below, so it rides the same custom-repo path.
+    private vacademy.io.admin_core_service.features.utm_attribution.dto.UtmListFilterDTO utmFilters;
     private LocalDate startDate;
     private LocalDate endDate;
 

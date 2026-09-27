@@ -32,5 +32,22 @@
     },
     "actions": {
         "addNewPaymentPlan": "+ Add New Payment Plan"
+    },
+    "search": {
+        "placeholder": "Search plans by name…",
+        "noResults": "No plans match your search or filter.",
+        "clear": "Clear"
+    },
+    "filters": {
+        "all": "All",
+        "FREE": "Free",
+        "ONE_TIME": "One-time",
+        "DONATION": "Donation",
+        "SUBSCRIPTION": "Subscription",
+        "CPO": "CPO"
+    },
+    "meta": {
+        "created": "Created {{date}}",
+        "createdBy": "by {{name}}"
     }
 }

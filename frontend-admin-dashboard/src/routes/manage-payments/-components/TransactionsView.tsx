@@ -34,6 +34,7 @@ import { DueLearnersTable } from './DueLearnersTable';
 import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
 import { PaymentLogsTable } from './PaymentLogsTable';
 import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
+import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
 import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -42,12 +43,12 @@ import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPayment
 import {
     classifyEntry,
     isDueEligibleEntry,
-    computeBillingFromEntries,
     computePaymentSummary,
     summarizeBucketAmount,
 } from '../-utils/paymentSummary';
 import { ALL_TIME_RANGE, type DateRangeValue } from '../-utils/dateRange';
 import { resolvePaymentLogInvoices } from '../-utils/resolvePaymentLogInvoices';
+import { derivePaymentPlanOptions, filterEntriesByPaymentPlan } from '../-utils/paymentPlanFilter';
 
 const PAGE_SIZE = 20;
 
@@ -95,7 +96,14 @@ export function TransactionsView() {
     // 'balances' answers "who owes money", which the payment records cannot: an unpaid balance
     // normally has no row to filter to. It swaps the table rather than narrowing it.
     const [view, setView] = useState<'records' | 'balances'>('records');
+    // Which balances list is open: 'due' (something already overdue) or 'outstanding' (anything
+    // still to collect, whatever its date — how an admin sees each learner's next instalment).
+    // 'upcoming' is the same list opened from the instalment Upcoming card.
+    const [balanceScope, setBalanceScope] = useState<'due' | 'outstanding' | 'upcoming'>('due');
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
+    // Payment plan is the one detailed filter the API can't apply; it narrows the loaded set
+    // locally, before the KPI tiles are computed, so it behaves like the server-side ones.
+    const [selectedPaymentPlans, setSelectedPaymentPlans] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]);
     const [selectedPaymentTypes, setSelectedPaymentTypes] = useState<SelectOption[]>([]);
     const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({});
@@ -179,9 +187,20 @@ export function TransactionsView() {
         staleTime: 30000,
     });
 
-    // Everything the API returned for the current filters — the KPI tiles always describe this set,
-    // so the numbers don't collapse to whichever tile is selected.
-    const allEntries = useMemo(() => allData?.entries ?? [], [allData]);
+    // Everything the API returned for the current filters. The plan picker offers the plans seen
+    // in this set — before the plan filter narrows it — so choosing one never hides the others.
+    const loadedEntries = useMemo(() => allData?.entries ?? [], [allData]);
+    const paymentPlanOptions = useMemo(
+        () => derivePaymentPlanOptions(loadedEntries),
+        [loadedEntries]
+    );
+
+    // The loaded set narrowed to the selected plans — the KPI tiles always describe this set, so
+    // the numbers don't collapse to whichever tile is selected.
+    const allEntries = useMemo(
+        () => filterEntriesByPaymentPlan(loadedEntries, selectedPaymentPlans),
+        [loadedEntries, selectedPaymentPlans]
+    );
 
     const paymentSummary = useMemo(() => computePaymentSummary(allEntries), [allEntries]);
 
@@ -191,6 +210,11 @@ export function TransactionsView() {
             statusBucket === 'total'
                 ? allEntries
                 : allEntries.filter((entry) => {
+                      // A voided payment is in no card, so it is in no card's rows either — it
+                      // stays visible under "All" only. (Scoped to voided payments: cancelled
+                      // invoice rows keep their existing place in the Pending tab.)
+                      if ((entry.payment_log?.payment_status || '').toUpperCase() === 'VOIDED')
+                          return false;
                       if (classifyEntry(entry) !== statusBucket) return false;
                       // The Pending tile no longer counts records on a cancelled/terminated/expired
                       // enrolment, so the rows it filters to must not include them either — the
@@ -203,9 +227,9 @@ export function TransactionsView() {
     );
 
     /**
-     * What learners were billed, paid, and still owe. Payment records can't answer this: a
-     * part-paid instalment plan leaves one PAID row and no trace of the balance, and an enrolment
-     * that never paid leaves no row at all. Same window and course scope as the table.
+     * What came in, what learners with access still owe, and what falls due next. Payment records
+     * can't answer the last two: an overdue instalment nobody paid has no row at all, and a lapsed
+     * renewal leaves only the failed attempt. Same window and course scope as the table.
      */
     const { data: billingSummary } = useQuery({
         queryKey: [
@@ -224,24 +248,55 @@ export function TransactionsView() {
         retry: false,
     });
 
-    /**
-     * Prefer the server figures; without them (older backend, failed request) derive what we can
-     * from the rows on screen — that still prices each enrolment properly, it just can't see
-     * enrolments that have never paid anything.
-     */
-    const entryBilling = useMemo(() => computeBillingFromEntries(allEntries), [allEntries]);
-    const billing = billingSummary
-        ? {
-              totalBilled: billingSummary.total_billed,
-              collected: billingSummary.collected,
-              due: billingSummary.due,
-              currency: billingSummary.currency || '',
-              planCount: billingSummary.plan_count,
-              settledPlanCount: billingSummary.settled_plan_count,
-          }
-        : entryBilling.planCount > 0
-          ? entryBilling
-          : null;
+    // No client-side fallback for the balance cards: pricing the rows on screen is exactly the
+    // model that reported abandoned checkouts and coupon discounts as debt. Without the server
+    // figures Due and Upcoming show a dash.
+    const billing = useMemo(
+        () =>
+            billingSummary
+                ? {
+                      collected: billingSummary.collected,
+                      due: billingSummary.due,
+                      upcoming: billingSummary.upcoming,
+                      upcomingDays: billingSummary.upcoming_days,
+                      learnersOwing: billingSummary.learners_owing,
+                      learnersUpcoming: billingSummary.learners_upcoming,
+                      activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+                      outstanding: billingSummary.outstanding,
+                      learnersOutstanding: billingSummary.learners_outstanding,
+                      upcomingAll: billingSummary.upcoming_all ?? undefined,
+                      learnersUpcomingAll: billingSummary.learners_upcoming_all,
+                      nextDueDate: billingSummary.next_due_date,
+                      usesInstallments: billingSummary.uses_installments,
+                      currency: billingSummary.currency || '',
+                  }
+                : null,
+        [billingSummary]
+    );
+
+    // Which cards — and their tabs — the admin chose to show. Defaults follow the fee model.
+    const cardPrefs = useKpiCardPrefs(billing);
+    const upcomingHasList = !!billing?.usesInstallments && cardPrefs.visible.has('upcoming');
+
+    // A tab can disappear under an open list or filter — a date change removes Outstanding, or
+    // the admin switches a card off. Fall back rather than leave an unmarked view on screen.
+    // Waits for the billing figures, so a refetch in flight does not bounce the view.
+    useEffect(() => {
+        if (!billing) return;
+        if (
+            (balanceScope === 'outstanding' && !cardPrefs.visible.has('outstanding')) ||
+            (balanceScope === 'upcoming' && !upcomingHasList)
+        ) {
+            setBalanceScope('due');
+        }
+    }, [billing, balanceScope, cardPrefs.visible, upcomingHasList]);
+    useEffect(() => {
+        const hiddenBucket =
+            ((statusBucket === 'pending' || statusBucket === 'abandoned') &&
+                !cardPrefs.visible.has('pending')) ||
+            (statusBucket === 'failed' && !cardPrefs.visible.has('failed'));
+        if (hiddenBucket) setStatusBucket('total');
+    }, [statusBucket, cardPrefs.visible]);
 
     const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
         if (!allData) return undefined;
@@ -394,6 +449,7 @@ export function TransactionsView() {
             endDate,
             requestFilters.package_session_ids,
             balancesPage,
+            balanceScope,
         ],
         queryFn: () =>
             fetchOutstandingLearners(
@@ -403,19 +459,23 @@ export function TransactionsView() {
                     package_session_ids: requestFilters.package_session_ids,
                 },
                 balancesPage,
-                PAGE_SIZE
+                PAGE_SIZE,
+                balanceScope !== 'due'
             ),
         staleTime: 60_000,
         retry: false,
     });
 
-    /** 'due' opens the balances list; everything else narrows the payment records. */
+    /** 'due' / 'outstanding' open a balances list; everything else narrows the payment records. */
     const handleSegmentSelect = (key: SegmentKey) => {
         setCurrentPage(0);
-        if (key === 'due') {
+        if (key === 'due' || key === 'outstanding' || (key === 'upcoming' && upcomingHasList)) {
+            setBalanceScope(key);
             setView('balances');
             return;
         }
+        // The 30-day Upcoming is informational — there is no list behind it.
+        if (key === 'upcoming') return;
         setView('records');
         // Clicking the active tile again clears back to "all".
         setStatusBucket(key === statusBucket ? 'total' : key);
@@ -423,14 +483,61 @@ export function TransactionsView() {
 
     const handleSummarySelect = (key: SummaryStatusKey) => handleSegmentSelect(key);
 
-    // Segmented switch. The first four narrow the payment records; the last swaps in the learners
-    // who still owe money, counted from the balances query rather than from the records.
+    // Segmented switch. The first five narrow the payment records; the last swaps in the learners
+    // who owe money, counted from the balances query rather than from the records. Abandoned is
+    // the stale-checkout pile — a warm-lead list for counsellors, not money in flight.
+    // Each tab follows its card in the Cards settings; All and Paid are always there.
+    const shown = cardPrefs.visible;
     const segments: StatusSegment[] = [
         { key: 'total', label: 'All', count: allEntries.length },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
-        { key: 'pending', label: 'Pending', count: paymentSummary.pending.count },
-        { key: 'failed', label: 'Failed', count: paymentSummary.failed.count },
-        { key: 'due', label: 'Due', count: outstanding?.totalElements ?? 0 },
+        ...(shown.has('pending')
+            ? [
+                  {
+                      key: 'pending' as const,
+                      label: 'Pending',
+                      count: paymentSummary.pending.count,
+                  },
+                  {
+                      key: 'abandoned' as const,
+                      label: 'Abandoned',
+                      count: paymentSummary.abandoned.count,
+                  },
+              ]
+            : []),
+        ...(shown.has('failed')
+            ? [{ key: 'failed' as const, label: 'Failed', count: paymentSummary.failed.count }]
+            : []),
+        ...(shown.has('outstanding')
+            ? [
+                  {
+                      key: 'outstanding' as const,
+                      label: 'Outstanding',
+                      count: billing?.learnersOutstanding ?? 0,
+                  },
+              ]
+            : []),
+        ...(shown.has('due')
+            ? [
+                  {
+                      key: 'due' as const,
+                      label: 'Due',
+                      count:
+                          balanceScope === 'due'
+                              ? outstanding?.totalElements ?? 0
+                              : billing?.learnersOwing ?? 0,
+                  },
+              ]
+            : []),
+        ...(upcomingHasList
+            ? [
+                  {
+                      key: 'upcoming' as const,
+                      label: 'Upcoming',
+                      count: billing?.learnersUpcomingAll ?? 0,
+                  },
+              ]
+            : []),
     ];
 
     // Detailed-filter count for the Filters button badge. Status lives in the segmented switch and
@@ -438,6 +545,7 @@ export function TransactionsView() {
     const detailedFilterCount =
         selectedPaymentTypes.length +
         selectedUserPlanStatuses.length +
+        selectedPaymentPlans.length +
         selectedPaymentSources.length +
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
@@ -461,6 +569,14 @@ export function TransactionsView() {
                     setSelectedUserPlanStatuses((prev) => prev.filter((x) => x.value !== s.value)),
             })
         );
+        selectedPaymentPlans.forEach((p) =>
+            chips.push({
+                id: `payment-plan-${p.value}`,
+                label: `Payment plan: ${p.label}`,
+                onRemove: () =>
+                    setSelectedPaymentPlans((prev) => prev.filter((x) => x.value !== p.value)),
+            })
+        );
         selectedPaymentSources.forEach((s) =>
             chips.push({
                 id: `source-${s.value}`,
@@ -479,6 +595,7 @@ export function TransactionsView() {
     }, [
         selectedPaymentTypes,
         selectedUserPlanStatuses,
+        selectedPaymentPlans,
         selectedPaymentSources,
         packageSessionFilter,
     ]);
@@ -497,7 +614,9 @@ export function TransactionsView() {
         setDateRange(ALL_TIME_RANGE);
         setStatusBucket('total');
         setView('records');
+        setBalanceScope('due');
         setSelectedUserPlanStatuses([]);
+        setSelectedPaymentPlans([]);
         setSelectedPaymentSources([]);
         setSelectedPaymentTypes([]);
         setPackageSessionFilter({});
@@ -523,7 +642,8 @@ export function TransactionsView() {
         setDetailOpen(true);
     };
 
-    // Subline: "N payments · ₹X collected · M need attention".
+    // Subline: "N payments · ₹X collected · M need attention". Abandoned checkouts are not
+    // "attention" — nothing can be done about a gateway order that has already expired.
     const collectedAmount = summarizeBucketAmount(paymentSummary.paid.amountByCurrency).display;
     const needAttention = paymentSummary.pending.count + paymentSummary.failed.count;
 
@@ -558,6 +678,12 @@ export function TransactionsView() {
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <KpiCardSettings
+                            visible={cardPrefs.visible}
+                            onToggle={cardPrefs.toggle}
+                            onReset={cardPrefs.reset}
+                            isCustomised={cardPrefs.isCustomised}
+                        />
                         <MyButton
                             buttonType="secondary"
                             scale="medium"
@@ -594,15 +720,14 @@ export function TransactionsView() {
                     </div>
                 </div>
 
-                {/* KPI tiles — Total / Collected / Due / Failed (same row as the dashboard) */}
+                {/* KPI tiles — Collected / Due / Upcoming / Pending / Failed (same row as the dashboard) */}
                 <PaymentKpiCards
                     summary={paymentSummary}
                     billing={billing}
-                    totalCount={allEntries.length}
                     isLoading={isLoadingPayments}
-                    truncated={allData?.truncated}
-                    activeKey={view === 'balances' ? 'due' : statusBucket}
+                    activeKey={view === 'balances' ? balanceScope : statusBucket}
                     onSelect={handleSummarySelect}
+                    visibleKeys={cardPrefs.visible}
                 />
 
                 {/* Control bar */}
@@ -613,7 +738,7 @@ export function TransactionsView() {
                         setCurrentPage(0);
                     }}
                     segments={segments}
-                    activeStatus={view === 'balances' ? 'due' : statusBucket}
+                    activeStatus={view === 'balances' ? balanceScope : statusBucket}
                     onStatusSelect={handleSegmentSelect}
                     filterCount={detailedFilterCount}
                     onOpenFilters={() => setFiltersOpen(true)}
@@ -664,6 +789,7 @@ export function TransactionsView() {
                 {view === 'balances' ? (
                     <DueLearnersTable
                         data={outstanding}
+                        mode={balanceScope === 'due' ? 'due' : 'outstanding'}
                         isLoading={isLoadingOutstanding}
                         error={outstandingError as Error}
                         currentPage={currentPage}
@@ -726,6 +852,12 @@ export function TransactionsView() {
                                     setSelectedUserPlanStatuses(statuses);
                                     setCurrentPage(0);
                                 }}
+                                paymentPlanOptions={paymentPlanOptions}
+                                selectedPaymentPlans={selectedPaymentPlans}
+                                onPaymentPlansChange={(plans) => {
+                                    setSelectedPaymentPlans(plans);
+                                    setCurrentPage(0);
+                                }}
                                 selectedPaymentSources={selectedPaymentSources}
                                 onPaymentSourcesChange={(sources) => {
                                     setSelectedPaymentSources(sources);
@@ -757,6 +889,7 @@ export function TransactionsView() {
                     entry={detailEntry}
                     open={detailOpen}
                     onOpenChange={setDetailOpen}
+                    onVoided={() => refetchPaymentLogs()}
                 />
 
                 {/* Balance breakdown, opened from a Due row */}

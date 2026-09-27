@@ -9,7 +9,14 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sparkle, CheckCircle, Warning, Check } from '@phosphor-icons/react';
+import {
+    Sparkle,
+    CheckCircle,
+    Warning,
+    Check,
+    DownloadSimple,
+    Receipt,
+} from '@phosphor-icons/react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -18,6 +25,10 @@ import {
     usePurchaseCreditPackMutation,
     useOrderStatusQuery,
     useInvalidateCreditQueriesOnPaid,
+    useBillingProfileQuery,
+    downloadInvoicePdf,
+    isValidGstin,
+    INDIAN_GST_STATES,
     type CreditPack,
 } from '@/services/ai-credits/credit-pack-services';
 
@@ -49,6 +60,24 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
     const [phase, setPhase] = useState<Phase>('pick');
     const [pollingFor, setPollingFor] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [downloading, setDownloading] = useState(false);
+
+    // GST identity — prefilled from the institute's saved billing profile and
+    // written back on purchase. Only shown for INR buyers (exports are 0%).
+    const billingQuery = useBillingProfileQuery(instituteId, open);
+    const [gstin, setGstin] = useState('');
+    const [stateCode, setStateCode] = useState('');
+    const [billingTouched, setBillingTouched] = useState(false);
+    const [gstinError, setGstinError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open || billingTouched || !billingQuery.data) return;
+        setGstin(billingQuery.data.gstin ?? '');
+        setStateCode(billingQuery.data.state_code ?? '');
+    }, [open, billingTouched, billingQuery.data]);
+
+    const isInr =
+        (packsQuery.data?.[0]?.currency ?? billingQuery.data?.currency ?? 'INR') === 'INR';
 
     // Poll status every 2s while awaiting webhook fulfillment.
     const statusQuery = useOrderStatusQuery(
@@ -64,6 +93,9 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
             setPhase('pick');
             setPollingFor(null);
             setErrorMessage(null);
+            setBillingTouched(false);
+            setGstinError(null);
+            setDownloading(false);
         }
     }, [open]);
 
@@ -122,8 +154,37 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
         [packsQuery.data, selectedPackId]
     );
 
+    const handleGstinChange = (raw: string) => {
+        const v = raw
+            .toUpperCase()
+            .replace(/[^0-9A-Z]/g, '')
+            .slice(0, 15);
+        setBillingTouched(true);
+        setGstin(v);
+        setGstinError(null);
+        // State is fixed by the GSTIN prefix once it's long enough to carry one.
+        if (v.length >= 2 && INDIAN_GST_STATES.some((s) => s.code === v.slice(0, 2))) {
+            setStateCode(v.slice(0, 2));
+        }
+    };
+
     const handleBuy = async () => {
         if (!instituteId || !selectedPack) return;
+
+        const trimmedGstin = gstin.trim();
+        if (isInr) {
+            if (trimmedGstin && !isValidGstin(trimmedGstin)) {
+                setGstinError('Enter a valid 15-character GSTIN, e.g. 27AAAAA0000A1Z5');
+                return;
+            }
+            if (!trimmedGstin && !stateCode) {
+                setGstinError(
+                    'Select your state so the correct GST (CGST/SGST or IGST) is applied'
+                );
+                return;
+            }
+        }
+
         setPhase('launching');
         setErrorMessage(null);
 
@@ -144,6 +205,9 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
                 instituteId,
                 packId: selectedPack.pack_id,
                 returnUrl: url.toString(),
+                ...(isInr && billingTouched
+                    ? { buyerGstin: trimmedGstin, buyerStateCode: stateCode || undefined }
+                    : {}),
             });
 
             if (!order.payment_link_url) {
@@ -221,6 +285,84 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
                                 </div>
                             )}
 
+                            {/* GST details — INR buyers only */}
+                            {isInr && packsQuery.data && packsQuery.data.length > 0 && (
+                                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-neutral-900">
+                                                GST details for your tax invoice
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-neutral-500">
+                                                Add your GSTIN to claim input tax credit. Leave it
+                                                blank if your institute isn&rsquo;t GST registered.
+                                            </p>
+                                        </div>
+                                        <Receipt className="mt-0.5 size-5 shrink-0 text-neutral-400" />
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <label className="block">
+                                            <span className="mb-1 block text-xs font-medium text-neutral-700">
+                                                GSTIN{' '}
+                                                <span className="font-normal text-neutral-400">
+                                                    (optional)
+                                                </span>
+                                            </span>
+                                            <input
+                                                type="text"
+                                                inputMode="text"
+                                                autoCapitalize="characters"
+                                                spellCheck={false}
+                                                value={gstin}
+                                                onChange={(e) => handleGstinChange(e.target.value)}
+                                                placeholder="27AAAAA0000A1Z5"
+                                                maxLength={15}
+                                                aria-invalid={!!gstinError}
+                                                className={cn(
+                                                    'h-9 w-full rounded-md border bg-white px-3 font-mono text-sm tracking-wide text-neutral-900 outline-none transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-neutral-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100',
+                                                    gstinError
+                                                        ? 'border-red-300'
+                                                        : 'border-neutral-200'
+                                                )}
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <span className="mb-1 block text-xs font-medium text-neutral-700">
+                                                State{' '}
+                                                <span className="font-normal text-neutral-400">
+                                                    (place of supply)
+                                                </span>
+                                            </span>
+                                            <select
+                                                value={stateCode}
+                                                disabled={gstin.length >= 2}
+                                                onChange={(e) => {
+                                                    setBillingTouched(true);
+                                                    setStateCode(e.target.value);
+                                                    setGstinError(null);
+                                                }}
+                                                className="h-9 w-full rounded-md border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:bg-neutral-100 disabled:text-neutral-500"
+                                            >
+                                                <option value="">Select state</option>
+                                                {INDIAN_GST_STATES.map((s) => (
+                                                    <option key={s.code} value={s.code}>
+                                                        {s.name} ({s.code})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                    </div>
+                                    {gstinError && (
+                                        <p className="mt-2 text-xs text-red-600">{gstinError}</p>
+                                    )}
+                                    {!gstinError && billingQuery.data?.gstin && !billingTouched && (
+                                        <p className="mt-2 text-2xs text-neutral-400">
+                                            Saved from your last purchase. Edit if it has changed.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Quiet trust line */}
                             <p className="mt-4 text-center text-[11px] text-neutral-400">
                                 Secure payments by Razorpay · Cards, UPI, Netbanking
@@ -257,8 +399,50 @@ export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalPr
                             </p>
                             {statusQuery.data?.credits_granted != null && (
                                 <p className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
-                                    +{statusQuery.data.credits_granted.toLocaleString()} credits
-                                    added
+                                    +{statusQuery.data.credits_granted.toLocaleString('en-IN')}{' '}
+                                    credits added
+                                </p>
+                            )}
+                            {statusQuery.data?.invoice_id ? (
+                                <button
+                                    type="button"
+                                    disabled={downloading}
+                                    onClick={async () => {
+                                        const inv = statusQuery.data;
+                                        if (!inv?.invoice_id) return;
+                                        setDownloading(true);
+                                        try {
+                                            await downloadInvoicePdf(
+                                                inv.invoice_id,
+                                                `${inv.invoice_number ?? inv.invoice_id}.pdf`
+                                            );
+                                        } catch {
+                                            toast.error('Could not download the invoice', {
+                                                description:
+                                                    'You can also find it under AI Credits → Billing.',
+                                            });
+                                        } finally {
+                                            setDownloading(false);
+                                        }
+                                    }}
+                                    className="mt-1 inline-flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 shadow-sm transition-colors hover:bg-neutral-50 disabled:opacity-60"
+                                >
+                                    {downloading ? (
+                                        <Loader2 className="size-4 animate-spin" />
+                                    ) : (
+                                        <DownloadSimple className="size-4" weight="bold" />
+                                    )}
+                                    Download GST invoice
+                                    {statusQuery.data.invoice_number && (
+                                        <span className="font-mono text-xs text-neutral-400">
+                                            {statusQuery.data.invoice_number}
+                                        </span>
+                                    )}
+                                </button>
+                            ) : (
+                                <p className="max-w-xs text-center text-xs text-neutral-500">
+                                    Your GST tax invoice has been emailed and is available under AI
+                                    Credits → Billing.
                                 </p>
                             )}
                         </div>

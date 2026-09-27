@@ -8,7 +8,8 @@
         "shareCredentials": "مشاركة بيانات الدخول",
         "sendWhatsappMessage": "إرسال رسالة واتساب",
         "sendEmail": "إرسال بريد إلكتروني",
-        "createCertificate": "إنشاء شهادة"
+        "createCertificate": "إنشاء شهادة",
+        "awardBadge": "منح شارة"
     },
     "actionInfo": {
         "selectedStudents_zero": "لا يوجد طلاب محددون ({{count}})",

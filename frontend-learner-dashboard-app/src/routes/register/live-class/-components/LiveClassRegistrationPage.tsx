@@ -49,6 +49,7 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { useTranslation } from "react-i18next";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
 
 export interface InstituteBrandingInfo {
   instituteName: string | null;
@@ -402,6 +403,18 @@ export default function LiveClassRegistrationPage() {
       return;
     }
 
+    // Both the paid and the free branch below end in a successful
+    // registration, and both need the same attribution recorded — declared once
+    // here so a change to one branch cannot quietly leave the other untracked.
+    const recordUtmTouch = () =>
+      trackUtmAttribution({
+        instituteId: data?.instituteId,
+        email: email || undefined,
+        mobileNumber: mobileNumber || undefined,
+        sourceType: "LIVE_SESSION",
+        sourceId: data?.sessionId,
+      });
+
     // Paid live class: one call registers the guest AND raises the fee invoice,
     // then we hand off to the shared /pay/invoice page. Joining stays locked
     // until the invoice is settled (server-enforced).
@@ -430,6 +443,7 @@ export default function LiveClassRegistrationPage() {
         } catch (collectError) {
           console.error("Failed to collect public user data:", collectError);
         }
+        recordUtmTouch();
         setIsUserAlreadyRegistered(true);
         setAlreadyRegisteredEmail(email);
         if (
@@ -491,6 +505,7 @@ export default function LiveClassRegistrationPage() {
       } catch (collectError) {
         console.error("Failed to collect public user data:", collectError);
       }
+      recordUtmTouch();
     } catch (error: any) {
       console.error("Registration API call failed:", error);
 

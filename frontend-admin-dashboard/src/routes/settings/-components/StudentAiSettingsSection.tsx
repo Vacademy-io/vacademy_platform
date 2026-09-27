@@ -70,6 +70,12 @@ export interface TutorConfiguration {
     };
     enabled_modes?: string[];
     chatbot_pages?: string[]; // Array of enabled page category keys
+    /**
+     * Whether the learner chatbot header shows the gear that opens the learner
+     * app's /ai-settings page (API keys and token spend). Off for everyone
+     * unless an institute deliberately turns it on.
+     */
+    show_ai_settings_shortcut?: boolean;
     voice_settings?: {
         default_language: string;
         default_voice: string;
@@ -114,6 +120,7 @@ export const StudentAiSettingsSection = () => {
         },
         enabled_modes: ['general', 'doubt', 'practice'],
         chatbot_pages: ['dashboard', 'all_courses', 'course_details', 'study_material'],
+        show_ai_settings_shortcut: false,
         voice_settings: {
             default_language: 'en-IN',
             default_voice: 'shubh',
@@ -245,6 +252,8 @@ export const StudentAiSettingsSection = () => {
                         },
                         enabled_modes: tutorConfig.enabled_modes,
                         chatbot_pages: tutorConfig.chatbot_pages,
+                        show_ai_settings_shortcut:
+                            tutorConfig.show_ai_settings_shortcut ?? false,
                         voice_settings: tutorConfig.voice_settings,
                         launcher_settings: tutorConfig.launcher_settings,
                     },
@@ -931,6 +940,32 @@ export const StudentAiSettingsSection = () => {
                                             ...tutorConfig.launcher_settings,
                                             bounce: v,
                                         },
+                                    })
+                                }
+                            />
+                        </div>
+                    </div>
+
+                    {/* Chatbot header */}
+                    <div className="space-y-3 border-t border-indigo-100 pt-4">
+                        <Label className="text-sm font-medium">{t('header.label')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('header.helpText')}</p>
+
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 p-2.5">
+                            <div>
+                                <span className="text-sm font-medium">
+                                    {t('header.aiSettingsShortcut.label')}
+                                </span>
+                                <p className="text-xs text-muted-foreground">
+                                    {t('header.aiSettingsShortcut.description')}
+                                </p>
+                            </div>
+                            <Switch
+                                checked={tutorConfig.show_ai_settings_shortcut ?? false}
+                                onCheckedChange={(v) =>
+                                    setTutorConfig({
+                                        ...tutorConfig,
+                                        show_ai_settings_shortcut: v,
                                     })
                                 }
                             />

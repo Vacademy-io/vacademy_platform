@@ -2,6 +2,8 @@
 
 import type React from 'react';
 
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,13 +21,17 @@ import { useSlidesMutations } from '@/routes/study-library/courses/course-detail
 import { toast } from 'sonner';
 import { Route } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/index';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 import { Textarea } from '@/components/ui/textarea';
 import { Package } from '@phosphor-icons/react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { SCORM_UPLOAD } from '@/constants/urls';
+import {
+    formatBytes,
+    MAX_SCORM_BYTES,
+} from '@/components/common/study-library/bulk-content-uploading/conventions';
 import {
     buildAppendReorderPayload,
     getNextSlideOrder,
@@ -36,23 +42,24 @@ import { WarningCircle } from '@phosphor-icons/react';
 // Backend returns a Vacademy exception body ({ ex, responseCode, ... }) rather
 // than a generic message, so surface that instead of a one-size-fits-all
 // "upload failed" toast the admin then has to dig out of devtools.
-const getScormUploadErrorMessage = (err: unknown): string => {
+const getScormUploadErrorMessage = (err: unknown, t: TFunction): string => {
     if (axios.isAxiosError(err)) {
         const data = err.response?.data as
             | { ex?: string; responseCode?: string; detail?: string }
             | undefined;
         return data?.ex || data?.responseCode || data?.detail || err.message;
     }
-    return err instanceof Error ? err.message : 'Failed to upload SCORM package';
+    return err instanceof Error ? err.message : t('toasts.uploadFailed');
 };
 
-const formSchema = z.object({
-    title: z.string().min(1, 'Title is required'),
-    description: z.string().optional(),
-    scormFile: z.instanceof(File, { message: 'SCORM zip file is required' }),
-});
+const buildFormSchema = (t: TFunction) =>
+    z.object({
+        title: z.string().min(1, t('validation.titleRequired')),
+        description: z.string().optional(),
+        scormFile: z.instanceof(File, { message: t('validation.scormFileRequired') }),
+    });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof buildFormSchema>>;
 
 interface ScormUploadResponse {
     id: string;
@@ -62,6 +69,8 @@ interface ScormUploadResponse {
 }
 
 export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => void }) => {
+    const { t } = useTranslation('studyLibraryAddScormDialog');
+    const formSchema = useMemo(() => buildFormSchema(t), [t]);
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } = Route.useSearch();
     const { addUpdateScormSlide, updateSlideOrder } = useSlidesMutations(
@@ -90,13 +99,35 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
         },
     });
 
+    /**
+     * The zip is POSTed whole to admin_core_service, which caps multipart bodies at
+     * MAX_SCORM_BYTES. Past that, Tomcat rejects on Content-Length and commits its response
+     * while the browser is still uploading, so the connection is reset and the reason never
+     * reaches JS — axios surfaces a bare "Network Error" after a long, pointless upload.
+     * Refuse it here instead, naming both the file's size and the limit.
+     */
+    const rejectIfTooLarge = (file: File) => {
+        if (file.size <= MAX_SCORM_BYTES) return false;
+        const message = t('toasts.fileTooLarge', {
+            size: formatBytes(file.size),
+            max: formatBytes(MAX_SCORM_BYTES),
+        });
+        setSelectedFile(file);
+        setScormUploadResult(null);
+        setUploadProgress('');
+        setUploadError(message);
+        toast.error(message, { duration: 8000 });
+        return true;
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             if (!file.name.endsWith('.zip')) {
-                toast.error('Please select a .zip file');
+                toast.error(t('toasts.selectZipFile'));
                 return;
             }
+            if (rejectIfTooLarge(file)) return;
             setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);
@@ -110,7 +141,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
     const uploadScormPackage = async (file: File) => {
         try {
             setUploadError(null);
-            setUploadProgress('Uploading SCORM package...');
+            setUploadProgress(t('toasts.uploading'));
             const formData = new FormData();
             formData.append('file', file);
 
@@ -121,12 +152,12 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             const result: ScormUploadResponse = response.data;
             setScormUploadResult(result);
             setUploadProgress(
-                `Uploaded successfully! SCORM ${result.scorm_version} package detected.`
+                t('toasts.uploadSuccessDetected', { version: result.scorm_version })
             );
-            toast.success('SCORM package uploaded & parsed successfully!');
+            toast.success(t('toasts.uploadParseSuccess'));
         } catch (err) {
             console.error('SCORM upload failed:', err);
-            const message = getScormUploadErrorMessage(err);
+            const message = getScormUploadErrorMessage(err, t);
             setUploadProgress('');
             setScormUploadResult(null);
             setUploadError(message);
@@ -138,13 +169,14 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
         if (file && file.name.endsWith('.zip')) {
+            if (rejectIfTooLarge(file)) return;
             setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);
             form.setValue('title', file.name.replace(/\.zip$/i, ''));
             await uploadScormPackage(file);
         } else {
-            toast.error('Please drop a .zip file');
+            toast.error(t('toasts.dropZipFile'));
         }
     };
 
@@ -169,13 +201,13 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                 setActiveItem(getSlideById(newSlideId));
             }, 500);
         } catch (error) {
-            toast.error('Slide created but reordering failed');
+            toast.error(t('toasts.reorderFailed'));
         }
     };
 
     const handleSubmit = async (data: FormValues) => {
         if (!scormUploadResult) {
-            toast.error('Please wait for the SCORM package upload to complete');
+            toast.error(t('toasts.waitForUpload'));
             return;
         }
 
@@ -199,7 +231,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             if (response) {
                 await reorderSlidesAfterNewSlide(slideId);
                 openState?.(false);
-                toast.success('SCORM slide created successfully!');
+                toast.success(t('toasts.createSuccess'));
             }
 
             form.reset();
@@ -209,7 +241,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             setUploadError(null);
         } catch (error) {
             console.error('Error creating SCORM slide:', error);
-            toast.error(getScormUploadErrorMessage(error) || 'Failed to create SCORM slide');
+            toast.error(getScormUploadErrorMessage(error, t) || t('toasts.createFailed'));
         } finally {
             setIsUploading(false);
         }
@@ -233,11 +265,11 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                             <Package size={48} weight="duotone" />
                         </div>
                         <h3 className="text-xl font-medium text-primary-500">
-                            Import your SCORM package
+                            {t('dropzone.title')}
                         </h3>
-                        <p className="mt-1 text-gray-500">Drag or click to upload</p>
+                        <p className="mt-1 text-gray-500">{t('dropzone.hint')}</p>
                         <p className="mt-1 text-xs text-gray-400">
-                            Supports SCORM 1.2 and SCORM 2004 (.zip)
+                            {t('dropzone.formats')}
                         </p>
                         {selectedFile && (
                             <div
@@ -246,7 +278,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                                 <p
                                     className={`text-sm font-medium ${uploadError ? 'text-danger-700' : 'text-primary-700'}`}
                                 >
-                                    Selected: {selectedFile.name}
+                                    {t('dropzone.selected', { fileName: selectedFile.name })}
                                 </p>
                                 {uploadProgress && (
                                     <p className="mt-1 text-xs text-primary-600">{uploadProgress}</p>
@@ -275,9 +307,8 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                             <p className="font-medium">{uploadError}</p>
                             {uploadError.toLowerCase().includes('imsmanifest') && (
                                 <p className="mt-1 text-danger-600">
-                                    Make sure <code>imsmanifest.xml</code> sits at the root of the
-                                    zip, not inside a subfolder — re-zip the package&apos;s contents
-                                    directly, not the folder containing them, then try again.
+                                    {t('errors.imsManifestHintPrefix')} <code>imsmanifest.xml</code>{' '}
+                                    {t('errors.imsManifestHintSuffix')}
                                 </p>
                             )}
                         </div>
@@ -303,11 +334,11 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                     name="title"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Title</FormLabel>
+                            <FormLabel>{t('fields.title')}</FormLabel>
                             <FormControl>
                                 <MyInput
                                     inputType="text"
-                                    inputPlaceholder="Enter SCORM slide title"
+                                    inputPlaceholder={t('fields.titlePlaceholder')}
                                     input={field.value}
                                     onChangeFunction={field.onChange}
                                     size="large"
@@ -324,10 +355,10 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                     name="description"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Description (Optional)</FormLabel>
+                            <FormLabel>{t('fields.description')}</FormLabel>
                             <FormControl>
                                 <Textarea
-                                    placeholder="Enter a description for this SCORM module..."
+                                    placeholder={t('fields.descriptionPlaceholder')}
                                     className="min-h-[80px] resize-none"
                                     {...field}
                                 />
@@ -341,15 +372,15 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                 {scormUploadResult && (
                     <div className="rounded-lg border border-green-200 bg-green-50 p-4">
                         <h4 className="mb-2 text-sm font-medium text-green-800">
-                            Package Details
+                            {t('details.title')}
                         </h4>
                         <div className="space-y-1 text-xs text-green-700">
                             <p>
-                                <span className="font-medium">Version:</span>{' '}
-                                SCORM {scormUploadResult.scorm_version}
+                                <span className="font-medium">{t('details.versionLabel')}</span>{' '}
+                                {t('details.versionValue', { version: scormUploadResult.scorm_version })}
                             </p>
                             <p>
-                                <span className="font-medium">Launch file:</span>{' '}
+                                <span className="font-medium">{t('details.launchFileLabel')}</span>{' '}
                                 {scormUploadResult.launch_path?.split('/').pop() || 'index.html'}
                             </p>
                         </div>
@@ -374,10 +405,10 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                     {isUploading ? (
                         <div className="flex items-center justify-center gap-2">
                             <div className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                            Creating slide...
+                            {t('actions.creatingSlide')}
                         </div>
                     ) : (
-                        'Create SCORM Slide'
+                        t('actions.createSlide')
                     )}
                 </MyButton>
             </form>

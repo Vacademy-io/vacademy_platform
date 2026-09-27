@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import { MagnifyingGlass } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -47,6 +48,7 @@ interface StudentSearchStepProps {
 }
 
 export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
+    const { t } = useTranslation('financialManagementStudentSearchStep');
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
 
     const [filter, setFilter] = useState<FeeSearchFilterDTO>({
@@ -133,7 +135,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
             },
             {
                 id: 'package',
-                header: 'Course / Package',
+                header: t('table.coursePackage'),
                 accessorFn: (row) => {
                     const ids = row.package_session_ids || [];
                     return ids.length ? ids.map((id) => getPackageName(id)).join(', ') : '\u2014';
@@ -155,7 +157,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
             },
             {
                 id: 'dueAmount',
-                header: 'Due',
+                header: t('table.due'),
                 accessorFn: (row) => row.due_amount ?? 0,
                 cell: ({ row }) => {
                     const due = row.original.due_amount ?? 0;
@@ -171,7 +173,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
             },
             {
                 id: 'overdueAmount',
-                header: 'Overdue',
+                header: t('table.overdue'),
                 accessorFn: (row) => row.overdue_amount ?? 0,
                 cell: ({ row }) => {
                     const od = row.original.overdue_amount ?? 0;
@@ -187,13 +189,13 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('table.status'),
                 accessorFn: (row) => row.status || '',
                 cell: ({ row }) => <StatusPill status={row.original.status} />,
                 size: 160,
             },
         ],
-        [getPackageName]
+        [getPackageName, t]
     );
 
     const handlePageChange = (page: number) => {
@@ -210,7 +212,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                     />
                     <Input
-                        placeholder="Search by student name or phone..."
+                        placeholder={t('searchPlaceholder')}
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         className="pl-10"
@@ -227,18 +229,18 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
 
             {error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
-                    <p className="font-semibold text-red-800">Unable to load students</p>
+                    <p className="font-semibold text-red-800">{t('errors.unableToLoad')}</p>
                     <p className="mt-2 text-sm text-red-600">
-                        {error instanceof Error ? error.message : 'Please try again.'}
+                        {error instanceof Error ? error.message : t('errors.tryAgain')}
                     </p>
                 </div>
             )}
 
             {!isLoading && !error && tableData && tableData.content.length === 0 && (
                 <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
-                    <p className="text-lg font-semibold text-gray-600">No students found.</p>
+                    <p className="text-lg font-semibold text-gray-600">{t('empty.noStudentsFound')}</p>
                     <p className="mt-2 text-sm text-gray-400">
-                        Try searching by name or phone number.
+                        {t('empty.trySearching')}
                     </p>
                 </div>
             )}
@@ -264,7 +266,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                     {tableData.total_pages > 1 && (
                         <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-5 py-3 shadow-sm">
                             <div className="text-sm text-gray-500 font-medium">
-                                Showing{' '}
+                                {t('pagination.showing')}{' '}
                                 <span className="font-semibold text-gray-800">
                                     {tableData.page_no * tableData.page_size + 1}
                                 </span>
@@ -275,7 +277,7 @@ export function StudentSearchStep({ onSelectStudent }: StudentSearchStepProps) {
                                         tableData.total_elements
                                     )}
                                 </span>{' '}
-                                of{' '}
+                                {t('pagination.of')}{' '}
                                 <span className="font-semibold text-gray-800">
                                     {tableData.total_elements}
                                 </span>

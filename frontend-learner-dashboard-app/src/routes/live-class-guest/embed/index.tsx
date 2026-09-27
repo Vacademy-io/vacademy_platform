@@ -6,12 +6,14 @@ import {
 } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
+import { getStoredRegistration } from "@/routes/register/live-class/-utils/guestSessionStorage";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
-import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
+import { extractYouTubeVideoId, isLiveYouTubeSession, isYouTubeUrl } from "@/utils/youtube";
 import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
+import { useServerTime } from "@/hooks/use-server-time";
 import { BASE_URL } from "@/constants/urls";
 import axios from "axios";
 
@@ -43,6 +45,9 @@ function GuestEmbedComponent() {
   // Paid session opened without a local registration (new browser): bounce to
   // the registration page to recover identity instead of showing a 403 error.
   useGuestAccessRecovery(sessionId, error);
+  // Server clock for the live-class sync: the player positions the video by
+  // "now − scheduled start", and a guest's device clock is not to be trusted.
+  const { data: serverTimeData } = useServerTime();
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
 
@@ -54,13 +59,20 @@ function GuestEmbedComponent() {
     setBbbJoining(true);
     setBbbError(null);
     try {
-      const registrationId = await getStoredGuestRegistrationId();
+      // The server resolves the display name from the registration (the Full
+      // Name typed on the form) so the learner shows up in BBB under their
+      // own name; only an unregistered visitor falls back to "Guest".
+      // Prefer this session's own registration over the device-wide "latest
+      // registration" key — a learner who already signed up for next week's
+      // class would otherwise send that id here and be treated as unregistered.
+      const registrationId =
+        getStoredRegistration(sessionDetails.sessionId)?.registrationId ||
+        (await getStoredGuestRegistrationId());
       const response = await axios.get(
         `${BASE_URL}/admin-core-service/live-session/guest/bbb-join`,
         {
           params: {
             scheduleId: sessionDetails.scheduleId,
-            guestName: "Guest",
             ...(registrationId ? { registrationId } : {}),
           },
         }
@@ -157,8 +169,13 @@ function GuestEmbedComponent() {
           : sessionDetails.allowPlayPause ?? true;
       const allowRewind = sessionDetails.allowRewind === "true";
 
-      // Check if this is a live session (not recorded)
-      const isLive = linkType === LinkType.YOUTUBE;
+      // Live (clock-synced) unless explicitly a recording — by URL as well as
+      // declared type, matching the player choice above (see isLiveYouTubeSession).
+      const isLive = isLiveYouTubeSession({
+        linkType,
+        link: meetingLink,
+        hasSchedule: true,
+      });
       const sessionStartTime = convertSessionTimeToUserTimezone(
         sessionDetails.meetingDate,
         sessionDetails.scheduleStartTime,
@@ -174,6 +191,11 @@ function GuestEmbedComponent() {
             enableConcentrationScore={false}
             liveClassStartTime={
               isLive ? sessionStartTime.toISOString() : undefined
+            }
+            liveClockOffsetMs={
+              serverTimeData
+                ? serverTimeData.serverTimestamp - serverTimeData.fetchedAt
+                : 0
             }
           />
         </div>

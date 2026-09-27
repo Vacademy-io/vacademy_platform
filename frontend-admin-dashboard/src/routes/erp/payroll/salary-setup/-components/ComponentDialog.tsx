@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -25,26 +27,24 @@ import { hrKeys, saveSalaryComponent } from '@/routes/erp/-shared/hr-service';
 import type { ComponentType, SalaryComponentDTO } from '@/routes/erp/-shared/hr-types';
 import { COMPONENT_CATEGORY_OPTIONS, COMPONENT_TYPE_OPTIONS } from './salary-meta';
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Give the component a name'),
-    code: z
-        .string()
-        .trim()
-        .min(2, 'Codes are at least 2 characters')
-        .regex(
-            /^[A-Z0-9_]+$/,
-            'Uppercase letters, digits and underscores only — no spaces (e.g. BASIC, HRA, SPECIAL_ALLOWANCE)'
-        ),
-    type: z.enum(['EARNING', 'DEDUCTION', 'EMPLOYER_CONTRIBUTION']),
-    category: z.enum(['FIXED', 'VARIABLE', 'STATUTORY']),
-    is_taxable: z.boolean(),
-    is_statutory: z.boolean(),
-    display_order: z.string().regex(/^\d*$/, 'Whole numbers only'),
-    gl_account_code: z.string().trim().max(64, 'That looks too long for an account code'),
-    description: z.string().trim().max(500, 'Keep the description under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().trim().min(1, t('validation.nameRequired')),
+        code: z
+            .string()
+            .trim()
+            .min(2, t('validation.codeMin'))
+            .regex(/^[A-Z0-9_]+$/, t('validation.codePattern')),
+        type: z.enum(['EARNING', 'DEDUCTION', 'EMPLOYER_CONTRIBUTION']),
+        category: z.enum(['FIXED', 'VARIABLE', 'STATUTORY']),
+        is_taxable: z.boolean(),
+        is_statutory: z.boolean(),
+        display_order: z.string().regex(/^\d*$/, t('validation.wholeNumbers')),
+        gl_account_code: z.string().trim().max(64, t('validation.glAccountMax')),
+        description: z.string().trim().max(500, t('validation.descriptionMax')),
+    });
 
-type ComponentFormValues = z.infer<typeof schema>;
+type ComponentFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: ComponentFormValues = {
     name: '',
@@ -81,8 +81,10 @@ export const ComponentDialog = ({
     component,
     existingCodes,
 }: ComponentDialogProps) => {
+    const { t } = useTranslation('erpComponentDialog');
     const queryClient = useQueryClient();
     const isEdit = !!component?.id;
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<ComponentFormValues>({
         resolver: zodResolver(schema),
@@ -121,14 +123,14 @@ export const ComponentDialog = ({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: hrKeys.salaryComponents() });
             queryClient.invalidateQueries({ queryKey: hrKeys.salaryTemplates() });
-            toast.success(isEdit ? 'Component updated' : 'Component created');
+            toast.success(isEdit ? t('toast.updated') : t('toast.created'));
             onOpenChange(false);
         },
         onError: (error) => {
             reportApiError(error, {
                 feature: 'erp-salary',
                 tags: { action: isEdit ? 'update-component' : 'create-component' },
-                fallbackMessage: 'Could not save the salary component.',
+                fallbackMessage: t('toast.saveError'),
             });
         },
     });
@@ -140,7 +142,7 @@ export const ComponentDialog = ({
         );
         if (clash) {
             form.setError('code', {
-                message: 'Another component already uses this code',
+                message: t('validation.codeDuplicate'),
             });
             return;
         }
@@ -163,7 +165,7 @@ export const ComponentDialog = ({
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit salary component' : 'Add salary component'}
+            heading={isEdit ? t('dialog.headingEdit') : t('dialog.headingNew')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -175,15 +177,15 @@ export const ComponentDialog = ({
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('dialog.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('dialog.saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Create component'}
+                        {isEdit ? t('dialog.saveChanges') : t('dialog.createComponent')}
                     </MyButton>
                 </>
             }
@@ -196,11 +198,7 @@ export const ComponentDialog = ({
                 >
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                        <span>
-                            TDS, PF, ESI and PT are system components — payroll creates them for you
-                            when it runs. Don&apos;t add them here, or an employee ends up with the
-                            deduction twice.
-                        </span>
+                        <span>{t('info')}</span>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -209,11 +207,11 @@ export const ComponentDialog = ({
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Name</FormLabel>
+                                    <FormLabel>{t('form.nameLabel')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="text"
-                                            inputPlaceholder="House rent allowance"
+                                            inputPlaceholder={t('form.namePlaceholder')}
                                             className="w-full sm:w-full"
                                             required
                                             input={field.value}
@@ -234,11 +232,11 @@ export const ComponentDialog = ({
                             name="code"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Code</FormLabel>
+                                    <FormLabel>{t('form.codeLabel')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="text"
-                                            inputPlaceholder="HRA"
+                                            inputPlaceholder={t('form.codePlaceholder')}
                                             className="w-full font-mono sm:w-full"
                                             required
                                             input={field.value}
@@ -254,7 +252,7 @@ export const ComponentDialog = ({
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        The payroll engine matches on this — e.g. BASIC, HRA.
+                                        {t('form.codeDescription')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -264,7 +262,7 @@ export const ComponentDialog = ({
                         <SelectField
                             control={form.control}
                             name="type"
-                            label="Type"
+                            label={t('form.typeLabel')}
                             required
                             options={COMPONENT_TYPE_OPTIONS}
                             className="w-full sm:w-full"
@@ -273,7 +271,7 @@ export const ComponentDialog = ({
                         <SelectField
                             control={form.control}
                             name="category"
-                            label="Category"
+                            label={t('form.categoryLabel')}
                             required
                             options={COMPONENT_CATEGORY_OPTIONS}
                             className="w-full sm:w-full"
@@ -284,11 +282,11 @@ export const ComponentDialog = ({
                             name="display_order"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Display order</FormLabel>
+                                    <FormLabel>{t('form.displayOrderLabel')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="number"
-                                            inputPlaceholder="10"
+                                            inputPlaceholder={t('form.displayOrderPlaceholder')}
                                             className="w-full sm:w-full"
                                             input={field.value}
                                             name={field.name}
@@ -299,7 +297,7 @@ export const ComponentDialog = ({
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        Lower numbers appear higher on the payslip.
+                                        {t('form.displayOrderDescription')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -311,11 +309,11 @@ export const ComponentDialog = ({
                             name="gl_account_code"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>GL account code</FormLabel>
+                                    <FormLabel>{t('form.glAccountLabel')}</FormLabel>
                                     <FormControl>
                                         <MyInput
                                             inputType="text"
-                                            inputPlaceholder="5100"
+                                            inputPlaceholder={t('form.glAccountPlaceholder')}
                                             className="w-full font-mono sm:w-full"
                                             input={field.value}
                                             name={field.name}
@@ -326,8 +324,7 @@ export const ComponentDialog = ({
                                         />
                                     </FormControl>
                                     <FormDescription className="text-caption text-neutral-500">
-                                        Where this component posts in the accounting journal. Blank
-                                        uses the default for its type.
+                                        {t('form.glAccountDescription')}
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -350,7 +347,7 @@ export const ComponentDialog = ({
                                         />
                                     </FormControl>
                                     <FormLabel className="!mt-0 text-body text-neutral-600">
-                                        Taxable
+                                        {t('form.taxableLabel')}
                                     </FormLabel>
                                 </FormItem>
                             )}
@@ -370,7 +367,7 @@ export const ComponentDialog = ({
                                         />
                                     </FormControl>
                                     <FormLabel className="!mt-0 text-body text-neutral-600">
-                                        Statutory
+                                        {t('form.statutoryLabel')}
                                     </FormLabel>
                                 </FormItem>
                             )}
@@ -382,11 +379,11 @@ export const ComponentDialog = ({
                         name="description"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Description</FormLabel>
+                                <FormLabel>{t('form.descriptionLabel')}</FormLabel>
                                 <FormControl>
                                     <Textarea
                                         {...field}
-                                        placeholder="What this component is for, so the next admin doesn't have to guess."
+                                        placeholder={t('form.descriptionPlaceholder')}
                                         className="text-body"
                                     />
                                 </FormControl>

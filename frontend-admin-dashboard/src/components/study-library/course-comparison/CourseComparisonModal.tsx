@@ -16,7 +16,11 @@ import { Spinner } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { submitForReview } from '@/routes/study-library/courses/-services/approval-services';
+import {
+    isCourseApprovalRequired,
+    publishCourse,
+    submitForReview,
+} from '@/routes/study-library/courses/-services/approval-services';
 import { MyButton } from '@/components/design-system/button';
 import {
     CourseComparisonResult,
@@ -167,21 +171,35 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
 
     const navigate = useNavigate();
 
-    // Send for approval mutation
+    // Role toggle: off (default) publishes the draft directly; on routes it
+    // through Submit for Review -> admin approval.
+    const requireApproval = isCourseApprovalRequired();
+
+    // Send for approval / direct publish mutation
     const submitMutation = useMutation({
-        mutationFn: (courseId: string) => submitForReview(courseId),
+        mutationFn: (courseId: string) =>
+            requireApproval ? submitForReview(courseId) : publishCourse(courseId),
         onSuccess: () => {
-            toast.success('Course submitted for review successfully!');
-            // Navigate to courses page with "Courses In Review" tab
+            toast.success(
+                requireApproval
+                    ? 'Course submitted for review successfully!'
+                    : 'Course published successfully!'
+            );
+            // Land on the tab where the course now shows up
             navigate({
                 to: '/study-library/courses',
-                search: { selectedTab: 'CourseInReview' },
+                search: { selectedTab: requireApproval ? 'CourseInReview' : 'AuthoredCourses' },
             });
             // Close the modal
             onClose();
         },
         onError: (error: Error) => {
-            toast.error(error.message || 'Failed to submit course for review');
+            toast.error(
+                error.message ||
+                    (requireApproval
+                        ? 'Failed to submit course for review'
+                        : 'Failed to publish course')
+            );
         },
     });
 
@@ -336,7 +354,9 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                                 </h2>
                                 <p className="mt-0.5 text-xs text-gray-500">
                                     {isNewCourse
-                                        ? 'Review your course content before submitting for approval'
+                                        ? requireApproval
+                                            ? 'Review your course content before submitting for approval'
+                                            : 'Review your course content before publishing'
                                         : 'Compare your draft course with the published version'}
                                 </p>
                             </div>
@@ -357,12 +377,20 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                                         {submitMutation.isPending ? (
                                             <div className="flex items-center gap-1.5">
                                                 <Spinner size={12} className="animate-spin" />
-                                                <span>Submitting...</span>
+                                                <span>
+                                                    {requireApproval
+                                                        ? 'Submitting...'
+                                                        : 'Publishing...'}
+                                                </span>
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-1.5">
                                                 <CheckCircle size={12} />
-                                                <span>Send for Approval</span>
+                                                <span>
+                                                    {requireApproval
+                                                        ? 'Send for Approval'
+                                                        : 'Publish'}
+                                                </span>
                                             </div>
                                         )}
                                     </MyButton>

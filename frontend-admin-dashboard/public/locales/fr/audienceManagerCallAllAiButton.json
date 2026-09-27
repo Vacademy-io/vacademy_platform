@@ -1,6 +1,7 @@
 {
     "button": {
-        "label": "Appeler tous avec l'IA"
+        "label": "Appeler tous avec l'IA",
+        "viewProgress": "View AI call progress"
     },
     "dialog": {
         "heading": "Appeler tous les prospects avec l'IA"

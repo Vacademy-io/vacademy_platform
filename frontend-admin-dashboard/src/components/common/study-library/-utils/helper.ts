@@ -26,6 +26,9 @@ interface UserDetails {
     profile_pic_file_id: string;
     roles: string[];
     root_user: boolean;
+    /** Optional author-profile metadata (subtitle / description). */
+    author_subtitle?: string;
+    author_description?: string;
 }
 
 interface GroupDetails {
@@ -70,6 +73,13 @@ export interface FormattedCourseData {
     contain_levels: boolean;
     sessions: SessionDetails[];
     /**
+     * Authors for a course with no sessions/levels. The backend ignores
+     * `sessions` entirely when `contain_levels` is false and reads its
+     * authors from here instead (CourseService.addCourse ->
+     * createPackageSessionForDefaultLevelAndSession).
+     */
+    add_faculty_to_course?: AddFacultyToCourse[];
+    /**
      * Optional subgroup configuration for the course.
      * When true, the backend will create child batches (package_session rows)
      * for each provided subgroup under the first active parent batch.
@@ -85,10 +95,13 @@ export interface FormattedCourseData {
     about_the_course_html: string;
     tags: string[];
     course_depth: number;
-    status: string;
-    created_by_user_id: string;
-    original_course_id: string | null;
-    version_number: number;
+    // Approval-workflow fields. Always set on create; on update only `status`
+    // is sent (the course's current value) and the rest are omitted so the
+    // backend keeps ownership / copy linkage as stored.
+    status?: string;
+    created_by_user_id?: string;
+    original_course_id?: string | null;
+    version_number?: number;
     /**
      * Optional per-course advanced settings JSON (package.course_setting envelope).
      * Only set when the wizard's Advanced Settings JSON is present and valid.
@@ -108,9 +121,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
     const topLevelSubgroupNames: string[] = Array.isArray(
         (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
     )
-        ? (
-              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
-          )
+        ? ((formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? [])
               .map((sg) => (sg.subgroupName || '').trim())
               .filter(Boolean)
         : [];
@@ -137,7 +148,14 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             ? topLevelSubgroupNames.map((name) => ({ name }))
             : undefined;
 
-    const mapUser = (user: { id: string; name: string; email: string; profilePicId: string }) => ({
+    const mapUser = (user: {
+        id: string;
+        name: string;
+        email: string;
+        profilePicId: string;
+        authorSubtitle?: string;
+        authorDescription?: string;
+    }) => ({
         user: {
             id: user.id || '',
             username: '',
@@ -154,6 +172,10 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             profile_pic_file_id: user.profilePicId,
             roles: [],
             root_user: true,
+            ...(user.authorSubtitle !== undefined ? { author_subtitle: user.authorSubtitle } : {}),
+            ...(user.authorDescription !== undefined
+                ? { author_description: user.authorDescription }
+                : {}),
         },
         new_user: false,
     });
@@ -313,6 +335,16 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         }
     }
 
+    // A simple course (no sessions, no levels) sends contain_levels=false, and
+    // the backend then never looks inside `sessions` -- so the authors nested
+    // under the DEFAULT level above were silently dropped on every create and
+    // the course fell back to showing its creator. Mirror them at the top
+    // level, which is the field that path actually reads.
+    const defaultAuthors =
+        !hasLevels && !hasSessions && Array.isArray(formData.instructors)
+            ? formData.instructors.map(mapUser)
+            : undefined;
+
     return {
         id: '',
         new_course: true,
@@ -320,6 +352,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         thumbnail_file_id: '',
         contain_levels: hasLevels || hasSessions,
         sessions,
+        ...(defaultAuthors ? { add_faculty_to_course: defaultAuthors } : {}),
         contains_subgroup: containsSubgroup,
         subgroups: formattedSubgroups,
         is_course_published_to_catalaouge: formData.publishToCatalogue,
@@ -357,9 +390,7 @@ export const convertToApiCourseFormatUpdate = (
     const topLevelSubgroupNames: string[] = Array.isArray(
         (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
     )
-        ? (
-              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
-          )
+        ? ((formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? [])
               .map((sg) => (sg.subgroupName || '').trim())
               .filter(Boolean)
         : [];
@@ -389,6 +420,8 @@ export const convertToApiCourseFormatUpdate = (
         name: string;
         email: string;
         profilePicId: string;
+        authorSubtitle?: string;
+        authorDescription?: string;
     };
 
     type Level = {
@@ -412,26 +445,34 @@ export const convertToApiCourseFormatUpdate = (
             const currentUsers: User[] = current?.userIds || [];
             const previousUsers: User[] = previous?.userIds || [];
 
+            const toUserPayload = (user: User) => ({
+                id: user.id || '',
+                username: '',
+                email: user.email || '',
+                full_name: user.name || '',
+                address_line: '',
+                city: '',
+                region: '',
+                pin_code: '',
+                mobile_number: '',
+                date_of_birth: '',
+                gender: '',
+                password: '',
+                profile_pic_file_id: user.profilePicId || '',
+                roles: [],
+                root_user: true,
+                ...(user.authorSubtitle !== undefined
+                    ? { author_subtitle: user.authorSubtitle }
+                    : {}),
+                ...(user.authorDescription !== undefined
+                    ? { author_description: user.authorDescription }
+                    : {}),
+            });
+
             const deletedUsers = previousUsers
                 .filter((oldUser) => !currentUsers.some((newUser) => newUser.id === oldUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'DELETED',
                     new_user: false,
                 }));
@@ -439,23 +480,7 @@ export const convertToApiCourseFormatUpdate = (
             const addedUsers = currentUsers
                 .filter((newUser) => !previousUsers.some((oldUser) => oldUser.id === newUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
                 }));
@@ -463,36 +488,28 @@ export const convertToApiCourseFormatUpdate = (
             const existingUsers = currentUsers
                 .filter((newUser) => previousUsers.some((oldUser) => oldUser.id === newUser.id))
                 .map((user) => ({
-                    user: {
-                        id: user.id || '',
-                        username: '',
-                        email: user.email || '',
-                        full_name: user.name || '',
-                        address_line: '',
-                        city: '',
-                        region: '',
-                        pin_code: '',
-                        mobile_number: '',
-                        date_of_birth: '',
-                        gender: '',
-                        password: '',
-                        profile_pic_file_id: user.profilePicId || '',
-                        roles: [],
-                        root_user: true,
-                    },
+                    user: toUserPayload(user),
                     status: 'ACTIVE',
                     new_user: false,
                 }));
 
             const add_faculty_to_course = [...deletedUsers, ...addedUsers, ...existingUsers];
 
-            const subgroupList = Array.isArray((current as unknown as { subgroups?: { id?: string; subgroupName?: string; name?: string }[] })?.subgroups)
-                ? (current as unknown as { subgroups: { id?: string; subgroupName?: string; name?: string }[] })
-                      .subgroups.map((sg) => {
+            const subgroupList = Array.isArray(
+                (
+                    current as unknown as {
+                        subgroups?: { id?: string; subgroupName?: string; name?: string }[];
+                    }
+                )?.subgroups
+            )
+                ? (
+                      current as unknown as {
+                          subgroups: { id?: string; subgroupName?: string; name?: string }[];
+                      }
+                  ).subgroups
+                      .map((sg) => {
                           const name = (sg.subgroupName ?? sg.name ?? '').trim();
-                          return name.length > 0
-                              ? { ...(sg.id ? { id: sg.id } : {}), name }
-                              : null;
+                          return name.length > 0 ? { ...(sg.id ? { id: sg.id } : {}), name } : null;
                       })
                       .filter((n): n is { id?: string; name: string } => n !== null)
                 : undefined;
@@ -559,15 +576,6 @@ export const convertToApiCourseFormatUpdate = (
         };
     });
 
-    // Get user data for approval workflow
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const tokenData = getTokenDecodedData(accessToken);
-    const isAdmin =
-        tokenData?.authorities &&
-        Object.values(tokenData.authorities).some(
-            (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
-        );
-
     return {
         id: formData.id || '',
         new_course: false,
@@ -587,11 +595,14 @@ export const convertToApiCourseFormatUpdate = (
         tags: formData.tags || [],
         course_depth: formData.levelStructure || 2,
         course_html_description: formData.description || '',
-        // New fields for teacher approval workflow
-        status: (formData as any).status || (isAdmin ? 'ACTIVE' : 'DRAFT'),
-        created_by_user_id: (formData as any).created_by_user_id || tokenData?.user || '',
-        original_course_id: (formData as any).original_course_id || null,
-        version_number: (formData as any).version_number || 1,
+        // Approval-workflow fields. Send the course's *current* status (carried
+        // in by transformCourseData) so a details edit never changes it, and
+        // leave ownership / copy linkage out entirely — the backend keeps the
+        // stored values when they are absent. Guessing them from the editor's
+        // role used to flip a teacher's published course back to DRAFT, re-own
+        // any course to whoever edited it, and detach editable copies from
+        // their original.
+        status: (formData as any).status || undefined,
     };
 };
 
@@ -643,16 +654,21 @@ export function transformCourseData(course: CourseDetailsFormValues) {
                     email: inst.email,
                     profilePicId: inst.profilePicId,
                     roles: inst.roles,
+                    authorSubtitle: inst.authorSubtitle,
+                    authorDescription: inst.authorDescription,
                 })),
                 newLevel: level.newLevel ?? false,
-                subgroups: Array.isArray((level as { subgroups?: { id?: string; name: string }[] }).subgroups)
-                    ? (level as { subgroups: { id?: string; name: string }[] }).subgroups.map((s) => ({
-                          ...(s.id ? { id: s.id } : {}),
-                          subgroupName: s.name ?? '',
-                      }))
+                subgroups: Array.isArray(
+                    (level as { subgroups?: { id?: string; name: string }[] }).subgroups
+                )
+                    ? (level as { subgroups: { id?: string; name: string }[] }).subgroups.map(
+                          (s) => ({
+                              ...(s.id ? { id: s.id } : {}),
+                              subgroupName: s.name ?? '',
+                          })
+                      )
                     : undefined,
-                containsSubgroup:
-                    ((level as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0,
+                containsSubgroup: ((level as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0,
             })),
         })),
         containsSubgroup:
@@ -664,6 +680,9 @@ export function transformCourseData(course: CourseDetailsFormValues) {
         selectedInstructors: extractInstructors(sessions),
         instructors: [],
         publishToCatalogue: course.courseData.isCoursePublishedToCatalaouge ?? false,
+        // Carried through to convertToApiCourseFormatUpdate so an edit
+        // preserves DRAFT / IN_REVIEW / ACTIVE instead of guessing by role.
+        status: course.courseData.status || undefined,
     };
 }
 
@@ -684,6 +703,8 @@ function extractInstructors(data: Session[]) {
                         email: instructor.email,
                         profilePicId: instructor.profilePicId,
                         roles: instructor.roles,
+                        authorSubtitle: instructor.authorSubtitle,
+                        authorDescription: instructor.authorDescription,
                     });
                 }
             }

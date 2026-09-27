@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Clock, MapPin, SignIn, SignOut, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Card } from '@/components/ui/card';
@@ -33,6 +34,7 @@ interface CheckInOutCardProps {
  * to do; a client-side guess does not.
  */
 export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardProps) => {
+    const { t } = useTranslation('erpCheckInOutCard');
     const mutation = useCheckInOut(employeeId);
     const [refusal, setRefusal] = useState<string | null>(null);
 
@@ -49,8 +51,8 @@ export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardP
                 typeof message === 'string' && message.trim()
                     ? message
                     : direction === 'IN'
-                      ? 'Checked in'
-                      : 'Checked out'
+                      ? t('toasts.checkedIn')
+                      : t('toasts.checkedOut')
             );
         } catch (error) {
             // showToast: false — a geo-fence or payroll-lock refusal is the whole
@@ -60,7 +62,9 @@ export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardP
                     feature: 'erp-my-hr',
                     tags: { action: direction === 'IN' ? 'check-in' : 'check-out' },
                     fallbackMessage:
-                        direction === 'IN' ? 'Could not check you in.' : 'Could not check you out.',
+                        direction === 'IN'
+                            ? t('errors.checkInFailed')
+                            : t('errors.checkOutFailed'),
                     showToast: false,
                 })
             );
@@ -72,12 +76,9 @@ export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardP
             <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                     <Clock size={18} className="text-primary-500" />
-                    <h2 className="text-title text-foreground">Today</h2>
+                    <h2 className="text-title text-foreground">{t('today')}</h2>
                 </div>
-                <p className="text-caption text-muted-foreground">
-                    Your attendance for today. Checking in stamps the time on your record — your HR
-                    team sees the same one.
-                </p>
+                <p className="text-caption text-muted-foreground">{t('intro')}</p>
             </div>
 
             {isLoading ? (
@@ -89,20 +90,26 @@ export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardP
                 <>
                     <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                         <div className="flex flex-col gap-0.5">
-                            <span className="text-caption text-muted-foreground">Checked in</span>
+                            <span className="text-caption text-muted-foreground">
+                                {t('checkedIn')}
+                            </span>
                             <span className="text-subtitle font-medium tabular-nums text-foreground">
                                 {checkedInAt ? formatClockTime(checkedInAt) : '—'}
                             </span>
                         </div>
                         <div className="flex flex-col gap-0.5">
-                            <span className="text-caption text-muted-foreground">Checked out</span>
+                            <span className="text-caption text-muted-foreground">
+                                {t('checkedOut')}
+                            </span>
                             <span className="text-subtitle font-medium tabular-nums text-foreground">
                                 {checkedOutAt ? formatClockTime(checkedOutAt) : '—'}
                             </span>
                         </div>
                         {today?.total_hours != null && (
                             <div className="flex flex-col gap-0.5">
-                                <span className="text-caption text-muted-foreground">Hours</span>
+                                <span className="text-caption text-muted-foreground">
+                                    {t('hours')}
+                                </span>
                                 <span className="text-subtitle font-medium tabular-nums text-foreground">
                                     {String(today.total_hours)}
                                 </span>
@@ -119,24 +126,22 @@ export const CheckInOutCard = ({ today, employeeId, isLoading }: CheckInOutCardP
                                 className="w-full sm:w-auto"
                                 onAsyncClick={act}
                                 loadingText={
-                                    direction === 'IN' ? 'Checking you in…' : 'Checking you out…'
+                                    direction === 'IN'
+                                        ? t('checkingYouIn')
+                                        : t('checkingYouOut')
                                 }
                             >
                                 {direction === 'IN' ? <SignIn size={18} /> : <SignOut size={18} />}
-                                {direction === 'IN' ? 'Check in' : 'Check out'}
+                                {direction === 'IN' ? t('checkIn') : t('checkOut')}
                             </MyButton>
                             <p className="flex items-start gap-2 text-caption text-muted-foreground">
                                 <MapPin size={14} className="mt-0.5 shrink-0" />
-                                If your browser offers to share your location, allowing it lets your
-                                institute confirm you checked in on site. You can decline — we send
-                                the check-in either way, and you&apos;ll be told here if your
-                                institute needs the location.
+                                {t('locationNotice')}
                             </p>
                         </div>
                     ) : (
                         <p className="text-body text-success-600">
-                            Checked out at {formatClockTime(checkedOutAt)}. Your day is recorded —
-                            nothing more to do.
+                            {t('closedDaySummary', { time: formatClockTime(checkedOutAt) })}
                         </p>
                     )}
 

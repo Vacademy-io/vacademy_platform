@@ -3,6 +3,8 @@ import type { ColumnDef } from '@tanstack/react-table';
 import type { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { CalendarBlank, Info, LockKey, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyInput } from '@/components/design-system/input';
@@ -45,8 +47,8 @@ interface DayRow {
     record: AttendanceRecordDTO | null;
 }
 
-const employeeName = (employee: EmployeeProfileDTO) =>
-    employee.full_name?.trim() || employee.employee_code?.trim() || 'Unnamed employee';
+const employeeName = (employee: EmployeeProfileDTO, t: TFunction) =>
+    employee.full_name?.trim() || employee.employee_code?.trim() || t('unnamedEmployee');
 
 /**
  * One day of attendance for the whole institute.
@@ -62,6 +64,7 @@ const employeeName = (employee: EmployeeProfileDTO) =>
  * the day has context without pretending to be a spreadsheet.
  */
 export const DailyBoardMain = () => {
+    const { t } = useTranslation('erpDailyBoardMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
 
     const [date, setDate] = useState<string>(() => todayIso());
@@ -111,7 +114,7 @@ export const DailyBoardMain = () => {
                 .map((employee) => ({
                     employee_id: employee.id as string,
                     employee_code: employee.employee_code ?? '',
-                    employee_name: employeeName(employee),
+                    employee_name: employeeName(employee, t),
                     record: recordsByEmployee.get(employee.id as string) ?? null,
                 })),
         [employees.data?.content, recordsByEmployee]
@@ -187,7 +190,7 @@ export const DailyBoardMain = () => {
                     <Checkbox
                         checked={table.getIsAllRowsSelected()}
                         onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
-                        aria-label="Select every employee"
+                        aria-label={t('selectAllAria')}
                         className="border-neutral-400 data-[state=checked]:bg-primary-500 data-[state=checked]:text-white"
                     />
                 ),
@@ -195,7 +198,7 @@ export const DailyBoardMain = () => {
                     <Checkbox
                         checked={row.getIsSelected()}
                         onCheckedChange={(value) => row.toggleSelected(!!value)}
-                        aria-label={`Select ${row.original.employee_name}`}
+                        aria-label={t('selectEmployeeAria', { name: row.original.employee_name })}
                         className="flex size-4 items-center justify-center border-neutral-400 shadow-none data-[state=checked]:bg-primary-500 data-[state=checked]:text-white"
                     />
                 ),
@@ -205,7 +208,7 @@ export const DailyBoardMain = () => {
         base.push(
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('columns.employee'),
                 size: 220,
                 cell: ({ row }) => (
                     <div className="flex flex-col">
@@ -222,7 +225,7 @@ export const DailyBoardMain = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 140,
                 cell: ({ row }) => <AttendanceStatusChip status={row.original.record?.status} />,
             }
@@ -232,7 +235,7 @@ export const DailyBoardMain = () => {
             base.push(
                 {
                     id: 'check_in',
-                    header: 'Check in',
+                    header: t('columns.checkIn'),
                     size: 110,
                     cell: ({ row }) => (
                         <span className="text-body tabular-nums text-foreground">
@@ -242,7 +245,7 @@ export const DailyBoardMain = () => {
                 },
                 {
                     id: 'check_out',
-                    header: 'Check out',
+                    header: t('columns.checkOut'),
                     size: 110,
                     cell: ({ row }) => (
                         <span className="text-body tabular-nums text-foreground">
@@ -256,7 +259,7 @@ export const DailyBoardMain = () => {
         base.push(
             {
                 id: 'hours',
-                header: 'Hours',
+                header: t('columns.hours'),
                 size: 90,
                 cell: ({ row }) => {
                     const hours = row.original.record?.total_hours;
@@ -272,7 +275,7 @@ export const DailyBoardMain = () => {
             },
             {
                 id: 'source',
-                header: 'Source',
+                header: t('columns.source'),
                 size: 120,
                 cell: ({ row }) => (
                     <span className="text-body text-muted-foreground">
@@ -282,7 +285,7 @@ export const DailyBoardMain = () => {
             },
             {
                 id: 'remarks',
-                header: 'Remarks',
+                header: t('columns.remarks'),
                 size: 200,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-muted-foreground">
@@ -293,7 +296,7 @@ export const DailyBoardMain = () => {
         );
 
         return base;
-    }, [isDayLevel, isHrAdmin]);
+    }, [isDayLevel, isHrAdmin, t]);
 
     if (!isHrStaff) return <HrNoAccessCard />;
 
@@ -310,7 +313,10 @@ export const DailyBoardMain = () => {
                 })),
             });
             toast.success(
-                `${selectedIds.length} ${selectedIds.length === 1 ? 'employee' : 'employees'} marked ${humanizeToken(bulkStatus).toLowerCase()}`
+                t('markSuccess', {
+                    count: selectedIds.length,
+                    status: humanizeToken(bulkStatus).toLowerCase(),
+                })
             );
             setSelectedIds([]);
             setBulkRemarks('');
@@ -321,7 +327,7 @@ export const DailyBoardMain = () => {
                 reportApiError(error, {
                     feature: 'erp-attendance',
                     tags: { action: 'mark-attendance' },
-                    fallbackMessage: 'Could not mark attendance for this day.',
+                    fallbackMessage: t('markError'),
                 })
             );
         }
@@ -333,31 +339,30 @@ export const DailyBoardMain = () => {
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
-                <h2 className="text-h2-semibold text-foreground">Daily board</h2>
+                <h2 className="text-h2-semibold text-foreground">{t('heading')}</h2>
                 <p className="max-w-3xl text-body text-muted-foreground">
-                    Everyone active on {formatDate(date)}, including the people with no record for
-                    the day — select them and mark the day in one go.
+                    {t('subtitle', { date: formatDate(date) })}
                 </p>
             </div>
 
             {/* Month context. The day means little without knowing how the month is going. */}
             {summary.isSuccess && (summary.data ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-3">
-                    <AttendanceStat label="Present this month" value={monthTotals.present} />
-                    <AttendanceStat label="Absent" value={monthTotals.absent} />
-                    <AttendanceStat label="On leave" value={monthTotals.onLeave} />
-                    <AttendanceStat label="Half days" value={monthTotals.halfDay} />
+                    <AttendanceStat label={t('stats.presentThisMonth')} value={monthTotals.present} />
+                    <AttendanceStat label={t('stats.absent')} value={monthTotals.absent} />
+                    <AttendanceStat label={t('stats.onLeave')} value={monthTotals.onLeave} />
+                    <AttendanceStat label={t('stats.halfDays')} value={monthTotals.halfDay} />
                     <AttendanceStat
-                        label="Unmarked today"
+                        label={t('stats.unmarkedToday')}
                         value={unmarkedCount}
-                        hint={unmarkedCount === 0 ? 'Every employee has a record' : undefined}
+                        hint={unmarkedCount === 0 ? t('stats.everyoneHasRecord') : undefined}
                     />
                 </div>
             )}
 
             <div className="flex flex-wrap items-end gap-3">
                 <div className="flex w-52 flex-col gap-1.5">
-                    <span className="text-caption text-muted-foreground">Date</span>
+                    <span className="text-caption text-muted-foreground">{t('dateLabel')}</span>
                     <MyInput
                         inputType="date"
                         input={date}
@@ -367,12 +372,14 @@ export const DailyBoardMain = () => {
                     />
                 </div>
                 <div className="flex w-full flex-col gap-1.5 sm:w-64">
-                    <span className="text-caption text-muted-foreground">Find an employee</span>
+                    <span className="text-caption text-muted-foreground">
+                        {t('findEmployeeLabel')}
+                    </span>
                     <MyInput
                         inputType="text"
                         input={search}
                         onChangeFunction={(event) => setSearch(event.target.value)}
-                        inputPlaceholder="Name or code"
+                        inputPlaceholder={t('findEmployeePlaceholder')}
                         className="w-full sm:w-full"
                     />
                 </div>
@@ -383,7 +390,7 @@ export const DailyBoardMain = () => {
                         scale="medium"
                         onClick={() => setDate(todayIso())}
                     >
-                        <CalendarBlank size={16} /> Back to today
+                        <CalendarBlank size={16} /> {t('backToToday')}
                     </MyButton>
                 )}
             </div>
@@ -391,22 +398,13 @@ export const DailyBoardMain = () => {
             {/* Persistent explanation of the freeze, so a refusal later is not a surprise. */}
             <div className="flex items-start gap-2 rounded-md border border-info-100 bg-info-50 p-3 text-caption text-neutral-600">
                 <LockKey size={16} className="mt-0.5 shrink-0 text-info-600" />
-                <span>
-                    Attendance for a month freezes once that month&apos;s payroll has been processed
-                    — the figures have already been paid against. Marking is refused from that
-                    point, and the message you get back names what has to be undone in ERP → Payroll
-                    before the day can be edited.
-                </span>
+                <span>{t('freezeExplanation')}</span>
             </div>
 
             {isDayLevel && (
                 <p className="flex items-start gap-2 text-caption text-muted-foreground">
                     <Info size={15} className="mt-0.5 shrink-0" />
-                    <span>
-                        This institute runs attendance in day-level mode: employees don&apos;t check
-                        in or out, so those columns are hidden. Change it under Shifts &amp;
-                        Holidays → Configuration.
-                    </span>
+                    <span>{t('dayLevelExplanation')}</span>
                 </p>
             )}
 
@@ -420,7 +418,7 @@ export const DailyBoardMain = () => {
                         />
                         <div className="flex flex-col gap-1">
                             <p className="text-body font-semibold text-danger-600">
-                                Attendance was not saved
+                                {t('notSavedTitle')}
                             </p>
                             <p className="text-body text-danger-600">{refusalMessage}</p>
                         </div>
@@ -430,7 +428,7 @@ export const DailyBoardMain = () => {
                         buttonType="text"
                         scale="small"
                         layoutVariant="icon"
-                        aria-label="Dismiss"
+                        aria-label={t('dismissAria')}
                         onClick={() => setRefusalMessage(null)}
                     >
                         <X size={14} className="text-danger-600" />
@@ -441,8 +439,7 @@ export const DailyBoardMain = () => {
             {isHrAdmin && selectedIds.length > 0 && (
                 <div className="flex flex-wrap items-end gap-3 rounded-lg border border-primary-200 bg-primary-50 p-3">
                     <span className="text-body font-semibold text-foreground">
-                        Mark {selectedIds.length}{' '}
-                        {selectedIds.length === 1 ? 'employee' : 'employees'} as
+                        {t('bulkBar.markAs', { count: selectedIds.length })}
                     </span>
                     <div className="w-44">
                         <MyDropdown
@@ -461,7 +458,7 @@ export const DailyBoardMain = () => {
                             inputType="text"
                             input={bulkRemarks}
                             onChangeFunction={(event) => setBulkRemarks(event.target.value)}
-                            inputPlaceholder="Remarks (optional)"
+                            inputPlaceholder={t('bulkBar.remarksPlaceholder')}
                             className="w-full sm:w-full"
                         />
                     </div>
@@ -470,9 +467,9 @@ export const DailyBoardMain = () => {
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={applyBulkStatus}
-                        loadingText="Marking…"
+                        loadingText={t('bulkBar.marking')}
                     >
-                        Apply to {selectedIds.length}
+                        {t('bulkBar.applyTo', { count: selectedIds.length })}
                     </MyButton>
                     <MyButton
                         type="button"
@@ -480,7 +477,7 @@ export const DailyBoardMain = () => {
                         scale="medium"
                         onClick={() => setSelectedIds([])}
                     >
-                        Clear selection
+                        {t('bulkBar.clearSelection')}
                     </MyButton>
                 </div>
             )}
@@ -489,7 +486,7 @@ export const DailyBoardMain = () => {
                 <HrLoadingRows />
             ) : isError ? (
                 <HrErrorState
-                    message="Couldn't load the day's attendance."
+                    message={t('loadError')}
                     onRetry={() => {
                         void records.refetch();
                         void employees.refetch();
@@ -499,8 +496,8 @@ export const DailyBoardMain = () => {
                 search.trim() ? (
                     <HrEmptyState
                         icon={<MagnifyingGlass size={36} className="text-muted-foreground" />}
-                        title="No employee matches that search"
-                        description="Clear the search to see everyone active on this day."
+                        title={t('noSearchMatchTitle')}
+                        description={t('noSearchMatchDescription')}
                     >
                         <MyButton
                             type="button"
@@ -508,14 +505,14 @@ export const DailyBoardMain = () => {
                             scale="medium"
                             onClick={() => setSearch('')}
                         >
-                            Clear search
+                            {t('clearSearch')}
                         </MyButton>
                     </HrEmptyState>
                 ) : (
                     <HrEmptyState
                         icon={<CalendarBlank size={36} className="text-muted-foreground" />}
-                        title="No active employees to mark"
-                        description="Attendance is taken against HR employee profiles. Add people under ERP → People first."
+                        title={t('noActiveEmployeesTitle')}
+                        description={t('noActiveEmployeesDescription')}
                     />
                 )
             ) : (
@@ -539,10 +536,7 @@ export const DailyBoardMain = () => {
             )}
 
             {!isHrAdmin && isHrStaff && (
-                <p className="text-caption text-muted-foreground">
-                    You can review attendance but not change it — marking a day needs an HR Admin
-                    role in this institute.
-                </p>
+                <p className="text-caption text-muted-foreground">{t('viewOnlyNote')}</p>
             )}
         </div>
     );

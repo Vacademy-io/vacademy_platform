@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { BASE_URL } from "@/constants/urls";
+import { captureUtmOnce, getStoredUtm } from "@/lib/utm-attribution";
 
 /**
  * Tracking for institute catalogue sites — GA4 / Meta Pixel / GTM, configured
@@ -137,34 +138,14 @@ export const useCatalogueTracking = (tracking?: TrackingSettings | null) => {
 };
 
 /**
- * First-touch UTM capture. Stored on landing so the attribution survives
- * navigation to the page that actually holds the form.
+ * First-touch UTM capture.
+ *
+ * Re-exported from `@/lib/utm-attribution` rather than reimplemented: this file
+ * used to own its own copy of the store, so a UTM captured on a catalogue page
+ * was invisible to every other capture surface (and vice versa). One store, one
+ * key — see the header comment there.
  */
-const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
-const UTM_STORE = "vac_utm_first_touch";
-
-export const captureUtmOnce = (): void => {
-  try {
-    if (sessionStorage.getItem(UTM_STORE)) return;
-    const params = new URLSearchParams(window.location.search);
-    const utm: Record<string, string> = {};
-    for (const k of UTM_KEYS) {
-      const v = params.get(k);
-      if (v) utm[k] = v.slice(0, 120);
-    }
-    if (Object.keys(utm).length > 0) sessionStorage.setItem(UTM_STORE, JSON.stringify(utm));
-  } catch {
-    /* storage unavailable — attribution is best-effort */
-  }
-};
-
-export const getStoredUtm = (): Record<string, string> => {
-  try {
-    return JSON.parse(sessionStorage.getItem(UTM_STORE) || "{}");
-  } catch {
-    return {};
-  }
-};
+export { captureUtmOnce, getStoredUtm };
 
 /* ─── First-party page analytics ─────────────────────────────────────────
  * GA4 and Pixel above are the institute's OWN tools; most never connect one,

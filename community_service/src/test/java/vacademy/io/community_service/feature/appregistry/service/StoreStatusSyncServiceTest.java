@@ -15,6 +15,8 @@ import org.mockito.quality.Strictness;
 import vacademy.io.community_service.feature.appregistry.entity.AppRegistration;
 import vacademy.io.community_service.feature.appregistry.repository.AppRegistrationRepository;
 import vacademy.io.community_service.feature.appregistry.store.AppStoreConnectClient;
+import vacademy.io.community_service.feature.appregistry.store.GooglePlayClient;
+import vacademy.io.community_service.feature.appregistry.store.PublicStoreListingClient;
 import vacademy.io.community_service.feature.appregistry.store.StoreCredentialResolver;
 
 import java.util.List;
@@ -53,6 +55,9 @@ class StoreStatusSyncServiceTest {
 
     @Mock
     private AppStoreConnectClient appStoreConnectClient;
+
+    @Mock
+    private PublicStoreListingClient publicStoreListingClient;
 
     @InjectMocks
     private StoreStatusSyncService service;
@@ -132,6 +137,113 @@ class StoreStatusSyncServiceTest {
             when(repository.findById("app-1")).thenReturn(Optional.of(row));
 
             assertNull(service.sync("app-1", "MACOS"));
+        }
+    }
+
+    /** An Android-only app, for the half of the sync that has no credential in prod at all. */
+    private static AppRegistration androidApp(String id) {
+        AppRegistration row = new AppRegistration();
+        row.setId(id);
+        row.setName("HCCA Learning");
+        row.setArchived(false);
+        row.setPayload("""
+                {"id":"%s","basics":{"instituteId":"inst-2"},
+                 "platforms":{
+                   "ANDROID":{"enabled":true,"status":"NOT_REGISTERED","fields":{"package_name":"com.hcca.app"}}}}
+                """.formatted(id));
+        return row;
+    }
+
+    @Nested
+    @DisplayName("the credential-free public listing fallback")
+    class PublicListingFallback {
+
+        @Test
+        @DisplayName("an iOS app nothing can see is read from its public App Store page")
+        void iosFallsBackToThePublicListing() {
+            AppRegistration row = appleApp("app-1");
+            when(repository.findById("app-1")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveAppStoreConnect(anyString(), anyString())).thenReturn(null);
+            when(publicStoreListingClient.lookupAppStore("io.zoeedtech.app")).thenReturn(
+                    new PublicStoreListingClient.Listing("2.5.5", "2026-08-28T05:40:16Z",
+                            "https://apps.apple.com/in/app/id6794024192", "ZOE Online School"));
+
+            Map<String, Object> result = service.sync("app-1", "IOS");
+
+            // Publicly downloadable is the one status this tier is entitled to assert.
+            assertEquals("LIVE", result.get("status"));
+            assertEquals("2.5.5", result.get("version"));
+            assertEquals("PUBLIC_LISTING", result.get("source"));
+        }
+
+        @Test
+        @DisplayName("Android — which has no credential anywhere in prod — is read from its Play page")
+        void androidFallsBackToThePublicListing() {
+            AppRegistration row = androidApp("app-2");
+            when(repository.findById("app-2")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveGooglePlay("inst-2")).thenReturn(null);
+            when(publicStoreListingClient.lookupPlayStore("com.hcca.app")).thenReturn(
+                    new PublicStoreListingClient.Listing("1.0.4", "2026-08-22T12:47:26Z",
+                            "https://play.google.com/store/apps/details?id=com.hcca.app", ""));
+
+            Map<String, Object> result = service.sync("app-2", "ANDROID");
+
+            assertEquals("LIVE", result.get("status"));
+            assertEquals("1.0.4", result.get("version"));
+            assertEquals("PUBLIC_LISTING", result.get("source"));
+        }
+
+        @Test
+        @DisplayName("the Mac row is never answered publicly — that lookup returns the iPhone app")
+        void macOsIsNeverAnsweredFromThePublicListing() {
+            AppRegistration row = appleApp("app-1");
+            when(repository.findById("app-1")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveAppStoreConnect(anyString(), anyString())).thenReturn(null);
+
+            assertNull(service.sync("app-1", "MACOS"));
+            verify(publicStoreListingClient, never()).lookupAppStore(anyString());
+            verify(repository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("a public listing that finds nothing leaves the recorded status alone")
+        void aPublicMissIsNotNotRegistered() {
+            AppRegistration row = androidApp("app-2");
+            when(repository.findById("app-2")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveGooglePlay(anyString())).thenReturn(null);
+            when(publicStoreListingClient.lookupPlayStore(anyString())).thenReturn(null);
+
+            assertNull(service.sync("app-2", "ANDROID"));
+            verify(repository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("a credential that can answer is still the authority — the public page isn't asked")
+        void aWorkingCredentialWins() {
+            AppRegistration row = appleApp("app-1");
+            when(repository.findById("app-1")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveAppStoreConnect("inst-1", "IOS"))
+                    .thenReturn(appStoreConnectClient);
+            when(appStoreConnectClient.fetchStatus("io.zoeedtech.app", "IOS"))
+                    .thenReturn(new AppStoreConnectClient.AppStatus(
+                            "6794024192", "READY_FOR_DISTRIBUTION", "2.5.5", "5", "2026-08-25"));
+
+            assertEquals("STORE_API", service.sync("app-1", "IOS").get("source"));
+            verify(publicStoreListingClient, never()).lookupAppStore(anyString());
+        }
+
+        @Test
+        @DisplayName("a credential that exists but cannot see the app still falls back")
+        void aBlindCredentialStillFallsBack() {
+            AppRegistration row = androidApp("app-2");
+            GooglePlayClient playClient = org.mockito.Mockito.mock(GooglePlayClient.class);
+            when(repository.findById("app-2")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveGooglePlay("inst-2")).thenReturn(playClient);
+            when(playClient.fetchStatus("com.hcca.app")).thenReturn(null);
+            when(publicStoreListingClient.lookupPlayStore("com.hcca.app")).thenReturn(
+                    new PublicStoreListingClient.Listing("1.0.4", "", "https://play.google.com/x", ""));
+
+            assertEquals("PUBLIC_LISTING", service.sync("app-2", "ANDROID").get("source"));
         }
     }
 

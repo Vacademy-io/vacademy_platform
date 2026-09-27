@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Info, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -16,25 +18,26 @@ import { formatDays } from '@/routes/erp/leave/-components/leave-meta';
 import type { LeaveBalanceDTO } from '@/routes/erp/-shared/hr-types';
 import { useApplyForLeave, useMyLeaveTypes } from '@/routes/erp/my-hr/-hooks/use-my-hr';
 
-const schema = z
-    .object({
-        leave_type_id: z.string().min(1, 'Pick the kind of leave you want'),
-        from_date: z.string().min(1, 'Pick the first day'),
-        to_date: z.string().min(1, 'Pick the last day'),
-        is_half_day: z.boolean(),
-        half_day_type: z.string(),
-        reason: z.string().trim().max(500, 'Keep the reason under 500 characters'),
-    })
-    .refine((values) => values.to_date >= values.from_date, {
-        path: ['to_date'],
-        message: 'The last day cannot be before the first day',
-    })
-    .refine((values) => !values.is_half_day || values.from_date === values.to_date, {
-        path: ['to_date'],
-        message: 'A half day covers one date — set both days the same',
-    });
+const buildSchema = (t: TFunction) =>
+    z
+        .object({
+            leave_type_id: z.string().min(1, t('validation.leaveTypeRequired')),
+            from_date: z.string().min(1, t('validation.fromDateRequired')),
+            to_date: z.string().min(1, t('validation.toDateRequired')),
+            is_half_day: z.boolean(),
+            half_day_type: z.string(),
+            reason: z.string().trim().max(500, t('validation.reasonTooLong')),
+        })
+        .refine((values) => values.to_date >= values.from_date, {
+            path: ['to_date'],
+            message: t('validation.toBeforeFrom'),
+        })
+        .refine((values) => !values.is_half_day || values.from_date === values.to_date, {
+            path: ['to_date'],
+            message: t('validation.halfDaySameDate'),
+        });
 
-type ApplyLeaveValues = z.infer<typeof schema>;
+type ApplyLeaveValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: ApplyLeaveValues = {
     leave_type_id: '',
@@ -71,9 +74,12 @@ export const ApplyLeaveDialog = ({
     employeeId,
     balances,
 }: ApplyLeaveDialogProps) => {
+    const { t } = useTranslation('erpApplyLeaveDialog');
     const typesQuery = useMyLeaveTypes();
     const mutation = useApplyForLeave();
     const [refusal, setRefusal] = useState<string | null>(null);
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<ApplyLeaveValues>({
         resolver: zodResolver(schema),
@@ -95,9 +101,9 @@ export const ApplyLeaveDialog = ({
                 .map((type) => ({
                     _id: type.id as string,
                     value: type.id as string,
-                    label: type.name || type.code || 'Leave',
+                    label: type.name || type.code || t('defaultLeaveTypeLabel'),
                 })),
-        [typesQuery.data]
+        [typesQuery.data, t]
     );
 
     const selectedTypeId = form.watch('leave_type_id');
@@ -120,14 +126,14 @@ export const ApplyLeaveDialog = ({
                 ...(values.is_half_day ? { half_day_type: values.half_day_type } : {}),
                 ...(values.reason.trim() ? { reason: values.reason.trim() } : {}),
             });
-            toast.success('Leave applied for — your approver has it now');
+            toast.success(t('submitSuccessToast'));
             onOpenChange(false);
         } catch (error) {
             setRefusal(
                 reportApiError(error, {
                     feature: 'erp-my-hr',
                     tags: { action: 'apply-leave' },
-                    fallbackMessage: 'Could not send your leave application.',
+                    fallbackMessage: t('submitErrorFallback'),
                     showToast: false,
                 })
             );
@@ -136,7 +142,7 @@ export const ApplyLeaveDialog = ({
 
     return (
         <MyDialog
-            heading="Apply for leave"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -148,16 +154,16 @@ export const ApplyLeaveDialog = ({
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={submit}
-                        loadingText="Sending…"
+                        loadingText={t('sending')}
                     >
-                        Send application
+                        {t('sendApplication')}
                     </MyButton>
                 </div>
             }
@@ -167,27 +173,29 @@ export const ApplyLeaveDialog = ({
                     <SelectField
                         control={form.control}
                         name="leave_type_id"
-                        label="Kind of leave"
+                        label={t('kindOfLeaveLabel')}
                         required
                         className="w-full sm:w-full"
                         options={typeOptions}
                     />
                     {typesQuery.isLoading && (
                         <p className="text-caption text-muted-foreground">
-                            Loading the leave types your institute offers…
+                            {t('loadingTypes')}
                         </p>
                     )}
                     {!typesQuery.isLoading && typeOptions.length === 0 && (
                         <p className="text-caption text-warning-700">
-                            Your institute has not set up any leave types yet, so there is nothing
-                            to apply for. Ask your HR team.
+                            {t('noTypesConfigured')}
                         </p>
                     )}
                     {selectedBalance && (
                         <p className="text-caption text-muted-foreground">
-                            You have {formatDays(selectedBalance.closing_balance)} day(s) of{' '}
-                            {selectedBalance.leave_type_name || 'this leave'} left. Your balance is
-                            checked again when someone approves this.
+                            {t('balanceHint', {
+                                count: Number(selectedBalance.closing_balance) || 0,
+                                value: formatDays(selectedBalance.closing_balance),
+                                typeName:
+                                    selectedBalance.leave_type_name || t('defaultLeaveTypeName'),
+                            })}
                         </p>
                     )}
 
@@ -195,14 +203,14 @@ export const ApplyLeaveDialog = ({
                         <HrTextField
                             control={form.control}
                             name="from_date"
-                            label="First day"
+                            label={t('firstDayLabel')}
                             inputType="date"
                             required
                         />
                         <HrTextField
                             control={form.control}
                             name="to_date"
-                            label="Last day"
+                            label={t('lastDayLabel')}
                             inputType="date"
                             required
                         />
@@ -217,13 +225,13 @@ export const ApplyLeaveDialog = ({
                                 })
                             }
                         />
-                        <span className="text-body text-foreground">This is only half a day</span>
+                        <span className="text-body text-foreground">{t('halfDayCheckboxLabel')}</span>
                     </label>
 
                     {isHalfDay && (
                         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
                             <span className="text-caption text-muted-foreground">
-                                Which half are you taking off?
+                                {t('whichHalfLabel')}
                             </span>
                             <RadioGroup
                                 value={form.watch('half_day_type')}
@@ -233,13 +241,13 @@ export const ApplyLeaveDialog = ({
                                 <label className="flex items-center gap-2">
                                     <RadioGroupItem value="FIRST_HALF" />
                                     <span className="text-body text-foreground">
-                                        First half (morning)
+                                        {t('firstHalfLabel')}
                                     </span>
                                 </label>
                                 <label className="flex items-center gap-2">
                                     <RadioGroupItem value="SECOND_HALF" />
                                     <span className="text-body text-foreground">
-                                        Second half (afternoon)
+                                        {t('secondHalfLabel')}
                                     </span>
                                 </label>
                             </RadioGroup>
@@ -249,17 +257,16 @@ export const ApplyLeaveDialog = ({
                     <HrTextareaField
                         control={form.control}
                         name="reason"
-                        label="Reason"
+                        label={t('reasonLabel')}
                         rows={3}
-                        placeholder="Anything your approver should know"
-                        description="Optional, but it tends to get answered faster."
+                        placeholder={t('reasonPlaceholder')}
+                        description={t('reasonDescription')}
                     />
 
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                         <span>
-                            Your application goes to your approver as Pending. The days only leave
-                            your balance once it is approved, and you can cancel it before then.
+                            {t('infoNote')}
                         </span>
                     </div>
 

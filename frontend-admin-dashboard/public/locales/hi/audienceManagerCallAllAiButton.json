@@ -1,6 +1,7 @@
 {
     "button": {
-        "label": "AI से सभी को कॉल करें"
+        "label": "AI से सभी को कॉल करें",
+        "viewProgress": "View AI call progress"
     },
     "dialog": {
         "heading": "AI से सभी लीड को कॉल करें"

@@ -33,6 +33,7 @@ import {
     cancelAllQueued,
     cancelQueuedItem,
     fetchQueueItems,
+    fetchQueueRuns,
     fetchQueueSummary,
     type QueueFilter,
     type QueueItem,
@@ -63,7 +64,17 @@ const STATUS_FILTERS: Array<{ key: QueueFilter; label: string }> = [
 export default function CallQueuePanel({ instituteId }: { instituteId: string }) {
     const queryClient = useQueryClient();
     const [status, setStatus] = useState<QueueFilter>('ACTIVE');
+    // Which bulk run to show. '' = everything. Narrowing is how you find the campaign
+    // whose progress dialog you closed, and it is also what scopes "cancel the rest".
+    const [runId, setRunId] = useState('');
     const [page, setPage] = useState(0);
+
+    const runs = useQuery({
+        queryKey: ['ai-call-queue-runs', instituteId],
+        queryFn: () => fetchQueueRuns(instituteId),
+        enabled: !!instituteId,
+    });
+    const runName = runs.data?.find((r) => r.audienceId === runId)?.name;
 
     const summaryQuery = useQuery({
         queryKey: ['ai-call-queue-summary', instituteId],
@@ -73,8 +84,15 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
     });
 
     const itemsQuery = useQuery({
-        queryKey: ['ai-call-queue-items', instituteId, status, page],
-        queryFn: () => fetchQueueItems({ instituteId, status, page, size: PAGE_SIZE }),
+        queryKey: ['ai-call-queue-items', instituteId, status, runId, page],
+        queryFn: () =>
+            fetchQueueItems({
+                instituteId,
+                status,
+                sourceRef: runId || undefined,
+                page,
+                size: PAGE_SIZE,
+            }),
         enabled: !!instituteId,
         refetchInterval: REFETCH_MS,
     });
@@ -82,10 +100,15 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
     const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ['ai-call-queue-summary', instituteId] });
         queryClient.invalidateQueries({ queryKey: ['ai-call-queue-items', instituteId] });
+        queryClient.invalidateQueries({ queryKey: ['ai-call-queue-runs', instituteId] });
     };
 
     const cancelAll = useMutation({
-        mutationFn: () => cancelAllQueued(instituteId, 'Cancelled from the call queue'),
+        // Scoped to the selected campaign when one is chosen. Unscoped it cancels
+        // EVERYTHING waiting — other campaigns, automations, counsellors' own calls —
+        // so the button below says which it will be rather than leaving it to be found out.
+        mutationFn: () =>
+            cancelAllQueued(instituteId, 'Cancelled from the call queue', runId || undefined),
         onSuccess: (r) => {
             toast.success(`${r.cancelled} queued call${r.cancelled === 1 ? '' : 's'} cancelled`);
             invalidate();
@@ -165,6 +188,26 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                         </button>
                     ))}
                 </div>
+                {/* Campaign filter. Without it a hundred-lead run is a hundred rows you
+                    scan by eye, and there is no way back to the run whose progress
+                    dialog you closed. */}
+                {(runs.data?.length ?? 0) > 0 && (
+                    <select
+                        value={runId}
+                        onChange={(e) => {
+                            setRunId(e.target.value);
+                            setPage(0);
+                        }}
+                        className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
+                    >
+                        <option value="">All sources</option>
+                        {runs.data?.map((r) => (
+                            <option key={r.audienceId} value={r.audienceId}>
+                                {r.name} ({r.total})
+                            </option>
+                        ))}
+                    </select>
+                )}
                 <div className="ml-auto flex items-center gap-2">
                     <Button
                         size="sm"
@@ -179,15 +222,24 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                         />
                         Refresh
                     </Button>
+                    {/* The label names its own blast radius. Unscoped, this stops every
+                        waiting call the institute has — including automations and other
+                        people's manual calls — which is not what someone stopping one
+                        campaign expects. */}
                     <Button
                         size="sm"
                         variant="outline"
                         className="gap-2 text-danger-600"
                         disabled={!summary?.queued || cancelAll.isPending}
-                        onClick={() => cancelAll.mutate()}
+                        onClick={() => {
+                            const scope = runName
+                                ? `Cancel the calls still waiting in "${runName}"?`
+                                : 'Cancel EVERY call this institute has waiting — including other campaigns and automations?';
+                            if (window.confirm(scope)) cancelAll.mutate();
+                        }}
                     >
                         <Prohibit size={14} />
-                        Cancel all waiting
+                        {runName ? 'Cancel this campaign' : 'Cancel all waiting'}
                     </Button>
                 </div>
             </div>
@@ -288,8 +340,15 @@ function QueueRow({
             <TableCell className="text-sm text-neutral-500">
                 {waiting && item.aheadInLane != null ? item.aheadInLane + 1 : '—'}
             </TableCell>
+            {/* Name first; the number is the subtitle. Showing only a number made the
+                column read as empty to anyone scanning for a person. */}
             <TableCell className="text-sm text-neutral-900">
-                {item.phoneNumber || item.userId || '—'}
+                <div className="flex flex-col">
+                    <span>{item.leadName || item.phoneNumber || item.userId || '—'}</span>
+                    {item.leadName && item.phoneNumber && (
+                        <span className="text-xs text-neutral-500">{item.phoneNumber}</span>
+                    )}
+                </div>
             </TableCell>
             <TableCell className="text-sm text-neutral-700">{item.agentName || '—'}</TableCell>
             <TableCell className="text-sm text-neutral-600">{sourceLabel(item)}</TableCell>
@@ -379,13 +438,19 @@ function StatusBadge({ status }: { status: QueueStatus }) {
     );
 }
 
-/** Where the call came from, in the words an admin would use. */
+/**
+ * Where the call came from, in the words an admin would use.
+ *
+ * A bulk row names its campaign. Without that, a hundred rows all read "Bulk campaign"
+ * and two concurrent runs are indistinguishable — including the one whose progress
+ * dialog you just closed, which this page is meant to let you pick back up.
+ */
 function sourceLabel(item: QueueItem): string {
     switch (item.source) {
         case 'MANUAL':
             return 'Manual click';
         case 'BULK':
-            return 'Bulk campaign';
+            return item.sourceName ? `Campaign · ${item.sourceName}` : 'Bulk campaign';
         case 'WORKFLOW':
             return 'Automation';
         default:

@@ -1,0 +1,12 @@
+{
+    "common": {
+        "save": "सहेजें",
+        "exit": "बाहर जाएँ",
+        "addQuestion": "प्रश्न जोड़ें",
+        "questionIncomplete": "प्रश्न पूर्ण नहीं है",
+        "noQuestionExists": "कोई प्रश्न मौजूद नहीं है।"
+    },
+    "toast": {
+        "questionPaperUpdated": "प्रश्न पत्र सफलतापूर्वक अपडेट किया गया"
+    }
+}

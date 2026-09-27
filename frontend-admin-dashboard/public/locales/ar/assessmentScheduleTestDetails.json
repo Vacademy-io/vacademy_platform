@@ -36,6 +36,7 @@
         "totalParticipants_other": "إجمالي المشاركين: {{count}}"
     },
     "joinLink": {
-        "label": "رابط الانضمام:"
+        "label": "رابط الانضمام:",
+        "privateWarning": "لا يعمل هذا الرابط إلا عندما يكون التقييم Public. اضبطه على Public في الخطوة 3 قبل المشاركة."
     }
 }

@@ -27,7 +27,9 @@
             "trueFalse": "Vrai / faux",
             "oneWord": "Un mot",
             "longAnswer": "Réponse longue",
-            "numeric": "Numérique"
+            "numeric": "Numérique",
+            "passage": "Passage / compréhension",
+            "assertionReason": "Assertion–raison"
         },
         "difficultyOptions": {
             "easy": "Facile",

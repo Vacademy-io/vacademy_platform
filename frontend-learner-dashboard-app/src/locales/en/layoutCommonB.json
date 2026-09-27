@@ -331,6 +331,7 @@
     "assessmentInstructions": {
       "attachment": "Attachment",
       "attemptOf": "Attempt {{used}} of {{max}}",
+      "downloadPaper": "Download",
       "instructionsFromInstitute": "Instructions from your institute",
       "no": "No",
       "noAdditionalInstructions": "No additional instructions were provided for this assessment.",

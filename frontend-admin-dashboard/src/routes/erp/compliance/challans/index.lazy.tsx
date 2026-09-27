@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { ChallansMain } from '@/routes/erp/compliance/-components/ChallansMain';
@@ -14,17 +15,18 @@ export const Route = createLazyFileRoute('/erp/compliance/challans/')({
 });
 
 function CompliancePage() {
+    const { t } = useTranslation('erpComplianceChallansIndex');
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">TDS Challans</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('title')}</h1>);
+    }, [setNavHeading, t]);
 
     return (
         <>
             <Helmet>
-                <title>TDS Challans</title>
-                <meta name="description" content="Record TDS deposits so Form 24Q can reconcile each quarter." />
+                <title>{t('title')}</title>
+                <meta name="description" content={t('description')} />
             </Helmet>
             <ChallansMain />
         </>

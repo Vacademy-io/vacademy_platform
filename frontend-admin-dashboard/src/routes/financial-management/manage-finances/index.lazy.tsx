@@ -2,6 +2,7 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
 import { useQuery } from '@tanstack/react-query';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -20,6 +21,7 @@ export const Route = createLazyFileRoute('/financial-management/manage-finances/
 });
 
 function ManageFinancesLayoutPage() {
+    const { t } = useTranslation('financialManagementManageFinancesIndex');
     const { setNavHeading } = useNavHeadingStore();
     const { getAllSessions } = useInstituteDetailsStore();
 
@@ -34,18 +36,19 @@ function ManageFinancesLayoutPage() {
     });
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Manage Finances</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('pageTitle')}</h1>);
+    }, [setNavHeading, t]);
 
     // Build session dropdown list
+    const allSessionsLabel = t('allSessions');
     const sessions = getAllSessions();
     const sessionDropdownList = [
-        'All',
+        allSessionsLabel,
         ...sessions.map((s: any) => s.session_name || s.id),
     ];
 
     const handleSessionChange = (value: string) => {
-        if (value === 'All') {
+        if (value === allSessionsLabel) {
             setSelectedSessionId('');
         } else {
             const session = sessions.find(
@@ -56,8 +59,8 @@ function ManageFinancesLayoutPage() {
     };
 
     const currentSessionLabel = selectedSessionId
-        ? sessions.find((s: any) => s.id === selectedSessionId)?.session_name || 'All'
-        : 'All';
+        ? sessions.find((s: any) => s.id === selectedSessionId)?.session_name || allSessionsLabel
+        : allSessionsLabel;
 
     const {
         data: financesData,
@@ -85,24 +88,24 @@ function ManageFinancesLayoutPage() {
     return (
         <>
             <Helmet>
-                <title>Manage Finances</title>
+                <title>{t('pageTitle')}</title>
                 <meta
                     name="description"
-                    content="Manage transaction history and student fee payments"
+                    content={t('metaDescription')}
                 />
             </Helmet>
 
             <div className="flex flex-col gap-4 p-6 animate-in fade-in duration-300 w-full max-w-[1400px] mx-auto">
                 {/* Page header with session dropdown */}
                 <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-gray-800">Manage Finances</h2>
+                    <h2 className="text-xl font-bold text-gray-800">{t('pageTitle')}</h2>
                     <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-500">Session -</span>
+                        <span className="text-sm font-medium text-gray-500">{t('sessionLabel')}</span>
                         <MyDropdown
                             currentValue={currentSessionLabel}
                             dropdownList={sessionDropdownList}
                             handleChange={handleSessionChange}
-                            placeholder="All"
+                            placeholder={allSessionsLabel}
                         />
                     </div>
                 </div>

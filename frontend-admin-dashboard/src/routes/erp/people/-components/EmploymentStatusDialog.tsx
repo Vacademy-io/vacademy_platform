@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Info } from '@phosphor-icons/react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
@@ -11,7 +13,7 @@ import { Form } from '@/components/ui/form';
 import { reportApiError } from '@/lib/report-api-error';
 import type { EmployeeProfileDTO } from '@/routes/erp/-shared/hr-types';
 import { useUpdateEmployeeStatus } from '../-hooks/use-hr-people';
-import { EMPLOYMENT_STATUS_OPTIONS, humanizeToken, isExitStatus } from './EmployeeFields';
+import { buildEmploymentStatusOptions, humanizeToken, isExitStatus } from './EmployeeFields';
 import { HrTextField, HrTextareaField } from './HrFormFields';
 
 /**
@@ -23,31 +25,32 @@ import { HrTextField, HrTextareaField } from './HrFormFields';
  * here means the F&F run later has what it needs instead of failing on it.
  */
 
-const statusSchema = z
-    .object({
-        employment_status: z.string().min(1, 'Pick a status'),
-        last_working_date: z.string(),
-        exit_reason: z.string(),
-    })
-    .superRefine((values, ctx) => {
-        if (!isExitStatus(values.employment_status)) return;
-        if (!values.last_working_date) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['last_working_date'],
-                message: 'A last working date is required to settle dues',
-            });
-        }
-        if (!values.exit_reason.trim()) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['exit_reason'],
-                message: 'Record why the employment ended',
-            });
-        }
-    });
+const buildStatusSchema = (t: TFunction) =>
+    z
+        .object({
+            employment_status: z.string().min(1, t('validation.pickStatus')),
+            last_working_date: z.string(),
+            exit_reason: z.string(),
+        })
+        .superRefine((values, ctx) => {
+            if (!isExitStatus(values.employment_status)) return;
+            if (!values.last_working_date) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['last_working_date'],
+                    message: t('validation.lastWorkingDateRequired'),
+                });
+            }
+            if (!values.exit_reason.trim()) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['exit_reason'],
+                    message: t('validation.exitReasonRequired'),
+                });
+            }
+        });
 
-type StatusFormValues = z.infer<typeof statusSchema>;
+type StatusFormValues = z.infer<ReturnType<typeof buildStatusSchema>>;
 
 interface EmploymentStatusDialogProps {
     open: boolean;
@@ -60,10 +63,12 @@ export function EmploymentStatusDialog({
     onOpenChange,
     employee,
 }: EmploymentStatusDialogProps) {
+    const { t } = useTranslation(['erpEmploymentStatusDialog', 'erpEmployeeFields']);
     const updateStatus = useUpdateEmployeeStatus();
+    const employmentStatusOptions = useMemo(() => buildEmploymentStatusOptions(t), [t]);
 
     const form = useForm<StatusFormValues>({
-        resolver: zodResolver(statusSchema),
+        resolver: zodResolver(buildStatusSchema(t)),
         defaultValues: {
             employment_status: employee.employment_status ?? '',
             last_working_date: (employee.last_working_date ?? '').slice(0, 10),
@@ -85,7 +90,7 @@ export function EmploymentStatusDialog({
 
     const selectedStatus = form.watch('employment_status');
     const exiting = isExitStatus(selectedStatus);
-    const personLabel = employee.full_name || employee.employee_code || 'This employee';
+    const personLabel = employee.full_name || employee.employee_code || t('fallbackEmployeeLabel');
 
     const onSubmit = async (values: StatusFormValues) => {
         if (!employee.id) return;
@@ -102,8 +107,13 @@ export function EmploymentStatusDialog({
             });
             toast.success(
                 exiting
-                    ? `${personLabel} is now ${humanizeToken(values.employment_status).toLowerCase()}. Their full & final settlement can be prepared in Payroll.`
-                    : `Status updated to ${humanizeToken(values.employment_status).toLowerCase()}`
+                    ? t('toast.exitStatusUpdated', {
+                          name: personLabel,
+                          status: humanizeToken(values.employment_status).toLowerCase(),
+                      })
+                    : t('toast.statusUpdated', {
+                          status: humanizeToken(values.employment_status).toLowerCase(),
+                      })
             );
             onOpenChange(false);
         } catch (error) {
@@ -111,14 +121,14 @@ export function EmploymentStatusDialog({
                 feature: 'erp-people',
                 tags: { 'erp.action': 'update-employee-status' },
                 extra: { employeeId: employee.id, nextStatus: values.employment_status },
-                fallbackMessage: 'Could not change the employment status',
+                fallbackMessage: t('errors.updateFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading="Change employment status"
+            heading={t('heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-xl"
@@ -130,16 +140,16 @@ export function EmploymentStatusDialog({
                         scale="medium"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
                         buttonType="primary"
                         scale="medium"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Updating…"
+                        loadingText={t('actions.updating')}
                     >
-                        Update status
+                        {t('actions.updateStatus')}
                     </MyButton>
                 </>
             }
@@ -151,16 +161,23 @@ export function EmploymentStatusDialog({
                     noValidate
                 >
                     <p className="text-body text-muted-foreground">
-                        Currently {humanizeToken(employee.employment_status) || 'not set'} for{' '}
-                        <span className="text-foreground">{personLabel}</span>.
+                        <Trans
+                            t={t}
+                            i18nKey="currentStatus"
+                            values={{
+                                status: humanizeToken(employee.employment_status) || t('notSet'),
+                                name: personLabel,
+                            }}
+                            components={{ 1: <span className="text-foreground" /> }}
+                        />
                     </p>
 
                     <SelectField
                         control={form.control}
                         name="employment_status"
-                        label="New status"
+                        label={t('fields.newStatus')}
                         required
-                        options={EMPLOYMENT_STATUS_OPTIONS}
+                        options={employmentStatusOptions}
                         className="w-full sm:w-full"
                     />
 
@@ -169,22 +186,21 @@ export function EmploymentStatusDialog({
                             <div className="flex items-start gap-2">
                                 <Info size={18} className="mt-0.5 shrink-0 text-warning-600" />
                                 <p className="text-caption text-warning-700">
-                                    This ends the employment. The last working date and reason feed
-                                    the full &amp; final settlement, so both are required.
+                                    {t('exitNotice')}
                                 </p>
                             </div>
                             <HrTextField
                                 control={form.control}
                                 name="last_working_date"
-                                label="Last working date"
+                                label={t('fields.lastWorkingDate')}
                                 inputType="date"
                                 required
                             />
                             <HrTextareaField
                                 control={form.control}
                                 name="exit_reason"
-                                label="Exit reason"
-                                placeholder="e.g. Resigned for a new role"
+                                label={t('fields.exitReason')}
+                                placeholder={t('fields.exitReasonPlaceholder')}
                                 required
                             />
                         </div>

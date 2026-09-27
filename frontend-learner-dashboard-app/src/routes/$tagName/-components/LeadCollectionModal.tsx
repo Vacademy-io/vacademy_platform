@@ -9,7 +9,10 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import {
+  phoneFieldHasInput,
+  usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 
 interface FieldOption {
   label: string;
@@ -140,13 +143,6 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   }, [isOpen]);
 
   // Validation functions
-  // Preferred / default phone country — same source the enroll-invite flow uses.
-  const preferredCountries = React.useMemo(() => {
-    const cached = getCachedPreferredCountries();
-    return cached && cached.length > 0 ? cached : ["in"];
-  }, []);
-  const defaultPhoneCountry = preferredCountries[0] ?? "in";
-
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -162,6 +158,30 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
     field.type === "tel" ||
     /phone|mobile|contact|whatsapp/i.test(field.name || "") ||
     /phone|mobile|contact|whatsapp/i.test(field.label || "");
+
+  // What this phone field starts on: the institute's configured preferred
+  // countries, or — when it configured none, or the portal is on GEO_FIRST —
+  // the country the visitor is opening this page from.
+  //
+  // Declared below `isPhoneField` because the freeze flag needs it. Catalogue
+  // pages are public and can render before domain routing replies, which used to
+  // leave the field on the platform fallback (+91) for every visitor; this takes
+  // the institute's answer whenever it lands, and never once a number has been
+  // typed into any phone field on the form.
+  // `isPhoneField` alone is NOT the right test here: `renderField` returns early
+  // for a chips field, so one named e.g. "preferred_contact" matches that regex
+  // but renders as buttons, never as a phone input. Counting it would let a chip
+  // value with digits in it trip the hook's permanent freeze latch and stop the
+  // real phone field from ever picking up the institute's preference. Mirror the
+  // renderer's own precedence instead.
+  const rendersAsPhoneInput = (field: FormField) =>
+    !(field.type === "chips" && field.options) && isPhoneField(field);
+
+  const hasTypedPhone = settings.fields.some(
+    (field) => rendersAsPhoneInput(field) && phoneFieldHasInput(formData[field.name]),
+  );
+  const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+    usePreferredPhoneCountries({ freeze: hasTypedPhone });
 
   // OTP verification functions
   const handleSendOtp = async () => {

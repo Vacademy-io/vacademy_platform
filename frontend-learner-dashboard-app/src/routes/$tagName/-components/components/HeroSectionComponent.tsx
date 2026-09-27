@@ -11,6 +11,7 @@ import {
   isValidVideoUrl,
 } from "../../-utils/video-url";
 import { cn } from "@/lib/utils";
+import { isHexDark } from "../../-utils/catalogue-style-engine";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -456,7 +457,21 @@ const HeroSectionPlaceholder: React.FC<{
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
-      navigate({ to: button.target });
+      // A bare "#anchor" target is an in-page jump, not a route. navigate()
+      // pushes it as a PATH, so the URL gains the hash and the visitor stays
+      // exactly where they were — which is what made the hero's "Explore our
+      // courses" button appear to do nothing. Scroll it ourselves, the same
+      // way CatalogueLink handles a pure anchor. Fall through to navigate()
+      // when the element is absent, so a real route still routes.
+      const target = button.target.trim();
+      if (target.startsWith("#")) {
+        const el = document.getElementById(target.slice(1));
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+      navigate({ to: target });
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
@@ -469,7 +484,11 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
+      // A dark author colour flips the band's tokens to light ink (`dark`):
+      // the title/description are painted with token classes that no
+      // props.textColor can override, so without this a navy hero renders
+      // its headline navy-on-navy.
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg", isHexDark(backgroundColor) && "dark")}
       // Author-painted color must beat the token hero surface: the class's
       // opaque gradient stack would otherwise cover the inline color.
       style={{ textAlign, backgroundColor: backgroundColor || undefined, ...(backgroundColor ? { backgroundImage: 'none' } : {}) }} // design-lint-ignore: page-builder background color
@@ -834,7 +853,21 @@ const HeroSectionWithState: React.FC<{
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
-      navigate({ to: button.target });
+      // A bare "#anchor" target is an in-page jump, not a route. navigate()
+      // pushes it as a PATH, so the URL gains the hash and the visitor stays
+      // exactly where they were — which is what made the hero's "Explore our
+      // courses" button appear to do nothing. Scroll it ourselves, the same
+      // way CatalogueLink handles a pure anchor. Fall through to navigate()
+      // when the element is absent, so a real route still routes.
+      const target = button.target.trim();
+      if (target.startsWith("#")) {
+        const el = document.getElementById(target.slice(1));
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+      navigate({ to: target });
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
@@ -873,7 +906,9 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
+      // Same dark-band flip as the placeholder variant; a background IMAGE
+      // keeps the token ink, since its brightness is unknown.
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg", !hasBgImage && isHexDark(backgroundColor) && "dark")}
       style={{
         textAlign,
         backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color

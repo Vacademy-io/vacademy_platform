@@ -81,6 +81,8 @@ public class AiCallQueueDrainJob {
     private static final String SKIPPED_ASSIGNED = "SKIPPED_ASSIGNED";
     private static final String SKIPPED_DAILY_CAP = "SKIPPED_DAILY_CAP";
     private static final String SKIPPED_DUPLICATE = "SKIPPED_DUPLICATE";
+    private static final String SKIPPED_LEAD_DAILY_CAP = "SKIPPED_LEAD_DAILY_CAP";
+    private static final String SKIPPED_RECALL_GAP = "SKIPPED_RECALL_GAP";
 
     /** Give up on an item after this many dial attempts. */
     private static final int MAX_ATTEMPTS = 3;
@@ -95,6 +97,9 @@ public class AiCallQueueDrainJob {
 
     /** How long an institute that just hit its daily cap is left alone. */
     private static final Duration DAILY_CAP_BACKOFF = Duration.ofHours(1);
+
+    /** How long an item waits after being refused for being too close to the last call. */
+    private static final Duration RECALL_GAP_BACKOFF = Duration.ofMinutes(20);
 
     /** How long an institute with no credits is left alone. */
     private static final Duration NO_CREDITS_BACKOFF = Duration.ofMinutes(15);
@@ -346,6 +351,22 @@ public class AiCallQueueDrainJob {
                 case SKIPPED_DUPLICATE -> {
                     finish(item, AiCallQueueStatus.CANCELLED,
                             "This lead was called by another path moments ago.");
+                    return DispatchOutcome.ITEM_HANDLED;
+                }
+                case SKIPPED_RECALL_GAP -> {
+                    // Unlike the daily cap this clears on its own, so the item WAITS
+                    // rather than being dropped: the lead is still due a call, just not
+                    // this minute. Only this item is held — the rest of the lane is
+                    // about different leads and keeps dialling.
+                    deferItem(item, Instant.now().plus(RECALL_GAP_BACKOFF),
+                            "Called very recently — waiting before calling again.");
+                    return DispatchOutcome.ITEM_HANDLED;
+                }
+                case SKIPPED_LEAD_DAILY_CAP -> {
+                    // Per LEAD, not per institute, so only this item is dropped — the
+                    // rest of the lane is unaffected and keeps dialling.
+                    finish(item, AiCallQueueStatus.CANCELLED,
+                            "Already called the maximum number of times today.");
                     return DispatchOutcome.ITEM_HANDLED;
                 }
                 case SKIPPED_DAILY_CAP -> {

@@ -183,6 +183,9 @@
   "jsonRenderer": {
     "video": "Video",
     "noVideoUrlConfigured": "No video URL configured",
+    "play": "Play",
+    "pause": "Pause",
+    "videoTagUnsupported": "Your browser does not support video playback.",
     "recommended": "Recommended",
     "includeEmailAddress": "Please include your email address.",
     "formNotConnected": "This form is not connected yet — please try again later.",
@@ -203,7 +206,22 @@
     "button": "Button",
     "newsletterSuccessDefault": "Thank you for subscribing!",
     "enterYourEmail": "Enter your email",
-    "subscribe": "Subscribe"
+    "subscribe": "Subscribe",
+    "documentViewer": {
+      "open": "Open document",
+      "download": "Download PDF",
+      "close": "Close",
+      "fullScreen": "Full screen",
+      "previousPage": "Previous page",
+      "nextPage": "Next page",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "pageOf": "{{current}} / {{total}}",
+      "loading": "Loading document…",
+      "loadFailed": "The document could not be displayed here.",
+      "openInNewTab": "Open in a new tab",
+      "noDocument": "No document configured yet"
+    }
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Chat with us on WhatsApp"

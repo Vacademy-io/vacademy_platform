@@ -12,21 +12,35 @@ export interface LeadColumnToggle {
 }
 
 /**
+ * Institute wording for the two renamable columns. Pass the values from
+ * useLeadTerminology() so the "Manage Column" list says what the table headers
+ * say — an institute that calls Tier "Interest Level" must not see "Tier" here.
+ */
+export interface LeadColumnLabels {
+    tier?: string;
+    leadStatus?: string;
+}
+
+/**
  * The LeadTable columns a user may show/hide, in display order. Mirrors the
  * gating in LeadTable's own column list: the ops columns appear only when the
  * lead-ops feature is on, and the score column only when score display is on.
  * The Lead-name column is intentionally omitted — it is always shown.
  */
-export function buildLeadColumnToggles(showOps: boolean, showScore: boolean): LeadColumnToggle[] {
+export function buildLeadColumnToggles(
+    showOps: boolean,
+    showScore: boolean,
+    labels?: LeadColumnLabels
+): LeadColumnToggle[] {
     const cols: LeadColumnToggle[] = [
         { id: 'contact', label: 'Contact' },
         { id: 'source', label: 'Lead source' },
     ];
-    if (showOps) cols.push({ id: 'status', label: 'Lead status' });
+    if (showOps) cols.push({ id: 'status', label: labels?.leadStatus || 'Lead status' });
     if (showScore) cols.push({ id: 'score', label: 'Lead score' });
     if (showOps) {
         cols.push(
-            { id: 'tier', label: 'Tier' },
+            { id: 'tier', label: labels?.tier || 'Tier' },
             { id: 'reachout', label: 'Reach out in' },
             { id: 'followup', label: 'Follow up at' },
             { id: 'owner', label: 'Lead owner' },

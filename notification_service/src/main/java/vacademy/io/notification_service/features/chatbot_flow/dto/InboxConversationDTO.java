@@ -21,6 +21,12 @@ public class InboxConversationDTO {
     private String lastMessageType;   // OUTGOING or INCOMING
     /** When the last message was sent/received. Jackson emits Instant as ISO-8601 with trailing Z. */
     private Instant lastMessageTime;
+    /**
+     * What WhatsApp said about the last message when it was outgoing: SENT, DELIVERED, READ or
+     * FAILED. Null when nothing has been reported yet, or when the last message came in — the row
+     * then draws a single tick, which is all we honestly know.
+     */
+    private String lastMessageStatus;
     private long unreadCount;
 
     // --- Hand-over state: the chatbot could not answer and a human is expected to ---

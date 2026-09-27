@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Info } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
@@ -15,38 +17,36 @@ import { HrTextField, HrTextareaField } from '@/routes/erp/people/-components/Hr
 import { useSaveLeaveType } from '@/routes/erp/leave/-hooks/use-leave';
 import { GENDER_OPTIONS, RECORD_STATUS_OPTIONS } from './leave-meta';
 
-const decimalDays = (label: string) =>
+const decimalDays = (t: TFunction, label: string) =>
     z
         .string()
         .trim()
-        .regex(/^\d*(\.\d+)?$/, `${label} must be a positive number of days`);
+        .regex(/^\d*(\.\d+)?$/, t('validation.mustBePositiveDays', { label }));
 
-const wholeDays = (label: string) =>
-    z.string().trim().regex(/^\d*$/, `${label} must be a whole number of days`);
+const wholeDays = (t: TFunction, label: string) =>
+    z.string().trim().regex(/^\d*$/, t('validation.mustBeWholeDays', { label }));
 
-const schema = z.object({
-    name: z.string().trim().min(1, 'Give the leave type a name'),
-    code: z
-        .string()
-        .trim()
-        .min(2, 'Codes are at least 2 characters')
-        .regex(
-            /^[A-Z0-9_]+$/,
-            'Uppercase letters, digits and underscores only — no spaces (e.g. CASUAL, SICK, COMP_OFF)'
-        ),
-    is_paid: z.boolean(),
-    is_carry_forward: z.boolean(),
-    max_carry_forward: wholeDays('Carry-forward cap'),
-    is_encashable: z.boolean(),
-    requires_document: z.boolean(),
-    min_days: decimalDays('Minimum days'),
-    max_consecutive_days: wholeDays('Maximum consecutive days'),
-    applicable_gender: z.string().min(1, 'Pick who this applies to'),
-    status: z.string().min(1, 'Pick a status'),
-    description: z.string().trim().max(500, 'Keep the description under 500 characters'),
-});
+const buildSchema = (t: TFunction) =>
+    z.object({
+        name: z.string().trim().min(1, t('validation.nameRequired')),
+        code: z
+            .string()
+            .trim()
+            .min(2, t('validation.codeMinLength'))
+            .regex(/^[A-Z0-9_]+$/, t('validation.codeFormat')),
+        is_paid: z.boolean(),
+        is_carry_forward: z.boolean(),
+        max_carry_forward: wholeDays(t, t('labels.carryForwardCap')),
+        is_encashable: z.boolean(),
+        requires_document: z.boolean(),
+        min_days: decimalDays(t, t('labels.minimumDays')),
+        max_consecutive_days: wholeDays(t, t('labels.maximumConsecutiveDays')),
+        applicable_gender: z.string().min(1, t('validation.genderRequired')),
+        status: z.string().min(1, t('validation.statusRequired')),
+        description: z.string().trim().max(500, t('validation.descriptionMaxLength')),
+    });
 
-type LeaveTypeFormValues = z.infer<typeof schema>;
+type LeaveTypeFormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const emptyValues: LeaveTypeFormValues = {
     name: '',
@@ -112,8 +112,11 @@ export const LeaveTypeDialog = ({
     leaveType,
     existingCodes,
 }: LeaveTypeDialogProps) => {
+    const { t } = useTranslation('erpLeaveTypeDialog');
     const mutation = useSaveLeaveType();
     const isEdit = !!leaveType?.id;
+
+    const schema = useMemo(() => buildSchema(t), [t]);
 
     const form = useForm<LeaveTypeFormValues>({
         resolver: zodResolver(schema),
@@ -163,7 +166,7 @@ export const LeaveTypeDialog = ({
             (existing) => existing === code && code !== (leaveType?.code ?? '').toUpperCase()
         );
         if (clash) {
-            form.setError('code', { message: 'Another leave type already uses this code' });
+            form.setError('code', { message: t('validation.codeClash') });
             return;
         }
 
@@ -185,20 +188,20 @@ export const LeaveTypeDialog = ({
                 status: values.status,
                 description: values.description || undefined,
             });
-            toast.success(isEdit ? 'Leave type updated' : 'Leave type created');
+            toast.success(isEdit ? t('toast.updated') : t('toast.created'));
             onOpenChange(false);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-leave',
                 tags: { action: isEdit ? 'update-leave-type' : 'create-leave-type' },
-                fallbackMessage: 'Could not save the leave type.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         }
     };
 
     return (
         <MyDialog
-            heading={isEdit ? 'Edit leave type' : 'Add leave type'}
+            heading={isEdit ? t('dialog.editHeading') : t('dialog.addHeading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-2xl"
@@ -210,16 +213,16 @@ export const LeaveTypeDialog = ({
                         type="button"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
                         type="button"
                         onAsyncClick={form.handleSubmit(onSubmit)}
-                        loadingText="Saving…"
+                        loadingText={t('actions.saving')}
                     >
-                        {isEdit ? 'Save changes' : 'Create leave type'}
+                        {isEdit ? t('actions.saveChanges') : t('actions.createLeaveType')}
                     </MyButton>
                 </div>
             }
@@ -229,9 +232,7 @@ export const LeaveTypeDialog = ({
                     <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                         <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                         <span>
-                            {isPaid
-                                ? 'A paid type draws on a balance, so it needs a policy to give employees a quota.'
-                                : 'An unpaid type is treated as loss of pay by payroll: the days are deducted from salary and no balance is needed, so it does not require a policy.'}
+                            {isPaid ? t('info.paidType') : t('info.unpaidType')}
                         </span>
                     </div>
 
@@ -239,36 +240,36 @@ export const LeaveTypeDialog = ({
                         <HrTextField
                             control={form.control}
                             name="name"
-                            label="Name"
-                            placeholder="Casual leave"
+                            label={t('fields.name.label')}
+                            placeholder={t('fields.name.placeholder')}
                             required
                         />
                         <HrTextField
                             control={form.control}
                             name="code"
-                            label="Code"
-                            placeholder="CASUAL"
+                            label={t('fields.code.label')}
+                            placeholder={t('fields.code.placeholder')}
                             required
-                            description="Identifier used by policies, balances and payroll."
+                            description={t('fields.code.description')}
                         />
                         <HrTextField
                             control={form.control}
                             name="min_days"
-                            label="Minimum days per application"
-                            placeholder="0.5"
-                            description="0.5 lets employees take a half day."
+                            label={t('fields.minDays.label')}
+                            placeholder={t('fields.minDays.placeholder')}
+                            description={t('fields.minDays.description')}
                         />
                         <HrTextField
                             control={form.control}
                             name="max_consecutive_days"
-                            label="Maximum consecutive days"
-                            placeholder="5"
-                            description="Leave blank for no limit."
+                            label={t('fields.maxConsecutiveDays.label')}
+                            placeholder={t('fields.maxConsecutiveDays.placeholder')}
+                            description={t('fields.maxConsecutiveDays.description')}
                         />
                         <SelectField
                             control={form.control}
                             name="applicable_gender"
-                            label="Applicable to"
+                            label={t('fields.applicableGender.label')}
                             required
                             options={GENDER_OPTIONS}
                             className="w-full sm:w-full"
@@ -276,7 +277,7 @@ export const LeaveTypeDialog = ({
                         <SelectField
                             control={form.control}
                             name="status"
-                            label="Status"
+                            label={t('fields.status.label')}
                             required
                             options={RECORD_STATUS_OPTIONS}
                             className="w-full sm:w-full"
@@ -284,21 +285,25 @@ export const LeaveTypeDialog = ({
                     </div>
 
                     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-6">
-                        <CheckboxField control={form.control} name="is_paid" label="Paid leave" />
+                        <CheckboxField
+                            control={form.control}
+                            name="is_paid"
+                            label={t('checkboxes.paidLeave')}
+                        />
                         <CheckboxField
                             control={form.control}
                             name="is_carry_forward"
-                            label="Carries forward"
+                            label={t('checkboxes.carriesForward')}
                         />
                         <CheckboxField
                             control={form.control}
                             name="is_encashable"
-                            label="Encashable"
+                            label={t('checkboxes.encashable')}
                         />
                         <CheckboxField
                             control={form.control}
                             name="requires_document"
-                            label="Requires a document"
+                            label={t('checkboxes.requiresDocument')}
                         />
                     </div>
 
@@ -306,18 +311,18 @@ export const LeaveTypeDialog = ({
                         <HrTextField
                             control={form.control}
                             name="max_carry_forward"
-                            label="Maximum days carried forward"
-                            placeholder="10"
-                            description="The most the year-end process will carry into the next year. Anything above it lapses, or is encashed when the type is encashable."
+                            label={t('fields.maxCarryForward.label')}
+                            placeholder={t('fields.maxCarryForward.placeholder')}
+                            description={t('fields.maxCarryForward.description')}
                         />
                     )}
 
                     <HrTextareaField
                         control={form.control}
                         name="description"
-                        label="Description"
+                        label={t('fields.description.label')}
                         rows={2}
-                        placeholder="When employees should use this leave, so the next admin doesn't have to guess."
+                        placeholder={t('fields.description.placeholder')}
                     />
                 </form>
             </Form>

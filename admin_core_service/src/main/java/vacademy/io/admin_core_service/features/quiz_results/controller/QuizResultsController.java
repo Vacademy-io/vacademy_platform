@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizAnswersResponse;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizDetailResponse;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizOverviewResponse;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizLearnerResultsResponse;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizOverviewResponse;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizQuestionAnalysisResponse;
@@ -52,5 +55,32 @@ public class QuizResultsController {
             @RequestParam("slideId") String slideId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(quizResultsService.getQuestionAnalysis(batchId, slideId, user));
+    }
+
+    /** Learner-wise list: a row per enrolled learner, totalled across every quiz. */
+    @GetMapping("/learners")
+    public ResponseEntity<LearnerQuizOverviewResponse> getLearnerOverview(
+            @RequestParam("batchId") String batchId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(quizResultsService.getLearnerOverview(batchId, user));
+    }
+
+    /** One learner: every quiz in the course with their standing on it, attempted or not. */
+    @GetMapping("/learner")
+    public ResponseEntity<LearnerQuizDetailResponse> getLearnerDetail(
+            @RequestParam("batchId") String batchId,
+            @RequestParam("userId") String userId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(quizResultsService.getLearnerDetail(batchId, userId, user));
+    }
+
+    /** One learner, one quiz: what they answered on each attempt, with marks per question. */
+    @GetMapping("/learner/answers")
+    public ResponseEntity<LearnerQuizAnswersResponse> getLearnerAnswers(
+            @RequestParam("batchId") String batchId,
+            @RequestParam("slideId") String slideId,
+            @RequestParam("userId") String userId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(quizResultsService.getLearnerAnswers(batchId, slideId, userId, user));
     }
 }

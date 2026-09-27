@@ -38,4 +38,20 @@ public class FlowExecutionContext {
      */
     @Builder.Default
     private boolean sendFailureLogged = false;
+
+    /**
+     * Provider message id (Meta wamid) returned by the send an executor just made. The engine
+     * reads-and-clears it when it writes the outgoing notification_log row, so the row carries the
+     * id the status webhooks join on — without it a bot reply is stuck on one grey tick forever,
+     * however many delivered/read events arrive for it.
+     */
+    private String lastProviderMessageId;
+
+    /**
+     * What a SEND_TEMPLATE node just sent — template name, resolved body params, header media —
+     * in the shape {@code WhatsAppTemplateRenderer} reads off notification_log.message_payload.
+     * The engine reads-and-clears it onto the outgoing row, so the Inbox can show the message the
+     * learner actually received instead of a bare "Template: name" line.
+     */
+    private Map<String, Object> lastTemplateSend;
 }

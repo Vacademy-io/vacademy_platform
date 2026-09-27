@@ -33,6 +33,11 @@ public class DomainRoutingUpsertRequest {
     private Boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
     private String commaSeparatedPreferredCountry;
+    /**
+     * One of PhoneCountryGeoMode. Blank/unrecognised is stored as null, which
+     * reads back as INSTITUTE_FIRST.
+     */
+    private String phoneCountryGeoMode;
     private Boolean hideInstituteName;
     private Integer logoWidthPx;
     private Integer logoHeightPx;
@@ -48,4 +53,11 @@ public class DomainRoutingUpsertRequest {
     @JsonProperty("isPrimary")
     @JsonAlias({ "is_primary", "primary" })
     private Boolean primary;
+
+    /**
+     * Catalogue tag to mount at this host's root (see
+     * InstituteDomainRouting#rootCatalogueTag). Absent/null on update means
+     * "leave it alone"; send an empty string to clear it.
+     */
+    private String rootCatalogueTag;
 }

@@ -108,6 +108,8 @@ import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/route
 import { useTranslation } from "react-i18next";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { trackUtmAttribution } from "@/lib/utm-attribution";
+import { resolveLearnerIdentity } from "@/lib/learner-identity";
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
@@ -308,6 +310,17 @@ const EnrollByInvite = ({
 
   const { getDetailsFromPackageSessionId, setInstituteDetails } =
     useInstituteDetailsStore();
+
+  // Login link for an already-registered learner: the institute's own learner
+  // portal (learner_portal_base_url is served host-only, so add the scheme),
+  // falling back to this app's own /login when the institute has none.
+  const learnerLoginUrl = useMemo(() => {
+    const host = (instituteData as { learner_portal_base_url?: string } | undefined)
+      ?.learner_portal_base_url?.trim();
+    if (!host) return "/login";
+    const origin = /^[a-z][a-z0-9+.-]*:\/\//i.test(host) ? host : `https://${host}`;
+    return `${origin.replace(/\/+$/, "")}/login`;
+  }, [instituteData]);
 
   const { data: inviteData, isLoading } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode }),
@@ -883,9 +896,48 @@ const EnrollByInvite = ({
         if (response?.user_id) {
           setSubmittedUserId(response.user_id);
         }
+        // Attribute HERE, not after payment: the next thing the browser does
+        // is leave for the gateway, so a report fired later would be lost on
+        // every abandoned cart — exactly the population a campaign report has
+        // to be able to see.
+        // Contact details ride along so a missing user_id degrades to a
+        // contact-matched row rather than dropping the touch: the server
+        // refuses a touch it cannot attach to anyone.
+        const paidDetails = getUserDetails();
+        trackUtmAttribution({
+          instituteId,
+          userId: response?.user_id,
+          email: paidDetails.email || undefined,
+          mobileNumber: paidDetails.contact || undefined,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
       } catch (error) {
+        const errorData = (
+          error as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
+
+        // A repeated phone-identifier submission is an enrollment conflict, not an
+        // abandoned-cart telemetry failure. Stop before the checkout step and
+        // show the same conflict UI used by the enrollment endpoint.
+        if (errorData?.responseCode?.includes("ENROLLMENT_CONFLICT:")) {
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+            errorData?.responseCode,
+          );
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || t("errors.enrollmentFailed"));
+          }
+          setError(errorData?.ex || t("errors.enrollmentFailed"));
+          return;
+        }
+
         console.error("Form submission failed (non-blocking):", error);
-        // We do not block the user; they can proceed to payment step without this
+        // Tracking failures remain non-blocking; the authoritative enrollment
+        // endpoint repeats the invite-submission guard before it creates any payment.
       } finally {
         setLoading(false);
       }
@@ -1068,6 +1120,31 @@ const EnrollByInvite = ({
       }
 
       const policyResponse = await getEnrollmentPolicy({ packageSessionId });
+
+      // A conflict the backend tagged explicitly (ENROLLMENT_CONFLICT:<TYPE>) is a
+      // conflict whether or not this package session has a policy configured.
+      // Gating it on policy content below meant an institute with no policy --
+      // the common case -- got the message as a toast with no way to sign in,
+      // while the dialog with "Login now" only appeared for institutes that had
+      // set one up.
+      if (
+        scenario === "error_already_enrolled" &&
+        enrollmentResponseCode?.includes("ENROLLMENT_CONFLICT:")
+      ) {
+        const dialogType = detectEnrollmentConflict({
+          policyResponse,
+          errorMessage: enrollmentErrorMessage,
+          responseCode: enrollmentResponseCode,
+        });
+        if (dialogType) {
+          setEnrollmentPolicyResponse(policyResponse ?? null);
+          setEnrollmentPolicyServerMessage(enrollmentErrorMessage);
+          setEnrollmentPolicyDialogType(dialogType);
+          setEnrollmentPolicyDialogOpen(true);
+          return true;
+        }
+      }
+
       console.log(
         "[EnrollByInvite] Enrollment policy response:",
         policyResponse,
@@ -1117,7 +1194,18 @@ const EnrollByInvite = ({
       }
     } catch (err) {
       console.error("[EnrollByInvite] Failed to fetch enrollment policy:", err);
-      // Non-blocking - we don't prevent the enrollment flow if policy fetch fails
+      // Non-blocking - we don't prevent the enrollment flow if policy fetch fails.
+      // A tagged conflict still deserves the dialog even when the policy read failed.
+      if (
+        scenario === "error_already_enrolled" &&
+        enrollmentResponseCode?.includes("ENROLLMENT_CONFLICT:")
+      ) {
+        setEnrollmentPolicyResponse(null);
+        setEnrollmentPolicyServerMessage(enrollmentErrorMessage);
+        setEnrollmentPolicyDialogType("already_enrolled");
+        setEnrollmentPolicyDialogOpen(true);
+        return true;
+      }
     }
     return false;
   };
@@ -1514,6 +1602,24 @@ const EnrollByInvite = ({
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
+        // A FREE enrolment skips the abandoned-cart submit above, so this is
+        // the only place its campaign touch can be recorded. Before the
+        // redirect branch — a configured redirectPath leaves the page.
+        // Identity via getUserDetails(), NOT form.getValues().email: this form
+        // is custom-field driven, so its values are {value: ...} objects keyed
+        // by whatever the institute named the field. Reading `.email` off it
+        // yielded an object (or undefined), which the server rejected — so the
+        // FREE path recorded nothing at all.
+        const freeUser = paymentResponse?.user;
+        const freeDetails = getUserDetails();
+        trackUtmAttribution({
+          instituteId,
+          userId: freeUser?.id || submittedUserId || undefined,
+          email: freeUser?.email || freeDetails.email || undefined,
+          mobileNumber: freeDetails.contact || undefined,
+          sourceType: "ENROLL_INVITE",
+          sourceId: inviteData?.id,
+        });
         if (inviteConfig?.redirectPath) {
           window.location.href = inviteConfig.redirectPath;
           return;
@@ -2455,45 +2561,34 @@ const EnrollByInvite = ({
   }, [inviteData]);
 
   // Helper function to get user details from registration data
+  /**
+   * The learner's OWN email / phone / name out of a custom-field-driven form.
+   *
+   * Delegates to the shared resolver rather than substring-matching field keys
+   * here. The old local version asked only "does the key contain 'email'?",
+   * which silently returns nothing on an institute that names the field
+   * anything else — and a UTM touch with no identity is dropped by the server,
+   * so the campaign that produced the enrolment disappears with no error. The
+   * shared resolver matches the platform's storage KEY first, falls back to the
+   * label, prefers a field the visitor actually FILLED IN over an empty match,
+   * and knows that "School Name" is not the learner's name.
+   */
   const getUserDetails = () => {
     const registrationData = form.getValues();
+    const candidates = Object.entries(registrationData ?? {}).map(
+      ([key, field]) => {
+        const f = field as { value?: unknown; name?: string; type?: string } | undefined;
+        return {
+          key,
+          name: f?.name ?? key,
+          type: f?.type ?? "",
+          value: f?.value == null ? "" : String(f.value),
+        };
+      }
+    );
 
-    // Find email field
-    const emailEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("email") ||
-        lowerKey.includes("mail") ||
-        lowerKey.includes("mailid")
-      );
-    });
-
-    // Find phone/contact field
-    const phoneEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("phone") ||
-        lowerKey.includes("mobile") ||
-        lowerKey.includes("contact") ||
-        lowerKey.includes("tel")
-      );
-    });
-
-    // Find name field
-    const nameEntry = Object.entries(registrationData).find(([key]) => {
-      const lowerKey = key.toLowerCase();
-      return (
-        lowerKey.includes("name") ||
-        lowerKey.includes("full_name") ||
-        lowerKey.includes("fullname")
-      );
-    });
-
-    return {
-      email: emailEntry ? String(emailEntry[1]?.value || "") : "",
-      contact: phoneEntry ? String(phoneEntry[1]?.value || "") : "",
-      name: nameEntry ? String(nameEntry[1]?.value || "") : "",
-    };
+    const { email, phone, name } = resolveLearnerIdentity(candidates);
+    return { email, contact: phone, name };
   };
 
   // State to track if there is unapplied referral code text
@@ -3502,6 +3597,7 @@ const EnrollByInvite = ({
         dialogType={enrollmentPolicyDialogType}
         policyResponse={enrollmentPolicyResponse}
         serverMessage={enrollmentPolicyServerMessage}
+        loginUrl={learnerLoginUrl}
         courseName={courseData.course || inviteData?.name || t("defaultThisCourse", { course })}
         onContinue={() => {
           // Navigate to dashboard after dialog is closed

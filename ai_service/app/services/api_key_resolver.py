@@ -69,7 +69,7 @@ class ApiKeyResolver:
         if platform_default_key:
             try:
                 from .platform_settings_service import get_platform_setting
-                platform_model = get_platform_setting(platform_default_key)
+                platform_model = get_platform_setting(platform_default_key, db=self._session)
                 if platform_model:
                     model = str(platform_model)
             except Exception:

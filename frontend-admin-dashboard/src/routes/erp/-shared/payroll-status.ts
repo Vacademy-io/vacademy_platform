@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { StatusType } from '@/components/design-system/status-chips';
 
 /** Payroll run lifecycle, mirroring the backend PayrollStatus enum. */
@@ -20,21 +21,33 @@ export type PayrollRunType = 'REGULAR' | 'OFF_CYCLE' | 'FNF' | 'BONUS';
  */
 export const RUN_STEPS: PayrollRunStatus[] = ['DRAFT', 'PROCESSED', 'APPROVED', 'PAID'];
 
-export const RUN_STATUS_LABELS: Record<PayrollRunStatus, string> = {
-    DRAFT: 'Draft',
-    PROCESSING: 'Processing',
-    PROCESSED: 'Processed',
-    APPROVED: 'Approved',
-    PAID: 'Paid',
-    CANCELLED: 'Cancelled',
-};
+/**
+ * Human labels for a run's lifecycle status.
+ *
+ * Module-scope constant, so this is a `buildXxx(t)` factory rather than a plain
+ * object — every call site must pass a `t` whose loaded namespaces include
+ * `erpPayrollStatus` (add it to that component's `useTranslation([...])` array).
+ */
+export function buildRunStatusLabels(t: TFunction): Record<PayrollRunStatus, string> {
+    return {
+        DRAFT: t('erpPayrollStatus:runStatus.draft'),
+        PROCESSING: t('erpPayrollStatus:runStatus.processing'),
+        PROCESSED: t('erpPayrollStatus:runStatus.processed'),
+        APPROVED: t('erpPayrollStatus:runStatus.approved'),
+        PAID: t('erpPayrollStatus:runStatus.paid'),
+        CANCELLED: t('erpPayrollStatus:runStatus.cancelled'),
+    };
+}
 
-export const RUN_TYPE_LABELS: Record<PayrollRunType, string> = {
-    REGULAR: 'Regular',
-    OFF_CYCLE: 'Off-cycle',
-    FNF: 'Full & final',
-    BONUS: 'Bonus',
-};
+/** Human labels for a run's type. Same `erpPayrollStatus` namespace requirement as above. */
+export function buildRunTypeLabels(t: TFunction): Record<PayrollRunType, string> {
+    return {
+        REGULAR: t('erpPayrollStatus:runType.regular'),
+        OFF_CYCLE: t('erpPayrollStatus:runType.offCycle'),
+        FNF: t('erpPayrollStatus:runType.fnf'),
+        BONUS: t('erpPayrollStatus:runType.bonus'),
+    };
+}
 
 export function runStatusChipType(status: string | null | undefined): StatusType {
     switch ((status ?? '').toUpperCase()) {

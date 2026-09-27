@@ -20,11 +20,11 @@
     "workingLabel": {
         "uploading": "Reading your file…",
         "processing": "Getting your document ready…",
-        "generating": "Pulling questions out — usually takes ~30 seconds."
+        "generating": "Pulling questions out — a few minutes for a long paper."
     },
     "generatingState": {
         "title": "Pulling questions out",
-        "subtitle": "Reading the paper and digitizing each question. Usually ~30 seconds."
+        "subtitle": "Reading every question, its options, passages and the printed answer key. A long paper with solutions can take 2–3 minutes."
     },
     "questionConfig": {
         "ctaLabel": "Extract questions"

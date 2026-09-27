@@ -14,7 +14,9 @@
         "creditsExhausted": "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
         "attachmentAlt": "attachment",
         "attachedImageAlt": "attached",
-        "copy": "Copy"
+        "copy": "Copy",
+        "popupView": "Open as popup",
+        "dockView": "Dock to the side"
     },
     "voiceModeLabels": {
         "interview": "Mock Interview",

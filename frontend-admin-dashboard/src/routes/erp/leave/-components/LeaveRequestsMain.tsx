@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { CalendarX, Info } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable, type TableData } from '@/components/design-system/table';
 import { ChipToggleGroup } from '@/components/design-system/chips';
@@ -49,6 +50,7 @@ import {
  * backend for reasons the table can't show.
  */
 export const LeaveRequestsMain = () => {
+    const { t } = useTranslation('erpLeaveRequestsMain');
     const { isHrAdmin, isHrStaff } = useHrRole();
     const [statusFilter, setStatusFilter] = useState<LeaveStatusFilter>('PENDING');
     const [reviewing, setReviewing] = useState<LeaveApplicationDTO | null>(null);
@@ -69,13 +71,13 @@ export const LeaveRequestsMain = () => {
         if (!pendingCancel?.id) return;
         try {
             await cancelMutation.mutateAsync(pendingCancel.id);
-            toast.success('Leave cancelled');
+            toast.success(t('toast.cancelled'));
             setPendingCancel(null);
         } catch (error) {
             reportApiError(error, {
                 feature: 'erp-leave',
                 tags: { action: 'cancel-leave' },
-                fallbackMessage: 'Could not cancel this leave.',
+                fallbackMessage: t('errorsToast.cancelFailed'),
             });
         }
     };
@@ -84,7 +86,7 @@ export const LeaveRequestsMain = () => {
         () => [
             {
                 id: 'employee',
-                header: 'Employee',
+                header: t('table.columns.employee'),
                 size: 200,
                 cell: ({ row }) => (
                     <span className="truncate text-body font-semibold text-foreground">
@@ -94,7 +96,7 @@ export const LeaveRequestsMain = () => {
             },
             {
                 id: 'leave_type',
-                header: 'Leave type',
+                header: t('table.columns.leaveType'),
                 size: 150,
                 cell: ({ row }) => (
                     <span className="truncate text-body text-foreground">
@@ -104,7 +106,7 @@ export const LeaveRequestsMain = () => {
             },
             {
                 id: 'dates',
-                header: 'From → to',
+                header: t('table.columns.dates'),
                 size: 190,
                 cell: ({ row }) => (
                     <span className="text-body text-foreground">
@@ -120,20 +122,20 @@ export const LeaveRequestsMain = () => {
             },
             {
                 id: 'total_days',
-                header: 'Days',
+                header: t('table.columns.days'),
                 size: 90,
                 cell: ({ row }) => <DaysCell value={row.original.total_days} />,
             },
             {
                 id: 'half_day',
-                header: 'Half day',
+                header: t('table.columns.halfDay'),
                 size: 120,
                 cell: ({ row }) =>
                     row.original.is_half_day ? (
                         <span className="text-caption text-warning-700">
                             {row.original.half_day_type
                                 ? humanizeToken(row.original.half_day_type)
-                                : 'Half day'}
+                                : t('table.halfDayFallback')}
                         </span>
                     ) : (
                         <span className="text-caption text-muted-foreground">—</span>
@@ -141,7 +143,7 @@ export const LeaveRequestsMain = () => {
             },
             {
                 id: 'reason',
-                header: 'Reason',
+                header: t('table.columns.reason'),
                 size: 220,
                 cell: ({ row }) => (
                     <span
@@ -154,7 +156,7 @@ export const LeaveRequestsMain = () => {
             },
             {
                 id: 'status',
-                header: 'Status',
+                header: t('table.columns.status'),
                 size: 130,
                 cell: ({ row }) => <LeaveStatusChip status={row.original.status} />,
             },
@@ -174,7 +176,7 @@ export const LeaveRequestsMain = () => {
                                           type="button"
                                           onClick={() => setReviewing(row.original)}
                                       >
-                                          Review
+                                          {t('actions.review')}
                                       </MyButton>
                                   );
                               }
@@ -186,7 +188,7 @@ export const LeaveRequestsMain = () => {
                                           type="button"
                                           onClick={() => setPendingCancel(row.original)}
                                       >
-                                          Cancel
+                                          {t('actions.cancel')}
                                       </MyButton>
                                   );
                               }
@@ -196,7 +198,7 @@ export const LeaveRequestsMain = () => {
                   ]
                 : []),
         ],
-        [isHrAdmin]
+        [isHrAdmin, t]
     );
 
     if (!isHrStaff) return <HrNoAccessCard />;
@@ -217,9 +219,7 @@ export const LeaveRequestsMain = () => {
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
                 <p className="max-w-3xl text-body text-muted-foreground">
-                    Leave applied for by your employees. Approving one spends the employee&apos;s
-                    balance for that leave type and writes an ON_LEAVE attendance record for each
-                    day, so payroll and attendance stay in step with the decision.
+                    {t('description')}
                 </p>
             </div>
 
@@ -228,11 +228,11 @@ export const LeaveRequestsMain = () => {
                     value={statusFilter}
                     onChange={setStatusFilter}
                     options={LEAVE_STATUS_FILTERS}
-                    ariaLabel="Filter leave requests by status"
+                    ariaLabel={t('filterAriaLabel')}
                 />
                 {!query.isLoading && !query.isError && (
                     <span className="text-caption text-muted-foreground">
-                        {rows.length} {rows.length === 1 ? 'request' : 'requests'}
+                        {t('requestCount', { count: rows.length })}
                     </span>
                 )}
             </div>
@@ -241,7 +241,7 @@ export const LeaveRequestsMain = () => {
                 <HrLoadingRows />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load leave requests."
+                    message={t('errors.loadFailed')}
                     onRetry={() => void query.refetch()}
                 />
             ) : rows.length === 0 ? (
@@ -249,13 +249,13 @@ export const LeaveRequestsMain = () => {
                     icon={<CalendarX size={40} className="text-muted-foreground" />}
                     title={
                         statusFilter === 'PENDING'
-                            ? 'Nothing waiting on you'
-                            : `No ${statusLabel.toLowerCase()} requests`
+                            ? t('empty.pendingTitle')
+                            : t('empty.otherTitle', { status: statusLabel.toLowerCase() })
                     }
                     description={
                         statusFilter === 'PENDING'
-                            ? 'Every leave request has been decided. New ones land here as employees apply from their app.'
-                            : 'Try another status — requests are only listed once an employee has applied.'
+                            ? t('empty.pendingDescription')
+                            : t('empty.otherDescription')
                     }
                 />
             ) : (
@@ -272,8 +272,7 @@ export const LeaveRequestsMain = () => {
             {isHrAdmin && (
                 <p className="flex items-start gap-2 text-caption text-muted-foreground">
                     <Info size={14} className="mt-0.5 shrink-0" />
-                    Cancelling an approved leave returns the days to the balance and removes the
-                    ON_LEAVE attendance it created.
+                    {t('cancelHint')}
                 </p>
             )}
 
@@ -290,22 +289,25 @@ export const LeaveRequestsMain = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel this approved leave?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('cancelDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
                             {pendingCancel
-                                ? `${employeeLabel(
-                                      pendingCancel.employee_name,
-                                      pendingCancel.employee_code
-                                  )} keeps the days back in their ${
-                                      pendingCancel.leave_type_name || 'leave'
-                                  } balance, and the ON_LEAVE attendance for those dates is removed. If payroll has already locked the month, the backend will refuse and tell you so.`
+                                ? t('cancelDialog.description', {
+                                      employee: employeeLabel(
+                                          pendingCancel.employee_name,
+                                          pendingCancel.employee_code
+                                      ),
+                                      leaveType:
+                                          pendingCancel.leave_type_name ||
+                                          t('cancelDialog.leaveTypeFallback'),
+                                  })
                                 : ''}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep it approved</AlertDialogCancel>
+                        <AlertDialogCancel>{t('cancelDialog.keepApproved')}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void confirmCancel()}>
-                            Cancel leave
+                            {t('cancelDialog.confirmCancel')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

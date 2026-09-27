@@ -268,13 +268,22 @@
             text-align: center;
         }
         
-        /* Totals block. A plain container: {{totals_rows}} brings its own two-column
-           table, which aligns label and value in the PDF renderer without relying
-           on flexbox, and carries its own emphasis on the paid line — so this must
-           not force bold onto every row. */
+        /* Total Purchases */
         .total-purchases {
+            display: flex;
+            justify-content: space-between;
             padding: 10px 15px;
+            font-size: 15px;
+            font-weight: bold;
             border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .total-purchases-label {
+            color: #333;
+        }
+        
+        .total-purchases-amount {
+            color: #333;
         }
         
         /* Payment Details Section */
@@ -532,12 +541,10 @@
             </tbody>
         </table>
         
-        <!-- Totals: what the courses cost, what was taken off, what was paid.
-             {{totals_rows}} is rendered by InvoiceService and omits the rows that
-             do not apply, because a template has no conditionals and a hard-coded
-             "Discount" line prints blank on every full-price invoice. -->
+        <!-- Total Purchases -->
         <div class="total-purchases">
-            {{totals_rows}}
+            <span class="total-purchases-label">Total Purchases</span>
+            <span class="total-purchases-amount">{{total_amount}}</span>
         </div>
         
         <!-- Payment Details Section -->

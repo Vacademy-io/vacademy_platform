@@ -14,7 +14,9 @@
         "creditsExhausted": "Vos crédits OpenRouter sont épuisés. Veuillez recharger vos crédits pour continuer à utiliser l'assistant IA.",
         "attachmentAlt": "pièce jointe",
         "attachedImageAlt": "pièce jointe",
-        "copy": "Copier"
+        "copy": "Copier",
+        "popupView": "Ouvrir en fenêtre",
+        "dockView": "Ancrer sur le côté"
     },
     "voiceModeLabels": {
         "interview": "Entretien simulé",

@@ -18,10 +18,11 @@ from ..config import get_settings
 from ..core.security import decode_access_token
 from ..db import get_sessionmaker
 from ..repositories.chat_session_repository import ChatSessionRepository
-from ..services.sarvam_service import SarvamService
+from ..services.sarvam_service import SarvamService, SarvamSTTError
 from ..services.voice_session_service import VoiceSessionService
 from ..services.platform_settings_service import get_platform_setting
 from ..services.voice_tts import default_voice_for, synthesize_speech
+from ..services.audio_utils import transcode_to_wav
 from ..services.context_resolver_service import ContextResolverService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.api_key_resolver import ApiKeyResolver
@@ -48,35 +49,10 @@ _SENTENCE_END = re.compile(r"(?<=[.!?…।])\s+|\n+")
 MIN_SPEECH_WAV_BYTES = 44 + 16000 * 2 * 0.4
 
 
-async def _transcode_to_wav(audio: bytes, mime: str) -> tuple[bytes, str]:
-    """
-    Normalise browser audio (webm/opus, ogg, mp4) to 16 kHz mono WAV before STT.
-
-    Sarvam's documented input is WAV; what the browser records varies by
-    engine. ffmpeg ships in this image for the video pipeline, so converting
-    is ~50 ms for a few seconds of speech. On any failure the original bytes
-    go through unchanged rather than dropping the turn.
-    """
-    base = (mime or "").split(";")[0].strip().lower()
-    if not audio or base in ("audio/wav", "audio/x-wav", "audio/wave"):
-        return audio, "audio/wav" if audio else mime
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-            "-i", "pipe:0", "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "pipe:1",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await asyncio.wait_for(proc.communicate(audio), timeout=20)
-        if proc.returncode == 0 and len(out) > 44:
-            return out, "audio/wav"
-        logger.warning(
-            "ffmpeg transcode failed (rc=%s): %s", proc.returncode, (err or b"")[:300].decode("utf-8", "ignore")
-        )
-    except Exception:
-        logger.exception("ffmpeg transcode error; sending original audio to STT")
-    return audio, mime
+async def _transcode_to_wav(audio: bytes, mime: str) -> tuple[bytes, str, str]:
+    """Shared implementation — see services/audio_utils.transcode_to_wav."""
+    out, out_mime, note = await transcode_to_wav(audio, mime)
+    return out, out_mime, note
 
 
 def _split_for_speech(text: str) -> list[str]:
@@ -107,7 +83,11 @@ def _build_voice_session_service(db_session) -> VoiceSessionService:
     llm_client = ChatLLMClient(
         api_key_resolver,
         disable_reasoning=bool(
-            get_platform_setting("chatbot.llm.disable_reasoning", default=get_settings().llm_disable_reasoning)
+            get_platform_setting(
+                "chatbot.llm.disable_reasoning",
+                default=get_settings().llm_disable_reasoning,
+                db=db_session,
+            )
         ),
         platform_model_key="chatbot.text.model",
     )
@@ -185,10 +165,10 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
         # Platform switches (super-admin portal -> AI Settings). Resolved once
         # per call so a mid-call flip can't change engines between sentences.
-        tts_provider: str = str(get_platform_setting("chatbot.voice.tts_provider", default="sarvam"))
-        platform_voice: str = str(get_platform_setting("chatbot.voice.tts_voice", default="") or "")
-        voice_model: Optional[str] = get_platform_setting("chatbot.voice.model") or None
-        opening_turn_enabled: bool = bool(get_platform_setting("chatbot.voice.opening_turn", default=True))
+        tts_provider: str = str(get_platform_setting("chatbot.voice.tts_provider", default="sarvam", db=db))
+        platform_voice: str = str(get_platform_setting("chatbot.voice.tts_voice", default="", db=db) or "")
+        voice_model: Optional[str] = get_platform_setting("chatbot.voice.model", db=db) or None
+        opening_turn_enabled: bool = bool(get_platform_setting("chatbot.voice.opening_turn", default=True, db=db))
 
         # Audio buffer for accumulating chunks
         audio_buffer: bytearray = bytearray()
@@ -209,7 +189,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
         settings = get_settings()
         require_auth = bool(
             settings.voice_require_auth
-            or get_platform_setting("chatbot.voice.require_auth", default=False)
+            or get_platform_setting("chatbot.voice.require_auth", default=False, db=db)
         )
         is_authenticated = False
 
@@ -297,17 +277,30 @@ async def voice_session(websocket: WebSocket, session_id: str):
             no way back into the conversation.
             """
             reason = "complete"
+            # `detail` names the leg that decided the outcome (transcode, STT,
+            # clip length). Clients ignore it; it is there so a "didn't catch
+            # that" can be diagnosed from the socket frames instead of pod logs.
+            detail = ""
             try:
-                audio, mime = await _transcode_to_wav(audio, mime)
+                audio, mime, note = await _transcode_to_wav(audio, mime)
+                detail = note
                 if mime == "audio/wav" and len(audio) < MIN_SPEECH_WAV_BYTES:
-                    await _send({"type": "audio_end", "reason": "no_speech"})
+                    await _send({"type": "audio_end", "reason": "no_speech", "detail": f"too_short;{note}"})
                     return
 
-                transcript = await sarvam_service.speech_to_text(
-                    audio_bytes=audio,
-                    language=language,
-                    mime_type=mime,
-                )
+                try:
+                    transcript = await sarvam_service.speech_to_text(
+                        audio_bytes=audio,
+                        language=language,
+                        mime_type=mime,
+                    )
+                except SarvamSTTError as stt_exc:
+                    detail = f"stt_http_{stt_exc.status or 'err'};{note}"
+                    await _send({"type": "transcript_final", "text": ""})
+                    await _send({"type": "error", "message": "Speech recognition failed"})
+                    await _send({"type": "audio_end", "reason": "error", "detail": detail})
+                    return
+
                 await _send({"type": "transcript_final", "text": transcript})
                 voice_service.record_voice_media_usage(
                     kind="stt",
@@ -321,6 +314,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
                 if not transcript.strip():
                     reason = "no_speech"
+                    detail = f"stt_empty;{note}"
                 else:
                     result = await voice_service.process_voice_turn(
                         session_id=session_id,
@@ -343,8 +337,9 @@ async def voice_session(websocket: WebSocket, session_id: str):
             except Exception as e:
                 logger.exception(f"Error processing voice turn for session {session_id}")
                 reason = "error"
+                detail = f"exception:{type(e).__name__}"
                 await _send({"type": "error", "message": str(e)})
-            await _send({"type": "audio_end", "reason": reason})
+            await _send({"type": "audio_end", "reason": reason, "detail": detail})
 
         async def _cancel_current_turn() -> None:
             """Stop whatever the agent is saying and wait for the task to unwind.

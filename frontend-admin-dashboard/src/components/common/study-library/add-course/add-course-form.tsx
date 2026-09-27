@@ -237,8 +237,12 @@ export const AddCourseForm = ({
             // @ts-expect-error
             oldFormData.current,
             finalData,
+            // The edit page's map wins (it knows parent batches); fall back to the
+            // institute store so a miss never sends package_session_id='' — the
+            // backend treats that as "no batch" and drops the level's changes.
             isEdit && getParentPackageSessionId
-                ? getParentPackageSessionId
+                ? (params: { courseId: string; sessionId: string; levelId: string }) =>
+                      getParentPackageSessionId(params) || getPackageSessionId(params) || ''
                 : getPackageSessionId
         );
 

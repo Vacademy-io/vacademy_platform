@@ -191,6 +191,18 @@ public class EngagementDispatcher {
                     "WhatsApp needs a Meta-approved template. Send this on email/in-app, or wait for "
                     + "template approval. (The AI draft is a preview of intent, not a sendable WhatsApp message.)");
         }
+        Map<String, String> variables = parseVariables(action.getVariablesJson());
+        // A media header is only rendered as an IMAGE if headerType is literally "image".
+        // WhatsAppService.buildHeaderConfig decides with
+        //     "image".equalsIgnoreCase(headerType) ? "image" : "document"
+        // so a null type silently becomes a document — and attaches filename "file.pdf".
+        // Meta then compares that against the template's declared header and rejects the
+        // whole send: "(#132012) header: Format mismatch, expected IMAGE, received
+        // DOCUMENT". The URL was travelling correctly; only its type was missing.
+        // Carried per-action in variables_json rather than as a column: it belongs to the
+        // template the rule chose, and "_"-prefixed keys are filtered out of the body
+        // parameters by both provider paths, so it cannot disturb the positional count.
+        String headerType = variables.get("_headerType");
         UnifiedSendRequest req = UnifiedSendRequest.builder()
                 .instituteId(action.getInstituteId())
                 .channel("WHATSAPP")
@@ -203,11 +215,14 @@ public class EngagementDispatcher {
                         .phone(subject.getPhone())
                         .userId(subject.getUserId())
                         .name(subject.getName())
-                        .variables(parseVariables(action.getVariablesJson()))
+                        .variables(variables)
                         .build()))
                 .options(UnifiedSendRequest.SendOptions.builder()
                         .source(SOURCE)
                         .sourceId(action.getId())
+                        // Null for a text-header or headerless template, which is what
+                        // UnifiedSendService expects when there is no media to attach.
+                        .headerType(headerType != null && !headerType.isBlank() ? headerType : null)
                         .build())
                 .build();
         requireAccepted(notificationService.sendUnified(req), "whatsapp");

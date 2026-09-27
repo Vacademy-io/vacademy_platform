@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.engagement.service.EngagementEngi
 import vacademy.io.admin_core_service.features.engagement.spi.DataPointRegistry;
 import vacademy.io.admin_core_service.features.engagement.spi.DataPointSpec;
 import vacademy.io.admin_core_service.features.engagement.service.EngagementAccessGuard;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -51,6 +52,11 @@ public class EngagementEngineController {
     private int defaultFirstN;
 
     @PostMapping
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'created engagement engine ' + (#request?.name ?: '')")
     public ResponseEntity<EngagementEngine> create(@RequestParam String instituteId,
                                                    @RequestBody CreateEngineRequest request,
                                                    @RequestAttribute("user") CustomUserDetails user) {
@@ -85,6 +91,11 @@ public class EngagementEngineController {
 
     /** Resolve audience selectors → enroll (idempotent, jittered) + exit leavers. */
     @PostMapping("/{engineId}/enroll")
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "ENROLL",
+            entityIdExpr = "#engineId",
+            descriptionExpr = "'refreshed the audience of an engagement engine'")
     public ResponseEntity<EngagementEngineService.EnrollmentResult> enroll(
             @PathVariable String engineId,
             @RequestParam String instituteId,
@@ -95,6 +106,12 @@ public class EngagementEngineController {
 
     /** DRAFT → DRY_RUN/ACTIVE → PAUSED → ARCHIVED. Activation requires an enrolled audience. */
     @PutMapping("/{engineId}/status")
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "STATUS_CHANGE",
+            entityIdExpr = "#engineId",
+            descriptionExpr = "'changed status of engagement engine ' + (#result?.body?.name ?: #engineId) "
+                    + "+ ' to ' + #toStatus")
     public ResponseEntity<EngagementEngine> transition(@PathVariable String engineId,
                                                        @RequestParam String instituteId,
                                                        @RequestParam String toStatus,
@@ -105,6 +122,11 @@ public class EngagementEngineController {
 
     /** The prompt that grows: append an amendment; base_text is immutable. */
     @PostMapping("/{engineId}/prompt")
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "UPDATE",
+            entityIdExpr = "#engineId",
+            descriptionExpr = "'edited the prompt of an engagement engine'")
     public ResponseEntity<EngagementPromptVersion> editPrompt(@PathVariable String engineId,
                                                               @RequestParam String instituteId,
                                                               @RequestBody PromptEditRequest request,
@@ -115,6 +137,12 @@ public class EngagementEngineController {
 
     /** Kill switch: stop/resume autonomous sending (the engine keeps drafting copilot tasks). */
     @PutMapping("/{engineId}/autonomy")
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "AUTONOMY_CHANGE",
+            entityIdExpr = "#engineId",
+            descriptionExpr = "(#killed ? 'paused' : 'resumed') + ' autonomous sending for engagement engine ' "
+                    + "+ (#result?.body?.name ?: #engineId)")
     public ResponseEntity<EngagementEngine> setAutonomy(@PathVariable String engineId,
                                                         @RequestParam String instituteId,
                                                         @RequestParam boolean killed,
@@ -146,6 +174,11 @@ public class EngagementEngineController {
     }
 
     @DeleteMapping("/{engineId}")
+    @Auditable(
+            entityType = "ENGAGEMENT_ENGINE",
+            action = "DELETE",
+            entityIdExpr = "#engineId",
+            descriptionExpr = "'archived an engagement engine'")
     public ResponseEntity<Void> archive(@PathVariable String engineId,
                                         @RequestParam String instituteId,
                                         @RequestAttribute("user") CustomUserDetails user) {

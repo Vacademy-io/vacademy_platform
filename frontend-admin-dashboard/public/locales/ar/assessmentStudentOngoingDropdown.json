@@ -17,6 +17,7 @@
     },
     "dropdown": {
         "increaseSubmissionTime": "زيادة وقت المشاركة",
-        "closeSubmission": "إغلاق المشاركة"
+        "closeSubmission": "إغلاق المشاركة",
+        "proctoring": "المراقبة"
     }
 }

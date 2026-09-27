@@ -14,6 +14,7 @@ import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services'
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
+import { useTranslation } from 'react-i18next';
 import {
     Table,
     TableBody,
@@ -68,6 +69,7 @@ interface StudentData {
 }
 
 export function StudentEnrollment() {
+    const { t, i18n } = useTranslation('evaluatorAiStudentsAddStudent');
     const { q } = useSearch({ from: '/evaluator-ai/students/' }) as { q: string };
     const [open, setOpen] = useState(q ? true : false);
     const [name, setName] = useState('');
@@ -160,11 +162,11 @@ export function StudentEnrollment() {
                 const response: { pdf_id: string } =
                     await handleStartProcessUploadedFile(uploadedFileId);
                 setPdfId(response.pdf_id);
-                toast('File uploaded successfully');
+                toast(t('toast.fileUploaded'));
             }
         } catch (error) {
             console.error('Error uploading file:', error);
-            toast.error('Upload failed');
+            toast.error(t('toast.uploadFailed'));
         } finally {
             setIsUploading(false);
         }
@@ -173,7 +175,7 @@ export function StudentEnrollment() {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !enrollId || !pdfId) {
-            toast.warning('Please fill in all fields and upload a file.');
+            toast.warning(t('toast.fillAllFields'));
             return;
         }
         try {
@@ -213,7 +215,7 @@ export function StudentEnrollment() {
                     }
                 }
 
-                toast.success('Student updated successfully!');
+                toast.success(t('toast.studentUpdated'));
             } else {
                 // Add new student
                 const newStudent: StudentData = {
@@ -231,7 +233,7 @@ export function StudentEnrollment() {
                 };
 
                 updatedStudents = [...students, newStudent];
-                toast.success('Student enrolled successfully!');
+                toast.success(t('toast.studentEnrolled'));
             }
 
             localStorage.setItem('students', JSON.stringify(updatedStudents));
@@ -242,7 +244,9 @@ export function StudentEnrollment() {
             setOpen(false);
         } catch (error) {
             console.error('Error saving to localStorage:', error);
-            toast.error(isEditMode ? 'Failed to update student' : 'Failed to enroll student');
+            toast.error(
+                isEditMode ? t('toast.failedUpdateStudent') : t('toast.failedEnrollStudent')
+            );
         }
     };
 
@@ -295,7 +299,7 @@ export function StudentEnrollment() {
         // Update localStorage
         localStorage.setItem('students', JSON.stringify(updatedStudents));
 
-        toast.success('Student deleted successfully!');
+        toast.success(t('toast.studentDeleted'));
 
         // If we deleted the last item on the current page, go to previous page
         if (paginatedStudents.length === 1 && currentPage > 1) {
@@ -308,7 +312,7 @@ export function StudentEnrollment() {
         const student = students[actualIndex];
 
         if (!student || student.attempts.length === 0) {
-            toast.error('No file available');
+            toast.error(t('toast.noFileAvailable'));
             return;
         }
 
@@ -316,7 +320,7 @@ export function StudentEnrollment() {
         const fileId = currentAttempt?.fileId;
 
         if (!fileId) {
-            toast.error('No file ID available');
+            toast.error(t('toast.noFileIdAvailable'));
             return;
         }
 
@@ -328,11 +332,11 @@ export function StudentEnrollment() {
                 // Open in new tab
                 window.open(url, '_blank');
             } else {
-                toast.error('Could not retrieve PDF URL');
+                toast.error(t('toast.couldNotRetrievePdfUrl'));
             }
         } catch (error) {
             console.error('Error fetching PDF URL:', error);
-            toast.error('Failed to retrieve PDF');
+            toast.error(t('toast.failedRetrievePdf'));
         } finally {
             setLoadingPdf({ ...loadingPdf, [fileId]: false });
         }
@@ -350,7 +354,7 @@ export function StudentEnrollment() {
         e.preventDefault();
 
         if (!pdfId || currentStudentIndex === null) {
-            toast.warning('Please upload a file.');
+            toast.warning(t('toast.uploadRequired'));
             return;
         }
 
@@ -375,12 +379,12 @@ export function StudentEnrollment() {
             setStudents(updatedStudents);
             localStorage.setItem('students', JSON.stringify(updatedStudents));
 
-            toast.success('New attempt added successfully!');
+            toast.success(t('toast.attemptAdded'));
             setAttemptDialogOpen(false);
             resetForm();
         } catch (error) {
             console.error('Error adding attempt:', error);
-            toast.error('Failed to add attempt');
+            toast.error(t('toast.failedAddAttempt'));
         }
     };
 
@@ -390,12 +394,12 @@ export function StudentEnrollment() {
         const student = updatedStudents[actualIndex];
 
         if (!student) {
-            toast.error('Student not found.');
+            toast.error(t('toast.studentNotFound'));
             return;
         }
 
         if (student.attempts.length <= 1) {
-            toast.warning('Cannot delete the only attempt. Delete the student instead.');
+            toast.warning(t('toast.cannotDeleteOnlyAttempt'));
             return;
         }
 
@@ -411,7 +415,7 @@ export function StudentEnrollment() {
         setStudents(updatedStudents);
         localStorage.setItem('students', JSON.stringify(updatedStudents));
 
-        toast.success('Attempt deleted successfully!');
+        toast.success(t('toast.attemptDeleted'));
     };
 
     const handleSelectAttempt = (studentIndex: number, attemptIndex: number) => {
@@ -453,11 +457,11 @@ export function StudentEnrollment() {
 
     const handleSubmitSelected = () => {
         if (selected.length === 0) {
-            toast.warning('Please select at least one student');
+            toast.warning(t('toast.selectAtLeastOneStudent'));
             return;
         }
         // Here you would typically send this data to your backend
-        toast.success(`Submitted ${selected.length} student(s)`);
+        toast.success(t('toast.submittedStudents', { count: selected.length }));
     };
 
     const goToPage = (page: number) => {
@@ -468,7 +472,7 @@ export function StudentEnrollment() {
 
     const formatDate = (dateString: string) => {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleDateString(i18n.language, {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
@@ -480,10 +484,10 @@ export function StudentEnrollment() {
     return (
         <div className="w-full">
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold">Student List</h1>
+                <h1 className="text-xl font-semibold">{t('title')}</h1>
 
                 <MyDialog
-                    heading={isEditMode ? 'Edit Student' : 'Student Enrollment'}
+                    heading={isEditMode ? t('dialog.editHeading') : t('dialog.addHeading')}
                     open={open}
                     onOpenChange={(newOpen) => {
                         if (!newOpen) {
@@ -493,41 +497,45 @@ export function StudentEnrollment() {
                     }}
                     trigger={
                         <MyButton scale="large" buttonType="primary" type="button">
-                            {`Enroll ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)}`}
+                            {t('enrollTriggerButton', {
+                                term: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
+                            })}
                         </MyButton>
                     }
                 >
                     <form onSubmit={handleSubmit}>
                         <div className="flex flex-col gap-4 py-4">
                             <div className="flex flex-col items-start gap-2">
-                                <Label htmlFor="name">Name</Label>
+                                <Label htmlFor="name">{t('form.nameLabel')}</Label>
                                 <Input
                                     id="name"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
-                                    placeholder="Name"
+                                    placeholder={t('form.namePlaceholder')}
                                     required
                                 />
                             </div>
                             <div className="flex flex-col items-start gap-2">
-                                <Label htmlFor="enrollId">Enrollment ID</Label>
+                                <Label htmlFor="enrollId">{t('form.enrollIdLabel')}</Label>
                                 <Input
                                     id="enrollId"
                                     value={enrollId}
                                     onChange={(e) => setEnrollId(e.target.value)}
-                                    placeholder="Enrollment ID"
+                                    placeholder={t('form.enrollIdPlaceholder')}
                                     required
                                 />
                             </div>
                             <div className="flex flex-col items-start gap-2">
                                 <Label htmlFor="file">
                                     {isEditMode && pdfId
-                                        ? 'Replace Response (optional)'
-                                        : 'Upload Response (optional)'}
+                                        ? t('form.replaceResponseLabel')
+                                        : t('form.uploadResponseLabel')}
                                 </Label>
                                 <div className="w-full space-y-2">
                                     {isEditMode && pdfId && (
-                                        <div className="text-sm">Current PDF ID: {pdfId}</div>
+                                        <div className="text-sm">
+                                            {t('form.currentPdfId', { pdfId })}
+                                        </div>
                                     )}
                                     <Input
                                         id="file"
@@ -546,11 +554,11 @@ export function StudentEnrollment() {
                                         >
                                             {isUploading ? (
                                                 <>
-                                                    <Loader2 className="mr-2 size-4 animate-spin" />
-                                                    Uploading...
+                                                    <Loader2 className="me-2 size-4 animate-spin" />
+                                                    {t('common.uploading')}
                                                 </>
                                             ) : (
-                                                'Upload file'
+                                                t('common.uploadFile')
                                             )}
                                         </MyButton>
                                     )}
@@ -568,7 +576,7 @@ export function StudentEnrollment() {
                                 )}
                                 disabled={!name && !enrollId}
                             >
-                                {isEditMode ? 'Update' : 'Enroll'}
+                                {isEditMode ? t('form.updateButton') : t('form.enrollButton')}
                             </MyButton>
                         </DialogFooter>
                     </form>
@@ -576,7 +584,7 @@ export function StudentEnrollment() {
 
                 {/* Add Attempt Dialog */}
                 <MyDialog
-                    heading="Add New Attempt"
+                    heading={t('attemptDialog.heading')}
                     open={attemptDialogOpen}
                     onOpenChange={(newOpen) => {
                         if (!newOpen) {
@@ -588,7 +596,7 @@ export function StudentEnrollment() {
                     <form onSubmit={handleAddAttempt}>
                         <div className="flex flex-col gap-4 py-4">
                             <div className="flex flex-col items-start gap-2">
-                                <Label htmlFor="file">Upload Response PDF</Label>
+                                <Label htmlFor="file">{t('attemptDialog.fileLabel')}</Label>
                                 <div className="w-full space-y-2">
                                     <Input
                                         id="file"
@@ -607,11 +615,11 @@ export function StudentEnrollment() {
                                         >
                                             {isUploading ? (
                                                 <>
-                                                    <Loader2 className="mr-2 size-4 animate-spin" />
-                                                    Uploading...
+                                                    <Loader2 className="me-2 size-4 animate-spin" />
+                                                    {t('common.uploading')}
                                                 </>
                                             ) : (
-                                                'Upload file'
+                                                t('common.uploadFile')
                                             )}
                                         </MyButton>
                                     )}
@@ -627,7 +635,7 @@ export function StudentEnrollment() {
                                 )}
                                 disabled={!pdfId}
                             >
-                                Add Attempt
+                                {t('attemptDialog.submitButton')}
                             </MyButton>
                         </DialogFooter>
                     </form>
@@ -651,13 +659,15 @@ export function StudentEnrollment() {
                                             }
                                         />
                                     </TableHead>
-                                    <TableHead className="sticky left-12 z-10 bg-primary-50">
-                                        Name
+                                    <TableHead className="sticky start-12 z-10 bg-primary-50">
+                                        {t('table.name')}
                                     </TableHead>
-                                    <TableHead>Enrollment ID</TableHead>
-                                    <TableHead>Attempt Count</TableHead>
-                                    <TableHead>View PDF</TableHead>
-                                    <TableHead className="w-10 text-right">Actions</TableHead>
+                                    <TableHead>{t('table.enrollmentId')}</TableHead>
+                                    <TableHead>{t('table.attemptCount')}</TableHead>
+                                    <TableHead>{t('table.viewPdf')}</TableHead>
+                                    <TableHead className="w-10 text-end">
+                                        {t('table.actions')}
+                                    </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -695,7 +705,9 @@ export function StudentEnrollment() {
                                                             size="sm"
                                                             className="flex items-center gap-1"
                                                         >
-                                                            {student.attempts.length} Attempts
+                                                            {t('table.attemptsCount', {
+                                                                count: student.attempts.length,
+                                                            })}
                                                             <ChevronDown className="size-4" />
                                                         </Button>
                                                     </DropdownMenuTrigger>
@@ -725,7 +737,10 @@ export function StudentEnrollment() {
                                                                     }
                                                                 >
                                                                     <span>
-                                                                        Attempt {attemptIndex + 1}
+                                                                        {t('table.attemptLabel', {
+                                                                            number:
+                                                                                attemptIndex + 1,
+                                                                        })}
                                                                     </span>
                                                                     <span className="text-xs text-muted-foreground">
                                                                         {formatDate(attempt.date)}
@@ -752,21 +767,21 @@ export function StudentEnrollment() {
                                                         ) : (
                                                             <FileText className="size-4" />
                                                         )}
-                                                        View PDF
+                                                        {t('table.viewPdf')}
                                                     </Button>
                                                 ) : (
                                                     <span className="text-sm text-muted-foreground">
-                                                        No file
+                                                        {t('table.noFile')}
                                                     </span>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-end">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                         <button className="rounded-full p-1">
                                                             <MoreVertical className="size-4" />
                                                             <span className="sr-only">
-                                                                Open menu
+                                                                {t('table.openMenu')}
                                                             </span>
                                                         </button>
                                                     </DropdownMenuTrigger>
@@ -775,8 +790,8 @@ export function StudentEnrollment() {
                                                             onClick={() => handleEdit(index)}
                                                             className="cursor-pointer"
                                                         >
-                                                            <Pencil className="mr-2 size-4" />
-                                                            Edit
+                                                            <Pencil className="me-2 size-4" />
+                                                            {t('table.edit')}
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem
                                                             onClick={() =>
@@ -784,8 +799,8 @@ export function StudentEnrollment() {
                                                             }
                                                             className="cursor-pointer"
                                                         >
-                                                            <Plus className="mr-2 size-4" />
-                                                            Add Attempt
+                                                            <Plus className="me-2 size-4" />
+                                                            {t('table.addAttempt')}
                                                         </DropdownMenuItem>
                                                         {student.attempts.length > 1 && (
                                                             <DropdownMenuItem
@@ -797,16 +812,16 @@ export function StudentEnrollment() {
                                                                 }
                                                                 className="cursor-pointer text-destructive focus:text-destructive"
                                                             >
-                                                                <Trash2 className="mr-2 size-4" />
-                                                                Delete Current Attempt
+                                                                <Trash2 className="me-2 size-4" />
+                                                                {t('table.deleteCurrentAttempt')}
                                                             </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem
                                                             onClick={() => handleDelete(index)}
                                                             className="cursor-pointer text-destructive focus:text-destructive"
                                                         >
-                                                            <Trash2 className="mr-2 size-4" />
-                                                            Delete Student
+                                                            <Trash2 className="me-2 size-4" />
+                                                            {t('table.deleteStudent')}
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
@@ -821,7 +836,7 @@ export function StudentEnrollment() {
 
                 {students.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">
-                        No enrolled students found.
+                        {t('table.emptyState')}
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-between gap-4 p-4 sm:flex-row">
@@ -833,7 +848,7 @@ export function StudentEnrollment() {
                             disabled={selected.length === 0}
                             className="w-full sm:w-auto"
                         >
-                            Submit Selected ({selected.length})
+                            {t('table.submitSelected', { count: selected.length })}
                         </MyButton>
 
                         <Pagination>

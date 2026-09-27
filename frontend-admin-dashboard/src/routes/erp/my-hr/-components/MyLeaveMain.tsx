@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { CalendarPlus, Info } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -49,6 +50,7 @@ const CANCELLABLE = new Set(['PENDING', 'APPROVED']);
  * follow-up, not the headline.
  */
 export const MyLeaveMain = () => {
+    const { t } = useTranslation('erpMyLeaveMain');
     const { employeeId, isProfileLoading, hasNoProfile } = useMyHrIdentity();
     const [year, setYear] = useState<number>(() => new Date().getFullYear());
     const [applyOpen, setApplyOpen] = useState(false);
@@ -87,7 +89,7 @@ export const MyLeaveMain = () => {
         if (!pendingCancel?.id) return;
         try {
             await cancelMutation.mutateAsync(pendingCancel.id);
-            toast.success('Leave withdrawn');
+            toast.success(t('toast.withdrawn'));
             setPendingCancel(null);
         } catch (error) {
             // A cancellation the backend refuses (payroll has locked the month)
@@ -96,7 +98,7 @@ export const MyLeaveMain = () => {
             reportApiError(error, {
                 feature: 'erp-my-hr',
                 tags: { action: 'cancel-my-leave' },
-                fallbackMessage: 'Could not withdraw this leave.',
+                fallbackMessage: t('errors.withdraw'),
                 toastDuration: 8000,
             });
             setPendingCancel(null);
@@ -108,15 +110,12 @@ export const MyLeaveMain = () => {
 
     return (
         <div className="flex flex-col gap-6">
-            <p className="max-w-3xl text-body text-muted-foreground">
-                Your leave balance, the applications you have sent, and any comp-off you have
-                earned. Days only leave your balance once an application is approved.
-            </p>
+            <p className="max-w-3xl text-body text-muted-foreground">{t('intro')}</p>
 
             <section className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-title text-foreground">Balance</h2>
+                        <h2 className="text-title text-foreground">{t('balance.heading')}</h2>
                         <MyDropdown
                             currentValue={String(year)}
                             dropdownList={recentLeaveYears().map(String)}
@@ -129,7 +128,7 @@ export const MyLeaveMain = () => {
                         type="button"
                         onClick={() => setApplyOpen(true)}
                     >
-                        <CalendarPlus size={16} /> Apply for leave
+                        <CalendarPlus size={16} /> {t('applyForLeave')}
                     </MyButton>
                 </div>
 
@@ -137,13 +136,13 @@ export const MyLeaveMain = () => {
                     <MyHrLoadingCards />
                 ) : balancesQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load your leave balance."
+                        message={t('errors.loadBalance')}
                         onRetry={() => void balancesQuery.refetch()}
                     />
                 ) : balances.length === 0 ? (
                     <HrEmptyState
-                        title={`No leave balance for ${year}`}
-                        description="Balances appear once your HR team has a leave policy running for your employment type. You can still apply — the balance is checked when it's approved."
+                        title={t('balance.emptyTitle', { year })}
+                        description={t('balance.emptyDescription')}
                     />
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -153,13 +152,15 @@ export const MyLeaveMain = () => {
                                 className="flex flex-col gap-1 p-4"
                             >
                                 <span className="text-caption text-muted-foreground">
-                                    {balance.leave_type_name || 'Leave'}
+                                    {balance.leave_type_name || t('leave')}
                                 </span>
                                 <span className="text-h3 font-semibold tabular-nums text-foreground">
                                     {formatDays(balance.closing_balance)}
                                 </span>
                                 <span className="text-caption text-muted-foreground">
-                                    days left · {formatDays(balance.used)} used this year
+                                    {t('balance.daysLeftUsed', {
+                                        used: formatDays(balance.used),
+                                    })}
                                 </span>
                             </Card>
                         ))}
@@ -168,18 +169,18 @@ export const MyLeaveMain = () => {
             </section>
 
             <section className="flex flex-col gap-3">
-                <h2 className="text-title text-foreground">My applications</h2>
+                <h2 className="text-title text-foreground">{t('applications.heading')}</h2>
                 {applicationsQuery.isLoading ? (
                     <HrLoadingRows rows={3} />
                 ) : applicationsQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load your leave applications."
+                        message={t('errors.loadApplications')}
                         onRetry={() => void applicationsQuery.refetch()}
                     />
                 ) : applications.length === 0 ? (
                     <HrEmptyState
-                        title="You haven't applied for any leave"
-                        description="Everything you apply for shows up here with its status, and stays until it is approved, rejected or withdrawn."
+                        title={t('applications.emptyTitle')}
+                        description={t('applications.emptyDescription')}
                     >
                         <MyButton
                             buttonType="secondary"
@@ -187,13 +188,14 @@ export const MyLeaveMain = () => {
                             type="button"
                             onClick={() => setApplyOpen(true)}
                         >
-                            Apply for leave
+                            {t('applyForLeave')}
                         </MyButton>
                     </HrEmptyState>
                 ) : (
                     <div className="flex flex-col gap-2">
                         {applications.map((application) => {
                             const status = (application.status ?? '').toUpperCase();
+                            const totalDaysCount = Number(application.total_days ?? 0);
                             return (
                                 <Card
                                     key={application.id}
@@ -202,34 +204,47 @@ export const MyLeaveMain = () => {
                                     <div className="flex flex-col gap-1">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-subtitle font-medium text-foreground">
-                                                {application.leave_type_name || 'Leave'}
+                                                {application.leave_type_name || t('leave')}
                                             </span>
                                             <MyHrStatusChip status={application.status} />
                                         </div>
                                         <span className="text-body text-muted-foreground">
                                             {application.from_date
-                                                ? `${formatDate(application.from_date)} → ${formatDate(
-                                                      application.to_date || application.from_date
-                                                  )}`
+                                                ? t('applications.dateRange', {
+                                                      from: formatDate(application.from_date),
+                                                      to: formatDate(
+                                                          application.to_date ||
+                                                              application.from_date
+                                                      ),
+                                                  })
                                                 : '—'}
                                             {' · '}
-                                            {formatDays(application.total_days)} day(s)
+                                            {t('applications.daysCount', {
+                                                count: totalDaysCount,
+                                                formatted: formatDays(application.total_days),
+                                            })}
                                             {application.is_half_day
-                                                ? ` · half day${
-                                                      application.half_day_type
-                                                          ? ` (${humanizeToken(application.half_day_type)})`
-                                                          : ''
-                                                  }`
+                                                ? application.half_day_type
+                                                    ? t('applications.halfDayWithType', {
+                                                          type: humanizeToken(
+                                                              application.half_day_type
+                                                          ),
+                                                      })
+                                                    : t('applications.halfDay')
                                                 : ''}
                                         </span>
                                         {application.reason && (
                                             <span className="text-caption text-muted-foreground">
-                                                You wrote: {application.reason}
+                                                {t('applications.youWrote', {
+                                                    reason: application.reason,
+                                                })}
                                             </span>
                                         )}
                                         {application.rejection_reason && (
                                             <span className="text-caption text-danger-600">
-                                                Turned down: {application.rejection_reason}
+                                                {t('applications.turnedDown', {
+                                                    reason: application.rejection_reason,
+                                                })}
                                             </span>
                                         )}
                                     </div>
@@ -241,7 +256,7 @@ export const MyLeaveMain = () => {
                                             className="w-full sm:w-auto"
                                             onClick={() => setPendingCancel(application)}
                                         >
-                                            Withdraw
+                                            {t('withdraw')}
                                         </MyButton>
                                     )}
                                 </Card>
@@ -252,22 +267,21 @@ export const MyLeaveMain = () => {
             </section>
 
             <section className="flex flex-col gap-3">
-                <h2 className="text-title text-foreground">My comp-off</h2>
+                <h2 className="text-title text-foreground">{t('compOff.heading')}</h2>
                 <p className="max-w-3xl text-body text-muted-foreground">
-                    Days you worked when you did not have to. Once approved they are added to your
-                    comp-off balance and expire on the date shown, whether or not you use them.
+                    {t('compOff.intro')}
                 </p>
                 {compOffsQuery.isLoading ? (
                     <HrLoadingRows rows={2} />
                 ) : compOffsQuery.isError ? (
                     <HrErrorState
-                        message="Couldn't load your comp-off."
+                        message={t('errors.loadCompOff')}
                         onRetry={() => void compOffsQuery.refetch()}
                     />
                 ) : compOffs.length === 0 ? (
                     <HrEmptyState
-                        title="No comp-off recorded"
-                        description="If you work a holiday or a weekly off, your HR team records it here and it becomes leave you can take later."
+                        title={t('compOff.emptyTitle')}
+                        description={t('compOff.emptyDescription')}
                     />
                 ) : (
                     <div className="flex flex-col gap-2">
@@ -278,18 +292,24 @@ export const MyLeaveMain = () => {
                             >
                                 <div className="flex flex-col gap-1">
                                     <span className="text-body text-foreground">
-                                        Worked{' '}
-                                        {compOff.worked_on_date
-                                            ? formatDate(compOff.worked_on_date)
-                                            : '—'}
+                                        {t('compOff.worked', {
+                                            date: compOff.worked_on_date
+                                                ? formatDate(compOff.worked_on_date)
+                                                : '—',
+                                        })}
                                         {' · '}
-                                        {formatDays(compOff.earned_days)} day(s) earned
+                                        {t('compOff.daysEarned', {
+                                            count: Number(compOff.earned_days ?? 0),
+                                            formatted: formatDays(compOff.earned_days),
+                                        })}
                                     </span>
                                     <span className="text-caption text-muted-foreground">
                                         {compOff.expiry_date
-                                            ? `Expires ${formatDate(compOff.expiry_date)}`
-                                            : 'No expiry recorded'}
-                                        {compOff.used ? ' · already used' : ''}
+                                            ? t('compOff.expires', {
+                                                  date: formatDate(compOff.expiry_date),
+                                              })
+                                            : t('compOff.noExpiry')}
+                                        {compOff.used ? t('compOff.alreadyUsed') : ''}
                                     </span>
                                 </div>
                                 <MyHrStatusChip status={compOff.status} />
@@ -301,9 +321,7 @@ export const MyLeaveMain = () => {
 
             <p className="flex items-start gap-2 text-caption text-muted-foreground">
                 <Info size={14} className="mt-0.5 shrink-0" />
-                Withdrawing an approved leave puts the days back in your balance and clears the
-                on-leave days from your attendance. If payroll has already closed that month, it
-                cannot be withdrawn and you will be told so.
+                {t('footerNote')}
             </p>
 
             {employeeId && (
@@ -321,21 +339,22 @@ export const MyLeaveMain = () => {
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Withdraw this leave?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('cancelDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
                             {pendingCancel
-                                ? `Your ${pendingCancel.leave_type_name || 'leave'} from ${
-                                      pendingCancel.from_date
+                                ? t('cancelDialog.description', {
+                                      leaveType: pendingCancel.leave_type_name || t('leave'),
+                                      date: pendingCancel.from_date
                                           ? formatDate(pendingCancel.from_date)
-                                          : 'that date'
-                                  } will be withdrawn. If it was already approved, the days go back into your balance.`
+                                          : t('cancelDialog.thatDate'),
+                                  })
                                 : ''}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep it</AlertDialogCancel>
+                        <AlertDialogCancel>{t('keepIt')}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void confirmCancel()}>
-                            Withdraw
+                            {t('withdraw')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

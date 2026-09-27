@@ -64,6 +64,20 @@ public class AiEvaluationQueuePoller {
         private long claimStaleMinutes;
 
         /**
+         * Cap on copies with the AI service at once, across all instances. One
+         * ai-service pod and one render-worker serve everyone; without this a
+         * 200-copy bulk upload was dispatched in ten minutes, every job then
+         * fought for the same CPU, and the ones that lost were swept as stale
+         * before they had started. Queued rows stay PENDING and wait their turn.
+         */
+        @Value("${assessment.ai-evaluation.max-in-flight:3}")
+        private int maxInFlight;
+
+        /** Statuses that mean "with the AI service now" - counted against the cap. */
+        static final List<String> IN_FLIGHT = List.of(
+                        "PROCESSING", "DISPATCHED", "STARTED", "EXTRACTING", "EVALUATING", "GRADING", "IN_PROGRESS");
+
+        /**
          * Identifies this instance in claimed_by. Host name plus a per-boot suffix: the
          * host alone is not enough, because a restarted pod keeps its name and would
          * otherwise look like the owner of claims made by the process it replaced.
@@ -124,11 +138,20 @@ public class AiEvaluationQueuePoller {
                 Date now = new Date();
                 Date staleBefore = Date.from(Instant.now().minus(claimStaleMinutes, ChronoUnit.MINUTES));
 
-                int claimedCount = processRepository.claimPendingJobs(instanceId, now, staleBefore, batchSize);
+                long inFlight = processRepository.countByStatusIn(IN_FLIGHT);
+                int room = (int) Math.max(0, Math.min(batchSize, maxInFlight - inFlight));
+                if (room == 0) {
+                        return List.of();
+                }
+                int claimedCount = processRepository.claimPendingJobs(instanceId, now, staleBefore, room);
                 if (claimedCount == 0) {
                         return List.of();
                 }
-                return processRepository.findClaimedPending(instanceId);
+                // Rows a previous tick claimed but could not dispatch (a failed tick)
+                // come back here too; still hand out at most `room` at a time so the
+                // in-flight cap holds. The rest stay ours for the next tick.
+                List<AiEvaluationProcess> claimed = processRepository.findClaimedPending(instanceId);
+                return claimed.size() > room ? claimed.subList(0, room) : claimed;
         }
 
         /**
@@ -146,8 +169,12 @@ public class AiEvaluationQueuePoller {
                         return;
                 }
 
-                String model = process.getAssessment() == null ? null : process.getAssessment().getAiEvaluationModel();
                 try {
+                        // Inside the try: the assessment is fetched with the claim query, but
+                        // a lazy proxy here once threw "no Session" before the try and took
+                        // the whole tick down with it - every tick, for every row.
+                        String model = process.getAssessment() == null ? null
+                                        : process.getAssessment().getAiEvaluationModel();
                         aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, model);
                         log.info("[ai-eval-poller] dispatched evaluation {} for attempt {} (model {})",
                                         processId, attemptId, model);

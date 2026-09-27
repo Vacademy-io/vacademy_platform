@@ -24,6 +24,7 @@ import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-p
 import { useRouter, useBlocker } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
 import DeckPlayer from './deck-player';
+import { PlanComposerDialog } from '@/routes/engagement/-components/PlanComposerDialog';
 import { PublishDialog } from './publish-slide-dialog';
 import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
@@ -41,6 +42,7 @@ import {
 import { StudyLibraryQuestionsPreview } from './questions-preview';
 import StudyLibraryAssignmentPreview from './assignment-preview';
 import VideoSlidePreview from './video-slide-preview';
+import { TeachingDescriptionCard } from './teaching-description-card';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddVimeoDialog } from './slides-sidebar/add-vimeo-dialog';
 import { AddVideoDialog } from './slides-sidebar/add-video-dialog';
@@ -265,6 +267,7 @@ export const SlideMaterial = ({
     customSaveFunction?: (slide: Slide) => Promise<void>;
 }) => {
     const { t } = useTranslation('slideEditor');
+    const { t: tPublish } = useTranslation('studyLibraryHandlePublishSlide');
     // Role display settings for toggles like Manage Doubts visibility
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
@@ -534,6 +537,40 @@ export const SlideMaterial = ({
         searchParams;
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+    // "Assign as task": opens the engagement composer preloaded with this slide.
+    const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
+    // Memoised on the slide and its route ids: an inline object was a new value on
+    // every render, and each one re-seeded the composer over the teacher's edits.
+    const assignTaskSlideId = activeItem?.id;
+    const assignTaskSlideTitle = activeItem?.title;
+    const assignTaskSlideType = activeItem?.source_type;
+    const presetSlide = useMemo(
+        () =>
+            assignTaskSlideId
+                ? {
+                      slideId: assignTaskSlideId,
+                      slideTitle: assignTaskSlideTitle ?? 'Lesson',
+                      slideType: assignTaskSlideType ?? undefined,
+                      courseId: courseId ?? undefined,
+                      sessionId: sessionId ?? undefined,
+                      levelId: levelId ?? undefined,
+                      subjectId: subjectId ?? '',
+                      moduleId: moduleId ?? '',
+                      chapterId: chapterId ?? '',
+                  }
+                : null,
+        [
+            assignTaskSlideId,
+            assignTaskSlideTitle,
+            assignTaskSlideType,
+            courseId,
+            sessionId,
+            levelId,
+            subjectId,
+            moduleId,
+            chapterId,
+        ]
+    );
     // Bumped after a version-history restore to force loadContent to re-run (and
     // re-deserialize) even when the slide's id/status didn't change — the effect's
     // deps intentionally exclude document_slide.data for DOC slides.
@@ -2345,10 +2382,14 @@ export const SlideMaterial = ({
                 // Key on the URL too so editing the external link remounts the
                 // player (YouTube/Vimeo) and the new link renders immediately.
                 setContent(
-                    <VideoSlidePreview
-                        key={`${activeItem.id}-${activeItem.video_slide?.url ?? ''}`}
-                        activeItem={activeItem}
-                    />
+                    <div className="flex h-full flex-col">
+                        <VideoSlidePreview
+                            key={`${activeItem.id}-${activeItem.video_slide?.url ?? ''}`}
+                            activeItem={activeItem}
+                        />
+                        {/* Live AI Tutor: the only way a video slide can be taught. */}
+                        {!isLearnerView && <TeachingDescriptionCard slideId={activeItem.id} kind="video" />}
+                    </div>
                 );
             }
 
@@ -2505,11 +2546,15 @@ export const SlideMaterial = ({
 
                 const url = await getPublicUrl(data || '');
                 setContent(
-                    <Suspense
-                        fallback={<div className="h-full w-full animate-pulse bg-gray-100" />}
-                    >
-                        <PDFViewer pdfUrl={url} />
-                    </Suspense>
+                    <div className="flex h-full flex-col">
+                        <Suspense
+                            fallback={<div className="h-full w-full animate-pulse bg-gray-100" />}
+                        >
+                            <PDFViewer pdfUrl={url} />
+                        </Suspense>
+                        {/* Live AI Tutor: the only way a PDF slide can be taught. */}
+                        {!isLearnerView && <TeachingDescriptionCard slideId={activeItem.id} kind="pdf" />}
+                    </div>
                 );
                 return;
             }
@@ -4578,6 +4623,31 @@ export const SlideMaterial = ({
                                     </MyButton>
                                 )}
 
+                                {/* Assign this slide as a daily-engagement task. Offered only for a
+                                    PUBLISHED slide: a draft is invisible to learners, so scheduling
+                                    one would create a task nobody could open. */}
+                                {!hidePublishButtons && activeItem.status === 'PUBLISHED' && (
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        layoutVariant="default"
+                                        onClick={() => setIsAssignTaskOpen(true)}
+                                    >
+                                        <span className="hidden md:inline">
+                                            {t('slideAction.assignTask', {
+                                                ns: 'engagement',
+                                                defaultValue: 'Assign as task',
+                                            })}
+                                        </span>
+                                        <span className="md:hidden">
+                                            {t('slideAction.task', {
+                                                ns: 'engagement',
+                                                defaultValue: 'Task',
+                                            })}
+                                        </span>
+                                    </MyButton>
+                                )}
+
                                 {/* Publish/Unpublish — shown to ALL roles (no auto-publish anymore).
                                     The confirm step is a compact popover anchored to this button
                                     (no full-screen modal); the button below is its anchor. */}
@@ -4746,7 +4816,8 @@ export const SlideMaterial = ({
                                                     SaveDraft,
                                                     playerRef,
                                                     addUpdateAssessmentSlide,
-                                                    () => clearLocalDraft(activeItem?.id)
+                                                    () => clearLocalDraft(activeItem?.id),
+                                                    tPublish
                                                 );
                                             }
                                         }}
@@ -4902,6 +4973,17 @@ export const SlideMaterial = ({
 
             {/* ✅ Doubt Sidebar (mounted only if allowed) */}
             {showManageDoubts && <DoubtResolutionSidebar />}
+
+            {/* Schedule this slide as a daily-engagement task. Opens preloaded with the
+                slide, so the teacher only chooses batches and a time window. */}
+            {isAssignTaskOpen && presetSlide && (
+                <PlanComposerDialog
+                    open={isAssignTaskOpen}
+                    onOpenChange={setIsAssignTaskOpen}
+                    onCreated={() => setIsAssignTaskOpen(false)}
+                    presetSlide={presetSlide}
+                />
+            )}
         </div>
     );
 };

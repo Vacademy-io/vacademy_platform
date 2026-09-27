@@ -74,7 +74,9 @@
         "selectPlaceholder": "Sélectionner un modèle approuvé",
         "emptyText": "Aucun modèle approuvé ne correspond à votre recherche.",
         "languageCodeLabel": "Code de langue",
-        "templatePreviewLabel": "Aperçu du modèle"
+        "templatePreviewLabel": "Aperçu du modèle",
+        "previewHint": "Les parties surlignées sont des variables — l'étape suivante les remplit avec les données de cet apprenant.",
+        "headerBadge": "En-tête {{kind}}"
     },
     "mediaKind": {
         "image": "image",
@@ -95,7 +97,8 @@
         "sourcePlaceholder": "Sélectionner une source...",
         "literalOption": "Valeur fixe...",
         "literalPlaceholder": "Saisissez une valeur",
-        "unresolved": "(non résolu)"
+        "unresolved": "(non résolu)",
+        "livePreviewLabel": "Aperçu du message"
     },
     "reviewStep": {
         "messageSent": "Message envoyé",
@@ -124,10 +127,21 @@
             "DELIVERED": "Remis",
             "READ": "Lu",
             "FAILED": "Échec"
-        }
+        },
+        "messagePreviewLabel": "Message qui sera envoyé"
     },
     "footer": {
         "back": "Retour",
         "next": "Suivant"
+    },
+    "templatePicker": {
+        "showFullMessage": "Afficher le message complet",
+        "showLess": "Afficher moins"
+    },
+    "waPreview": {
+        "image": "Image",
+        "video": "Vidéo",
+        "document": "Document",
+        "emptyBody": "Ce modèle n'a pas de corps de message."
     }
 }

@@ -335,6 +335,7 @@
     "assessmentInstructions": {
       "attachment": "Pièce jointe",
       "attemptOf": "Tentative {{used}} sur {{max}}",
+      "downloadPaper": "Télécharger",
       "instructionsFromInstitute": "Instructions de votre établissement",
       "no": "Non",
       "noAdditionalInstructions": "Aucune instruction supplémentaire n'a été fournie pour cette évaluation.",

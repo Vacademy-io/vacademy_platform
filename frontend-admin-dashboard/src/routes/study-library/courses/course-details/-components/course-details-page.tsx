@@ -37,6 +37,13 @@ import {
     AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -50,7 +57,7 @@ import { TranslateCourseDialog } from './translate-course-dialog';
 import { OfflineSettingsDialog } from './OfflineSettingsDialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { CourseDetailsFormValues, courseDetailsSchema } from './course-details-schema';
+import { CourseDetailsFormValues, buildCourseDetailsSchema } from './course-details-schema';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useGetPackageSessionId } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionId';
 import { useGetPackageSessionIdFromCourseInit } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionIdFromCourseInit';
@@ -303,6 +310,33 @@ const MetaChip = ({ icon, children }: { icon?: React.ReactNode; children: React.
     </span>
 );
 
+const CourseHighlightDialog = ({
+    title,
+    triggerLabel,
+    children,
+}: {
+    title: string;
+    triggerLabel: string;
+    children: React.ReactNode;
+}) => (
+    <Dialog>
+        <DialogTrigger asChild>
+            <button
+                type="button"
+                className="mt-3 rounded text-sm font-medium text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            >
+                {triggerLabel}
+            </button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+            <DialogHeader>
+                <DialogTitle>{title}</DialogTitle>
+            </DialogHeader>
+            {children}
+        </DialogContent>
+    </Dialog>
+);
+
 type AdvancedIdItem = { label: string; value: string };
 
 const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
@@ -365,7 +399,7 @@ const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
 
 export const CourseDetailsPage = () => {
     const router = useRouter();
-    const { t } = useTranslation(['common', 'courseDetails']);
+    const { t } = useTranslation(['common', 'courseDetails', 'studyLibraryCourseDetailsSchema']);
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const courseId = searchParams.courseId ?? '';
@@ -441,7 +475,7 @@ export const CourseDetailsPage = () => {
     }, [courseDetailsData, courseId, setStudyLibraryData]);
 
     const form = useForm<CourseDetailsFormValues>({
-        resolver: zodResolver(courseDetailsSchema),
+        resolver: zodResolver(buildCourseDetailsSchema(t)),
         defaultValues: {
             courseData: {
                 id: '',
@@ -989,12 +1023,15 @@ export const CourseDetailsPage = () => {
                         try {
                             const batchesList = await fetchCourseBatches(currentCourseId);
                             const courseName = (courseDetailsData.course.package_name ?? '').trim();
-                            // Backend may not always populate `is_parent`. Prefer it when present,
-                            // but fall back to `parent_id === null` to identify parent rows.
+                            // A batch is a parent (or a plain, un-grouped batch) unless it
+                            // points at a parent. The backend stores is_parent=false on every
+                            // ordinary batch, so the earlier `is_parent !== false` guard left
+                            // this map EMPTY for almost every course; the edit payload then
+                            // carried package_session_id='' and the backend silently skipped
+                            // the batch, dropping author (and status) changes.
                             const parents = batchesList.filter(
                                 (b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                    b.is_parent === true ||
-                                    (b.parent_id == null && b.is_parent !== false)
+                                    b.is_parent === true || b.parent_id == null
                             );
                             parents.forEach(
                                 (p: {
@@ -1008,11 +1045,10 @@ export const CourseDetailsPage = () => {
                                 }
                             );
 
-                            // Child rows: either explicitly marked, or anything with a parent_id.
+                            // Child rows: anything that points at a parent.
                             const children = batchesList.filter(
                                 (b: { is_parent?: boolean; parent_id?: string | null }) =>
-                                    b.is_parent === false ||
-                                    (b.parent_id != null && b.is_parent !== true)
+                                    b.parent_id != null && b.is_parent !== true
                             );
                             children.forEach(
                                 (child: {
@@ -1989,8 +2025,8 @@ export const CourseDetailsPage = () => {
                                                         {t('courseDetails:whatYoullLearn')}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -1998,6 +2034,19 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:whatYoullLearn')}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whatYoullLearn || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2015,8 +2064,8 @@ export const CourseDetailsPage = () => {
                                                         })}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -2024,6 +2073,24 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:aboutThis', {
+                                                            course: getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            ).toLocaleLowerCase(),
+                                                        })}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .aboutTheCourse || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2036,8 +2103,8 @@ export const CourseDetailsPage = () => {
                                                         {t('courseDetails:whoShouldJoin')}
                                                     </h2>
                                                     <div className="rounded-md">
-                                                        <p
-                                                            className="text-sm leading-relaxed text-gray-700"
+                                                        <div
+                                                            className="line-clamp-4 text-sm leading-relaxed text-gray-700"
                                                             dangerouslySetInnerHTML={{
                                                                 __html:
                                                                     form.getValues('courseData')
@@ -2045,6 +2112,19 @@ export const CourseDetailsPage = () => {
                                                             }}
                                                         />
                                                     </div>
+                                                    <CourseHighlightDialog
+                                                        title={t('courseDetails:whoShouldJoin')}
+                                                        triggerLabel={t('courseDetails:viewMore')}
+                                                    >
+                                                        <div
+                                                            className="richtext-content text-sm leading-relaxed text-gray-700"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html:
+                                                                    form.getValues('courseData')
+                                                                        .whoShouldLearn || '',
+                                                            }}
+                                                        />
+                                                    </CourseHighlightDialog>
                                                 </div>
                                             )}
 
@@ -2063,12 +2143,21 @@ export const CourseDetailsPage = () => {
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            <div className="space-y-2">
-                                                                {resolvedInstructors.map(
-                                                                    (instructor, index) => (
+                                                            <>
+                                                                <p className="text-sm text-gray-600">
+                                                                    {resolvedInstructors.length}{' '}
+                                                                    {t('courseDetails:authors').toLocaleLowerCase()}
+                                                                </p>
+                                                                <CourseHighlightDialog
+                                                                    title={t('courseDetails:authors')}
+                                                                    triggerLabel={t('courseDetails:viewMore')}
+                                                                >
+                                                                    <div className="space-y-2">
+                                                                        {resolvedInstructors.map(
+                                                                            (instructor, index) => (
                                                                         <div
                                                                             key={index}
-                                                                            className="flex items-center gap-2 rounded-md p-1"
+                                                                            className="flex items-center gap-2 rounded-md bg-gray-50 p-2"
                                                                         >
                                                                             <Avatar className="size-6">
                                                                                 {instructor.profilePicUrl ? (
@@ -2092,9 +2181,11 @@ export const CourseDetailsPage = () => {
                                                                                 {instructor.name}
                                                                             </h3>
                                                                         </div>
-                                                                    )
-                                                                )}
-                                                            </div>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                </CourseHighlightDialog>
+                                                            </>
                                                         )}
                                                     </div>
                                                 )}

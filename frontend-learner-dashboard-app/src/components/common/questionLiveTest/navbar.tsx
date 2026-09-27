@@ -31,11 +31,13 @@ import {
   WarningCircle,
   Calculator as CalculatorIcon,
   PencilSimple,
+  SidebarSimple,
 } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { cn } from "@/lib/utils";
 import { useLiveTestUi } from "./live-test-ui-context";
 import { TimesUpModal } from "@/components/modals/times-up-modal";
+import { isUntimedPlayMode } from "@/lib/untimed-play-mode";
 import { ASSESSMENT_SUBMIT, ASSESSMENT_SUBMIT_MANUAL } from "@/constants/urls";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import {
@@ -121,6 +123,8 @@ export function Navbar({
     isCompact,
     activeTool,
     toggleTool,
+    isRailOpen,
+    setRailOpen,
     submitRequestId,
   } = useLiveTestUi();
   const {
@@ -130,6 +134,7 @@ export function Navbar({
     updateEntireTestTimer,
     tabSwitchCount,
     incrementTabSwitchCount,
+    proctorAutoSubmitRequested,
     entireTestTimer,
     setEntireTestTimer,
     resetAssessment,
@@ -174,9 +179,14 @@ export function Navbar({
 
     const state = useAssessmentStore.getState();
     const attemptId = state.assessment?.attempt_id;
+    // With a clock, elapsed = duration - remaining. Without one (practice,
+    // survey) count from the server start time, so the report's "time taken"
+    // is real instead of 0.
     const timeElapsedInSeconds = state.assessment?.duration
       ? state.assessment.duration * 60 - state.entireTestTimer
-      : 0;
+      : start_time > 0
+        ? Math.max(0, Math.round((Date.now() - start_time) / 1000))
+        : 0;
     const clientLastSync = new Date(
       start_time + timeElapsedInSeconds * 1000,
     ).toISOString();
@@ -427,11 +437,14 @@ export function Navbar({
     // where `assessment` is still null that const is never initialized — calling
     // it here would throw "Cannot access 'handleSubmit' before initialization".
     if (!assessment) return;
-    if (evaluationType !== "MANUAL" && tabSwitchCount >= 3) {
+    if (
+      evaluationType !== "MANUAL" &&
+      (tabSwitchCount >= 3 || proctorAutoSubmitRequested)
+    ) {
       setShowSubmitModal(true);
       handleSubmit();
     }
-  }, [tabSwitchCount, evaluationType, assessment]);
+  }, [tabSwitchCount, proctorAutoSubmitRequested, evaluationType, assessment]);
 
   useEffect(() => {
     // Native back (Android hardware/gesture). We register a guard rather than our
@@ -510,6 +523,12 @@ export function Navbar({
     // so a loaded assessment always has entireTestTimer > 0 here.
     if (!assessment) return;
     if (evaluationType === "MANUAL") return;
+    // The play mode arrives from storage a beat after the assessment; until it
+    // is known, a timer at 0 cannot be told apart from "no clock at all".
+    if (!playMode) return;
+    // A practice test or survey has no clock; its timer sits at 0 from the
+    // start (no duration), which is not "time's up".
+    if (isUntimedPlayMode(playMode)) return;
     if (isSubmitted) return;
     if (entireTestTimer > 0) return;
     if (hasAutoSubmittedRef.current) return;
@@ -517,7 +536,7 @@ export function Navbar({
     hasAutoSubmittedRef.current = true;
     setShowTimesUpModal(true);
     void handleSubmit();
-  }, [entireTestTimer, evaluationType, isSubmitted, assessment]);
+  }, [entireTestTimer, evaluationType, isSubmitted, assessment, playMode]);
 
   const formatTime = (timeInSeconds: number) => {
     const hours = Math.floor(timeInSeconds / 3600);
@@ -716,6 +735,9 @@ export function Navbar({
   // Tools live in the header on desktop and in the footer's tool menu on a
   // phone, where header width is reserved for the timer and Submit.
   const showHeaderTools = !isCompact;
+  // The question rail's own close button only hides it; this is the one place
+  // that brings it back, so it stays in the header regardless of rail state.
+  const showRailToggle = !isCompact && settings.questionPalette.enabled;
 
   return (
     <>
@@ -777,6 +799,36 @@ export function Navbar({
               )}
             >
               <PencilSimple size={17} />
+            </Button>
+          )}
+
+          {showRailToggle && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={
+                isRailOpen
+                  ? t("navbar.questionPanel.hide")
+                  : t("navbar.questionPanel.show")
+              }
+              title={
+                isRailOpen
+                  ? t("navbar.questionPanel.hide")
+                  : t("navbar.questionPanel.show")
+              }
+              aria-pressed={isRailOpen}
+              onClick={() => setRailOpen(!isRailOpen)}
+              className="size-9 border-neutral-200"
+            >
+              {/* Open is the default, so it reads as weight (like ViewToggle)
+                  rather than the filled "tool active" treatment next door.
+                  The glyph draws its bar on the start side; the rail is on
+                  the end. */}
+              <SidebarSimple
+                size={17}
+                weight={isRailOpen ? "fill" : "regular"}
+                className="-scale-x-100 rtl:scale-x-100"
+              />
             </Button>
           )}
 

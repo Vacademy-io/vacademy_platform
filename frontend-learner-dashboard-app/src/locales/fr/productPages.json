@@ -40,6 +40,16 @@
     "catalogStep": {
         "selectPrompt": "Sélectionnez les {{courses}} auxquels vous souhaitez vous inscrire"
     },
+    "courseFinder": {
+        "continueToRegister": "Continuer vers l'inscription",
+        "dialogHeading": "Sélectionnez votre classe",
+        "showCourses": "Afficher mes {{courses}}",
+        "defaultSubheading": "Choisissez le vôtre pour voir les {{courses}} disponibles pour vous",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "Voir",
+        "skip": "Afficher tous les {{courses}}",
+        "change": "Modifier la sélection"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "Dépensez {{amount}} de plus pour obtenir {{offer}} sur tout le panier.",
@@ -233,6 +243,8 @@
             "months_many": "Accès {{count}} mois",
             "days_many": "Accès {{count}} jours"
         },
-        "goToMyCourses": "Accéder à mes {{courses}}"
+        "goToMyCourses": "Accéder à mes {{courses}}",
+        "redirecting": "Redirection vers la page suivante…",
+        "redirectNow": "Continuer maintenant"
     }
 }

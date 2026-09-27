@@ -79,7 +79,8 @@
         "bulkActions": "बल्क कार्रवाइयाँ",
         "assignLeads": "लीड असाइन करें",
         "unassignLeads": "लीड अनअसाइन करें",
-        "deleteLeads": "लीड हटाएं"
+        "deleteLeads": "लीड हटाएं",
+        "sendMessage": "संदेश भेजें"
     },
     "emptyState": {
         "errorTitle": "प्रतिवादी लोड नहीं हो सके",

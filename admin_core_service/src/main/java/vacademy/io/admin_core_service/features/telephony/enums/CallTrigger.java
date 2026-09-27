@@ -53,6 +53,18 @@ public enum CallTrigger {
         return this != MANUAL;
     }
 
+    /**
+     * True when the PER-LEAD rolling 24h cap should block the dial.
+     *
+     * <p>Same profile as the institute cap, and for the same reason: it bounds
+     * fan-out, and a person clicking Call on one lead cannot fan anything out. This
+     * is the guard that stops a lead being called twice by a re-fired campaign — the
+     * bulk cooldown only spans minutes, while a queued run now spans hours.
+     */
+    public boolean enforcesPerLeadDailyCap() {
+        return this != MANUAL;
+    }
+
     /** True when a near-simultaneous duplicate for the same lead should be collapsed. */
     public boolean enforcesDuplicateWindow() {
         return this != MANUAL;

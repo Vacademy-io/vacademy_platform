@@ -41,6 +41,10 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -68,6 +72,10 @@ const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
@@ -95,6 +103,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     streamingContent,
     isStreaming,
     isOffline,
+    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,
@@ -105,6 +114,11 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     exitVoiceMode,
     voiceLanguage,
   } = useChatbotContext();
+
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
 
   // Check if the docked panel should be used - checking store AND route for immediate detection
   const { isDockedMode } = useChatbotPanelStore();
@@ -496,16 +510,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
-                  <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                      title={t("common.aiGear")}
-                    >
-                      <Gear className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  {showAiSettingsShortcut && (
+                    <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                        title={t("common.aiGear")}
+                      >
+                        <Gear className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -533,7 +549,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
               {/* Messages Area */}
               <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4">
+                <ScrollArea className="h-full p-4 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
                   <div className="flex flex-col space-y-4">
                     {isOffline && (
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
@@ -663,7 +679,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                 </p>
                               </div>
                             ) : (
-                              <div className="max-w-none group relative">
+                              <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                                 <button
                                   className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>
@@ -682,19 +698,19 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                   components={{
                                     h1: ({ ...props }) => (
                                       <h1
-                                        className="text-2xl font-bold mt-4 mb-3"
+                                        className="text-base font-bold mt-3 mb-1.5"
                                         {...props}
                                       />
                                     ),
                                     h2: ({ ...props }) => (
                                       <h2
-                                        className="text-xl font-bold mt-3 mb-2"
+                                        className="text-sm font-bold mt-2.5 mb-1"
                                         {...props}
                                       />
                                     ),
                                     h3: ({ ...props }) => (
                                       <h3
-                                        className="text-lg font-semibold mt-3 mb-2"
+                                        className="text-sm font-semibold mt-2 mb-1"
                                         {...props}
                                       />
                                     ),
@@ -734,7 +750,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                         >{children}</code>
                                       ) : (
                                         <code
-                                          className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                          className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                           {...rest}
                                         >{children}</code>
                                       );
@@ -839,10 +855,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
                         <div className="flex gap-3 justify-center">
                           <button
-                            onClick={() => {
-                              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                              if (lastUserMsg) sendMessage(lastUserMsg.content);
-                            }}
+                            onClick={reconnectStream}
                             className="text-xs text-primary underline hover:text-primary/80"
                           >
                             {t("common.retry")}

@@ -1,0 +1,15 @@
+{
+    "uploadQuestionPaper": "प्रश्न पत्र अपलोड करें",
+    "uploadFromDevice": "डिवाइस से अपलोड करें",
+    "uploadQuestionPaperFromDevice": "डिवाइस से प्रश्न पत्र अपलोड करें",
+    "createManually": "मैन्युअल रूप से बनाएं",
+    "createQuestionPaperManually": "प्रश्न पत्र मैन्युअल रूप से बनाएं",
+    "marksPerQuestion": "प्रति प्रश्न अंक",
+    "defaultLabel": "(डिफ़ॉल्ट)",
+    "adaptiveMarkingRules": "अनुकूली अंकन नियम",
+    "columnQNo": "प्र.सं.",
+    "columnQuestion": "प्रश्न",
+    "columnMarks": "अंक",
+    "columnCriteria": "मानदंड",
+    "totalMarks": "कुल अंक"
+}

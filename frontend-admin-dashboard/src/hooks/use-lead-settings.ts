@@ -99,6 +99,19 @@ export interface LeadSettingsConfig {
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
     customStatuses: CustomLeadStatus[];
+
+    /**
+     * Institute-specific display names for the built-in lead attributes, e.g. an
+     * Eduzilla-style institute calling Tier "Interest Level" and Lead Status
+     * "Action Label". Empty/missing = the default wording. Read through
+     * useLeadTerminology() so every surface agrees.
+     */
+    labels?: LeadTerminologyLabels;
+}
+
+export interface LeadTerminologyLabels {
+    tier?: string;
+    leadStatus?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
@@ -130,11 +143,56 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         notifyRoles: [],
     },
     customStatuses: DEFAULT_CUSTOM_LEAD_STATUSES,
+    labels: {},
 };
 
 // ── Fetcher ──────────────────────────────────────────────────────────────────
 
 const SETTING_KEY = 'LEAD_SETTING';
+
+/**
+ * Pull the saved config out of a `/institute/setting/v1/get` response.
+ *
+ * The endpoint answers with the SettingDto itself — `{key, name, data}` — so the config lives
+ * at `response.data.data`, which is what every other settings hook reads. This hook used to
+ * read `response.data.data[SETTING_KEY].data`, a shape the endpoint never returns, so the
+ * lookup was always undefined and EVERY institute silently fell back to
+ * {@link LEAD_SETTINGS_DEFAULTS}: renamed Tier / Lead-status labels never reached the UI and
+ * per-table score visibility was ignored. The nested shape is still tried first so a wrapped
+ * payload would keep working.
+ */
+export function extractLeadSettingData(
+    responseBody: unknown
+): Partial<LeadSettingsConfig> | undefined {
+    if (!responseBody || typeof responseBody !== 'object') return undefined;
+    const body = responseBody as Record<string, unknown>;
+    const nested = (body.data as Record<string, unknown> | undefined)?.[SETTING_KEY] as
+        | { data?: Partial<LeadSettingsConfig> }
+        | undefined;
+    if (nested?.data && typeof nested.data === 'object') return nested.data;
+    const direct = body.data;
+    if (direct && typeof direct === 'object') return direct as Partial<LeadSettingsConfig>;
+    return undefined;
+}
+
+/** Merge saved config over the defaults, keeping nested groups whole. */
+export function mergeLeadSettings(
+    saved: Partial<LeadSettingsConfig> | undefined
+): LeadSettingsConfig {
+    if (!saved) return LEAD_SETTINGS_DEFAULTS;
+    return {
+        ...LEAD_SETTINGS_DEFAULTS,
+        ...saved,
+        // Nested groups are spread so a partially-saved blob can't drop a weight or a flag.
+        scoringWeights: {
+            ...LEAD_SETTINGS_DEFAULTS.scoringWeights,
+            ...(saved.scoringWeights ?? {}),
+        },
+        tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
+        followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
+    };
+}
 
 async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
     const instituteId = getCurrentInstituteId();
@@ -145,11 +203,7 @@ async function fetchLeadSettings(): Promise<LeadSettingsConfig> {
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: SETTING_KEY },
         });
-        const data: LeadSettingsConfig | undefined = response.data?.data?.[SETTING_KEY]?.data;
-        if (!data) return LEAD_SETTINGS_DEFAULTS;
-        // Merge with defaults so any newly added keys are present even if not
-        // yet saved (backward-compatible config evolution).
-        return { ...LEAD_SETTINGS_DEFAULTS, ...data };
+        return mergeLeadSettings(extractLeadSettingData(response.data));
     } catch {
         return LEAD_SETTINGS_DEFAULTS;
     }

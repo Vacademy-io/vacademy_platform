@@ -2,7 +2,6 @@
     "filters": "عوامل التصفية",
     "clear": "مسح",
     "closeFilters": "إغلاق عوامل التصفية",
-    "academicSession": "الفصل الدراسي",
     "allTerm": "كل الـ {{term}}",
     "noOptionsAvailable": "لا توجد خيارات متاحة",
     "applyFilters": "تطبيق عوامل التصفية",

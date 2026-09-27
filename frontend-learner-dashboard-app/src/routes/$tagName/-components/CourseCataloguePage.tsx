@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
@@ -11,6 +12,7 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
 import {
   clearCourseFinderSelection,
@@ -49,6 +51,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   pageSlug,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  // Institute terminology must be in localStorage before the first paint —
+  // see institute-naming-seed.ts. Read the terms only after it settles.
+  const namingReady = useInstituteNamingSettings(instituteId);
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
@@ -109,7 +114,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         setIsLoading(true);
         console.log("[CourseCataloguePage] Fetching catalogue data for:", { instituteId, tagName });
 
-        const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
+        // Memoised: on a root-mounted host the route already fetched this
+        // catalogue to classify the URL, so this is normally a cache hit.
+        const data = await CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName);
 
         console.log("[CourseCataloguePage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -492,7 +499,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     reopenedFromCheckout.current = false;
   };
 
-  if (isLoading) {
+  if (isLoading || !namingReady) {
     return <DashboardLoader />;
   }
 
@@ -707,7 +714,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
           onLogin={handleIntroLogin}
           onLegacyGetStarted={() => setShowLeadCollection(true)}
-          onNavigate={(route) => navigate({ to: `/${tagName}/${route.replace(/^\//, '')}` })}
+          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
           nativePad={isAndroid || isIOS}
         />
       )}

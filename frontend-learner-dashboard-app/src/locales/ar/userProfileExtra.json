@@ -177,7 +177,12 @@
             "cancelSuccessTitle": "تم إلغاء الدفع التلقائي",
             "cancelSuccessDescription": "يظل الوصول متاحًا لك حتى نهاية فترتك الحالية.",
             "cancelErrorTitle": "تعذّر إلغاء الدفع التلقائي",
-            "cancelErrorDescription": "يرجى المحاولة مرة أخرى بعد قليل."
+            "cancelErrorDescription": "يرجى المحاولة مرة أخرى بعد قليل.",
+            "planChangeOrderFailed": "We couldn't create the payment order.",
+            "planChangeFailedTitle": "Couldn't change the plan",
+            "planChangeFailedDescription": "Please try again in a moment.",
+            "planChangePaidTitle": "Payment received",
+            "planChangePaidDescription": "Your new plan will be active shortly."
         },
         "dialog": {
             "title": "هل تريد إلغاء الدفع التلقائي؟",
@@ -187,7 +192,10 @@
             "defaultEndDate": "نهاية فترتك الحالية",
             "keepAutopay": "الإبقاء على الدفع التلقائي",
             "cancelling": "جارٍ الإلغاء..."
-        }
+        },
+        "changePlan": "Change plan",
+        "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+        "planChangeCancelScheduled": "Cancel this change"
     },
     "cardUpdate": {
         "success": "تم تحديث بطاقتك",

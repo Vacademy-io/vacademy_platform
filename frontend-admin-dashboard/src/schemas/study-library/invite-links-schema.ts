@@ -46,6 +46,13 @@ export interface InviteLinkDataInterface {
     package_session_to_payment_options: PackageSessionToPaymentOption[];
     package_session_ids: string[];
     short_url?: string | null;
+    updated_at?: string | null;
+    /** auth_service user id of the creator; null on invites made before it was recorded. */
+    created_by_user_id?: string | null;
+    /** Display name for created_by_user_id, resolved server-side; null when unknown. */
+    created_by_name?: string | null;
+    updated_by_user_id?: string | null;
+    updated_by_name?: string | null;
 }
 
 export interface InstituteCustomField {

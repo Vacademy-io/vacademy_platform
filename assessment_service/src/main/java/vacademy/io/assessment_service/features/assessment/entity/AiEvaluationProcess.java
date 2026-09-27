@@ -2,6 +2,7 @@ package vacademy.io.assessment_service.features.assessment.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.util.Date;
@@ -82,9 +83,22 @@ public class AiEvaluationProcess {
         @Column(name = "claimed_at")
         private Date claimedAt;
 
+        /** When the staff were told this check had settled (V48); NULL = not yet. */
+        @Column(name = "notified_at")
+        private Date notifiedAt;
+
+        /** The teacher who pressed "Evaluate with AI"; NULL for automatic and bulk checks. */
+        @Column(name = "triggered_by", length = 255)
+        private String triggeredBy;
+
         @Column(name = "created_at", insertable = false, updatable = false)
         private Date createdAt;
 
-        @Column(name = "updated_at", insertable = false, updatable = false)
+        // A real heartbeat: every status/progress save moves it, so "no activity
+        // for N minutes" can be read off this column. It used to be DB-default
+        // only, which made a row's age its start time and a 200-copy bulk run
+        // look stale while it was still queued.
+        @UpdateTimestamp
+        @Column(name = "updated_at")
         private Date updatedAt;
 }

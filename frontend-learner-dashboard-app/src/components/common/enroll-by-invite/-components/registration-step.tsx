@@ -32,9 +32,9 @@ import {
 import { capitalise } from "@/utils/custom-field";
 import {
   getCountryCode,
+  lookupCountryCode,
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 // Replace heavy country-state-city with lightweight country-region-data
 // import { State, City } from "country-state-city";
@@ -249,19 +249,24 @@ const RegistrationStep = ({
     control: form.control,
   });
 
-  // Determine the phone country code based on country field value.
-  // Falls back to the institute's first configured preferred country (from
-  // domain routing) so the phone input defaults match the institute settings.
-  const getPhoneCountryCode = (): string => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are.
+  //
+  // Undefined means "no such signal", and PhoneInputField then resolves the
+  // country itself through the portal's chain (institute preference, else the
+  // region the form is opened in). It has to be undefined rather than that
+  // chain's answer read here: a `country` prop overrides the field's own
+  // resolution, so passing a value read before domain routing replied would
+  // pin the field to the platform fallback (+91) even after the real
+  // preference arrived.
+  const getPhoneCountryCode = (): string | undefined => {
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {
-        return getCountryCode(countryField.value, fallback);
+        return lookupCountryCode(countryField.value);
       }
     }
-    return fallback;
+    return undefined;
   };
 
   // Memoize state and city options to prevent recalculation on every render

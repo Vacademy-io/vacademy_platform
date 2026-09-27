@@ -1355,15 +1355,29 @@ public class AssessmentParticipantsManager {
             Assessment assessment, String instituteId) {
         Map<StudentAttempt, byte[]> reportMap = new HashMap<>();
         attemptList.forEach(attempt -> {
-
-            // Convert the PDF stream to a byte array
-            byte[] participantPdfReport = fileService.getFileFromFileId(attempt.getEvaluatedFileId());
+            // The checked copy is what a manual-result learner receives. An attempt
+            // may have none — the AI check failed and the teacher entered marks
+            // without uploading a checked PDF — and one such attempt must not
+            // abort the release (and the emails) of everyone after it in the list.
+            byte[] checkedCopy = null;
+            if (StringUtils.hasText(attempt.getEvaluatedFileId())) {
+                try {
+                    checkedCopy = fileService.getFileFromFileId(attempt.getEvaluatedFileId());
+                } catch (Exception e) {
+                    log.warn("Checked copy {} for attempt {} could not be fetched; releasing without it: {}",
+                            attempt.getEvaluatedFileId(), attempt.getId(), e.getMessage());
+                }
+            } else {
+                log.info("Attempt {} has no checked copy; releasing marks without an attachment", attempt.getId());
+            }
 
             // Update attempt status
             updateAttemptDataReleaseData(attempt);
 
-            // Send notification to the student
-            reportMap.put(attempt, participantPdfReport);
+            // Email + workflow only for learners who actually have a copy to receive.
+            if (checkedCopy != null) {
+                reportMap.put(attempt, checkedCopy);
+            }
         });
         sendNotificationToStudent(reportMap, assessment.getId(), instituteId);
         publishResultReleasedFor(reportMap);

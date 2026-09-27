@@ -13,22 +13,16 @@ import AITasksList from '@/routes/ai-center/-components/AITasksList';
 import { UseFormReturn } from 'react-hook-form';
 import { SectionFormType } from '@/types/assessments/assessment-steps';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
-import { FilePdf, UploadSimple, X, Sparkle } from '@phosphor-icons/react';
+import { FilePdf, UploadSimple, X } from '@phosphor-icons/react';
 import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
-import {
-    relativeTime,
-    statusLabel,
-    statusStyles,
-    taskDisplayName,
-} from '@/routes/ai-center/-utils/format';
 import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
 import { DraftingDonePanel } from '@/routes/ai-center/-components/DraftingDonePanel';
 import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
 import {
-    QuestionConfigPanel,
-    buildQuestionPrompt,
-} from '@/routes/ai-center/-components/QuestionConfigPanel';
-import { languageSupport } from '@/constants/dummy-data';
+    ExtractOptionsPanel,
+    type PaperInfo,
+} from '@/routes/ai-center/-components/ExtractOptionsPanel';
+import type { SectionMode } from '@/routes/ai-center/-services/ai-center-service';
 
 const ACCEPTED_FORMATS = '.pdf,.doc,.docx,.ppt,.pptx,.html';
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'html'];
@@ -38,13 +32,21 @@ type Phase = 'idle' | 'uploading' | 'processing' | 'ready' | 'generating' | 'don
 const GenerateAiQuestionPaperComponent = ({
     form,
     currentSectionIndex,
+    sectionSplit = false,
 }: {
     form?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    /**
+     * The target can hold several sections (assessment / homework wizards):
+     * a paper with sections may become one section each, and the teacher is
+     * asked which they want next to the credit line. A quiz cannot, so it is
+     * never asked and always gets a single section.
+     */
+    sectionSplit?: boolean;
 }) => {
     const { t } = useTranslation([
         'aiCenterVsmartExtractGenerateQuestionPaper',
-        'aiCenterQuestionConfigPanel',
+        'aiCenterExtractOptionsPanel',
     ]);
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
@@ -63,16 +65,17 @@ const GenerateAiQuestionPaperComponent = ({
     const [readyTask, setReadyTask] = useState<AITaskIndividualListInterface | null>(null);
     const [openPreviewDialog, setOpenPreviewDialog] = useState(false);
 
-    const [numQuestions, setNumQuestions] = useState('10');
-    const [questionType, setQuestionType] = useState('MCQ');
-    const [difficulty, setDifficulty] = useState('Medium');
-    const [language, setLanguage] = useState(languageSupport[0]);
+    // The paper decides what and how much; the teacher may only leave notes.
+    const [notes, setNotes] = useState('');
+    // What the server found on upload: question count and the exact credits.
+    const [paperInfo, setPaperInfo] = useState<PaperInfo | null>(null);
+    // A paper with sections: one assessment section each (the default) or all in one.
+    const [sectionMode, setSectionMode] = useState<SectionMode>('split');
 
     const { data: recentTasksData } = useQuery({
         ...handleQueryGetListIndividualTopics('PDF_TO_QUESTIONS'),
         staleTime: 30 * 1000,
-        refetchInterval:
-            pendingTaskId !== null && readyTask === null ? 5000 : false,
+        refetchInterval: pendingTaskId !== null && readyTask === null ? 5000 : false,
     });
 
     useEffect(() => {
@@ -93,9 +96,7 @@ const GenerateAiQuestionPaperComponent = ({
         const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
             ? recentTasksData
             : [];
-        return [...list]
-            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-            .slice(0, 3);
+        return [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)).slice(0, 3);
     }, [recentTasksData]);
 
     const generateAssessmentMutation = useMutation({
@@ -112,7 +113,20 @@ const GenerateAiQuestionPaperComponent = ({
         }) => {
             setLoader(true);
             setKey('question');
-            return handleGenerateAssessmentQuestions(pdfId, userPrompt, taskName, taskId || '');
+            // The teacher's answer only when they were asked (the paper's
+            // sections were known at upload); otherwise say nothing and the
+            // backend splits by what it reads — a scanned paper's sections
+            // are only known after extraction. A quiz never splits.
+            const askedSectionMode =
+                sectionSplit && (paperInfo?.sections?.length ?? 0) >= 2 ? sectionMode : undefined;
+            return handleGenerateAssessmentQuestions(
+                pdfId,
+                userPrompt,
+                taskName,
+                taskId || '',
+                'extract',
+                sectionSplit ? askedSectionMode : 'single'
+            );
         },
         onSuccess: (response: unknown) => {
             setLoader(false);
@@ -145,17 +159,14 @@ const GenerateAiQuestionPaperComponent = ({
         setPhase('idle');
         setFileName('');
         setUploadedFilePDFId('');
+        setPaperInfo(null);
         setErrorMessage(null);
     };
 
     const handleGenerate = () => {
         if (!uploadedFilePDFId) return;
         setPhase('generating');
-        pollGenerateAssessment(
-            uploadedFilePDFId,
-            buildQuestionPrompt(t, numQuestions, questionType, difficulty, language),
-            ''
-        );
+        pollGenerateAssessment(uploadedFilePDFId, notes.trim(), '');
     };
 
     const processFile = async (file: File) => {
@@ -182,9 +193,21 @@ const GenerateAiQuestionPaperComponent = ({
                 return;
             }
             setPhase('processing');
-            const response = await handleStartProcessUploadedFile(fileId);
+            const response = await handleStartProcessUploadedFile(fileId, 'extract', {
+                fileName: file.name,
+            });
             if (response?.pdf_id) {
                 setUploadedFilePDFId(response.pdf_id);
+                setPaperInfo({
+                    questionCount: response.question_count ?? null,
+                    estimatedCredits: response.estimated_credits ?? null,
+                    pages: response.pages ?? null,
+                    ocrPages: response.ocr_pages ?? 0,
+                    sections: response.sections ?? [],
+                    marking: response.marking ?? null,
+                    durationMinutes: response.duration_minutes ?? null,
+                });
+                setSectionMode('split');
                 setPhase('ready');
             } else {
                 setErrorMessage(t('errors.processFailed'));
@@ -224,8 +247,7 @@ const GenerateAiQuestionPaperComponent = ({
     };
 
     const fileChosen = phase !== 'idle' && fileName !== '';
-    const isWorking =
-        phase === 'uploading' || phase === 'processing' || phase === 'generating';
+    const isWorking = phase === 'uploading' || phase === 'processing' || phase === 'generating';
     const workingLabel =
         phase === 'uploading'
             ? t('workingLabel.uploading')
@@ -306,14 +328,12 @@ const GenerateAiQuestionPaperComponent = ({
                             heading={t('productName')}
                             sectionsForm={form}
                             currentSectionIndex={currentSectionIndex}
+                            allowSectionSplit={sectionSplit}
                             onDraftAnother={() => {
                                 setReadyTask(null);
                                 setPendingTaskId(null);
                                 setErrorMessage(null);
-                                setNumQuestions('10');
-                                setQuestionType('MCQ');
-                                setDifficulty('Medium');
-                                setLanguage(languageSupport[0]);
+                                setNotes('');
                                 resetFile();
                             }}
                         />
@@ -328,17 +348,13 @@ const GenerateAiQuestionPaperComponent = ({
                             <p className="text-sm text-blue-900">{workingLabel}</p>
                         </div>
                     ) : phase === 'ready' ? (
-                        <QuestionConfigPanel
-                            numQuestions={numQuestions}
-                            setNumQuestions={setNumQuestions}
-                            questionType={questionType}
-                            setQuestionType={setQuestionType}
-                            difficulty={difficulty}
-                            setDifficulty={setDifficulty}
-                            language={language}
-                            setLanguage={setLanguage}
+                        <ExtractOptionsPanel
+                            notes={notes}
+                            setNotes={setNotes}
                             onSubmit={handleGenerate}
-                            ctaLabel={t('questionConfig.ctaLabel')}
+                            paperInfo={paperInfo}
+                            sectionMode={sectionSplit ? sectionMode : undefined}
+                            setSectionMode={sectionSplit ? setSectionMode : undefined}
                         />
                     ) : null}
                 </div>
@@ -372,6 +388,7 @@ const GenerateAiQuestionPaperComponent = ({
                 setEnableDialog={setEnableTasksDialog}
                 sectionsForm={form}
                 currentSectionIndex={currentSectionIndex}
+                allowSectionSplit={sectionSplit}
             />
         </div>
     );

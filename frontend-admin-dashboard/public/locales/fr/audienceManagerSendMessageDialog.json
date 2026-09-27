@@ -72,7 +72,8 @@
         "previewEmptyState": "Choisissez un modèle ou passez à « Modifier le HTML » pour rédiger le contenu.",
         "bodyPlaceholder": "Saisissez le HTML du corps de l'e-mail... utilisez {{token}} pour les variables",
         "placeholderHintPrefix": "Les variables comme",
-        "placeholderHintSuffix": "sont remplacées pour chaque destinataire à l'envoi. Associez-les à l'étape suivante."
+        "placeholderHintSuffix": "sont remplacées pour chaque destinataire à l'envoi. Associez-les à l'étape suivante.",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "Titre",
@@ -126,10 +127,16 @@
         "statusValues": {
             "success": "Réussi",
             "failed": "Échoué"
-        }
+        },
+        "recipientsSelected_one": "{{count}} prospect sélectionné",
+        "recipientsSelected_many": "{{count}} de prospects sélectionnés",
+        "recipientsSelected_other": "{{count}} prospects sélectionnés"
     },
     "footer": {
         "back": "Retour",
         "next": "Suivant"
-    }
+    },
+    "dialogDescriptionSelected_one": "Envoyer un message au {{count}} prospect sélectionné",
+    "dialogDescriptionSelected_many": "Envoyer un message aux {{count}} de prospects sélectionnés",
+    "dialogDescriptionSelected_other": "Envoyer un message aux {{count}} prospects sélectionnés"
 }

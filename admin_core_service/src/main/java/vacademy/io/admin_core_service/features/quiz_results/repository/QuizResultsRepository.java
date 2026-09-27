@@ -164,10 +164,12 @@ public interface QuizResultsRepository extends JpaRepository<ActivityLog, String
                 JOIN quiz_slides qs ON qs.slide_id = al.slide_id
                 JOIN batch_learner bl ON bl.user_id = al.user_id
             WHERE al.source_type = 'QUIZ'
+              AND (CAST(:userId AS text) IS NULL OR al.user_id = CAST(:userId AS text))
             ORDER BY al.slide_id, al.user_id, al.created_at DESC
             """, nativeQuery = true)
     List<QuizAttemptProjection> getAttempts(@Param("batchId") String batchId,
-                                            @Param("slideId") String slideId);
+                                            @Param("slideId") String slideId,
+                                            @Param("userId") String userId);
 
     /**
      * Every tracked response on those latest attempts. Bounded by learners x questions for
@@ -202,6 +204,7 @@ public interface QuizResultsRepository extends JpaRepository<ActivityLog, String
                     JOIN quiz_slides qs ON qs.slide_id = al.slide_id
                     JOIN batch_learner bl ON bl.user_id = al.user_id
                 WHERE al.source_type = 'QUIZ'
+                  AND (CAST(:userId AS text) IS NULL OR al.user_id = CAST(:userId AS text))
                 ORDER BY al.slide_id, al.user_id, al.created_at DESC
             )
             SELECT l.slide_id        AS slideId,
@@ -213,7 +216,62 @@ public interface QuizResultsRepository extends JpaRepository<ActivityLog, String
                 JOIN quiz_slide_question_tracked t ON t.activity_id = l.activity_id
             """, nativeQuery = true)
     List<QuizResponseProjection> getLatestAttemptResponses(@Param("batchId") String batchId,
-                                                           @Param("slideId") String slideId);
+                                                           @Param("slideId") String slideId,
+                                                           @Param("userId") String userId);
+
+    /**
+     * EVERY attempt one learner made at one quiz, oldest first, so the service can number
+     * them ("attempt 2 of 3"). Unlike {@link #getAttempts} this does not collapse to the
+     * latest row: the whole point of the learner side-view is to show the attempt history.
+     */
+    @Query(value = """
+            SELECT al.id         AS activityId,
+                   al.created_at AS attemptedAt,
+                   al.engaged_ms AS engagedMs
+            FROM activity_log al
+            WHERE al.slide_id = :slideId
+              AND al.user_id = :userId
+              AND al.source_type = 'QUIZ'
+              AND EXISTS (
+                    SELECT 1 FROM student_session_institute_group_mapping ssigm
+                    WHERE ssigm.user_id = al.user_id
+                      AND ssigm.package_session_id = :batchId
+                      AND ssigm.status IN ('ACTIVE', 'INACTIVE'))
+            ORDER BY al.created_at ASC
+            """, nativeQuery = true)
+    List<LearnerAttemptProjection> getLearnerAttempts(@Param("batchId") String batchId,
+                                                      @Param("slideId") String slideId,
+                                                      @Param("userId") String userId);
+
+    /** Every tracked response across all of that learner's attempts at the quiz. */
+    @Query(value = """
+            SELECT t.activity_id     AS activityId,
+                   t.question_id     AS questionId,
+                   t.response_status AS responseStatus,
+                   t.response_json   AS responseJson
+            FROM quiz_slide_question_tracked t
+                JOIN activity_log al ON al.id = t.activity_id
+            WHERE al.slide_id = :slideId
+              AND al.user_id = :userId
+              AND al.source_type = 'QUIZ'
+            """, nativeQuery = true)
+    List<LearnerResponseProjection> getLearnerResponses(@Param("slideId") String slideId,
+                                                        @Param("userId") String userId);
+
+    /** One attempt row of a learner's quiz history. */
+    interface LearnerAttemptProjection {
+        String getActivityId();
+        java.sql.Timestamp getAttemptedAt();
+        Long getEngagedMs();
+    }
+
+    /** One answer, tagged with the attempt it belongs to. */
+    interface LearnerResponseProjection {
+        String getActivityId();
+        String getQuestionId();
+        String getResponseStatus();
+        String getResponseJson();
+    }
 
     /**
      * The active questions of the quizzes in scope, with answer keys and marks.

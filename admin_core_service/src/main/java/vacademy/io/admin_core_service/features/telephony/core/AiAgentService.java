@@ -88,6 +88,8 @@ public class AiAgentService {
         // an out-of-range value to the TTS (pace 0.5–2.0, temperature 0.01–2.0).
         agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
         agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
+        // V504: the bot clamps to the same range (prosody.clamp_expand); 1.0 = off.
+        agent.setVoiceModulation(clamp(dto.getVoiceModulation(), 1.0, 2.5));
         agent.setSpeechCacheMode(normalizeSpeechCacheMode(dto.getSpeechCacheMode(),
                 agent.getSpeechCacheMode()));
         agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
@@ -293,6 +295,7 @@ public class AiAgentService {
                 .maxCallMinutes(a.getMaxCallMinutes())
                 .pace(a.getPace())
                 .temperature(a.getTemperature())
+                .voiceModulation(a.getVoiceModulation())
                 .ttsModel(a.getTtsModel())
                 .speechCacheMode(a.getSpeechCacheMode() == null
                         ? "OFF" : a.getSpeechCacheMode())

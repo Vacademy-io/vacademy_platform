@@ -12,7 +12,9 @@
         "discountOptionPercentage": "%",
         "discountOptionFlat": "₹",
         "reasonPlaceholder": "Motif",
-        "save": "Enregistrer"
+        "save": "Enregistrer",
+        "split": "Scinder",
+        "splitTitle": "Déplacer une partie du montant impayé vers une nouvelle échéance avec sa propre date"
     },
     "cpoDiscount": {
         "heading": "Remise",
@@ -66,5 +68,19 @@
         }
     },
     "loadingPlans": "Chargement des plans CPO…",
-    "loadPlansError": "Impossible de charger les plans CPO."
+    "loadPlansError": "Impossible de charger les plans CPO.",
+    "split": {
+        "heading": "Nouvelle échéance à partir des {{unpaid}} impayés",
+        "hint": "Le total du plan ne change pas — seule la date d'échéance de cette partie change.",
+        "amountLabel": "Montant à déplacer",
+        "startDateLabel": "Date de début",
+        "dueDateLabel": "Date d'échéance",
+        "save": "Créer l'échéance",
+        "saving": "Enregistrement…",
+        "cancel": "Annuler",
+        "amountError": "Saisissez un montant supérieur à 0 et jusqu'à {{unpaid}}",
+        "dueDateError": "Choisissez une date d'échéance pour la nouvelle échéance",
+        "successToast": "Nouvelle échéance de {{amount}} due le {{date}} ajoutée",
+        "errorToast": "Impossible de scinder cette échéance"
+    }
 }

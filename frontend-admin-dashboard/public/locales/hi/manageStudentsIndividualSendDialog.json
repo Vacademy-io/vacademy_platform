@@ -74,7 +74,9 @@
         "selectPlaceholder": "एक स्वीकृत टेम्पलेट चुनें",
         "emptyText": "आपकी खोज से मेल खाने वाला कोई स्वीकृत टेम्पलेट नहीं है।",
         "languageCodeLabel": "भाषा कोड",
-        "templatePreviewLabel": "टेम्पलेट पूर्वावलोकन"
+        "templatePreviewLabel": "टेम्पलेट पूर्वावलोकन",
+        "previewHint": "हाइलाइट किए गए हिस्से प्लेसहोल्डर हैं — अगले चरण में इन्हें इस शिक्षार्थी की जानकारी से भरा जाएगा।",
+        "headerBadge": "{{kind}} हेडर"
     },
     "mediaKind": {
         "image": "छवि",
@@ -95,7 +97,8 @@
         "sourcePlaceholder": "स्रोत चुनें...",
         "literalOption": "निश्चित मान...",
         "literalPlaceholder": "एक मान लिखें",
-        "unresolved": "(अनसुलझा)"
+        "unresolved": "(अनसुलझा)",
+        "livePreviewLabel": "संदेश पूर्वावलोकन"
     },
     "reviewStep": {
         "messageSent": "संदेश भेजा गया",
@@ -124,10 +127,21 @@
             "DELIVERED": "डिलीवर हो गया",
             "READ": "पढ़ा गया",
             "FAILED": "विफल"
-        }
+        },
+        "messagePreviewLabel": "जो संदेश भेजा जाएगा"
     },
     "footer": {
         "back": "पीछे",
         "next": "आगे"
+    },
+    "templatePicker": {
+        "showFullMessage": "पूरा संदेश देखें",
+        "showLess": "कम दिखाएं"
+    },
+    "waPreview": {
+        "image": "छवि",
+        "video": "वीडियो",
+        "document": "दस्तावेज़",
+        "emptyBody": "इस टेम्पलेट में कोई संदेश सामग्री नहीं है।"
     }
 }

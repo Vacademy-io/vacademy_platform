@@ -50,10 +50,14 @@ public final class AiCallQueueDTOs {
         private String callTrigger;
         private int priority;
         private String sourceRef;
+        /** The campaign name behind a BULK row, so two concurrent runs are distinguishable. */
+        private String sourceName;
         private String status;
         private String statusReason;
         private String responseId;
         private String userId;
+        /** The lead's name from their CRM record. Null when the record has none. */
+        private String leadName;
         private String phoneNumber;
         private String campaignId;
         private String campaignName;
@@ -75,6 +79,37 @@ public final class AiCallQueueDTOs {
         private Integer callDurationSeconds;
         /** True while the call is still up (non-terminal call-log status). */
         private boolean live;
+    }
+
+    /**
+     * One bulk run, as the campaign progress dialog needs it.
+     *
+     * <p>Counts come from the QUEUE, not the call log. The call log only knows about
+     * calls that already dialled, so a run of 100 against a 3-line fleet looked like a
+     * run of 3 — and a lead the queue cancelled or expired never produced a call-log row
+     * at all, so a progress bar counting them could never reach its own total.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BulkRunSummary {
+        private String audienceId;
+        /** Everything this run enqueued. The honest denominator. */
+        private long total;
+        private long waiting;
+        /** Handed to the provider, not yet finished. */
+        private long dialing;
+        /** Reached a terminal call status. */
+        private long completed;
+        /** Ended without a call: cancelled, expired, or failed to place. */
+        private long dropped;
+        /** completed + dropped — everything that will not change again. */
+        private long finished;
+        private boolean runFinished;
+        /** Rough time for what is still waiting, at this institute's current share. */
+        private long etaMinutes;
+        private Map<String, Long> byStatus;
     }
 
     /**

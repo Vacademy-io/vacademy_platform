@@ -69,6 +69,9 @@ function mergeWithDefaults(
     },
     sidebar: {
       visible: incoming?.sidebar?.visible ?? d.sidebar.visible,
+      // Absent on every settings blob saved before the getApp widget shipped —
+      // those institutes must keep the sidebar links they already had.
+      appLinks: incoming?.sidebar?.appLinks ?? d.sidebar.appLinks,
       tabs: mergeArrayById<StudentSidebarTabConfig>(
         incoming?.sidebar?.tabs,
         d.sidebar.tabs

@@ -28,6 +28,19 @@ public class AudienceResponse {
     @Column(name = "audience_id", nullable = true)
     private String audienceId;
 
+    /**
+     * The lead list this response was FIRST created in, set on the first migration and never
+     * overwritten. NULL means the lead has never been moved, so {@link #audienceId} is still the
+     * original.
+     *
+     * <p>Moving a lead rewrites campaign attribution — a list that acquired 500 leads reports 400
+     * once some move out. Source-attribution reporting should read
+     * {@code COALESCE(original_audience_id, audience_id)}. The full ordered chain of moves lives
+     * in the timeline as LEAD_LIST_CHANGED events; this column is the part a query can join on.</p>
+     */
+    @Column(name = "original_audience_id")
+    private String originalAudienceId;
+
     @Column(name = "user_id")
     private String userId; // Parent user ID (references auth_service.users)
 

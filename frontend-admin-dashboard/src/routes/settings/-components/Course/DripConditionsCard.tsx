@@ -16,6 +16,7 @@ import {
     type DripConditionsSettings,
     type DripScheduleDefaults,
 } from '@/types/course-settings';
+import { isProgressRule } from '@/utils/drip-conditions';
 import { Drop, Info, Warning } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useTranslation } from 'react-i18next';
@@ -52,9 +53,17 @@ export const DripConditionsCard: React.FC<DripConditionsCardProps> = ({ settings
     const updateSchedule = (patch: Partial<DripScheduleDefaults>) =>
         onUpdate({ ...settings, scheduleDefaults: { ...schedule, ...patch } });
 
-    // Rules already saved for this institute. Most were written while nothing
-    // read them, so the admin needs to see the number before switching them on.
-    const savedRuleCount = Array.isArray(settings.conditions) ? settings.conditions.length : 0;
+    // Progress rules already saved for this institute. Most were written while
+    // nothing read them, so the admin needs to see the number before switching
+    // them on. Date and day-wise rules are not counted: they already apply.
+    const savedRuleCount = (Array.isArray(settings.conditions) ? settings.conditions : [])
+        .filter((condition) => condition.enabled !== false)
+        .flatMap((condition) =>
+            Array.isArray(condition.drip_condition) ? condition.drip_condition : []
+        )
+        .filter(
+            (config) => config.is_enabled !== false && config.rules?.some(isProgressRule)
+        ).length;
     const isEnforcing = settings.applyConfiguredRules === true;
 
     return (

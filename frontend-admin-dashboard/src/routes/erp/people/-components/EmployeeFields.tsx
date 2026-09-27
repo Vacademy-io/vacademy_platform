@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
 import { cn } from '@/lib/utils';
 
@@ -47,11 +48,24 @@ export const toSelectOptions = (
 
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;
 
-export const EMPLOYMENT_TYPE_OPTIONS: SelectOption[] = EMPLOYMENT_TYPES.map((type) => ({
-    _id: type,
-    value: type,
-    label: humanizeToken(type),
-}));
+const EMPLOYMENT_TYPE_LABEL_KEYS: Record<(typeof EMPLOYMENT_TYPES)[number], string> = {
+    FULL_TIME: 'employmentType.fullTime',
+    PART_TIME: 'employmentType.partTime',
+    CONTRACT: 'employmentType.contract',
+    INTERN: 'employmentType.intern',
+};
+
+/**
+ * Module-scope constant (a `SelectOption[]`), so this is a `buildXxx(t)` factory —
+ * every call site must pass a `t` whose loaded namespaces include
+ * `erpEmployeeFields` (add it to that component's `useTranslation([...])` array).
+ */
+export const buildEmploymentTypeOptions = (t: TFunction): SelectOption[] =>
+    EMPLOYMENT_TYPES.map((type) => ({
+        _id: type,
+        value: type,
+        label: t(`erpEmployeeFields:${EMPLOYMENT_TYPE_LABEL_KEYS[type]}`),
+    }));
 
 export const EMPLOYMENT_STATUSES = [
     'ACTIVE',
@@ -63,11 +77,23 @@ export const EMPLOYMENT_STATUSES = [
     'ABSCONDING',
 ] as const;
 
-export const EMPLOYMENT_STATUS_OPTIONS: SelectOption[] = EMPLOYMENT_STATUSES.map((status) => ({
-    _id: status,
-    value: status,
-    label: humanizeToken(status),
-}));
+const EMPLOYMENT_STATUS_LABEL_KEYS: Record<(typeof EMPLOYMENT_STATUSES)[number], string> = {
+    ACTIVE: 'employmentStatus.active',
+    PROBATION: 'employmentStatus.probation',
+    NOTICE_PERIOD: 'employmentStatus.noticePeriod',
+    ON_LEAVE: 'employmentStatus.onLeave',
+    TERMINATED: 'employmentStatus.terminated',
+    RELIEVED: 'employmentStatus.relieved',
+    ABSCONDING: 'employmentStatus.absconding',
+};
+
+/** Same `erpEmployeeFields` namespace requirement as {@link buildEmploymentTypeOptions}. */
+export const buildEmploymentStatusOptions = (t: TFunction): SelectOption[] =>
+    EMPLOYMENT_STATUSES.map((status) => ({
+        _id: status,
+        value: status,
+        label: t(`erpEmployeeFields:${EMPLOYMENT_STATUS_LABEL_KEYS[status]}`),
+    }));
 
 /**
  * Statuses that end the employment. Choosing one of these requires a last working
@@ -115,8 +141,12 @@ export const EmploymentStatusChip = ({ status }: { status: string | null | undef
 export const isMaskedValue = (value: string | null | undefined): boolean =>
     !!value && value.includes('*');
 
-/** Placeholder used for a masked field the user has left alone. */
-export const UNCHANGED_PLACEHOLDER = 'unchanged';
+/**
+ * Placeholder used for a masked field the user has left alone. Same
+ * `erpEmployeeFields` namespace requirement as {@link buildEmploymentTypeOptions}.
+ */
+export const buildUnchangedPlaceholder = (t: TFunction): string =>
+    t('erpEmployeeFields:unchangedPlaceholder');
 
 /** One label/value pair in a read-only detail grid. */
 export const DetailField = ({

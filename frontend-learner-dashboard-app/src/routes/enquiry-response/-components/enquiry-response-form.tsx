@@ -30,10 +30,9 @@ import {
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { capitalise } from "@/utils/custom-field";
 import {
-  getCountryCode,
+  lookupCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
 import type { AudienceCampaignResponse } from "../-services/enquiry-campaign-services";
 import {
   submitEnquiryWithLead,
@@ -273,19 +272,23 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically, falling back to the institute's
-  // configured preferred country (commaSeparatedPreferredCountry) instead of
-  // a hardcoded default so the phone input honors institute settings.
-  const getPhoneCountryCode = () => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are.
+  //
+  // Undefined means "no such signal", and PhoneInputField then resolves the
+  // country itself through the portal's chain (institute preference, else the
+  // region the form is opened in). It has to be undefined rather than that
+  // chain's answer read here: a `country` prop overrides the field's own
+  // resolution, so passing a value read before domain routing replied would
+  // pin the field to the platform fallback (+91) even after the real
+  // preference arrived.
+  const getPhoneCountryCode = (): string | undefined => {
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
-      const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue, fallback);
+      return lookupCountryCode(formValues[countryFieldKey]?.value);
     }
-    return fallback;
+    return undefined;
   };
 
   const onSubmit = async (values: FormValues) => {

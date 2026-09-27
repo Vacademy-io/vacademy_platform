@@ -1,4 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { SidebarItem } from '@/routes/evaluator-ai/-components/layout-container/sidebar/sidebar-item';
 import { SidebarItemsData } from '@/routes/evaluator-ai/-components/layout-container/sidebar/utils';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
@@ -14,11 +15,13 @@ import { cn } from '@/lib/utils';
 
 export const InternalSidebarComponent = ({
     sidebarComponent,
-    mobileButtonText = 'Menu',
+    mobileButtonText,
 }: {
     sidebarComponent: React.ReactNode;
     mobileButtonText?: string;
 }) => {
+    const { t } = useTranslation('internalSidebarComponent');
+    const resolvedMobileButtonText = mobileButtonText ?? t('menu');
     const { data, isLoading } = useSuspenseQuery(useInstituteQuery());
     const { isTabVisible, isSubItemVisible } = useTabSettings();
     // Removed sub_modules dependency - use filterMenuItems directly
@@ -69,7 +72,7 @@ export const InternalSidebarComponent = ({
                         className="fixed bottom-6 start-4 z-50 rounded-full bg-primary-500 px-4 py-2 text-white shadow-xl hover:bg-primary-600 md:bottom-8 md:start-6"
                     >
                         <List className="mr-2 size-4" />
-                        {mobileButtonText}
+                        {resolvedMobileButtonText}
                     </Button>
                 </SheetTrigger>
                 <SheetContent
@@ -77,7 +80,7 @@ export const InternalSidebarComponent = ({
                     className="w-internal-sidebar-drawer overflow-y-auto bg-white p-0"
                 >
                     <SheetHeader className="sr-only px-3 pt-6">
-                        <SheetTitle>Navigation</SheetTitle>
+                        <SheetTitle>{t('navigation')}</SheetTitle>
                     </SheetHeader>
                     <div
                         className="flex h-full flex-col gap-6 pb-5 pt-10"

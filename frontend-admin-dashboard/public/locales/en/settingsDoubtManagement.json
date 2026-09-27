@@ -6,7 +6,8 @@
         "pushBlocked": "Notifications blocked. Unblock them from the browser padlock icon, then retry.",
         "saveSuccess": "Doubt management settings saved",
         "saveFailed": "Failed to save doubt management settings",
-        "duplicateType": "Duplicate query type key \"{{key}}\". Rename one of them."
+        "duplicateType": "Duplicate query type key \"{{key}}\". Rename one of them.",
+        "duplicateStatus": "Duplicate status key \"{{key}}\". Rename one of them."
     },
     "defaultAssignment": {
         "title": "Default auto-assignment",
@@ -157,5 +158,30 @@
     "saveButton": {
         "saving": "Saving…",
         "save": "Save settings"
+    },
+    "statuses": {
+        "title": "Doubt statuses",
+        "description": "The stages a doubt moves through on the staff side — Pending and Resolved are built in; add your own (In progress, Waiting on learner, Escalated…). Every status change and remark is recorded in the doubt's activity trail with who made it.",
+        "namePlaceholder": "Status name (e.g. In progress)",
+        "builtIn": "Built-in",
+        "removeStatus": "Remove status",
+        "color": "Status colour",
+        "kind": "Counts as",
+        "kinds": {
+            "OPEN": "Open",
+            "IN_PROGRESS": "In progress",
+            "RESOLVED": "Resolved"
+        },
+        "kindHint": {
+            "OPEN": "Learners see this as an open, unanswered doubt.",
+            "IN_PROGRESS": "Learners see this as being worked on. The doubt stays open.",
+            "RESOLVED": "Moving here resolves the doubt: the learner is notified and it leaves the pending lists."
+        },
+        "learnerLabel": "Learner sees",
+        "learnerLabelPlaceholder": "Same as \"{{label}}\"",
+        "thisStatus": "this status",
+        "enabled": "Enabled",
+        "addStatus": "Add status",
+        "trailNote": "Internal remarks and the assignment/status history are only ever shown to admins and teachers — learners see just the status label above."
     }
 }

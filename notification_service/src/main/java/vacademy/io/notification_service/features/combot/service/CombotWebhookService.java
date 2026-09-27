@@ -23,6 +23,7 @@ import vacademy.io.notification_service.features.combot.entity.ChannelToInstitut
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
 import vacademy.io.notification_service.features.combot.enums.CombotNotificationType;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppMessageType;
 import vacademy.io.notification_service.features.combot.repository.ChannelFlowConfigRepository;
@@ -59,6 +60,9 @@ public class CombotWebhookService {
     private final UserAnnouncementPreferenceService preferenceService;
     private final FlowActionRouter flowActionRouter;
     private final AdminCoreServiceClient adminCoreServiceClient;
+
+    /** Inbound types that can carry a user-typed caption. */
+    private static final Set<String> MEDIA_TYPES = Set.of("image", "video", "document");
 
     // --- FIX: CIRCULAR DEPENDENCY BREAKER ---
     // 1. Remove 'final' so Lombok doesn't put it in the constructor
@@ -333,8 +337,16 @@ public class CombotWebhookService {
                 // Extract sender name from contacts[0].profile.name
                 String senderName = extractSenderName(value);
 
+                // What the Inbox shows: the user's text, or a typed placeholder for a message that
+                // carries none (voice note, photo, location) so the bubble is never blank.
+                String displayBody = describeIncomingMessage(message, userText);
+                if (userText == null || userText.isBlank()) {
+                    log.warn("Inbound message carries no text: type={}, phone={}, messageId={}, displayedAs={}",
+                            message.get(CombotWebhookKeys.TYPE), userPhone, messageId, displayBody);
+                }
+
                 // Log Incoming
-                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId, senderName);
+                logIncomingMessage(messageId, userPhone, displayBody, receivingPhoneId, senderName, message);
 
                 // --- KEYWORD CHECK FOR OPT OUT ---
                 if (isOptOutKeyword(userText)) {
@@ -380,7 +392,7 @@ public class CombotWebhookService {
 
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
                 if (lastLogOpt.isPresent()) {
-                    lastTemplate = extractTemplateNameFromPayload(lastLogOpt.get().getMessagePayload());
+                    lastTemplate = legacyFlowTemplateOf(lastLogOpt.get());
                 }
                 log.info("Flow lookup: phone={}, lastTemplate={}, instituteId={}, channelType={}",
                         userPhone, lastTemplate, instituteId, channelType);
@@ -918,8 +930,14 @@ public class CombotWebhookService {
 
     // --- Log & Extraction Helpers ---
 
+    /**
+     * @param text    what the Inbox displays — see {@link #describeIncomingMessage}
+     * @param rawMessage the webhook's message object, stored verbatim on the row. Without it an
+     *                   inbound message we failed to render is undiagnosable after the fact.
+     */
     private void logIncomingMessage(String messageId, String fromPhone, String text,
-                                     String receivingChannelId, String senderName) {
+                                     String receivingChannelId, String senderName,
+                                     Map<String, Object> rawMessage) {
         try {
             NotificationLog logEntry = new NotificationLog();
             logEntry.setNotificationType(CombotNotificationType.WHATSAPP_INCOMING.getType());
@@ -927,6 +945,14 @@ public class CombotWebhookService {
             logEntry.setSource(CombotConstants.SOURCE_COMBOT);
             logEntry.setSourceId(messageId);
             logEntry.setBody(text);
+            if (rawMessage != null) {
+                try {
+                    logEntry.setMessagePayload(objectMapper.writeValueAsString(rawMessage));
+                } catch (Exception e) {
+                    log.warn("Failed to serialize incoming message payload", e);
+                    logEntry.setMessagePayload(String.valueOf(rawMessage));
+                }
+            }
             logEntry.setSenderBusinessChannelId(receivingChannelId);
             if (receivingChannelId != null) {
                 mappingRepository.findById(receivingChannelId)
@@ -977,6 +1003,24 @@ public class CombotWebhookService {
         }
     }
 
+    /**
+     * The "last template" a legacy ChannelFlowConfig keys on, for the last message we sent.
+     * <p>
+     * A chatbot-flow row now records its template and flow on message_payload so the Inbox can
+     * show them — but that must not re-route legacy flows. Those rows always read here as they did
+     * when they carried no payload: a sent one as {@code DEFAULT_TEMPLATE}, a refused one (FAILED
+     * marker) as {@code UNKNOWN_TEMPLATE}.
+     */
+    String legacyFlowTemplateOf(NotificationLog lastLog) {
+        if ("CHATBOT_FLOW".equals(lastLog.getSource())) {
+            String payload = lastLog.getMessagePayload();
+            boolean refused = payload != null && payload.contains(
+                    "\"deliveryStatus\":\"" + WhatsAppSendFailureService.FAILED_STATUS + "\"");
+            return refused ? CombotConstants.UNKNOWN_TEMPLATE : CombotConstants.DEFAULT_TEMPLATE;
+        }
+        return extractTemplateNameFromPayload(lastLog.getMessagePayload());
+    }
+
     private String extractTemplateNameFromPayload(String payloadJson) {
         if (payloadJson == null)
             return CombotConstants.DEFAULT_TEMPLATE;
@@ -999,6 +1043,13 @@ public class CombotWebhookService {
         }
     }
 
+    /**
+     * The user's own words, for flow routing and keyword matching — text, a tapped button/list
+     * title, or the caption typed alongside an image/video/document. Deliberately "" for a message
+     * that carries no text (a voice note, a bare photo): the flow engine and the opt-in/opt-out
+     * checks must not see a synthesised placeholder as if the user had typed it. Use
+     * {@link #describeIncomingMessage} for what the Inbox should display.
+     */
     private String extractMessageText(Map<String, Object> message) {
         try {
             String type = (String) message.get(CombotWebhookKeys.TYPE);
@@ -1010,12 +1061,94 @@ public class CombotWebhookService {
             if (WhatsAppMessageType.INTERACTIVE.getType().equals(type)) {
                 Map<String, Object> interactive = (Map<String, Object>) message
                         .get(WhatsAppMessageType.INTERACTIVE.getType());
-                if (interactive.containsKey("list_reply"))
-                    return (String) ((Map) interactive.get("list_reply")).get("title");
-                if (interactive.containsKey("button_reply"))
-                    return (String) ((Map) interactive.get("button_reply")).get("title");
+                if (interactive.containsKey(CombotWebhookKeys.LIST_REPLY))
+                    return (String) ((Map) interactive.get(CombotWebhookKeys.LIST_REPLY)).get(CombotWebhookKeys.TITLE);
+                if (interactive.containsKey(CombotWebhookKeys.BUTTON_REPLY))
+                    return (String) ((Map) interactive.get(CombotWebhookKeys.BUTTON_REPLY)).get(CombotWebhookKeys.TITLE);
             }
+            // A caption on an image/video/document IS text the user typed, so it routes like text.
+            String caption = mediaCaption(message, type);
+            if (caption != null)
+                return caption;
             return "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** The caption typed alongside a media message, or null when there is none. */
+    @SuppressWarnings("unchecked")
+    private String mediaCaption(Map<String, Object> message, String type) {
+        if (!MEDIA_TYPES.contains(type))
+            return null;
+        Object media = message.get(type);
+        if (!(media instanceof Map))
+            return null;
+        Object caption = ((Map<String, Object>) media).get(CombotWebhookKeys.CAPTION);
+        if (caption == null || caption.toString().isBlank())
+            return null;
+        return caption.toString();
+    }
+
+    /**
+     * What the WhatsApp Inbox shows for an inbound message. Falls back to a typed placeholder
+     * ("[voice note]", "[document: invoice.pdf]") whenever the message carries no text, so a
+     * received photo or voice note renders as something rather than an empty bubble.
+     */
+    @SuppressWarnings("unchecked")
+    private String describeIncomingMessage(Map<String, Object> message, String text) {
+        if (text != null && !text.isBlank())
+            return text;
+        try {
+            String type = (String) message.get(CombotWebhookKeys.TYPE);
+            if (type == null || type.isBlank())
+                return "";
+            switch (type) {
+                case "image":
+                    return "[image]";
+                case "video":
+                    return "[video]";
+                case "sticker":
+                    return "[sticker]";
+                case "audio": {
+                    Object audio = message.get("audio");
+                    boolean voice = audio instanceof Map
+                            && Boolean.TRUE.equals(((Map<String, Object>) audio).get("voice"));
+                    return voice ? "[voice note]" : "[audio]";
+                }
+                case "document": {
+                    Object doc = message.get("document");
+                    Object filename = doc instanceof Map ? ((Map<String, Object>) doc).get("filename") : null;
+                    return filename == null || filename.toString().isBlank()
+                            ? "[document]" : "[document: " + filename + "]";
+                }
+                case "location": {
+                    Object loc = message.get("location");
+                    Object name = loc instanceof Map ? ((Map<String, Object>) loc).get(CombotWebhookKeys.NAME) : null;
+                    return name == null || name.toString().isBlank()
+                            ? "[location]" : "[location: " + name + "]";
+                }
+                case "contacts":
+                    return "[contact card]";
+                case "reaction": {
+                    Object reaction = message.get("reaction");
+                    Object emoji = reaction instanceof Map ? ((Map<String, Object>) reaction).get("emoji") : null;
+                    return emoji == null || emoji.toString().isBlank()
+                            ? "[reaction]" : "[reaction: " + emoji + "]";
+                }
+                case "interactive": {
+                    Object interactive = message.get(CombotWebhookKeys.INTERACTIVE);
+                    if (interactive instanceof Map && ((Map<String, Object>) interactive).containsKey("nfm_reply"))
+                        return "[form response]";
+                    return "[interactive reply]";
+                }
+                case "order":
+                    return "[order]";
+                case "unsupported":
+                    return "[unsupported message]";
+                default:
+                    return "[" + type + "]";
+            }
         } catch (Exception e) {
             return "";
         }

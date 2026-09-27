@@ -728,10 +728,15 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
     }
   }, [currentTime]);
 
-  // Sync tracking data
+  // Sync tracking data. useVideoSync returns a fresh closure on every render,
+  // so keep the latest one in a ref and give callers a stable identity — an
+  // effect that depends on this must not be torn down and rebuilt each render.
+  // (The YouTube player gets this for free by holding its interval in a ref.)
+  const syncFnRef = useRef(syncVideoTrackingData);
+  syncFnRef.current = syncVideoTrackingData;
   const syncTrackingData = useCallback(() => {
-    syncVideoTrackingData();
-  }, [syncVideoTrackingData]);
+    syncFnRef.current();
+  }, []);
 
   // Handle play state changes for tracking
   useEffect(() => {
@@ -755,6 +760,12 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   // Periodic sync — cadence = min(video duration, 60s). Short videos sync at
   // their own length so the worst-case unsynced window is bounded by the
   // video length, not by a fixed 60s.
+  //
+  // Every dependency here must be stable while playing. This player re-renders
+  // ~4x a second (setCurrentTime from the 250ms progress poll, setElapsedTime
+  // every 1s); anything that changes identity per render tears the interval
+  // down before it can ever fire, which is how the whole periodic sync went
+  // silently dead and left one POST per viewing session.
   useEffect(() => {
     if (!isPlayed) return;
     const periodMs = Math.max(

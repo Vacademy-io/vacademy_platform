@@ -1,0 +1,9 @@
+{
+    "saveCourseFirst": "Save the course first to configure its settings.",
+    "tabs": {
+        "lms": "LMS Integration",
+        "workflows": "Workflow Triggers",
+        "suborg": "Sub-organization",
+        "json": "Advanced Settings (JSON)"
+    }
+}

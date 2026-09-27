@@ -9,6 +9,7 @@ import { MyButton } from '@/components/design-system/button';
 import SelectChips from '@/components/design-system/SelectChips';
 import { toast } from 'sonner';
 import { Plus, Trash } from '@phosphor-icons/react';
+import { ColorPicker } from '@/components/ui/color-picker';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -85,6 +86,20 @@ interface SubOrgNotificationPrefs {
     notify_parent_staff: boolean;
 }
 
+/** Learner-facing meaning of a status; drives the coarse ACTIVE/RESOLVED state and the learner tone. */
+type WorkflowStatusKind = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+
+/** Mirrors the backend WorkflowStatusConfig (DOUBT_MANAGEMENT_SETTING.statuses). */
+interface WorkflowStatusConfig {
+    key: string;
+    label: string;
+    learner_label?: string | null;
+    kind: WorkflowStatusKind;
+    color?: string | null;
+    enabled: boolean;
+    is_system: boolean;
+}
+
 interface DoubtManagementSettingsData {
     default_assignee_source: DoubtAssigneeSource;
     fallback_to_batch_when_no_subject_teacher: boolean;
@@ -92,6 +107,67 @@ interface DoubtManagementSettingsData {
     learner_query: LearnerQueryPrefs;
     query_types: QueryTypeConfig[];
     sub_org_notifications: SubOrgNotificationPrefs;
+    /** Configurable workflow statuses. PENDING and RESOLVED are built in and always present. */
+    statuses: WorkflowStatusConfig[];
+}
+
+const STATUS_KINDS: WorkflowStatusKind[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED'];
+
+// The two built-ins — mirrors DoubtStatusCatalog.defaults() on the backend. Labels are editable,
+// keys and kinds are not (the learner app and every filter lean on PENDING/RESOLVED).
+const SYSTEM_STATUSES: WorkflowStatusConfig[] = [
+    {
+        key: 'PENDING',
+        label: 'Pending',
+        learner_label: null,
+        kind: 'OPEN',
+        color: null,
+        enabled: true,
+        is_system: true,
+    },
+    {
+        key: 'RESOLVED',
+        label: 'Resolved',
+        learner_label: null,
+        kind: 'RESOLVED',
+        color: null,
+        enabled: true,
+        is_system: true,
+    },
+];
+
+/** Same normalisation the backend applies: built-ins guaranteed around the stored list. */
+function normalizeStatuses(raw: unknown): WorkflowStatusConfig[] {
+    const stored = Array.isArray(raw) ? (raw as Partial<WorkflowStatusConfig>[]) : [];
+    const out: WorkflowStatusConfig[] = [];
+    let hasPending = false;
+    let hasResolved = false;
+    for (const s of stored) {
+        const key = (s?.key ?? '').trim().toUpperCase();
+        if (!key) continue;
+        if (key === 'PENDING') hasPending = true;
+        if (key === 'RESOLVED') hasResolved = true;
+        const kindRaw = (s.kind ?? '').toString().toUpperCase() as WorkflowStatusKind;
+        out.push({
+            key,
+            label: s.label?.trim() || key,
+            learner_label: s.learner_label ?? null,
+            kind:
+                key === 'PENDING'
+                    ? 'OPEN'
+                    : key === 'RESOLVED'
+                      ? 'RESOLVED'
+                      : STATUS_KINDS.includes(kindRaw)
+                        ? kindRaw
+                        : 'OPEN',
+            color: s.color ?? null,
+            enabled: s.enabled !== false,
+            is_system: key === 'PENDING' || key === 'RESOLVED' || !!s.is_system,
+        });
+    }
+    if (!hasPending) out.unshift({ ...SYSTEM_STATUSES[0]! });
+    if (!hasResolved) out.push({ ...SYSTEM_STATUSES[1]! });
+    return out;
 }
 
 const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
@@ -207,6 +283,7 @@ const DEFAULT_SETTINGS: DoubtManagementSettingsData = {
     learner_query: { ...DEFAULT_LEARNER_QUERY },
     query_types: DEFAULT_QUERY_TYPES.map((t) => ({ ...t })),
     sub_org_notifications: { ...DEFAULT_SUB_ORG_NOTIFICATIONS },
+    statuses: SYSTEM_STATUSES.map((s) => ({ ...s })),
 };
 
 const SETTING_KEY = 'DOUBT_MANAGEMENT_SETTING';
@@ -294,6 +371,7 @@ function mergeWithDefaults(
             ...DEFAULT_SUB_ORG_NOTIFICATIONS,
             ...(raw.sub_org_notifications ?? {}),
         },
+        statuses: normalizeStatuses(raw.statuses),
     };
 }
 
@@ -439,6 +517,42 @@ export default function DoubtManagementSettings() {
         setHasChanges(true);
     };
 
+    const updateStatus = (index: number, patch: Partial<WorkflowStatusConfig>) => {
+        setSettings((prev) => ({
+            ...prev,
+            statuses: prev.statuses.map((st, i) => (i === index ? { ...st, ...patch } : st)),
+        }));
+        setHasChanges(true);
+    };
+
+    // New statuses slot in before RESOLVED so the list reads as a left-to-right workflow.
+    const addStatus = () => {
+        setSettings((prev) => {
+            const resolvedIdx = prev.statuses.findIndex((st) => st.key === 'RESOLVED');
+            const next: WorkflowStatusConfig = {
+                key: '',
+                label: '',
+                learner_label: null,
+                kind: 'IN_PROGRESS',
+                color: null,
+                enabled: true,
+                is_system: false,
+            };
+            const statuses = [...prev.statuses];
+            statuses.splice(resolvedIdx < 0 ? statuses.length : resolvedIdx, 0, next);
+            return { ...prev, statuses };
+        });
+        setHasChanges(true);
+    };
+
+    const removeStatus = (index: number) => {
+        setSettings((prev) => ({
+            ...prev,
+            statuses: prev.statuses.filter((_, i) => i !== index),
+        }));
+        setHasChanges(true);
+    };
+
     const showFallbackToggle = settings.default_assignee_source === 'SUBJECT_TEACHER';
     const subOrgLabel = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
 
@@ -470,7 +584,27 @@ export default function DoubtManagementSettings() {
                 assignee: normalizeAssignee(qt.assignee),
             });
         }
-        save({ ...settings, query_types: normalizedTypes });
+        // Statuses: drop blank rows, give new ones a stable UPPER_SNAKE key, keep keys unique.
+        const seenStatus = new Set<string>();
+        const normalizedStatuses: WorkflowStatusConfig[] = [];
+        for (const st of settings.statuses) {
+            const label = st.label.trim();
+            if (!label && !st.is_system) continue;
+            const key = (st.is_system ? st.key : st.key || slugifyKey(label)).toUpperCase();
+            if (seenStatus.has(key)) {
+                toast.error(t('toast.duplicateStatus', { key }));
+                return;
+            }
+            seenStatus.add(key);
+            normalizedStatuses.push({
+                ...st,
+                key,
+                label: label || st.label,
+                learner_label: st.learner_label?.trim() || null,
+                color: st.color?.trim() || null,
+            });
+        }
+        save({ ...settings, query_types: normalizedTypes, statuses: normalizedStatuses });
     };
 
     if (isLoading) {
@@ -634,10 +768,9 @@ export default function DoubtManagementSettings() {
                                             </span>
                                             <div>
                                                 <div className="text-sm font-medium text-neutral-800">
-                                                    {t(
-                                                        `subOrg.recipients.${opt.i18nKey}.title`,
-                                                        { label: subOrgLabel }
-                                                    )}
+                                                    {t(`subOrg.recipients.${opt.i18nKey}.title`, {
+                                                        label: subOrgLabel,
+                                                    })}
                                                 </div>
                                                 <p className="mt-0.5 text-xs text-neutral-600">
                                                     {t(
@@ -758,6 +891,13 @@ export default function DoubtManagementSettings() {
                 onUpdate={updateQueryType}
                 onAdd={addQueryType}
                 onRemove={removeQueryType}
+            />
+
+            <StatusesCard
+                statuses={settings.statuses}
+                onUpdate={updateStatus}
+                onAdd={addStatus}
+                onRemove={removeStatus}
             />
 
             <LearnerQueryCard prefs={settings.learner_query} onChange={updateLearnerQuery} />
@@ -1197,6 +1337,135 @@ function QueryTypesCard({
                         {t('queryTypes.addType')}
                     </span>
                 </MyButton>
+            </CardContent>
+        </Card>
+    );
+}
+
+/**
+ * Workflow statuses a doubt moves through on the admin/teacher side. Each status has a kind
+ * (open / in progress / resolved) that the learner app tones by and that keeps the built-in
+ * resolved/pending behaviour intact, plus an optional learner-facing label so internal wording
+ * ("Escalated to HOD") never leaks to a learner.
+ */
+function StatusesCard({
+    statuses,
+    onUpdate,
+    onAdd,
+    onRemove,
+}: {
+    statuses: WorkflowStatusConfig[];
+    onUpdate: (index: number, patch: Partial<WorkflowStatusConfig>) => void;
+    onAdd: () => void;
+    onRemove: (index: number) => void;
+}) {
+    const { t } = useTranslation('settingsDoubtManagement');
+    const selectCls =
+        'rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 focus:border-primary-400 focus:outline-none disabled:bg-neutral-50 disabled:text-neutral-500';
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>{t('statuses.title')}</CardTitle>
+                <CardDescription>{t('statuses.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <div className="space-y-3">
+                    {statuses.map((st, i) => (
+                        <div
+                            key={st.is_system ? st.key : `custom-${i}`}
+                            className="space-y-3 rounded-lg border border-neutral-200 bg-white p-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                <ColorPicker
+                                    value={st.color || ''}
+                                    onChange={(v) => onUpdate(i, { color: v })}
+                                    aria-label={t('statuses.color')}
+                                    className="size-9 shrink-0"
+                                />
+                                <Input
+                                    placeholder={t('statuses.namePlaceholder')}
+                                    value={st.label}
+                                    onChange={(e) => onUpdate(i, { label: e.target.value })}
+                                    className="h-9 flex-1"
+                                    aria-label={t('statuses.namePlaceholder')}
+                                />
+                                {st.is_system ? (
+                                    <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">
+                                        {t('statuses.builtIn')}
+                                    </span>
+                                ) : (
+                                    <MyButton
+                                        buttonType="text"
+                                        layoutVariant="icon"
+                                        scale="small"
+                                        aria-label={t('statuses.removeStatus')}
+                                        onClick={() => onRemove(i)}
+                                        className="shrink-0 !text-neutral-400 hover:!text-danger-500"
+                                    >
+                                        <Trash className="size-4" />
+                                    </MyButton>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                <label className="flex items-center gap-2 text-xs text-neutral-700">
+                                    <span className="font-medium">{t('statuses.kind')}</span>
+                                    <select
+                                        className={selectCls}
+                                        value={st.kind}
+                                        disabled={st.is_system}
+                                        onChange={(e) =>
+                                            onUpdate(i, {
+                                                kind: e.target.value as WorkflowStatusKind,
+                                            })
+                                        }
+                                    >
+                                        {STATUS_KINDS.map((k) => (
+                                            <option key={k} value={k}>
+                                                {t(`statuses.kinds.${k}`)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="flex min-w-60 flex-1 items-center gap-2 text-xs text-neutral-700">
+                                    <span className="shrink-0 font-medium">
+                                        {t('statuses.learnerLabel')}
+                                    </span>
+                                    <Input
+                                        placeholder={t('statuses.learnerLabelPlaceholder', {
+                                            label: st.label || t('statuses.thisStatus'),
+                                        })}
+                                        value={st.learner_label ?? ''}
+                                        onChange={(e) =>
+                                            onUpdate(i, { learner_label: e.target.value })
+                                        }
+                                        className="h-8 flex-1"
+                                    />
+                                </label>
+                                {!st.is_system && (
+                                    <label className="flex items-center gap-2">
+                                        <Switch
+                                            checked={st.enabled !== false}
+                                            onCheckedChange={(v) => onUpdate(i, { enabled: v })}
+                                        />
+                                        <span className="text-xs text-neutral-700">
+                                            {t('statuses.enabled')}
+                                        </span>
+                                    </label>
+                                )}
+                            </div>
+                            <p className="text-xs text-neutral-500">
+                                {t(`statuses.kindHint.${st.kind}`)}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+                <MyButton buttonType="secondary" scale="small" onClick={onAdd}>
+                    <Plus className="size-4" />
+                    {t('statuses.addStatus')}
+                </MyButton>
+                <p className="text-xs text-neutral-500">{t('statuses.trailNote')}</p>
             </CardContent>
         </Card>
     );

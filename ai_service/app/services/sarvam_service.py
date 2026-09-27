@@ -150,6 +150,15 @@ class SarvamTTSStream:
 # Main service
 # ---------------------------------------------------------------------------
 
+class SarvamSTTError(RuntimeError):
+    """Sarvam speech-to-text failed (HTTP error or transport). Carries the status
+    so the caller can tell a rejected upload from genuinely empty speech."""
+
+    def __init__(self, message: str, status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
+
+
 class SarvamService:
     """Wraps Sarvam AI TTS and STT APIs (REST + WebSocket)."""
 
@@ -172,6 +181,7 @@ class SarvamService:
         text: str,
         language: str = "en-IN",
         voice: str = "shubh",
+        pace: Optional[float] = None,
     ) -> bytes:
         """Convert text to speech audio bytes using Sarvam Bulbul v3.
 
@@ -194,7 +204,7 @@ class SarvamService:
 
         async with httpx.AsyncClient(timeout=REST_TIMEOUT_SECONDS) as client:
             for chunk in chunks:
-                audio = await self._tts_single(client, chunk, language, voice)
+                audio = await self._tts_single(client, chunk, language, voice, pace)
                 if audio:
                     audio_parts.append(audio)
 
@@ -206,6 +216,7 @@ class SarvamService:
         text: str,
         language: str,
         voice: str,
+        pace: Optional[float] = None,
     ) -> bytes:
         """Synthesize a single text chunk (<=2500 chars)."""
         body = {
@@ -216,6 +227,8 @@ class SarvamService:
             "speech_sample_rate": 24000,
             "enable_preprocessing": True,
         }
+        if pace is not None and abs(float(pace) - 1.0) >= 0.05:
+            body["pace"] = round(max(0.5, min(2.0, float(pace))), 2)
         try:
             response = await client.post(
                 TTS_ENDPOINT,
@@ -268,11 +281,28 @@ class SarvamService:
         if not audio_bytes:
             return ""
 
+        upload_type = (mime_type or "audio/wav").split(";")[0].strip() or "audio/wav"
+
+        # Sarvam rejects clips over 30 s with HTTP 400. A PCM WAV can be cut on
+        # frame boundaries, so transcribe it in <=29 s pieces and join them.
+        if upload_type in ("audio/wav", "audio/x-wav", "audio/wave"):
+            from .audio_utils import STT_CHUNK_SECONDS, split_wav, wav_duration_seconds
+
+            duration = wav_duration_seconds(audio_bytes)
+            if duration and duration > STT_CHUNK_SECONDS:
+                pieces = split_wav(audio_bytes, STT_CHUNK_SECONDS)
+                logger.info("STT: %.1fs clip split into %d pieces", duration, len(pieces))
+                texts = []
+                for piece in pieces:
+                    text = await self.speech_to_text(piece, language=language, mime_type="audio/wav")
+                    if text.strip():
+                        texts.append(text.strip())
+                return " ".join(texts)
+
         headers = {
             "api-subscription-key": self.api_key,
         }
 
-        upload_type = (mime_type or "audio/wav").split(";")[0].strip() or "audio/wav"
         upload_name = f"audio.{_AUDIO_EXTENSIONS.get(upload_type, 'wav')}"
 
         form_data: dict = {"model": "saaras:v3"}
@@ -290,17 +320,22 @@ class SarvamService:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("transcript", "")
+                return data.get("transcript", "") or ""
         except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:500]
             logger.error(
-                "Sarvam STT HTTP error %s: %s",
-                exc.response.status_code,
-                exc.response.text[:500],
+                "Sarvam STT HTTP error %s (upload %s, %d bytes): %s",
+                exc.response.status_code, upload_type, len(audio_bytes), body,
             )
-            return ""
-        except Exception:
+            # Surfaced, not swallowed: an empty string here used to read as
+            # "the student said nothing" and hid a broken upload for days.
+            raise SarvamSTTError(f"Sarvam STT HTTP {exc.response.status_code}: {body[:120]}",
+                                 status=exc.response.status_code) from exc
+        except SarvamSTTError:
+            raise
+        except Exception as exc:
             logger.exception("Sarvam STT request failed")
-            return ""
+            raise SarvamSTTError(f"Sarvam STT request failed: {exc}") from exc
 
     # ------------------------------------------------------------------
     # WebSocket: Streaming STT

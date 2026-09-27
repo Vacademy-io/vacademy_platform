@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { createLazyFileRoute } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '../-components/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
@@ -64,6 +65,7 @@ export const Route = createLazyFileRoute('/evaluator-ai/assessment/')({
 });
 
 function RouteComponent() {
+    const { t } = useTranslation('evaluatorAiAssessmentIndex');
     const { setNavHeading } = useNavHeadingStore();
     const navigate = useNavigate();
     const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -86,7 +88,7 @@ function RouteComponent() {
     });
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Assessment</h1>);
+        setNavHeading(<h1 className="text-lg">{t('navHeading')}</h1>);
         const storedData = localStorage.getItem('assessments');
         if (storedData) {
             try {
@@ -124,7 +126,7 @@ function RouteComponent() {
                 {assessments.length > 0 ? (
                     <div className="flex flex-col space-y-5">
                         <div className="flex w-full items-center justify-between">
-                            <h1 className="text-xl font-semibold">Assessment List</h1>
+                            <h1 className="text-xl font-semibold">{t('assessmentListHeading')}</h1>
                             <MyButton
                                 scale="large"
                                 buttonType="primary"
@@ -135,7 +137,7 @@ function RouteComponent() {
                                 }
                             >
                                 <CalendarBlank size={32} />
-                                Create Assessment
+                                {t('createAssessment')}
                             </MyButton>
                         </div>
 
@@ -157,7 +159,9 @@ function RouteComponent() {
                                                 {assessment.title}
                                             </h3>
                                             <span className="text-xs text-gray-500">
-                                                Assessment ID: {assessment.assessmentId}
+                                                {t('assessmentIdLabel', {
+                                                    id: assessment.assessmentId,
+                                                })}
                                             </span>
                                         </div>
                                     </AccordionTrigger>
@@ -167,7 +171,7 @@ function RouteComponent() {
                                             <div className="py-4 text-center">
                                                 <Loader2 className="mx-auto size-6 animate-spin" />
                                                 <p className="mt-2 text-sm text-gray-500">
-                                                    Loading assessment details...
+                                                    {t('loadingDetails')}
                                                 </p>
                                             </div>
                                         ) : assessmentDetails[assessment.assessmentId] ? (
@@ -186,13 +190,13 @@ function RouteComponent() {
                                                         <div className="space-y-1">
                                                             <div className="mb-2 grid grid-cols-6 text-sm font-medium text-muted-foreground">
                                                                 <div className="col-span-3">
-                                                                    Question
+                                                                    {t('columnQuestion')}
                                                                 </div>
                                                                 <div className="col-span-2">
-                                                                    Answer
+                                                                    {t('columnAnswer')}
                                                                 </div>
                                                                 <div className="col-span-1">
-                                                                    Criteria
+                                                                    {t('columnCriteria')}
                                                                 </div>
                                                             </div>
 
@@ -291,7 +295,7 @@ function RouteComponent() {
                                                             e.stopPropagation();
                                                             if (
                                                                 confirm(
-                                                                    'Are you sure you want to delete this assessment? '
+                                                                    t('confirmDeleteAssessment')
                                                                 )
                                                             ) {
                                                                 const updatedAssessments =
@@ -310,13 +314,13 @@ function RouteComponent() {
                                                             }
                                                         }}
                                                     >
-                                                        Delete
+                                                        {t('delete')}
                                                     </button>
                                                 </div>
                                             </div>
                                         ) : (
                                             <div className="py-4 text-center text-gray-500">
-                                                Failed to load assessment details
+                                                {t('failedToLoadDetails')}
                                             </div>
                                         )}
                                     </AccordionContent>
@@ -327,7 +331,7 @@ function RouteComponent() {
                 ) : (
                     <div className="py-10 text-center text-gray-500">
                         <Examination className="mx-auto mb-4 size-40 text-gray-400" />
-                        <p className="mb-2">No assessments available</p>
+                        <p className="mb-2">{t('noAssessmentsAvailable')}</p>
                         <MyButton
                             scale="large"
                             buttonType="primary"
@@ -338,7 +342,7 @@ function RouteComponent() {
                             }
                         >
                             <CalendarBlank size={32} />
-                            Create Assessment
+                            {t('createAssessment')}
                         </MyButton>
                     </div>
                 )}
@@ -348,9 +352,10 @@ function RouteComponent() {
 }
 
 function ExplanationPreview({ explanation }: { explanation: string }) {
+    const { t } = useTranslation('evaluatorAiAssessmentIndex');
     const [expanded, setExpanded] = useState(false);
 
-    const explanationHtml = explanation || 'No answer available';
+    const explanationHtml = explanation || t('noAnswerAvailable');
     const plainText = explanationHtml.replace(/<[^>]+>/g, '').trim();
     const words = plainText.split(/\s+/);
     const preview = words.slice(0, 10).join(' ');
@@ -368,7 +373,7 @@ function ExplanationPreview({ explanation }: { explanation: string }) {
                             setExpanded((prev) => !prev);
                         }}
                     >
-                        {expanded ? 'View Less' : 'View More'}
+                        {expanded ? t('viewLess') : t('viewMore')}
                     </button>
                 </>
             )}

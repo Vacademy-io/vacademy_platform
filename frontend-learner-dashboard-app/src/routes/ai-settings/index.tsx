@@ -20,18 +20,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import {
   useGetUserApiKeys,
   useSaveUserApiKeys,
   useDeleteUserApiKeys,
   useGetTokenUsage,
 } from "@/services/ai-settings-api";
-import { Eye, EyeSlash, Key, Trash, FloppyDisk, WarningCircle, CheckCircle, CurrencyDollar } from "@phosphor-icons/react";
+import { Eye, EyeSlash, Key, Trash, FloppyDisk, WarningCircle, CheckCircle, CurrencyDollar, Gear } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { AI_SERVICE_BASE_URL } from "@/constants/urls";
+import {
+  setAiSettingsShortcutEnabled,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 
 import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
@@ -350,7 +355,21 @@ function APIKeyManagement() {
   );
 }
 
-function TokenUsage() {
+/** Shown wherever the API has no value to report for a usage row. */
+const EMPTY_CELL = "\u2014";
+
+/**
+ * created_at is a plain string from the API; anything unparseable would throw
+ * out of `format` and take the tab down with it.
+ */
+function formatUsageDate(value: string | null | undefined): string {
+  if (!value) return EMPTY_CELL;
+  const date = new Date(value);
+  return isValid(date) ? format(date, "MMM d, yyyy HH:mm") : EMPTY_CELL;
+}
+
+// Exported for the regression test that renders a priceless usage row.
+export function TokenUsage() {
   const { t } = useTranslation("miscRoutesB");
   const [dateRange, setDateRange] = useState({
     start_date: format(
@@ -362,12 +381,20 @@ function TokenUsage() {
 
   const { data: tokenUsage, isLoading } = useGetTokenUsage(dateRange);
 
-  const totalCost =
-    tokenUsage?.records.reduce((sum, record) => sum + record.total_price, 0) ||
-    0;
-  const totalTokens =
-    tokenUsage?.records.reduce((sum, record) => sum + record.total_tokens, 0) ||
-    0;
+  // The API leaves every price null for TTS rows and models with no configured
+  // price, so nothing here may assume a number is present — a bare
+  // `total_price.toFixed()` is what used to crash this whole tab.
+  const rawRecords = tokenUsage?.records;
+  const records = Array.isArray(rawRecords) ? rawRecords : [];
+
+  const totalCost = records.reduce(
+    (sum, record) => sum + (record.total_price ?? 0),
+    0
+  );
+  const totalTokens = records.reduce(
+    (sum, record) => sum + (record.total_tokens ?? 0),
+    0
+  );
 
   return (
     <Card>
@@ -442,7 +469,7 @@ function TokenUsage() {
           <div className="flex items-center justify-center p-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : tokenUsage && tokenUsage.records.length > 0 ? (
+        ) : records.length > 0 ? (
           <div className="space-y-3">
             <Label>{t("aiSettings.tokenUsage.recentActivity")}</Label>
             <div className="border rounded-lg overflow-hidden">
@@ -458,23 +485,22 @@ function TokenUsage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {tokenUsage.records.map((record) => (
+                    {records.map((record) => (
                       <tr key={record.id} className="hover:bg-muted/50">
                         <td className="p-3">
-                          {format(
-                            new Date(record.created_at),
-                            "MMM d, yyyy HH:mm"
-                          )}
+                          {formatUsageDate(record.created_at)}
                         </td>
                         <td className="p-3 capitalize">
-                          {record.api_provider}
+                          {record.api_provider || EMPTY_CELL}
                         </td>
-                        <td className="p-3">{record.model}</td>
+                        <td className="p-3">{record.model || EMPTY_CELL}</td>
                         <td className="p-3 text-end">
-                          {record.total_tokens.toLocaleString()}
+                          {(record.total_tokens ?? 0).toLocaleString()}
                         </td>
                         <td className="p-3 text-end">
-                          ${record.total_price.toFixed(4)}
+                          {record.total_price == null
+                            ? EMPTY_CELL
+                            : `$${record.total_price.toFixed(4)}`}
                         </td>
                       </tr>
                     ))}
@@ -496,6 +522,49 @@ function TokenUsage() {
   );
 }
 
+function ChatbotPreferences() {
+  const { t } = useTranslation("miscRoutesB");
+  const shortcutEnabled = useAiSettingsShortcutEnabled();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Gear className="h-5 w-5" />
+          {t("aiSettings.chatbot.title")}
+        </CardTitle>
+        <CardDescription>
+          {t("aiSettings.chatbot.description")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="chatbot-settings-shortcut">
+              {t("aiSettings.chatbot.shortcut.label")}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {t("aiSettings.chatbot.shortcut.hint")}
+            </p>
+          </div>
+          <Switch
+            id="chatbot-settings-shortcut"
+            checked={shortcutEnabled}
+            onCheckedChange={(checked) => {
+              setAiSettingsShortcutEnabled(checked);
+              toast.success(
+                checked
+                  ? t("aiSettings.chatbot.shortcut.toast.enabled")
+                  : t("aiSettings.chatbot.shortcut.toast.disabled")
+              );
+            }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AISettings() {
   const { t } = useTranslation("miscRoutesB");
   return (
@@ -507,6 +576,8 @@ function AISettings() {
             {t("aiSettings.page.description")}
           </p>
         </div>
+
+        <ChatbotPreferences />
 
         <Tabs defaultValue="api-keys" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">

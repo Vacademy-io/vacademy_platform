@@ -18,7 +18,9 @@
             "featuresHeading": "विशेषताएं",
             "addFeaturePlaceholder": "एक विशेषता जोड़ें",
             "addFeatureButton": "जोड़ें",
-            "removeButton": "अंतराल हटाएं"
+            "removeButton": "अंतराल हटाएं",
+            "planChangeLabel": "Members can switch to this plan",
+            "planChangeHint": "(turn on plan switching for this option first)"
         }
     }
 }

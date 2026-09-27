@@ -1,0 +1,20 @@
+{
+    "viewEditCriteria": "عرض/تعديل المعايير",
+    "markingCriteriaForMarks_zero": "معايير التصحيح لعدم وجود درجات",
+    "markingCriteriaForMarks_one": "معايير التصحيح لدرجة واحدة",
+    "markingCriteriaForMarks_two": "معايير التصحيح لدرجتين",
+    "markingCriteriaForMarks_few": "معايير التصحيح لـ {{count}} درجات",
+    "markingCriteriaForMarks_many": "معايير التصحيح لـ {{count}} درجة",
+    "markingCriteriaForMarks_other": "معايير التصحيح لـ {{count}} درجة",
+    "removeAll": "إزالة الكل",
+    "selectAll": "تحديد الكل",
+    "selectedCriteria": "المعايير المحددة:",
+    "columnCriteria": "المعايير",
+    "columnMarks": "الدرجات",
+    "columnAction": "الإجراء",
+    "noCriteriaSelected": "لم يتم تحديد أي معيار، يرجى تحديد معيار من القائمة المتاحة",
+    "customCriteria": "معيار مخصص",
+    "addCustomCriteria": "إضافة معيار مخصص:",
+    "enterCriteriaDescription": "أدخل وصف المعيار",
+    "predefinedCriteria": "معايير محددة مسبقًا"
+}

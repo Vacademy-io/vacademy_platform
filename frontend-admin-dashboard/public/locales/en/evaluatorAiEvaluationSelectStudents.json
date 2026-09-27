@@ -1,0 +1,40 @@
+{
+    "dialog": {
+        "title": "Select {{term}} for Evaluation"
+    },
+    "table": {
+        "name": "Name",
+        "enrollmentId": "Enrollment ID",
+        "attemptCount": "Attempt Count",
+        "currentPdfId": "Current PDF ID",
+        "notAvailable": "N/A",
+        "attemptsCount_one": "{{count}} Attempt",
+        "attemptsCount_other": "{{count}} Attempts",
+        "attemptLabel": "Attempt {{number}}",
+        "evaluatingWithAssessment": "Evaluating {{term}} with {{assessment}}...",
+        "emptyState": "No enrolled {{term}} found.",
+        "submitSelected": "Submit Selected ({{count}})"
+    },
+    "pagination": {
+        "pageInfo": "Page {{current}} of {{total}}",
+        "previous": "Previous",
+        "next": "Next",
+        "selectedCount_one": "{{count}} selected",
+        "selectedCount_other": "{{count}} selected"
+    },
+    "common": {
+        "cancel": "Cancel"
+    },
+    "assessmentDialog": {
+        "title": "Select Assessment",
+        "assessmentLabel": "Assessment",
+        "selectPlaceholder": "Select an assessment",
+        "evaluating": "Evaluating...",
+        "evaluateButton": "Evaluate"
+    },
+    "toast": {
+        "selectAtLeastOneStudent": "Please select at least one student",
+        "selectAssessment": "Please select an assessment",
+        "evaluationFailed": "Evaluation failed. Please try again."
+    }
+}

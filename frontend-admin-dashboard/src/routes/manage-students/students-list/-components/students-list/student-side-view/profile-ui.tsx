@@ -79,11 +79,16 @@ export const ProfileFieldRow = ({
     value,
     copied,
     onCopy,
+    action,
 }: {
     label: string;
     value: React.ReactNode;
     copied?: boolean;
     onCopy?: () => void;
+    /** Optional control rendered after the copy button — e.g. the click-to-call
+     *  button on the mobile row. Shown only when the row has a real value, so a
+     *  blank field never offers an action that cannot work. */
+    action?: React.ReactNode;
 }) => {
     const { t } = useTranslation('manageStudentsProfileUi');
     // A value counts as "empty" — rendered as an em-dash with NO copy icon — when
@@ -123,6 +128,7 @@ export const ProfileFieldRow = ({
                         )}
                     </button>
                 )}
+                {action && !isEmpty && <span className="shrink-0">{action}</span>}
             </dd>
         </div>
     );

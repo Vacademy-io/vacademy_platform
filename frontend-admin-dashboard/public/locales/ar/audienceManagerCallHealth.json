@@ -14,6 +14,8 @@
         "botSilent": "لم يتحدث الوكيل مطلقًا — لم يسمع المتصل شيئًا",
         "replyLoop": "ظل الوكيل يعيد بدء نفس الرد",
         "handbackLoop": "لم يكن لدى الوكيل ما يقوله وظل يطلب من المتصل التحدث",
+        "openingReplayed": "كرر الوكيل مقدمته في منتصف المكالمة",
+        "repeatedLine": "قال الوكيل الجملة نفسها مرتين",
         "deadAir": "صمت طويل أثناء المكالمة",
         "falseReask": "أعاد الوكيل طلب إجابات كان قد سمعها بالفعل",
         "likelyMachine": "على الأرجح جهاز رد آلي، وليس شخصًا",
@@ -31,6 +33,8 @@
         "botSilent": "الوكيل صامت",
         "replyLoop": "حلقة رد",
         "handbackLoop": "لا شيء ليقال",
+        "openingReplayed": "تكرار المقدمة",
+        "repeatedLine": "جملة مكررة",
         "deadAir": "صمت",
         "falseReask": "إعادة سؤال خاطئة",
         "likelyMachine": "جهاز رد على الأرجح",
@@ -145,7 +149,12 @@
         "sttReconnect_many": "{{count}} إعادة اتصال للتعرف على الكلام",
         "sttReconnect_other": "{{count}} إعادة اتصال للتعرف على الكلام",
         "transferFailed": "طُلب التحويل، ولم يُسجَّل مع المزوّد أبدًا",
-        "promptUnresolved": "غير محلول: {{fields}}"
+        "promptUnresolved": "غير محلول: {{fields}}",
+        "openingReplayed_one": "تكررت المقدمة {{count}} مرة",
+        "openingReplayed_other": "تكررت المقدمة {{count}} مرات",
+        "repeatedLine_one": "{{count}} جملة قيلت مرتين",
+        "repeatedLine_other": "{{count}} جمل قيلت مرتين",
+        "repeatedLineSample": "مثال: “{{text}}”"
     },
     "faultBlock": {
         "unrecognisedCode": "كود عطل غير معروف — تم الإبلاغ عن هذه المكالمة من قِبل بوت أحدث من هذه اللوحة."

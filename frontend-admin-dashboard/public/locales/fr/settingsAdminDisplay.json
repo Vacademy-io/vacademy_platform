@@ -67,7 +67,7 @@
     },
     "courseListTabs": {
         "title": "Onglets de la liste des cours",
-        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Remarque : « Approbation des cours » est toujours visible pour les administrateurs ; « Cours en révision » est masqué."
+        "description": "Configurez les onglets visibles, leur ordre et l'onglet par défaut. Courses In Review est destiné aux rôles non administrateurs et reste masqué pour les administrateurs."
     },
     "courseDetailsTabs": {
         "title": "Onglets des détails du cours",
@@ -152,7 +152,8 @@
         "allowViewPassword": "Autoriser la consultation du mot de passe de l'apprenant",
         "allowEditCredentials": "Autoriser la modification du nom d'utilisateur et du mot de passe de l'apprenant",
         "allowSendResetPasswordMail": "Autoriser l'envoi d'un e-mail de réinitialisation du mot de passe",
-        "showApprovalToggle": "Afficher le bascule « Demandes d'approbation » sur la liste des apprenants"
+        "showApprovalToggle": "Afficher le bascule « Demandes d'approbation » sur la liste des apprenants",
+        "allowDeletePayments": "Autoriser la suppression définitive des paiements et factures (irréversible)"
     },
     "dashboardWidgets": {
         "title": "Widgets du tableau de bord",

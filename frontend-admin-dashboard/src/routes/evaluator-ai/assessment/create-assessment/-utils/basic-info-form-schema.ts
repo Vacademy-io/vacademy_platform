@@ -1,9 +1,24 @@
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import i18n from '@/i18n';
+
+const NAMESPACE = 'evaluatorAiBasicInfoFormSchema';
+
+/**
+ * This zod schema is a module-scope singleton whose exact shape is consumed
+ * via `z.infer<typeof BasicInfoFormSchema>` across other files in the
+ * create-assessment flow, so converting it to a `buildXxx(t)` factory would
+ * require touching every type-inference call site outside this batch.
+ * Instead we use the "outside a React render tree" fallback: call the
+ * shared i18next singleton directly with a fixed namespace.
+ */
+const t: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
 
 export const BasicInfoFormSchema = z.object({
     status: z.string(),
     testCreation: z.object({
-        assessmentName: z.string().min(1, 'Assessment name is required'),
+        assessmentName: z.string().min(1, t('assessmentNameRequired')),
         subject: z.string(),
         assessmentInstructions: z.string(),
         liveDateRange: z
@@ -16,7 +31,7 @@ export const BasicInfoFormSchema = z.object({
                     (!data.startDate && !data.endDate) || // Allow empty
                     new Date(data.endDate!) > new Date(data.startDate!), // Date comparison
                 {
-                    message: 'End date must be greater than start date',
+                    message: t('endDateAfterStartDate'),
                     path: ['endDate'],
                 }
             ),
@@ -34,7 +49,7 @@ export const BasicInfoFormSchema = z.object({
                 return !isNaN(num) && num > 0;
             },
             {
-                message: 'Reattempt count must be greater than 0',
+                message: t('reattemptCountPositive'),
                 path: ['reattemptCount'],
             }
         ),

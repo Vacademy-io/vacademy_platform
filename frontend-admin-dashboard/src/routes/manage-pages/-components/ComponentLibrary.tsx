@@ -71,6 +71,7 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
             'productPageOffer',
             'courseCatalog',
             'productCourseGrid',
+            'courseShowcase',
             'bookCatalogue',
             'pricingTable',
             'cartComponent',
@@ -98,11 +99,12 @@ const COMPONENT_GROUPS: { title: string; keys: string[] }[] = [
     },
     {
         title: 'Media',
-        keys: ['mediaShowcase', 'imageGallery', 'videoEmbed', 'imageBlock', 'marquee'],
+        keys: ['mediaShowcase', 'imageGallery', 'videoEmbed', 'documentViewer', 'imageBlock', 'marquee'],
     },
     {
         title: 'Answers & text',
         keys: [
+            'blog',
             'faqSection',
             'tabsAccordion',
             'announcementFeed',

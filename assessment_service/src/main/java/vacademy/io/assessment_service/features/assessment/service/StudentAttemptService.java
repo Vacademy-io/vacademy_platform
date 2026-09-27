@@ -23,6 +23,7 @@ import vacademy.io.assessment_service.features.assessment.enums.ResultTypeEnum;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.TypedAnswerEvaluation;
 import vacademy.io.assessment_service.features.learner_assessment.constants.AttemptJsonConstants;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.LearnerAssessmentAttemptDataDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.status_json.manual.LearnerManualAttemptDataDto;
@@ -67,6 +68,9 @@ public class StudentAttemptService {
 
     @Autowired
     AssessmentWorkflowEventPublisher assessmentWorkflowEventPublisher;
+
+    @Autowired
+    TypedAnswerEvaluation typedAnswerEvaluation;
 
     public StudentAttempt updateStudentAttempt(StudentAttempt studentAttempt) {
         return studentAttemptRepository.save(studentAttempt);
@@ -159,9 +163,29 @@ public class StudentAttemptService {
         // attempt-expiry cron) must not flip such attempts to COMPLETED
         // ("Evaluated") or release their results.
         boolean isManualEvaluation = isManualEvaluationAssessment(attempt);
-        if (isManualEvaluation) {
+        // An online attempt whose written answers the AI is about to grade is held
+        // the same way: until then those answers carry only the word-overlap score,
+        // and the AI's marks are a draft the teacher reviews and releases.
+        boolean heldForAi = !isManualEvaluation && awaitsAiGrading(attempt);
+        if (heldForAi) {
+            // Still an AUTO attempt: keep result_marks as the release path expects;
+            // the AI run replaces both totals when it completes.
+            attempt.setResultMarks(totalMarks);
+        }
+        if (isManualEvaluation || heldForAi) {
             if (!AssessmentAttemptResultEnum.COMPLETED.name().equals(attempt.getResultStatus())) {
                 attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
+            }
+            // Nothing automatic will ever release a manually-evaluated attempt
+            // (autoRelease is skipped below), so make the hold explicit. Left
+            // NULL, the attempt was invisible on the learner's Reports list —
+            // it filters on report_release_status IN ('RELEASED','PENDING') —
+            // and read "Not available" in the admin's Result Status column;
+            // the PDF-upload submit path already writes PENDING. Only fill the
+            // gap: a RELEASED attempt that comes back through here (a
+            // re-calculation) must stay released.
+            if (attempt.getReportReleaseStatus() == null) {
+                attempt.setReportReleaseStatus(ReleaseResultStatusEnum.PENDING.name());
             }
         } else {
             attempt.setResultMarks(totalMarks);
@@ -176,7 +200,7 @@ public class StudentAttemptService {
         }
 
         // Auto-release result based on assessment's result_type
-        boolean justReleased = !isManualEvaluation && autoReleaseResultIfApplicable(attempt);
+        boolean justReleased = !isManualEvaluation && !heldForAi && autoReleaseResultIfApplicable(attempt);
 
         StudentAttempt saved = studentAttemptRepository.save(attempt);
         if (endedByThisCall && endSource != null) {
@@ -186,6 +210,15 @@ public class StudentAttemptService {
             assessmentWorkflowEventPublisher.publishResultReleased(saved, null, null);
         }
         return saved;
+    }
+
+    private boolean awaitsAiGrading(StudentAttempt attempt) {
+        try {
+            return typedAnswerEvaluation.awaitsAiGrading(attempt, attempt.getRegistration().getAssessment());
+        } catch (Exception e) {
+            log.error("Failed to resolve AI grading for attempt {}: {}", attempt.getId(), e.getMessage());
+            return false;
+        }
     }
 
     private boolean isManualEvaluationAssessment(StudentAttempt attempt) {
@@ -252,7 +285,12 @@ public class StudentAttemptService {
                 return !alreadyReleased;
             } else if (ResultTypeEnum.AUTO_AFTER_ASSESSMENT_END.name().equals(resultType)) {
                 Date now = new Date();
-                if (assessment.getBoundEndTime() != null && now.after(assessment.getBoundEndTime())) {
+                // A mock or practice test never ends (its window closes in 9999),
+                // so "after the assessment ends" would mean never. Release on
+                // submission instead - the only reading that shows results at all.
+                boolean openEnded = OPEN_ENDED_PLAY_MODES.contains(
+                        assessment.getPlayMode() == null ? "" : assessment.getPlayMode().toUpperCase());
+                if (openEnded || (assessment.getBoundEndTime() != null && now.after(assessment.getBoundEndTime()))) {
                     attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
                     attempt.setReportLastReleaseDate(now);
                     return !alreadyReleased;
@@ -445,6 +483,11 @@ public class StudentAttemptService {
         Long timeTakenInSecs = attemptDataParserService.extractTimeTakenInSecondsFromQuestionJson(questionJson);
 
         QuestionWiseMarks marksRow = context.marksRowByQuestionAndSection.get(questionId + "|" + sectionId);
+        if (marksRow != null && isEvaluatorMarked(marksRow)) {
+            // Read by the AI (and maybe a teacher) - a recalculation must not put
+            // the word-overlap score back over that mark.
+            return marksRow.getMarks();
+        }
         if (marksRow != null) {
             if (!Objects.isNull(timeTakenInSecs)) {
                 marksRow.setTimeTakenInSeconds(timeTakenInSecs);
@@ -476,6 +519,10 @@ public class StudentAttemptService {
         }
 
         return marksObtained;
+    }
+
+    static boolean isEvaluatorMarked(QuestionWiseMarks marksRow) {
+        return "AI".equals(marksRow.getMarksSource()) || "AI_REVIEWED".equals(marksRow.getMarksSource());
     }
 
     public LearnerAssessmentAttemptDataDto validateAndCreateJsonObject(String jsonContent) {
@@ -663,6 +710,21 @@ public class StudentAttemptService {
 
     public List<StudentAttempt> getAllLiveAttempt() {
         return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.ENDED.name()));
+    }
+
+    /**
+     * Assessment types with no clock. A practice test is "no time limits" and a
+     * survey cannot even be given a duration; the learner app shows them no
+     * timer. Their attempts must never be ended for running out of time.
+     */
+    public static final List<String> UNTIMED_PLAY_MODES = List.of("PRACTICE", "SURVEY");
+
+    /** Always-available types: their live window is "now until 9999", so they never end. */
+    public static final List<String> OPEN_ENDED_PLAY_MODES = List.of("MOCK", "PRACTICE");
+
+    public Set<String> getOpenUntimedAttemptIds() {
+        return new HashSet<>(studentAttemptRepository.findOpenAttemptIdsByPlayModes(
+                List.of(AssessmentAttemptEnum.ENDED.name()), UNTIMED_PLAY_MODES));
     }
 
     public List<StudentAttempt> getAllAttemptsFromIds(List<String> attemptIds) {

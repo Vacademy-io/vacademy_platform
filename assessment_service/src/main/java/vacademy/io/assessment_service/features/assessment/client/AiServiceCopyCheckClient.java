@@ -13,6 +13,7 @@ import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.Copy
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -67,6 +68,30 @@ public class AiServiceCopyCheckClient {
             throw new IllegalStateException("ai_service returned no job_id");
         }
         return String.valueOf(response.get("job_id"));
+    }
+
+    /**
+     * POST /copy-check/identify — the handwritten name / roll / class at the top
+     * of a copy. Synchronous; ~5s. Returns the raw reading (null fields when
+     * nothing was written) or throws when the file itself cannot be read.
+     */
+    public Map<String, Object> identify(String pdfUrl, String instituteId, String preferredModel) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("pdf_url", pdfUrl);
+        body.put("institute_id", instituteId);
+        body.put("preferred_model", preferredModel);
+        Map<String, Object> response = webClient.post()
+                .uri("/copy-check/identify")
+                .header("X-Internal-Service-Token", internalToken)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(120))
+                .block();
+        if (response == null) {
+            throw new IllegalStateException("ai_service returned nothing for identify");
+        }
+        return response;
     }
 
     /** POST /copy-check/{job_id}/cancel — fire-and-forget. */

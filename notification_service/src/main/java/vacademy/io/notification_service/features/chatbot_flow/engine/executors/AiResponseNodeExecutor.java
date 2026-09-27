@@ -16,6 +16,7 @@ import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlow
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowSession;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
 import vacademy.io.notification_service.features.chatbot_flow.enums.EscalationReason;
+import vacademy.io.notification_service.features.chatbot_flow.repository.ChatbotFlowRepository;
 import vacademy.io.notification_service.features.chatbot_flow.service.ChatbotEscalationService;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
 
@@ -41,6 +42,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
     private final List<ChatbotMessageProvider> messageProviders;
     private final ChatbotEscalationService escalationService;
     private final WhatsAppSendFailureService sendFailureService;
+    private final ChatbotFlowRepository flowRepository;
 
     @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
@@ -179,6 +181,20 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             aiRequest.put("userMessage", userText);
             aiRequest.put("maxTokens", maxTokens);
             aiRequest.put("temperature", temperature);
+            // Billing attribution — admin-core charges this turn's tokens to the institute
+            // but books them against the learner and the flow, so the spend is legible in
+            // the AI usage history instead of landing as an anonymous system charge.
+            if (context.getUserId() != null) {
+                aiRequest.put("userId", context.getUserId());
+            }
+            if (session != null) {
+                aiRequest.put("sessionId", session.getId());
+                aiRequest.put("flowId", session.getFlowId());
+                String flowName = resolveFlowName(session.getFlowId());
+                if (flowName != null) {
+                    aiRequest.put("flowName", flowName);
+                }
+            }
 
             String endpoint = "/admin-core-service/internal/chatbot-ai/respond";
 
@@ -188,6 +204,24 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> responseBody = objectMapper.readValue(response.getBody(), Map.class);
+
+                // Out of AI credits: no model was called and there is no answer to send.
+                // Say so honestly, hand the learner to a human, and stop the AI loop —
+                // retrying every turn would only re-pay the balance check and keep the
+                // learner talking to a bot that cannot reply.
+                if (Boolean.TRUE.equals(responseBody.get("insufficientCredits"))) {
+                    log.warn("Chatbot AI paused for institute {} — no AI credits", context.getInstituteId());
+                    String outOfCreditsMessage = resolveEscalationMessage(config);
+                    sendTextToUser(context, outOfCreditsMessage);
+                    raiseEscalation(node, session, context, config, EscalationReason.NO_CREDITS,
+                            userText, outOfCreditsMessage, "Institute has no AI credits");
+                    return NodeExecutionResult.builder()
+                            .success(true)
+                            .waitForInput(false)
+                            .outputVariables(Map.of("ai_last_response", outOfCreditsMessage))
+                            .build();
+                }
+
                 String assistantMessage = (String) responseBody.get("assistantMessage");
 
                 // "I don't have that context" → say so honestly, hand over to a human, and make
@@ -308,6 +342,20 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         } catch (Exception e) {
             log.warn("Failed to raise escalation for phone={}: {}",
                     context.getPhoneNumber(), e.getMessage());
+        }
+    }
+
+    /**
+     * Flow name for the credit transaction's description, so the AI usage history reads
+     * "Chatbot AI reply — Admissions bot" rather than a bare uuid. Best effort: a PK
+     * lookup that fails just means the description falls back to the flow id.
+     */
+    private String resolveFlowName(String flowId) {
+        if (flowId == null) return null;
+        try {
+            return flowRepository.findById(flowId).map(f -> f.getName()).orElse(null);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -477,13 +525,15 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             return;
         }
         try {
-            provider.sendInteractive(ctx.getPhoneNumber(), payload,
-                    ctx.getInstituteId(), ctx.getBusinessChannelId());
+            ctx.setLastProviderMessageId(
+                    provider.sendInteractive(ctx.getPhoneNumber(), payload,
+                            ctx.getInstituteId(), ctx.getBusinessChannelId()));
         } catch (Exception e) {
             log.warn("sendInteractive failed, falling back to text: {}", e.getMessage());
             try {
-                provider.sendText(ctx.getPhoneNumber(), fallbackText,
-                        ctx.getInstituteId(), ctx.getBusinessChannelId());
+                ctx.setLastProviderMessageId(
+                        provider.sendText(ctx.getPhoneNumber(), fallbackText,
+                                ctx.getInstituteId(), ctx.getBusinessChannelId()));
             } catch (Exception textEx) {
                 // Both shapes refused — the learner got nothing, so say so in the Inbox.
                 logSendFailure(ctx, "interactive", fallbackText, textEx.getMessage());
@@ -501,8 +551,10 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
             return;
         }
         try {
-            provider.sendText(context.getPhoneNumber(), text,
-                    context.getInstituteId(), context.getBusinessChannelId());
+            // The id the engine stamps on the outgoing row, so this reply's ticks can advance.
+            context.setLastProviderMessageId(
+                    provider.sendText(context.getPhoneNumber(), text,
+                            context.getInstituteId(), context.getBusinessChannelId()));
         } catch (Exception e) {
             // Swallow: the AI turn itself succeeded, and the caller's own error path would send a
             // second (equally undeliverable) message. The failure is recorded for the Inbox.

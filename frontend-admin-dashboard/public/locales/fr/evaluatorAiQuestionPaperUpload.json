@@ -1,0 +1,31 @@
+{
+    "form": {
+        "questionsLabel": "Questions",
+        "optionsLabel": "Options",
+        "answersLabel": "Réponses",
+        "explanationsLabel": "Explications",
+        "docxHelp": {
+            "before": "Si vous rencontrez un problème lors du téléversement du fichier docx, veuillez convertir votre fichier en html",
+            "linkText": "ici",
+            "after": "et essayez de le téléverser à nouveau.",
+            "step1": "Étape 1 - Accédez à ce site web",
+            "step2": "Étape 2 - Activez l'intégration des images",
+            "step3": "Étape 3 - Téléchargez votre fichier html après conversion",
+            "imageAlt": "logo"
+        },
+        "fileSizeProgress": "{{uploaded}} Mo / {{total}} Mo"
+    },
+    "common": {
+        "loading": "Chargement...",
+        "preview": "Aperçu",
+        "addQuestions": "Ajouter des questions",
+        "done": "Terminé"
+    },
+    "defaults": {
+        "sectionName": "Section 1"
+    },
+    "toast": {
+        "questionPaperAdded": "Sujet d'examen ajouté avec succès",
+        "questionsIncomplete": "Certaines de vos questions sont incomplètes ou nécessitent votre attention !"
+    }
+}

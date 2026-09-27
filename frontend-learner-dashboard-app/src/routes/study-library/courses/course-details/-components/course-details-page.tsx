@@ -55,6 +55,7 @@ import { useCertificateGeneration } from "../-hooks/use-certificate-generation";
 import { usePaymentStatusSync } from "../-hooks/use-payment-status-sync";
 import { useCourseDisplaySettings } from "../-hooks/use-course-display-settings";
 import { useEnrollmentActions } from "../-hooks/use-enrollment-actions";
+import { TutorEntryCard } from "@/components/tutor/TutorEntryCard";
 
 export type {
   ChapterType,
@@ -601,6 +602,11 @@ export const CourseDetailsPage = () => {
                     className="animate-fade-in-up"
                     style={{ animationDelay: "0.2s" }}
                   >
+                    {/* Live AI Tutor entry (renders nothing unless the course is prepared) */}
+                    <TutorEntryCard
+                      courseId={searchParams.courseId || ""}
+                      packageSessionId={packageSessionIdForCurrentLevel || ""}
+                    />
                     <CourseStructureDetails
                       selectedSession={selectedSession}
                       selectedLevel={selectedLevel}

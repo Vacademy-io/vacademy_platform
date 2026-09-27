@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Info, Lock, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -10,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Form } from '@/components/ui/form';
 import { cn } from '@/lib/utils';
+import i18n from '@/i18n';
 import { reportApiError } from '@/lib/report-api-error';
 import { HrTextField } from '@/routes/erp/people/-components/HrFormFields';
 import { HrErrorState, HrLoadingRows } from '@/routes/erp/people/-components/HrStates';
@@ -32,39 +35,39 @@ import { MyHrNoProfileState, MyHrStatusChip } from './my-hr-shared';
  * accountant — with the section number kept as a hint so a CA-supplied list
  * still maps cleanly onto the form.
  */
-const OLD_REGIME_FIELDS = [
-    {
-        name: 'section_80c',
-        label: 'Life insurance, PPF, ELSS, home-loan principal',
-        hint: 'Section 80C · counted up to the statutory cap',
-    },
-    {
-        name: 'section_80d',
-        label: 'Health insurance premiums',
-        hint: 'Section 80D · for you and your dependents',
-    },
-    {
-        name: 'section_80ccd1b',
-        label: 'Extra NPS contribution',
-        hint: 'Section 80CCD(1B) · over and above 80C',
-    },
-    {
-        name: 'section_80e',
-        label: 'Interest paid on an education loan',
-        hint: 'Section 80E',
-    },
-    {
-        name: 'hra_rent_paid',
-        label: 'Rent paid this year',
-        hint: 'Total rent for the year, not per month',
-    },
+const OLD_REGIME_FIELD_NAMES = [
+    'section_80c',
+    'section_80d',
+    'section_80ccd1b',
+    'section_80e',
+    'hra_rent_paid',
 ] as const;
+
+const NAMESPACE = 'erpMyTaxMain';
+
+/**
+ * `schema` is a module-scope singleton whose shape drives `TaxFormValues` via
+ * `z.infer`, so it cannot be rebuilt inside the component with a `t` from
+ * `useTranslation()` without breaking that type. Validation copy uses the
+ * shared i18next singleton directly instead (same pattern as
+ * studyLibraryScheduleSchema).
+ */
+const schemaT: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
+
+/** Labelled in the words someone actually thinks in, built with `t` inside the component. */
+const buildOldRegimeFields = (t: TFunction) =>
+    OLD_REGIME_FIELD_NAMES.map((name) => ({
+        name,
+        label: t(`oldRegimeFields.${name}.label`),
+        hint: t(`oldRegimeFields.${name}.hint`),
+    }));
 
 const amount = z
     .string()
     .trim()
     .refine((value) => value === '' || (Number.isFinite(Number(value)) && Number(value) >= 0), {
-        message: 'Enter an amount of zero or more',
+        message: schemaT('validation.amountNonNegative'),
     });
 
 const schema = z.object({
@@ -112,6 +115,7 @@ const LOCKED_STATUSES = new Set(['VERIFIED', 'LOCKED']);
  * rather than discovered by a failed save.
  */
 export const MyTaxMain = () => {
+    const { t } = useTranslation('erpMyTaxMain');
     const { employeeId, isProfileLoading, hasNoProfile } = useMyHrIdentity();
     const [financialYear, setFinancialYear] = useState(() => financialYearOf());
     const [regime, setRegime] = useState<'OLD' | 'NEW'>('NEW');
@@ -155,6 +159,7 @@ export const MyTaxMain = () => {
     }, [declaration, form]);
 
     const isMetro = form.watch('is_metro_city');
+    const oldRegimeFields = useMemo(() => buildOldRegimeFields(t), [t]);
 
     const save = form.handleSubmit(async (values) => {
         setRefusal(null);
@@ -162,11 +167,11 @@ export const MyTaxMain = () => {
             regime === 'OLD'
                 ? {
                       ...Object.fromEntries(
-                          OLD_REGIME_FIELDS.map((field) => [
-                              field.name,
+                          OLD_REGIME_FIELD_NAMES.map((name) => [
+                              name,
                               // Blank means "nothing under this head", which the engine
                               // reads as zero — sending "" would be a parse error.
-                              values[field.name] === '' ? 0 : Number(values[field.name]),
+                              values[name] === '' ? 0 : Number(values[name]),
                           ])
                       ),
                       is_metro_city: values.is_metro_city,
@@ -178,13 +183,13 @@ export const MyTaxMain = () => {
                 regime,
                 declarations,
             });
-            toast.success('Your declaration is saved');
+            toast.success(t('toast.saved'));
         } catch (error) {
             setRefusal(
                 reportApiError(error, {
                     feature: 'erp-my-hr',
                     tags: { action: 'save-tax-declaration' },
-                    fallbackMessage: 'Could not save your declaration.',
+                    fallbackMessage: t('errors.saveFailed'),
                     showToast: false,
                 })
             );
@@ -196,16 +201,16 @@ export const MyTaxMain = () => {
             [
                 {
                     value: 'NEW' as const,
-                    title: 'New regime',
-                    blurb: 'Lower tax rates, but almost no deductions — you claim nothing and pay a smaller percentage.',
+                    title: t('regimeCards.new.title'),
+                    blurb: t('regimeCards.new.blurb'),
                 },
                 {
                     value: 'OLD' as const,
-                    title: 'Old regime',
-                    blurb: 'Higher rates, but you can claim 80C, 80D and HRA against what you actually spent.',
+                    title: t('regimeCards.old.title'),
+                    blurb: t('regimeCards.old.blurb'),
                 },
             ] as const,
-        []
+        [t]
     );
 
     if (isProfileLoading) return <HrLoadingRows rows={4} />;
@@ -213,14 +218,12 @@ export const MyTaxMain = () => {
 
     return (
         <div className="flex flex-col gap-5">
-            <p className="max-w-3xl text-body text-muted-foreground">
-                Tell payroll what you plan to claim this financial year, so the tax deducted from
-                each month&apos;s salary is close to what you will actually owe. Declaring is a
-                statement of intent — your HR team verifies the proofs separately.
-            </p>
+            <p className="max-w-3xl text-body text-muted-foreground">{t('intro')}</p>
 
             <div className="flex flex-wrap items-center gap-3">
-                <span className="text-caption text-muted-foreground">Financial year</span>
+                <span className="text-caption text-muted-foreground">
+                    {t('financialYearLabel')}
+                </span>
                 <MyDropdown
                     currentValue={financialYear}
                     dropdownList={recentFinancialYears()}
@@ -233,7 +236,7 @@ export const MyTaxMain = () => {
                 <HrLoadingRows rows={3} />
             ) : query.isError ? (
                 <HrErrorState
-                    message="Couldn't load your declaration."
+                    message={t('errors.loadFailed')}
                     onRetry={() => void query.refetch()}
                 />
             ) : (
@@ -242,15 +245,15 @@ export const MyTaxMain = () => {
                         <div className="flex items-start gap-2 rounded-md border border-info-200 bg-info-50 p-3">
                             <Lock size={16} className="mt-0.5 shrink-0 text-info-600" />
                             <p className="text-body text-neutral-600">
-                                Your HR team has {status === 'VERIFIED' ? 'verified' : 'locked'}{' '}
-                                this declaration, so it can no longer be changed here. If something
-                                needs correcting, ask them.
+                                {status === 'VERIFIED'
+                                    ? t('lockedNotice.verified')
+                                    : t('lockedNotice.locked')}
                             </p>
                         </div>
                     )}
 
                     <section className="flex flex-col gap-3">
-                        <h2 className="text-title text-foreground">Which regime do you want?</h2>
+                        <h2 className="text-title text-foreground">{t('whichRegime')}</h2>
                         <div className="grid gap-3 sm:grid-cols-2">
                             {regimeCards.map((card) => {
                                 const selected = regime === card.value;
@@ -295,16 +298,14 @@ export const MyTaxMain = () => {
                         <Card className="flex items-start gap-2 p-4">
                             <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
                             <p className="text-body text-muted-foreground">
-                                Nothing to declare under the new regime — its lower rates already
-                                assume you are claiming no deductions. Save this and payroll will
-                                use the new-regime slabs for the rest of the year.
+                                {t('newRegimeNote')}
                             </p>
                         </Card>
                     ) : (
                         <Form {...form}>
                             <form className="flex flex-col gap-4" noValidate>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    {OLD_REGIME_FIELDS.map((field) => (
+                                    {oldRegimeFields.map((field) => (
                                         <HrTextField
                                             key={field.name}
                                             control={form.control}
@@ -329,22 +330,17 @@ export const MyTaxMain = () => {
                                     />
                                     <span className="flex flex-col gap-0.5">
                                         <span className="text-body text-foreground">
-                                            I rent in a metro city
+                                            {t('metroCheckbox.label')}
                                         </span>
                                         <span className="text-caption text-muted-foreground">
-                                            Delhi, Mumbai, Kolkata or Chennai. It changes how much
-                                            of your rent counts.
+                                            {t('metroCheckbox.hint')}
                                         </span>
                                     </span>
                                 </label>
 
                                 <div className="flex items-start gap-2 rounded-md bg-info-50 p-3 text-caption text-neutral-600">
                                     <Info size={16} className="mt-0.5 shrink-0 text-info-600" />
-                                    <span>
-                                        You don&apos;t claim an HRA figure directly — payroll works
-                                        out the exempt part from the rent you paid, your HRA
-                                        component and whether you are in a metro city.
-                                    </span>
+                                    <span>{t('hraNote')}</span>
                                 </div>
                             </form>
                         </Form>
@@ -369,13 +365,12 @@ export const MyTaxMain = () => {
                                 type="button"
                                 className="w-full sm:w-auto sm:self-start"
                                 onAsyncClick={save}
-                                loadingText="Saving…"
+                                loadingText={t('saving')}
                             >
-                                {declaration ? 'Update my declaration' : 'Save my declaration'}
+                                {declaration ? t('updateDeclaration') : t('saveDeclaration')}
                             </MyButton>
                             <p className="text-caption text-muted-foreground">
-                                You can change this until your HR team verifies it. Keep the
-                                receipts — they will ask for proof before the year closes.
+                                {t('keepReceiptsNote')}
                             </p>
                         </div>
                     )}

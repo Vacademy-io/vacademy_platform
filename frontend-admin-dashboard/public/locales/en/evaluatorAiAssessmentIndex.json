@@ -1,0 +1,17 @@
+{
+    "navHeading": "Assessment",
+    "assessmentListHeading": "Assessment List",
+    "createAssessment": "Create Assessment",
+    "assessmentIdLabel": "Assessment ID: {{id}}",
+    "loadingDetails": "Loading assessment details...",
+    "columnQuestion": "Question",
+    "columnAnswer": "Answer",
+    "columnCriteria": "Criteria",
+    "confirmDeleteAssessment": "Are you sure you want to delete this assessment? ",
+    "delete": "Delete",
+    "failedToLoadDetails": "Failed to load assessment details",
+    "noAssessmentsAvailable": "No assessments available",
+    "noAnswerAvailable": "No answer available",
+    "viewLess": "View Less",
+    "viewMore": "View More"
+}

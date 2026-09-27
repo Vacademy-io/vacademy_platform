@@ -21,6 +21,8 @@
         "selectDefaultTab": "Select default tab"
     },
     "sidebar": {
+        "appLinksLabel": "Show app download links in the sidebar",
+        "appLinksHelp": "Turn this off to move the app downloads to the dashboard “Get the app” widget instead. Links come from the domain routing settings.",
         "cardTitle": "Sidebar",
         "cardDescription": "Toggle entire sidebar and configure tabs, order and visibility",
         "visibleLabel": "Sidebar Visible",
@@ -93,7 +95,8 @@
         "selectMode": "Select mode",
         "ratingsReviewsVisible": "Ratings & Reviews Visible",
         "hideAuthorName": "Hide Author Name (Course Details Page)",
-        "showTeachers": "Show Teachers (Course Details Page)",
+        "showTeachers": "Show All Teachers (Course Details Page)",
+        "showTeachersHint": "The first author is always shown with their photo, subtitle and bio. Turn this on to list every teacher assigned to the batch. Email addresses are never shown to learners.",
         "showCourseConfiguration": "Show Course Configuration",
         "showCourseContentPrefixes": "Show Course Content Prefixes",
         "courseOverviewVisible": "Course Overview Visible",
@@ -137,6 +140,14 @@
         "pdfGuideError": "Could not generate the guide PDF. Please try again.",
         "generating": "Generating...",
         "downloadGuideButton": "Download guide (PDF)"
+    },
+    "concentration": {
+        "cardTitle": "Focus Check",
+        "cardDescription": "A periodic prompt over video lessons asking {{learnerPlural}} to tap a highlighted number, used to measure the concentration score",
+        "enableFocusCheck": "Show focus check during videos",
+        "minMinutes": "Minimum gap (minutes)",
+        "maxMinutes": "Maximum gap (minutes)",
+        "frequencyHint": "Each check appears at a random point between these two gaps."
     },
     "notifications": {
         "cardTitle": "Notifications",

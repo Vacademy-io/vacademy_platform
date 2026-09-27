@@ -471,9 +471,11 @@ public class PlanChangeService {
 
         Date newEndDate = userPlan.getEndDate();
         if (!preserveEndDate) {
-            Date computed = prorationCalculator.newEndDate(target, new Date());
+            // Extends the window the learner already holds rather than restarting it:
+            // they paid the price difference, so they get the validity difference. The
+            // start date is left alone -- the cycle they are in did not restart.
+            Date computed = prorationCalculator.newEndDate(userPlan, target, new Date());
             if (computed != null) {
-                userPlan.setStartDate(new Date());
                 userPlan.setEndDate(computed);
                 newEndDate = computed;
             }

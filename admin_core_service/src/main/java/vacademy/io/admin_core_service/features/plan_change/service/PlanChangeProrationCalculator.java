@@ -13,12 +13,17 @@ import java.util.Date;
 /**
  * Works out what an upgrade costs today and when the new access window ends.
  *
- * <p>The model is the PLAN-PRICE DIFFERENCE, not time proration: the learner pays
- * {@code targetPrice - currentPrice} and the access window restarts at the new plan's
- * full validity from today. Days already elapsed on the current cycle are not deducted
- * and days unused are not refunded -- the learner trades one plan's price for another's
- * and gets a complete new term. No refunds are ever produced: the credit is capped at
- * the target price, so the charge floors at zero.
+ * <p>The model is the PLAN DIFFERENCE, in money and in time alike: the learner pays
+ * {@code targetPrice - currentPrice} and their access is extended by
+ * {@code targetValidity - currentValidity}, added to the end date they already hold.
+ * Monthly (Rs 1,200 / 30d) to Half-Yearly (Rs 4,800 / 180d) costs Rs 3,600 and adds 150
+ * days to the current cycle end -- so the learner ends up exactly where they would have
+ * been had they bought Half-Yearly at the start of this cycle. No refunds are ever
+ * produced: the credit is capped at the target price, so the charge floors at zero.
+ *
+ * <p>The trade-in only applies while the current plan is actually running and was paid
+ * for. A trial (nothing paid) and a lapsed plan (nothing left) get no credit and no
+ * shortened extension: they pay the target in full and receive its full validity.
  *
  * <p>A trial gets no credit at all: it has paid nothing for the current cycle (only the
  * token-registration auth, which is not the plan price), so it pays the target in full.
@@ -38,6 +43,8 @@ public class PlanChangeProrationCalculator {
             BigDecimal amountDueNow,
             /** Days still paid for on the current plan. */
             long remainingDays,
+            /** Days added to the access window by this change. */
+            int extensionDays,
             /** New access-until date for an IMMEDIATE change. Null when the target is lifetime. */
             Date newEndDate) {
     }
@@ -58,7 +65,8 @@ public class PlanChangeProrationCalculator {
         BigDecimal amountDueNow = targetPrice.subtract(credit).max(BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        return new Proration(credit, amountDueNow, remainingDays, newEndDate(targetPlan, now));
+        return new Proration(credit, amountDueNow, remainingDays,
+                extensionDays(userPlan, targetPlan, now), newEndDate(userPlan, targetPlan, now));
     }
 
     /**
@@ -88,28 +96,65 @@ public class PlanChangeProrationCalculator {
      * zero for a trial, which has paid nothing to trade in.
      */
     private BigDecimal credit(UserPlan userPlan, BigDecimal currentPrice, BigDecimal targetPrice) {
-        if (currentPrice.signum() <= 0) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        if (userPlan != null && Boolean.TRUE.equals(userPlan.getIsTrial())) {
+        if (currentPrice.signum() <= 0 || !tradeInApplies(userPlan, new Date())) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
         return currentPrice.min(targetPrice).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**
-     * An immediate change restarts the window: {@code today + target validity}. Null when
-     * the target has no validity — that is a lifetime plan, and stamping an end date on it
-     * would expire access the enrollment path deliberately left open.
+     * Whether the learner has a running, paid-for plan to trade in. False for a trial
+     * (the plan price was never paid) and for a plan whose term has already ended
+     * (nothing is left to trade). Both the money and the days hang off this one test, so
+     * they can never disagree: no credit means no shortened extension.
      */
-    public Date newEndDate(PaymentPlan targetPlan, Date now) {
+    private boolean tradeInApplies(UserPlan userPlan, Date now) {
+        return userPlan != null
+                && !Boolean.TRUE.equals(userPlan.getIsTrial())
+                && userPlan.getEndDate() != null
+                && userPlan.getEndDate().after(now);
+    }
+
+    /**
+     * {@code targetValidity - currentValidity} when the learner trades a running plan in,
+     * otherwise the target's full validity. Never less than zero -- an upgrade always
+     * lengthens the window, and upgrades are the only change offered.
+     */
+    public int extensionDays(UserPlan userPlan, PaymentPlan targetPlan, Date now) {
+        Integer targetValidity = PlanValidityResolver.fromPlan(targetPlan);
+        if (targetValidity == null || targetValidity <= 0) {
+            return 0;
+        }
+        if (!tradeInApplies(userPlan, now)) {
+            return targetValidity;
+        }
+        Integer currentValidity = firstNonNull(
+                PlanValidityResolver.fromPlan(userPlan.getPaymentPlan()),
+                PlanValidityResolver.fromPlanJson(userPlan.getPlanJson()));
+        if (currentValidity == null || currentValidity <= 0 || currentValidity >= targetValidity) {
+            return targetValidity;
+        }
+        return targetValidity - currentValidity;
+    }
+
+    /**
+     * The end of the extended window: the date the learner already holds, plus
+     * {@link #extensionDays}. A lapsed plan counts from today instead, since there is no
+     * live window to add to. Null when the target has no validity -- that is a lifetime
+     * plan, and stamping an end date on it would expire access the enrollment path
+     * deliberately left open.
+     */
+    public Date newEndDate(UserPlan userPlan, PaymentPlan targetPlan, Date now) {
         Integer validity = PlanValidityResolver.fromPlan(targetPlan);
         if (validity == null) {
             return null;
         }
+        Date base = (userPlan != null && userPlan.getEndDate() != null && userPlan.getEndDate().after(now))
+                ? userPlan.getEndDate()
+                : now;
         Calendar calendar = Calendar.getInstance();
-        calendar.setTime(now);
-        calendar.add(Calendar.DAY_OF_MONTH, validity);
+        calendar.setTime(base);
+        calendar.add(Calendar.DAY_OF_MONTH, extensionDays(userPlan, targetPlan, now));
         return calendar.getTime();
     }
 

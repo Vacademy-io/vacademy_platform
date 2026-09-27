@@ -92,7 +92,8 @@
         },
         "base64Label": "Ou collez du JSON encodé en Base64",
         "base64Placeholder": "Chaîne Base64",
-        "validateAndSave": "Valider et enregistrer"
+        "validateAndSave": "Valider et enregistrer",
+        "keyConfigured": "Une clé de compte de service est enregistrée pour cet établissement. Elle n'est jamais réaffichée ; collez une nouvelle clé uniquement pour la remplacer."
     },
     "streams": {
         "title": "Flux",

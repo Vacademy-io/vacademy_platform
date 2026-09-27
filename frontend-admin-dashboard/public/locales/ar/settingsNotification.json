@@ -92,7 +92,8 @@
         },
         "base64Label": "أو الصق JSON مُرمّزًا بـ Base64",
         "base64Placeholder": "نص Base64",
-        "validateAndSave": "تحقق وحفظ"
+        "validateAndSave": "تحقق وحفظ",
+        "keyConfigured": "تم حفظ مفتاح حساب خدمة لهذه المؤسسة. لا يُعرض مرة أخرى؛ الصق مفتاحًا جديدًا فقط لاستبداله."
     },
     "streams": {
         "title": "البثوث",

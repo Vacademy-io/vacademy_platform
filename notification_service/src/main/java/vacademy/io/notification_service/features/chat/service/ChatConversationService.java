@@ -254,6 +254,18 @@ public class ChatConversationService {
     // Listing
     // ---------------------------------------------------------------------
 
+    /**
+     * Unread total for the caller's badge, computed like listConversations' per-row unreadCount (capped per
+     * conversation) in a single aggregate query — no conversation hydration, no title lookups.
+     */
+    public long getUnreadTotal(String userId, String instituteId) {
+        if (!permissionService.isChatEnabled(instituteId)) {
+            return 0L;
+        }
+        Long total = memberRepo.sumUnread(userId, instituteId, permissionService.isCommunityEnabled(instituteId), UNREAD_CAP);
+        return total == null ? 0L : total;
+    }
+
     // Intentionally NOT @Transactional: the reads are independent SELECTs that don't need one
     // snapshot, and title resolution makes external HTTP calls. Wrapping this in a transaction would
     // pin a Hikari connection (pool=3/pod) across that I/O — a real saturation risk. Keep DB and
@@ -566,6 +578,13 @@ public class ChatConversationService {
                     .map(ChatMessage::getSeq)
                     .orElse(fallbackSeq);
         } else {
+            targetSeq = fallbackSeq;
+        }
+        // Reading the newest live message reads the whole conversation: deleted messages after it are never
+        // shown, so without this a deleted tail leaves a phantom unread (badge never clears) and blocks the
+        // community "one push until read" rule.
+        if (targetSeq < fallbackSeq
+                && !messageRepo.existsByConversationIdAndSeqGreaterThanAndIsDeletedFalse(conversationId, targetSeq)) {
             targetSeq = fallbackSeq;
         }
 

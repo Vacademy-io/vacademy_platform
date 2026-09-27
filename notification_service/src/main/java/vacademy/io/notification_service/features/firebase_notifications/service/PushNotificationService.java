@@ -12,6 +12,7 @@ import vacademy.io.notification_service.features.firebase_notifications.entity.F
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class PushNotificationService {
@@ -23,6 +24,10 @@ public class PushNotificationService {
 
     @Autowired
     private FcmTokenRepository fcmTokenRepository;
+
+    /** Tokens that belong to a Firebase project other than their institute's (learned on a fallback send). */
+    private final Map<String, FirebaseMessaging> tokenProject = new ConcurrentHashMap<>();
+    private static final int TOKEN_PROJECT_CACHE_MAX = 50_000;
 
     /**
      * Send push notification to a specific user
@@ -50,7 +55,11 @@ public class PushNotificationService {
         }
 
         for (FcmToken fcmToken : userTokens) {
-            sendNotificationToToken(messagingOpt.get(), fcmToken.getToken(), title, body, data);
+            // Cross-project retry only for devices registered under this institute. The any-institute fallback
+            // above can return a token of another institute's app; retrying it on that app's project would
+            // show this institute's message inside another institute's branded app.
+            boolean sameInstitute = instituteId != null && instituteId.equals(fcmToken.getInstituteId());
+            sendToToken(messagingOpt.get(), fcmToken.getToken(), title, body, data, sameInstitute);
         }
     }
 
@@ -58,7 +67,18 @@ public class PushNotificationService {
      * Send push notification to a specific FCM token
      */
     public void sendNotificationToToken(FirebaseMessaging firebaseMessaging, String fcmToken, String title, String body, Map<String, String> data) {
-        
+        sendToToken(firebaseMessaging, fcmToken, title, body, data, true);
+    }
+
+    /**
+     * @param allowOtherProjects whether a token rejected as another project's may be retried on (and remembered
+     *                           for) the other configured Firebase projects.
+     */
+    private void sendToToken(FirebaseMessaging firebaseMessaging, String fcmToken, String title, String body,
+                             Map<String, String> data, boolean allowOtherProjects) {
+        // A token remembered as belonging to another project goes straight there.
+        FirebaseMessaging target = allowOtherProjects ? tokenProject.getOrDefault(fcmToken, firebaseMessaging) : firebaseMessaging;
+        Message message = null;
         try {
             Message.Builder messageBuilder = Message.builder()
                 .setToken(fcmToken)
@@ -78,12 +98,18 @@ public class PushNotificationService {
             // (type/action/conversationId/...) and the client (service worker / push-tap handler)
             // routes the click — see frontend push-notification handling.
 
-            Message message = messageBuilder.build();
-            String response = firebaseMessaging.send(message);
+            message = messageBuilder.build();
+            String response = target.send(message);
 
             logger.debug("Successfully sent message to token {}: {}", maskToken(fcmToken), response);
 
         } catch (FirebaseMessagingException e) {
+            if (allowOtherProjects && isOtherProjectsToken(e) && sendViaOtherProject(target, fcmToken, message)) {
+                return;
+            }
+            if (target != firebaseMessaging) {
+                tokenProject.remove(fcmToken); // remembered project no longer takes it — re-learn next time
+            }
             logger.error("Failed to send notification to token {}: {}", maskToken(fcmToken), e.getMessage());
 
             // If the token is no longer valid, deactivate it so we stop pushing to it. Use the
@@ -99,6 +125,43 @@ public class PushNotificationService {
             // Never let one bad token (or a null/short token) abort the rest of a bulk send.
             logger.error("Unexpected error sending notification to token {}: {}", maskToken(fcmToken), e.getMessage());
         }
+    }
+
+    /**
+     * FCM rejects a token registered under a different Firebase project with SENDER_ID_MISMATCH
+     * (surfaced as HTTP 403 / PERMISSION_DENIED). That's not a dead token — it's someone else's sender:
+     * e.g. a white-label institute whose Android app is on its own project while its web users are on
+     * the shared "vacademy-app" project, but the institute has a single key configured.
+     */
+    static boolean isOtherProjectsToken(FirebaseMessagingException e) {
+        return e.getMessagingErrorCode() == MessagingErrorCode.SENDER_ID_MISMATCH
+                || e.getErrorCode() == com.google.firebase.ErrorCode.PERMISSION_DENIED;
+    }
+
+    /**
+     * Retry via every other configured Firebase project; remember the one that accepts the token. Never
+     * deactivates the token based on these attempts — the primary project's verdict already covered that.
+     */
+    private boolean sendViaOtherProject(FirebaseMessaging rejectedBy, String fcmToken, Message message) {
+        if (message == null) {
+            return false;
+        }
+        for (FirebaseMessaging other : multiTenantFirebaseManager.getOtherMessaging(rejectedBy)) {
+            try {
+                other.send(message);
+                if (tokenProject.size() >= TOKEN_PROJECT_CACHE_MAX) {
+                    tokenProject.clear(); // crude bound; entries are cheap to re-learn
+                }
+                tokenProject.put(fcmToken, other);
+                logger.info("Delivered to token {} via fallback Firebase project", maskToken(fcmToken));
+                return true;
+            } catch (FirebaseMessagingException fe) {
+                logger.debug("Fallback Firebase project rejected token {}: {}", maskToken(fcmToken), fe.getMessage());
+            } catch (Exception ex) {
+                logger.debug("Fallback send failed for token {}: {}", maskToken(fcmToken), ex.getMessage());
+            }
+        }
+        return false;
     }
 
     /** Mask an FCM token for logging without risking StringIndexOutOfBounds on short/null tokens. */

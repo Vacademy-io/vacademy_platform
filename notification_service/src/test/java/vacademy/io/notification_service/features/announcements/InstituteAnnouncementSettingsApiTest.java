@@ -114,14 +114,27 @@ class InstituteAnnouncementSettingsApiTest {
     }
 
     @Test
-    @DisplayName("The all-institutes listing is for platform root users only")
-    void allSettingsRootOnly() throws Exception {
+    @DisplayName("The all-institutes listing is closed to everyone, including users flagged is_root_user")
+    void allSettingsClosed() throws Exception {
         mockMvc.perform(get("/notification-service/v1/institute-settings/all")
                         .header("clientId", INSTITUTE).with(user(principal("admin-1", "ADMIN", false))))
                 .andExpect(status().isForbidden());
 
+        // is_root_user is set for almost every account by ordinary sign-up flows — it must not unlock anything.
         mockMvc.perform(get("/notification-service/v1/institute-settings/all")
                         .with(user(principal("root-1", "ADMIN", true))))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("A user flagged is_root_user without ADMIN in the institute cannot change its settings")
+    void rootFlagDoesNotBypassAdminCheck() throws Exception {
+        mockMvc.perform(post("/notification-service/v1/institute-settings")
+                        .header("clientId", INSTITUTE).with(user(principal("learner-root", "STUDENT", true)))
+                        .contentType(MediaType.APPLICATION_JSON).content(body()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/notification-service/v1/institute-settings/institute/" + INSTITUTE)
+                        .header("clientId", "SOME_OTHER_INSTITUTE").with(user(principal("admin-root", "ADMIN", true))))
+                .andExpect(status().isForbidden());
     }
 }

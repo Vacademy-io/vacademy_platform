@@ -91,20 +91,10 @@ public class InstituteAnnouncementSettingsController {
         @ApiResponse(responseCode = "500", description = "Internal server error")
     })
     @GetMapping("/all")
-    public ResponseEntity<List<InstituteAnnouncementSettingsResponse>> getAllSettings(
-            @AuthenticationPrincipal CustomUserDetails user) {
-        // Cross-institute listing: platform (root) users only.
-        if (user == null || !user.isRootUser()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ROOT_REQUIRED");
-        }
-        
-        log.info("Received request to get all institute announcement settings");
-        
-        List<InstituteAnnouncementSettingsResponse> response = settingsService.getAllSettings();
-        
-        log.info("Successfully retrieved announcement settings for {} institutes", response.size());
-        
-        return ResponseEntity.ok(response);
+    public ResponseEntity<List<InstituteAnnouncementSettingsResponse>> getAllSettings() {
+        // Cross-institute listing is closed: there is no platform-staff role to gate it on
+        // (users.is_root_user is set for ~97% of accounts by ordinary sign-up/invite flows) and nothing calls it.
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_AVAILABLE");
     }
 
     @Operation(summary = "Delete institute announcement settings", 
@@ -225,9 +215,6 @@ public class InstituteAnnouncementSettingsController {
      * by the verified clientId header, and may only change that institute's settings.
      */
     private static void requireInstituteAdmin(CustomUserDetails user, String clientId, String targetInstituteId) {
-        if (user != null && user.isRootUser()) {
-            return; // platform staff manage any institute's settings
-        }
         ChatIdentity id = ChatIdentity.from(user, clientId);
         if (!id.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN_REQUIRED");

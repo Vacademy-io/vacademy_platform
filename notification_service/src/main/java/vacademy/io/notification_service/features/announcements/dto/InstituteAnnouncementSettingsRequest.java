@@ -239,8 +239,8 @@ public class InstituteAnnouncementSettingsRequest {
     @AllArgsConstructor
     public static class FirebaseSettings {
         @JsonProperty("enabled")
-        // No default: a request without "enabled" must not switch push off (only an explicit false does —
-        // see MultiTenantFirebaseManager); a missing value is kept from the stored row on save.
+        // No default: when a request omits "enabled" the stored value is kept on save. The flag is informational
+        // (shown in the admin page); MultiTenantFirebaseManager sends whenever a key is stored.
         private Boolean enabled;
         
         @JsonProperty("serviceAccountJson")

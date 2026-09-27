@@ -196,21 +196,25 @@ export default function NotificationSettings({ isTab = false }: Props) {
             const { emails, ...settingsForApi } = settings;
             const req = createUpsertRequest(settingsForApi);
             const saved = await upsertNotificationSettings(req);
-            // Take the server's (key-free) firebase block so a pasted key doesn't linger in page state and
-            // "configured" reflects what was stored.
-            setSettings((prev) =>
-                prev
-                    ? {
-                          ...prev,
-                          firebase: {
-                              ...(prev.firebase || {}),
-                              ...(saved?.settings?.firebase || {}),
-                              serviceAccountJson: null,
-                              serviceAccountJsonBase64: null,
-                          },
-                      }
-                    : prev
-            );
+            // A server that redacts the key (reports `configured`) never needs it back, so drop a pasted key
+            // from page state. An older server still returns and expects the key — keep what it returned, or
+            // the next save from this page would erase the stored key.
+            const savedFirebase = saved?.settings?.firebase;
+            if (savedFirebase && savedFirebase.configured !== undefined) {
+                setSettings((prev) =>
+                    prev
+                        ? {
+                              ...prev,
+                              firebase: {
+                                  ...(prev.firebase || {}),
+                                  ...savedFirebase,
+                                  serviceAccountJson: null,
+                                  serviceAccountJsonBase64: null,
+                              },
+                          }
+                        : prev
+                );
+            }
             toast.success(t('toasts.settingsSaved'));
             setHasChanges(false);
         } catch (e) {

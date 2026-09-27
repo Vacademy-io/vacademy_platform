@@ -10,6 +10,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityCallRecorder;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
 /**
@@ -37,6 +38,9 @@ public class CallLogService {
     @Autowired
     private CallBillingService billingService;
 
+    @Autowired
+    private LiveActivityCallRecorder liveActivityCallRecorder;
+
     @Transactional
     public TelephonyCallLog applyEvent(TelephonyCallLog row, NormalizedCallEvent ev) {
         return applyEvent(row, ev, true);
@@ -57,6 +61,7 @@ public class CallLogService {
             row.setProviderCallId(ev.getProviderCallId());
         }
 
+        CallStatus appliedStatus = null;
         if (ev.getStatus() != null) {
             CallStatus current = CallStatus.parseOrDefault(row.getStatus());
             CallStatus incoming = ev.getStatus();
@@ -72,6 +77,7 @@ public class CallLogService {
                     : incoming.rank() >= current.rank();
             if (apply) {
                 row.setStatus(incoming.name());
+                appliedStatus = incoming;
             } else {
                 log.debug("ignoring non-forward status {} → {} for call {}",
                         current, incoming, row.getId());
@@ -96,6 +102,15 @@ public class CallLogService {
 
         TelephonyCallLog saved = repo.save(row);
         if (voiceBillable) maybeBillVoiceLeg(saved, ev);
+
+        // Live activity feed. Gated on appliedStatus so only genuine forward transitions
+        // surface: a redelivered RINGING is ignored above and must not reappear as a fresh
+        // feed row. Note the transition rule permits EQUAL ranks for non-terminal states, so
+        // a retried webhook DOES re-enter that branch -- the recorder's dedupe key
+        // (CALL:{callLogId}:{status}) is what makes the retry a no-op rather than a duplicate.
+        if (appliedStatus != null) {
+            liveActivityCallRecorder.recordStatus(saved, appliedStatus);
+        }
         return saved;
     }
 

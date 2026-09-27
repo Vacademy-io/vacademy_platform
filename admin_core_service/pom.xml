@@ -136,10 +136,15 @@
 <!--        </dependency>-->
 
 
+        <!--
+            Compile scope rather than runtime: the live-activity listener imports
+            PGConnection and PGNotification directly. Postgres LISTEN/NOTIFY has no
+            JDBC-standard API, so receiving notifications means unwrapping the pgjdbc
+            connection at compile time. The driver was already shipped; only scope changed.
+        -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>

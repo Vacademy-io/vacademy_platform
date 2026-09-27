@@ -21,6 +21,7 @@ import {
     Code,
     UserList,
     Notebook,
+    Broadcast,
     PhoneCall,
     ChatCircleDots,
     IdentificationBadge,
@@ -929,6 +930,47 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         title: sidebarT('sidebar:adminActivityLogs'),
         to: '/admin-activity-logs',
         category: 'CRM',
+    },
+
+    // Live Activity. The sub-items are NOT separate pages -- the route is a single
+    // view with a ?category= param. They exist so Display Settings renders a
+    // per-role toggle for each category using the sub-tab machinery it already has,
+    // instead of inventing a bespoke setting. Payments and Counsellors ship hidden
+    // (see SUB_ITEMS_HIDDEN_BY_DEFAULT) because revenue and per-counsellor
+    // performance are not things to expose to every role by accident.
+    {
+        icon: Broadcast,
+        id: 'live-activity',
+        title: sidebarT('sidebar:liveActivity'),
+        to: '/live-activity',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Enrolments',
+                subItemId: 'live-activity-enrolments',
+                subItemLink: '/live-activity?category=INVITE_FORM',
+            },
+            {
+                subItem: 'Leads',
+                subItemId: 'live-activity-leads',
+                subItemLink: '/live-activity?category=LEAD_FORM',
+            },
+            {
+                subItem: 'Calls',
+                subItemId: 'live-activity-calls',
+                subItemLink: '/live-activity?category=CALL',
+            },
+            {
+                subItem: 'Payments',
+                subItemId: 'live-activity-payments',
+                subItemLink: '/live-activity?category=PAYMENT',
+            },
+            {
+                subItem: 'Counsellors',
+                subItemId: 'live-activity-counsellors',
+                subItemLink: '/live-activity?category=COUNSELLOR',
+            },
+        ],
     },
 
     // LMS

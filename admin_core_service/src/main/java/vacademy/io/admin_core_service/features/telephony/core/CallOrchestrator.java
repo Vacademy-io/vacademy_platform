@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.CallAvailabili
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallOptionsResponseDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallResponseDTO;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityCallRecorder;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderCapability;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
@@ -59,6 +60,7 @@ public class CallOrchestrator {
     @Autowired private CallLifecycleTxOps tx;
     @Autowired private TelephonyProviderRegistry registry;
     @Autowired private CallEventBus eventBus;
+    @Autowired private LiveActivityCallRecorder liveActivityCallRecorder;
     @Autowired private ProviderCircuitBreaker circuitBreaker;
     @Autowired private TelephonyConfigCache configCache;
     @Autowired private TelephonyCallLogRepository callLogRepo;
@@ -99,6 +101,11 @@ public class CallOrchestrator {
                 .providerCallId(handle.getProviderCallId())
                 .status(CallStatus.QUEUED)
                 .build());
+
+        // Live activity feed. This publish bypasses CallLogService.applyEvent, so without
+        // its own hook a call would not reach the institute feed until its first provider
+        // webhook arrived -- losing exactly the "a counsellor just started dialling" moment.
+        liveActivityCallRecorder.recordQueued(p.callLogId());
 
         // Post-call providers (Airtel) emit no live progress — the UI must not
         // promise a streaming status it will never get. Default true so legacy /

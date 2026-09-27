@@ -9,6 +9,15 @@ import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
 const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
+    // Live activity categories. The other three (enrolments, leads, calls) are on
+    // by default once the tab itself is enabled; these two are not, because
+    // revenue figures and per-counsellor performance are materially more
+    // sensitive than a lead arriving. Enforced server-side too -- the stream
+    // token carries the permitted set and the bus filters each frame against it,
+    // so hiding a tab here is not the only thing standing between a counsellor
+    // and payment amounts.
+    'live-activity-payments',
+    'live-activity-counsellors',
     'suborg-teams',
     'manage-institute-suborgs',
     'notification-hub',
@@ -28,6 +37,10 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
 // shipped hidden for historical sub-org reasons.
 const OPT_IN_TAB_IDS = new Set<string>([
     'admin-activity-logs',
+    // Live activity feed. Ships hidden: it surfaces prospect PII (name, email,
+    // phone) to every role that has it enabled, so turning it on is a privacy
+    // decision an institute admin should make deliberately.
+    'live-activity',
     'ai-copilot-tab',
     'mentorship',
     // NOTE: the ERP modules are deliberately NOT listed here. The opt-in gate

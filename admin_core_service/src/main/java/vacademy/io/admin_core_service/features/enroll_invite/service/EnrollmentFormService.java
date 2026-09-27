@@ -21,9 +21,18 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityDedupeKeys;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityRecorder;
+import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityEvent;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityAction;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityActorType;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityCategory;
+
 
 @Slf4j
 @Service
@@ -49,6 +58,9 @@ public class EnrollmentFormService {
 
     @Autowired
     private PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
+
+    @Autowired
+    private LiveActivityRecorder liveActivityRecorder;
 
 
     @Transactional
@@ -131,6 +143,15 @@ public class EnrollmentFormService {
         log.info("Enrollment form submitted successfully for user: {}, created {} ABANDONED_CART entries",
                 createdUser.getId(), abandonedCartEntryIds.size());
 
+        // Step 7: Surface it on the live activity feed. This endpoint fires exactly when the
+        // prospect leaves the registration step, so it IS the "pressed Next" moment -- the
+        // top of the abandoned-cart funnel, and the earliest point anyone can act on.
+        //
+        // After commit, not inline: the feed must never show a prospect whose enrolment
+        // entry then rolled back. Recording is best-effort and never throws, so a feed
+        // problem cannot fail the submission.
+        recordFormNextActivity(enrollInvite, createdUser, request);
+
         // Welcome/confirmation WhatsApp is handled by the workflow engine on the
         // PAYMENT_SUCCESS trigger (per-invite, configurable), not from here.
 
@@ -190,5 +211,39 @@ public class EnrollmentFormService {
         studentExtraDetails.setBillingContactEmail(learnerExtraDetails.getBillingContactEmail());
         studentExtraDetails.setBillingContactRole(learnerExtraDetails.getBillingContactRole());
         return studentExtraDetails;
+    }
+
+    private void recordFormNextActivity(EnrollInvite enrollInvite,
+                                        UserDTO createdUser,
+                                        EnrollmentFormSubmitDTO request) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            if (enrollInvite.getName() != null) {
+                payload.put("inviteName", enrollInvite.getName());
+            }
+            if (request.getPackageSessionIds() != null) {
+                payload.put("packageSessionIds", request.getPackageSessionIds());
+            }
+
+            liveActivityRecorder.recordAfterCommit(LiveActivityEvent.builder()
+                    .instituteId(request.getInstituteId())
+                    .occurredAtEpochMillis(System.currentTimeMillis())
+                    .category(LiveActivityCategory.INVITE_FORM)
+                    .action(LiveActivityAction.FORM_NEXT)
+                    .actorType(LiveActivityActorType.PROSPECT)
+                    .dedupeKey(LiveActivityDedupeKeys.forInviteForm(
+                            enrollInvite.getId(), createdUser.getId(), LiveActivityAction.FORM_NEXT))
+                    .subjectId(createdUser.getId())
+                    .subjectName(createdUser.getFullName())
+                    .subjectEmail(createdUser.getEmail())
+                    .subjectMobile(createdUser.getMobileNumber())
+                    .entityId(enrollInvite.getId())
+                    .payload(payload)
+                    .build());
+        } catch (Exception e) {
+            // Never let the feed break an enrolment.
+            log.warn("Failed to record live activity for enrollment form submission: {}",
+                    e.getMessage());
+        }
     }
 }

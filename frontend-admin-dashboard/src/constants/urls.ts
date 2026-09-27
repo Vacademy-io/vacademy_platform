@@ -245,6 +245,22 @@ export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string)
 export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
 
+// ── Live activity feed (User Live Events) ──
+// The stream sits on a permitAll path because EventSource cannot send an Authorization
+// header. Unlike TELEPHONY_CALL_EVENTS above -- where the call-log UUID is itself an
+// unguessable capability -- an instituteId is guessable, so the stream is gated on a
+// short-lived signed token minted by the authenticated /stream-token endpoint. The token
+// also carries the caller's permitted categories, which the server enforces per frame.
+export const LIVE_ACTIVITY_STREAM_TOKEN = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/live-activity/stream-token?instituteId=${encodeURIComponent(instituteId)}`;
+export const LIVE_ACTIVITY_STREAM = (token: string) =>
+    `${BASE_URL}/admin-core-service/v1/live-activity/stream?token=${encodeURIComponent(token)}`;
+export const LIVE_ACTIVITY_EVENTS = `${BASE_URL}/admin-core-service/v1/live-activity/events`;
+export const LIVE_ACTIVITY_COUNTS = `${BASE_URL}/admin-core-service/v1/live-activity/counts`;
+export const LIVE_ACTIVITY_UNSEEN_COUNT = `${BASE_URL}/admin-core-service/v1/live-activity/unseen-count`;
+export const LIVE_ACTIVITY_MARK_SEEN = `${BASE_URL}/admin-core-service/v1/live-activity/mark-seen`;
+export const LIVE_ACTIVITY_EXPORT_CSV = `${BASE_URL}/admin-core-service/v1/live-activity/export.csv`;
+
 // ── Call Intelligence (transcription + AI analysis of call recordings) ──
 /** Intelligence for a single call, keyed by the universal call_log id. */
 export const CALL_INTELLIGENCE_BY_CALL = (callLogId: string) =>

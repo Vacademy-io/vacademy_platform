@@ -35,6 +35,7 @@ import { Route as ManageCustomTeamsIndexRouteImport } from "./routes/manage-cust
 import { Route as ManageContactsIndexRouteImport } from "./routes/manage-contacts/index"
 import { Route as ManageBookingsIndexRouteImport } from "./routes/manage-bookings/index"
 import { Route as LoginIndexRouteImport } from "./routes/login/index"
+import { Route as LiveActivityIndexRouteImport } from "./routes/live-activity/index"
 import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insights/index"
 import { Route as KnowledgeBaseIndexRouteImport } from "./routes/knowledge-base/index"
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
@@ -421,6 +422,13 @@ const LoginIndexRoute = LoginIndexRouteImport.update({
   path: "/login/",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/login/index.lazy").then((d) => d.Route))
+const LiveActivityIndexRoute = LiveActivityIndexRouteImport.update({
+  id: "/live-activity/",
+  path: "/live-activity/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/live-activity/index.lazy").then((d) => d.Route),
+)
 const LearnerInsightsIndexRoute = LearnerInsightsIndexRouteImport.update({
   id: "/",
   path: "/",
@@ -2111,6 +2119,7 @@ export interface FileRoutesByFullPath {
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
+  "/live-activity/": typeof LiveActivityIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
   "/manage-contacts/": typeof ManageContactsIndexRoute
@@ -2348,6 +2357,7 @@ export interface FileRoutesByTo {
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
   "/knowledge-base": typeof KnowledgeBaseIndexRoute
   "/learner-insights": typeof LearnerInsightsIndexRoute
+  "/live-activity": typeof LiveActivityIndexRoute
   "/login": typeof LoginIndexRoute
   "/manage-bookings": typeof ManageBookingsIndexRoute
   "/manage-contacts": typeof ManageContactsIndexRoute
@@ -2587,6 +2597,7 @@ export interface FileRoutesById {
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
+  "/live-activity/": typeof LiveActivityIndexRoute
   "/login/": typeof LoginIndexRoute
   "/manage-bookings/": typeof ManageBookingsIndexRoute
   "/manage-contacts/": typeof ManageContactsIndexRoute
@@ -2827,6 +2838,7 @@ export interface FileRouteTypes {
     | "/instructor-copilot/"
     | "/knowledge-base/"
     | "/learner-insights/"
+    | "/live-activity/"
     | "/login/"
     | "/manage-bookings/"
     | "/manage-contacts/"
@@ -3064,6 +3076,7 @@ export interface FileRouteTypes {
     | "/instructor-copilot"
     | "/knowledge-base"
     | "/learner-insights"
+    | "/live-activity"
     | "/login"
     | "/manage-bookings"
     | "/manage-contacts"
@@ -3302,6 +3315,7 @@ export interface FileRouteTypes {
     | "/instructor-copilot/"
     | "/knowledge-base/"
     | "/learner-insights/"
+    | "/live-activity/"
     | "/login/"
     | "/manage-bookings/"
     | "/manage-contacts/"
@@ -3540,6 +3554,7 @@ export interface RootRouteChildren {
   InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
   KnowledgeBaseIndexRoute: typeof KnowledgeBaseIndexRoute
+  LiveActivityIndexRoute: typeof LiveActivityIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   ManageBookingsIndexRoute: typeof ManageBookingsIndexRoute
   ManageContactsIndexRoute: typeof ManageContactsIndexRoute
@@ -3938,6 +3953,13 @@ declare module "@tanstack/react-router" {
       path: "/login"
       fullPath: "/login/"
       preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/live-activity/": {
+      id: "/live-activity/"
+      path: "/live-activity"
+      fullPath: "/live-activity/"
+      preLoaderRoute: typeof LiveActivityIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/learner-insights/": {
@@ -5446,6 +5468,7 @@ const rootRouteChildren: RootRouteChildren = {
   InstitutePulseIndexRoute: InstitutePulseIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
   KnowledgeBaseIndexRoute: KnowledgeBaseIndexRoute,
+  LiveActivityIndexRoute: LiveActivityIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   ManageBookingsIndexRoute: ManageBookingsIndexRoute,
   ManageContactsIndexRoute: ManageContactsIndexRoute,

@@ -84,6 +84,13 @@ public class ApplicationSecurityConfig {
             // Agent SSE stream - EventSource doesn't support auth headers, session is
             // validated internally
             "/admin-core-service/v1/agent/stream/**",
+            // Live activity SSE stream - same EventSource constraint. Unlike the
+            // per-call telephony stream, an instituteId is guessable, so this one is
+            // gated on a short-lived signed token minted by the AUTHENTICATED
+            // /stream-token endpoint, which stays off this list. The token also carries
+            // the caller's permitted categories, and the bus filters every event
+            // against them before writing.
+            "/admin-core-service/v1/live-activity/stream",
             "/admin-core-service/api/v1/audience/webhook/**",
             // Ad platform webhook endpoints (Meta hub.challenge GET + POST, Google POST)
             "/admin-core-service/api/v1/webhook/meta",

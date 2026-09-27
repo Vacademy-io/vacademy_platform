@@ -179,9 +179,22 @@ public class ChatOfflinePushService {
         }
     }
 
+    /**
+     * Let pushes still waiting out their grace window run on shutdown (a rolling deploy would otherwise drop
+     * every message committed in the last few seconds). ScheduledThreadPoolExecutor runs already-delayed tasks
+     * after shutdown() by default; the push executors outlive this bean (it depends on them).
+     */
     @PreDestroy
     void shutdown() {
-        graceScheduler.shutdownNow();
+        graceScheduler.shutdown();
+        try {
+            if (!graceScheduler.awaitTermination(readGraceMs + 2000, TimeUnit.MILLISECONDS)) {
+                graceScheduler.shutdownNow();
+            }
+        } catch (InterruptedException ie) {
+            graceScheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private String previewOf(ChatMessageResponse msg) {

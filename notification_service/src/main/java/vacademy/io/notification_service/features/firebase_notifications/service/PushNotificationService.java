@@ -28,6 +28,9 @@ public class PushNotificationService {
     /** Tokens that belong to a Firebase project other than their institute's (learned on a fallback send). */
     private final Map<String, FirebaseMessaging> tokenProject = new ConcurrentHashMap<>();
     private static final int TOKEN_PROJECT_CACHE_MAX = 50_000;
+    /** Tokens no configured project accepted: skip the cross-project retry for them until this time (ms). */
+    private final Map<String, Long> fallbackMissUntil = new ConcurrentHashMap<>();
+    private static final long FALLBACK_MISS_TTL_MS = 60 * 60 * 1000L;
 
     /**
      * Send push notification to a specific user
@@ -128,14 +131,14 @@ public class PushNotificationService {
     }
 
     /**
-     * FCM rejects a token registered under a different Firebase project with SENDER_ID_MISMATCH
-     * (surfaced as HTTP 403 / PERMISSION_DENIED). That's not a dead token — it's someone else's sender:
-     * e.g. a white-label institute whose Android app is on its own project while its web users are on
-     * the shared "vacademy-app" project, but the institute has a single key configured.
+     * FCM rejects a token registered under a different Firebase project with SENDER_ID_MISMATCH (HTTP 403).
+     * That's not a dead token — it's someone else's sender: e.g. a white-label institute whose Android app is
+     * on its own project while its web users are on the shared "vacademy-app" project, but the institute has a
+     * single key configured. Only that code triggers the retry: a bare PERMISSION_DENIED (e.g. a key without
+     * FCM rights) would otherwise multiply every send across all projects.
      */
     static boolean isOtherProjectsToken(FirebaseMessagingException e) {
-        return e.getMessagingErrorCode() == MessagingErrorCode.SENDER_ID_MISMATCH
-                || e.getErrorCode() == com.google.firebase.ErrorCode.PERMISSION_DENIED;
+        return e.getMessagingErrorCode() == MessagingErrorCode.SENDER_ID_MISMATCH;
     }
 
     /**
@@ -146,13 +149,19 @@ public class PushNotificationService {
         if (message == null) {
             return false;
         }
-        for (FirebaseMessaging other : multiTenantFirebaseManager.getOtherMessaging(rejectedBy)) {
+        Long missUntil = fallbackMissUntil.get(fcmToken);
+        if (missUntil != null && missUntil > System.currentTimeMillis()) {
+            return false; // no configured project accepted this token recently
+        }
+        List<FirebaseMessaging> others = multiTenantFirebaseManager.getOtherMessaging(rejectedBy);
+        for (FirebaseMessaging other : others) {
             try {
                 other.send(message);
                 if (tokenProject.size() >= TOKEN_PROJECT_CACHE_MAX) {
                     tokenProject.clear(); // crude bound; entries are cheap to re-learn
                 }
                 tokenProject.put(fcmToken, other);
+                fallbackMissUntil.remove(fcmToken);
                 logger.info("Delivered to token {} via fallback Firebase project", maskToken(fcmToken));
                 return true;
             } catch (FirebaseMessagingException fe) {
@@ -160,6 +169,12 @@ public class PushNotificationService {
             } catch (Exception ex) {
                 logger.debug("Fallback send failed for token {}: {}", maskToken(fcmToken), ex.getMessage());
             }
+        }
+        if (!others.isEmpty()) { // remember only a real miss, not "no other project configured yet"
+            if (fallbackMissUntil.size() >= TOKEN_PROJECT_CACHE_MAX) {
+                fallbackMissUntil.clear();
+            }
+            fallbackMissUntil.put(fcmToken, System.currentTimeMillis() + FALLBACK_MISS_TTL_MS);
         }
         return false;
     }
@@ -174,6 +189,15 @@ public class PushNotificationService {
      * Send notification to multiple users
      */
     public void sendNotificationToUsers(String instituteId, List<String> userIds, String title, String body, Map<String, String> data) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        // Check once: an institute without Firebase would otherwise log one WARN per recipient (chat and
+        // community fan-outs reach hundreds of users).
+        if (multiTenantFirebaseManager.getMessagingForInstitute(instituteId).isEmpty()) {
+            logger.warn("Firebase is not initialized for institute {}. Skipping push to {} user(s).", instituteId, userIds.size());
+            return;
+        }
         for (String userId : userIds) {
             sendNotificationToUser(instituteId, userId, title, body, data);
         }

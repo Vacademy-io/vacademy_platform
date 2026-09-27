@@ -86,15 +86,30 @@ class PushNotificationFallbackProjectTest {
     }
 
     @Test
-    @DisplayName("bare PERMISSION_DENIED (no messaging code) is treated as another project's token too")
-    void permissionDeniedFallsBack() throws Exception {
+    @DisplayName("a bare PERMISSION_DENIED (e.g. a key without FCM rights) does not fan out to other projects")
+    void bareePermissionDeniedDoesNotFallBack() throws Exception {
         FirebaseMessagingException denied = fcmError(ErrorCode.PERMISSION_DENIED, null);
         when(instituteProject.send(any(Message.class))).thenThrow(denied);
-        when(otherProject.send(any(Message.class))).thenReturn("ok");
 
         send("webTokenCCCCCC");
 
-        verify(otherProject).send(any(Message.class));
+        verifyNoInteractions(otherProject);
+        verify(tokenRepo, never()).deactivateTokenByToken(anyString());
+    }
+
+    @Test
+    @DisplayName("a token no project accepts is not retried on other projects again for a while")
+    void missIsRemembered() throws Exception {
+        FirebaseMessagingException mismatch = fcmError(ErrorCode.PERMISSION_DENIED, MessagingErrorCode.SENDER_ID_MISMATCH);
+        FirebaseMessagingException alsoMismatch = fcmError(ErrorCode.PERMISSION_DENIED, MessagingErrorCode.SENDER_ID_MISMATCH);
+        when(instituteProject.send(any(Message.class))).thenThrow(mismatch);
+        when(otherProject.send(any(Message.class))).thenThrow(alsoMismatch);
+
+        send("orphanTokenFFF");
+        send("orphanTokenFFF");
+
+        verify(instituteProject, times(2)).send(any(Message.class));
+        verify(otherProject, times(1)).send(any(Message.class));
     }
 
     @Test

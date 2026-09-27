@@ -198,8 +198,9 @@ export const MySidebar = ({
     // a different queryFn from this observer.
     queryFn: () => listConversations(undefined, 30),
     enabled: false,
+    // Community excluded, as in the server's unread total: an unopened community would pin the badge at 99+.
     select: (convs: ChatConversationResponse[]) =>
-      convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+      convs.reduce((sum, c) => sum + (c.type === "COMMUNITY" ? 0 : c.unreadCount || 0), 0),
   });
   const { data: polledUnread = 0 } = useQuery({
     queryKey: UNREAD_COUNT_KEY,

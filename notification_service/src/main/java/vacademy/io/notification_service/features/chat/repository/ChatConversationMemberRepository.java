@@ -22,6 +22,13 @@ public interface ChatConversationMemberRepository extends JpaRepository<ChatConv
 
     boolean existsByConversationIdAndUserIdAndIsActiveTrue(String conversationId, String userId);
 
+    /** Forward-only read-cursor move; returns 0 when the stored cursor is already at or past {@code seq}. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE ChatConversationMember m SET m.lastReadSeq = :seq, m.lastReadMessageId = :messageId, m.lastReadAt = :at "
+            + "WHERE m.id = :id AND (m.lastReadSeq IS NULL OR m.lastReadSeq < :seq)")
+    int advanceReadCursor(@Param("id") String memberId, @Param("seq") long seq,
+                          @Param("messageId") String messageId, @Param("at") java.time.LocalDateTime at);
+
     @Query("SELECT m.userId FROM ChatConversationMember m WHERE m.conversationId = :cid AND m.isActive = true")
     List<String> findActiveMemberIds(@Param("cid") String conversationId);
 

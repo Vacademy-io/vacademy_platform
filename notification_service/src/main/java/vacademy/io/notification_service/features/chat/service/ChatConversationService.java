@@ -219,16 +219,24 @@ public class ChatConversationService {
      * is evaluated per-request from the token instead (see ChatMessageService#canModerate).
      */
     public ChatConversationMember ensureMember(ChatConversation conv, String userId, String userRole, ChatMemberRole memberRole) {
+        // Joining (or re-joining) an existing conversation starts caught up: history from before the join is
+        // readable but not "unread" — otherwise the app-wide unread badge shows 99+ for a community/batch the
+        // learner never opened, and the community push rule would never reach them.
+        long joinSeq = conv.getLastMessageSeq() == null ? 0L : conv.getLastMessageSeq();
         Optional<ChatConversationMember> existing = memberRepo.findByConversationIdAndUserId(conv.getId(), userId);
         if (existing.isPresent()) {
             ChatConversationMember m = existing.get();
             if (!Boolean.TRUE.equals(m.getIsActive())) {
                 m.setIsActive(true);
+                m.setLastReadSeq(Math.max(m.getLastReadSeq() == null ? 0L : m.getLastReadSeq(), joinSeq));
                 memberRepo.save(m);
             }
             return m;
         }
-        return saveMember(conv.getId(), userId, ChatPermissionService.normalizeRole(userRole).toUpperCase(), null, memberRole);
+        ChatConversationMember member = newMember(conv.getId(), userId,
+                ChatPermissionService.normalizeRole(userRole).toUpperCase(), null, memberRole);
+        member.setLastReadSeq(joinSeq);
+        return memberRepo.save(member);
     }
 
     private ChatConversationMember saveMember(String conversationId, String userId, String userRole, String userName, ChatMemberRole memberRole) {
@@ -262,7 +270,9 @@ public class ChatConversationService {
         if (!permissionService.isChatEnabled(instituteId)) {
             return 0L;
         }
-        Long total = memberRepo.sumUnread(userId, instituteId, permissionService.isCommunityEnabled(instituteId), UNREAD_CAP);
+        // Community is left out of the app-wide badge: members get a row (cursor 0) when they first open chat,
+        // so an unopened community would pin the badge at 99+ everywhere. Its unread still shows in the list.
+        Long total = memberRepo.sumUnread(userId, instituteId, false, UNREAD_CAP);
         return total == null ? 0L : total;
     }
 
@@ -588,11 +598,9 @@ public class ChatConversationService {
             targetSeq = fallbackSeq;
         }
 
-        if (member.getLastReadSeq() == null || targetSeq > member.getLastReadSeq()) {
-            member.setLastReadSeq(targetSeq);
-            member.setLastReadMessageId(upToMessageId);
-            member.setLastReadAt(LocalDateTime.now());
-            memberRepo.save(member);
+        // Atomic, forward-only: two overlapping markRead calls must never move the cursor backwards (a lower
+        // cursor makes the push rule treat an already-seen message as unread).
+        if (memberRepo.advanceReadCursor(member.getId(), targetSeq, upToMessageId, LocalDateTime.now()) > 0) {
 
             // Read receipts only matter for DIRECT (and small batch); skip community fan-out.
             if (!ChatConversationType.COMMUNITY.name().equals(conv.getType())) {

@@ -144,10 +144,11 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
   // The question card sits at the end of the list, so its arrival must scroll
   // too — keyed on transcript length alone, the card (and its last options)
-  // landed below the fold behind the answer bar.
+  // landed below the fold behind the answer bar. phase / micOn: the voice
+  // guidance line appears a beat later and shrinks the list after the scroll.
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [transcript.length, check?.prompt, awaiting]);
+  }, [transcript.length, check?.prompt, awaiting, phase, micOn]);
 
   const submit = () => {
     const t = text.trim();
@@ -432,8 +433,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         {/* Voice answers are tap-to-talk. Most voice sessions used to end without a
             single answer: students spoke to a microphone that was never on. */}
         {voiceMode && awaiting === "answer" && !micOn && phase !== "speaking" && phase !== "thinking" && (
-          <p role="status" className="flex items-center gap-1.5 text-xs font-medium text-primary-500">
-            <Microphone className="size-3.5" weight="fill" />
+          <p role="status" className="text-xs font-medium text-primary-500">
+            <Microphone className="me-1 inline size-3.5 align-text-bottom" weight="fill" />
             Tap <span className="font-semibold">Answer</span>, then speak — it sends when you pause. Or type below.
           </p>
         )}

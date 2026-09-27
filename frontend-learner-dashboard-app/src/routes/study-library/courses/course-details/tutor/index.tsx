@@ -892,7 +892,7 @@ function TutorPage() {
       <div className="mb-2 flex items-center gap-2 lg:hidden">
         <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-8" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}<span className="ms-1 font-normal text-neutral-500">· {progress.done}/{progress.total} steps</span></p>
+          <p className="truncate text-xs font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}<span className="ms-1 font-normal text-neutral-500" title={`${progress.done} of ${progress.total} steps done`}>· {progress.done}/{progress.total}</span></p>
         </div>
         {demoClock && <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{demoClock}</span>}
         <div className="flex rounded-full bg-neutral-100 p-0.5" role="tablist" aria-label="View">

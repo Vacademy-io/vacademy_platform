@@ -16,6 +16,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+from .llm_router import post_chat
 
 from ..constants.models import DEFAULT_MODEL as _DEFAULT_MODEL
 from ..schemas.routing import (
@@ -181,7 +182,7 @@ class IntentRouterService:
 
         try:
             async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
-                resp = await client.post(_OPENROUTER_URL, headers=headers, json=payload)
+                resp = await post_chat(client, payload, self._openrouter_key)
                 resp.raise_for_status()
                 data = resp.json()
             content = data["choices"][0]["message"]["content"]

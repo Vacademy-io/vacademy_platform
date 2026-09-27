@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 import httpx
+from .llm_router import post_chat
 
 from ..config import get_settings
 from .reels_engagement_service import (
@@ -392,7 +393,7 @@ class ReelsPreviewService:
                 last_error_summary: Optional[str] = None
                 for i, attempt in enumerate(attempts):
                     try:
-                        resp = await client.post(self._llm_url, headers=headers, json=attempt)
+                        resp = await post_chat(client, attempt, self._api_key)
                     except httpx.TimeoutException as e:
                         last_error_summary = f"timeout: {e}"
                         # Retry on next attempt — transient.

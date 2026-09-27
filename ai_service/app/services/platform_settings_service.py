@@ -343,12 +343,29 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
     )
 }
 
+
+SETTING_SPECS["llm.model_routes"] = SettingSpec(
+    key="llm.model_routes",
+    group="routing",
+    label="Model routing (JSON)",
+    description=(
+        'Models served by a gateway other than OpenRouter, e.g. {"z-ai/glm-5.3-flash": "isoquant"} '
+        'or {"z-ai/glm-5.3-flash": {"router": "isoquant", "model": "glm-5.3-flash", "reasoning_effort": "low"}}. '
+        "Unlisted models stay on OpenRouter. Institutes using their own OpenRouter key always stay "
+        "on OpenRouter, and a failing gateway falls back to OpenRouter for 2 minutes."
+    ),
+    type="string",
+    default=lambda: os.getenv("LLM_MODEL_ROUTES", "") or "{}",
+    max_length=6000,
+)
+
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",
     "tutor": "Live AI Tutor",
     "images": "Image generation",
     "rollout": "Rollout & safety",
+    "routing": "Model routing",
 }
 
 
@@ -609,7 +626,31 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
     return out
 
 
-def _openrouter_one_token(model_id: str, mode: str, api_key: str, timeout_seconds: float) -> Optional[str]:
+def _check_model_routes(raw: Any) -> Optional[str]:
+    """None if the map parses and every routed model answers one token through
+    its gateway with the platform key; else why not. A route whose gateway key
+    is missing would silently stay on OpenRouter, so that is refused too."""
+    from .llm_router import ROUTERS, parse_routes
+
+    try:
+        routes = parse_routes(raw)
+    except Exception as exc:  # noqa: BLE001
+        return str(exc)
+    for model_id, entry in routes.items():
+        spec = ROUTERS[entry["router"]]
+        if entry["router"] == "openrouter":
+            continue
+        if not spec.api_key():
+            return f"{spec.label} API key is not configured on ai-service (needed for {model_id})"
+        err = _openrouter_one_token(model_id, "on-low", get_settings().openrouter_api_key or "", 25.0, routes)
+        if err:
+            return f"{model_id} failed through {spec.label}: {err}"
+    return None
+
+
+def _openrouter_one_token(
+    model_id: str, mode: str, api_key: str, timeout_seconds: float, routes: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
     """
     One-token completion in the chatbot's request shape; None if it worked,
     else the provider's error (with OpenRouter's upstream text unwrapped).
@@ -633,30 +674,25 @@ def _openrouter_one_token(model_id: str, mode: str, api_key: str, timeout_second
         payload["max_tokens"] = 256  # room for thinking before the one visible token
         if mode == "on-no-temp":
             payload.pop("temperature", None)
+    from .llm_router import route_chat
+
+    # Probe the gateway that will actually serve the model (llm_router).
+    url, headers, wire, route = route_chat(payload, api_key, routes)
+    gw = route.label
     try:
-        resp = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://vacademy.io",
-                "X-Title": "Vacademy AI Tutor",
-            },
-            timeout=timeout_seconds,
-        )
+        resp = httpx.post(url, json=wire, headers=headers, timeout=timeout_seconds)
     except Exception as exc:
-        return f"could not reach OpenRouter: {exc}"
+        return f"could not reach {gw}: {exc}"
     if resp.status_code >= 400:
-        return f"OpenRouter {resp.status_code}: {openrouter_error_text(resp.text)}"
+        return f"{gw} {resp.status_code}: {openrouter_error_text(resp.text)}"
     try:
         data = resp.json()
         if data.get("error"):
-            return f"OpenRouter error: {openrouter_error_text(resp.text)}"
+            return f"{gw} error: {openrouter_error_text(resp.text)}"
         if not (data.get("choices") or []):
-            return "OpenRouter returned no choices"
+            return f"{gw} returned no choices"
     except Exception as exc:
-        return f"unreadable OpenRouter response: {exc}"
+        return f"unreadable {gw} response: {exc}"
     return None
 
 
@@ -705,6 +741,10 @@ def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional
     if spec is None:
         raise KeyError(f"Unknown platform setting: {key}")
     coerced = _coerce(spec, value)
+    if key == "llm.model_routes":
+        problem = _check_model_routes(coerced)
+        if problem:
+            raise ValueError(f"llm.model_routes not saved — {problem}")
     if spec.type == "model" and coerced and not _model_exists(db, coerced, spec.catalog):
         what = "an active image model" if spec.catalog == "image" else "an active chat model"
         raise ValueError(f"{coerced} is not {what} in the ai_models registry")

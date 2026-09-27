@@ -34,6 +34,7 @@ from datetime import date, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import httpx
+from .llm_router import open_chat_stream, post_chat
 
 from .document_postprocess import adopt_foreign_images
 
@@ -422,12 +423,9 @@ def _payload(prompt: str, model: str) -> Dict[str, Any]:
 async def call_model(prompt: str, api_key: str, base_url: str, model: str) -> Tuple[str, dict]:
     """One non-streamed call (the synchronous draft endpoint)."""
     payload = _payload(prompt, model)
+    # base_url is kept for callers; the gateway comes from the route map.
     async with httpx.AsyncClient(timeout=240.0) as client:
-        resp = await client.post(
-            base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-        )
+        resp = await post_chat(client, payload, api_key)
     if resp.status_code != 200:
         raise httpx.HTTPStatusError(
             f"OpenRouter {resp.status_code}: {resp.text[:500]}",
@@ -472,12 +470,7 @@ async def stream_model(
     pieces: List[str] = []
     usage: dict = {}
     async with httpx.AsyncClient(timeout=_STREAM_TIMEOUT) as client:
-        async with client.stream(
-            "POST",
-            base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-        ) as resp:
+        async with open_chat_stream(client, payload, api_key) as resp:
             if resp.status_code != 200:
                 detail = (await resp.aread()).decode(errors="ignore")[:500]
                 raise httpx.HTTPStatusError(

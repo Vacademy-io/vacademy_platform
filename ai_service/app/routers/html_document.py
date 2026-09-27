@@ -20,6 +20,7 @@ from decimal import Decimal
 from typing import Optional
 
 import httpx
+from ..services.llm_router import open_chat_stream, post_chat
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -352,12 +353,9 @@ def _llm_payload(prompt: str, model: str, stream: bool) -> dict:
 
 
 async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str) -> tuple[str, dict]:
+    # base_url is kept for callers; the gateway comes from the route map.
     async with httpx.AsyncClient(timeout=180.0) as client:
-        resp = await client.post(
-            base_url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=_llm_payload(prompt, model, stream=False),
-        )
+        resp = await post_chat(client, _llm_payload(prompt, model, stream=False), api_key)
     if resp.status_code != 200:
         raise httpx.HTTPStatusError(
             f"OpenRouter {resp.status_code}: {resp.text[:500]}",
@@ -491,16 +489,10 @@ async def _ground(body: GenerateHtmlRequest, ctx: dict) -> None:
 async def _stream_llm(ctx: dict):
     """Stream one generation from OpenRouter. Yields ("reasoning", n_chars),
     ("content", text) and finally ("usage", dict). Raises on a non-200."""
-    headers = {
-        "Authorization": f"Bearer {ctx['openrouter_key']}",
-        "Content-Type": "application/json",
-    }
     payload = _llm_payload(ctx["prompt"], ctx["model"], stream=True)
     usage: dict = {}
     async with httpx.AsyncClient(timeout=180.0) as client:
-        async with client.stream(
-            "POST", ctx["openrouter_url"], headers=headers, json=payload
-        ) as resp:
+        async with open_chat_stream(client, payload, ctx["openrouter_key"]) as resp:
             if resp.status_code != 200:
                 detail = (await resp.aread()).decode(errors="ignore")[:300]
                 raise RuntimeError(f"OpenRouter {resp.status_code}: {detail}")

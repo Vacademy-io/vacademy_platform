@@ -245,6 +245,9 @@ export function TransactionsView() {
                 package_session_ids: requestFilters.package_session_ids,
             }),
         staleTime: 60_000,
+        // Balances change on other screens — a learner removed from a course, a payment deleted —
+        // so a return to this page re-asks rather than showing the copy cached before the change.
+        refetchOnMount: 'always',
         retry: false,
     });
 
@@ -463,6 +466,8 @@ export function TransactionsView() {
                 balanceScope !== 'due'
             ),
         staleTime: 60_000,
+        // Refetched with the cards above it, so the list and the cards never describe two moments.
+        refetchOnMount: 'always',
         retry: false,
     });
 
@@ -903,6 +908,10 @@ export function TransactionsView() {
                         start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
                         end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
                         package_session_ids: requestFilters.package_session_ids,
+                    }}
+                    onViewPayment={(entry) => {
+                        setDueDetailOpen(false);
+                        openDetail(entry);
                     }}
                 />
 

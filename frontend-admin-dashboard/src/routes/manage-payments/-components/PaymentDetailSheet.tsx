@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { StatusChip, type StatusType } from '@/components/design-system/status-chips';
+import { StatusChip } from '@/components/design-system/status-chips';
 import { MyButton } from '@/components/design-system/button';
 import { Check, Clock, Copy, Prohibit, Trash, XCircle, UserCircle } from '@phosphor-icons/react';
 import { isDeletablePayment, isVoidablePayment } from '@/services/payment-logs';
@@ -15,6 +15,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from '../-utils/exportPaymentLogsCsv';
+import { entryPaymentStatus, paymentStatusMeta } from '../-utils/paymentStatus';
 import { GatewayBadge } from './GatewayBadge';
 import type { PaymentLogEntry } from '@/types/payment-logs';
 
@@ -26,17 +27,6 @@ interface PaymentDetailSheetProps {
     onVoided?: () => void;
 }
 
-const STATUS_META: Record<string, { label: string; chip: StatusType }> = {
-    PAID: { label: 'Paid', chip: 'SUCCESS' },
-    FAILED: { label: 'Failed', chip: 'DANGER' },
-    PAYMENT_PENDING: { label: 'Pending', chip: 'WARNING' },
-    NOT_INITIATED: { label: 'Not initiated', chip: 'INFO' },
-    ABANDONED: { label: 'Abandoned checkout', chip: 'INFO' },
-    // A voided invoice row; a voided payment is labelled from its own status below.
-    CANCELLED: { label: 'Cancelled', chip: 'INFO' },
-    VOIDED: { label: 'Voided', chip: 'DANGER' },
-};
-
 /** When and why a payment was voided, from the audit keys the server writes on the log. */
 const readVoidAudit = (raw?: string | null): { at?: string; reason?: string } => {
     if (!raw) return {};
@@ -47,12 +37,6 @@ const readVoidAudit = (raw?: string | null): { at?: string; reason?: string } =>
         return {};
     }
 };
-
-const statusMeta = (status?: string) =>
-    STATUS_META[(status || '').toUpperCase()] ?? {
-        label: status || '—',
-        chip: 'INFO' as StatusType,
-    };
 
 const initials = (name?: string) =>
     (name || '?')
@@ -135,8 +119,7 @@ export function PaymentDetailSheet({
         openOverlay(seed);
     };
     const isVoided = (log?.payment_status || '').toUpperCase() === 'VOIDED';
-    const status = isVoided ? 'VOIDED' : entry.current_payment_status || log?.payment_status || '';
-    const meta = statusMeta(status);
+    const meta = paymentStatusMeta(entryPaymentStatus(entry));
     // Invoice rows carry the invoice id in payment_log.id, so only real payment rows qualify.
     const canVoid =
         !entry.invoice && !!log?.id && isVoidablePayment(log.vendor, log.payment_status);

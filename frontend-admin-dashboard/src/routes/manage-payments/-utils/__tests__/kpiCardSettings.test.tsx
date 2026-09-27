@@ -88,6 +88,33 @@ describe('Upcoming card for instalments', () => {
         expect(screen.getByText(/23 learners · next due 6 Nov/)).toBeTruthy();
     });
 
+    it("names the year when the next due date is not this year's", () => {
+        // "next due 6 Sept" on 27 Sept read as a date already gone; it was 6 Sept of next year.
+        const nextYear = new Date().getFullYear() + 1;
+        const data = billing({ nextDueDate: `${nextYear}-09-06` });
+        render(
+            <PaymentKpiCards
+                summary={emptyPaymentSummary()}
+                billing={data}
+                visibleKeys={defaultVisibleKpiCards(data)}
+            />
+        );
+        expect(screen.getByText(new RegExp(`next due 6 Sept? ${nextYear}`))).toBeTruthy();
+    });
+
+    it('leaves the year off a date in this year', () => {
+        const thisYear = new Date().getFullYear();
+        const data = billing({ nextDueDate: `${thisYear}-12-06` });
+        render(
+            <PaymentKpiCards
+                summary={emptyPaymentSummary()}
+                billing={data}
+                visibleKeys={defaultVisibleKpiCards(data)}
+            />
+        );
+        expect(screen.getByText(/next due 6 Dec$/)).toBeTruthy();
+    });
+
     it('keeps the 30-day figure when the institute has no instalments', () => {
         render(
             <PaymentKpiCards

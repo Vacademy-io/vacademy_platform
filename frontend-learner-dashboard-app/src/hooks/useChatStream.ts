@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { BASE_URL } from "@/constants/urls";
 import { getChatUser } from "@/services/chat/getChatUser";
+import { Capacitor } from "@capacitor/core";
+import { App } from "@/utils/app-plugin";
 import type {
   ChatAnnouncementEvent,
   ChatMessagePayload,
@@ -54,6 +56,11 @@ export function useChatStream(
     let attempt = 0;
     let cancelled = false;
     let hadConnected = false;
+    // paused: backgrounded — an in-flight connect() must not open a stream. connecting: a connect() is
+    // mid-await, so a second trigger (visibilitychange + appStateChange both fire on resume) doesn't
+    // open a duplicate EventSource; the in-flight one re-checks `paused` after its await.
+    let paused = false;
+    let connecting = false;
 
     const parse = (raw: string): ChatAnnouncementEvent | null => {
       try {
@@ -79,11 +86,18 @@ export function useChatStream(
     };
 
     const connect = async () => {
-      if (cancelled) return;
+      if (cancelled || connecting || es) return;
+      connecting = true;
       setStatus("connecting");
 
-      const { userId, instituteId, token } = await getChatUser();
-      if (cancelled || !userId) return;
+      let user: Awaited<ReturnType<typeof getChatUser>>;
+      try {
+        user = await getChatUser();
+      } finally {
+        connecting = false;
+      }
+      const { userId, instituteId, token } = user;
+      if (cancelled || paused || !userId || es) return;
 
       const url =
         `${BASE_URL}/notification-service/v1/sse/stream/${userId}` +
@@ -124,24 +138,50 @@ export function useChatStream(
     // Pause the stream while the app/tab is backgrounded so the server promptly marks the user
     // offline and routes new messages to an FCM push instead of a stream they can't see. On
     // foreground we reconnect, and the reconnect handler catches up anything missed via sinceCursor.
+    // The server also relies on this for chat pushes: a message the open conversation doesn't mark read
+    // within a few seconds gets pushed, so the stream must not stay live (and mark-read) in the background.
+    const pause = () => {
+      paused = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      es?.close();
+      es = null;
+      setStatus("closed");
+    };
+    const resume = () => {
+      paused = false;
+      if (cancelled || es) return;
+      attempt = 0;
+      void connect();
+    };
     const handleVisibility = () => {
       if (typeof document === "undefined") return;
-      if (document.hidden) {
-        if (reconnectTimer) {
-          clearTimeout(reconnectTimer);
-          reconnectTimer = null;
-        }
-        es?.close();
-        es = null;
-        setStatus("closed");
-      } else if (!es) {
-        attempt = 0;
-        void connect();
-      }
+      if (document.hidden) pause();
+      else resume();
     };
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", handleVisibility);
     }
+    // Native safety net: Capacitor keeps the Android WebView's JS running in the background and
+    // visibilitychange isn't guaranteed there, so also follow the app lifecycle (no-op on web).
+    // iOS: use pause/resume (didEnterBackground / willEnterForeground). appStateChange there also fires on
+    // transient "inactive" moments — Notification/Control Centre, app-switcher peek, incoming-call banner —
+    // and tearing the stream down for those makes the server push messages the user is looking at.
+    // Android: appStateChange, whose inactive state means the activity really stopped.
+    const lifecycleListeners =
+      Capacitor.getPlatform() === "ios"
+        ? [
+            App.addListener("pause", () => pause()).catch(() => null),
+            App.addListener("resume", () => resume()).catch(() => null),
+          ]
+        : [
+            App.addListener("appStateChange", ({ isActive }: { isActive: boolean }) => {
+              if (isActive) resume();
+              else pause();
+            }).catch(() => null),
+          ];
 
     // Don't open a stream we'd immediately have to tear down if we start backgrounded.
     if (typeof document === "undefined" || !document.hidden) {
@@ -153,6 +193,7 @@ export function useChatStream(
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibility);
       }
+      lifecycleListeners.forEach((l) => void l.then((handle) => handle?.remove()));
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
       setStatus("closed");

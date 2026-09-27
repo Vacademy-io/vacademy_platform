@@ -150,6 +150,29 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [transcript.length, check?.prompt, awaiting, phase, micOn]);
 
+  // The teacher's words are revealed INTO the current bubble while she speaks,
+  // so the list grows with no new message and no effect above fires — the
+  // question card kept ending up behind the answer bar. Follow any growth of
+  // the list while the student is at (or near) the bottom; never pull them
+  // down if they have scrolled up to re-read.
+  const stickToBottomRef = useRef(true);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    const follow = new MutationObserver(() => {
+      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    follow.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      follow.disconnect();
+    };
+  }, []);
+
   const submit = () => {
     const t = text.trim();
     if (!t || disabled) return;

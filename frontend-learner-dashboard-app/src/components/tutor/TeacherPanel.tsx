@@ -142,9 +142,12 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     };
   }, [optionsOpen]);
 
+  // The question card sits at the end of the list, so its arrival must scroll
+  // too — keyed on transcript length alone, the card (and its last options)
+  // landed below the fold behind the answer bar.
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [transcript.length]);
+  }, [transcript.length, check?.prompt, awaiting]);
 
   const submit = () => {
     const t = text.trim();
@@ -273,7 +276,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                         ? `Getting your teacher ready · ${Math.round(avatarProgress * 100)}%`
                         : "Getting your teacher ready…"
                       : gate ? "Ready when you are" : PHASE_LABEL[phase]}
-                    {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked}{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
+                    {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked} right{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
                     {countdown && <span className="ms-1 rounded-full bg-warning-500 px-1.5 py-px font-semibold tabular-nums text-white">{countdown}</span>}
                   </p>
                 </div>
@@ -377,6 +380,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
       <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
+          // While the question card is up it IS the question; the spoken prompt's
+          // own bubble would show the same sentence a second time.
+          check && awaiting === "answer" && m.role === "teacher" && m.text.trim() === (check.prompt || "").trim() ? null : (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : m.kind === "nudge" ? "border border-warning-200 bg-warning-50 text-neutral-800" : "bg-neutral-100 text-neutral-800"}`}>
               {m.role === "teacher" && (m.kind === "evaluate" || m.kind === "remediate" || m.kind === "revisit_verdict") && (
@@ -385,6 +391,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               {m.text}
             </div>
           </div>
+          )
         ))}
         {check && awaiting === "answer" && (
           <div className="rounded-xl border border-primary-200 bg-primary-50 p-3">
@@ -404,7 +411,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       </div>
 
       <div className={`space-y-1.5 border-t border-neutral-200 pt-2 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-        <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap">
+        <div className="flex flex-wrap items-center gap-1">
           {awaiting === "continue" && (
             <button
               type="button"
@@ -422,6 +429,17 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
           <button type="button" onClick={onEnd} className="ms-auto shrink-0 rounded-full px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-danger-600">End</button>
         </div>
+        {/* Voice answers are tap-to-talk. Most voice sessions used to end without a
+            single answer: students spoke to a microphone that was never on. */}
+        {voiceMode && awaiting === "answer" && !micOn && phase !== "speaking" && phase !== "thinking" && (
+          <p role="status" className="flex items-center gap-1.5 text-xs font-medium text-primary-500">
+            <Microphone className="size-3.5" weight="fill" />
+            Tap <span className="font-semibold">Answer</span>, then speak — it sends when you pause. Or type below.
+          </p>
+        )}
+        {voiceMode && micOn && (
+          <p role="status" className="text-xs font-medium text-danger-500">Listening… tap Done when you finish.</p>
+        )}
         <div className="flex items-center gap-2">
           {voiceMode && (
             <button
@@ -430,7 +448,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               disabled={phase === "thinking" || phase === "connecting"}
               aria-pressed={micOn}
               className={`flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-                micOn ? "bg-danger-500 text-white animate-pulse" : "bg-primary-500 text-white hover:bg-primary-400"
+                micOn
+                  ? "bg-danger-500 text-white animate-pulse"
+                  : `bg-primary-500 text-white hover:bg-primary-400 ${awaiting === "answer" && phase !== "speaking" ? "ring-4 ring-primary-200 animate-pulse" : ""}`
               }`}
             >
               <Microphone className="size-5" weight="fill" />

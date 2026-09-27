@@ -371,11 +371,16 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # whether the learner has already been nudged on it.
         awaiting_answer_since: Optional[float] = None
         nudged = False
+        # Did any microphone audio arrive since this question opened? Voice
+        # answers are tap-to-talk; most voice sessions used to end with no answer
+        # at all, because the student spoke to a microphone that was never on.
+        heard_audio = False
 
         async def _await(what: str) -> None:
-            nonlocal awaiting_answer_since, nudged
+            nonlocal awaiting_answer_since, nudged, heard_audio
             awaiting_answer_since = time.time() if what == "answer" else None
             nudged = False
+            heard_audio = False
             await _send({"type": "await", "what": what})
         board: List[Dict[str, Any]] = []          # cumulative ops of the current topic
         transcript: List[Dict[str, str]] = []
@@ -528,7 +533,10 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 hint = concept.hint_for(lang, lesson.language) if concept else None
             if pointer.phase == sm.PREDICT:
                 hint = None
-            await _say(prompts.tpl("nudge_hint", lang, hint=hint) if hint else prompts.tpl("nudge_open", lang),
+            # Voice lesson and not a sound from the microphone: the likely problem is
+            # how to answer, not what to answer — say how first, then the hint.
+            how = "voice_" if mode == "voice" and not heard_audio else ""
+            await _say(prompts.tpl(f"nudge_{how}hint", lang, hint=hint) if hint else prompts.tpl(f"nudge_{how}open", lang),
                        meta={"kind": "nudge"})
             await _send({"type": "await", "what": "answer"})
 
@@ -1231,6 +1239,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             elif t == "audio_chunk":
                 data = msg.get("data") or ""
                 if data:
+                    heard_audio = True
                     try:
                         audio_buffer.extend(base64.b64decode(data))
                     except Exception:  # noqa: BLE001

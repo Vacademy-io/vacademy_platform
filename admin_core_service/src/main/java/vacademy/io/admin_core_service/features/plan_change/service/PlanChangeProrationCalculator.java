@@ -13,10 +13,15 @@ import java.util.Date;
 /**
  * Works out what an upgrade costs today and when the new access window ends.
  *
- * <p>The model is straight time-proration: the learner has already paid for days they have
- * not used, so that unused value is credited against the new plan's full price and the
- * access window restarts at the new plan's validity. No refunds are ever produced — the
- * credit is capped at the current plan's price, and the charge floors at zero.
+ * <p>The model is the PLAN-PRICE DIFFERENCE, not time proration: the learner pays
+ * {@code targetPrice - currentPrice} and the access window restarts at the new plan's
+ * full validity from today. Days already elapsed on the current cycle are not deducted
+ * and days unused are not refunded -- the learner trades one plan's price for another's
+ * and gets a complete new term. No refunds are ever produced: the credit is capped at
+ * the target price, so the charge floors at zero.
+ *
+ * <p>A trial gets no credit at all: it has paid nothing for the current cycle (only the
+ * token-registration auth, which is not the plan price), so it pays the target in full.
  *
  * <p>Pure and stateless so the arithmetic is unit-testable without a database.
  */
@@ -27,7 +32,7 @@ public class PlanChangeProrationCalculator {
 
     /** The priced outcome of moving one UserPlan onto one target plan. */
     public record Proration(
-            /** Unused value of the plan being left behind. Never negative, never > current price. */
+            /** Price of the plan being left behind, allowed against the target. Never > target price. */
             BigDecimal credit,
             /** {@code max(0, targetPrice - credit)} — what to charge right now. */
             BigDecimal amountDueNow,
@@ -49,7 +54,7 @@ public class PlanChangeProrationCalculator {
                 : 0d);
 
         long remainingDays = remainingDays(userPlan, now);
-        BigDecimal credit = credit(userPlan, currentPrice, remainingDays);
+        BigDecimal credit = credit(userPlan, currentPrice, targetPrice);
         BigDecimal amountDueNow = targetPrice.subtract(credit).max(BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
 
@@ -74,35 +79,22 @@ public class PlanChangeProrationCalculator {
     }
 
     /**
-     * {@code currentPrice * remainingDays / currentValidity}, capped at the current price.
+     * The current plan's FULL price, allowed against the target -- so the learner pays the
+     * difference between the two plans. Not scaled by days elapsed or remaining: an upgrade
+     * on day 2 and an upgrade on day 25 of the same cycle cost the same, and the new term
+     * starts fresh either way.
      *
-     * <p>Validity comes from the live plan first and the plan_json snapshot second — a plan
-     * retired by a later Payment Settings edit still has to price correctly. A plan with no
-     * resolvable validity (lifetime, or a malformed row) yields no credit rather than a
-     * fabricated one: we cannot say what fraction of "forever" is unused.
+     * <p>Capped at the target price so an upgrade never produces a negative charge, and
+     * zero for a trial, which has paid nothing to trade in.
      */
-    private BigDecimal credit(UserPlan userPlan, BigDecimal currentPrice, long remainingDays) {
-        if (remainingDays <= 0 || currentPrice.signum() <= 0) {
+    private BigDecimal credit(UserPlan userPlan, BigDecimal currentPrice, BigDecimal targetPrice) {
+        if (currentPrice.signum() <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        // A trial has paid nothing for the current cycle (only the token-registration
-        // auth, which is not the plan price), so there is no unused value to credit.
-        // Without this a trial learner upgrading on day 5 of a 14-day trial was credited
-        // the "unused" part of a Monthly price they never paid.
         if (userPlan != null && Boolean.TRUE.equals(userPlan.getIsTrial())) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        Integer validity = userPlan != null
-                ? firstNonNull(PlanValidityResolver.fromPlan(userPlan.getPaymentPlan()),
-                        PlanValidityResolver.fromPlanJson(userPlan.getPlanJson()))
-                : null;
-        if (validity == null || validity <= 0) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        BigDecimal raw = currentPrice
-                .multiply(BigDecimal.valueOf(Math.min(remainingDays, validity)))
-                .divide(BigDecimal.valueOf(validity), 2, RoundingMode.HALF_UP);
-        return raw.min(currentPrice).setScale(2, RoundingMode.HALF_UP);
+        return currentPrice.min(targetPrice).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

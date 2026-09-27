@@ -225,6 +225,9 @@ export function PaymentDashboard() {
             return fetchBillingSummary({ start_date_in_utc: w.start, end_date_in_utc: w.end });
         },
         staleTime: 60_000,
+        // Balances change on other screens — a learner removed from a course, a payment deleted —
+        // so a return to this page re-asks rather than showing the copy cached before the change.
+        refetchOnMount: 'always',
         retry: false,
     });
     // Same as Manage Payments: no client-side fallback for the balance cards — pricing the rows
@@ -265,6 +268,8 @@ export function PaymentDashboard() {
             );
         },
         staleTime: 60_000,
+        // Refetched with the cards above it, so the list and the cards never describe two moments.
+        refetchOnMount: 'always',
         retry: false,
     });
     const debtors: OutstandingLearner[] = outstanding?.content ?? [];

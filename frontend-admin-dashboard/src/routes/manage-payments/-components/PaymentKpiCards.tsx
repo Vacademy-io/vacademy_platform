@@ -79,11 +79,16 @@ export interface KpiBilling {
 const upcomingIsAllFuture = (billing?: KpiBilling | null): boolean =>
     !!billing?.usesInstallments && typeof billing.upcomingAll === 'number';
 
+/** "6 Sept" this year, "6 Sept 2027" otherwise — without the year, next year's date read as past. */
 const formatDueDate = (iso?: string | null): string | null => {
     if (!iso) return null;
     const [y, m, d] = iso.split('-').map(Number);
     if (!y || !m || !d) return null;
-    return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        ...(y !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+    });
 };
 
 /** Tailwind needs literal class names, so the xl column count is looked up, not interpolated. */

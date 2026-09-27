@@ -94,6 +94,15 @@ public class RenewalPaymentService {
             // gives nobody a signal that the member's autopay is failing. Every gateway
             // funnels through here (Razorpay + Stripe webhooks, the eWay poller), so this
             // was silently true of every failed renewal on every gateway.
+            // Monotonic: never regress a log that already settled. Razorpay can deliver
+            // payment.failed for an earlier attempt on an order whose later attempt was
+            // captured, and with 4 replicas the two are handled concurrently.
+            int marked = paymentLogRepository.updatePaymentStatusIfNotPaid(
+                    paymentLog.getId(), PaymentStatusEnum.FAILED.name(), PaymentStatusEnum.PAID.name());
+            if (marked == 0) {
+                log.info("RENEWAL order {} is already PAID — ignoring a late failure event", orderId);
+                return;
+            }
             paymentLog.setPaymentStatus(PaymentStatusEnum.FAILED.name());
             paymentLog.setStatus(PaymentLogStatusEnum.FAILED.name());
             paymentLogRepository.save(paymentLog);

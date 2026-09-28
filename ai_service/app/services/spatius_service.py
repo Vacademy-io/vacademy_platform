@@ -10,6 +10,7 @@ absent — the feature stays dark.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -69,11 +70,31 @@ def _payload(r: httpx.Response, what: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-async def mint_session_token(ttl_seconds: int = SESSION_TOKEN_TTL_SECONDS) -> Dict[str, Any]:
-    """A session token for one lesson (Direct mode: the browser connects to
-    the Motion Server with it). expireAt must be within 24 hours."""
-    if not available():
-        raise RuntimeError("Spatius is not configured")
+# Minting costs 1-9 s at the vendor, and the learner waits for it before the
+# teacher's face can even start downloading. The token is not per-lesson —
+# it authenticates this app to the Motion Server for two hours — so one is
+# shared until it is close to expiry.
+_token_cache: Optional[Dict[str, Any]] = None
+_token_lock = asyncio.Lock()
+# Re-mint this long before expiry, so a lesson never starts on a token that
+# dies mid-way (a lesson can run 90 minutes).
+TOKEN_REFRESH_MARGIN_SECONDS = 100 * 60
+
+
+def _cached_token() -> Optional[Dict[str, Any]]:
+    c = _token_cache
+    if not c or c.get("app_id") != app_id():
+        return None
+    return c if c["expires_at"] - time.time() > TOKEN_REFRESH_MARGIN_SECONDS else None
+
+
+def reset_token_cache() -> None:
+    """Drop the shared token (tests, key rotation)."""
+    global _token_cache
+    _token_cache = None
+
+
+async def _mint(ttl_seconds: int) -> Dict[str, Any]:
     expire_at = int(time.time()) + max(60, min(ttl_seconds, 23 * 3600))
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(f"{base_url()}/session-tokens", headers=_headers(), json={"expireAt": expire_at})
@@ -82,6 +103,35 @@ async def mint_session_token(ttl_seconds: int = SESSION_TOKEN_TTL_SECONDS) -> Di
     if not token:
         raise RuntimeError("Spatius returned no session token")
     return {"session_token": token, "expires_at": expire_at, "app_id": app_id()}
+
+
+async def mint_session_token(ttl_seconds: int = SESSION_TOKEN_TTL_SECONDS) -> Dict[str, Any]:
+    """A session token for the Motion Server (Direct mode: the browser
+    connects with it). Shared across lessons while it is comfortably valid;
+    expireAt must be within 24 hours."""
+    global _token_cache
+    if not available():
+        raise RuntimeError("Spatius is not configured")
+    hit = _cached_token()
+    if hit:
+        return dict(hit)
+    async with _token_lock:
+        hit = _cached_token()          # another lesson may have minted while we waited
+        if hit:
+            return dict(hit)
+        fresh = await _mint(ttl_seconds)
+        _token_cache = fresh
+        return dict(fresh)
+
+
+async def warm_session_token() -> None:
+    """Best-effort: have a token ready before a lesson asks for one."""
+    if not available():
+        return
+    try:
+        await mint_session_token()
+    except Exception:  # noqa: BLE001
+        logger.debug("Spatius token warm-up failed", exc_info=True)
 
 
 async def create_avatar(image_url: str, name: Optional[str] = None) -> Dict[str, Any]:

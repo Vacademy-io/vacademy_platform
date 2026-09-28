@@ -11,6 +11,8 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
+import vacademy.io.admin_core_service.features.notification.dto.MessageOrigin;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
 import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
@@ -670,7 +672,8 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                     // userDetails into chunks, throttle between chunks, and bound each
                     // chunk send with a timeout so a hung provider call can't block the
                     // workflow thread forever.
-                    dispatchBatchesChunked(finalBatchList, instituteId, chunkSize, throttleMs, chunkTimeoutMs);
+                    dispatchBatchesChunked(finalBatchList, instituteId, chunkSize, throttleMs, chunkTimeoutMs,
+                            workflowOrigin(context));
                     log.info("Successfully dispatched {} WhatsApp batches for {} total users (chunkSize={}, throttleMs={}, chunkTimeoutMs={}).",
                             finalBatchList.size(), processedCount, chunkSize, throttleMs, chunkTimeoutMs);
                     results.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches for " + processedCount
@@ -1109,7 +1112,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
      * A single-chunk batch reuses the original request object unchanged.
      */
     private void dispatchBatchesChunked(List<WhatsappRequest> batches, String instituteId,
-            int chunkSize, long throttleMs, long chunkTimeoutMs) {
+            int chunkSize, long throttleMs, long chunkTimeoutMs, MessageOrigin origin) {
         boolean firstSend = true;
         for (WhatsappRequest batch : batches) {
             List<Map<String, Map<String, String>>> users = batch.getUserDetails();
@@ -1128,12 +1131,23 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                 }
                 int chunkUserCount = end - i;
                 runWithTimeout(
-                        () -> notificationService.sendWhatsappViaUnified(List.of(chunkRequest), instituteId),
+                        () -> notificationService.sendWhatsappViaUnified(List.of(chunkRequest), instituteId, origin),
                         chunkTimeoutMs,
                         "WhatsApp chunk (template=" + batch.getTemplateName() + ", users=" + chunkUserCount + ")");
                 firstSend = false;
             }
         }
+    }
+
+    /**
+     * The workflow this node runs in, so notification-service can show "sent by workflow X" on
+     * each message. Null when the run carries no workflow id.
+     */
+    static MessageOrigin workflowOrigin(Map<String, Object> context) {
+        Object workflowId = context != null ? context.get("workflowId") : null;
+        if (workflowId == null) return null;
+        Object workflowName = context.get(WorkflowEngineService.WORKFLOW_NAME_KEY);
+        return MessageOrigin.workflow(workflowId.toString(), workflowName != null ? workflowName.toString() : null);
     }
 
     private static WhatsappRequest buildChunkRequest(WhatsappRequest batch,

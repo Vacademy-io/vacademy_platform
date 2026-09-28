@@ -682,3 +682,104 @@ def test_thin_illustration_coverage_is_advice_and_scales_with_the_slide():
     assert not any("real illustration" in n for n in board_quality_errors(bare, limits=DEFAULT_LIMITS))
     # A long slide is expected to carry more pictures than a short one.
     assert _image_target(_img_draft(n_topics=1)) == 1 and _image_target(_img_draft(n_topics=5)) == 3
+
+
+# ── the visual unit is the concept, not the board ────────────────────────────
+# A five-concept board with one diagram in concept three passed every rule while
+# the learner sat through two reveals of definition + callouts (owner, 2026-09-22).
+
+def _multi_concept_draft(kinds):
+    """One board; `kinds` is a list per concept: 'notes' (text + callouts only),
+    'svg', 'image', 'table', or 'annotate' (labels the board's diagram)."""
+    from app.schemas.tutor import TeachingPlanDraft
+    concepts = []
+    for i, kind in enumerate(kinds):
+        cid = f"t1c{i + 1}"
+        ops = [{"op": "heading", "id": f"{cid}-h", "text": f"Step {i + 1}"},
+               {"op": "callout", "id": f"{cid}-c", "kind": "definition", "text": "A short definition."}]
+        if kind == "svg":
+            ops.append({"op": "svg", "id": f"{cid}-svg", "svg": "<svg viewBox='0 0 640 360'><rect id='p' x='20' y='20' width='200' height='100'/></svg>",
+                        "description": "Two boxes and an arrow showing the chain from data to output", "parts": [{"id": "p", "label": "data"}]})
+        elif kind == "image":
+            ops.append({"op": "image", "id": f"{cid}-img", "description": "a clinician reviewing a suggestion on a screen",
+                        "generate": "photo of a clinician reviewing an AI suggestion, no text, no watermark, no logos"})
+        elif kind == "table":
+            ops.append({"op": "table", "id": f"{cid}-tb", "rows": [["a", "b"], ["1", "2"]]})
+        elif kind == "annotate":
+            ops.append({"op": "annotate", "id": f"{cid}-a", "target": "t1c1-svg", "text": "human review re-enters here"})
+        concepts.append({"id": cid, "title": f"Concept {i + 1}", "order": i + 1, "concept_tags": ["ai.basics"],
+                         "say": "Look at the board.", "say_i18n": {"hi": "बोर्ड देखिए।"}, "board_ops": ops,
+                         "check": {"type": "none"} if i == 0 else {"type": "open", "prompt": "Why?", "rubric": "because", "hint": "look"}})
+    return TeachingPlanDraft.model_validate({
+        "language": "en", "objectives": ["see it"], "key_terms": [],
+        "topics": [{"id": "t1", "title": "What is AI", "order": 1, "concepts": concepts,
+                    "summary_ops": [], "summary_say": "Done.", "summary_say_i18n": {"hi": "हो गया।"}}]})
+
+
+def test_a_board_that_opens_with_notes_is_told_to_open_with_the_diagram():
+    from app.services.tutor.plan_validator import board_quality_errors, validate_plan
+    # The prod shape: notes, table, svg, image, notes — one diagram, buried.
+    plan = _multi_concept_draft(["notes", "table", "svg", "image", "notes"])
+    notes = board_quality_errors(plan)
+    assert any("opens with notes only" in n and "concepts[0]" in n for n in notes)
+    assert not any("nothing to look at" in n for n in notes)          # the board does have a diagram...
+    assert validate_plan(plan, "en", require_media_urls=False) == []   # ...and it is advice, never a failure
+
+
+def test_two_text_only_concepts_in_a_row_are_flagged_but_an_annotation_counts_as_visual():
+    from app.services.tutor.plan_validator import board_quality_errors
+    flagged = board_quality_errors(_multi_concept_draft(["svg", "notes", "notes"]))
+    assert [n for n in flagged if "two text-only concepts in a row" in n and "concepts[2]" in n]
+    # Labelling the board's diagram IS the visual step for that concept.
+    fine = board_quality_errors(_multi_concept_draft(["svg", "notes", "annotate", "notes", "table"]))
+    assert not any("text-only" in n or "opens with notes" in n for n in fine)
+
+
+def test_illustration_target_grows_with_concepts_not_only_boards():
+    from app.services.tutor.plan_validator import image_target
+    from app.services.tutor.plan_compiler import _image_target
+    one_board_five_concepts = _multi_concept_draft(["svg", "notes", "annotate", "image", "table"])
+    assert image_target(one_board_five_concepts) == 2       # ceil(5/4), not the 1 a one-board slide got before
+    assert _image_target(one_board_five_concepts) == 2      # the compiler asks for the same number
+    assert image_target(_multi_concept_draft(["svg"])) == 1
+    assert image_target(_img_draft(n_topics=5)) == 3 and image_target(_img_draft(n_topics=1)) == 1
+
+
+def test_rule_five_makes_the_concept_the_unit():
+    from app.services.tutor.compile_prompts import rules_text
+    text = rules_text(images_enabled=True)
+    flat = " ".join(text.split())
+    assert "FIRST concept of every board opens with its diagram" in flat
+    assert "never count as the visual" in flat
+    assert "never fewer than one per four concepts" in flat
+
+
+def test_a_null_check_is_the_default_check_not_a_failed_compile():
+    from app.schemas.tutor import ConceptDraft
+    base = {"id": "t1c1", "title": "Open", "say": "Look.", "board_ops": []}
+    for absent in (None, "none", "", False, {}):
+        c = ConceptDraft.model_validate({**base, "check": absent})
+        assert c.check.type == "none", absent
+    # A real check still parses as itself.
+    c = ConceptDraft.model_validate({**base, "check": {"type": "open", "prompt": "Why?", "rubric": "because"}})
+    assert c.check.type == "open" and c.check.prompt == "Why?"
+
+
+# ── held opening: the teacher waits until the learner's device can show and play her ──
+
+def test_only_a_client_that_asks_gets_its_opening_held():
+    from app.routers.tutor_ws import BEGIN_WAIT_SECONDS, client_holds_opening
+    assert client_holds_opening({"type": "auth", "token": "t", "hold": True})
+    # Older bundles (OTA / electron) send neither flag and open at once, as before.
+    assert not client_holds_opening({"type": "auth", "token": "t"})
+    assert not client_holds_opening({"type": "auth", "token": "t", "hold": "yes"})
+    assert not client_holds_opening({})
+    # The cap is short enough that a broken client still gets its lesson quickly.
+    assert 5 <= BEGIN_WAIT_SECONDS <= 10
+
+
+def test_before_the_opening_a_lesson_message_opens_and_is_dropped_but_begin_and_pings_pass():
+    from app.routers.tutor_ws import LESSON_MESSAGES
+    assert {"continue", "answer", "ask", "control", "audio_end", "interrupt", "next_slide"} <= LESSON_MESSAGES
+    for passthrough in ("begin", "ping", "config", "end_session", "auth"):
+        assert passthrough not in LESSON_MESSAGES

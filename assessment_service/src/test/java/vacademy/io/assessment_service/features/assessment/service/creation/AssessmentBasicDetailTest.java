@@ -18,18 +18,51 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AssessmentBasicDetailTest {
 
     private static Set<String> keysFor(String type) {
+        return stepKeysFor(type).stream()
+                .flatMap(m -> m.keySet().stream())
+                .collect(Collectors.toSet());
+    }
+
+    private static List<Map<String, String>> stepKeysFor(String type) {
         AssessmentBasicDetail step = new AssessmentBasicDetail();
         step.fillStepKeysBasedOnAssessmentType(type, "inst-1");
-        List<Map<String, String>> keys = step.getStepKeys();
-        return keys.stream().flatMap(m -> m.keySet().stream()).collect(Collectors.toSet());
+        return step.getStepKeys();
+    }
+
+    /** "REQUIRED", "OPTIONAL", or null when the type does not declare the field at all. */
+    private static String ruleFor(String type, String key) {
+        return stepKeysFor(type).stream()
+                .filter(m -> m.containsKey(key))
+                .map(m -> m.get(key))
+                .findFirst()
+                .orElse(null);
     }
 
     @Test
-    void aSurveyKeepsItsOwnFieldsAndNeedsNoLiveWindow() {
+    void aSurveyKeepsItsOwnFieldsAndIsNeverForcedIntoALiveWindow() {
         Set<String> survey = keysFor("SURVEY");
         assertThat(survey).contains("assessment_visibility", "expected_participants", "reattempt_count");
-        assertThat(survey).doesNotContain("boundation_start_date", "boundation_end_date", "result_type",
-                "reattempt_consent");
+        assertThat(survey).doesNotContain("result_type", "reattempt_consent");
+    }
+
+    /**
+     * A survey MAY be given a live window, so both dates are offered — but as
+     * OPTIONAL, never REQUIRED. This used to assert the dates were absent
+     * altogether, which hid the inputs while Step1BasicInfo.tsx still demanded
+     * their values, leaving "Next" permanently disabled on every new survey.
+     * The rule the original test cared about is preserved: a survey is never
+     * *forced* to carry a live window.
+     */
+    @Test
+    void aSurveyOffersItsLiveWindowDatesAsOptional() {
+        assertThat(ruleFor("SURVEY", "boundation_start_date")).isEqualTo("OPTIONAL");
+        assertThat(ruleFor("SURVEY", "boundation_end_date")).isEqualTo("OPTIONAL");
+    }
+
+    @Test
+    void anExamStillDemandsItsLiveWindow() {
+        assertThat(ruleFor("EXAM", "boundation_start_date")).isEqualTo("REQUIRED");
+        assertThat(ruleFor("EXAM", "boundation_end_date")).isEqualTo("REQUIRED");
     }
 
     @Test

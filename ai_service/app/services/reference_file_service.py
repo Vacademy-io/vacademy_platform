@@ -297,21 +297,14 @@ class ReferenceFileService:
                 "temperature": 0.3,
             }
 
-            headers = {
-                "Authorization": f"Bearer {self._openrouter_key}",
-                "Content-Type": "application/json",
-            }
-            req = urllib.request.Request(
-                _OPENROUTER_URL,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                description = result["choices"][0]["message"]["content"]
-                logger.info(f"[RefFileService] Described {filename}: {description[:80]}...")
-                return description
+            from .llm_router import post_chat_sync
+
+            resp = post_chat_sync(payload, self._openrouter_key, timeout=60)
+            resp.raise_for_status()
+            result = resp.json()
+            description = result["choices"][0]["message"]["content"]
+            logger.info(f"[RefFileService] Described {filename}: {description[:80]}...")
+            return description
 
         except Exception as e:
             logger.error(f"[RefFileService] Image description failed for {filename}: {e}")

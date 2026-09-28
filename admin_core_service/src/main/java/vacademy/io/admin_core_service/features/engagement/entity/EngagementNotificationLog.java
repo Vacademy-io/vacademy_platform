@@ -36,6 +36,10 @@ public class EngagementNotificationLog {
     @Column(name = "recipients", nullable = false)
     private Integer recipients = 0;
 
+    /** NOTIFY (the morning "it's live" push) or REVEAL ("the answer is out"). */
+    @Column(name = "kind", nullable = false)
+    private String kind = "NOTIFY";
+
     @Column(name = "sent_at")
     private Timestamp sentAt;
 }

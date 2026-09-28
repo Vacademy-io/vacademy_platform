@@ -69,6 +69,8 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { CallAllWithAiButton } from './call-all-ai-button';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import {
@@ -177,6 +179,9 @@ const CampaignUsersContent = ({
     campaignType,
 }: CampaignUsersTableProps) => {
     const { t, i18n } = useTranslation('audienceManagerCampaignUsersTable');
+    // Institute tier catalog + the institute's own names for "Tier" / "Lead status".
+    const tierCatalog = useLeadTiers();
+    const terminology = useLeadTerminology();
     const isOptOut = !!campaignType?.toUpperCase().includes('OPT_OUT');
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
@@ -456,8 +461,7 @@ const CampaignUsersContent = ({
                 : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
                   ? 'ONLY_CONVERTED'
                   : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED',
-            sla_filter:
-                slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
+            sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
             assigned_counselor_id:
                 nonUnassignedCounsellorIds.length > 0
                     ? nonUnassignedCounsellorIds.join(',')
@@ -605,9 +609,7 @@ const CampaignUsersContent = ({
     // carries the userId too, because the assign actions operate per person.
     const [selectedLeads, setSelectedLeads] = useState<
         Map<string, { userId: string; responseId: string; name: string }>
-    >(
-        new Map()
-    );
+    >(new Map());
     // Response ids of the ticked rows — what "Send message" targets when a selection exists.
     const selectedResponseIds = useMemo(() => Array.from(selectedLeads.keys()), [selectedLeads]);
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
@@ -629,7 +631,8 @@ const CampaignUsersContent = ({
         setSelectedLeads((prev) => {
             const next = new Map(prev);
             if (next.has(responseId)) next.delete(responseId);
-            else if (vm.userId) next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
+            else if (vm.userId)
+                next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
             return next;
         });
 
@@ -639,7 +642,11 @@ const CampaignUsersContent = ({
             selectableVms.forEach((v) => {
                 if (!v.userId || !v.responseId) return;
                 if (checked)
-                    next.set(v.responseId, { userId: v.userId, responseId: v.responseId, name: v.name });
+                    next.set(v.responseId, {
+                        userId: v.userId,
+                        responseId: v.responseId,
+                        name: v.name,
+                    });
                 else next.delete(v.responseId);
             });
             return next;
@@ -687,8 +694,12 @@ const CampaignUsersContent = ({
     );
     // "Manage Column" list — source stays hidden and is not offered here.
     const toggleableColumns = useMemo(
-        () => buildLeadColumnToggles(showOps, showScore).filter((c) => c.id !== 'source'),
-        [showOps, showScore]
+        () =>
+            buildLeadColumnToggles(showOps, showScore, {
+                tier: terminology.tier,
+                leadStatus: terminology.leadStatus,
+            }).filter((c) => c.id !== 'source'),
+        [showOps, showScore, terminology.tier, terminology.leadStatus]
     );
 
     // ── Filter handlers ──────────────────────────────────────
@@ -803,8 +814,8 @@ const CampaignUsersContent = ({
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
                 ? t('chips.counsellorUnassigned')
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ??
-                  t('chips.counsellorSelected'))
+                : counsellorOptions.find((c) => c.id === id)?.full_name ??
+                  t('chips.counsellorSelected')
         );
         chips.push({
             label: t('chips.counsellor', { values: cLabels.join(', ') }),
@@ -1016,7 +1027,9 @@ const CampaignUsersContent = ({
                         row.push(csvSafe(summary?.count ?? 0));
                     if (selectedExportCols.has('lead_journey'))
                         row.push(
-                            csvSafe(formatJourneyForExport(userId ? exportJourney[userId] : undefined))
+                            csvSafe(
+                                formatJourneyForExport(userId ? exportJourney[userId] : undefined)
+                            )
                         );
                 }
                 return row.join(',');
@@ -1089,19 +1102,18 @@ const CampaignUsersContent = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                     <MultiSelectFilter
-                        label={t('filters.tiers.label')}
+                        label={terminology.tier}
                         icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
-                        options={[
-                            { value: 'HOT', label: t('filters.tiers.hot') },
-                            { value: 'WARM', label: t('filters.tiers.warm') },
-                            { value: 'COLD', label: t('filters.tiers.cold') },
-                        ]}
+                        options={tierCatalog.tiers.map((tier) => ({
+                            value: tier.tier_key,
+                            label: tier.label,
+                        }))}
                         selected={tierFilters}
                         onChange={handleTierChange}
                         widthClass="w-36"
                     />
                     <MultiSelectFilter
-                        label={t('filters.leadStatus.label')}
+                        label={terminology.leadStatus}
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
@@ -1172,11 +1184,15 @@ const CampaignUsersContent = ({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ANY">{t('filters.callHistory.placeholder')}</SelectItem>
+                            <SelectItem value="ANY">
+                                {t('filters.callHistory.placeholder')}
+                            </SelectItem>
                             <SelectItem value="NOT_CALLED">
                                 {t('filters.callHistory.notCalled')}
                             </SelectItem>
-                            <SelectItem value="CALLED">{t('filters.callHistory.called')}</SelectItem>
+                            <SelectItem value="CALLED">
+                                {t('filters.callHistory.called')}
+                            </SelectItem>
                             <SelectItem value="CALLED_ONCE">
                                 {t('filters.callHistory.calledOnce')}
                             </SelectItem>
@@ -1272,9 +1288,7 @@ const CampaignUsersContent = ({
                         size="sm"
                         className="h-10"
                         onClick={() => {
-                            setSelectedExportCols(
-                                new Set(exportColumnOptions.map((c) => c.key))
-                            );
+                            setSelectedExportCols(new Set(exportColumnOptions.map((c) => c.key)));
                             setExportPickerOpen(true);
                         }}
                         disabled={isExporting || !totalElements}
@@ -1409,9 +1423,7 @@ const CampaignUsersContent = ({
                                                   {
                                                       label: t('bulkToolbar.moveLeads'),
                                                       value: 'migrate',
-                                                      icon: (
-                                                          <ArrowsLeftRight className="size-4" />
-                                                      ),
+                                                      icon: <ArrowsLeftRight className="size-4" />,
                                                   },
                                                   {
                                                       label: t('bulkToolbar.deleteLeads'),

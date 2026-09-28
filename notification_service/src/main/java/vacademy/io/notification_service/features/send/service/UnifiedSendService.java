@@ -17,6 +17,7 @@ import vacademy.io.notification_service.features.send.dto.DeliveryStatusDTO;
 import vacademy.io.notification_service.features.send.entity.SendBatch;
 import vacademy.io.notification_service.features.send.repository.SendBatchRepository;
 import vacademy.io.notification_service.service.EmailService;
+import vacademy.io.notification_service.features.notification_log.MessageOriginPayload;
 import vacademy.io.notification_service.service.WhatsAppService;
 import vacademy.io.common.logging.SentryLogger;
 
@@ -245,6 +246,13 @@ public class UnifiedSendService implements SendChannelRouter {
                 if (r.getVariables() != null && r.getVariables().containsKey("_buttonIndex")) {
                     resolvedVars.put("_buttonIndex", r.getVariables().get("_buttonIndex"));
                 }
+            }
+
+            // Who is sending (e.g. a workflow), for the Inbox / timeline — lifted onto the log
+            // payload by WhatsAppService and never sent to the provider (both skip "_" params).
+            if (request.getOptions() != null) {
+                MessageOriginPayload.putOnParams(resolvedVars, request.getOptions().getOriginType(),
+                        request.getOptions().getOriginId(), request.getOptions().getOriginName());
             }
         }
 

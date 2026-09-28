@@ -215,6 +215,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -438,19 +442,37 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END DESC,
                               CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
                                    THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
                               CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -499,6 +521,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -792,6 +818,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -1020,19 +1050,37 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END DESC,
                               CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
                                    THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
                               CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -1076,6 +1124,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -2038,10 +2090,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);
 
-        /** Tier breakdown: explicit lead_tier wins, else score-derived bucket, else UNCLASSIFIED. */
+        /** Tier breakdown: explicit lead_tier wins, else the institute catalog band, else the legacy bucket, else UNCLASSIFIED. */
         @Query(value = """
                             SELECT COALESCE(NULLIF(ulp.lead_tier, ''),
-                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE 'UNCLASSIFIED' END)                AS tier,

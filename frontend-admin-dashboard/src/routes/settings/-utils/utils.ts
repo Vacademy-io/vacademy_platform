@@ -41,6 +41,7 @@ import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 import MCPServerSettings from '../-components/MCPServerSettings';
 import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
+import EngagementSettings from '../-components/EngagementSettings';
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 import LearnerActivitySettings from '../-components/LearnerActivitySettings';
@@ -223,6 +224,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.BadgesRewards,
             value: 'Badges & Rewards',
             component: BadgesRewardsSettings,
+            domain: 'LMS',
+            group: 'Assessment & Certification',
+        },
+        {
+            tab: SettingsTabs.Engagement,
+            value: 'Daily Engagement',
+            component: EngagementSettings,
             domain: 'LMS',
             group: 'Assessment & Certification',
         },

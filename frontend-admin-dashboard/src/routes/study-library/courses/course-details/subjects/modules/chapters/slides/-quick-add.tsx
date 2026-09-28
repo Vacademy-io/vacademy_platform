@@ -21,6 +21,7 @@ import { convertHtmlToPdf } from './-helper/helper';
 import { formatHTMLString } from './-components/slide-operations/formatHtmlString';
 import { EMPTY_LEXICAL_INNER } from './-components/lexical-editor/lexical-doc-marker';
 import { docHtmlToLexicalIfSafe } from './-components/lexical-editor/convert-yoopta';
+import { HTML_DOC_TYPE } from './-components/html-doc/html-doc-utils';
 import {
     Plus,
     YoutubeLogo,
@@ -755,7 +756,13 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                         slide_order: 0,
                         document_slide: {
                             id: crypto.randomUUID(),
-                            type: 'DOC',
+                            // 'HTML', not 'DOC': a self-contained HTML file keeps its
+                            // own <style>/<script>, so it must land on the creative
+                            // HTML path (sandboxed iframe in both admin and learner).
+                            // 'DOC' routes it into the rich-text editors, which parse
+                            // the markup into blocks — scripts never run and inline
+                            // <br/> is dropped, so interactive docs render as dead text.
+                            type: HTML_DOC_TYPE,
                             data: normalized,
                             title: item.title,
                             cover_file_id: '',

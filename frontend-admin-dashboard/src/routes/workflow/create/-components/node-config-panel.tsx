@@ -12,6 +12,8 @@ import { ConditionBuilder } from './condition-builder';
 import { AggregateBuilder } from './aggregate-builder';
 import { KeyValueBuilder } from './key-value-builder';
 import { EventEntityPicker } from './event-entity-picker';
+import { LeadWhatsappVariables } from './lead-whatsapp-variables';
+import { leadMessagingContext } from './lead-messaging-context';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
@@ -25,6 +27,7 @@ import {
     getTriggerEventsCatalogQuery,
     getTemplatesByTypeQuery,
 } from '@/services/workflow-service';
+import { whatsappTemplateParamSpec } from '@/components/shared/leads/lead-template-variables';
 
 /** Handles auto-fill of system params and smart input for required query params */
 /**
@@ -158,6 +161,7 @@ export function NodeConfigPanel() {
     const updateNodeName = useWorkflowBuilderStore((s) => s.updateNodeName);
     const removeNode = useWorkflowBuilderStore((s) => s.removeNode);
     const selectNode = useWorkflowBuilderStore((s) => s.selectNode);
+    const triggerConfig = useWorkflowBuilderStore((s) => s.triggerConfig);
 
     // Fetch institute data for template queries
     const { data: instituteData } = useSuspenseQuery(useInstituteQuery());
@@ -580,6 +584,23 @@ export function NodeConfigPanel() {
                         }
                     }
                     const currentOn = (data.config.on as string) ?? '';
+                    // Messaging leads — the lead who just submitted a form, or a follow-up
+                    // over a list's leads — gets the same variable pickers as the lead
+                    // list's "Configure workflow" dialog: lead details, form fields, text.
+                    const leadContext = leadMessagingContext(currentOn, triggerConfig, nodes);
+                    // Nodes saved without _templateParams (older dialogs, hand-made) still
+                    // show their placeholders — read them off the template itself.
+                    const selectedWhatsappTemplate = whatsappTemplates.find(
+                        (tpl) => tpl.name === (data.config.templateName as string)
+                    );
+                    const storedTemplateParams =
+                        data.config._templateParams && typeof data.config._templateParams === 'object'
+                            ? (data.config._templateParams as Record<string, string>)
+                            : null;
+                    const templateParams =
+                        storedTemplateParams && Object.keys(storedTemplateParams).length > 0
+                            ? storedTemplateParams
+                            : whatsappTemplateParamSpec(selectedWhatsappTemplate);
                     return (
                     <>
                         <div>
@@ -655,10 +676,20 @@ export function NodeConfigPanel() {
                             )}
                         </div>
                         {/* Dynamic template parameters */}
-                        {data.config._templateParams && typeof data.config._templateParams === 'object' && (
+                        {leadContext ? (
+                            <LeadWhatsappVariables
+                                key={selectedNode.id}
+                                config={data.config}
+                                onConfigChange={(config) => updateNodeConfig(selectedNode.id, config)}
+                                kind={leadContext.kind}
+                                audienceId={leadContext.audienceId}
+                                instituteId={instituteId}
+                                templates={whatsappTemplates}
+                            />
+                        ) : Object.keys(templateParams).length > 0 && (
                             <div className="space-y-2 border-t pt-2 mt-2">
                                 <Label className="text-[10px] uppercase text-gray-400">{t('common.templateVariables')}</Label>
-                                {Object.entries(data.config._templateParams as Record<string, string>).map(([key, label]) => (
+                                {Object.entries(templateParams).map(([key, label]) => (
                                     <div key={key}>
                                         <Label className="text-xs">{label || key}</Label>
                                         <VariablePicker

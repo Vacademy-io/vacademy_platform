@@ -29,6 +29,7 @@ type Props = {
     pollGenerateQuestionsFromAudio?: (data: QuestionsFromTextData, taskId: string) => void;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    allowSectionSplit?: boolean;
 };
 
 export const DraftingDonePanel = ({
@@ -46,6 +47,7 @@ export const DraftingDonePanel = ({
     pollGenerateQuestionsFromAudio,
     sectionsForm,
     currentSectionIndex,
+    allowSectionSplit,
 }: Props) => {
     const { t } = useTranslation('aiCenterDraftingDonePanel');
     const resolvedTitle = title ?? t('defaultTitle');
@@ -91,6 +93,7 @@ export const DraftingDonePanel = ({
                 pollGenerateQuestionsFromAudio={pollGenerateQuestionsFromAudio}
                 sectionsForm={sectionsForm}
                 currentSectionIndex={currentSectionIndex}
+                allowSectionSplit={allowSectionSplit}
             />
         );
     };

@@ -16,6 +16,9 @@ public interface AiQuestionEvaluationRepository extends JpaRepository<AiQuestion
 
         List<AiQuestionEvaluation> findByEvaluationProcessIdAndStatus(String evaluationProcessId, String status);
 
+        List<AiQuestionEvaluation> findAllByEvaluationProcessIdAndQuestionIdOrderByCreatedAtDesc(
+                        String evaluationProcessId, String questionId);
+
         Optional<AiQuestionEvaluation> findByEvaluationProcessIdAndQuestionId(String evaluationProcessId,
                         String questionId);
 

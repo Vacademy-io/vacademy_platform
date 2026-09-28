@@ -1,5 +1,5 @@
 /**
- * Guest state for the public 3-minute tutor lesson (tutezy.ai → /try).
+ * Guest state for the public demo tutor lesson (tutezy.ai → /try).
  * Lives in sessionStorage so a reload inside the lesson keeps the socket
  * token; nothing here touches the real auth cookies.
  */

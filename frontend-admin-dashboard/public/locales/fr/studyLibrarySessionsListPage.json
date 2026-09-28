@@ -70,7 +70,8 @@
         "emptyTitle": "Aucune session {{tab}}",
         "emptyDraftBody": "Aucune session brouillon trouvée. Créez une nouvelle session pour commencer.",
         "emptyDefaultBody": "Planifiez votre premier cours en direct pour interagir avec les apprenants en temps réel.",
-        "emptyPage": "Aucune session {{tab}} sur cette page."
+        "emptyPage": "Aucune session {{tab}} sur cette page.",
+        "showingRange": "Affichage de {{from}} à {{to}} sur {{total}} {{term}}"
     },
     "settingsButtonLabel": "Paramètres des sessions en direct",
     "scheduleButton": "Planifier"

@@ -1,5 +1,6 @@
 {
   "menu": {
+    "editProfile": "टीम सदस्य संपादित करें",
     "changeRoleType": "भूमिका प्रकार बदलें",
     "disableUser": "उपयोगकर्ता अक्षम करें",
     "enableUser": "उपयोगकर्ता सक्षम करें",
@@ -44,6 +45,27 @@
     "confirmButton": "हां",
     "toast": {
       "success": "उपयोगकर्ता को सफलतापूर्वक हटा दिया गया है!"
+    }
+  },
+  "editProfile": {
+    "title": "{{name}} की प्रोफ़ाइल",
+    "hint": "फ़ोटो, पदनाम और परिचय वहाँ दिखाई देंगे जहाँ {{name}} किसी कोर्स पर दिखते हैं।",
+    "nameLabel": "नाम",
+    "emailLabel": "ईमेल",
+    "mobileNumberLabel": "मोबाइल नंबर",
+    "photoLabel": "प्रोफ़ाइल फ़ोटो",
+    "designationLabel": "पदनाम",
+    "designationPlaceholder": "जैसे: भौतिकी शिक्षक",
+    "bioLabel": "परिचय",
+    "bioPlaceholder": "संक्षिप्त परिचय",
+    "cancel": "रद्द करें",
+    "save": "बदलाव सहेजें",
+    "saving": "सहेजा जा रहा है…",
+    "toast": {
+      "notImage": "कृपया एक छवि फ़ाइल चुनें।",
+      "uploadFailed": "छवि अपलोड विफल रही।",
+      "success": "प्रोफ़ाइल अपडेट हो गई।",
+      "error": "प्रोफ़ाइल अपडेट नहीं हो सकी।"
     }
   }
 }

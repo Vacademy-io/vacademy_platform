@@ -4,6 +4,7 @@ Client institutes browse published libraries and unlock one permanently with a
 single credit charge:
 
     GET  /library/catalogue          browse, with facet filters
+    GET  /library/taxonomy           boards, exams, classes and subjects, with counts
     GET  /library/facets             the filter values that actually exist
     GET  /library/{kb_id}            one listing, with unlock state
     POST /library/{kb_id}/unlock     pay once, keep forever
@@ -30,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_dependency
 from ..services.kb import library as kb_library
+from ..services.kb import taxonomy as kb_taxonomy
 from ..services.kb.repository import KbRepository
 from .knowledge_base import Caller, get_caller
 
@@ -102,25 +104,44 @@ def _listing_or_404(db: Session, kb_id: str, institute_id: str) -> Dict[str, Any
 @router.get("/library/catalogue")
 async def catalogue(
     subject: Optional[str] = Query(None),
-    level: Optional[str] = Query(None),
-    board: Optional[str] = Query(None),
+    level: Optional[str] = Query(None, description="class, e.g. 10"),
+    board: Optional[str] = Query(None, description="taxonomy board key or name, e.g. CBSE"),
+    exam: Optional[str] = Query(None, description="taxonomy exam key, e.g. JEE_MAIN; overrides board/level"),
     language: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
-    limit: int = Query(60, ge=1, le=200),
+    limit: int = Query(60, ge=1, le=500),
     collection: Optional[str] = Query(None, description="e.g. CURRICULUM; default = paid libraries only"),
     institute_id: Optional[str] = Query(None),
     caller: Caller = Depends(get_caller),
     db: Session = Depends(db_dependency),
 ):
-    """Published libraries, each marked with whether this institute owns it."""
+    """Published libraries, each marked with whether this institute owns it.
+
+    Board and exam go through the curriculum taxonomy: CBSE and the NCERT-
+    adopting state boards answer with NCERT books, JEE/NEET/CUET with the
+    Class 11–12 books they are built on."""
     resolved = caller.require_institute(institute_id)
     return {
         "libraries": kb_library.list_catalogue(
-            db, resolved, subject=subject, level=level, board=board,
+            db, resolved, subject=subject, level=level, board=board, exam=exam,
             language=language, query=q, limit=limit, collection=collection,
         ),
         "unlock_credits": _unlock_price(db, resolved),
     }
+
+
+@router.get("/library/taxonomy")
+async def taxonomy(
+    language: Optional[str] = Query(None, description="medium; counts every medium when absent"),
+    institute_id: Optional[str] = Query(None),
+    caller: Caller = Depends(get_caller),
+    db: Session = Depends(db_dependency),
+):
+    """Every board, exam, class and subject the picker offers, each with the
+    number of published libraries that answer it — so the UI can show what is
+    loaded and what is still coming without hiding either."""
+    caller.require_institute(institute_id)
+    return kb_taxonomy.annotate(kb_library.published_counts(db, language=language))
 
 
 @router.get("/library/facets")

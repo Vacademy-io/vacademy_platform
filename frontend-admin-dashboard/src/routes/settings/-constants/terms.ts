@@ -159,6 +159,7 @@ export const enum SettingsTabs {
     AssistantTools = 'assistantTools',
     McpServer = 'mcpServer',
     BadgesRewards = 'badgesRewards',
+    Engagement = 'engagement',
     Language = 'language',
     OnboardingSettings = 'onboardingSettings',
     Appearance = 'appearance',

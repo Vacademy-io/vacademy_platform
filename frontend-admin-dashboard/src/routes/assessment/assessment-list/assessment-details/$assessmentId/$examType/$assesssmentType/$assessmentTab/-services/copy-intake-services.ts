@@ -8,6 +8,8 @@ import { COPY_INTAKE_BASE_URL } from '@/constants/urls';
  */
 
 export type CopyIntakeBatchStatus = 'RUNNING' | 'NEEDS_REVIEW' | 'COMPLETED' | 'FAILED';
+/** UPLOAD = PDFs the admin uploaded; SUBMITTED = the learners' own uploads (nothing to match). */
+export type CopyIntakeSource = 'UPLOAD' | 'SUBMITTED';
 export type CopyIntakeItemStatus =
     | 'PENDING'
     | 'IDENTIFYING'
@@ -55,6 +57,8 @@ export interface CopyIntakeBatch {
     id: string;
     assessment_id: string;
     status: CopyIntakeBatchStatus;
+    /** Absent on batches older than the field; treat as UPLOAD. */
+    source?: CopyIntakeSource;
     total_items: number;
     /** Copies whose header has been read. */
     identified: number;
@@ -97,6 +101,59 @@ export const startCopyIntake = async (
         url: `${COPY_INTAKE_BASE_URL}/start`,
         params: { assessmentId, instituteId },
         data: { files, preferred_model: preferredModel, notify_email: notifyEmail },
+    });
+    return response.data;
+};
+
+/** What a check of the learners' own submissions would do, before any credit is spent. */
+export interface SubmittedCheckPreview {
+    considered: number;
+    with_copy: number;
+    already_checked: number;
+    in_progress: number;
+    no_copy: number;
+    to_check: number;
+    attempt_ids: string[];
+}
+
+export interface SubmittedCheckRequest {
+    /** Checked rows; empty/undefined = every submitted copy on the assessment. */
+    attempt_ids?: string[];
+    /** Also re-check copies the AI has already checked. */
+    include_checked?: boolean;
+    preferred_model?: string;
+    notify_email?: boolean;
+}
+
+export const previewSubmittedCheck = async (
+    assessmentId: string,
+    instituteId: string,
+    request: SubmittedCheckRequest
+): Promise<SubmittedCheckPreview> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/submitted/preview`,
+        params: { assessmentId, instituteId },
+        data: request,
+    });
+    return response.data;
+};
+
+/**
+ * Queue the AI check for copies the learners submitted themselves, as one
+ * batch: items start on their student, the poller paces the checks, and the
+ * batch panel / one email announce the result.
+ */
+export const startSubmittedCheck = async (
+    assessmentId: string,
+    instituteId: string,
+    request: SubmittedCheckRequest
+): Promise<CopyIntakeBatch> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${COPY_INTAKE_BASE_URL}/submitted/start`,
+        params: { assessmentId, instituteId },
+        data: request,
     });
     return response.data;
 };

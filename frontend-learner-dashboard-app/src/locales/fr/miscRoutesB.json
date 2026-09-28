@@ -490,6 +490,10 @@
     },
     "footer": "Cette politique de confidentialité est en vigueur depuis {{date}} et le restera, sous réserve de modifications ultérieures de ses dispositions."
   },
+  "quickAccess": {
+    "loadingToast": "Ouverture de votre compte",
+    "footer": "Besoin d'aide ? Envoyez-nous un message et nous réglerons ça."
+  },
   "sessionTerminated": {
     "title": "Session terminée",
     "description": "Votre session a été terminée car votre compte a été consulté depuis un autre appareil. Pour des raisons de sécurité, seul un nombre limité de sessions simultanées est autorisé.",

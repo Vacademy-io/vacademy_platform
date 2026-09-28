@@ -7,7 +7,11 @@ import { SessionProgress } from '../../../shared/types';
 import { createCourseWithContent, setProgressCallback } from '../services/courseCreationService';
 import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { submitForReview } from '@/routes/study-library/courses/-services/approval-services';
+import {
+    isCourseApprovalRequired,
+    publishCourse,
+    submitForReview,
+} from '@/routes/study-library/courses/-services/approval-services';
 import { savePackageSettingKey } from '@/services/package-settings';
 import {
     TUTOR_MODE_SETTING_KEY,
@@ -201,13 +205,24 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
             console.log('[Course Creation] Navigating to course:', result.courseId);
 
             if (isTeacher && status === 'ACTIVE') {
-                setCreationProgress(t('progress.submitting'));
+                // Role toggle: approval required -> submit for review; otherwise
+                // publish the draft straight away so it ends up ACTIVE like an
+                // admin-created course would.
+                const requireApproval = isCourseApprovalRequired();
+                setCreationProgress(
+                    requireApproval ? t('progress.submitting') : t('progress.publishing')
+                );
                 try {
-                    await submitForReview(result.courseId);
-                    toast.success(t('reviewSubmitted'));
+                    if (requireApproval) {
+                        await submitForReview(result.courseId);
+                        toast.success(t('reviewSubmitted'));
+                    } else {
+                        await publishCourse(result.courseId);
+                        toast.success(t('coursePublished'));
+                    }
                 } catch (reviewError) {
-                    console.error('Error submitting for review:', reviewError);
-                    toast.error(t('reviewSubmitFailed'));
+                    console.error('Error finalising course:', reviewError);
+                    toast.error(requireApproval ? t('reviewSubmitFailed') : t('publishFailed'));
                 }
             }
 

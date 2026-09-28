@@ -114,6 +114,22 @@ export interface LiveSessionStep2RequestDTO {
     deleted_package_session_ids: string[];
     individual_user_ids?: string[];
 
+    /**
+     * Instructors / presenters of the class, as user ids.
+     *
+     * Tri-state on the backend: omit it and instructors are left alone (which
+     * is what every pre-existing caller does), send `[]` to clear them, or send
+     * the exact list. Cleared sessions fall back to whoever created them.
+     */
+    instructor_user_ids?: string[];
+
+    /**
+     * Instructors as typed by a human — user id, email or username. Used by the
+     * bulk CSV import; resolved server-side against the institute directory,
+     * with unmatched entries reported per row rather than failing the row.
+     */
+    instructor_identifiers?: string[];
+
     join_link: string;
 
     // Wall-clock schedule held before this edit, for the {{OLD_TIME}} placeholder in
@@ -521,6 +537,7 @@ export function transformFormToDTOStep2(
         recordingAutoLink,
         audiencePushEnabled,
         audiencePushAudienceIds,
+        instructorUserIds,
     } = formData;
 
     const addedNotificationActions: NotificationActionDTO[] = [];
@@ -641,6 +658,14 @@ export function transformFormToDTOStep2(
             audience_ids: audiencePushEnabled ? (audiencePushAudienceIds ?? []) : [],
         },
     };
+
+    // Only sent when the form actually carries a list. Omitting it leaves the
+    // stored instructors untouched, which is what keeps callers that don't know
+    // about instructors (and the edit flows that don't render the picker)
+    // from silently wiping them.
+    if (instructorUserIds) {
+        result.instructor_user_ids = instructorUserIds;
+    }
 
     // Add individual user IDs if individual selection is used
     if (batchSelectionType === 'individual' && selectedLearners) {

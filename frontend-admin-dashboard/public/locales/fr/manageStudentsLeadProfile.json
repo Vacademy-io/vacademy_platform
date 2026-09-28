@@ -78,7 +78,7 @@
         "noProfileHint": "Un profil apparaîtra dès que cet utilisateur soumettra une demande ou sera noté.",
         "leadInterestScore": "Score d'intérêt du prospect",
         "lastCalculatedLabel": "Dernier calcul",
-        "setTier": "Définir le niveau",
+        "setTier": "Définir : {{tier}}",
         "campaigns": "Campagnes",
         "timelineEvents": "Événements de la chronologie",
         "demoAttendance": "Présence aux démos",

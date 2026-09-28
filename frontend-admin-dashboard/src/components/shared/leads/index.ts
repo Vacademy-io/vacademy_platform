@@ -28,6 +28,7 @@ export {
     LeadInlineSelect,
     LEAD_STATUS_OPTIONS,
     LEAD_TIER_OPTIONS,
+    useLeadTierOptions,
     type LeadInlineOption,
 } from './lead-inline-select';
 export { LeadRowActions } from './lead-row-actions';
@@ -43,7 +44,11 @@ export {
     BOARD_SORT_PARAMS,
     type BoardColumnSort,
 } from './lead-status-board-column';
-export { DEFAULT_BOARD_COLUMNS, type LeadBoardColumnConfig } from './lead-board-config';
+export {
+    DEFAULT_BOARD_COLUMNS,
+    buildBoardColumns,
+    type LeadBoardColumnConfig,
+} from './lead-board-config';
 export { LeadViewToggle, type LeadView } from './lead-view-toggle';
 export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';

@@ -30,5 +30,11 @@
     "accountLevelFailure": "Cela affecte tous les messages WhatsApp envoyés depuis ce numéro, pas seulement cette conversation.",
     "errorCode": "Code d'erreur WhatsApp {{code}}",
     "viewDocument": "Voir le document",
-    "attachmentAlt": "pièce jointe"
+    "attachmentAlt": "pièce jointe",
+    "origin": {
+        "workflow": "Envoyé par le flux de travail « {{name}} »",
+        "workflowUnnamed": "Envoyé par un flux de travail",
+        "chatbotFlow": "Envoyé par le flux de chatbot « {{name}} »",
+        "chatbotFlowUnnamed": "Envoyé par un flux de chatbot"
+    }
 }

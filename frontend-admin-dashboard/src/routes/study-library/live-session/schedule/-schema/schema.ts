@@ -251,6 +251,12 @@ export const addParticipantsSchema = z.object({
         })
     ),
     selectedLearners: z.array(z.string()).optional(),
+    /**
+     * Instructors / presenters of the class, as user ids. Optional so the
+     * transform can tell "the admin didn't touch instructors" (undefined, leave
+     * them alone) from "the admin removed them all" (empty array).
+     */
+    instructorUserIds: z.array(z.string()).optional(),
     joinLink: z.string().url(t('validation.enterValidUrl')),
     notifyBy: z.object({
         mail: z.boolean(),

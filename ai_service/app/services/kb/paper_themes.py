@@ -24,12 +24,48 @@ maths, book figures and generated diagrams print the same everywhere.
 from __future__ import annotations
 
 import html
+import re
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
 from .paper import Blueprint, BlueprintRow
 
 THEMES = ("classic", "compact", "coaching")
+
+# The dashboard's theme picker stores either a preset code or a raw hex in
+# institutes.institute_theme_code; these are each preset's primary-500 (kept in
+# step with frontend-admin-dashboard/src/constants/themes/theme.json).
+PRESET_ACCENTS = {
+    "primary": "#ED7424", "blue": "#1E88E5", "green": "#43A047", "purple": "#8E24AA",
+    "red": "#E53935", "pink": "#D81B60", "indigo": "#3949AB", "amber": "#FFB300",
+    "cyan": "#00ACC1", "teal": "#00897B", "lime": "#7CB342", "violet": "#5E35B1",
+    "maroon": "#9B2242", "navy": "#1A237E", "brown": "#6D4C41", "slate": "#546E7A",
+    "charcoal": "#424242", "holistic": "#622335",
+}
+DEFAULT_ACCENT = "#2F8FE0"
+_HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
+
+
+def resolve_accent(theme_code: Optional[str]) -> str:
+    """Institute theme code → the compact footer-band colour (the only place the
+    brand colour appears on the sheet; headings and rules stay black so the
+    paper photocopies cleanly). Unknown or blank → the default blue."""
+    code = (theme_code or "").strip()
+    if not code:
+        return DEFAULT_ACCENT
+    match = _HEX.match(code)
+    if match:
+        return "#" + match.group(1).upper()
+    return PRESET_ACCENTS.get(code.lower(), DEFAULT_ACCENT)
+
+
+def accent_text_color(accent: str) -> str:
+    """White on dark footer bands, near-black on light ones (amber, lime)."""
+    r, g, b = (int(accent[i:i + 2], 16) for i in (1, 3, 5))
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#111111" if luminance > 170 else "#FFFFFF"
+
+
 
 # Human names for the types, as a coaching paper prints them in section boxes.
 _TYPE_LABELS = {
@@ -63,17 +99,20 @@ def _short_duration(minutes: Optional[int]) -> str:
 COMPACT_CSS = """
 @page { size: Letter; margin: 14mm 12mm 16mm 12mm; }
 body { font-family: "Noto Sans", "Liberation Sans", Arial, "Noto Sans Devanagari", sans-serif; font-size: 9.5pt; line-height: 1.4; }
-.c-head { text-align: center; position: relative; }
+.c-head { text-align: center; position: relative; padding-bottom: 1.5mm; border-bottom: 1.2pt solid #000; }
+.c-head.with-logo { display: flex; flex-direction: column; justify-content: center; min-height: 16mm; padding: 0 34mm 1.5mm; }
+.c-head .logo { position: absolute; left: 0; top: 0; max-height: 14mm; max-width: 30mm; object-fit: contain; }
 .c-head .institute { font-size: 17pt; font-weight: 700; letter-spacing: 0.01em; text-transform: none; }
 .c-head .title { font-size: 10.5pt; margin-top: 0.5mm; }
-.c-meta { display: flex; justify-content: space-between; margin-top: 2.5mm; font-size: 8.5pt; }
+.c-head.with-logo .title { font-size: 14pt; font-weight: 700; margin-top: 0; }
+.c-meta { display: flex; justify-content: space-between; margin-top: 1.5mm; padding-bottom: 1.5mm; border-bottom: 0.6pt solid #000; font-size: 8.5pt; }
 .c-meta div { line-height: 1.6; }
 .c-meta b { font-weight: 700; }
-.c-instr { margin-top: 2mm; }
+.c-instr { margin-top: 2.5mm; border: 0.6pt solid #000; padding: 1.5mm 3mm 2mm; }
 .c-instr h3 { text-align: center; font-size: 9.5pt; font-weight: 700; margin: 0 0 1mm; }
 .c-instr ol { margin: 0; padding-left: 6mm; }
 .c-instr li { padding-left: 1mm; }
-.c-body { column-count: 2; column-gap: 7mm; margin-top: 3mm; }
+.c-body { column-count: 2; column-gap: 7mm; column-rule: 0.6pt solid #000; margin-top: 3mm; }
 .c-body .section { margin-top: 3mm; break-inside: auto; }
 .c-body .section-start { break-inside: avoid; }
 .c-body .section-head { text-align: center; break-after: avoid; margin-bottom: 1.5mm; }
@@ -91,6 +130,7 @@ body { font-family: "Noto Sans", "Liberation Sans", Arial, "Noto Sans Devanagari
 .c-key .c-body { margin-top: 0; }
 .c-key .k { display: grid; grid-template-columns: 6mm 1fr; column-gap: 1.5mm; margin-top: 1.5mm; break-inside: avoid; }
 .c-key .k .steps { margin: 0.5mm 0 0; padding-left: 4mm; font-size: 8.5pt; color: #333; }
+.watermark { filter: none; opacity: 0.07; }
 """
 
 COACHING_CSS = """
@@ -256,10 +296,20 @@ def render_compact(
 ) -> str:
     from .paper_pdf import _fmt_duration, _fmt_marks, _render_watermark
 
-    parts = [_render_watermark(logo_url, logo_placement), '<header class="c-head">']
+    # A small mark top-left as on a printed letterhead; the watermark (the
+    # default placement) stays underneath so the sheet reads as the institute's
+    # on every page, not just the first. The logo already carries the name, so
+    # the name is only printed when there is no logo to do that job.
+    header_logo = (
+        f'<img class="logo" src="{html.escape(logo_url, quote=True)}" alt="">'
+        if logo_url and logo_placement != "none"
+        else ""
+    )
+    head_class = "c-head with-logo" if header_logo else "c-head"
+    parts = [_render_watermark(logo_url, logo_placement), f'<header class="{head_class}">{header_logo}']
     if set_label:
         parts.append(f'<div class="set">SET {_h(set_label)}</div>')
-    if institute_name:
+    if institute_name and not header_logo:
         parts.append(f'<div class="institute">{_h(institute_name)}</div>')
     parts.append(f'<div class="title">{_h(blueprint.title)}</div></header>')
     duration = _fmt_duration(blueprint.duration_minutes)
@@ -354,12 +404,16 @@ def render_coaching(
 # Print settings per theme
 # ---------------------------------------------------------------------------
 
-def page_settings(theme: str, *, institute_name: Optional[str], title: str, subtitle: Optional[str]) -> Dict[str, Any]:
+def page_settings(
+    theme: str, *, institute_name: Optional[str], title: str, subtitle: Optional[str],
+    accent: Optional[str] = None,
+) -> Dict[str, Any]:
     """Playwright page.pdf() arguments that differ per theme: paper size,
     margins, and the running header/footer templates (inline styles only —
     templates render in their own document)."""
     if theme == "compact":
         band_left = " | ".join(t for t in (institute_name, subtitle) if t) or title
+        band = accent or DEFAULT_ACCENT
         return {
             "format": "Letter",
             "margin": {"top": "14mm", "right": "12mm", "bottom": "16mm", "left": "12mm"},
@@ -368,7 +422,7 @@ def page_settings(theme: str, *, institute_name: Optional[str], title: str, subt
                 f'font-size:7pt;color:#555">{html.escape(title[:110])}</div>'
             ),
             "footer_template": (
-                '<div style="width:100%;margin:0 12mm;background:#2f8fe0;color:#fff;-webkit-print-color-adjust:exact;'
+                f'<div style="width:100%;margin:0 12mm;background:{band};color:{accent_text_color(band)};-webkit-print-color-adjust:exact;'
                 'print-color-adjust:exact;padding:2mm 4mm;display:flex;justify-content:space-between;'
                 'font-family:Arial,sans-serif;font-size:8.5pt;font-weight:700">'
                 f"<span>{html.escape(band_left[:90])}</span>"

@@ -13,6 +13,7 @@ import re
 from typing import Optional
 
 import httpx
+from ..services.llm_router import post_chat
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -188,14 +189,12 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str) -> str:
     """Call OpenRouter's OpenAI-compatible chat completions endpoint and return the
     raw markdown content. Raises httpx.HTTPStatusError on non-2xx, RuntimeError on
     empty payload, httpx.RequestError on transport failure."""
+    # base_url is kept for callers; the gateway comes from the route map.
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            base_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
+        resp = await post_chat(
+            client,
+            api_key=api_key,
+            payload={
                 "model": _OPENROUTER_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,

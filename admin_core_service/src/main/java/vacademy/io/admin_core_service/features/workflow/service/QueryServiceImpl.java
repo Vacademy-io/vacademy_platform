@@ -99,6 +99,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return getUpcomingAutopayCharges(params);
             case "getManualRenewalDuePlans":
                 return getManualRenewalDuePlans(params);
+            case "getRenewalFailedPlans":
+                return getRenewalFailedPlans(params);
             case "getAbandonedCartPlans":
                 return getAbandonedCartPlans(params);
             case "updateSSIGMRemaingDaysByOne":
@@ -304,6 +306,59 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         } catch (Exception e) {
             log.error("Error executing getManualRenewalDuePlans", e);
             return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * "Your payment could not be processed" audience: ACTIVE autopay plans whose charge
+     * was presented and refused (renewal_attempt_count > 0) and not renewed since, with
+     * end_date within [-graceDays, +daysAhead] of today. Params: packageSessionIds
+     * (required), daysAhead (default 3), graceDays (default 3). Output items carry
+     * name / mobileNumber / username / endDateLabel / attempts / lastError.
+     */
+    private Map<String, Object> getRenewalFailedPlans(Map<String, Object> params) {
+        try {
+            List<String> packageSessionIds = (List<String>) params.get("packageSessionIds");
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return Map.of("error", "Missing required parameter packageSessionIds");
+            }
+            int daysAhead = readIntParam(params.get("daysAhead"), 3);
+            int graceDays = readIntParam(params.get("graceDays"), 3);
+
+            List<Object[]> rows = ssigmRepo.findRenewalFailedPlans(packageSessionIds, daysAhead, graceDays);
+            List<Map<String, Object>> renewalFailedList = new ArrayList<>();
+            for (Object[] row : rows) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("userPlanId", String.valueOf(row[0]));
+                item.put("userId", String.valueOf(row[1]));
+                item.put("name", row[2] != null ? String.valueOf(row[2]) : "");
+                item.put("mobileNumber", row[3] != null ? String.valueOf(row[3]) : "");
+                item.put("username", row[4] != null ? String.valueOf(row[4]) : "");
+                item.put("attempts", row[5] != null ? ((Number) row[5]).intValue() : 0);
+                item.put("endDate", row[6]);
+                item.put("endDateLabel", row[7] != null ? String.valueOf(row[7]) : "");
+                item.put("lastError", extractLastError(row[8]));
+                renewalFailedList.add(item);
+            }
+            return Map.of("renewalFailedList", renewalFailedList,
+                    "renewalFailedCount", renewalFailedList.size());
+        } catch (Exception e) {
+            log.error("Error executing getRenewalFailedPlans", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /** The "error" field of a FAILED payment_log's payment_specific_data, else "". */
+    private String extractLastError(Object paymentSpecificData) {
+        if (paymentSpecificData == null) {
+            return "";
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(String.valueOf(paymentSpecificData));
+            return node.path("error").asText("");
+        } catch (Exception e) {
+            return "";
         }
     }
 

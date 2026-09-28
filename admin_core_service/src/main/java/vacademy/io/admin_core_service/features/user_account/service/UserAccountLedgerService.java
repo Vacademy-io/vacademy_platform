@@ -14,9 +14,15 @@ import vacademy.io.admin_core_service.features.user_account.entity.UserAccountLe
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository;
 
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -25,6 +31,7 @@ public class UserAccountLedgerService {
 
     private final UserAccountLedgerRepository repository;
     private final InvoiceRepository invoiceRepository;
+    private final PaymentLogRepository paymentLogRepository;
 
     // ── public event-recording API ────────────────────────────────────────────
 
@@ -171,6 +178,41 @@ public class UserAccountLedgerService {
                 null, sourceType, sourceId, null, adjustmentHistoryId, remarks);
     }
 
+    /**
+     * Takes a voided payment back out of "total paid": one CREDIT_REVERSAL per CREDIT_PAYMENT
+     * that was booked for the payment log, same amount, same source.
+     *
+     * <p>Unlike the recorders above this joins the CALLER's transaction and lets failures
+     * propagate. A void is all-or-nothing: a reversal that survived a rolled-back void would
+     * understate what the learner has paid, and one that silently failed would leave the
+     * voided money counted as received. Idempotent on the payment log.
+     *
+     * @return the amount reversed (zero when nothing had been credited or it was already done)
+     */
+    @Transactional
+    public BigDecimal reverseCreditsForVoidedPayment(String paymentLogId, String remarks) {
+        if (paymentLogId == null || repository.existsByReferenceIdAndEventType(paymentLogId, "CREDIT_REVERSAL")) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (UserAccountLedger credit : repository.findByReferenceIdAndEventType(paymentLogId, "CREDIT_PAYMENT")) {
+            repository.save(UserAccountLedger.builder()
+                    .userId(credit.getUserId())
+                    .instituteId(credit.getInstituteId())
+                    .eventType("CREDIT_REVERSAL")
+                    .amount(credit.getAmount())
+                    .currency(credit.getCurrency())
+                    .sourceType(credit.getSourceType())
+                    .sourceId(credit.getSourceId())
+                    .invoiceId(credit.getInvoiceId())
+                    .referenceId(paymentLogId)
+                    .remarks(remarks)
+                    .build());
+            total = total.add(credit.getAmount());
+        }
+        return total;
+    }
+
     // ── read API ──────────────────────────────────────────────────────────────
 
     public UserAccountSummaryDTO getSummary(String userId, String instituteId) {
@@ -225,9 +267,36 @@ public class UserAccountLedgerService {
     }
 
     public Page<UserAccountLedgerEntryDTO> getLedger(String userId, String instituteId, Pageable pageable) {
-        return repository
-                .findByUserIdAndInstituteIdOrderByCreatedAtDesc(userId, instituteId, pageable)
-                .map(this::toDTO);
+        Page<UserAccountLedger> page = repository
+                .findByUserIdAndInstituteIdOrderByCreatedAtDesc(userId, instituteId, pageable);
+        Map<String, PaymentLog> paymentLogs = paymentLogsBehindCredits(page.getContent());
+        return page.map(entry -> {
+            UserAccountLedgerEntryDTO dto = toDTO(entry);
+            PaymentLog paymentLog = "CREDIT_PAYMENT".equals(entry.getEventType())
+                    ? paymentLogs.get(entry.getReferenceId())
+                    : null;
+            if (paymentLog != null) {
+                dto.setPaymentStatus(paymentLog.getPaymentStatus());
+                dto.setPaymentVendor(paymentLog.getVendor());
+            }
+            return dto;
+        });
+    }
+
+    /** One batched lookup for the page — best-effort, the ledger renders without it. */
+    private Map<String, PaymentLog> paymentLogsBehindCredits(List<UserAccountLedger> entries) {
+        try {
+            Set<String> ids = entries.stream()
+                    .filter(e -> "CREDIT_PAYMENT".equals(e.getEventType()) && e.getReferenceId() != null)
+                    .map(UserAccountLedger::getReferenceId)
+                    .collect(Collectors.toSet());
+            if (ids.isEmpty()) return Map.of();
+            return paymentLogRepository.findAllById(ids).stream()
+                    .collect(Collectors.toMap(PaymentLog::getId, pl -> pl, (a, b) -> a));
+        } catch (Exception e) {
+            log.warn("Could not load payment logs behind ledger credits: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
     // ── private ───────────────────────────────────────────────────────────────

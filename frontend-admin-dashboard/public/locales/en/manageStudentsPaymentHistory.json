@@ -82,7 +82,8 @@
             "creditWaiver": "Waiver",
             "creditAdjustment": "Adjustment",
             "debitPenalty": "Penalty",
-            "debitReversal": "Invoice cancelled"
+            "debitReversal": "Invoice cancelled",
+            "creditReversal": "Payment voided"
         }
     },
     "main": {
@@ -94,5 +95,46 @@
         "invoicesHeadingCount": "Invoices ({{count}})",
         "createInvoice": "Create Invoice",
         "loadingInvoices": "Loading invoices..."
+    },
+    "voidPayment": {
+        "action": "Void",
+        "actionTitle": "Void this payment — use it when a payment was recorded by mistake",
+        "voidedTag": "Voided",
+        "dialog": {
+            "title": "Void this {{amount}} payment?",
+            "description": "Use this for a payment that was recorded by mistake. The amount goes back onto the learner's balance and installments, its invoice is cancelled, and it stops counting as collected. The payment stays in the history, marked as voided. This cannot be undone.",
+            "reasonLabel": "Reason (optional)",
+            "reasonPlaceholder": "e.g. Entered twice",
+            "keep": "Keep payment",
+            "confirm": "Void payment"
+        },
+        "successToast": "Payment voided — {{amount}} is back on the learner's balance",
+        "errorToast": "Could not void this payment"
+    },
+    "permanentDelete": {
+        "action": "Delete permanently",
+        "paymentTitle": "Permanently delete the {{label}} payment?",
+        "invoiceTitle": "Permanently delete invoice {{label}}?",
+        "cannotUndo": "This cannot be undone.",
+        "whatHappens": "What happens",
+        "payment": {
+            "removed": "The payment record is removed for good.",
+            "balance": "If it still counts, the amount goes back onto the learner's balance and installments.",
+            "invoice": "The receipt invoice generated for it is deleted, and its number is freed for the next invoice."
+        },
+        "invoice": {
+            "removed": "The invoice is removed for good.",
+            "balance": "An unpaid bill stops counting towards the learner's balance.",
+            "number": "Its invoice number is freed and given to the next invoice."
+        },
+        "auditLog": "A record of the deletion is kept in the admin activity log.",
+        "typePrefix": "Type",
+        "typeSuffix": "to confirm",
+        "keep": "Keep it",
+        "confirm": "Delete permanently",
+        "deleting": "Deleting…",
+        "paymentDeletedToast": "Payment {{label}} deleted",
+        "invoiceDeletedToast": "Invoice {{label}} deleted",
+        "errorToast": "Could not delete"
     }
 }

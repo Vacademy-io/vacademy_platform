@@ -3,6 +3,7 @@ package vacademy.io.notification_service.config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -111,6 +112,13 @@ public class WebSecurityConfig {
                     for (String path : SECURED_PATHS) {
                         authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
                     }
+
+                    // Institute announcement settings: writes and the all-institutes listing need a JWT (the
+                    // controller further requires an admin of the target institute). The per-institute GET stays
+                    // public — learners read chat/community flags from it — and never includes the Firebase key.
+                    authz.requestMatchers(AntPathRequestMatcher.antMatcher(HttpMethod.POST, "/notification-service/v1/institute-settings")).authenticated();
+                    authz.requestMatchers(AntPathRequestMatcher.antMatcher(HttpMethod.DELETE, "/notification-service/v1/institute-settings/**")).authenticated();
+                    authz.requestMatchers(AntPathRequestMatcher.antMatcher("/notification-service/v1/institute-settings/all")).authenticated();
 
                     // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
                     // Spring 6)

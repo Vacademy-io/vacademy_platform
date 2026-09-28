@@ -11,6 +11,7 @@ from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
+from .llm_router import mark_router_failed, openrouter_chat, route_chat, should_fail_over
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,11 @@ class _AttemptRejected(Exception):
         super().__init__(f"OpenRouter {status}: {body}")
         self.status = status
         self.body = body
+
+
+class _RouteUnavailable(Exception):
+    """A routed gateway (not OpenRouter) was unreachable or refused before any
+    token arrived; the caller retries the same request on OpenRouter."""
 
 
 class ChatLLMClient:
@@ -375,16 +381,12 @@ class ChatLLMClient:
         max_tokens: int,
         api_key: str,
         model: str = "xiaomi/mimo-v2-flash:free",
+        force_openrouter: bool = False,
     ) -> Dict[str, Any]:
-        """Call OpenRouter API (OpenAI-compatible)."""
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://vacademy.io",
-            "X-Title": "Vacademy AI Tutor"
-        }
-        
+        """Call the model through its gateway (OpenRouter unless the route map
+        says otherwise — see llm_router). A routed gateway that is down or
+        refuses the key is retried on OpenRouter before anything else reacts,
+        so a gateway outage never marks the MODEL broken."""
         # Check for multimodal content and convert if needed
         has_attachments = any(msg.get("attachments") for msg in messages)
         if has_attachments:
@@ -408,9 +410,25 @@ class ChatLLMClient:
             payload["tool_choice"] = "auto"
 
         response = None
+        route = None
         variants = payload_variants(model, payload)
         for index, (label, attempt) in enumerate(variants):
-            response = await self.http_client.post(url, json=attempt, headers=headers)
+            url, headers, wire, route = (openrouter_chat if force_openrouter else route_chat)(attempt, api_key)
+            try:
+                response = await self.http_client.post(url, json=wire, headers=headers)
+            except httpx.TransportError as exc:
+                if route.is_default:
+                    raise
+                logger.warning(f"{route.label} unreachable for {model} ({exc}); retrying on OpenRouter")
+                mark_router_failed(route.router)
+                return await self._call_openrouter(messages, tools, temperature, max_tokens, api_key, model, True)
+            if should_fail_over(route, response.status_code):
+                logger.warning(
+                    f"{route.label} {response.status_code} for {model}: "
+                    f"{openrouter_error_text(response.text)}; retrying on OpenRouter"
+                )
+                mark_router_failed(route.router)
+                return await self._call_openrouter(messages, tools, temperature, max_tokens, api_key, model, True)
 
             if response.status_code == 402:
                 error_body = response.text
@@ -449,9 +467,14 @@ class ChatLLMClient:
             "content": message.get("content", ""),
             "tool_calls": message.get("tool_calls"),
             "finish_reason": choice.get("finish_reason"),
+            # "openrouter" = OpenAI-shaped usage; billing keys on it. Every
+            # gateway here speaks that shape, so it stays whichever served.
             "provider": "openrouter",
+            "router": route.router if route else "openrouter",
             "usage": data.get("usage"),
-            "model": data.get("model", model)
+            # A routed gateway echoes its own id (glm-5.3-flash); billing and
+            # model health need the registry id.
+            "model": data.get("model", model) if (route is None or route.is_default) else model,
         }
     
     async def chat_completion_stream(
@@ -509,14 +532,6 @@ class ChatLLMClient:
         if has_attachments:
             messages = self._convert_to_multimodal_messages(messages)
 
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://vacademy.io",
-            "X-Title": "Vacademy AI Tutor"
-        }
-
         payload = {
             "model": model,
             "messages": ensure_user_turn(messages),
@@ -539,9 +554,18 @@ class ChatLLMClient:
         # output — and never leaves two streams open for one turn.
         variants = payload_variants(model, payload)
         for index, (label, attempt) in enumerate(variants):
+            url, headers, wire, route = route_chat(attempt, api_key)
             try:
-                async for chunk in self._stream_openrouter_once(url, headers, attempt, model):
-                    yield chunk
+                try:
+                    async for chunk in self._stream_openrouter_once(url, headers, wire, model, route):
+                        yield chunk
+                except _RouteUnavailable as unavailable:
+                    # Raised before the first token, so nothing is duplicated.
+                    logger.warning(f"{route.label} failed for {model} (streaming): {unavailable}; retrying on OpenRouter")
+                    mark_router_failed(route.router)
+                    url, headers, wire, route = openrouter_chat(attempt, api_key)
+                    async for chunk in self._stream_openrouter_once(url, headers, wire, model, route):
+                        yield chunk
                 if label != "as-configured" and reasoning_mode_for(model) != label:
                     mark_reasoning_required(model, label)
                     self._note_model_note(model, _mode_note(label))
@@ -558,12 +582,26 @@ class ChatLLMClient:
         headers: Dict[str, str],
         payload: Dict[str, Any],
         model: str,
+        route=None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """A single streaming request. Raises _AttemptRejected on a 4xx (with
-        the provider's text) so the caller can try the next payload variant."""
+        the provider's text) so the caller can try the next payload variant,
+        and _RouteUnavailable — before any token — when a routed gateway is
+        unreachable or refuses, so the caller can retry on OpenRouter."""
         accumulated_tool_calls = {}  # index -> {id, function: {name, arguments}}
+        routed = route is not None and not route.is_default
 
-        async with self.http_client.stream("POST", url, json=payload, headers=headers) as response:
+        stream_cm = self.http_client.stream("POST", url, json=payload, headers=headers)
+        try:
+            response = await stream_cm.__aenter__()
+        except httpx.TransportError as exc:
+            if routed:
+                raise _RouteUnavailable(str(exc)) from exc
+            raise
+        try:
+            if routed and should_fail_over(route, response.status_code):
+                body = (await response.aread())[:300].decode("utf-8", "ignore")
+                raise _RouteUnavailable(f"{response.status_code}: {openrouter_error_text(body)}")
             if response.status_code == 402:
                 raise Exception(f"OpenRouter 402 Payment Required")
             if 400 <= response.status_code < 500:
@@ -597,7 +635,7 @@ class ChatLLMClient:
                 if not chunk.get("choices"):
                     # Could be usage data at the end
                     if chunk.get("usage"):
-                        yield {"type": "done", "usage": chunk["usage"], "model": chunk.get("model", model), "provider": "openrouter"}
+                        yield {"type": "done", "usage": chunk["usage"], "model": model if routed else chunk.get("model", model), "provider": "openrouter"}
                     continue
 
                 delta = chunk["choices"][0].get("delta", {})
@@ -623,6 +661,9 @@ class ChatLLMClient:
                             accumulated_tool_calls[idx]["function"]["name"] = func["name"]
                         if func.get("arguments"):
                             accumulated_tool_calls[idx]["function"]["arguments"] += func["arguments"]
+        finally:
+            await stream_cm.__aexit__(None, None, None)
+
     async def close(self):
         """Close the HTTP client."""
         await self.http_client.aclose()

@@ -17,6 +17,7 @@
     },
     "dropdown": {
         "increaseSubmissionTime": "Augmenter le temps de soumission",
-        "closeSubmission": "Clore la soumission"
+        "closeSubmission": "Clore la soumission",
+        "proctoring": "Surveillance"
     }
 }

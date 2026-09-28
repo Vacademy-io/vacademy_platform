@@ -97,10 +97,10 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled stop — 12:30 AM IST, Mon-SUN 
+     * Scheduled stop — 1:00 AM IST, Mon-SUN (runs on the calendar day after each
      * class day)
      */
-    @Scheduled(cron = "0 30 0 * * MON-SUN", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 1 * * MON-SUN", zone = "Asia/Kolkata")
     public void scheduledStop() {
         log.info("[BBB Pool] Scheduled STOP triggered");
         triggerPoolAction("stop", "all", 0);

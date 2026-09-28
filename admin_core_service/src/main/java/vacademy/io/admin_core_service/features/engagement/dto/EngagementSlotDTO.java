@@ -17,6 +17,9 @@ public class EngagementSlotDTO {
     private String planId;
     private String title;
     private String startDate;
+    /** RELATIVE plans only; startDate/endDate are then virtual. */
+    private Integer startDay;
+    private Integer endDay;
     private String endDate;
     private String startTime;
     private String endTime;
@@ -26,4 +29,9 @@ public class EngagementSlotDTO {
     private Integer sortOrder;
     private String status;
     private List<EngagementItemDTO> items;
+    /**
+     * Active learners in the plan's batch, so a task row can read
+     * "{completedCount} / {learnerCount} learners". Optional.
+     */
+    private Long learnerCount;
 }

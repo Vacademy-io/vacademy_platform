@@ -111,6 +111,20 @@ export const TestDetailsStep = ({
                     disabled={disabled}
                 />
                 {field(
+                    t('examDate.label'),
+                    t('examDate.help'),
+                    <MyInput
+                        inputType="date"
+                        input={value.exam_date ?? ''}
+                        onChangeFunction={(e) => onChange({ ...value, exam_date: e.target.value })}
+                        className="w-full sm:w-full"
+                        disabled={disabled}
+                    />
+                )}
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+                {field(
                     t('language.label'),
                     t('language.help'),
                     <Select

@@ -45,6 +45,7 @@ import {
     getCachedInstituteBranding,
 } from '@/services/domain-routing';
 import { OtaUpdateBanner } from '@/components/ota-update/OtaUpdateBanner';
+import { PaperReadWatcher } from '@/components/common/paper-reads/PaperReadWatcher';
 import { resolveFontStack } from '@/utils/font';
 import { useTitleStore } from '@/stores/useTitleStore';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
@@ -384,6 +385,7 @@ if (!rootElement.innerHTML) {
                     <SidebarProvider>
                         <RouterProvider router={router} />
                         <OtaUpdateBanner />
+                        <PaperReadWatcher onOpen={(path) => router.history.push(path)} />
                         <Toaster />
                     </SidebarProvider>
                 </CourseSettingsProvider>

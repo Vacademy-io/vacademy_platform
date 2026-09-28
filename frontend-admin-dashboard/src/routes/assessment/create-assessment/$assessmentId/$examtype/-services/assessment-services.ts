@@ -1,3 +1,4 @@
+import { DEFAULT_PROCTORING_FORM, proctoringWireFromForm } from '@/types/assessments/proctoring';
 import {
     GET_ASSESSMENT_DETAILS,
     PUBLISH_ASSESSMENT_URL,
@@ -143,7 +144,7 @@ export const getQuestionDataForSection = ({
     };
 };
 
-function getTestBoundation(
+export function getTestBoundation(
     testType: string | undefined,
     liveDateRange: { startDate?: string; endDate?: string }
 ) {
@@ -154,9 +155,17 @@ function getTestBoundation(
                 end_date: convertToUTC(liveDateRange.endDate || ''),
             };
         case 'SURVEY':
+            // A survey's live window is optional. Left blank it behaves like a
+            // mock or practice test — open from now until the 9999 sentinel.
+            // It must NOT be sent blank: the learner assessment list filters on
+            // `CURRENT_TIMESTAMP BETWEEN bound_start_time AND bound_end_time`,
+            // and NULL bounds make that NULL rather than true, so the survey
+            // would never appear in anyone's Live list.
             return {
-                start_date: convertToUTC(liveDateRange.startDate || ''),
-                end_date: convertToUTC(liveDateRange.endDate || ''),
+                start_date: convertToUTC(liveDateRange.startDate || '') || new Date().toISOString(),
+                end_date:
+                    convertToUTC(liveDateRange.endDate || '') ||
+                    new Date('9999-12-31T23:59:59.999Z').toISOString(),
             };
         case 'PRACTICE':
             return {
@@ -206,6 +215,9 @@ export const handlePostStep1Data = async (
         // Queue an AI evaluation when a learner submits. Metered per graded
         // question, so it is only ever sent as an explicit true/false.
         ai_evaluation_enabled: data.aiEvaluationEnabled ?? false,
+        // Always sent as a full object: tier NONE clears the stored config, so a
+        // save from this build can never leave a stale tier behind.
+        proctoring_config: proctoringWireFromForm(data.proctoring ?? DEFAULT_PROCTORING_FORM),
     };
     const response = await authenticatedAxiosInstance({
         method: 'POST',

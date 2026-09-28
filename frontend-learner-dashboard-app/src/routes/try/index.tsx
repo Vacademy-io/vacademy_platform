@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CircleNotch, Microphone, TextT } from "@phosphor-icons/react";
 import { getTutorDemoTopics, startTutorDemo, type TutorDemoTopic } from "@/services/tutor-api";
 import { writeTutorGuest } from "@/lib/tutorGuest";
+import { preloadAvatarKit } from "@/hooks/useSpatiusAvatar";
 
 interface TrySearch {
   done?: string;
@@ -10,7 +11,7 @@ interface TrySearch {
 }
 
 /**
- * Public 3-minute lesson for tutezy.ai visitors: a name, a topic, then the
+ * Public demo lesson for tutezy.ai visitors: a name, a topic, then the
  * real tutor page with a guest token. No sign-up, one per visitor per day.
  */
 export const Route = createFileRoute("/try/")({
@@ -23,16 +24,32 @@ export const Route = createFileRoute("/try/")({
 
 const TUTEZY = "https://tutezy.ai";
 
+/** Ask for the microphone once and release it straight away; false if blocked or absent. */
+async function micAllowed(): Promise<boolean> {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function TryPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const [topics, setTopics] = useState<TutorDemoTopic[] | null>(null);
   const [enabled, setEnabled] = useState(true);
-  const [minutes, setMinutes] = useState(3);
+  // Placeholder until /demo/topics answers with the real tutor.demo.minutes.
+  const [minutes, setMinutes] = useState(10);
   const [name, setName] = useState("");
   const [topic, setTopic] = useState(search.topic || "");
   const [mode, setMode] = useState<"VOICE" | "TEXT">("VOICE");
   const [busy, setBusy] = useState(false);
+  // A link that already names a topic (tutezy.ai buttons do) shows just that
+  // topic; eighteen cards stood between a phone visitor and the Start button.
+  const [showAllTopics, setShowAllTopics] = useState(!search.topic);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -57,6 +74,18 @@ function TryPage() {
     }
     setError("");
     setBusy(true);
+    // Voice: ask for the microphone HERE, before the lesson (and before the
+    // free lesson is used up), not at the student's first answer mid-lesson.
+    if (mode === "VOICE") {
+      const ok = await micAllowed();
+      if (!ok) {
+        setError("We couldn't use your microphone. Allow it in your browser's address bar, or choose Text only.");
+        setBusy(false);
+        return;
+      }
+    }
+    // The animated teacher's SDK downloads while the session is being created.
+    if (mode === "VOICE") void preloadAvatarKit().catch(() => undefined);
     try {
       const r = await startTutorDemo({ name: name.trim(), topicKey: topic, mode });
       writeTutorGuest({ token: r.token, boot: r.boot, minutes: r.minutes, name: name.trim(), topicKey: topic });
@@ -116,6 +145,16 @@ function TryPage() {
               />
             </label>
 
+            <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-neutral-500">How do you want to talk?</p>
+            <div className="mt-2 flex gap-2" role="group" aria-label="Lesson mode">
+              <button type="button" onClick={() => setMode("VOICE")} aria-pressed={mode === "VOICE"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${mode === "VOICE" ? "border-primary-500 bg-primary-50 font-semibold" : "border-neutral-200"}`}>
+                <Microphone className="size-4" /> Voice (needs a mic)
+              </button>
+              <button type="button" onClick={() => setMode("TEXT")} aria-pressed={mode === "TEXT"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${mode === "TEXT" ? "border-primary-500 bg-primary-50 font-semibold" : "border-neutral-200"}`}>
+                <TextT className="size-4" /> Text only
+              </button>
+            </div>
+
             {/* A link with ?topic=<key> that is not in the public list is an unlisted lesson
                 built from the visitor's own material. Show that, not ten unrelated topics. */}
             {topics !== null && search.topic && !topics.some((t) => t.key === search.topic) ? (
@@ -130,6 +169,22 @@ function TryPage() {
             {topics === null ? (
               <p className="mt-2 flex items-center gap-2 text-sm text-neutral-500"><CircleNotch className="size-4 animate-spin" /> Loading topics…</p>
             ) : (
+              !showAllTopics && topics.some((t) => t.key === topic) ? (
+                <div className="mt-2 flex items-center gap-2 rounded-xl border border-primary-500 bg-primary-50 px-3 py-2.5 text-sm font-semibold">
+                  {(() => {
+                    const t = topics.find((x) => x.key === topic)!;
+                    return (
+                      <>
+                        {t.emoji && <span className="text-lg" aria-hidden="true">{t.emoji}</span>}
+                        <span className="min-w-0 flex-1 break-words">{t.title}</span>
+                      </>
+                    );
+                  })()}
+                  <button type="button" onClick={() => setShowAllTopics(true)} className="shrink-0 text-xs font-medium text-primary-500 hover:underline">
+                    Change topic
+                  </button>
+                </div>
+              ) : (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {topics.map((t) => (
                   <button
@@ -144,31 +199,25 @@ function TryPage() {
                   </button>
                 ))}
               </div>
+              )
             )}
             </>
             )}
 
-            <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-neutral-500">How do you want to talk?</p>
-            <div className="mt-2 flex gap-2" role="group" aria-label="Lesson mode">
-              <button type="button" onClick={() => setMode("VOICE")} aria-pressed={mode === "VOICE"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${mode === "VOICE" ? "border-primary-500 bg-primary-50 font-semibold" : "border-neutral-200"}`}>
-                <Microphone className="size-4" /> Voice (needs a mic)
-              </button>
-              <button type="button" onClick={() => setMode("TEXT")} aria-pressed={mode === "TEXT"} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${mode === "TEXT" ? "border-primary-500 bg-primary-50 font-semibold" : "border-neutral-200"}`}>
-                <TextT className="size-4" /> Text only
-              </button>
-            </div>
-
-            {error && <p role="alert" className="mt-4 rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+            {/* Pinned to the bottom of the screen on phones so Start is always one tap away. */}
+            <div className="sticky bottom-0 -mx-6 mt-2 bg-white px-6 pb-4 pt-2 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0">
+            {error && <p role="alert" className="mt-2 rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
 
             <button
               type="button"
               onClick={() => void start()}
               disabled={busy || topics === null || topics.length === 0}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-primary-500 px-5 py-3 text-base font-semibold text-white disabled:opacity-60"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-primary-500 px-5 py-3 text-base font-semibold text-white disabled:opacity-60"
             >
               {busy ? <CircleNotch className="size-5 animate-spin" /> : null}
               {busy ? "Waking the teacher…" : "Start my lesson"}
             </button>
+            </div>
             <p className="mt-3 text-center text-xs text-neutral-500">One free lesson per visitor per day. The lesson ends on its own after {minutes} minutes.</p>
           </section>
         )}

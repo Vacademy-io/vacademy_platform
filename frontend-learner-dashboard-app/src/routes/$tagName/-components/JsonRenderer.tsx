@@ -48,6 +48,7 @@ import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
+import { BlogComponent } from "./components/BlogComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
 import { submitWebsiteLead, isSpamSubmission } from "../-utils/website-lead";
 import { emitLeadCaptured } from "../-utils/catalogue-tracking";
@@ -291,6 +292,21 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "marquee":
         return <MarqueeRenderer key={id} {...props} />;
 
+      case "blog":
+        // Live-reads the institute's published posts (Manage Pages → Blog /
+        // MCP). Renders the list, or one article when the URL carries a slug
+        // after this page's route — see BlogComponent.
+        return (
+          <BlogComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+            pageRoute={page.route || ""}
+            isPreviewMode={isPreviewMode}
+          />
+        );
+
       case "leadForm":
         // An Audience campaign's form rendered inline — the form definition
         // lives in the CRM (AUDIENCE_FORM custom fields), fetched live.
@@ -347,6 +363,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             css={props.css as string}
             siteCss={(globalSettings as any)?.customCss as string | undefined}
             tagName={tagName}
+            courseData={courseData}
           />
         );
 

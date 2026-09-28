@@ -195,7 +195,26 @@ export default function NotificationSettings({ isTab = false }: Props) {
             // Create a copy of settings without the emails field for API compatibility
             const { emails, ...settingsForApi } = settings;
             const req = createUpsertRequest(settingsForApi);
-            await upsertNotificationSettings(req);
+            const saved = await upsertNotificationSettings(req);
+            // A server that redacts the key (reports `configured`) never needs it back, so drop a pasted key
+            // from page state. An older server still returns and expects the key — keep what it returned, or
+            // the next save from this page would erase the stored key.
+            const savedFirebase = saved?.settings?.firebase;
+            if (savedFirebase && savedFirebase.configured !== undefined) {
+                setSettings((prev) =>
+                    prev
+                        ? {
+                              ...prev,
+                              firebase: {
+                                  ...(prev.firebase || {}),
+                                  ...savedFirebase,
+                                  serviceAccountJson: null,
+                                  serviceAccountJsonBase64: null,
+                              },
+                          }
+                        : prev
+                );
+            }
             toast.success(t('toasts.settingsSaved'));
             setHasChanges(false);
         } catch (e) {
@@ -214,6 +233,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
             base64String: firebase.serviceAccountJsonBase64 || null,
         });
         if (!normalized || normalized.trim().length === 0) {
+            // No new key pasted: the stored key (never sent back by the server) stays as it is.
+            if (firebase.configured) {
+                await handleSave();
+                return;
+            }
             toast.error(FIREBASE_VALIDATION_MESSAGES.required);
             return;
         }
@@ -638,11 +662,13 @@ export default function NotificationSettings({ isTab = false }: Props) {
                                         base64String:
                                             settings.firebase?.serviceAccountJsonBase64 || null,
                                     });
-                                    if (!normalized) {
+                                    if (!normalized && !settings.firebase?.configured) {
                                         toast.error(FIREBASE_VALIDATION_MESSAGES.required);
                                         return;
                                     }
-                                    const res = validateFirebaseServiceAccountJson(normalized);
+                                    const res = normalized
+                                        ? validateFirebaseServiceAccountJson(normalized)
+                                        : { valid: true as const, errorMessage: undefined };
                                     if (!res.valid) {
                                         toast.error(
                                             res.errorMessage ||
@@ -686,6 +712,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         <div className="text-xs text-muted-foreground">
                             {FIREBASE_CREDENTIALS_HELPER_TEXT}
                         </div>
+                        {settings.firebase?.configured && (
+                            <div className="text-xs font-medium text-success-600">
+                                {t('push.keyConfigured')}
+                            </div>
+                        )}
                         <Textarea
                             className="min-h-40 font-mono"
                             placeholder={FIREBASE_CREDENTIALS_PLACEHOLDER}

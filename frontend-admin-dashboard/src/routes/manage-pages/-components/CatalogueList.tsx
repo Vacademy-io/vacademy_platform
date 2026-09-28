@@ -12,7 +12,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { CreateCatalogueDialog } from './CreateCatalogueDialog';
 import {
@@ -23,6 +23,7 @@ import {
     Plus,
     LayoutTemplate,
     Clock,
+    Newspaper,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
@@ -38,6 +39,8 @@ import {
 import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
 import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
+import { useBlogManagerStore } from '../-stores/blog-manager-store';
+import { BlogManagerDialog } from './blog/BlogManagerDialog';
 
 // Deterministic gradient from tag name
 const GRADIENTS = [
@@ -72,6 +75,16 @@ const CardSkeleton = () => (
 export const CatalogueList = () => {
     const instituteId = getCurrentInstituteId();
     const navigate = useNavigate();
+    const openBlog = useBlogManagerStore((s) => s.open);
+    // `?blog=list` / `?blog=<postId>` — deep link into the blog manager (MCP
+    // hands these out). Consumed once, then stripped so closing the dialog
+    // doesn't reopen it on the next render.
+    const { blog: blogSearch } = useSearch({ strict: false }) as { blog?: string };
+    useEffect(() => {
+        if (!blogSearch) return;
+        openBlog(blogSearch === 'list' ? null : blogSearch);
+        navigate({ to: '/manage-pages', search: {}, replace: true });
+    }, [blogSearch, openBlog, navigate]);
     const { toast } = useToast();
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [deletingTag, setDeletingTag] = useState<string | null>(null);
@@ -144,14 +157,25 @@ export const CatalogueList = () => {
                         Build and publish your institute&apos;s learner portals
                     </p>
                 </div>
-                <Button
-                    onClick={() => setIsCreateDialogOpen(true)}
-                    disabled={!canWrite}
-                    className="shrink-0 gap-1.5"
-                >
-                    <Plus className="size-4" />
-                    New Site
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={() => openBlog()}
+                        className="gap-1.5"
+                        title="Write and publish blog posts for your sites"
+                    >
+                        <Newspaper className="size-4" />
+                        Blog
+                    </Button>
+                    <Button
+                        onClick={() => setIsCreateDialogOpen(true)}
+                        disabled={!canWrite}
+                        className="gap-1.5"
+                    >
+                        <Plus className="size-4" />
+                        New Site
+                    </Button>
+                </div>
             </div>
 
             {/* Stats row */}
@@ -368,6 +392,7 @@ export const CatalogueList = () => {
                 entityName={utmTagName ?? undefined}
             />
 
+            <BlogManagerDialog />
             <CreateCatalogueDialog
                 open={isCreateDialogOpen}
                 onOpenChange={setIsCreateDialogOpen}

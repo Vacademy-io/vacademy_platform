@@ -78,7 +78,7 @@
         "noProfileHint": "A profile will appear once this user submits an enquiry or is scored.",
         "leadInterestScore": "Lead Interest Score",
         "lastCalculatedLabel": "Last calculated",
-        "setTier": "Set Tier",
+        "setTier": "Set {{tier}}",
         "campaigns": "Campaigns",
         "timelineEvents": "Timeline Events",
         "demoAttendance": "Demo Attendance",

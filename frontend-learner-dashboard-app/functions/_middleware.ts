@@ -112,6 +112,21 @@ interface CataloguePage {
   title?: string;
   enabled?: boolean;
   seo?: { metaTitle?: string; metaDescription?: string; ogImage?: string };
+  /** True when the page carries an enabled `blog` section, so "<page>/<slug>" addresses a post. */
+  hasBlog?: boolean;
+}
+
+/** A published blog post, as the public catalogue-blog endpoint returns it. */
+interface BlogPost {
+  slug: string;
+  title: string;
+  excerpt?: string | null;
+  cover_image_url?: string | null;
+  author_name?: string | null;
+  published_at?: string | null;
+  updated_at?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
 }
 
 /**
@@ -164,7 +179,7 @@ async function fetchCatalogue(
     const data = (await res.json()) as { catalogue_json?: string };
     if (!data?.catalogue_json) return null;
     const cfg = JSON.parse(data.catalogue_json) as {
-      pages?: CataloguePage[];
+      pages?: Array<CataloguePage & { components?: Array<{ type?: string; enabled?: boolean }> }>;
       globalSettings?: {
         seo?: CatalogueSeo;
         layout?: {
@@ -182,7 +197,54 @@ async function fetchCatalogue(
     const socials = [...(footer?.socials || []), ...(footer?.leftSection?.socials || [])]
       .map((s) => nonEmpty(s?.url))
       .filter((u) => /^https?:\/\//i.test(u));
-    return { pages: cfg?.pages || [], seo: cfg?.globalSettings?.seo || {}, socials };
+    const pages: CataloguePage[] = (cfg?.pages || []).map((p) => ({
+      id: p.id,
+      route: p.route,
+      title: p.title,
+      enabled: p.enabled,
+      seo: p.seo,
+      hasBlog: (p.components || []).some((c) => c?.type === "blog" && c.enabled !== false),
+    }));
+    return { pages, seo: cfg?.globalSettings?.seo || {}, socials };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Published posts of an institute (no bodies), for the sitemap. One page of
+ * up to 50; a blog past that size still gets its newest 50 listed.
+ */
+async function fetchBlogPosts(backendBase: string, instituteId: string): Promise<BlogPost[]> {
+  try {
+    const url =
+      `${backendBase}/admin-core-service/public/catalogue-blog/v1/posts` +
+      `?instituteId=${encodeURIComponent(instituteId)}&page=0&size=50`;
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: true },
+    } as RequestInit);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { content?: BlogPost[] };
+    return Array.isArray(data?.content) ? data.content : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One published post by slug; null when unknown, unpublished or scheduled. */
+async function fetchBlogPost(backendBase: string, instituteId: string, slug: string): Promise<BlogPost | null> {
+  try {
+    const url =
+      `${backendBase}/admin-core-service/public/catalogue-blog/v1/post` +
+      `?instituteId=${encodeURIComponent(instituteId)}&slug=${encodeURIComponent(slug)}`;
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: true },
+    } as RequestInit);
+    if (!res.ok) return null;
+    const post = (await res.json()) as BlogPost;
+    return post && post.slug ? post : null;
   } catch {
     return null;
   }
@@ -227,7 +289,7 @@ async function resolveCataloguePage(
   backendBase: string,
   branding: DomainRoutingResponse,
   segs: string[]
-): Promise<{ tag: string; rootMounted: boolean; page: CataloguePage; catalogue: CatalogueConfig } | null> {
+): Promise<{ tag: string; rootMounted: boolean; page: CataloguePage; catalogue: CatalogueConfig; post?: BlogPost } | null> {
   const first = (segs[0] || "").toLowerCase();
   if (first && APP_ROUTE_SEGMENTS.has(first)) return null;
   const rootTag = nonEmpty(branding.rootCatalogueTag);
@@ -236,10 +298,29 @@ async function resolveCataloguePage(
     const page = catalogue ? findPage(catalogue.pages, segs[0]) : undefined;
     if (catalogue && page) return { tag: rootTag, rootMounted: true, page, catalogue };
   }
+  // A blog post: /{blog-page}/{slug} on a root-mounted host. Checked before the
+  // tagged reading so "/blog/<slug>" is not first tried as a catalogue named "blog".
+  if (rootTag && segs.length === 2) {
+    const catalogue = await fetchCatalogue(backendBase, branding.instituteId, rootTag);
+    const page = catalogue ? findPage(catalogue.pages, segs[0]) : undefined;
+    if (catalogue && page?.hasBlog) {
+      const post = await fetchBlogPost(backendBase, branding.instituteId, decodeURIComponent(segs[1]));
+      if (post) return { tag: rootTag, rootMounted: true, page, catalogue, post };
+    }
+  }
   if (segs.length >= 1 && segs.length <= 2) {
     const catalogue = await fetchCatalogue(backendBase, branding.instituteId, segs[0]);
     const page = catalogue ? findPage(catalogue.pages, segs[1]) : undefined;
     if (catalogue && page) return { tag: segs[0], rootMounted: false, page, catalogue };
+  }
+  // A blog post on a tagged site: /{tag}/{blog-page}/{slug}.
+  if (segs.length === 3) {
+    const catalogue = await fetchCatalogue(backendBase, branding.instituteId, segs[0]);
+    const page = catalogue ? findPage(catalogue.pages, segs[1]) : undefined;
+    if (catalogue && page?.hasBlog) {
+      const post = await fetchBlogPost(backendBase, branding.instituteId, decodeURIComponent(segs[2]));
+      if (post) return { tag: segs[0], rootMounted: false, page, catalogue, post };
+    }
   }
   return null;
 }
@@ -251,7 +332,14 @@ async function resolveCataloguePage(
  * generic card. Let the page speak for itself; anything missing falls back to
  * branding exactly as before.
  */
-function pageSeoOf(page: CataloguePage): PageSeo {
+function pageSeoOf(page: CataloguePage, post?: BlogPost): PageSeo {
+  if (post) {
+    return {
+      title: nonEmpty(post.seo_title) || post.title,
+      description: nonEmpty(post.seo_description) || nonEmpty(post.excerpt) || undefined,
+      ogImage: nonEmpty(post.cover_image_url) || page.seo?.ogImage || undefined,
+    };
+  }
   return {
     title: page.seo?.metaTitle || page.title || undefined,
     description: page.seo?.metaDescription || undefined,
@@ -303,16 +391,40 @@ async function serveSitemap(
   const catalogue = await fetchCatalogue(backendBase, branding.instituteId, tag);
   if (!catalogue) return xml(empty, 404);
   const rootMounted = !tagFromPath || tag === rootTag;
-  const entries = catalogue.pages
-    .filter((p) => p.enabled !== false && !NON_INDEXABLE_ROUTES.has(normRoute(p.route)))
-    .map((p) => ({ loc: pageUrl(url.origin, tag, rootMounted, p), home: isHomePage(p) }));
+  const livePages = catalogue.pages.filter(
+    (p) => p.enabled !== false && !NON_INDEXABLE_ROUTES.has(normRoute(p.route))
+  );
+  const entries: Array<{ loc: string; freq: string; priority: string; lastmod?: string }> = livePages.map((p) => ({
+    loc: pageUrl(url.origin, tag, rootMounted, p),
+    freq: isHomePage(p) ? "daily" : "weekly",
+    priority: isHomePage(p) ? "1.0" : "0.7",
+  }));
+  // Blog posts live under their page: one <url> per published post, per blog
+  // page (a post on the home page is addressed by ?post= and is not listed —
+  // the same article has a clean address only on a dedicated page).
+  const blogPages = livePages.filter((p) => p.hasBlog && !isHomePage(p));
+  if (blogPages.length) {
+    const posts = await fetchBlogPosts(backendBase, branding.instituteId);
+    for (const p of blogPages) {
+      const base = pageUrl(url.origin, tag, rootMounted, p);
+      for (const post of posts) {
+        const lastmod = nonEmpty(post.updated_at) || nonEmpty(post.published_at);
+        entries.push({
+          loc: `${base}/${encodeURIComponent(post.slug)}`,
+          freq: "monthly",
+          priority: "0.6",
+          ...(lastmod && !Number.isNaN(Date.parse(lastmod)) ? { lastmod: new Date(lastmod).toISOString() } : {}),
+        });
+      }
+    }
+  }
   const body =
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     entries
       .map(
         (e) =>
-          `  <url><loc>${escapeHtml(e.loc)}</loc><changefreq>${e.home ? "daily" : "weekly"}</changefreq><priority>${e.home ? "1.0" : "0.7"}</priority></url>`
+          `  <url><loc>${escapeHtml(e.loc)}</loc>${e.lastmod ? `<lastmod>${e.lastmod}</lastmod>` : ""}<changefreq>${e.freq}</changefreq><priority>${e.priority}</priority></url>`
       )
       .join("\n") +
     "\n</urlset>";
@@ -414,6 +526,31 @@ function buildStructuredData(
   const graph = { "@context": "https://schema.org", "@graph": [organization, website, webpage] };
   // "</" inside a JSON string would end the script element early.
   return JSON.stringify(graph).replace(/<\//g, "<\\/");
+}
+
+/** schema.org BlogPosting for one article, alongside the site graph. */
+function buildBlogPostingData(
+  pageUrlAbs: string,
+  siteUrl: string,
+  post: BlogPost,
+  imageUrl: string,
+  description: string
+): string {
+  const posting: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "@id": pageUrlAbs,
+    mainEntityOfPage: pageUrlAbs,
+    headline: nonEmpty(post.seo_title) || post.title,
+    ...(description ? { description } : {}),
+    ...(imageUrl ? { image: imageUrl } : {}),
+    ...(nonEmpty(post.published_at) ? { datePublished: post.published_at } : {}),
+    ...(nonEmpty(post.updated_at) ? { dateModified: post.updated_at } : {}),
+    ...(nonEmpty(post.author_name) ? { author: { "@type": "Person", name: post.author_name } } : {}),
+    publisher: { "@id": `${siteUrl}#organization` },
+    isPartOf: { "@id": `${siteUrl}#website` },
+  };
+  return JSON.stringify(posting).replace(/<\//g, "<\\/");
 }
 
 function parseDomainParts(hostname: string): {
@@ -702,11 +839,13 @@ export const onRequest: PagesFunction = async (context) => {
   // on a root-mounted host); every other route — and any failure — keeps the
   // branding fallback.
   const segs = url.pathname.split("/").filter(Boolean);
-  const looksLikeCatalogue = segs.length <= 2 && !APP_ROUTE_SEGMENTS.has((segs[0] || "").toLowerCase());
+  // Up to three segments: /{tag}/{blog-page}/{post-slug} is the longest catalogue address.
+  const looksLikeCatalogue = segs.length <= 3 && !APP_ROUTE_SEGMENTS.has((segs[0] || "").toLowerCase());
   const resolved = looksLikeCatalogue
     ? await resolveCataloguePage(backendBase, branding, segs)
     : null;
-  const pageSeo = resolved ? pageSeoOf(resolved.page) : null;
+  const pageSeo = resolved ? pageSeoOf(resolved.page, resolved.post) : null;
+  const post = resolved?.post;
 
   const title = escapeHtml(
     pageSeo?.title || branding.tabText || branding.instituteName || ""
@@ -745,11 +884,14 @@ export const onRequest: PagesFunction = async (context) => {
   const ogTags = [
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
-    `<meta property="og:type" content="website" />`,
+    `<meta property="og:type" content="${post ? "article" : "website"}" />`,
     `<meta property="og:url" content="${escapeHtml(request.url)}" />`,
     ogImageProxied ? `<meta property="og:image" content="${escapeHtml(ogImageProxied)}" />` : "",
-    // Twitter card
-    `<meta name="twitter:card" content="summary" />`,
+    post && nonEmpty(post.published_at)
+      ? `<meta property="article:published_time" content="${escapeHtml(post.published_at!)}" />`
+      : "",
+    // Twitter card — a post with a cover gets the large card.
+    `<meta name="twitter:card" content="${post && ogImageProxied ? "summary_large_image" : "summary"}" />`,
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
     ogImageProxied ? `<meta name="twitter:image" content="${escapeHtml(ogImageProxied)}" />` : "",
@@ -785,6 +927,9 @@ export const onRequest: PagesFunction = async (context) => {
       pageSeo?.description || ""
     );
     seoTags.push(`<script type="application/ld+json">${ld}</script>`);
+    if (post) {
+      seoTags.push(`<script type="application/ld+json">${buildBlogPostingData(canonical, siteUrl, post, ogImageProxied, pageSeo?.description || "")}</script>`);
+    }
   }
 
   let html = await response.text();

@@ -35,6 +35,7 @@ import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/lea
 import { Route as KycCompleteIndexRouteImport } from './routes/kyc-complete/index'
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
 import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-response/index'
+import { Route as EngagementIndexRouteImport } from './routes/engagement/index'
 import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
@@ -81,6 +82,8 @@ import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/lear
 import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/leaderboard/$packageSessionId/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
+import { Route as GoUsernameIndexRouteImport } from './routes/go/$username/index'
+import { Route as EngagementHistoryIndexRouteImport } from './routes/engagement/history/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
@@ -90,6 +93,7 @@ import { Route as TagNameCourseIdIndexRouteImport } from './routes/$tagName/$cou
 import { Route as ParentChildChildIdRouteImport } from './routes/parent/child/$childId'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
+import { Route as TagNamePageSlugPostSlugRouteImport } from './routes/$tagName/$pageSlug_.$postSlug'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
 import { Route as StudyLibraryLiveClassFeedbackIndexRouteImport } from './routes/study-library/live-class/feedback/index'
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
@@ -250,6 +254,11 @@ const InstituteSelectionIndexRoute = InstituteSelectionIndexRouteImport.update({
 const EnquiryResponseIndexRoute = EnquiryResponseIndexRouteImport.update({
   id: '/enquiry-response/',
   path: '/enquiry-response/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EngagementIndexRoute = EngagementIndexRouteImport.update({
+  id: '/engagement/',
+  path: '/engagement/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
@@ -495,6 +504,16 @@ const HomeworkListIndexRoute = HomeworkListIndexRouteImport.update({
   path: '/homework/list/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GoUsernameIndexRoute = GoUsernameIndexRouteImport.update({
+  id: '/go/$username/',
+  path: '/go/$username/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EngagementHistoryIndexRoute = EngagementHistoryIndexRouteImport.update({
+  id: '/engagement/history/',
+  path: '/engagement/history/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardNotificationsIndexRoute =
   DashboardNotificationsIndexRouteImport.update({
     id: '/dashboard/notifications/',
@@ -541,6 +560,11 @@ const LoginOauthModalLearnerRoute = LoginOauthModalLearnerRouteImport.update({
 const LoginOauthLearnerRoute = LoginOauthLearnerRouteImport.update({
   id: '/login/oauth/learner',
   path: '/login/oauth/learner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TagNamePageSlugPostSlugRoute = TagNamePageSlugPostSlugRouteImport.update({
+  id: '/$tagName/$pageSlug_/$postSlug',
+  path: '/$tagName/$pageSlug/$postSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StudyLibraryLiveClassWaitingRoomIndexRoute =
@@ -747,6 +771,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/downloads': typeof DownloadsIndexRoute
+  '/engagement': typeof EngagementIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/kyc-complete': typeof KycCompleteIndexRoute
@@ -772,6 +797,7 @@ export interface FileRoutesByFullPath {
   '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -781,6 +807,8 @@ export interface FileRoutesByFullPath {
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
+  '/engagement/history': typeof EngagementHistoryIndexRoute
+  '/go/$username': typeof GoUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -859,6 +887,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
   '/downloads': typeof DownloadsIndexRoute
+  '/engagement': typeof EngagementIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/kyc-complete': typeof KycCompleteIndexRoute
@@ -884,6 +913,7 @@ export interface FileRoutesByTo {
   '/try': typeof TryIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/verify': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
@@ -892,6 +922,8 @@ export interface FileRoutesByTo {
   '/assessment/reports': typeof AssessmentReportsIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
+  '/engagement/history': typeof EngagementHistoryIndexRoute
+  '/go/$username': typeof GoUsernameIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
@@ -972,6 +1004,7 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
   '/downloads/': typeof DownloadsIndexRoute
+  '/engagement/': typeof EngagementIndexRoute
   '/enquiry-response/': typeof EnquiryResponseIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
   '/kyc-complete/': typeof KycCompleteIndexRoute
@@ -997,6 +1030,7 @@ export interface FileRoutesById {
   '/try/': typeof TryIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/verify/': typeof VerifyIndexRoute
+  '/$tagName/$pageSlug_/$postSlug': typeof TagNamePageSlugPostSlugRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -1006,6 +1040,8 @@ export interface FileRoutesById {
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
+  '/engagement/history/': typeof EngagementHistoryIndexRoute
+  '/go/$username/': typeof GoUsernameIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
   '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
@@ -1087,6 +1123,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/delete-user'
     | '/downloads'
+    | '/engagement'
     | '/enquiry-response'
     | '/institute-selection'
     | '/kyc-complete'
@@ -1112,6 +1149,7 @@ export interface FileRouteTypes {
     | '/try'
     | '/user-profile'
     | '/verify'
+    | '/$tagName/$pageSlug/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1121,6 +1159,8 @@ export interface FileRouteTypes {
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
+    | '/engagement/history'
+    | '/go/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1199,6 +1239,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/delete-user'
     | '/downloads'
+    | '/engagement'
     | '/enquiry-response'
     | '/institute-selection'
     | '/kyc-complete'
@@ -1224,6 +1265,7 @@ export interface FileRouteTypes {
     | '/try'
     | '/user-profile'
     | '/verify'
+    | '/$tagName/$pageSlug/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
@@ -1232,6 +1274,8 @@ export interface FileRouteTypes {
     | '/assessment/reports'
     | '/courses/course-details'
     | '/dashboard/notifications'
+    | '/engagement/history'
+    | '/go/$username'
     | '/homework/list'
     | '/homework/reports'
     | '/leaderboard/$packageSessionId'
@@ -1311,6 +1355,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/delete-user/'
     | '/downloads/'
+    | '/engagement/'
     | '/enquiry-response/'
     | '/institute-selection/'
     | '/kyc-complete/'
@@ -1336,6 +1381,7 @@ export interface FileRouteTypes {
     | '/try/'
     | '/user-profile/'
     | '/verify/'
+    | '/$tagName/$pageSlug_/$postSlug'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1345,6 +1391,8 @@ export interface FileRouteTypes {
     | '/assessment/reports/'
     | '/courses/course-details/'
     | '/dashboard/notifications/'
+    | '/engagement/history/'
+    | '/go/$username/'
     | '/homework/list/'
     | '/homework/reports/'
     | '/leaderboard/$packageSessionId/'
@@ -1425,6 +1473,7 @@ export interface RootRouteChildren {
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   DownloadsIndexRoute: typeof DownloadsIndexRoute
+  EngagementIndexRoute: typeof EngagementIndexRoute
   EnquiryResponseIndexRoute: typeof EnquiryResponseIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
   KycCompleteIndexRoute: typeof KycCompleteIndexRoute
@@ -1450,6 +1499,7 @@ export interface RootRouteChildren {
   TryIndexRoute: typeof TryIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   VerifyIndexRoute: typeof VerifyIndexRoute
+  TagNamePageSlugPostSlugRoute: typeof TagNamePageSlugPostSlugRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   ParentChildChildIdRoute: typeof ParentChildChildIdRouteWithChildren
@@ -1459,6 +1509,8 @@ export interface RootRouteChildren {
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
+  EngagementHistoryIndexRoute: typeof EngagementHistoryIndexRoute
+  GoUsernameIndexRoute: typeof GoUsernameIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
   LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
@@ -1692,6 +1744,13 @@ declare module '@tanstack/react-router' {
       path: '/enquiry-response'
       fullPath: '/enquiry-response'
       preLoaderRoute: typeof EnquiryResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/engagement/': {
+      id: '/engagement/'
+      path: '/engagement'
+      fullPath: '/engagement'
+      preLoaderRoute: typeof EngagementIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/downloads/': {
@@ -2016,6 +2075,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeworkListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/go/$username/': {
+      id: '/go/$username/'
+      path: '/go/$username'
+      fullPath: '/go/$username'
+      preLoaderRoute: typeof GoUsernameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/engagement/history/': {
+      id: '/engagement/history/'
+      path: '/engagement/history'
+      fullPath: '/engagement/history'
+      preLoaderRoute: typeof EngagementHistoryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/notifications/': {
       id: '/dashboard/notifications/'
       path: '/dashboard/notifications'
@@ -2077,6 +2150,13 @@ declare module '@tanstack/react-router' {
       path: '/login/oauth/learner'
       fullPath: '/login/oauth/learner'
       preLoaderRoute: typeof LoginOauthLearnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$tagName/$pageSlug_/$postSlug': {
+      id: '/$tagName/$pageSlug_/$postSlug'
+      path: '/$tagName/$pageSlug/$postSlug'
+      fullPath: '/$tagName/$pageSlug/$postSlug'
+      preLoaderRoute: typeof TagNamePageSlugPostSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/study-library/live-class/waiting-room/': {
@@ -2353,6 +2433,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   DownloadsIndexRoute: DownloadsIndexRoute,
+  EngagementIndexRoute: EngagementIndexRoute,
   EnquiryResponseIndexRoute: EnquiryResponseIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
   KycCompleteIndexRoute: KycCompleteIndexRoute,
@@ -2378,6 +2459,7 @@ const rootRouteChildren: RootRouteChildren = {
   TryIndexRoute: TryIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   VerifyIndexRoute: VerifyIndexRoute,
+  TagNamePageSlugPostSlugRoute: TagNamePageSlugPostSlugRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   ParentChildChildIdRoute: ParentChildChildIdRouteWithChildren,
@@ -2387,6 +2469,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
+  EngagementHistoryIndexRoute: EngagementHistoryIndexRoute,
+  GoUsernameIndexRoute: GoUsernameIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
   LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,

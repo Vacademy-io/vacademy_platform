@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementFeedDTO;
+import vacademy.io.admin_core_service.features.engagement.dto.EngagementHistoryDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementItemDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitRequest;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitResponse;
@@ -32,6 +33,15 @@ public class EngagementLearnerController {
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerService.getFeed(instituteId, user.getUserId()));
+    }
+
+    /** Past occurrences — done, missed, or still catchable — newest first. */
+    @GetMapping("/history")
+    public ResponseEntity<EngagementHistoryDTO> history(
+            @RequestParam String instituteId,
+            @RequestParam(defaultValue = "30") int days,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerService.getHistory(instituteId, user.getUserId(), days));
     }
 
     /** Full payload for an item that is open (or still catchable) for this learner. */

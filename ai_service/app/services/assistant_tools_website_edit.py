@@ -46,6 +46,7 @@ from .catalogue_summary import (
     find_component,
     find_page,
     run_publish_checks,
+    strip_html,
     summarize_component,
     summarize_global_settings,
     summarize_page,
@@ -69,7 +70,7 @@ WEBSITE_EDIT_TOOL_NAME = "website_edit"
 WEBSITE_EDIT_GROUP_KEY = "website_builder_edits"
 
 WEBSITE_EDIT_ACTIONS = (
-    "create_page", "create_site", "update_page", "set_layout", "add_section", "set_theme",
+    "create_page", "create_site", "add_html_page", "update_page", "set_layout", "add_section", "set_theme",
     "set_site_settings", "set_courses", "link_lead_form", "set_seo", "import_image", "discard_draft",
 )
 
@@ -215,6 +216,11 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
             "- create_page (tag_name OR new_site_name, page, page_type?, theme?): validate, audit and save "
             "a page you composed. Returns issues to fix (resubmit with update_page) and the editor_url.\n"
             "- create_site (new_site_name, pages, theme?, site_settings?, header?, footer?): a whole NEW draft site.\n"
+            "- add_html_page (tag_name OR new_site_name, route, html, css?, title?, seo?, hide_site_chrome?, "
+            "replace_existing?): a STATIC page you write as HTML + CSS (a full document or just the body) — "
+            "for pages the block types cannot express, or when the admin hands you HTML. Scripts are removed; "
+            "<style> moves into css; images must be institute media; links become site hooks. See "
+            "website(action='schema').html_page_contract.\n"
             "- update_page (tag_name, page_route, ops): insert / update / remove / move sections you author.\n"
             "- set_layout (tag_name, header?, footer?): the site's header and footer components.\n"
             "- add_section (tag_name, page_route, section_type, after_section_id?, props?): insert one block "
@@ -246,12 +252,20 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "ops": {"type": "array", "items": _OP_SCHEMA},
                 "header": _COMPONENT_SCHEMA,
                 "footer": _COMPONENT_SCHEMA,
+                "route": {"type": "string", "description": "add_html_page: URL path segment for the new page."},
+                "title": {"type": "string", "description": "add_html_page: page title (defaults to the HTML <title>/<h1>)."},
+                "html": {"type": "string", "description": "add_html_page: the page's HTML — a full document or the body markup. Max 200 KB."},
+                "css": {"type": "string", "description": "add_html_page: extra stylesheet (in addition to any <style> in html). Max 150 KB."},
+                "seo": {"type": "object", "properties": {"metaTitle": {"type": "string"}, "metaDescription": {"type": "string"}}},
+                "hide_site_chrome": {"type": "boolean", "description": "add_html_page: hide the site header/footer on this page (default true — a pasted page usually brings its own)."},
+                "replace_existing": {"type": "boolean", "description": "add_html_page: overwrite a page that already has this route (only if it is an HTML page)."},
                 "theme": _THEME_SCHEMA,
                 "site_settings": _SITE_SETTINGS_SCHEMA,
                 "section_type": {"type": "string", "description": "Block type, e.g. testimonialSection, faqSection, courseShowcase, leadForm."},
                 "after_section_id": {"type": "string"},
                 "props": {"type": "object", "description": "add_section: prop overrides for the new block."},
                 "url": {"type": "string", "description": "import_image: public https image URL."},
+                "urls": {"type": "array", "items": {"type": "string"}, "description": "import_image: several public https image URLs at once (max 8)."},
                 "kind": {"type": "string", "enum": list(IMAGE_KINDS)},
                 "caption": {"type": "string"},
                 "source": {"type": "string", "enum": ["all", "showcase", "product_page"]},
@@ -575,9 +589,16 @@ async def create_site(ctx: ToolContext, tag_name: str, config: Dict[str, Any]) -
 def _result(ctx: ToolContext, site: Dict[str, Any], config: Dict[str, Any], revision: Optional[Dict[str, Any]],
             summary: str, page_route: Optional[str] = None, section_id: Optional[str] = None, **extra: Any) -> Dict[str, Any]:
     issues = run_publish_checks(config)
+    quality = None
     if page_route:
         route = str(page_route).lstrip("/").lower()
         issues = [i for i in issues if not i.get("page_route") or str(i["page_route"]).lstrip("/").lower() == route]
+        target = find_page(config, page_route)
+        if target is not None and not any(c.get("type") == "htmlPage" for c in target.get("components") or []):
+            from .page_quality import review_page
+            r = review_page(target, config.get("globalSettings"), extra.pop("page_type", None) or "homepage")
+            quality = {"score": r["score"], "bar": r["bar"], "passes": r["passes"],
+                       "top_issues": [{k: v for k, v in i.items() if k != "weight"} for i in r["issues"][:6]]}
     live_url = site_url(ctx, site["tag_name"])
     out: Dict[str, Any] = {
         "tag_name": site["tag_name"],
@@ -594,6 +615,8 @@ def _result(ctx: ToolContext, site: Dict[str, Any], config: Dict[str, Any], revi
     }
     if page_route:
         out["page_route"] = page_route
+    if quality is not None:
+        out["quality"] = quality
     if live_url is None:
         out["live_url_note"] = NO_PORTAL_DOMAIN_NOTE
     out.update(extra)
@@ -687,6 +710,10 @@ _EXTRA_COMPONENTS: List[Dict[str, Any]] = [
     {"type": "trustChip",
      "capabilities": "One line of reassurance — a certification, a count, a guarantee — with an icon name.",
      "exampleProps": {"text": "Trusted by 10,000+ learners", "icon": "ShieldCheck", "align": "center"}},
+    {"type": "htmlPage",
+     "capabilities": "A whole page authored as HTML + CSS, rendered in a shadow root with the site's theme tokens. "
+                     "Use website_edit(add_html_page) rather than placing this in create_page; see html_page_contract.",
+     "exampleProps": {"html": "", "css": ""}},
 ]
 
 
@@ -736,6 +763,33 @@ def _asset_urls_in(node: Any, out: set) -> set:
     return out
 
 
+def finish_hero(page: Dict[str, Any], media: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    """
+    Deterministic polish the composer used to do: a split hero with no image
+    either gets the first hero-worthy institute photo or falls back to a
+    centered layout — never an empty half-fold. Returns notes.
+    """
+    notes: List[str] = []
+    hero = next((c for c in page.get("components") or [] if isinstance(c, dict) and c.get("type") == "heroSection"), None)
+    if hero is None:
+        return notes
+    p = hero.setdefault("props", {})
+    right = p.get("right") if isinstance(p.get("right"), dict) else {}
+    has_image = str(right.get("image") or "").startswith("http") or str(p.get("backgroundImage") or "").startswith("http")
+    if has_image:
+        return notes
+    photo = next((m for m in media or [] if m.get("hero_worthy") and m.get("url") and m.get("kind_guess") != "logo"), None)
+    if photo:
+        p["right"] = {**right, "image": photo["url"], "alt": right.get("alt") or photo.get("name") or "campus"}
+        if p.get("layout") not in ("split", "fullwidth"):
+            p["layout"] = "split"
+        notes.append(f"Placed the institute photo '{photo.get('name')}' in the hero.")
+    elif p.get("layout") == "split":
+        p["layout"] = "centered"
+        notes.append("Hero had no image: switched to a centered layout so the fold is not half empty.")
+    return notes
+
+
 def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_settings: Optional[Dict[str, Any]]):
     """
     Run a caller-composed page through the builder's sanitiser and audit.
@@ -761,6 +815,18 @@ def _sanitize_authored_page(page: Dict[str, Any], page_type: str, global_setting
     # authored page may have ONE section (course-details templates do), and its
     # explicit paddings are intentional, not a model's over-tight rhythm.
     for original in page["components"]:
+        if isinstance(original, dict) and original.get("type") == "htmlPage":
+            props = original.get("props") if isinstance(original.get("props"), dict) else {}
+            html_page, report = build_html_page(str(page.get("route") or "page"), props.get("html") or "", props.get("css"), None, None)
+            if html_page is None:
+                warnings.append("Dropped an htmlPage with no renderable HTML")
+                continue
+            comp = html_page["components"][0]
+            comp["id"] = original.get("id") or comp["id"]
+            if report.get("scripts_removed") or report.get("images_removed"):
+                warnings.append(f"htmlPage '{comp['id']}': removed {report.get('scripts_removed', 0)} script(s), {report.get('images_removed', 0)} foreign image(s)")
+            components.append(comp)
+            continue
         cleaned = sanitize_component(original, allowed_types, False, seen_ids, allowed, warnings)
         if cleaned is None:
             continue
@@ -806,6 +872,163 @@ def _restore_explicit_padding(original: Any, cleaned: Dict[str, Any], warnings: 
             restored = True
     if restored:
         warnings[:] = [w for w in warnings if _PAD_NOTE not in w or f"'{cleaned.get('type')}'" not in w]
+
+
+# ── HTML pages (the builder's page-level contract: html_page_import) ────
+HTML_PAGE_CONTRACT = (
+    "An HTML page is ONE htmlPage section holding `html` (body markup; a full document is accepted — "
+    "<head>, <script> and <link rel=stylesheet> are removed, <style> blocks move into `css`) and `css`. "
+    "It renders in a shadow root: write self-contained CSS (`:root`/`body` selectors become the page "
+    "host); the site's fonts/colours are NOT inherited, so set them. No JavaScript at all — nothing "
+    "interactive except these hooks, which the site binds at runtime:\n"
+    "  <a data-vacademy=\"route\" data-route=\"admissions\">  → another page of this site\n"
+    "  <a data-vacademy=\"scroll\" data-target=\"faq\">        → scroll to id=faq\n"
+    "  <a data-vacademy=\"lead-form\" data-audience=\"\">        → opens the enquiry form; leave data-audience "
+    "empty and wire it with link_lead_form, or set an id from website(context)\n"
+    "  <a data-vacademy=\"enrol\" data-course=\"<course id>\"> → enrol in a course\n"
+    "  <a href=\"https://…\">                                → external link (http:// is upgraded)\n"
+    "Plain relative links (about.html, /contact) are rewritten to route hooks automatically. Images: only "
+    "institute media URLs (list_media / import_image); any other <img src> or CSS url() is removed. "
+    "Forms/inputs are removed (no backend) — use the lead-form hook. Limits: 200 KB html, 150 KB css. "
+    "hide_site_chrome defaults to true (your HTML usually brings its own nav/footer)."
+)
+
+_HTML_TITLE_RE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.I | re.S)
+_HTML_H1_RE = re.compile(r"<h1\b[^>]*>(.*?)</h1\s*>", re.I | re.S)
+_HTML_HEADING_RE = re.compile(r"<h[12]\b[^>]*>(.*?)</h[12]\s*>", re.I | re.S)
+_HTML_LEAD_HOOK_RE = re.compile(r'data-vacademy=["\']lead-form["\']', re.I)
+
+
+def _strip_foreign_images(html: str, report: Dict[str, Any]) -> str:
+    """<img src> outside the institute's media → removed (structurally, via bs4)."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    removed = 0
+    for img in soup.find_all("img"):
+        src = (img.get("src") or "").strip()
+        if src and not _is_institute_asset(src):
+            del img["src"]
+            removed += 1
+    for tag in soup.find_all(style=True):
+        style = str(tag.get("style") or "")
+        cleaned = _CSS_URL_LOCAL_RE.sub(lambda m: m.group(0) if _is_institute_asset(m.group(1)) else "none", style)
+        if cleaned != style:
+            tag["style"] = cleaned
+            removed += 1
+    if removed:
+        report["images_removed"] = removed
+    return str(soup)
+
+
+_CSS_URL_LOCAL_RE = re.compile(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", re.I)
+
+
+def _scrub_css_urls(css: str, report: Dict[str, Any]) -> str:
+    def _one(m):
+        return m.group(0) if _is_institute_asset(m.group(1)) else "none"
+    out = _CSS_URL_LOCAL_RE.sub(_one, css or "")
+    dropped = len(_CSS_URL_LOCAL_RE.findall(css or "")) - len([u for u in _CSS_URL_LOCAL_RE.findall(out) if u != "none"])
+    if dropped:
+        report["css_urls_dropped"] = report.get("css_urls_dropped", 0) + dropped
+    return out
+
+
+def build_html_page(route: str, html: str, css: Optional[str], title: Optional[str], seo: Optional[Dict[str, Any]],
+                    hide_site_chrome: bool = True) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Author-supplied HTML/CSS → an htmlPage page, through the builder's page-level
+    contract (scripts out, styles split, links → hooks, allowlist) plus this
+    tool's asset rule (institute media only). Returns ``(page, report)``.
+    """
+    from .html_page_import import import_html_page, sanitize_page_html
+    raw = str(html or "")
+    title_m = _HTML_TITLE_RE.search(raw)
+    body, split_css, report = import_html_page(raw)
+    body = _strip_foreign_images(body, report)
+    clean, used_nh3 = sanitize_page_html(body)
+    if not used_nh3:
+        report["sanitizer"] = "fallback"
+    all_css = "\n".join(part for part in (split_css, str(css or "").strip()) if part)
+    all_css = _scrub_css_urls(all_css, report)
+    if not clean.strip():
+        return None, report
+    h1 = _HTML_H1_RE.search(clean)
+    page_title = (title or "").strip() or (title_m and strip_html(title_m.group(1), 80)) or (h1 and strip_html(h1.group(1), 80)) or None
+    seo = seo if isinstance(seo, dict) else {}
+    page = {
+        "id": _new_id("page"),
+        "route": route,
+        "title": page_title,
+        "seo": {k: str(seo[k])[:170] for k in ("metaTitle", "metaDescription", "ogImage") if seo.get(k)},
+        "hideSiteChrome": bool(hide_site_chrome),
+        "components": [{"id": _new_id("htmlpage"), "type": "htmlPage", "enabled": True,
+                        "props": {"html": clean, "css": all_css}}],
+    }
+    report["html_bytes"] = len(clean)
+    report["css_bytes"] = len(all_css)
+    report["lead_form_hooks"] = len(_HTML_LEAD_HOOK_RE.findall(clean))
+    report["headings"] = [strip_html(h, 80) for h in _HTML_HEADING_RE.findall(clean)[:6]]
+    return page, {k: v for k, v in report.items() if v not in (0, [], {}, None, False)}
+
+
+async def _action_add_html_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    if err := _require(args, "add_html_page", "route", "html"):
+        return err
+    route = _slugify(args["route"])
+    site = None
+    if args.get("tag_name"):
+        site, err = await load_site(ctx, args["tag_name"])
+        if err:
+            return {**err, "action": "add_html_page"}
+    elif not args.get("new_site_name"):
+        tag, err = await resolve_tag(ctx, None)
+        if tag:
+            site, err = await load_site(ctx, tag)
+        if site is None:
+            return _err("missing_argument", action="add_html_page", needs=["tag_name or new_site_name"],
+                        message=(err or {}).get("message"))
+    page, report = build_html_page(route, args["html"], args.get("css"), args.get("title"), args.get("seo"),
+                                   args.get("hide_site_chrome", True) is not False)
+    if page is None:
+        return _err("invalid_html", message="Nothing renderable survived the HTML allowlist.", report=report)
+
+    config = copy.deepcopy(site["config"]) if site else _new_site_config(None)
+    existing = find_page(config, route)
+    if existing is not None:
+        is_html = any(c.get("type") == "htmlPage" for c in existing.get("components") or [])
+        if args.get("replace_existing") and is_html:
+            page["id"] = existing.get("id") or page["id"]
+            config["pages"] = [page if p is existing else p for p in config["pages"]]
+            summary = f"Replaced HTML page '{route}'."
+        else:
+            page["route"] = _unique_route(config, route)
+            config.setdefault("pages", []).append(page)
+            summary = f"Added HTML page '{page['route']}' (route '{route}' was taken)."
+    else:
+        config.setdefault("pages", []).append(page)
+        summary = f"Added HTML page '{route}'."
+
+    created = False
+    if site is None:
+        tag = _slugify(args["new_site_name"])
+        config["globalSettings"]["layout"] = default_layout(_institute_name(ctx), config["pages"])
+        if await create_site(ctx, tag, config) is None:
+            return _err("create_failed", message=f"A site named '{tag}' could not be created (it may already exist).")
+        site, err = await load_site(ctx, tag)
+        if err:
+            return err
+        created = True
+        summary = f"Created site '{tag}' with HTML page '{page['route']}'."
+    revision, err = await save_draft(ctx, site["catalogue_id"], config, "AI_COPILOT", None)
+    if err:
+        return err
+    return _result(ctx, site, config, revision, summary, page["route"], page["components"][0]["id"],
+                   created_site=created, import_report=report,
+                   next=("Wire enquiry buttons with link_lead_form(section_id=<this section>) if data-audience was left empty; "
+                         "images outside institute media were removed — use list_media / import_image."))
 
 
 def _sanitize_authored_component(comp: Dict[str, Any], allow_chrome: bool, warnings: List[str]) -> Optional[Dict[str, Any]]:
@@ -870,6 +1093,12 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     clean, issues, warnings = _sanitize_authored_page(page, page_type, config.get("globalSettings"))
     if clean is None:
         return _err("invalid_page", issues=issues, warnings=warnings[:12])
+    from .assistant_tools_website import _load_media
+    try:
+        media = await _load_media(ctx, "any", 12)
+    except Exception:  # noqa: BLE001
+        media = []
+    warnings.extend(finish_hero(clean, media))
     clean["id"] = clean.get("id") or _new_id("page")
     clean["route"] = _unique_route(config, clean["route"])
     config.setdefault("pages", []).append(clean)
@@ -891,7 +1120,7 @@ async def _action_create_page(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
     return _result(ctx, site, config, revision,
                    (f"Created site '{site['tag_name']}' with " if created else "Added ") +
                    f"page '{clean['route']}' ({len(clean['components'])} sections).",
-                   clean["route"], created_site=created, page=summarize_page(clean),
+                   clean["route"], created_site=created, page=summarize_page(clean), page_type=page_type,
                    design_issues=issues[:20], warnings=warnings[:12],
                    next="Fix the issues with update_page (ops), wire forms/courses with link_lead_form / set_courses, then ask the admin to review at editor_url.")
 
@@ -1075,8 +1304,19 @@ async def _action_set_site_settings(args: Dict[str, Any], ctx: ToolContext) -> D
 
 
 async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    urls = [u for u in (args.get("urls") or []) if isinstance(u, str) and u.strip()][:8]
+    if urls:
+        results = []
+        for u in urls:
+            results.append(await _import_one_image({**args, "url": u}, ctx))
+        return {"imported": [r for r in results if not r.get("error")], "failed": [r for r in results if r.get("error")],
+                "next": "Use the returned urls in the page (hero right.image, imageBlock, gallery)."}
     if err := _require(args, "import_image", "url"):
         return err
+    return await _import_one_image(args, ctx)
+
+
+async def _import_one_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     url = str(args["url"]).strip()
     if not url.lower().startswith("https://"):
         return _err("bad_request", message="Only https image URLs can be imported.")
@@ -1108,8 +1348,8 @@ async def _action_import_image(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
         stored = None
     if not stored:
         return _err("upload_failed", message="The image was downloaded but could not be stored.")
-    return {"url": stored, "kind": kind, "caption": args.get("caption"), "bytes": len(resp.content),
-            "next": "Use this url in brief.images or an edit instruction."}
+    return {"url": stored, "source": url, "kind": kind, "caption": args.get("caption"), "bytes": len(resp.content),
+            "next": "Use this url in the page JSON (hero right.image, imageBlock, gallery) or set_layout (header logo)."}
 
 
 async def _action_set_courses(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -1195,7 +1435,14 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
     surfaces = capture_surfaces(comp)
     name = str(campaign.get("campaign_name") or "")
     props = comp.setdefault("props", {})
-    if not surfaces:
+    if comp.get("type") == "htmlPage":
+        html, n = _wire_html_lead_hooks(str(props.get("html") or ""), audience_id)
+        if not n:
+            return _err("not_a_form", message="This HTML page has no lead-form hook (<a data-vacademy=\"lead-form\">) to wire.")
+        props["html"] = html
+        wired = f"{n} lead-form hook(s)"
+        surfaces = None
+    elif not surfaces:
         # Not a capture block: make its primary button open the campaign's form,
         # the same choice the editor offers on hero / CTA buttons.
         button = props.get("button") if isinstance(props.get("button"), dict) else None
@@ -1204,7 +1451,7 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
             wired = f"its button '{button.get('text') or ''}'"
         else:
             return _err("not_a_form", message=f"Section {comp['id']} ({component_label(comp.get('type'))}) has no form or button to wire.")
-    else:
+    elif surfaces:
         wired_labels = []
         for s in surfaces:
             _set_path(comp, s["path"], audience_id)
@@ -1218,6 +1465,20 @@ async def _action_link_lead_form(args: Dict[str, Any], ctx: ToolContext) -> Dict
     return _result(ctx, site, config, revision,
                    f"{component_label(comp.get('type'))} on '{page.get('route')}': {wired} now sends enquiries to campaign '{name}'.",
                    page.get("route"), comp["id"], campaign={"id": audience_id, "name": name})
+
+
+def _wire_html_lead_hooks(html: str, audience_id: str) -> Tuple[str, int]:
+    """Set data-audience on every lead-form hook in an HTML page. Structural (bs4), never regex-rewritten."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return html, 0
+    soup = BeautifulSoup(html, "html.parser")
+    n = 0
+    for el in soup.find_all(attrs={"data-vacademy": "lead-form"}):
+        el["data-audience"] = audience_id
+        n += 1
+    return (str(soup) if n else html), n
 
 
 def _set_path(comp: Dict[str, Any], path: str, value: Any) -> None:
@@ -1281,6 +1542,7 @@ _ACTIONS = {
     "add_section": _action_add_section,
     "set_theme": _action_set_theme,
     "set_site_settings": _action_set_site_settings,
+    "add_html_page": _action_add_html_page,
     "set_courses": _action_set_courses,
     "link_lead_form": _action_link_lead_form,
     "set_seo": _action_set_seo,
@@ -1328,5 +1590,5 @@ __all__ = [
     "WEBSITE_EDIT_TOOLS", "WEBSITE_EDIT_TOOL_NAME", "WEBSITE_EDIT_GROUP_KEY", "WEBSITE_EDIT_ACTIONS",
     "WEBSITE_EDIT_SCHEMA", "execute_website_edit", "apply_ops", "describe_ops",
     "theme_to_global_patch", "site_settings_to_global_patch", "merge_global_settings", "DEFAULT_GLOBAL_SETTINGS",
-    "default_layout", "authoring_catalog",
+    "default_layout", "authoring_catalog", "build_html_page", "HTML_PAGE_CONTRACT", "finish_hero",
 ]

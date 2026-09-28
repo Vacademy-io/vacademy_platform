@@ -19,6 +19,7 @@ import {
     type CredentialChannel,
 } from '@/services/student-list-section/updateStudentCredentials';
 import { getInstituteId } from '@/constants/helper';
+import { getBackendErrorBody } from '@/lib/report-api-error';
 
 const buildCredentialsSchema = (t: TFunction) =>
     z
@@ -110,11 +111,10 @@ export const EditCredentialsDialog = ({
                 toast.warning(result.message);
             }
         } catch (error: unknown) {
-            const axiosError = error as { response?: { data?: { message?: string } } };
-            toast.error(
-                axiosError.response?.data?.message ||
-                    t('toast.sendFailed', { channel })
-            );
+            // Failures come back as the platform's ErrorInfo envelope, whose reason
+            // lives in `ex` — `message` is only on the 200 body of this endpoint.
+            const body = getBackendErrorBody(error);
+            toast.error(body?.ex || body?.message || t('toast.sendFailed', { channel }));
         } finally {
             setSendingChannel(null);
         }
@@ -145,13 +145,19 @@ export const EditCredentialsDialog = ({
             toast.success(t('toast.updateSuccess'));
             onOpenChange(false);
         } catch (error: unknown) {
-            // auth_service returns 510 (VacademyException's default) for a taken
-            // username, with the reason in `message`.
-            const axiosError = error as {
-                response?: { status?: number; data?: { message?: string } };
-            };
-            const message = axiosError.response?.data?.message;
-            if (axiosError.response?.status === 510 && message) {
+            // auth_service answers with the platform's ErrorInfo envelope
+            // ({url, ex, responseCode, date}), so the reason is in `ex`. Reading
+            // only `message` turned "Username 'X' is already taken" into the
+            // generic retry toast, and the admin was never told the name was
+            // the problem. `message` stays as a fallback for the services that
+            // phrase errors under that key.
+            const body = getBackendErrorBody(error);
+            const message = body?.ex || body?.message;
+            // 510 is VacademyException's default status, so it also carries
+            // "User not found" and the post-save "Email not sent" — neither is
+            // about the field. Only pin a message to the username input when the
+            // rename is what the backend rejected; everything else is a toast.
+            if (message && usernameChanged && /username/i.test(message)) {
                 form.setError('username', { message });
             } else {
                 toast.error(message || t('toast.updateFailed'));

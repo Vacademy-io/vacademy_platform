@@ -46,7 +46,7 @@ def test_exposed_set_is_the_documented_one():
     # one toggle per feature. Adding here means adding a label + docs too.
     assert MCP_EXPOSED_TOOLS == (
         "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
-        "workflows", "workflows_edit",
+        "workflows", "workflows_edit", "blog", "blog_edit",
     )
 
 

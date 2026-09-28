@@ -27,6 +27,7 @@ import {
     getMyCourses,
     createEditableCopy,
     submitForReview,
+    publishCourse,
     getMyCourseHistory,
 } from '../-services/approval-services';
 import { formatDistanceToNow } from 'date-fns';
@@ -203,7 +204,12 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     // When the field is missing from saved/cached settings (older payloads
     // predate this toggle), default to: visible for admin, hidden for
     // teacher / sub-org / custom roles.
-    const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    // Seeded from cache so the Publish / Submit-for-Review decision below is
+    // right on first paint; null only on a cold cache, which disables the
+    // draft action until the policy arrives.
+    const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(
+        () => getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey()) ?? null
+    );
     useEffect(() => {
         const roleKey = getActiveRoleDisplaySettingsKey();
         // Force-refresh on mount so admin policy changes (Course Permission
@@ -229,6 +235,11 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const showDelete = cardSettings ? cardSettings.showDelete !== false : Boolean(isAdmin);
     const showEnrolledStudentCount =
         roleDisplay?.courseListCard?.showEnrolledStudentCount === true;
+    // On by default (the long-standing flow): a draft's action button is
+    // "Submit for Review". Only when the admin turns this off for the role
+    // does it become "Publish" and go straight to ACTIVE.
+    const requireApproval = roleDisplay?.coursePage?.requireCourseApproval !== false;
+    const approvalPolicyKnown = roleDisplay !== null;
 
     // Fetch authored courses
     const {
@@ -335,17 +346,19 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         },
     });
 
-    // Submit for review mutation
+    // Submit for review / direct publish mutation (which one depends on the
+    // role's requireCourseApproval toggle)
     const submitReviewMutation = useMutation({
-        mutationFn: submitForReview,
+        mutationFn: (courseId: string) =>
+            requireApproval ? submitForReview(courseId) : publishCourse(courseId),
         onSuccess: () => {
             setSubmittingCourseId(null);
-            toast.success(t('submittedForReview'));
+            toast.success(requireApproval ? t('submittedForReview') : t('published'));
             refetch();
         },
         onError: (error: Error) => {
             setSubmittingCourseId(null);
-            toast.error(error.message || t('submitFailed'));
+            toast.error(error.message || (requireApproval ? t('submitFailed') : t('publishFailed')));
         },
     });
 
@@ -778,7 +791,8 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                                         handleSubmitForReview(course.courseId)
                                                     }
                                                     disabled={
-                                                        submittingCourseId === course.courseId
+                                                        submittingCourseId === course.courseId ||
+                                                        !approvalPolicyKnown
                                                     }
                                                 >
                                                     {submittingCourseId === course.courseId ? (
@@ -792,7 +806,9 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                                             weight="fill"
                                                         />
                                                     )}
-                                                    {t('submitForReview')}
+                                                    {requireApproval
+                                                        ? t('submitForReview')
+                                                        : t('publish')}
                                                 </Button>
 
                                                 <Button

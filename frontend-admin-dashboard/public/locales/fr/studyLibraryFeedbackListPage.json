@@ -22,6 +22,8 @@
         "clearSearchAriaLabel": "Effacer la recherche",
         "batch": "Groupe",
         "subject": "Matière",
+        "ratingsBelow": "Notes inférieures à",
+        "anyRating": "Toutes",
         "noBatches": "Aucun groupe",
         "noSubjects": "Aucune matière",
         "clearAll": "Tout effacer"

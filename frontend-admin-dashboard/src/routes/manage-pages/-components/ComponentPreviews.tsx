@@ -1103,6 +1103,58 @@ const AnnouncementPreview: React.FC<P> = ({ props }) => (
     </section>
 );
 
+/**
+ * The canvas thumbnail of a blog section. Posts are read live on the learner
+ * site (see the iframe preview); the canvas only needs to show the shape the
+ * admin chose — heading, grid vs list, how many columns — so it paints three
+ * placeholder cards in that arrangement.
+ */
+const BlogPreview: React.FC<P> = ({ props }) => {
+    const { t } = useTranslation('managePagesComponentPreviews');
+    const list = props.layout === 'list';
+    const cols = props.columns === 2 ? 'grid-cols-2' : 'grid-cols-3';
+    return (
+        <section
+            className="bg-catalogue-bg py-10 px-8"
+            style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined}
+        >
+            {props.heading && (
+                <h2 className="mb-1 text-center catalogue-h2 text-catalogue-text-primary">{props.heading}</h2>
+            )}
+            {props.subheading && (
+                <p className="mb-6 text-center text-sm text-catalogue-text-muted">{props.subheading}</p>
+            )}
+            <div className={`mx-auto max-w-4xl ${list ? 'space-y-3' : `grid gap-4 ${cols}`}`}>
+                {[0, 1, 2].map((i) => (
+                    <div
+                        key={i}
+                        className={`overflow-hidden rounded-xl border border-catalogue-border bg-catalogue-bg-elevated ${list ? 'flex' : ''}`}
+                    >
+                        {props.showCoverImage !== false && (
+                            <div className={`bg-catalogue-bg-muted ${list ? 'w-1/3 shrink-0' : 'aspect-video w-full'}`} />
+                        )}
+                        <div className="space-y-2 p-4">
+                            {props.showCategory !== false && (
+                                <span className="inline-block rounded-full bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-500">
+                                    {t('blog.sampleCategory')}
+                                </span>
+                            )}
+                            <p className="text-sm font-semibold text-catalogue-text-primary">
+                                {t('blog.sampleTitle', { n: i + 1 })}
+                            </p>
+                            {props.showExcerpt !== false && (
+                                <p className="text-xs text-catalogue-text-muted">{t('blog.sampleExcerpt')}</p>
+                            )}
+                            <p className="text-caption text-primary-500">{props.readMoreLabel || t('blog.readMore')} →</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <p className="mt-4 text-center text-caption text-catalogue-text-muted">{t('blog.liveNote')}</p>
+        </section>
+    );
+};
+
 const GalleryPreview: React.FC<P> = ({ props }) => {
     const { t } = useTranslation('managePagesComponentPreviews');
     return (
@@ -1207,6 +1259,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return <TeamPreview props={props} />;
         case 'announcementFeed':
             return <AnnouncementPreview props={props} />;
+        case 'blog':
+            return <BlogPreview props={props} />;
         case 'imageGallery':
             return <GalleryPreview props={props} />;
         case 'buyRentSection':

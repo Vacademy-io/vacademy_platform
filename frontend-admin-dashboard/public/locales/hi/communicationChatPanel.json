@@ -30,5 +30,11 @@
     "accountLevelFailure": "यह इस नंबर से भेजे जाने वाले हर WhatsApp संदेश को प्रभावित करता है, न कि केवल इस चैट को।",
     "errorCode": "WhatsApp त्रुटि कोड {{code}}",
     "viewDocument": "दस्तावेज़ देखें",
-    "attachmentAlt": "अटैचमेंट"
+    "attachmentAlt": "अटैचमेंट",
+    "origin": {
+        "workflow": "वर्कफ़्लो “{{name}}” द्वारा भेजा गया",
+        "workflowUnnamed": "एक वर्कफ़्लो द्वारा भेजा गया",
+        "chatbotFlow": "चैटबॉट फ़्लो “{{name}}” द्वारा भेजा गया",
+        "chatbotFlowUnnamed": "एक चैटबॉट फ़्लो द्वारा भेजा गया"
+    }
 }

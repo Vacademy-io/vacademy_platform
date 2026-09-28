@@ -167,6 +167,23 @@ export interface ChatAnnouncementEvent {
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
+/**
+ * React Query key for the conversation list. Shared by ChatScreen (which patches it live from the
+ * SSE stream) and the sidebar unread badge, so both read the same cached list.
+ */
+export const CONVERSATIONS_KEY = ["chat", "conversations"] as const;
+
+/** React Query key for the unread total behind the sidebar badge (see getUnreadCount). */
+export const UNREAD_COUNT_KEY = ["chat", "unread-count"] as const;
+
+/** GET /conversations/unread-count — total unread for the badge; a cheap aggregate, safe to poll. */
+export async function getUnreadCount(): Promise<number> {
+  const res = await authenticatedAxiosInstance.get<{ count?: number }>(
+    `${CHAT_BASE}/conversations/unread-count`,
+  );
+  return res.data?.count ?? 0;
+}
+
 /** GET /conversations — full list (DMs + batch groups + community), sorted desc. */
 export async function listConversations(
   type?: ChatConversationType,

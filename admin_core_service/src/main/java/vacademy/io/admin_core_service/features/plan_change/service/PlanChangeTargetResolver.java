@@ -144,6 +144,13 @@ public class PlanChangeTargetResolver {
                 if (!isSwitchablePlan(plan, userPlan, currentCurrency)) {
                     continue;
                 }
+                // Upgrades only. A downgrade or a lateral move would have to wait for the
+                // end of the paid cycle and re-register the mandate at a LOWER ceiling,
+                // which is not a product we offer: the learner keeps the plan they bought
+                // until it ends and may take a cheaper one by re-enrolling afterwards.
+                if (direction(currentPriceOf(userPlan), plan.getActualPrice()) != PlanChangeDirection.UPGRADE) {
+                    continue;
+                }
                 byPlanId.put(plan.getId(),
                         toCandidate(userPlan, plan, option, enrollInviteId, crossOption, mandate, now));
             }
@@ -164,9 +171,13 @@ public class PlanChangeTargetResolver {
                 .orElse(null);
     }
 
+    private static double currentPriceOf(UserPlan userPlan) {
+        return userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().getActualPrice() : 0d;
+    }
+
     private Candidate toCandidate(UserPlan userPlan, PaymentPlan plan, PaymentOption option,
             String enrollInviteId, boolean crossOption, MandateInfo mandate, Date now) {
-        double currentPrice = userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().getActualPrice() : 0d;
+        double currentPrice = currentPriceOf(userPlan);
         PlanChangeDirection direction = direction(currentPrice, plan.getActualPrice());
 
         // Only an upgrade takes money now. Anything else waits for the end of the paid

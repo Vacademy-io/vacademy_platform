@@ -8,7 +8,8 @@
         "count_other": "{{count}} participants (Interne)"
     },
     "joinLink": {
-        "title": "Lien de connexion"
+        "title": "Lien de connexion",
+        "privateWarning": "Ce lien ne fonctionne que si l'évaluation est Public. Passez-la en Public à l'étape 3 avant de la partager."
     },
     "qrCode": {
         "title": "Code QR"

@@ -41,7 +41,7 @@ import type {
 import { getQuestionPaperById } from '@/routes/assessment/question-papers/-utils/question-paper-services';
 import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
 import sectionDetailsSchema from '../../../-utils/section-details-schema';
-import { calculateTotalMarks } from '../../../-utils/helper';
+import { isUntouchedSection, sectionsFromKbPaper } from '../../../-utils/kb-paper-sections';
 
 type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
@@ -322,9 +322,8 @@ const Step2CreateAssessmentFromKnowledgeBase = ({
 
     // ---- Turn the plan into sections ---------------------------------------
     /**
-     * Sections come from the blueprint ROWS, and each question is placed in the row it
-     * was written for (kb_meta.row_id). Rows are grouped by their section name so a plan
-     * with three rows in "Section A" produces one section, not three.
+     * Sections come from the blueprint ROWS (see sectionsFromKbPaper): rows grouped by
+     * section name, each question in the row it was written for, marks from the row.
      */
     const createSections = async () => {
         if (!result || result.questions.length === 0) return;
@@ -341,85 +340,27 @@ const Step2CreateAssessmentFromKnowledgeBase = ({
             const stored = await getQuestionPaperById(savedId);
             const questions = transformResponseDataToMyQuestionsSchema(stored.question_dtolist);
 
-            // stored questions come back in the order they were sent, which is the order
-            // of result.questions — and result.raw_questions is paired with that. So the
-            // row each stored question belongs to is readable by index.
-            const rowIdByIndex = result.raw_questions.map((raw) => raw.kb_meta?.row_id ?? '');
-            const rowsById = new Map(result.blueprint.rows.map((row) => [row.id, row]));
-
-            // Preserve the plan's section order rather than whatever order the questions
-            // happen to come back in.
-            const sectionOrder: string[] = [];
-            result.blueprint.rows.forEach((row) => {
-                if (!sectionOrder.includes(row.section)) sectionOrder.push(row.section);
-            });
-
-            const bySection = new Map<string, typeof questions>();
-            questions.forEach((question, i) => {
-                const row = rowsById.get(rowIdByIndex[i] ?? '');
-                const sectionName = row?.section ?? result.blueprint.title;
-                if (!sectionOrder.includes(sectionName)) sectionOrder.push(sectionName);
-                const bucket = bySection.get(sectionName) ?? [];
-                bucket.push(question);
-                bySection.set(sectionName, bucket);
-            });
-
-            const existingSections = form.getValues('section') ?? [];
-            const newSections = sectionOrder
-                .filter((sectionName) => (bySection.get(sectionName) ?? []).length > 0)
-                .map((sectionName, offset) => {
-                    const sectionQuestions = bySection.get(sectionName) ?? [];
-                    const firstRow = result.blueprint.rows.find((r) => r.section === sectionName);
-                    const marksEach = String(firstRow?.marks_each ?? 1);
-                    const adaptive = sectionQuestions.map((question) => ({
-                        questionId: question.questionId,
-                        questionName: question.questionName,
-                        questionType: question.questionType,
-                        // The per-question mark comes from the row the teacher approved.
-                        questionMark: marksEach,
-                        questionPenalty: '0',
-                        ...(question.questionType === 'MCQM' && {
-                            correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                                (item) => item.isSelected
-                            ).length,
-                        }),
-                        questionDuration: { hrs: '0', min: '0' },
-                        parentRichText: question.parentRichTextContent,
-                    }));
-
-                    return {
-                        sectionId: '',
-                        sectionName:
-                            sectionName || `Section ${existingSections.length + offset + 1}`,
-                        questionPaperTitle: '',
-                        subject: '',
-                        yearClass: '',
-                        uploaded_question_paper: null,
-                        question_duration: { hrs: '0', min: '0' },
-                        section_description: firstRow?.instruction ?? '',
-                        section_duration: { hrs: '0', min: '0' },
-                        marks_per_question: marksEach,
-                        total_marks: String(calculateTotalMarks(adaptive)),
-                        negative_marking: { checked: false, value: '0' },
-                        partial_marking: false,
-                        cutoff_marks: { checked: false, value: '0' },
-                        problem_randomization: false,
-                        adaptive_marking_for_each_question: adaptive,
-                    };
-                });
+            // Keep sections the teacher built by hand — replacing them would be the same
+            // silent data loss the per-section flows used to have. The blank section Step 2
+            // opens with is not one of those: left in place it sat above the generated
+            // sections with no questions and no marks, and Next stayed disabled without
+            // saying why.
+            const existingSections = (form.getValues('section') ?? []).filter(
+                (section) => !isUntouchedSection(section)
+            );
+            const newSections = sectionsFromKbPaper(
+                result.blueprint,
+                result.raw_questions,
+                questions,
+                existingSections.length
+            );
 
             if (newSections.length === 0) {
                 toast.error('No questions could be placed into sections');
                 return;
             }
 
-            // Append. A teacher may already have built sections by hand before opening
-            // this, and replacing them would be the same silent data loss the per-section
-            // flows used to have.
-            form.setValue('section', [
-                ...existingSections,
-                ...newSections,
-            ] as SectionFormType['section']);
+            form.setValue('section', [...existingSections, ...newSections]);
             form.trigger('section');
 
             if (generationId) {

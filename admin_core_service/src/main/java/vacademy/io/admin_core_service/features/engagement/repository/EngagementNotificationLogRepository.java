@@ -11,4 +11,6 @@ public interface EngagementNotificationLogRepository
         extends JpaRepository<EngagementNotificationLog, String> {
 
     boolean existsBySlotIdAndRunDate(String slotId, LocalDate runDate);
+
+    boolean existsBySlotIdAndRunDateAndKind(String slotId, LocalDate runDate, String kind);
 }

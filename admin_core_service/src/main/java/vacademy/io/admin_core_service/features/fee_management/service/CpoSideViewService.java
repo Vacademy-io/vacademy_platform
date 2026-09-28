@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.fee_management.dto.CpoSideViewIns
 import vacademy.io.admin_core_service.features.fee_management.dto.CpoUserPlanSummaryDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.ModifyInstallmentRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.RecordOfflinePaymentRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SplitInstallmentRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
@@ -228,6 +229,26 @@ public class CpoSideViewService {
         }
 
         return list(sfp.getUserPlanId());
+    }
+
+    /**
+     * Moves part of an installment's unpaid balance onto a new installment with its own due
+     * date. See {@link CpoDiscountService#splitInstallment} for how the amounts and the ledger
+     * are carried.
+     */
+    @Transactional
+    public CpoSideViewInstallmentsResponseDTO splitInstallment(
+            String sfpId, SplitInstallmentRequestDTO req, String appliedBy) {
+
+        assertNotSubOrgAdmin(appliedBy, "split an installment");
+
+        if (req == null || req.getAmount() == null) {
+            throw new VacademyException("Amount to move is required");
+        }
+        StudentFeePayment added = cpoDiscountService.splitInstallment(
+                sfpId, BigDecimal.valueOf(req.getAmount()),
+                req.getStartDate(), req.getDueDate(), appliedBy);
+        return list(added.getUserPlanId());
     }
 
     @Transactional

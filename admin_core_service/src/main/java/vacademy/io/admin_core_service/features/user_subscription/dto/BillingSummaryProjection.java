@@ -15,5 +15,15 @@ public interface BillingSummaryProjection {
     Long getPlanCount();
     /** Live, priced one-time plans with no payment recorded — activated by hand. */
     Long getActivatedWithoutPaymentCount();
+    /** Every unpaid installment / invoice on live enrolments, whatever its due date. */
+    Double getOutstanding();
+    Long getLearnersOutstanding();
+    /** Every unpaid instalment / invoice not yet due, plus subscription renewals in the horizon. */
+    Double getUpcomingAll();
+    Long getLearnersUpcomingAll();
+    /** Earliest future due date with money on it, as yyyy-MM-dd. */
+    String getNextDueDate();
+    /** The institute has instalment schedules at all — whatever the window. */
+    Boolean getUsesInstallments();
     String getCurrency();
 }

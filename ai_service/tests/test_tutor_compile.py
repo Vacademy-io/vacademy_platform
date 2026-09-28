@@ -314,3 +314,26 @@ def test_board_without_anything_to_look_at_is_advice_not_a_failure():
     assert validate_plan(p, "en") == []                                   # still servable
     assert "nothing to look at" in " | ".join(board_quality_errors(p))     # but flagged once
     assert "nothing to look at" not in " | ".join(board_quality_errors(p, limits=QUIZ_LIMITS))
+
+
+def test_structured_rubric_is_flattened_not_rejected():
+    # 2026-09-23 speaking-skills demos: a source listing "Look for:" criteria
+    # made the model return the rubric as a list / object, and the schema's
+    # str type failed the whole compile after three model calls.
+    from app.schemas.tutor import Check
+    assert Check(type="open", prompt="p", rubric=["a hook", "under 15 words"]).rubric == "a hook; under 15 words"
+    assert Check(type="open", prompt="p", rubric={"look_for": ["claim", "promise"], "avoid": "topic only"}).rubric \
+        == "look_for: claim, promise; avoid: topic only"
+    assert Check(type="open", prompt="p", rubric="plain prose").rubric == "plain prose"
+    assert Check().rubric is None
+
+
+def test_missing_concept_title_is_derived_not_fatal():
+    from app.schemas.tutor import ConceptDraft
+    say = "Say your own three sentences now, present past future."
+    assert ConceptDraft(id="c1", title="Kept", say=say).title == "Kept"
+    assert ConceptDraft(id="c1", name="From an alternate key", say=say).title == "From an alternate key"
+    assert ConceptDraft(id="c1", say=say).title == "Say your own three sentences now…"
+    assert ConceptDraft(id="open-with-hook", say="  ").title == "Open with hook"
+    with pytest.raises(ValidationError):
+        ConceptDraft(say="no id")  # the id stays mandatory: ops and checks reference it

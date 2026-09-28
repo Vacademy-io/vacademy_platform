@@ -68,10 +68,11 @@ function ChatRoute() {
   }, [dm, conversationId]);
 
   return (
-    // fullWidth: the chat screen is a full-bleed master-detail surface and
-    // manages its own internal padding, so opt out of the centered content
-    // contract. enableChatbotPanel is disabled to avoid two side panels.
-    <LayoutContainer fullWidth enableChatbotPanel={false}>
+    // fillViewport: the chat screen is a master-detail surface pinned to one
+    // screen so the thread scrolls and the composer stays visible (a fixed
+    // 100dvh calc ignored the navbar/margins and pushed it below the fold).
+    // enableChatbotPanel is disabled to avoid two side panels.
+    <LayoutContainer fillViewport enableChatbotPanel={false}>
       {/* ChatScreen reacts to conversationId changes in place (its deep-link
           effect re-runs on every change) — no remount key needed. */}
       <ChatScreen initialConversationId={conversationId} />

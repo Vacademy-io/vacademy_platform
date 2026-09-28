@@ -17,5 +17,9 @@
         "empty": "Nothing loaded for this class yet.",
         "createPaper": "Create question paper",
         "createCourse": "Create course"
-    }
+    },
+    "boardOrExam": "Board / Exam",
+    "loading": "Loading…",
+    "stateBoards": "State boards",
+    "competitiveExams": "Competitive exams"
 }

@@ -55,6 +55,40 @@
         "heading": "إرسال إشعار",
         "subheading": "رسالة عبر البريد الإلكتروني أو واتساب"
     },
+    "resend": {
+        "button": "إعادة الإرسال",
+        "buttonTooltip": "إرسال هذه الرسالة مرة أخرى",
+        "blocked": {
+            "noTemplate": "لا يمكن إعادة إرسال سوى رسائل القوالب — هذه الرسالة كُتبت في صندوق الوارد",
+            "noBody": "لم يُحفَظ نص الرسالة الأصلية، لذا لا يوجد ما يُعاد إرساله",
+            "unsupportedChannel": "لا يمكن إعادة الإرسال عبر هذه القناة من هنا"
+        },
+        "title": "إعادة إرسال رسالة {{channel}} هذه؟",
+        "confirmQuestion": "هل أنت متأكد من إعادة إرسالها إلى {{recipient}}؟",
+        "subjectLabel": "الموضوع:",
+        "hasVariables_one": "يحتوي هذا القالب على متغير واحد ({{count}}).",
+        "hasVariables_other": "يحتوي هذا القالب على {{count}} متغيرات.",
+        "modeSame": "إعادة الإرسال كما هي",
+        "modeSameHint": "الإبقاء على القيم المُرسَلة في المرة الأولى",
+        "modeSameBlockedHint": "غير ممكن — أُرسلت الرسالة الأولى بدون {{names}}",
+        "modeEdit": "تغيير المتغيرات",
+        "modeEditHint": "تعديل القيم قبل الإرسال",
+        "variablePlaceholder": "قيمة {{name}}",
+        "variableEmpty": "(فارغ)",
+        "previewHeading": "معاينة",
+        "deliveryCaveat": "سيؤدي هذا إلى إرسال رسالة حقيقية إلى المتعلّم.",
+        "variablesRequired": "املأ كل متغير — يرفض واتساب الرسالة ما دام أي منها فارغًا.",
+        "cancel": "إلغاء",
+        "confirmSame": "إعادة الإرسال",
+        "confirmEdited": "الإرسال بالقيم الجديدة",
+        "emailSent": "تمت إعادة إرسال البريد الإلكتروني",
+        "whatsappQueued": "تم تسليم رسالة واتساب إلى المزوّد",
+        "rejected": "رفض المزوّد إعادة الإرسال",
+        "rejectedWithReason": "رفض المزوّد إعادة الإرسال: {{reason}}",
+        "failed": "تعذّرت إعادة إرسال الرسالة",
+        "noInstitute": "لم يتم اختيار أي مؤسسة",
+        "noRecipient": "لا يوجد مستلم لهذه الرسالة"
+    },
     "pagination": {
         "previous": "السابق",
         "next": "التالي",
@@ -88,5 +122,11 @@
         "recordingHeading": "التسجيل",
         "noRecording": "لا يوجد تسجيل لهذه المكالمة",
         "byCounsellor": "بواسطة {{name}}"
+    },
+    "origin": {
+        "workflow": "أُرسلت بواسطة سير العمل «{{name}}»",
+        "workflowUnnamed": "أُرسلت بواسطة سير عمل",
+        "chatbotFlow": "أُرسلت بواسطة تدفق روبوت المحادثة «{{name}}»",
+        "chatbotFlowUnnamed": "أُرسلت بواسطة تدفق روبوت محادثة"
     }
 }

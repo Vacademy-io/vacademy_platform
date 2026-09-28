@@ -33,6 +33,7 @@ from urllib.parse import urljoin, urlparse
 from uuid import uuid4
 
 import httpx
+from .llm_router import post_chat
 from fastapi import HTTPException
 
 from ..config import get_settings
@@ -557,9 +558,7 @@ class BrandKitScrapeService:
                 last_error_body: Optional[str] = None
                 for idx, payload in enumerate(attempts):
                     try:
-                        resp = await client.post(
-                            settings.llm_base_url, headers=headers, json=payload
-                        )
+                        resp = await post_chat(client, payload, api_key)
                     except httpx.HTTPError as e:
                         warnings.append(f"LLM transport error: {e}")
                         logger.warning(f"[BrandKitScrape] LLM transport error: {e}")

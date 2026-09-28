@@ -4,9 +4,9 @@
     },
     "dialog": {
         "title": "प्रश्न निकालें",
-        "promptLabel": "प्रॉम्प्ट",
-        "promptPlaceholder": "अपना प्रॉम्प्ट यहाँ दर्ज करें",
-        "extractButton": "निकालें"
+        "promptLabel": "पढ़ने वाले के लिए नोट्स (वैकल्पिक)",
+        "promptPlaceholder": "जैसे: सिर्फ़ सेक्शन B · उत्तर हाशिये में हैं",
+        "extractButton": "सभी प्रश्न निकालें"
     },
     "tasksList": {
         "heading": "वीस्मार्ट एक्सट्रैक्ट"

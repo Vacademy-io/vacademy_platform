@@ -175,7 +175,19 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
         }
     };
 
-    const { append } = useFieldArray({
+    // The one owner of the section list. Cards are keyed by the field id
+    // react-hook-form gives each section, not by index, and they delete
+    // through this instance's remove(): a card that stays mounted while the
+    // section under its index changes (a delete above it, or the paper's
+    // sections replacing the blank one) kept showing the old section's name
+    // and marks, because a controlled field only follows changes addressed
+    // to its exact name. With stable ids React remounts the card for the
+    // section that is actually there.
+    const {
+        fields: sectionFields,
+        append,
+        remove,
+    } = useFieldArray({
         control,
         name: 'section', // Matches the key in defaultValues
     });
@@ -185,7 +197,15 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
     const isSectionWiseCheck = watch('testDuration.sectionWiseDuration');
     const isQuestionWiseCheck = watch('testDuration.questionWiseDuration');
 
+    // Only when the backend lists a duration field for this step — the same test the
+    // duration inputs below render on. A Manual Upload Exam has none (learners solve on
+    // paper and upload the sheet), so demanding one here kept Next disabled for it with
+    // nothing on screen to fill in.
+    const durationIsAField = Boolean(
+        getStepKey({ assessmentDetails, currentStep, key: 'duration' })
+    );
     const isAssessmentDurationMissing =
+        durationIsAField &&
         isAssessWiseCheck &&
         (!entireTestDuration?.hrs || entireTestDuration?.hrs === '0') &&
         (!entireTestDuration?.min || entireTestDuration?.min === '0');
@@ -735,13 +755,14 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                             defaultValue={`section-0`}
                             className="flex flex-col gap-4"
                         >
-                            {allSections.map((_, index) => (
+                            {sectionFields.map((sectionField, index) => (
                                 <Step2SectionInfo
-                                    key={index}
+                                    key={sectionField.id}
                                     form={form}
                                     index={index}
                                     currentStep={currentStep}
                                     oldData={oldData}
+                                    onDelete={remove}
                                 />
                             ))}
                         </Accordion>

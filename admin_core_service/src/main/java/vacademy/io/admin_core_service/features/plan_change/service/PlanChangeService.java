@@ -251,10 +251,17 @@ public class PlanChangeService {
                     "Plan " + request.getTargetPlanId() + " is not available to switch to on this membership");
         }
 
+        // Upgrades only for learners. resolveOne already filters these out, so reaching
+        // here means a stale client or a hand-built request; refuse it rather than book a
+        // scheduled downgrade nobody can see in the UI.
+        if (target.direction() != PlanChangeDirection.UPGRADE) {
+            throw new VacademyException("Only upgrades to a higher-priced plan are available");
+        }
+
         UserPlanChangeRequest changeRequest = newRequest(userPlan, instituteId, target,
                 "LEARNER", userDetails != null ? userDetails.getUserId() : userPlan.getUserId(), null);
 
-        // A downgrade or a lateral move takes no money — park it until the paid cycle ends.
+        // A downgrade or a lateral move takes no money -- park it until the paid cycle ends.
         if (target.effectiveType() == PlanChangeEffectiveType.END_OF_CYCLE) {
             if (userPlan.getEndDate() == null) {
                 // A lifetime plan has no cycle to wait for, so the change would sit
@@ -464,9 +471,11 @@ public class PlanChangeService {
 
         Date newEndDate = userPlan.getEndDate();
         if (!preserveEndDate) {
-            Date computed = prorationCalculator.newEndDate(target, new Date());
+            // Extends the window the learner already holds rather than restarting it:
+            // they paid the price difference, so they get the validity difference. The
+            // start date is left alone -- the cycle they are in did not restart.
+            Date computed = prorationCalculator.newEndDate(userPlan, target, new Date());
             if (computed != null) {
-                userPlan.setStartDate(new Date());
                 userPlan.setEndDate(computed);
                 newEndDate = computed;
             }

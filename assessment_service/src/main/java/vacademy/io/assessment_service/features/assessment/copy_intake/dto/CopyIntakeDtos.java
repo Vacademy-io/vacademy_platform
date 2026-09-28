@@ -28,6 +28,46 @@ public final class CopyIntakeDtos {
         private Boolean notifyEmail;
     }
 
+    /**
+     * Check copies the learners submitted themselves. Either the checked rows of
+     * the submissions table ({@code attempt_ids}) or, when that is empty, every
+     * submitted copy on the assessment.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class SubmittedRequest {
+        private List<String> attemptIds;
+        /** Also queue copies the AI has already checked (a re-check). Default false. */
+        private Boolean includeChecked;
+        private String preferredModel;
+        private Boolean notifyEmail;
+    }
+
+    /** What a submitted-copies check would do, before any credit is spent. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class SubmittedPreviewDto {
+        /** Attempts looked at (the selection, or every attempt on the assessment). */
+        private int considered;
+        /** Attempts with an uploaded answer sheet. */
+        private int withCopy;
+        /** ... of which the AI has already checked (queued only with include_checked). */
+        private int alreadyChecked;
+        /** ... of which a check is running right now (never queued twice). */
+        private int inProgress;
+        /** Attempts with no uploaded sheet (an online attempt, or not submitted yet). */
+        private int noCopy;
+        /** Copies that would be queued. */
+        private int toCheck;
+        private List<String> attemptIds;
+    }
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -104,6 +144,8 @@ public final class CopyIntakeDtos {
         private String id;
         private String assessmentId;
         private String status;
+        /** UPLOAD (admin-uploaded PDFs) or SUBMITTED (the learners' own uploads). */
+        private String source;
         private int totalItems;
         /** Copies whose header has been read (everything past PENDING / IDENTIFYING). */
         private int identified;

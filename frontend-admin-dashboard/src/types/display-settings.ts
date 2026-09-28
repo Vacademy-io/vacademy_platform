@@ -220,6 +220,17 @@ export interface StudentSideViewSettings {
     // (ONBOARDING_SETTING feature). Optional for backward-compat with
     // settings saved before this tab existed.
     onboardingTab?: boolean;
+    /**
+     * The Resend control on each outbound row of the Notifications tab, which
+     * sends that message to the learner a second time. Not a tab toggle — the
+     * tab itself is `notificationTab` — so it is kept out of
+     * StudentSideViewVisibilityKey and rendered as its own option.
+     *
+     * Optional for backward-compat: an institute whose saved settings pre-date
+     * this flag falls through to the role's default (on for admin, off for
+     * teacher and custom roles).
+     */
+    allowResendMessage?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.
@@ -310,6 +321,11 @@ export interface LearnerManagementSettings {
     // Only meaningful when allowViewPassword is on — the card it lives in is
     // hidden otherwise.
     allowEditCredentials?: boolean;
+    // Lets the role PERMANENTLY delete an offline/manual payment or an invoice from the learner's
+    // payment tab and Manage Payments. OFF by default for every role, including admin — an institute
+    // opts in here. Absent (every settings blob saved before this flag) means OFF, and the server
+    // enforces the same rule, so hiding the button is not the only guard.
+    allowDeletePayments?: boolean;
 }
 
 // What a custom header button links to.
@@ -594,6 +610,12 @@ export interface DisplaySettingsData {
         // courses and the Copy-to-Edit / Submit-for-Review approval flow —
         // they can edit and publish published courses directly.
         directEditPublishedCourse?: boolean;
+        // When true (default — the long-standing behaviour), a non-admin's new
+        // DRAFT course must go through Submit for Review -> admin approval
+        // before it becomes ACTIVE. Set false per role to give that role a
+        // "Publish" button instead. Read sites test `!== false` so a saved
+        // blob that predates this key keeps requiring review.
+        requireCourseApproval?: boolean;
         // When true, Edit buttons on Subject / Module / Chapter rows in the
         // Outline & Content Structure tabs are visible regardless of course
         // status. Admin always sees these; this flag is for non-admin roles.

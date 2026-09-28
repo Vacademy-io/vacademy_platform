@@ -83,6 +83,14 @@ public class AiEvaluationProcess {
         @Column(name = "claimed_at")
         private Date claimedAt;
 
+        /** When the staff were told this check had settled (V48); NULL = not yet. */
+        @Column(name = "notified_at")
+        private Date notifiedAt;
+
+        /** The teacher who pressed "Evaluate with AI"; NULL for automatic and bulk checks. */
+        @Column(name = "triggered_by", length = 255)
+        private String triggeredBy;
+
         @Column(name = "created_at", insertable = false, updatable = false)
         private Date createdAt;
 

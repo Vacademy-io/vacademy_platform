@@ -951,6 +951,7 @@ public class LiveSessionProviderController {
                 java.util.UUID.randomUUID().toString(),
                 sessionId,
                 scheduleId,
+                "USER",
                 userId,
                 fullName + " | role=" + role,
                 java.time.Instant.now().toString(),

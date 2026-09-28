@@ -17,16 +17,27 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LeadTemplateVariablesMapper } from '@/components/shared/leads/lead-template-variables-mapper';
+import {
+    defaultLeadVarChoices,
+    isLeadVarComplete,
+    leadVarStoredValue,
+    whatsappTemplateParamSpec,
+    type LeadVarChoice,
+} from '@/components/shared/leads/lead-template-variables';
 import {
     createWorkflow,
     getTemplatesByTypeQuery,
-    restrictVarsToWhatsappTemplate,
-    whatsappTemplateParamKeys,
     type TemplateItem,
 } from '@/services/workflow-service';
 import { getMessageTemplates } from '@/services/message-template-service';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO, WorkflowBuilderEdge, WorkflowBuilderNode } from '@/types/workflow/workflow-types';
+import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
+import {
+    parseCustomFieldsFromJson,
+    type CustomFieldConfig,
+} from '../../-utils/lead-bulk-import-utils';
 
 interface ConfigureAudienceWorkflowDialogProps {
     open: boolean;
@@ -34,10 +45,18 @@ interface ConfigureAudienceWorkflowDialogProps {
     audienceId: string;
     audienceName: string;
     instituteId: string;
+    /**
+     * The audience form's fields, offered as sources for WhatsApp template
+     * variables. Fetched with the campaign when not passed — the campaign list
+     * endpoint does not return them.
+     */
+    customFields?: CustomFieldConfig[];
 }
 
 type WorkflowKind = 'confirmation' | 'followup';
 type Channel = 'EMAIL' | 'WHATSAPP' | 'BOTH';
+
+const NO_CUSTOM_FIELDS: CustomFieldConfig[] = [];
 
 /**
  * Placeholder → source-field mappings for a lead. Resolution order in the send
@@ -45,9 +64,9 @@ type Channel = 'EMAIL' | 'WHATSAPP' | 'BOTH';
  * literal, so 'Full Name' here means customFields["Full Name"].
  *
  * Mirrors the wizard's audience_lead_confirmation use case, so the same email
- * templates work without manual mapping. For WhatsApp these are only ever
- * applied to placeholders the chosen Meta template actually declares — see
- * restrictVarsToWhatsappTemplate.
+ * templates work without manual mapping. WhatsApp variables are mapped by the
+ * admin in the dialog instead — Meta rejects a message whose parameter count
+ * is off, so they cannot be guessed wholesale like these.
  */
 const LEAD_TEMPLATE_VARS: Record<string, string> = {
     parentName: 'Full Name',
@@ -84,6 +103,7 @@ export function ConfigureAudienceWorkflowDialog({
     audienceId,
     audienceName,
     instituteId,
+    customFields: customFieldsProp = NO_CUSTOM_FIELDS,
 }: ConfigureAudienceWorkflowDialogProps) {
     const { t } = useTranslation('audienceManagerConfigureAudienceWorkflowDialog');
     const queryClient = useQueryClient();
@@ -95,6 +115,7 @@ export function ConfigureAudienceWorkflowDialog({
     const [daysAgo, setDaysAgo] = useState<number>(3);
     const [templateName, setTemplateName] = useState('');
     const [waTemplateName, setWaTemplateName] = useState('');
+    const [waVarChoices, setWaVarChoices] = useState<Record<string, LeadVarChoice | undefined>>({});
     const [nameTouched, setNameTouched] = useState(false);
 
     const usesEmail = channel === 'EMAIL' || channel === 'BOTH';
@@ -109,6 +130,7 @@ export function ConfigureAudienceWorkflowDialog({
             setDaysAgo(3);
             setTemplateName('');
             setWaTemplateName('');
+            setWaVarChoices({});
             setNameTouched(false);
         }
     }, [open]);
@@ -161,22 +183,85 @@ export function ConfigureAudienceWorkflowDialog({
     // Which body placeholders the chosen WhatsApp template declares. Meta
     // rejects the whole send when the parameter count is off, so the generated
     // node must map exactly these — no more, no less.
-    const waParamKeys = useMemo(
-        () => whatsappTemplateParamKeys(
-            ((waTemplates ?? []) as TemplateItem[]).find((tpl) => tpl.name === waTemplateName)
-        ),
+    const waParamSpec = useMemo(
+        () =>
+            whatsappTemplateParamSpec(
+                ((waTemplates ?? []) as TemplateItem[]).find((tpl) => tpl.name === waTemplateName)
+            ),
         [waTemplates, waTemplateName]
     );
-    const waUnmapped = useMemo(
-        () => restrictVarsToWhatsappTemplate(LEAD_TEMPLATE_VARS, waParamKeys).unmapped,
-        [waParamKeys]
+    const waParamKeys = useMemo(() => Object.keys(waParamSpec), [waParamSpec]);
+    const waTemplateBody = useMemo(
+        () =>
+            ((waTemplates ?? []) as TemplateItem[]).find((tpl) => tpl.name === waTemplateName)
+                ?.content ?? '',
+        [waTemplates, waTemplateName]
+    );
+
+    // The audience form's own fields. Both the lead-submission context and the
+    // follow-up query key a lead's answers by field name, so a field name is a
+    // valid variable source in either kind of workflow.
+    const { data: fetchedCampaign, isLoading: formFieldsLoading } = useGetCampaignById({
+        instituteId,
+        audienceId,
+        enabled: open && usesWhatsapp && customFieldsProp.length === 0,
+    });
+    const customFields = useMemo(() => {
+        if (customFieldsProp.length > 0) return customFieldsProp;
+        if (!fetchedCampaign?.institute_custom_fields) return NO_CUSTOM_FIELDS;
+        return parseCustomFieldsFromJson(JSON.stringify(fetchedCampaign.institute_custom_fields));
+    }, [customFieldsProp, fetchedCampaign]);
+    const formFieldNames = useMemo(
+        () => Array.from(new Set(customFields.map((f) => f.fieldName.trim()).filter(Boolean))),
+        [customFields]
+    );
+    const selectKind = (nextKind: WorkflowKind) => {
+        setKind(nextKind);
+        // Drop lead details the other kind of workflow cannot resolve, so they
+        // show as unpicked instead of silently sending nothing.
+        setWaVarChoices((prev) =>
+            Object.fromEntries(
+                Object.entries(prev).filter(
+                    ([, choice]) => choice?.source !== 'lead' || isLeadVarComplete(choice, nextKind, audienceName)
+                )
+            )
+        );
+    };
+    const selectWaTemplate = (nextName: string) => {
+        setWaTemplateName(nextName);
+        const tpl = ((waTemplates ?? []) as TemplateItem[]).find((item) => item.name === nextName);
+        setWaVarChoices(defaultLeadVarChoices(whatsappTemplateParamSpec(tpl), formFieldNames, kind));
+    };
+    const setWaVarChoice = (key: string, choice: LeadVarChoice | undefined) =>
+        setWaVarChoices((prev) => ({ ...prev, [key]: choice }));
+    const waVarsIncomplete = waParamKeys.some(
+        (key) => !isLeadVarComplete(waVarChoices[key], kind, audienceName)
     );
 
     const createMutation = useMutation({
         mutationFn: async () => {
+            const hasWaVars = waParamKeys.length > 0;
             const common = {
-                name, description, instituteId, audienceId, audienceName,
-                channel, templateName, waTemplateName, waParamKeys,
+                name,
+                description,
+                instituteId,
+                audienceId,
+                audienceName,
+                channel,
+                templateName,
+                waTemplateName,
+                waTemplateVars: hasWaVars
+                    ? Object.fromEntries(
+                          waParamKeys.map((key) => {
+                              const choice = waVarChoices[key];
+                              return [
+                                  key,
+                                  choice ? leadVarStoredValue(choice, kind, audienceName) : '',
+                              ];
+                          })
+                      )
+                    : undefined,
+                waTemplateParams: hasWaVars ? waParamSpec : undefined,
             };
             const dto = kind === 'confirmation'
                 ? buildConfirmationDTO(t, common)
@@ -206,13 +291,25 @@ export function ConfigureAudienceWorkflowDialog({
         // needs both, and neither dropdown is required when its channel is off.
         if (usesEmail && !templateName.trim()) return false;
         if (usesWhatsapp && !waTemplateName.trim()) return false;
+        // Meta rejects the message while any declared variable is empty.
+        if (usesWhatsapp && waVarsIncomplete) return false;
         if (kind === 'followup' && (!daysAgo || daysAgo < 1)) return false;
         return !createMutation.isPending;
-    }, [name, templateName, waTemplateName, usesEmail, usesWhatsapp, kind, daysAgo, createMutation.isPending]);
+    }, [
+        name,
+        templateName,
+        waTemplateName,
+        waVarsIncomplete,
+        usesEmail,
+        usesWhatsapp,
+        kind,
+        daysAgo,
+        createMutation.isPending,
+    ]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-h-dialog-tall w-dialog-md overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{t('dialog.title')}</DialogTitle>
                     <DialogDescription>
@@ -233,14 +330,14 @@ export function ConfigureAudienceWorkflowDialog({
                         <div className="grid grid-cols-2 gap-2">
                             <KindCard
                                 selected={kind === 'confirmation'}
-                                onClick={() => setKind('confirmation')}
+                                onClick={() => selectKind('confirmation')}
                                 icon={<Lightning size={18} />}
                                 title={t('kind.confirmation.title')}
                                 description={t('kind.confirmation.description')}
                             />
                             <KindCard
                                 selected={kind === 'followup'}
-                                onClick={() => setKind('followup')}
+                                onClick={() => selectKind('followup')}
                                 icon={<Clock size={18} />}
                                 title={t('kind.followup.title')}
                                 description={t('kind.followup.description')}
@@ -346,7 +443,7 @@ export function ConfigureAudienceWorkflowDialog({
                             <select
                                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                                 value={waTemplateName}
-                                onChange={(e) => setWaTemplateName(e.target.value)}
+                                onChange={(e) => selectWaTemplate(e.target.value)}
                             >
                                 <option value="">{waTemplatesLoading ? t('fields.template.loading') : t('fields.whatsappTemplate.placeholder')}</option>
                                 {waTemplateOptions.map((opt) => (
@@ -357,20 +454,28 @@ export function ConfigureAudienceWorkflowDialog({
                                 <p className="text-2xs text-amber-600">
                                     {t('fields.whatsappTemplate.noneFound')}
                                 </p>
-                            ) : waUnmapped.length > 0 ? (
-                                // Meta rejects the send unless every declared
-                                // placeholder gets a value, and guessing what
-                                // {{2}} means would put wrong text in front of
-                                // a real person — so say so instead.
-                                <p className="text-2xs text-amber-600">
-                                    {t('fields.whatsappTemplate.unmappedVars', {
-                                        vars: waUnmapped.map((v) => `{{${v}}}`).join(', '),
-                                    })}
+                            ) : waParamKeys.length === 0 ? (
+                                <p className="text-2xs text-gray-400">
+                                    {t('fields.whatsappTemplate.helper')}
                                 </p>
-                            ) : (
-                                <p className="text-2xs text-gray-400">{t('fields.whatsappTemplate.helper')}</p>
-                            )}
+                            ) : null}
                         </div>
+                    )}
+
+                    {/* WhatsApp template variables — Meta rejects the send unless
+                        every declared placeholder gets a value, so the admin maps
+                        each one here, against a live preview. */}
+                    {usesWhatsapp && (
+                        <LeadTemplateVariablesMapper
+                            paramSpec={waParamSpec}
+                            templateBody={waTemplateBody}
+                            choices={waVarChoices}
+                            onChoiceChange={setWaVarChoice}
+                            kind={kind}
+                            audienceName={audienceName}
+                            formFieldNames={formFieldNames}
+                            formFieldsLoading={formFieldsLoading}
+                        />
                     )}
                 </div>
 
@@ -441,8 +546,10 @@ interface ConfirmationOpts {
     channel: Channel;
     templateName: string;
     waTemplateName: string;
-    /** Body placeholders the chosen WhatsApp template declares. */
-    waParamKeys: string[];
+    /** Admin's pick for every placeholder the WhatsApp template declares. */
+    waTemplateVars?: Record<string, string>;
+    /** The WhatsApp template's placeholders and labels, stored as _templateParams. */
+    waTemplateParams?: Record<string, string>;
 }
 
 /**
@@ -458,8 +565,8 @@ interface ConfirmationOpts {
  * So does the split between `templateVars` and the WhatsApp node's own vars.
  * Email templates ignore placeholders they don't use; Meta counts them and
  * rejects the send outright if the number is wrong, so the WhatsApp node gets
- * only the placeholders its template declares (`waParamKeys`), and none at all
- * when it declares none.
+ * exactly the placeholders its template declares, as mapped in the dialog, and
+ * none at all when it declares none.
  */
 function buildSendNodes(
     t: TFunction,
@@ -472,16 +579,12 @@ function buildSendNodes(
         x: number;
         y: number;
         templateVars?: Record<string, string>;
-        /** Body placeholders the chosen WhatsApp template declares. */
-        waParamKeys?: string[];
+        waTemplateVars?: Record<string, string>;
+        waTemplateParams?: Record<string, string>;
     }
 ): { nodes: WorkflowBuilderNode[]; edges: WorkflowBuilderEdge[] } {
     const nodes: WorkflowBuilderNode[] = [];
     let y = opts.y;
-    const waVars = restrictVarsToWhatsappTemplate(
-        LEAD_TEMPLATE_VARS,
-        opts.waParamKeys ?? []
-    ).templateVars;
 
     if (opts.channel === 'EMAIL' || opts.channel === 'BOTH') {
         nodes.push({
@@ -511,7 +614,11 @@ function buildSendNodes(
                 templateName: opts.waTemplateName,
                 on: opts.waOn ?? opts.on,
                 forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
-                ...(waVars ? { templateVars: waVars } : {}),
+                ...(opts.waTemplateVars ? { templateVars: opts.waTemplateVars } : {}),
+                // Same key the builder writes on template pick: it shows the variable
+                // pickers there, and makes the send handler skip (visibly) a lead
+                // whose value comes out empty instead of sending what Meta rejects.
+                ...(opts.waTemplateParams ? { _templateParams: opts.waTemplateParams } : {}),
             },
             position_x: opts.x,
             position_y: y,
@@ -550,7 +657,8 @@ function buildConfirmationDTO(t: TFunction, opts: ConfirmationOpts): WorkflowBui
         x: 250,
         y: 230,
         templateVars: LEAD_TEMPLATE_VARS,
-        waParamKeys: opts.waParamKeys,
+        waTemplateVars: opts.waTemplateVars,
+        waTemplateParams: opts.waTemplateParams,
     });
     const firstSend = send.nodes[0]!;
     return {
@@ -607,7 +715,8 @@ function buildFollowupDTO(t: TFunction, opts: FollowupOpts): WorkflowBuilderDTO 
         on: "#ctx['leads']",
         x: 250,
         y: 230,
-        waParamKeys: opts.waParamKeys,
+        waTemplateVars: opts.waTemplateVars,
+        waTemplateParams: opts.waTemplateParams,
     });
     const firstSend = send.nodes[0]!;
     return {

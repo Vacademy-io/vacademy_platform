@@ -29,6 +29,7 @@ export const SCHEDULE_CSV_HEADERS = [
     'platform',
     'link',
     'package_session_ids',
+    'instructors',
     'description',
 ] as const;
 
@@ -71,6 +72,7 @@ export const downloadScheduleTemplate = (batches: BatchForSessionLite[]) => {
             platform: 'zoom',
             link: 'https://zoom.us/j/123456789',
             package_session_ids: idCell,
+            instructors: 'teacher@example.com|another.teacher@example.com',
             description: 'Quick revision before the test',
         },
         {
@@ -83,6 +85,7 @@ export const downloadScheduleTemplate = (batches: BatchForSessionLite[]) => {
             platform: 'bbb',
             link: '',
             package_session_ids: exampleIds[0] ?? 'PASTE_PACKAGE_SESSION_ID',
+            instructors: '',
             description: '',
         },
     ];
@@ -113,6 +116,8 @@ export interface ScheduleResultRow {
     success: boolean;
     session_id?: string;
     error?: string;
+    /** Non-fatal per-row notes (e.g. instructors that couldn't be matched). */
+    warnings?: string[];
 }
 
 /**
@@ -127,7 +132,14 @@ export const downloadResultsCsv = (results: ScheduleResultRow[], t: TFunction) =
             title: r.title ?? '',
             status: r.success ? t('status.success') : t('status.failed'),
             session_id: r.success ? r.session_id ?? '' : '',
-            remarks: r.success ? t('status.created') : r.error ?? t('status.unknownError'),
+            // A successful row with warnings reports them instead of a bare
+            // "Created" — an instructor that didn't stick is exactly the kind of
+            // thing an admin will otherwise never notice.
+            remarks: r.success
+                ? r.warnings?.length
+                    ? r.warnings.join(' ')
+                    : t('status.created')
+                : r.error ?? t('status.unknownError'),
         }));
     const csv = Papa.unparse({
         fields: ['row', 'title', 'status', 'session_id', 'remarks'],
@@ -262,6 +274,20 @@ export const parseScheduleCsv = (
                         }
                     }
 
+                    // Instructors: user id, email or username, pipe/semicolon
+                    // separated. Deliberately NOT validated here — the client
+                    // has no directory to check them against, and the backend
+                    // reports what it couldn't match as a per-row warning on an
+                    // otherwise successful import. Failing a whole row over one
+                    // mistyped email would cost the admin the import.
+                    const instructorsCell = cell(raw, 'instructors');
+                    const instructorIdentifiers = instructorsCell
+                        ? instructorsCell
+                              .split(/[|;\n]+/)
+                              .map((v) => v.trim())
+                              .filter(Boolean)
+                        : [];
+
                     if (messages.length) {
                         errors.push({ rowNumber, title: title || undefined, messages });
                         return;
@@ -278,6 +304,7 @@ export const parseScheduleCsv = (
                         link,
                         description,
                         selectedLevels,
+                        instructorIdentifiers,
                     });
                 });
 

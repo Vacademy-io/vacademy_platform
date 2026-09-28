@@ -140,5 +140,12 @@
         "addPdf": "Ajoutez un PDF dans le panneau de droite",
         "openDocument": "Ouvrir le document",
         "download": "Télécharger le PDF"
+    },
+    "blog": {
+        "sampleCategory": "Conseils d’étude",
+        "sampleTitle": "Article exemple {{n}}",
+        "sampleExcerpt": "Un court aperçu de l’article s’affiche ici.",
+        "readMore": "Lire la suite",
+        "liveNote": "Les articles publiés apparaissent ici sur le site. Rédigez-les dans Manage Pages → Blog."
     }
 }

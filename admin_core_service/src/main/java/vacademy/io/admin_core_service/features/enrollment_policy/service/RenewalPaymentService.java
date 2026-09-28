@@ -49,6 +49,7 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final RenewalGracePolicy gracePolicy;
+    private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -70,16 +71,41 @@ public class RenewalPaymentService {
         }
         UserPlan userPlan = paymentLog.getUserPlan();
         if (paymentStatus == PaymentStatusEnum.PAID) {
-            // Record the payment itself as settled. Renewals previously left the log
-            // in its pre-payment state, so a paid renewal showed as unpaid in payment
-            // history and any invoice would have hung off a non-PAID log.
+            // Razorpay delivers payment.captured AND order.paid for one capture, and prod
+            // runs 4 replicas, so this arrives more than once. Without a claim every
+            // delivery extended the plan by a full cycle: one Rs 1,200 payment bought two
+            // months, one Rs 7,200 payment two years (2026-09-19). The conditional UPDATE
+            // flips the log to PAID exactly once, in its own transaction, so only the
+            // winning delivery runs the ledger / extension / invoice side effects.
+            if (paymentLogService.claimPaidIfNotAlready(orderId) == 0) {
+                log.info("RENEWAL order {} already applied by another event or replica — skipping duplicate", orderId);
+                return;
+            }
             paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
             paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
-            paymentLogRepository.save(paymentLog);
             recordRenewalOnLedger(paymentLog, userPlan, instituteId);
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);
         } else if (paymentStatus == PaymentStatusEnum.FAILED) {
+            // Record the failure on the log itself, mirroring the PAID branch above.
+            // Without this the row keeps the PAYMENT_PENDING it was created with, so a
+            // declined renewal is indistinguishable from one still awaiting its webhook:
+            // it stays "pending" forever, inflates the pending figures in reporting, and
+            // gives nobody a signal that the member's autopay is failing. Every gateway
+            // funnels through here (Razorpay + Stripe webhooks, the eWay poller), so this
+            // was silently true of every failed renewal on every gateway.
+            // Monotonic: never regress a log that already settled. Razorpay can deliver
+            // payment.failed for an earlier attempt on an order whose later attempt was
+            // captured, and with 4 replicas the two are handled concurrently.
+            int marked = paymentLogRepository.updatePaymentStatusIfNotPaid(
+                    paymentLog.getId(), PaymentStatusEnum.FAILED.name(), PaymentStatusEnum.PAID.name());
+            if (marked == 0) {
+                log.info("RENEWAL order {} is already PAID — ignoring a late failure event", orderId);
+                return;
+            }
+            paymentLog.setPaymentStatus(PaymentStatusEnum.FAILED.name());
+            paymentLog.setStatus(PaymentLogStatusEnum.FAILED.name());
+            paymentLogRepository.save(paymentLog);
             handleFailedRenewal(userPlan, instituteId);
         } else {
             log.info("Payment status is PENDING for orderId: {}, waiting for final status", orderId);

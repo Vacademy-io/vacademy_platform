@@ -58,7 +58,7 @@ import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
-  "/try", // Public 3-minute tutor lesson (tutezy.ai)
+  "/try", // Public demo tutor lesson (tutezy.ai)
   "/login",
   "/signup",
   "/register",

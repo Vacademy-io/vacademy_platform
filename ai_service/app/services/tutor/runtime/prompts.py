@@ -88,6 +88,11 @@ T = {
     "revisit_skipped": {"en": "Okay, we'll leave that one for another day.", "hi": "ठीक है, इसे किसी और दिन के लिए छोड़ते हैं।"},
     # Silence recovery (a minute on an open question)
     "nudge_hint": {"en": "Take your time. Here's a hint: {hint}", "hi": "आराम से सोचिए। एक संकेत: {hint}"},
+    # Voice lesson, no microphone audio since the question: explain how to answer first.
+    "nudge_voice_hint": {"en": "To answer out loud, tap the Answer button and then speak — or type it below. Here's a hint: {hint}",
+                         "hi": "बोलकर जवाब देने के लिए Answer button दबाइए और फिर बोलिए — या नीचे type कीजिए। एक संकेत: {hint}"},
+    "nudge_voice_open": {"en": "To answer out loud, tap the Answer button and then speak — or type it below. You can also say 'skip'.",
+                         "hi": "बोलकर जवाब देने के लिए Answer button दबाइए और फिर बोलिए — या नीचे type कीजिए। चाहें तो 'skip' भी कह सकते हैं।"},
     "nudge_open": {"en": "Take your time. If you'd like, say 'skip' and we'll come back to this later.",
                    "hi": "आराम से सोचिए। चाहें तो 'skip' कहिए, हम इस पर बाद में लौटेंगे।"},
     # Predict-then-reveal
@@ -175,7 +180,12 @@ invite them to answer the check. "wait" = the learner said something that is nei
 sentence and re-ask. Ops: highlight/annotate on targets that exist on the board, plus at most ONE callout note when you
 remediate or answer a doubt (a worked example or the one line to remember — it stays on the board). ECHOES: an answer
 that repeats the teacher's own hint or words nearly verbatim is NOT understanding: score it at most 0.6 and, the first
-time, use action "wait" to ask for it in their own words or for the reason why. No markdown."""
+time, use action "wait" to ask for it in their own words or for the reason why. SPOKEN ANSWERS: a voice answer
+is a speech-to-text transcript — ignore fillers ("um", "like", "you know", "ma'am"), false starts, repetition, loose
+grammar and misheard words, and grade the idea the learner expressed. An answer that states the key idea in its own
+informal words is correct: give it full credit even if it is phrased nothing like the expected answer. When it is
+partly right, credit what is right and name the one missing piece. (The exception is a check whose rubric grades
+the wording itself — e.g. removing hedge or filler words — there the words are the answer.) No markdown."""
 
 
 LIVE_PERSONA = {

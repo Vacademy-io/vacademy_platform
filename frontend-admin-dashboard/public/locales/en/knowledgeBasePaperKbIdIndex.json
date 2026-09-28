@@ -21,7 +21,11 @@
         "topicMapRebuilt": "Topic map rebuilt",
         "questionRewritten": "Question rewritten",
         "savedToQuestionBank": "Saved to your question bank",
-        "questionEdited": "Question updated"
+        "questionEdited": "Question updated",
+        "offlineTestPrefilled_one": "Offline test pre-filled: {{count}} section, the paper attached for learners. Pick the dates and who sits it.",
+        "offlineTestPrefilled_other": "Offline test pre-filled: {{count}} sections, the paper attached for learners. Pick the dates and who sits it.",
+        "offlinePaperNotAttached": "Could not publish the paper PDF — attach it to the instructions yourself in Step 1.",
+        "offlineTestNotPrefilled": "Could not pre-fill the test from this paper — pick it under “Choose Saved Paper” in Step 2."
     },
     "resumingMessage": "Reopening your paper…",
     "scope": {
@@ -122,5 +126,6 @@
     "details": {
         "heading": "Configure test details",
         "description": "Name the paper, set its duration and difficulty, and the class and language the questions are written for."
-    }
+    },
+    "syllabusNote": "This is the official syllabus, not a textbook: the paper stays inside the listed units, and questions are set from the standard curriculum rather than cited to a page."
 }

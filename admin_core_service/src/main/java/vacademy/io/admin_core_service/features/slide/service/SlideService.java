@@ -180,6 +180,7 @@ public class SlideService {
         Optional.ofNullable(documentSlideDTO.getTitle()).filter(t -> !t.isEmpty()).ifPresent(documentSlide::setTitle);
         Optional.ofNullable(documentSlideDTO.getCoverFileId()).filter(c -> !c.isEmpty())
                 .ifPresent(documentSlide::setCoverFileId);
+        guardFileBackedDocumentReference(documentSlide.getType(), documentSlideDTO);
         if (status.equalsIgnoreCase(SlideStatus.PUBLISHED.name())) {
             handlePublishedDocumentSlide(documentSlide, documentSlideDTO);
         } else if (status.equalsIgnoreCase(SlideStatus.DRAFT.name())) {
@@ -651,6 +652,27 @@ public class SlideService {
     // server-side backstop that would have prevented the silent slide-wipe incidents.
     private static final int PUBLISHED_SHRINK_GUARD_MIN_CHARS = 2000;
     private static final double PUBLISHED_SHRINK_GUARD_RATIO = 0.25;
+
+    // PDF / PPT_ANIM slides store a file id / deck base URL, never HTML. An editor-based
+    // save path that misses this sends editor HTML instead (the empty-document shell, or
+    // the previous slide's text), and the wipe guards below can't see it: a URL is far
+    // under their size floor and has no blocks to lose. Refuse it outright — and not as a
+    // 409, which the publish dialog would offer to force through.
+    private static final Set<String> FILE_BACKED_DOCUMENT_TYPES = Set.of("PDF", "PPT_ANIM");
+
+    private void guardFileBackedDocumentReference(String type, DocumentSlideDTO documentSlideDTO) {
+        if (type == null || !FILE_BACKED_DOCUMENT_TYPES.contains(type.toUpperCase())) {
+            return;
+        }
+        if (looksLikeHtml(documentSlideDTO.getData()) || looksLikeHtml(documentSlideDTO.getPublishedData())) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "A " + type + " slide must reference a file, not document content.");
+        }
+    }
+
+    private static boolean looksLikeHtml(String value) {
+        return value != null && value.stripLeading().startsWith("<");
+    }
 
     public void handlePublishedDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
         String newPublishedData;

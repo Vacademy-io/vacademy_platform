@@ -10,6 +10,7 @@ import {
     CheckCircle,
     Coins,
     FloppyDisk,
+    Info,
     ListChecks,
     NotePencil,
     PaperPlaneTilt,
@@ -30,6 +31,7 @@ import {
     fetchPaperPdf,
     formatEditedQuestion,
     getGeneration,
+    loadPaperTheme,
     publishPaperLink,
     markGenerationSaved,
     getPaperJob,
@@ -38,6 +40,13 @@ import {
     startGeneration,
     validatePaper,
 } from '../-services/paper-service';
+import { getQuestionPaperById } from '@/routes/assessment/question-papers/-utils/question-paper-services';
+import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    offlineTestInstructionsHtml,
+    sectionsFromKbPaper,
+    seedOfflineTestWizard,
+} from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/kb-paper-sections';
 import { BlueprintTable } from '../-components/paper/BlueprintTable';
 import { EditQuestionDialog } from '../-components/paper/EditQuestionDialog';
 import { DEFAULT_INSTRUCTIONS, InstructionsEditor } from '../-components/paper/InstructionsEditor';
@@ -63,6 +72,20 @@ import type {
     TypePlanEntry,
 } from '../-types/paper';
 
+/**
+ * The date as it should read on the sheet: the field yields YYYY-MM-DD, the
+ * paper prints "25 Sep 2026". Anything unparseable is printed as typed.
+ */
+const printableExamDate = (value: string | undefined): string | undefined => {
+    if (!value) return undefined;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return value;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime())
+        ? value
+        : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export const Route = createLazyFileRoute('/knowledge-base/paper/$kbId')({
     component: PaperBuilderPage,
 });
@@ -76,6 +99,16 @@ type Step = 'syllabus' | 'types' | 'details' | 'review' | 'generating' | 'editor
 const WIZARD: Step[] = ['syllabus', 'types', 'details', 'review'];
 
 const POLL_MS = 3000;
+
+/** Last path segment, decoded when it can be; never throws on odd escapes. */
+function fileNameFromUrl(url: string): string {
+    const last = url.split('?')[0]?.split('/').pop() || 'question-paper.pdf';
+    try {
+        return decodeURIComponent(last);
+    } catch {
+        return last;
+    }
+}
 
 function errorMessage(t: TFunction, error: unknown, fallback: string): string {
     const response = (error as { response?: { status?: number; data?: { detail?: unknown } } })
@@ -428,9 +461,13 @@ function PaperBuilderPage() {
             }
             toast.success(t('toasts.savedToQuestionBank'));
             if (next === 'offline-test') {
+                await handOffToOfflineTest(saved?.saved_question_paper_id);
                 navigate({
                     to: '/assessment/create-assessment/$assessmentId/$examtype',
-                    params: { assessmentId: 'defaultId', examtype: 'MANUAL_UPLOAD_EXAM' },
+                    // EXAM, not MANUAL_UPLOAD_EXAM: the same shape the slide's offline test
+                    // has (MANUAL evaluation, PDF submission, AI check, paper in the
+                    // instructions) — one learner flow and one admin flow for both.
+                    params: { assessmentId: 'defaultId', examtype: 'EXAM' },
                     search: { currentStep: 0 },
                 });
             } else {
@@ -440,6 +477,46 @@ function PaperBuilderPage() {
             toast.error(errorMessage(t, error, t('errors.saveFailed')));
         } finally {
             setSaving(false);
+        }
+    };
+
+    /**
+     * Pre-fill the offline-test wizard so the teacher does not rebuild by hand what
+     * was just generated: the saved questions become Step 2's sections (marks from
+     * the plan), and the paper is published and attached to the instructions so
+     * learners can open and download it from the test page. The wizard still opens
+     * without the pre-fill if any of that fails — the paper is in the bank either way.
+     */
+    const handOffToOfflineTest = async (savedPaperId: string | undefined) => {
+        if (!result || !blueprint || !savedPaperId) return;
+        try {
+            const stored = await getQuestionPaperById(savedPaperId);
+            const questions = transformResponseDataToMyQuestionsSchema(stored.question_dtolist);
+            const sections = sectionsFromKbPaper(blueprint, result.raw_questions, questions);
+            let paperFile: { url: string; fileName: string } | null = null;
+            try {
+                const link = await publishPaperLink(
+                    kbId,
+                    { blueprint, questions: result.raw_questions },
+                    {
+                        theme: loadPaperTheme(),
+                        gradeLine: spec.grade || undefined,
+                        examDate: printableExamDate(spec.exam_date),
+                    },
+                    generationId ?? undefined
+                );
+                paperFile = { url: link.file_url, fileName: fileNameFromUrl(link.file_url) };
+            } catch {
+                toast.warning(t('toasts.offlinePaperNotAttached'));
+            }
+            seedOfflineTestWizard({
+                blueprint,
+                sections,
+                instructionsHtml: offlineTestInstructionsHtml(blueprint, paperFile),
+            });
+            toast.success(t('toasts.offlineTestPrefilled', { count: sections.length }));
+        } catch {
+            toast.warning(t('toasts.offlineTestNotPrefilled'));
         }
     };
 
@@ -493,6 +570,16 @@ function PaperBuilderPage() {
                         {kb?.name ?? t('fallbackKnowledgeBase')}
                     </MyButton>
                 </div>
+
+                {/* A syllabus fixes what is examinable; the model supplies the
+                    content. Say so up front, because there will be no page
+                    citations to a textbook in what comes out. */}
+                {kb?.curriculum?.kind === 'SYLLABUS' && (
+                    <p className="flex items-start gap-1.5 text-caption text-neutral-500">
+                        <Info className="mt-0.5 size-3.5 shrink-0 text-primary-500" />
+                        {t('syllabusNote')}
+                    </p>
+                )}
 
                 {/* Reopening a saved run: hold the step UI until its plan lands,
                     otherwise the syllabus step flashes before being replaced. */}
@@ -915,14 +1002,22 @@ function PaperBuilderPage() {
                                         fetchPaperPdf(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            { ...options, gradeLine: spec.grade || undefined }
+                                            {
+                                                ...options,
+                                                gradeLine: spec.grade || undefined,
+                                                examDate: printableExamDate(spec.exam_date),
+                                            }
                                         )
                                     }
                                     onPublish={(options) =>
                                         publishPaperLink(
                                             kbId,
                                             { blueprint, questions: result.raw_questions },
-                                            { ...options, gradeLine: spec.grade || undefined },
+                                            {
+                                                ...options,
+                                                gradeLine: spec.grade || undefined,
+                                                examDate: printableExamDate(spec.exam_date),
+                                            },
                                             generationId ?? undefined
                                         )
                                     }

@@ -23,6 +23,23 @@ import {
     mergeSectionQuestions,
 } from '@/routes/assessment/question-papers/-utils/merge-section-questions';
 import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
+import {
+    DEFAULT_MARK,
+    durationFields,
+    isBlankDuration,
+    isEmptySection,
+    pairWithPreview,
+    sectionRowFor,
+    sectionsFromExtractedPaper,
+    wantsSections,
+} from '../-utils/extracted-paper-sections';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { QuestionType } from '@/constants/dummy-data';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import {
@@ -59,6 +76,13 @@ interface AIQuestionsPreviewProps {
     setOpenQuestionsPreview: Dispatch<SetStateAction<boolean>>;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    /**
+     * The target form can hold several sections (the assessment / homework
+     * wizards): a digitised paper with sections may then become one section
+     * each. Off for a single-section target such as a quiz, which only reads
+     * `section.0` and would lose the rest.
+     */
+    allowSectionSplit?: boolean;
     /** Hide the internal "View questions" trigger button (when the dialog is opened externally). */
     hideTrigger?: boolean;
 }
@@ -69,6 +93,7 @@ const AIQuestionsPreview = ({
     setOpenQuestionsPreview,
     sectionsForm,
     currentSectionIndex,
+    allowSectionSplit = false,
     hideTrigger = false,
 }: AIQuestionsPreviewProps) => {
     const { t } = useTranslation('aiCenterAIQuestionsPreview');
@@ -96,6 +121,10 @@ const AIQuestionsPreview = ({
         questions: [],
     });
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    // How a digitised paper with sections goes into Step 2 — one section per
+    // paper section or all in the current one. Starts as what the teacher
+    // answered at upload; they can change it here before saving.
+    const [sectionChoice, setSectionChoice] = useState<'split' | 'single' | null>(null);
     const form = useForm<z.infer<typeof generateCompleteAssessmentFormSchema>>({
         resolver: zodResolver(generateCompleteAssessmentFormSchema),
         mode: 'onChange',
@@ -174,6 +203,8 @@ const AIQuestionsPreview = ({
             }
             setNoResponse(false);
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -226,6 +257,8 @@ const AIQuestionsPreview = ({
                 return;
             }
             setAssessmentData(response);
+            setSectionChoice(response?.extraction?.section_mode ?? null);
+            setSavedPaperId(null);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
                 response.questions,
                 tHelper
@@ -259,6 +292,18 @@ const AIQuestionsPreview = ({
         });
     };
 
+    const closeAllAIQuestionDialogs = () => {
+        setIsAIQuestionDialog1(false);
+        setIsAIQuestionDialog2(false);
+        setIsAIQuestionDialog3(false);
+        setIsAIQuestionDialog4(false);
+        setIsAIQuestionDialog5(false);
+        setIsAIQuestionDialog6(false);
+        setIsAIQuestionDialog7(false);
+        setIsAIQuestionDialog8(false);
+        setIsAIQuestionDialog9(false);
+    };
+
     const handleSubmitFormData = useMutation({
         mutationFn: ({ data }: { data: MyQuestionPaperFormInterface }) =>
             addQuestionPaper(data, true),
@@ -270,27 +315,83 @@ const AIQuestionsPreview = ({
             if (currentSectionIndex !== undefined) {
                 // Check if index is defined
 
-                const incoming = transformQuestionsData.map((question) => ({
+                // The preview's own rows carry what a digitised paper printed —
+                // the section each question sits under and its marks — which the
+                // question bank does not keep; paired with the stored copy by
+                // position (they come back in the order they were sent).
+                const previewQuestions = (form.getValues('questions') ?? []) as MyQuestion[];
+                const paired = pairWithPreview(transformQuestionsData, previewQuestions);
+                const summary = assessmentData.extraction ?? null;
+
+                // The time the paper allows becomes the test's duration when
+                // the teacher has not set one — the paper is usable as it lands.
+                const applyPaperDuration = () => {
+                    const minutes = summary?.duration_minutes;
+                    if (!sectionsForm || !minutes) return;
+                    const current = sectionsForm.getValues(
+                        'testDuration.entireTestDuration.testDuration'
+                    );
+                    if (!isBlankDuration(current)) return;
+                    const { hrs, min } = durationFields(minutes);
+                    sectionsForm.setValue('testDuration.entireTestDuration.testDuration.hrs', hrs);
+                    sectionsForm.setValue('testDuration.entireTestDuration.testDuration.min', min);
+                };
+
+                if (
+                    allowSectionSplit &&
+                    sectionsForm &&
+                    summary &&
+                    wantsSections(summary, sectionChoice)
+                ) {
+                    // One Step 2 section per paper section, marks as printed.
+                    // The empty section the wizard opens with is replaced; a
+                    // section the teacher already filled keeps its place and the
+                    // paper's sections follow it.
+                    const current = sectionsForm.getValues('section') ?? [];
+                    const target = current[currentSectionIndex];
+                    const replace = target ? isEmptySection(target) : false;
+                    const newSections = sectionsFromExtractedPaper(
+                        summary,
+                        previewQuestions,
+                        transformQuestionsData,
+                        current.length - (replace ? 1 : 0)
+                    );
+                    if (replace && target?.section_description && newSections[0]) {
+                        newSections[0].section_description ||= target.section_description;
+                    }
+                    if (newSections.length >= 2) {
+                        const next = [...current];
+                        next.splice(
+                            replace ? currentSectionIndex : currentSectionIndex + 1,
+                            replace ? 1 : 0,
+                            ...newSections
+                        );
+                        sectionsForm.setValue('section', next);
+                        sectionsForm.trigger('section');
+                        applyPaperDuration();
+                        toast.success(
+                            t('toast.sectionsAdded', {
+                                sections: newSections.length,
+                                questions: transformQuestionsData.length,
+                            })
+                        );
+                        closeAllAIQuestionDialogs();
+                        setOpenQuestionsPreview(false);
+                        queryClient.invalidateQueries({
+                            queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'],
+                        });
+                        return;
+                    }
+                }
+
+                const incoming = transformQuestionsData.map((question, i) =>
                     // Spread full question data (options, validAnswers, etc.) so that
                     // quiz context can read them via getValues. The Zod schema strips
                     // unknown fields on validation, so the assessment flow is unaffected.
-                    ...question,
-                    questionId: question.questionId,
-                    questionName: question.questionName,
-                    questionType: question.questionType,
-                    questionMark: question.questionMark,
-                    questionPenalty: question.questionPenalty,
-                    ...(question.questionType === 'MCQM' && {
-                        correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                            (item) => item.isSelected
-                        ).length,
-                    }),
-                    questionDuration: {
-                        hrs: question.questionDuration.hrs,
-                        min: question.questionDuration.min,
-                    },
-                    parentRichText: question.parentRichTextContent,
-                }));
+                    // A digitised paper's questions are worth a mark each when the
+                    // paper prints none; generated questions keep the section default.
+                    sectionRowFor(question, paired[i], summary ? DEFAULT_MARK : '')
+                );
 
                 // Append rather than replace: running an AI tool on a section that
                 // already had questions used to wipe them without warning.
@@ -314,16 +415,9 @@ const AIQuestionsPreview = ({
                 sectionsForm?.trigger(
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`
                 );
+                applyPaperDuration();
                 toast.success(describeMerge(mergeResult));
-                setIsAIQuestionDialog1(false);
-                setIsAIQuestionDialog2(false);
-                setIsAIQuestionDialog3(false);
-                setIsAIQuestionDialog4(false);
-                setIsAIQuestionDialog5(false);
-                setIsAIQuestionDialog6(false);
-                setIsAIQuestionDialog7(false);
-                setIsAIQuestionDialog8(false);
-                setIsAIQuestionDialog9(false);
+                closeAllAIQuestionDialogs();
                 setOpenQuestionsPreview(false);
             }
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
@@ -342,6 +436,37 @@ const AIQuestionsPreview = ({
             return;
         }
         handleSubmitFormData.mutate({
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            data: form.getValues(),
+        });
+    };
+
+    // "Add to question bank": the paper as shown, saved to the bank in one
+    // click and nothing else — no section, no navigation. Done once per
+    // preview; the button then says so instead of saving a second copy.
+    const [savedPaperId, setSavedPaperId] = useState<string | null>(null);
+    const saveToQuestionBank = useMutation({
+        mutationFn: ({ data }: { data: MyQuestionPaperFormInterface }) =>
+            addQuestionPaper(data, true),
+        onSuccess: (data) => {
+            setSavedPaperId(data?.saved_question_paper_id ?? '');
+            queryClient.invalidateQueries({ queryKey: ['GET_QUESTION_PAPER_FILTERED_DATA'] });
+            toast.success(t('toast.savedToQuestionBank'));
+        },
+        onError: (error: unknown) => {
+            toast.error(error instanceof Error ? error.message : String(error));
+        },
+    });
+    const handleAddToQuestionBank = () => {
+        if (Object.values(form.formState.errors).length > 0) {
+            toast.error(t('toast.incompleteQuestions'), {
+                className: 'error-toast',
+                duration: 3000,
+            });
+            return;
+        }
+        saveToQuestionBank.mutate({
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-expect-error
             data: form.getValues(),
@@ -434,6 +559,87 @@ const AIQuestionsPreview = ({
                                                 <span className="text-sm font-bold leading-tight text-foreground/90">
                                                     {form.getValues('title')}
                                                 </span>
+                                                {/* A digitised paper says what it found, so the
+                                                    teacher knows whether the key needs a look. */}
+                                                {assessmentData.extraction && (
+                                                    <span className="text-caption text-muted-foreground">
+                                                        {t('header.extractionSummary', {
+                                                            questions:
+                                                                assessmentData.extraction.questions,
+                                                            keyed: assessmentData.extraction.keyed,
+                                                            explained:
+                                                                assessmentData.extraction.explained,
+                                                        })}
+                                                        {assessmentData.extraction.unkeyed > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionUnkeyed', {
+                                                                    count: assessmentData.extraction
+                                                                        .unkeyed,
+                                                                })}
+                                                        {(assessmentData.extraction.check?.length ??
+                                                            0) > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionCheck', {
+                                                                    numbers:
+                                                                        assessmentData.extraction.check!.join(
+                                                                            ', '
+                                                                        ),
+                                                                })}
+                                                        {(assessmentData.extraction.sections
+                                                            ?.length ?? 0) >= 2 &&
+                                                            ' · ' +
+                                                                t(
+                                                                    !allowSectionSplit ||
+                                                                        (sectionChoice ??
+                                                                            assessmentData
+                                                                                .extraction
+                                                                                .section_mode) ===
+                                                                            'single'
+                                                                        ? 'header.extractionSectionsSingle'
+                                                                        : 'header.extractionSectionsSplit',
+                                                                    {
+                                                                        count: assessmentData
+                                                                            .extraction.sections!
+                                                                            .length,
+                                                                        names: assessmentData.extraction
+                                                                            .sections!.map(
+                                                                                (s) => s.name
+                                                                            )
+                                                                            .join(', '),
+                                                                    }
+                                                                )}
+                                                        {assessmentData.extraction.marking?.marks !=
+                                                            null &&
+                                                            ' · ' +
+                                                                t('header.extractionMarking', {
+                                                                    marks: assessmentData.extraction
+                                                                        .marking.marks,
+                                                                    negative:
+                                                                        assessmentData.extraction
+                                                                            .marking
+                                                                            .negative_marks ?? 0,
+                                                                })}
+                                                        {(assessmentData.extraction
+                                                            .duration_minutes ?? 0) > 0 &&
+                                                            ' · ' +
+                                                                t('header.extractionDuration', {
+                                                                    hrs: Math.floor(
+                                                                        assessmentData.extraction
+                                                                            .duration_minutes! / 60
+                                                                    ),
+                                                                    min:
+                                                                        assessmentData.extraction
+                                                                            .duration_minutes! % 60,
+                                                                })}
+                                                        {assessmentData.extraction.credits !=
+                                                            null &&
+                                                            ' · ' +
+                                                                t('header.extractionCredits', {
+                                                                    count: assessmentData.extraction
+                                                                        .credits,
+                                                                })}
+                                                    </span>
+                                                )}
                                                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                                                     {form
                                                         .getValues('tags')
@@ -487,6 +693,37 @@ const AIQuestionsPreview = ({
                                     </div>
                                     <div className="flex items-center gap-3">
                                         {currentSectionIndex !== undefined &&
+                                            allowSectionSplit &&
+                                            (assessmentData.extraction?.sections?.length ?? 0) >=
+                                                2 && (
+                                                <Select
+                                                    value={sectionChoice ?? 'split'}
+                                                    onValueChange={(value) =>
+                                                        setSectionChoice(
+                                                            value as 'split' | 'single'
+                                                        )
+                                                    }
+                                                >
+                                                    <SelectTrigger
+                                                        className="h-8 w-auto gap-2 text-xs"
+                                                        aria-label={t('header.sectionChoiceLabel')}
+                                                    >
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="split">
+                                                            {t('header.sectionChoiceSplit', {
+                                                                count: assessmentData.extraction!
+                                                                    .sections!.length,
+                                                            })}
+                                                        </SelectItem>
+                                                        <SelectItem value="single">
+                                                            {t('header.sectionChoiceSingle')}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        {currentSectionIndex !== undefined &&
                                             (handleSubmitFormData.status === 'pending' ? (
                                                 <MyButton type="button" disable scale="small">
                                                     <div className="mr-2 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
@@ -501,6 +738,31 @@ const AIQuestionsPreview = ({
                                                     {t('header.saveChanges')}
                                                 </MyButton>
                                             ))}
+                                        {(assessmentData.questions?.length ?? 0) > 0 && (
+                                            <MyButton
+                                                type="button"
+                                                scale="small"
+                                                buttonType="secondary"
+                                                disable={
+                                                    saveToQuestionBank.status === 'pending' ||
+                                                    savedPaperId !== null
+                                                }
+                                                onClick={handleAddToQuestionBank}
+                                            >
+                                                {saveToQuestionBank.status === 'pending' ? (
+                                                    <>
+                                                        <div className="mr-2 size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+                                                        <span>
+                                                            {t('header.addingToQuestionBank')}
+                                                        </span>
+                                                    </>
+                                                ) : savedPaperId !== null ? (
+                                                    t('header.addedToQuestionBank')
+                                                ) : (
+                                                    t('header.addToQuestionBank')
+                                                )}
+                                            </MyButton>
+                                        )}
                                         <ExportQuestionPaperAI
                                             responseQuestionsData={assessmentData?.questions}
                                         />

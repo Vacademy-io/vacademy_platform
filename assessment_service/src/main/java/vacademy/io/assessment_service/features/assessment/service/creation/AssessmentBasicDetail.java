@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.service.creation;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.proctoring.service.ProctoringConfigService;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentInstituteMapping;
 import vacademy.io.assessment_service.features.assessment.enums.StepStatus;
@@ -16,6 +18,9 @@ import java.util.*;
 
 @Component
 public class AssessmentBasicDetail extends IStep {
+
+    @Autowired
+    private ProctoringConfigService proctoringConfigService;
 
     @Override
     public void checkStatusAndFetchData(Optional<Assessment> assessment) {
@@ -47,6 +52,9 @@ public class AssessmentBasicDetail extends IStep {
         // silently resetting to the default every time the wizard is reopened.
         savedData.put(AssessmentCreationEnum.AI_EVALUATION_ENABLED.name().toLowerCase(), assessment.get().getAiEvaluationEnabled());
         savedData.put(AssessmentCreationEnum.AI_EVALUATION_MODEL.name().toLowerCase(), assessment.get().getAiEvaluationModel());
+        // Effective config (defaults filled, NONE when unset) so the wizard's picker
+        // and the learner runtime read the same thing.
+        savedData.put(AssessmentCreationEnum.PROCTORING_CONFIG.name().toLowerCase(), proctoringConfigService.effectiveConfig(assessment.get()));
         setSavedData(savedData);
         updateStatusForStep();
     }
@@ -153,6 +161,13 @@ public class AssessmentBasicDetail extends IStep {
 
     private List<Map<String, String>> getStepsForSurvey() {
         return List.of(
+                // A survey may be given a live window, but does not need one — declared
+                // OPTIONAL so Step 1 renders both inputs without an asterisk and without
+                // blocking "Next". Omitting them entirely (as this did) hid the inputs
+                // while the admin form still demanded their values, which left "Next"
+                // permanently disabled on every new survey.
+                Map.of(AssessmentCreationEnum.BOUNDATION_START_DATE.name().toLowerCase(), "OPTIONAL"),
+                Map.of(AssessmentCreationEnum.BOUNDATION_END_DATE.name().toLowerCase(), "OPTIONAL"),
                 Map.of(AssessmentCreationEnum.SUBJECT_SELECTION.name().toLowerCase(), "OPTIONAL"),
                 Map.of(AssessmentCreationEnum.ASSESSMENT_VISIBILITY.name().toLowerCase(), "REQUIRED"),
                 Map.of(AssessmentCreationEnum.EXPECTED_PARTICIPANTS.name().toLowerCase(), "REQUIRED"),

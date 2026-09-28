@@ -41,6 +41,7 @@ import { useToast } from '@/hooks/use-toast';
 import { HTML_PAGE_AI_PROMPT } from '../-utils/html-page-prompt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
+import { listBlogPosts } from '../-services/blog-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
 import {
@@ -56,6 +57,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CoursePagesEditor } from './CoursePagesEditor';
+import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
@@ -1953,6 +1955,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <TeamSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'announcementFeed':
             return <AnnouncementFeedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'blog':
+            return <BlogEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'imageGallery':
             return <ImageGalleryEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
@@ -4354,6 +4358,129 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 // Announcement Feed Editor
+/**
+ * Blog section. Only the LOOK of the list is authored here — the posts
+ * themselves are rows, not page JSON, written in the blog manager dialog
+ * (Manage posts below), so publishing an article never means republishing
+ * the site. The category picker reads the categories in use so the admin
+ * never types one that matches nothing.
+ */
+const BlogEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { props } = component;
+    const instituteId = getCurrentInstituteId();
+    const openBlog = useBlogManagerStore((s) => s.open);
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const { data: postsPage } = useQuery({
+        queryKey: ['catalogue-blog-posts', instituteId, 'editor-picker'],
+        queryFn: () => listBlogPosts(instituteId!, { status: 'ALL', size: 1 }),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+    const categories = postsPage?.categories ?? [];
+    const publishedHint = postsPage ? t('blog.postCount', { count: postsPage.total_elements }) : '';
+    const toggles: Array<[string, string]> = [
+        ['showCoverImage', t('blog.showCoverImage')],
+        ['showExcerpt', t('blog.showExcerpt')],
+        ['showDate', t('blog.showDate')],
+        ['showAuthor', t('blog.showAuthor')],
+        ['showCategory', t('blog.showCategory')],
+        ['showReadingTime', t('blog.showReadingTime')],
+        ['showCategoryFilter', t('blog.showCategoryFilter')],
+    ];
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">{t('blog.heading')}</h4>
+            <div className="space-y-2 rounded border bg-gray-50 p-3">
+                <p className="text-xs text-gray-600">{t('blog.managePostsHint')}</p>
+                {publishedHint && <p className="text-xs text-gray-500">{publishedHint}</p>}
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => openBlog()}
+                >
+                    {t('blog.managePosts')}
+                </Button>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('ctaBanner.headingField')}</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('faq.subheading')}</Label>
+                <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                    <Label>{t('blog.layout')}</Label>
+                    <select className="w-full rounded border px-3 py-2 text-sm" value={props.layout || 'grid'} onChange={(e) => updateProp('layout', e.target.value)}>
+                        <option value="grid">{t('blog.layoutGrid')}</option>
+                        <option value="list">{t('blog.layoutList')}</option>
+                    </select>
+                </div>
+                {(props.layout || 'grid') === 'grid' && (
+                    <div className="space-y-2">
+                        <Label>{t('blog.columns')}</Label>
+                        <select className="w-full rounded border px-3 py-2 text-sm" value={String(props.columns || 3)} onChange={(e) => updateProp('columns', Number(e.target.value))}>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                )}
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.pageSize')}</Label>
+                <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={props.pageSize ?? 9}
+                    onChange={(e) => updateProp('pageSize', Math.max(1, Math.min(50, Number(e.target.value) || 9)))}
+                />
+                <p className="text-xs text-gray-500">{t('blog.pageSizeHelp')}</p>
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.category')}</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.category || ''} onChange={(e) => updateProp('category', e.target.value)}>
+                    <option value="">{t('blog.allCategories')}</option>
+                    {categories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                    ))}
+                    {props.category && !categories.includes(props.category) && (
+                        <option value={props.category}>{props.category}</option>
+                    )}
+                </select>
+                <p className="text-xs text-gray-500">{t('blog.categoryHelp')}</p>
+            </div>
+            <div className="space-y-3 rounded border bg-gray-50 p-3">
+                {toggles.map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                        <Label className="text-xs">{label}</Label>
+                        <Switch checked={props[key] !== false} onCheckedChange={(c) => updateProp(key, c)} />
+                    </div>
+                ))}
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.readMoreLabel')}</Label>
+                <Input value={props.readMoreLabel || ''} onChange={(e) => updateProp('readMoreLabel', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.backLabel')}</Label>
+                <Input value={props.backLabel || ''} onChange={(e) => updateProp('backLabel', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>{t('blog.emptyMessage')}</Label>
+                <Input value={props.emptyMessage || ''} onChange={(e) => updateProp('emptyMessage', e.target.value)} />
+            </div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
+        </div>
+    );
+};
+
 const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;

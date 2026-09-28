@@ -48,6 +48,7 @@ import {
 } from '@/services/payment-logs';
 import { GatewayBadge } from './GatewayBadge';
 import { PaymentKpiCards } from './PaymentKpiCards';
+import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
 import { DateRangeDropdown } from './DateRangeDropdown';
 
 // ─── Formatting ────────────────────────────────────────────────────────────────
@@ -224,6 +225,9 @@ export function PaymentDashboard() {
             return fetchBillingSummary({ start_date_in_utc: w.start, end_date_in_utc: w.end });
         },
         staleTime: 60_000,
+        // Balances change on other screens — a learner removed from a course, a payment deleted —
+        // so a return to this page re-asks rather than showing the copy cached before the change.
+        refetchOnMount: 'always',
         retry: false,
     });
     // Same as Manage Payments: no client-side fallback for the balance cards — pricing the rows
@@ -237,9 +241,17 @@ export function PaymentDashboard() {
               learnersOwing: billingSummary.learners_owing,
               learnersUpcoming: billingSummary.learners_upcoming,
               activatedWithoutPaymentCount: billingSummary.activated_without_payment_count,
+              outstanding: billingSummary.outstanding,
+              learnersOutstanding: billingSummary.learners_outstanding,
+              upcomingAll: billingSummary.upcoming_all ?? undefined,
+              learnersUpcomingAll: billingSummary.learners_upcoming_all,
+              nextDueDate: billingSummary.next_due_date,
+              usesInstallments: billingSummary.uses_installments,
               currency: billingSummary.currency || '',
           }
         : null;
+    // Same card choices as Manage Payments (shared per-institute storage).
+    const cardPrefs = useKpiCardPrefs(billing);
 
     /**
      * Who the Due figure is made of. Without this the dashboard could report lakhs outstanding and
@@ -256,6 +268,8 @@ export function PaymentDashboard() {
             );
         },
         staleTime: 60_000,
+        // Refetched with the cards above it, so the list and the cards never describe two moments.
+        refetchOnMount: 'always',
         retry: false,
     });
     const debtors: OutstandingLearner[] = outstanding?.content ?? [];
@@ -296,19 +310,32 @@ export function PaymentDashboard() {
                         Collections and outstanding dues · {rangeLabel}
                     </p>
                 </div>
-                <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    className="gap-2"
-                    onClick={handleExport}
-                >
-                    <DownloadSimple size={16} />
-                    Export
-                </MyButton>
+                <div className="flex items-center gap-2">
+                    <KpiCardSettings
+                        visible={cardPrefs.visible}
+                        onToggle={cardPrefs.toggle}
+                        onReset={cardPrefs.reset}
+                        isCustomised={cardPrefs.isCustomised}
+                    />
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        className="gap-2"
+                        onClick={handleExport}
+                    >
+                        <DownloadSimple size={16} />
+                        Export
+                    </MyButton>
+                </div>
             </div>
 
             {/* KPI row — the same five tiles as Manage Payments, from the same component */}
-            <PaymentKpiCards summary={summary} billing={billing} isLoading={isLoading} />
+            <PaymentKpiCards
+                summary={summary}
+                billing={billing}
+                isLoading={isLoading}
+                visibleKeys={cardPrefs.visible}
+            />
 
             {isError ? (
                 <Card className="p-10 text-center">

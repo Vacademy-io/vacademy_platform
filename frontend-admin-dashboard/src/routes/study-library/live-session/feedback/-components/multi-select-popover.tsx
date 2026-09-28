@@ -17,6 +17,17 @@ interface MultiSelectPopoverProps {
     onChange: (next: string[]) => void;
     searchable?: boolean;
     emptyText?: string;
+    /** Trigger text when nothing is selected; defaults to "All {label}". */
+    allText?: string;
+    /**
+     * How the trigger summarises a multi-selection: a count ("3 selected") or the
+     * selected labels joined ("2, 3") — the latter suits short, fixed option
+     * sets like rating thresholds.
+     */
+    summary?: 'count' | 'labels';
+    /** Overrides the option list's max height (default `max-h-60`) — e.g. a
+     *  short fixed list that should never need to scroll. */
+    listClassName?: string;
 }
 
 /**
@@ -30,6 +41,9 @@ export function MultiSelectPopover({
     onChange,
     searchable = true,
     emptyText,
+    allText,
+    summary = 'count',
+    listClassName,
 }: MultiSelectPopoverProps) {
     const { t } = useTranslation('studyLibraryMultiSelectPopover');
     const resolvedEmptyText = emptyText ?? t('noOptions');
@@ -49,12 +63,18 @@ export function MultiSelectPopover({
         );
     };
 
+    const labelFor = (value: string) => options.find((o) => o.value === value)?.label;
     const triggerText =
         selected.length === 0
-            ? t('allLabel', { label: label.toLowerCase() })
+            ? allText ?? t('allLabel', { label: label.toLowerCase() })
             : selected.length === 1
-              ? options.find((o) => o.value === selected[0])?.label || t('selectedCount', { count: 1 })
-              : t('selectedCount', { count: selected.length });
+              ? labelFor(selected[0]!) || t('selectedCount', { count: 1 })
+              : summary === 'labels'
+                ? selected
+                      .map(labelFor)
+                      .filter(Boolean)
+                      .join(', ')
+                : t('selectedCount', { count: selected.length });
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -101,7 +121,7 @@ export function MultiSelectPopover({
                         </button>
                     )}
                 </div>
-                <div className="max-h-60 overflow-y-auto py-1">
+                <div className={cn('max-h-60 overflow-y-auto py-1', listClassName)}>
                     {filtered.length === 0 ? (
                         <div className="px-3 py-6 text-center text-xs text-neutral-400">
                             {resolvedEmptyText}

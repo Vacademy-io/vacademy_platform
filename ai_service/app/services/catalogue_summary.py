@@ -21,7 +21,7 @@ change one, change the other.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
 # ── labels (port of component-labels.ts) ────────────────────────────────
@@ -149,6 +149,10 @@ def heading_of(comp: Dict[str, Any]) -> str:
 
 
 # ── capture surfaces & data bindings ─────────────────────────────────────
+_HTML_LEAD_HOOK_RE = re.compile(
+    r"<(?:a|button)\b(?=[^>]*data-vacademy=[\"']lead-form[\"'])[^>]*>(?P<body>.*?)</(?:a|button)\s*>", re.I | re.S)
+_HTML_AUDIENCE_RE = re.compile(r"data-audience=[\"']([^\"']*)[\"']", re.I)
+_HTML_HEADING_RE = re.compile(r"<h[12]\b[^>]*>(.*?)</h[12]\s*>", re.I | re.S)
 def _campaign_text(audience_id: Any, audience_name: Any, campaign_names: Optional[Dict[str, str]] = None) -> str:
     aid = str(audience_id or "").strip()
     if not aid:
@@ -170,6 +174,18 @@ def capture_surfaces(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
     p = comp.get("props") or {}
     ctype = comp.get("type")
     out: List[Dict[str, Any]] = []
+
+    if ctype == "htmlPage":
+        # <a data-vacademy="lead-form" data-audience="…"> hooks inside the HTML.
+        for i, m in enumerate(_HTML_LEAD_HOOK_RE.finditer(str(p.get("html") or ""))):
+            tag = m.group(0)
+            aud = _HTML_AUDIENCE_RE.search(tag)
+            label = strip_html(m.group("body"), 40) or "Enquiry button"
+            out.append({
+                "kind": "html_hook", "path": f"html.lead-form[{i}]", "label": label,
+                "audience_id": (aud.group(1) if aud else "").strip(), "audience_name": "", "required": True,
+            })
+        return out
 
     if ctype in CAPTURE_TYPES:
         out.append({
@@ -253,6 +269,12 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
         return "books for sale (live)"
     if t == "announcementFeed":
         return "latest announcements (live)"
+    if t == "htmlPage":
+        hooks = capture_surfaces(comp)
+        if not hooks:
+            return "static HTML page (no enquiry buttons)"
+        return "static HTML page; " + "; ".join(
+            f'"{h["label"]}" opens a form → {_campaign_text(h["audience_id"], "", campaign_names)}' for h in hooks[:4])
     if t in CAPTURE_TYPES:
         surfaces = capture_surfaces(comp)
         s = surfaces[0] if surfaces else {}
@@ -272,13 +294,85 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
 
 
 # ── page & site summaries ────────────────────────────────────────────────
+_IMAGE_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail"}
+_LIST_KEYS = ("features", "stats", "testimonials", "faqs", "items", "steps", "members", "logos", "images", "blocks",
+              "cards", "plans", "links", "navigation", "tabs")
+
+
+def _count_images(node: Any, depth: int = 0) -> int:
+    if depth > 6:
+        return 0
+    if isinstance(node, dict):
+        n = 0
+        for k, v in node.items():
+            if isinstance(v, str) and k.lower() in _IMAGE_KEYS and v.startswith("http"):
+                n += 1
+            else:
+                n += _count_images(v, depth + 1)
+        return n
+    if isinstance(node, list):
+        return sum(_count_images(v, depth + 1) for v in node)
+    return 0
+
+
+def visual_summary(comp: Dict[str, Any]) -> str:
+    """
+    One line saying what a section LOOKS like — what an admin describes when
+    they point at a screenshot: "orange band, full width, 3 cards, 1 image".
+    """
+    p = comp.get("props") or {}
+    style = comp.get("style") if isinstance(comp.get("style"), dict) else {}
+    bits: List[str] = []
+    bg = style.get("backgroundColor") or p.get("backgroundColor")
+    layers = style.get("backgroundLayers")
+    if isinstance(layers, list) and layers:
+        bits.append("gradient band")
+    elif isinstance(bg, str) and bg.strip():
+        bits.append(f"band {bg.strip().upper()}")
+    else:
+        bits.append("plain background")
+    layout = p.get("layout") if isinstance(p.get("layout"), str) else None
+    if layout:
+        bits.append(f"layout {layout}")
+    width = (style.get("layout") or {}).get("width") if isinstance(style.get("layout"), dict) else None
+    if width:
+        bits.append(f"{width} width")
+    if p.get("columns"):
+        bits.append(f"{p['columns']} columns")
+    for key in _LIST_KEYS:
+        v = p.get(key)
+        if isinstance(v, list) and v:
+            bits.append(f"{len(v)} {key}")
+            break
+    imgs = _count_images(p)
+    if imgs:
+        bits.append(f"{imgs} image{'s' if imgs > 1 else ''}")
+    buttons = []
+    left = p.get("left") if isinstance(p.get("left"), dict) else {}
+    for b in (list(left.get("buttons") or []) + ([left["button"]] if isinstance(left.get("button"), dict) else [])
+              + ([p["button"]] if isinstance(p.get("button"), dict) else [])):
+        if isinstance(b, dict) and (b.get("text") or b.get("label")):
+            buttons.append(str(b.get("text") or b.get("label")))
+    if buttons:
+        bits.append("buttons: " + " / ".join(f'"{b}"' for b in buttons[:3]))
+    if style.get("ornaments"):
+        bits.append("ornaments")
+    if style.get("dividers"):
+        bits.append("shaped edges")
+    if style.get("minHeight"):
+        bits.append(f"min height {style['minHeight']}")
+    return ", ".join(bits)
+
+
 def summarize_component(comp: Dict[str, Any], include_copy: bool = False, copy_cap: int = 400,
-                        campaign_names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                        campaign_names: Optional[Dict[str, str]] = None, position: Optional[int] = None) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "id": comp.get("id"),
         "type": comp.get("type"),
         "label": component_label(comp.get("type")),
     }
+    if position is not None:
+        out["position"] = position
     if comp.get("enabled") is False:
         out["enabled"] = False
     heading = heading_of(comp)
@@ -287,8 +381,19 @@ def summarize_component(comp: Dict[str, Any], include_copy: bool = False, copy_c
     binding = data_binding(comp, campaign_names)
     if binding:
         out["data_binding"] = binding
+    if comp.get("type") != "htmlPage":
+        out["looks"] = visual_summary(comp)
     if comp.get("anchorId"):
         out["anchor"] = f"#{comp['anchorId']}"
+    if comp.get("type") == "htmlPage":
+        p = comp.get("props") or {}
+        html = str(p.get("html") or "")
+        out["html_bytes"] = len(html)
+        out["css_bytes"] = len(str(p.get("css") or ""))
+        out["headings"] = [strip_html(h, 80) for h in _HTML_HEADING_RE.findall(html)[:6]]
+        if not out.get("heading") and out["headings"]:
+            out["heading"] = out["headings"][0]
+        return out   # never dump the HTML itself, even with include_copy
     if include_copy:
         strings: List[str] = []
         _collect_strings(comp.get("props") or {}, strings)
@@ -311,8 +416,8 @@ def summarize_component(comp: Dict[str, Any], include_copy: bool = False, copy_c
 
 def summarize_page(page: Dict[str, Any], include_copy: bool = False,
                    campaign_names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    comps = [summarize_component(c, include_copy, campaign_names=campaign_names)
-             for c in walk_components(page.get("components"))]
+    comps = [summarize_component(c, include_copy, campaign_names=campaign_names, position=i + 1)
+             for i, c in enumerate(walk_components(page.get("components")))]
     seo = page.get("seo") or {}
     out: Dict[str, Any] = {
         "id": page.get("id"),
@@ -379,6 +484,57 @@ def find_component(page: Dict[str, Any], component_id: str) -> Optional[Dict[str
         if str(c.get("id") or "") == str(component_id):
             return c
     return None
+
+
+def _walk_strings(node: Any, path: str, out: List[Tuple[str, str]], depth: int = 0) -> None:
+    if depth > 7 or node is None:
+        return
+    if isinstance(node, str):
+        out.append((path, node))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            _walk_strings(v, f"{path}[{i}]", out, depth + 1)
+    elif isinstance(node, dict):
+        for k, v in node.items():
+            if k == "slots":
+                continue
+            _walk_strings(v, f"{path}.{k}" if path else k, out, depth + 1)
+
+
+def find_text(config: Dict[str, Any], query: str, page_route: Optional[str] = None, limit: int = 12) -> List[Dict[str, Any]]:
+    """
+    Where does this text appear? Case-insensitive search over every string prop
+    on every section, returning the exact prop path an `update` op would patch.
+    This is how "the button that says Book a demo" becomes a precise edit.
+    """
+    q = str(query or "").strip().lower()
+    if not q:
+        return []
+    hits: List[Dict[str, Any]] = []
+    for page in config.get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        if page_route and str(page.get("route") or "").lstrip("/").lower() != str(page_route).lstrip("/").lower():
+            continue
+        for pos, comp in enumerate(walk_components(page.get("components")), start=1):
+            strings: List[Tuple[str, str]] = []
+            _walk_strings(comp.get("props") or {}, "props", strings)
+            for path, value in strings:
+                text = strip_html(value, 100000)
+                idx = text.lower().find(q)
+                if idx == -1:
+                    continue
+                start = max(0, idx - 40)
+                snippet = text[start: idx + len(q) + 60]
+                hits.append({
+                    "page_route": page.get("route"), "section_id": comp.get("id"), "position": pos,
+                    "type": comp.get("type"), "label": component_label(comp.get("type")),
+                    "path": path, "snippet": ("…" if start else "") + snippet + ("…" if idx + len(q) + 60 < len(text) else ""),
+                    "is_html": bool(_TAG_RE.search(value)),
+                })
+                if len(hits) >= limit:
+                    return hits
+    return hits
 
 
 def collect_capture_surfaces(config: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -457,6 +613,15 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "fix": "Pick a campaign for it, or change the button back to a link. Right now it does nothing when tapped.",
                     **cctx,
                 })
+            if c.get("type") == "htmlPage":
+                unwired = [h for h in capture_surfaces(c) if not h["audience_id"]]
+                if unwired:
+                    issues.append({
+                        "severity": "error",
+                        "title": "An HTML page button opens a form but no campaign is selected",
+                        "fix": f"“{unwired[0]['label']}” has data-vacademy=\"lead-form\" with no data-audience. Wire it with link_lead_form or set the campaign id in the HTML.",
+                        **cctx,
+                    })
             if c.get("type") == "leadForm" and not str(p.get("audienceId") or "").strip():
                 issues.append({
                     "severity": "error",
@@ -544,4 +709,5 @@ __all__ = [
     "capture_surfaces", "data_binding", "summarize_component", "summarize_page",
     "summarize_global_settings", "find_page", "find_component",
     "collect_capture_surfaces", "run_publish_checks", "learner_site_url", "editor_url",
+    "visual_summary", "find_text",
 ]

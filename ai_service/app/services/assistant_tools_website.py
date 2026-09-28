@@ -33,6 +33,7 @@ from .assistant_tool_registry import ToolContext, ToolSpec, _admin_core_json, _c
 from .catalogue_summary import (
     collect_capture_surfaces,
     find_page,
+    find_text,
     learner_site_url,
     run_publish_checks,
     summarize_global_settings,
@@ -42,6 +43,7 @@ from .website_data import (
     _err,
     _is_error,
     _parse_config,
+    _settings,
     NO_PORTAL_DOMAIN_NOTE,
     campaign_lead_stats,
     campaign_name_map,
@@ -62,8 +64,8 @@ WEBSITE_TOOL_NAME = "website"
 WEBSITE_GROUP_KEY = "website_builder"
 
 WEBSITE_ACTIONS = (
-    "list", "get_page", "context", "analytics", "lead_summary", "audit",
-    "brief_checklist", "schema", "list_media",
+    "list", "get_page", "find_section", "context", "analytics", "lead_summary", "audit", "review",
+    "brief_checklist", "schema", "list_media", "preview",
 )
 
 #: Sites beyond this count skip the per-site draft/history lookups in ``list``.
@@ -91,7 +93,7 @@ BRIEF_CHECKLIST: List[Dict[str, str]] = [
     {"step": "look", "ask": "A design language from the choices, or websites they admire (describe what they like about them).", "feeds": "design language → theme + section styling"},
     {"step": "fonts", "ask": "Body font and optional heading font from the list, or 'pick for me'.", "feeds": "theme.fonts"},
     {"step": "logo", "ask": "Their logo: an image already uploaded (list_media) or a public URL to import (import_image). No image is ever generated.", "feeds": "header logo, hero"},
-    {"step": "photos", "ask": "Real campus / class / people photos — uploaded (list_media) or public URLs to import. Compose without photos rather than invent any.", "feeds": "hero / gallery images"},
+    {"step": "photos", "ask": "3–5 real photos (campus, a class in session, faculty, students) — uploaded (list_media, hero_worthy first) or public URLs to import in one import_image call. A real photo in the hero is the single biggest lift; without one use a centered, typography-led hero — never a stock or invented URL.", "feeds": "hero / gallery images"},
     {"step": "existing_site", "ask": "An existing website whose copy or structure to reuse (paste the text you want kept).", "feeds": "page copy"},
     {"step": "scope", "ask": "One page or a whole site? Which page types (homepage, courses, course-landing, about, admissions, contact)? A route for each.", "feeds": "create_page / create_site"},
     {"step": "courses", "ask": "Which courses to feature — all, newest, a tag, or hand-picked — and whether to show prices.", "feeds": "set_courses"},
@@ -120,8 +122,16 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "Read the institute's websites (the sites built in Manage Pages and served on the "
             "learner portal). One tool, pick an `action`:\n"
             "- list: every site with status, live URL, whether a draft is pending, last published.\n"
-            "- get_page (tag_name, page_route, include_copy?): a page's sections in order, each with a "
-            "label, heading and where its data comes from (which courses, which lead campaign).\n"
+            "- get_page (tag_name, page_route, include_copy?): a page's sections in order (position), each "
+            "with a label, heading, what it LOOKS like (band colour, layout, images, buttons) and where its "
+            "data comes from. Use it to match what an admin points at in a screenshot to a section id.\n"
+            "- find_section (tag_name, query, page_route?): where a piece of text appears — section id, "
+            "position and the exact prop path to patch ('the button that says Book a demo').\n"
+            "- review (tag_name, page_route?): design-quality score (0–100, bar 85) with ranked issues and "
+            "concrete fixes. Iterate with website_edit(update_page) until it passes; do it before telling "
+            "the admin a page is ready.\n"
+            "- preview (tag_name, page_route?, section_id?, viewport?): a screenshot of the DRAFT as the "
+            "learner site renders it. Look at it before and after edits.\n"
             "- context (tag_name?): what may be linked on a site — real courses, product pages, lead "
             "campaigns (with leads received), the site's theme. Use these ids; never invent them.\n"
             "- analytics (tag_name?, days?): views, visitors, sessions, leads, top pages and sources.\n"
@@ -135,7 +145,8 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
             "- schema (page_type?, section_types?): the component contract you compose pages in — the "
             "block types with what each does, design rules, the archetype for a page type, and full "
             "example props for the section_types you name. Read it before website_edit(create_page).\n"
-            "- list_media (kind?, limit?): images the admin has uploaded, for logos and photos.\n"
+            "- list_media (kind?, limit?): images the admin has uploaded, ranked with hero-worthy landscape "
+            "photos first — the ONLY images (besides import_image) a page may use.\n"
             "tag_name is the site's name from `list`; when the institute has one site it may be omitted."
         ),
         "parameters": {
@@ -148,6 +159,9 @@ WEBSITE_SCHEMA: Dict[str, Any] = {
                 "include_copy": {"type": "boolean", "description": "get_page only: include each section's text (capped)."},
                 "days": {"type": "integer", "description": "analytics / lead_summary: window in days (7, 30 or 90). Default 30."},
                 "section_types": {"type": "array", "items": {"type": "string"}, "description": "schema: block types to return full example props for (e.g. ['heroSection','featureGrid'])."},
+                "query": {"type": "string", "description": "find_section: the text to look for (case-insensitive)."},
+                "section_id": {"type": "string", "description": "preview: screenshot only this section."},
+                "viewport": {"type": "string", "enum": ["desktop", "mobile"], "description": "preview: default desktop (1280px); mobile is 390px."},
                 "kind": {"type": "string", "description": "list_media: 'logo', 'photo' or 'any'."},
                 "limit": {"type": "integer", "description": "list_media: max items (default 24)."},
             },
@@ -312,6 +326,71 @@ async def _action_lead_summary(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
     }
 
 
+async def _action_find_section(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    query = str(args.get("query") or "").strip()
+    if not query:
+        return _err("missing_argument", action="find_section", needs=["query"])
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err:
+        return err
+    hits = find_text(site["config"], query, args.get("page_route"))
+    return {
+        "tag_name": site["tag_name"], "query": query, "matches": hits, "count": len(hits),
+        "note": "Patch with update_page: {op:'update', id:<section_id>, propsPatch:{…}} — for a nested path like "
+                "props.left.buttons[0].text send the whole `left` object with the change applied.",
+    }
+
+
+async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .page_quality import review_with_audit
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err:
+        return err
+    gs = site["config"].get("globalSettings") or {}
+    pages = [p for p in site["config"].get("pages") or [] if isinstance(p, dict)]
+    route = str(args.get("page_route") or "").strip()
+    if route:
+        page = find_page(site["config"], route)
+        if page is None:
+            return _err("unknown_page", available=[p.get("route") for p in pages])
+        pages = [page]
+    out: Dict[str, Any] = {"tag_name": site["tag_name"], "reviewed": "draft" if site["from_draft"] else "published", "pages": {}}
+    for i, page in enumerate(pages):
+        page_type = "homepage" if i == 0 and not route else ("course-landing" if "course" in str(page.get("route") or "") else "about")
+        r = review_with_audit(page, gs, page_type)
+        out["pages"][str(page.get("route"))] = {"score": r["score"], "passes": r["passes"], "summary": r["summary"],
+                                                 "issues": [{k: v for k, v in i_.items() if k != "weight"} for i_ in r["issues"][:16]]}
+    scores = [v["score"] for v in out["pages"].values()]
+    out["score"] = min(scores) if scores else 0
+    out["bar"] = 85
+    out["passes"] = all(v["passes"] for v in out["pages"].values())
+    out["next"] = ("Fix `fix` items first, then the highest-weight warnings, with update_page ops; re-run review. "
+                   "Tell the admin a page is ready only when it passes.")
+    return out
+
+
+async def _action_preview(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    from .page_preview import render_preview
+    site, err = await load_site(ctx, args.get("tag_name"))
+    if err:
+        return err
+    page = find_page(site["config"], args.get("page_route"))
+    if page is None:
+        return _err("unknown_page", available=[p.get("route") for p in site["config"].get("pages") or []])
+    base = learner_portal_base(ctx) or _settings().learner_dashboard_url
+    result = await render_preview(
+        base_url=base, tag_name=site["tag_name"], page_route=str(page.get("route") or ""),
+        config=site["config"], section_id=args.get("section_id"), viewport=str(args.get("viewport") or "desktop"),
+    )
+    if result.get("error"):
+        return _err(result["error"], message=result.get("message"))
+    return {
+        "tag_name": site["tag_name"], "page_route": page.get("route"), "showing": "draft" if site["from_draft"] else "published",
+        "image_png_base64": result["png_base64"], "width": result["width"], "height": result["height"],
+        "note": "Rendered by the learner site from the current draft. Live course data comes from the host's institute when the institute has no domain of its own.",
+    }
+
+
 async def _action_audit(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     site, err = await load_site(ctx, args.get("tag_name"))
     if err:
@@ -378,7 +457,7 @@ async def _action_brief_checklist(args: Dict[str, Any], ctx: ToolContext) -> Dic
     }
 
 
-_SCHEMA_OMIT_TYPES = frozenset({"header", "footer"})   # site chrome: set_layout, not page content
+_SCHEMA_OMIT_TYPES = frozenset({"header", "footer", "htmlPage"})   # chrome → set_layout; HTML → add_html_page
 
 PAGE_CONTRACT = (
     "A page is {route, title, seo:{metaTitle, metaDescription}, components:[…]}. A component is "
@@ -414,8 +493,10 @@ def _load_schema(page_type: Optional[str], section_types: List[str]) -> Dict[str
         })
         if ctype in wanted:
             examples[ctype] = props
+    from .assistant_tools_website_edit import HTML_PAGE_CONTRACT
     out: Dict[str, Any] = {
         "page_contract": PAGE_CONTRACT,
+        "html_page_contract": HTML_PAGE_CONTRACT,
         "doctrine": catalog.get("doctrine"),
         "design_rules": list(_PREMIUM_DOCTRINE),
         "design_languages": [{k: d.get(k) for k in ("id", "name", "fits", "theme", "fonts", "signature") if d.get(k)} for d in _DESIGN_LANGUAGES],
@@ -464,18 +545,25 @@ async def _load_media(ctx: ToolContext, kind: str, limit: int) -> List[Dict[str,
         guess = "logo" if "logo" in name.lower() or "logo" in folder.lower() else "photo"
         if kind in ("logo", "photo") and guess != kind:
             continue
+        w = float(detail.get("width") or 0)
+        h = float(detail.get("height") or 0)
+        landscape = w >= 1000 and w > h * 1.2
         out.append({k: v for k, v in {
             "file_id": detail.get("id"),
             "url": detail.get("url"),
             "name": name,
             "kind_guess": guess,
             "folder": folder,
-            "size": f"{int(detail['width'])}x{int(detail['height'])}" if detail.get("width") and detail.get("height") else None,
+            "size": f"{int(w)}x{int(h)}" if w and h else None,
+            # Hero-worthy = wide landscape; the first one is what a hero should use.
+            "hero_worthy": landscape or None,
             "uploaded_at": detail.get("created_on"),
+            "_rank": (0 if landscape else 1 if w >= 600 else 2, -(w * h)),
         }.items() if v})
-        if len(out) >= limit:
-            break
-    return out
+    out.sort(key=lambda m: m.get("_rank", (3, 0)))
+    for m in out:
+        m.pop("_rank", None)
+    return out[:limit]
 
 
 async def _action_list_media(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -497,6 +585,9 @@ _ACTIONS = {
     "analytics": _action_analytics,
     "lead_summary": _action_lead_summary,
     "audit": _action_audit,
+    "find_section": _action_find_section,
+    "review": _action_review,
+    "preview": _action_preview,
     "brief_checklist": _action_brief_checklist,
     "schema": _action_schema,
     "list_media": _action_list_media,

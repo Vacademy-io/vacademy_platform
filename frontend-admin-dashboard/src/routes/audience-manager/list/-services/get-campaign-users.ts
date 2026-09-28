@@ -74,7 +74,7 @@ export interface CampaignLeadsRequest {
     submitted_to_local?: string;
     // Substring match across parent_name / parent_email / parent_mobile.
     search_query?: string;
-    // Lead-temperature bucket: 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
+    // Lead tier key(s) from the institute's lead_tier catalog (HOT/WARM/COLD by default), comma-separated. Omitted = all tiers.
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;

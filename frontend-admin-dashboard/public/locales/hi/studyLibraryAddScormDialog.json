@@ -28,6 +28,7 @@
     "toasts": {
         "uploadFailed": "SCORM पैकेज अपलोड करने में विफल",
         "selectZipFile": "कृपया एक .zip फ़ाइल चुनें",
+        "fileTooLarge": "SCORM पैकेज बहुत बड़ा है ({{size}})। अधिकतम अनुमत आकार {{max}} है।",
         "uploading": "SCORM पैकेज अपलोड हो रहा है...",
         "uploadSuccessDetected": "सफलतापूर्वक अपलोड हुआ! SCORM {{version}} पैकेज मिला।",
         "uploadParseSuccess": "SCORM पैकेज सफलतापूर्वक अपलोड और विश्लेषित किया गया!",

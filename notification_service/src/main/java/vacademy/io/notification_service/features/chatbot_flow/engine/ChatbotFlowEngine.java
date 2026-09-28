@@ -13,6 +13,7 @@ import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotSessi
 import vacademy.io.notification_service.features.chatbot_flow.repository.*;
 import vacademy.io.notification_service.features.chatbot_flow.service.UserLookupService;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
+import vacademy.io.notification_service.features.notification_log.MessageOriginPayload;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
@@ -600,6 +601,7 @@ public class ChatbotFlowEngine {
                 // and a leftover id would end up on the NEXT node's row, giving one message the
                 // ticks of another.
                 context.setLastProviderMessageId(null);
+                context.setLastTemplateSend(null);
                 return;
             }
 
@@ -629,6 +631,10 @@ public class ChatbotFlowEngine {
             // so the next node in the chain cannot inherit this node's id.
             outLog.setSourceId(context.getLastProviderMessageId());
             context.setLastProviderMessageId(null);
+            // A template send keeps its name and params, so the Inbox renders the real message
+            // (header image, body, buttons) rather than the "Template: name" body line; every
+            // bot message keeps which flow sent it.
+            outLog.setMessagePayload(toJson(logPayload(takeTemplateSend(context), node)));
             outLog.setSenderBusinessChannelId(context.getBusinessChannelId());
             outLog.setNotificationDate(Instant.now());
             outLog.setUserId(context.getUserId());
@@ -673,6 +679,8 @@ public class ChatbotFlowEngine {
                                           String error) {
         if (node == null || context == null) return;
         String nodeType = node.getNodeType();
+        // Read-and-clear up front, so no exit below can leave it for the next node.
+        Map<String, Object> templateSend = takeTemplateSend(context);
         if (nodeType == null || !nodeType.startsWith("SEND_")) return;
         // The executor may already have logged it (AI_RESPONSE path); read-and-clear the flag.
         if (context.isSendFailureLogged()) {
@@ -681,7 +689,30 @@ public class ChatbotFlowEngine {
         }
         sendFailureService.logFailure(context.getInstituteId(), context.getPhoneNumber(),
                 context.getBusinessChannelId(), context.getUserId(),
-                attemptedTypeOf(node), describeNodeMessage(node), "CHATBOT_FLOW", error);
+                attemptedTypeOf(node), describeNodeMessage(node), "CHATBOT_FLOW", error,
+                logPayload(templateSend, node));
+    }
+
+    /**
+     * The log row's payload: what a template node sent, plus the flow that sent it, so the Inbox
+     * and the student timeline can say "sent by chatbot flow X". The flow's name is looked up
+     * when the row is read, so a renamed flow shows its current name.
+     */
+    private Map<String, Object> logPayload(Map<String, Object> templateSend, ChatbotFlowNode node) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (templateSend != null) payload.putAll(templateSend);
+        if (node.getFlowId() != null) {
+            payload.put(MessageOriginPayload.TYPE_KEY, MessageOriginPayload.TYPE_CHATBOT_FLOW);
+            payload.put(MessageOriginPayload.ID_KEY, node.getFlowId());
+        }
+        return payload.isEmpty() ? null : payload;
+    }
+
+    /** The template the last SEND_TEMPLATE node sent, cleared so it is logged exactly once. */
+    private Map<String, Object> takeTemplateSend(FlowExecutionContext context) {
+        Map<String, Object> templateSend = context.getLastTemplateSend();
+        context.setLastTemplateSend(null);
+        return templateSend;
     }
 
     /** What kind of message the node was trying to send, for the Inbox failure bubble. */

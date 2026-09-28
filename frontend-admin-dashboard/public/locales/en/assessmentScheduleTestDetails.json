@@ -20,6 +20,7 @@
         "totalParticipants_other": "Total Participants: {{count}}"
     },
     "joinLink": {
-        "label": "Join Link:"
+        "label": "Join Link:",
+        "privateWarning": "This link only works while the assessment is Public. Set it to Public in Step 3 before sharing."
     }
 }

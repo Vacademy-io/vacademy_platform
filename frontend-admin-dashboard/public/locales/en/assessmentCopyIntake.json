@@ -11,7 +11,12 @@
         "pages_other": "{{count}} pages",
         "remove": "Remove",
         "costEmpty": "Add copies to see the cost.",
-        "cost": "{{copies}} copies · {{pages}} pages · {{credits}} credits",
+        "cost_one": "1 copy · {{questions}} questions · {{credits}} credits",
+        "cost_other": "{{count}} copies · {{questions}} questions each · {{credits}} credits",
+        "rate": "Rate: {{flat}} + {{perUnit}} credits per {{unit}}, per copy",
+        "rateNoBase": "Rate: {{perUnit}} credits per {{unit}}, per copy",
+        "unitQuestion": "question",
+        "unitPage": "page",
         "balance_one": "Balance: {{count}}",
         "balance_other": "Balance: {{count}}",
         "insufficient": "Not enough credits for all these copies. Remove some, or add credits to the institute.",
@@ -51,7 +56,9 @@
         "startedBy": "Started by {{name}} · {{when}}",
         "emailFailed": "The completion email could not be sent.",
         "waitingHint_one": "{{count}} copy could not be matched to a student. Pick the student to check it.",
-        "waitingHint_other": "{{count}} copies could not be matched to a student. Pick the student for each to check them."
+        "waitingHint_other": "{{count}} copies could not be matched to a student. Pick the student for each to check them.",
+        "sourceUpload": "Uploaded PDFs",
+        "sourceSubmitted": "Submitted copies"
     },
     "stats": {
         "total": "Copies",
@@ -105,5 +112,32 @@
         "search": "Search by name, roll number or email",
         "none": "No student matches that search.",
         "registered": "Registered participant"
+    },
+    "submitted": {
+        "title": "Check submitted copies with AI",
+        "introAll": "Every answer sheet the learners uploaded on this assessment is queued for the AI check, a few at a time, in the background. You will get an email and a bell alert when it is done.",
+        "introSelected_one": "The submitted copy of the {{count}} selected student is queued for the AI check in the background. You will get an email and a bell alert when it is done.",
+        "introSelected_other": "The submitted copies of the {{count}} selected students are queued for the AI check, a few at a time, in the background. You will get an email and a bell alert when it is done.",
+        "previewFailed": "Could not look up the submitted copies. Close and try again.",
+        "withCopy_one": "{{count}} student has submitted a copy",
+        "withCopy_other": "{{count}} students have submitted a copy",
+        "noCopy_one": "{{count}} more attempt has no uploaded sheet and is left out",
+        "noCopy_other": "{{count}} more attempts have no uploaded sheet and are left out",
+        "alreadyChecked_one": "{{count}} already checked by AI",
+        "alreadyChecked_other": "{{count}} already checked by AI",
+        "skipped": "Left as they are",
+        "willRecheck": "Will be checked again — the new marks replace the old ones",
+        "inProgress_one": "{{count}} being checked right now",
+        "inProgress_other": "{{count}} being checked right now",
+        "notTwice": "Not queued a second time",
+        "toCheck_one": "{{count}} copy will be checked",
+        "toCheck_other": "{{count}} copies will be checked",
+        "nothingToCheck": "Nothing to check — every submitted copy is checked or in progress",
+        "includeChecked_one": "Also re-check the {{count}} copy that is already checked",
+        "includeChecked_other": "Also re-check the {{count}} copies that are already checked",
+        "costEmpty": "No copies to check.",
+        "starting": "Queuing…",
+        "toastStarted_one": "{{count}} submitted copy queued — the check runs in the background",
+        "toastStarted_other": "{{count}} submitted copies queued — the checks run in the background"
     }
 }

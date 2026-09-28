@@ -1,4 +1,4 @@
-import axios from 'axios';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     NOTIFICATION_SETTINGS_BASE,
     GET_NOTIFICATION_SETTINGS_BY_INSTITUTE,
@@ -371,8 +371,11 @@ export function mergeChatSettings(partial?: DeepPartial<ChatSettings> | null): C
 
 export type FirebaseSettings = {
     enabled?: boolean;
+    /** Write-only: the server never returns a stored key. Set only when pasting a new one. */
     serviceAccountJson?: string | null;
     serviceAccountJsonBase64?: string | null;
+    /** Read-only, from the server: a service-account key is stored for this institute. */
+    configured?: boolean;
 };
 
 export type FirebaseServiceAccountMinimal = {
@@ -512,19 +515,20 @@ export type NotificationSettingsUpsertRequest = {
 export async function getNotificationSettings(): Promise<NotificationSettingsResponse> {
     const instituteId = getInstituteId();
     const url = `${GET_NOTIFICATION_SETTINGS_BY_INSTITUTE}/${instituteId}`;
-    const { data } = await axios.get(url);
+    const { data } = await authenticatedAxiosInstance.get(url);
     return data;
 }
 
 export async function getNotificationDefaultTemplate(): Promise<NotificationSettingsResponse> {
-    const { data } = await axios.get(GET_NOTIFICATION_DEFAULT_TEMPLATE);
+    const { data } = await authenticatedAxiosInstance.get(GET_NOTIFICATION_DEFAULT_TEMPLATE);
     return data;
 }
 
 export async function upsertNotificationSettings(
     request: NotificationSettingsUpsertRequest
 ): Promise<NotificationSettingsResponse> {
-    const { data } = await axios.post(NOTIFICATION_SETTINGS_BASE, request, {
+    // Authenticated: the backend requires an admin of this institute (JWT + clientId header) to save.
+    const { data } = await authenticatedAxiosInstance.post(NOTIFICATION_SETTINGS_BASE, request, {
         headers: { 'Content-Type': 'application/json' },
     });
     return data;

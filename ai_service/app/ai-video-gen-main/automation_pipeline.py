@@ -1744,10 +1744,18 @@ class OpenRouterClient:
                     }
                     if response_format is not None:
                         payload["response_format"] = response_format
+                    _url, _headers, _wire = self.base_url, self.headers, payload
+                    try:
+                        from app.services.llm_router import route_chat as _route_chat
+                        _routed = _route_chat(payload, self.api_key)
+                        if not _routed[3].is_default:
+                            _url, _headers, _wire = _routed[0], _routed[1], _routed[2]
+                    except ImportError:
+                        pass  # outside the ai_service app (render worker): OpenRouter
                     request = urllib.request.Request(
-                        self.base_url,
-                        data=json.dumps(payload).encode("utf-8"),
-                        headers=self.headers,
+                        _url,
+                        data=json.dumps(_wire).encode("utf-8"),
+                        headers=_headers,
                         method="POST",
                     )
                     _t_start = time.perf_counter()

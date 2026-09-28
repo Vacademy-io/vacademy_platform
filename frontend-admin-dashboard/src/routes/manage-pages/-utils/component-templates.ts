@@ -495,6 +495,37 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    // Blog — reads the institute's published posts live (Manage Pages → Blog,
+    // or an AI app over MCP). ONE section serves both faces: the post list on
+    // /<site>/<page>, and a single article on /<site>/<page>/<slug>. Nothing
+    // editorial is stored on the page — only how the list looks — so a new
+    // article never needs the site republished.
+    blog: {
+        type: 'blog',
+        enabled: true,
+        props: {
+            heading: t('blog.heading'),
+            subheading: t('blog.subheading'),
+            layout: 'grid',
+            columns: 3,
+            pageSize: 9,
+            // '' shows every category; a name pins the section to one.
+            category: '',
+            showCoverImage: true,
+            showExcerpt: true,
+            showDate: true,
+            showAuthor: true,
+            showCategory: true,
+            showReadingTime: true,
+            showCategoryFilter: true,
+            readMoreLabel: t('blog.readMoreLabel'),
+            backLabel: t('blog.backLabel'),
+            emptyMessage: t('blog.emptyMessage'),
+            backgroundColor: '',
+            textColor: '',
+        },
+    },
+
     imageGallery: {
         type: 'imageGallery',
         enabled: true,

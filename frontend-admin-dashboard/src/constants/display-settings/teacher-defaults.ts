@@ -151,6 +151,7 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
         directEditPublishedCourse: false,
+        requireCourseApproval: true,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showBulkUpload: false,
@@ -265,6 +266,9 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         progressTab: true,
         coursesTab: true,
         notificationTab: false,
+        // Off by default: resending sends a real message to a learner, so it is
+        // opt-in for this role even where the Notifications tab is enabled.
+        allowResendMessage: false,
         membershipTab: false,
         paymentHistoryTab: true,
         userTaggingTab: false,
@@ -310,6 +314,7 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         showApprovalToggle: false,
         // Opt-in: changing credentials signs the learner out of their session.
         allowEditCredentials: false,
+        allowDeletePayments: false,
     },
     studentManagementActions: {
         showEnrollButton: true,

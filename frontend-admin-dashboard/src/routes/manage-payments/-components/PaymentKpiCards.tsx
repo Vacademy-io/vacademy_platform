@@ -4,6 +4,7 @@ import {
     Clock,
     HourglassMedium,
     Receipt,
+    Wallet,
     XCircle,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -22,14 +23,18 @@ import { summarizeBucketAmount } from '../-utils/paymentSummary';
 export type SummaryStatusKey =
     | 'total'
     | 'paid'
+    | 'outstanding'
     | 'due'
     | 'upcoming'
     | 'pending'
     | 'abandoned'
     | 'failed';
 
+/** The cards an admin can switch on or off (Total and Abandoned are tabs only). */
+export type KpiCardKey = Exclude<SummaryStatusKey, 'total' | 'abandoned'>;
+
 /** The statuses that map onto payment records, so they can filter the table. */
-export type RecordStatusKey = Exclude<SummaryStatusKey, 'due' | 'upcoming'>;
+export type RecordStatusKey = Exclude<SummaryStatusKey, 'outstanding' | 'due' | 'upcoming'>;
 
 /**
  * Billing figures from the server: what came in, what learners with access still owe, and what
@@ -47,8 +52,54 @@ export interface KpiBilling {
     learnersUpcoming: number;
     /** Priced one-time plans an admin activated with no payment recorded — a hygiene hint. */
     activatedWithoutPaymentCount: number;
+    /**
+     * Everything still to collect on live enrolments, whatever its due date. Due and Upcoming are
+     * date slices of it — an institute whose instalments all fall due next quarter has Due and
+     * Upcoming at zero and lakhs outstanding.
+     */
+    outstanding: number;
+    learnersOutstanding: number;
+    /**
+     * Everything expected but not yet owed, whatever the date (every future instalment and
+     * invoice, plus renewals within the horizon). Absent on an older server.
+     */
+    upcomingAll?: number;
+    learnersUpcomingAll?: number;
+    /** Earliest future due date carrying money, yyyy-MM-dd. */
+    nextDueDate?: string | null;
+    /**
+     * The institute runs instalment plans. Their next instalment is often months out, so the
+     * 30-day Upcoming would read ₹0 — Upcoming shows every future instalment instead.
+     */
+    usesInstallments?: boolean;
     currency: string;
 }
+
+/** Upcoming covers every future instalment rather than the next N days. */
+const upcomingIsAllFuture = (billing?: KpiBilling | null): boolean =>
+    !!billing?.usesInstallments && typeof billing.upcomingAll === 'number';
+
+/** "6 Sept" this year, "6 Sept 2027" otherwise — without the year, next year's date read as past. */
+const formatDueDate = (iso?: string | null): string | null => {
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        ...(y !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+    });
+};
+
+/** Tailwind needs literal class names, so the xl column count is looked up, not interpolated. */
+const XL_COLS: Record<number, string> = {
+    1: 'xl:grid-cols-1',
+    2: 'xl:grid-cols-2',
+    3: 'xl:grid-cols-3',
+    4: 'xl:grid-cols-4',
+    5: 'xl:grid-cols-5',
+    6: 'xl:grid-cols-6',
+};
 
 interface PaymentKpiCardsProps {
     summary: PaymentSummary;
@@ -62,11 +113,13 @@ interface PaymentKpiCardsProps {
     activeKey?: SummaryStatusKey;
     /** When given, each record/balance card acts as a one-click filter for the table below. */
     onSelect?: (key: SummaryStatusKey) => void;
+    /** Cards the admin chose to show (see useKpiCardPrefs). Omit for the built-in defaults. */
+    visibleKeys?: Set<KpiCardKey>;
     className?: string;
 }
 
 interface CardDef {
-    key: Exclude<SummaryStatusKey, 'total' | 'abandoned'>;
+    key: KpiCardKey;
     label: string;
     /** One line spelling out what the number actually is, so two "pending"s can't be confused. */
     caption: string;
@@ -80,7 +133,7 @@ interface CardDef {
 }
 
 /**
- * Collected / Due / Upcoming / Pending / Failed.
+ * Collected / Outstanding / Due / Upcoming / Pending / Failed.
  *
  * The rule behind Due: a learner owes money only when they have been granted access and an
  * obligation on it is unpaid — an overdue instalment, a lapsed subscription renewal, an unpaid
@@ -97,6 +150,15 @@ const CARDS: CardDef[] = [
         accentClass: 'bg-success-500',
         source: 'billing',
         bucket: 'paid',
+    },
+    {
+        key: 'outstanding',
+        label: 'Outstanding',
+        caption: 'Still to collect — every unpaid instalment & invoice',
+        icon: Wallet,
+        iconClass: 'bg-neutral-100 text-neutral-700',
+        accentClass: 'bg-neutral-500',
+        source: 'billing',
     },
     {
         key: 'due',
@@ -138,6 +200,14 @@ const CARDS: CardDef[] = [
     },
 ];
 
+/**
+ * Is there money still to collect that is not yet overdue? Only then does Outstanding say
+ * something Due does not. A subscription-only institute's outstanding IS its overdue renewals, so
+ * the card would just repeat Due — it stays hidden and those screens look exactly as they did.
+ */
+export const hasNotYetDueBalance = (billing?: KpiBilling | null): boolean =>
+    !!billing && billing.outstanding - billing.due > 0.005;
+
 const plural = (n: number, one: string, many: string) =>
     `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -151,19 +221,26 @@ export function PaymentKpiCards({
     isLoading,
     activeKey = 'total',
     onSelect,
+    visibleKeys,
     className,
 }: PaymentKpiCardsProps) {
+    const cards = visibleKeys
+        ? CARDS.filter((card) => visibleKeys.has(card.key))
+        : CARDS.filter((card) => card.key !== 'outstanding' || hasNotYetDueBalance(billing));
+    const allFuture = upcomingIsAllFuture(billing);
+    if (cards.length === 0) return null;
     const money = (amount: number) =>
         formatMoney(amount, billing?.currency ?? '', { maximumFractionDigits: 0 });
 
     return (
         <div
             className={cn(
-                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
+                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3',
+                XL_COLS[Math.max(cards.length, 3)],
                 className
             )}
         >
-            {CARDS.map((card) => {
+            {cards.map((card) => {
                 const bucket = card.bucket ? summary[card.bucket] : undefined;
                 const recordAmount = bucket ? summarizeBucketAmount(bucket.amountByCurrency) : null;
 
@@ -171,6 +248,7 @@ export function PaymentKpiCards({
                 let amountTooltip: string | undefined;
                 let meta = '';
                 let hint: string | undefined;
+                let caption = card.caption;
 
                 switch (card.key) {
                     case 'paid':
@@ -184,6 +262,12 @@ export function PaymentKpiCards({
                                 ? `Total amount: ${recordAmount.full}`
                                 : undefined;
                         meta = plural(bucket?.count ?? 0, 'payment', 'payments');
+                        break;
+                    case 'outstanding':
+                        amountDisplay = billing ? money(billing.outstanding) : '—';
+                        meta = billing
+                            ? plural(billing.learnersOutstanding, 'learner', 'learners')
+                            : 'Needs the billing summary';
                         break;
                     case 'due':
                         amountDisplay = billing ? money(billing.due) : '—';
@@ -199,6 +283,15 @@ export function PaymentKpiCards({
                         }
                         break;
                     case 'upcoming':
+                        if (billing && allFuture) {
+                            const next = formatDueDate(billing.nextDueDate);
+                            amountDisplay = money(billing.upcomingAll ?? 0);
+                            meta = `${plural(billing.learnersUpcomingAll ?? 0, 'learner', 'learners')}${
+                                next ? ` · next due ${next}` : ''
+                            }`;
+                            caption = 'Future instalments — expected, not yet owed';
+                            break;
+                        }
                         amountDisplay = billing ? money(billing.upcoming) : '—';
                         meta = billing
                             ? `${plural(billing.learnersUpcoming, 'learner', 'learners')} · next ${
@@ -231,9 +324,9 @@ export function PaymentKpiCards({
 
                 const isActive = activeKey === card.key;
                 const Icon = card.icon;
-                // Upcoming is informational: the Due list only holds learners with something
-                // overdue, so there is nothing to open for it.
-                const interactive = Boolean(onSelect) && card.key !== 'upcoming';
+                // The 30-day Upcoming is informational — there is no list behind it. With
+                // instalments it opens the learners and their next instalment.
+                const interactive = Boolean(onSelect) && (card.key !== 'upcoming' || allFuture);
 
                 const content = (
                     <>
@@ -266,7 +359,7 @@ export function PaymentKpiCards({
                             {isLoading ? ' ' : meta}
                         </div>
 
-                        <div className="mt-0.5 text-2xs text-neutral-400">{card.caption}</div>
+                        <div className="mt-0.5 text-2xs text-neutral-400">{caption}</div>
 
                         {!isLoading && hint && (
                             <div className="mt-1 text-2xs font-medium text-warning-600">{hint}</div>

@@ -156,6 +156,8 @@ module.exports = {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
+        // Page canvas (body + shell). Defaults to --background; see index.css.
+        canvas: "hsl(var(--canvas))",
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary-500))",

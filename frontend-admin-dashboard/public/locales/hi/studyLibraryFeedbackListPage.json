@@ -22,6 +22,8 @@
         "clearSearchAriaLabel": "खोज साफ़ करें",
         "batch": "बैच",
         "subject": "विषय",
+        "ratingsBelow": "रेटिंग इससे कम",
+        "anyRating": "कोई भी",
         "noBatches": "कोई बैच नहीं",
         "noSubjects": "कोई विषय नहीं",
         "clearAll": "सभी साफ़ करें"

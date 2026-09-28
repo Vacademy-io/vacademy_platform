@@ -79,7 +79,8 @@
         "generatingReport": "रिपोर्ट तैयार की जा रही है...",
         "downloadReport": "रिपोर्ट डाउनलोड करें",
         "releaseResult": "परिणाम जारी करें",
-        "downloadAiReport": "AI रिपोर्ट डाउनलोड करें"
+        "downloadAiReport": "AI रिपोर्ट डाउनलोड करें",
+        "proctoring": "प्रॉक्टरिंग"
     },
     "toasts": {
         "reattemptProvided": "{{name}} को पुनः प्रयास प्रदान कर दिया गया है।",
@@ -96,5 +97,33 @@
         "submissionLoadError": "सबमिशन लोड करने में विफल। कृपया फिर से प्रयास करें।",
         "reportGenerateError": "रिपोर्ट तैयार करने में विफल। कृपया फिर से प्रयास करें।",
         "aiReportError": "AI रिपोर्ट डाउनलोड नहीं हो सकी। कृपया पुनः प्रयास करें।"
+    },
+    "proctoring": {
+        "title": "प्रॉक्टरिंग — {{name}}",
+        "loadError": "प्रॉक्टरिंग लॉग लोड नहीं हो सका।",
+        "flags": "{{count}} फ़्लैग",
+        "warnings": "{{count}} चेतावनियाँ",
+        "snapshots": "{{count}} स्नैपशॉट",
+        "tier": "स्तर: {{tier}}",
+        "filter": {
+            "flagsOnly": "फ़्लैग और चेतावनियाँ",
+            "everything": "सब कुछ"
+        },
+        "empty": "इस प्रयास के लिए कोई प्रॉक्टरिंग डेटा नहीं। प्रॉक्टरिंग बंद थी, या छात्र के डिवाइस ने कुछ नहीं भेजा।",
+        "noFlags": "कुछ भी फ़्लैग नहीं हुआ।",
+        "viewSnapshot": "स्नैपशॉट देखें",
+        "snapshotMissing": "स्नैपशॉट उपलब्ध नहीं",
+        "snapshotAlt": "प्रॉक्टरिंग स्नैपशॉट",
+        "events": {
+            "CHECK_IN": "कैमरा चेक-इन",
+            "SNAPSHOT": "स्नैपशॉट",
+            "CAMERA_DENIED": "कैमरा अनुमति अस्वीकृत",
+            "CAMERA_LOST": "कैमरा बंद हो गया",
+            "NO_FACE": "फ्रेम में चेहरा नहीं",
+            "MULTIPLE_FACES": "एक से अधिक चेहरे",
+            "TAB_SWITCH": "टेस्ट विंडो छोड़ी",
+            "FULLSCREEN_EXIT": "फुलस्क्रीन से बाहर",
+            "AUTO_SUBMITTED": "अधिक फ़्लैग के कारण स्वतः सबमिट"
+        }
     }
 }

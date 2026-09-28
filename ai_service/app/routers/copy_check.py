@@ -82,8 +82,8 @@ async def identify_copy(req: CopyCheckIdentifyRequest, db: Session = Depends(db_
     Synchronous and cheap (one or two header images); the caller matches the
     reading against its students. Billing rides on the batch that uses it.
     """
-    from ..api_key_resolver import ApiKeyResolver
-    from ..chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+    from ..services.chat_llm_client import ChatLLMClient
     from ..services.copy_check.grader import DEFAULT_MODEL
     from ..services.copy_check.identify import identify_student
 

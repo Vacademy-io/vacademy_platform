@@ -84,8 +84,20 @@ public class CallBillingService {
     @Autowired private AiCallResultRepository aiCallResultRepo;
     @PersistenceContext private EntityManager entityManager;
 
-    public boolean isVoiceBillableProvider(String providerType) {
+    /**
+     * Static twin of {@link #isVoiceBillableProvider}, so a pre-dial caller can ask
+     * "would this call be charged to the Vacademy wallet?" without taking a bean
+     * dependency on the billing service. The pre-dial credit gate and this meter
+     * MUST agree on the provider set: gating a provider we never bill would block
+     * an institute for spend it does not make, and billing one we never gate is the
+     * hole this whole change exists to close.
+     */
+    public static boolean isVoiceBillable(String providerType) {
         return providerType != null && VOICE_BILLABLE_PROVIDERS.contains(providerType);
+    }
+
+    public boolean isVoiceBillableProvider(String providerType) {
+        return isVoiceBillable(providerType);
     }
 
     public boolean isAiBillableProvider(String provider) {

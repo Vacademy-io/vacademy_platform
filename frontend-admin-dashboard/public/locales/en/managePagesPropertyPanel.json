@@ -929,5 +929,30 @@
     "uploadPdf": "Upload PDF",
     "clear": "Clear",
     "openFile": "Open"
+  },
+  "blog": {
+    "heading": "Blog Settings",
+    "managePostsHint": "Posts are written and published separately, so a new article never needs the site republished.",
+    "managePosts": "Manage posts",
+    "postCount": "{{count}} posts in your library (all statuses).",
+    "layout": "Layout",
+    "layoutGrid": "Card grid",
+    "layoutList": "Horizontal list",
+    "columns": "Columns",
+    "pageSize": "Posts per page",
+    "pageSizeHelp": "Older posts are reached with Newer / Older buttons.",
+    "category": "Show only this category",
+    "allCategories": "All categories",
+    "categoryHelp": "Pin the section to one category, e.g. a News page and a separate Tips page.",
+    "showCoverImage": "Show cover image",
+    "showExcerpt": "Show excerpt",
+    "showDate": "Show date",
+    "showAuthor": "Show author",
+    "showCategory": "Show category",
+    "showReadingTime": "Show reading time",
+    "showCategoryFilter": "Category filter chips",
+    "readMoreLabel": "Read more label",
+    "backLabel": "Back to list label",
+    "emptyMessage": "Message when there are no posts"
   }
 }

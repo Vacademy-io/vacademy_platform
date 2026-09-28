@@ -162,10 +162,9 @@ android {
 		learningbridge {
 			dimension "client"
 			applicationId "com.learningbridge.app"
-			// vc4 (1.0.3) was built 2026-09-01; this is the next code up so it
-			// uploads cleanly whether or not vc4 ever reached the Play track.
-			versionCode 5
-			versionName "1.0.4"
+			// vc5 (1.0.4) was built 2026-09-06; this is the next code up.
+			versionCode 6
+			versionName "1.0.5"
 			resValue "string", "app_name", "The Learning Bridge"
 			manifestPlaceholders.DEEP_LINK_HOST = "student.thelearningbridge.uk"
 		}

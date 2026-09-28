@@ -20,12 +20,14 @@ import { SiteAnalyticsPanel } from './SiteAnalyticsPanel';
 import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
+import { BlogManagerDialog } from './blog/BlogManagerDialog';
+import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { runPublishChecks, type PublishIssue } from '../-utils/publish-checks';
 import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine } from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine, Newspaper } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -62,6 +64,7 @@ export const CatalogueEditorPage = () => {
         addToSlot,
     } = useEditorStore();
     const { toast } = useToast();
+    const openBlog = useBlogManagerStore((s) => s.open);
     const { canWrite } = useCataloguePermissions();
 
     // Drag-from-library: pointer sensor with a small activation distance to allow clicks
@@ -387,6 +390,14 @@ export const CatalogueEditorPage = () => {
                     <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => openBlog()}
+                        title="Blog posts — write and publish articles for the Blog section"
+                    >
+                        <Newspaper className="size-4" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setShowHistory(true)}
                         title="Version history"
                         disabled={!catalogueId}
@@ -439,6 +450,9 @@ export const CatalogueEditorPage = () => {
                     if (issue.componentId) selectComponent(issue.componentId);
                 }}
             />
+
+            {/* Blog posts, managed without leaving the builder */}
+            <BlogManagerDialog />
 
             {/* Version history */}
             <RevisionHistoryDialog

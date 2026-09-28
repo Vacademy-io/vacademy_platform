@@ -33,13 +33,23 @@ public interface UserAccountLedgerRepository extends JpaRepository<UserAccountLe
             """)
     BigDecimal sumDebits(@Param("userId") String userId, @Param("instituteId") String instituteId);
 
+    /**
+     * Net money received: payments, waivers and adjustments MINUS reversals.
+     *
+     * <p>A CREDIT_REVERSAL is posted when an admin voids a payment that was recorded by
+     * mistake. It takes that payment back out of "total paid" — the mirror of what
+     * DEBIT_REVERSAL does for accruals in {@link #sumDebits}.
+     */
     @Query("""
-            SELECT COALESCE(SUM(l.amount), 0)
+            SELECT COALESCE(SUM(CASE WHEN l.eventType = 'CREDIT_REVERSAL' THEN -l.amount ELSE l.amount END), 0)
             FROM UserAccountLedger l
             WHERE l.userId = :userId AND l.instituteId = :instituteId
-              AND l.eventType IN ('CREDIT_PAYMENT', 'CREDIT_WAIVER', 'CREDIT_ADJUSTMENT')
+              AND l.eventType IN ('CREDIT_PAYMENT', 'CREDIT_WAIVER', 'CREDIT_ADJUSTMENT', 'CREDIT_REVERSAL')
             """)
     BigDecimal sumCredits(@Param("userId") String userId, @Param("instituteId") String instituteId);
+
+    /** Every row of one event type booked against a payment log — used to reverse its credits. */
+    List<UserAccountLedger> findByReferenceIdAndEventType(String referenceId, String eventType);
 
     /**
      * Currency this learner's ledger is denominated in, newest entry first. Every row for a

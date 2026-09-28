@@ -28,6 +28,7 @@
     "toasts": {
         "uploadFailed": "Échec du téléversement du package SCORM",
         "selectZipFile": "Veuillez sélectionner un fichier .zip",
+        "fileTooLarge": "Le package SCORM est trop volumineux ({{size}}). La taille maximale autorisée est de {{max}}.",
         "uploading": "Téléversement du package SCORM...",
         "uploadSuccessDetected": "Téléversé avec succès ! Package SCORM {{version}} détecté.",
         "uploadParseSuccess": "Package SCORM téléversé et analysé avec succès !",

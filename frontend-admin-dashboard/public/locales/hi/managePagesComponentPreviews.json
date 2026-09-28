@@ -134,5 +134,12 @@
         "addPdf": "दाईं ओर के पैनल में PDF जोड़ें",
         "openDocument": "दस्तावेज़ खोलें",
         "download": "PDF डाउनलोड करें"
+    },
+    "blog": {
+        "sampleCategory": "पढ़ाई के टिप्स",
+        "sampleTitle": "नमूना पोस्ट {{n}}",
+        "sampleExcerpt": "लेख का छोटा सा अंश यहाँ दिखता है।",
+        "readMore": "और पढ़ें",
+        "liveNote": "प्रकाशित पोस्ट लाइव साइट पर यहाँ दिखती हैं। उन्हें Manage Pages → Blog में लिखें।"
     }
 }

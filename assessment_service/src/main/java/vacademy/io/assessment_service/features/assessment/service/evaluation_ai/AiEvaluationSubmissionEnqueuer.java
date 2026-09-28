@@ -46,7 +46,7 @@ public class AiEvaluationSubmissionEnqueuer {
                         AiEvaluationStatusEnum.EVALUATING.name());
 
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
-        private final EvaluationUtilityService evaluationUtilityService;
+        private final TypedAnswerEvaluation typedAnswerEvaluation;
 
         /**
          * Kill switch. Turning this off stops all automatic evaluation without touching
@@ -82,12 +82,14 @@ public class AiEvaluationSubmissionEnqueuer {
                         if (!Boolean.TRUE.equals(assessment.getAiEvaluationEnabled())) {
                                 return null;
                         }
-                        // The AI check grades a scanned/uploaded copy. An online attempt with
-                        // no file would be dispatched only to fail with "nothing to grade";
+                        // With an uploaded copy the AI grades the sheet. Without one it grades
+                        // only the typed written answers - so an online paper with nothing
+                        // written would be dispatched only to fail with "nothing to grade";
                         // 88 such rows sat in the queue on one institute before this guard.
-                        String fileId = evaluationUtilityService.extractFileId(attempt.getAttemptData());
-                        if (fileId == null || fileId.isBlank()) {
-                                log.info("[AI-EVAL-ENQUEUE] Attempt {} has no submission file; not queued", attempt.getId());
+                        if (!typedAnswerEvaluation.hasAnswerSheet(attempt)
+                                        && !typedAnswerEvaluation.awaitsAiGrading(attempt, assessment)) {
+                                log.info("[AI-EVAL-ENQUEUE] Attempt {} has no submission file and no written question; not queued",
+                                                attempt.getId());
                                 return null;
                         }
 

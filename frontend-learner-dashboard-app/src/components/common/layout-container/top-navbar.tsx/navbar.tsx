@@ -32,6 +32,12 @@ import { Question } from "@phosphor-icons/react";
 import { useQueryDialogStore } from "@/stores/useQueryDialogStore";
 import { useDoubtManagementSetting } from "@/services/doubt-management-settings";
 import { QueryDialog } from "@/components/common/queries/QueryDialog";
+import { LanguageDropdown } from "@/components/common/localization/language-dropdown";
+import { useLanguageStore } from "@/stores/localization/useLanguageStore";
+import {
+  getEnabledLocales,
+  syncLanguageSettingFromSettingJson,
+} from "@/services/language-settings";
 
 interface UserRole {
   id: string;
@@ -48,6 +54,22 @@ export function Navbar() {
   // whole page (live class, assessment, ...) with an error screen.
   const { data: instituteDetails } = useQuery(
     handleGetPublicInstituteDetails(),
+  );
+
+  // Keep the institute language cache fresh on every app load (it is
+  // otherwise only written at login), then show the switcher only when the
+  // institute has enabled more than one language — same gate as the admin
+  // navbar.
+  useEffect(() => {
+    if (instituteDetails?.setting !== undefined) {
+      syncLanguageSettingFromSettingJson(instituteDetails.setting);
+    }
+  }, [instituteDetails]);
+  const currentLocale = useLanguageStore((state) => state.locale);
+  const showLanguageSwitcher = useMemo(
+    () => getEnabledLocales(currentLocale).length > 1,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentLocale, instituteDetails],
   );
   const {
     data: userRoleDetails,
@@ -366,6 +388,7 @@ export function Navbar() {
 
         {/* Right Section */}
         <div className="flex shrink-0 items-center gap-1">
+          {showLanguageSwitcher && <LanguageDropdown className="relative" />}
           <TutorialsHelpButton className="h-9 w-9" />
           <NotificationsBell className="h-9 w-9" />
           <UserMenu />
@@ -493,6 +516,8 @@ export function Navbar() {
         )}
         {/* Achievements — badge count + points, opens the achievements popup */}
         <AchievementsPill className="hidden xs:flex" />
+        {/* Language switcher — only when the institute enabled >1 language */}
+        {showLanguageSwitcher && <LanguageDropdown className="relative" />}
         {/* Help & tutorials */}
         <TutorialsHelpButton className="h-9 w-9" />
         {/* Notifications */}

@@ -539,6 +539,38 @@ export const SlideMaterial = ({
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
     // "Assign as task": opens the engagement composer preloaded with this slide.
     const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false);
+    // Memoised on the slide and its route ids: an inline object was a new value on
+    // every render, and each one re-seeded the composer over the teacher's edits.
+    const assignTaskSlideId = activeItem?.id;
+    const assignTaskSlideTitle = activeItem?.title;
+    const assignTaskSlideType = activeItem?.source_type;
+    const presetSlide = useMemo(
+        () =>
+            assignTaskSlideId
+                ? {
+                      slideId: assignTaskSlideId,
+                      slideTitle: assignTaskSlideTitle ?? 'Lesson',
+                      slideType: assignTaskSlideType ?? undefined,
+                      courseId: courseId ?? undefined,
+                      sessionId: sessionId ?? undefined,
+                      levelId: levelId ?? undefined,
+                      subjectId: subjectId ?? '',
+                      moduleId: moduleId ?? '',
+                      chapterId: chapterId ?? '',
+                  }
+                : null,
+        [
+            assignTaskSlideId,
+            assignTaskSlideTitle,
+            assignTaskSlideType,
+            courseId,
+            sessionId,
+            levelId,
+            subjectId,
+            moduleId,
+            chapterId,
+        ]
+    );
     // Bumped after a version-history restore to force loadContent to re-run (and
     // re-deserialize) even when the slide's id/status didn't change — the effect's
     // deps intentionally exclude document_slide.data for DOC slides.
@@ -4601,8 +4633,18 @@ export const SlideMaterial = ({
                                         layoutVariant="default"
                                         onClick={() => setIsAssignTaskOpen(true)}
                                     >
-                                        <span className="hidden md:inline">Assign as task</span>
-                                        <span className="md:hidden">Task</span>
+                                        <span className="hidden md:inline">
+                                            {t('slideAction.assignTask', {
+                                                ns: 'engagement',
+                                                defaultValue: 'Assign as task',
+                                            })}
+                                        </span>
+                                        <span className="md:hidden">
+                                            {t('slideAction.task', {
+                                                ns: 'engagement',
+                                                defaultValue: 'Task',
+                                            })}
+                                        </span>
                                     </MyButton>
                                 )}
 
@@ -4934,22 +4976,12 @@ export const SlideMaterial = ({
 
             {/* Schedule this slide as a daily-engagement task. Opens preloaded with the
                 slide, so the teacher only chooses batches and a time window. */}
-            {isAssignTaskOpen && activeItem?.id && (
+            {isAssignTaskOpen && presetSlide && (
                 <PlanComposerDialog
                     open={isAssignTaskOpen}
                     onOpenChange={setIsAssignTaskOpen}
                     onCreated={() => setIsAssignTaskOpen(false)}
-                    presetSlide={{
-                        slideId: activeItem.id,
-                        slideTitle: activeItem.title ?? 'Lesson',
-                        slideType: activeItem.source_type ?? undefined,
-                        courseId: courseId ?? undefined,
-                        sessionId: sessionId ?? undefined,
-                        levelId: levelId ?? undefined,
-                        subjectId: subjectId ?? '',
-                        moduleId: moduleId ?? '',
-                        chapterId: chapterId ?? '',
-                    }}
+                    presetSlide={presetSlide}
                 />
             )}
         </div>

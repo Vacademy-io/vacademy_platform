@@ -96,6 +96,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     progressTab: true,
     coursesTab: true,
     notificationTab: false,
+    allowResendMessage: false,
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,
@@ -230,6 +231,8 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowSendResetPasswordMail: true,
     showApprovalToggle: false,
     allowEditCredentials: false,
+    // Permanent delete of payments & invoices — OFF by default for every role.
+    allowDeletePayments: false,
 };
 
 function getLearnerManagementOptions(
@@ -264,6 +267,11 @@ function getLearnerManagementOptions(
             key: 'showApprovalToggle',
             label: t('learnerManagementOptions.showApprovalToggle'),
             defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
+        },
+        {
+            key: 'allowDeletePayments',
+            label: t('learnerManagementOptions.allowDeletePayments'),
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowDeletePayments ?? false,
         },
     ];
 }
@@ -733,6 +741,48 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                             }
                         />
                     </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            {t('cards.coursePermission.requireCourseApproval')}
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.requireCourseApproval !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        ...prev.coursePage,
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? false,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? false,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
+                                        requireCourseApproval: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                     {(
                         [
                             ['showCopyTo', t('cards.coursePermission.options.showCopyTo')],
@@ -1127,14 +1177,13 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
 
                         return sorted.map((cfg, idx) => {
                             const id = cfg.id as CourseListTabId;
-                            const isForcedVisible = id === 'CourseInReview';
+                            // The tab that belongs to the OTHER role stays hidden; the
+                            // review/approval tab for this role is a normal toggle so an
+                            // institute that does not use the approval flow can hide it
+                            // (Neeraj, 2026-09-19).
                             const isForcedHidden = id === 'CourseApproval';
-                            const disabledToggle = isForcedVisible || isForcedHidden;
-                            const enforcedVisible = isForcedVisible
-                                ? true
-                                : isForcedHidden
-                                  ? false
-                                  : cfg.visible;
+                            const disabledToggle = isForcedHidden;
+                            const enforcedVisible = isForcedHidden ? false : cfg.visible;
                             return (
                                 <div
                                     key={id}

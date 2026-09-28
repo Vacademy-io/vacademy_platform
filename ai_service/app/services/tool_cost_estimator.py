@@ -37,6 +37,16 @@ logger = logging.getLogger(__name__)
 # All numbers are in CREDITS (not USD). `request_type` is the bucket the
 # Phase-2 deduction records on `credit_transactions.request_type`.
 #
+def _slab_credits(slabs: list, count: int) -> Decimal:
+    """Price of `count` units under a slab table; the last slab (upto null)
+    catches everything above the ceilings."""
+    for slab in slabs:
+        upto = slab.get("upto") if isinstance(slab, dict) else None
+        if upto is None or count <= int(upto):
+            return _d((slab or {}).get("credits"))
+    return _d(slabs[-1].get("credits")) if isinstance(slabs[-1], dict) else Decimal("0")
+
+
 # unit_field drives the formula:
 #   "questions"     → flat_base + num_questions × per_unit
 #                     (+ num_questions × params.image_unit_credits if images)
@@ -55,15 +65,49 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {"image_unit_credits": "0.5"},
     },
     # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
-    # rubric-grounded grading. Priced per graded question for a predictable
-    # preview ("8 questions = 8 credits"); the actual charge is
+    # rubric-grounded grading. Priced per copy as flat + per graded question so
+    # the quote is known before upload; the actual charge is
     # max(this, real token cost), so premium models (Opus/GPT) add overage on
-    # long answers while flash-lite copies stay at the flat per-question rate.
+    # long answers while flash copies stay at the quoted rate.
+    #
+    # THE LIVE RATE IS THE `copy_check_evaluation` ROW IN ai_tool_pricing —
+    # change prices there (no release); this entry is only the fallback for an
+    # environment without that row and must mirror it (set 2026-09-21: the old
+    # 0 + 1/question made a 64-question one-word paper cost 64 credits/copy).
     "copy_check_evaluation": {
         "request_type": "evaluation",
-        "flat_base_credits": Decimal("0"),
-        "per_unit_credits": Decimal("1"),
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0.2"),
         "unit_field": "questions",
+        "params": {},
+    },
+    # Vsmart Extract: digitising an EXISTING paper (mode=extract on
+    # pdf-to-questions). A digital PDF is read locally for free, so the only
+    # cost is the model (≈ ₹3 for a 60-question paper with solutions) — priced
+    # flat + per question actually extracted; the charge is max(this, real
+    # token cost). Mirrors ai_tool_pricing row `extract_questions` (V527) —
+    # tune the DB row, not this.
+    "extract_questions": {
+        "request_type": "pdf_questions",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "questions",
+        # One price per band of questions (model cost ≈ ₹0.5 for 40 questions,
+        # ₹1.2 for 60 with solutions). Tune the DB row's params_json.
+        "params": {"slabs": [
+            {"upto": 20, "credits": "2"},
+            {"upto": 50, "credits": "3"},
+            {"upto": 100, "credits": "5"},
+            {"upto": None, "credits": "7"},
+        ]},
+    },
+    # …and only when the file had no text layer (a scan) and went through
+    # MathPix OCR, which bills per page: a surcharge covering that cost.
+    "extract_questions_ocr": {
+        "request_type": "pdf_questions",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
         "params": {},
     },
     "coding_question": {
@@ -137,6 +181,33 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
     # tokens), flat per call, charged as
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
+    # AI engagement planner — ONE structured call drafts a whole run of daily
+    # tasks (questions, polls, prompts, readings, flashcard decks). Priced by
+    # size: base + per task, where tasks = days × tasks per day. The preview
+    # quotes the tasks REQUESTED (params.num_questions — the "questions" unit,
+    # which the admin's local cost mirror already understands); the charge uses
+    # the tasks DELIVERED, as max(estimate, actual × markup). The usual week at
+    # 2 a day (14 tasks) stays 10 credits; one day of 3 is 5; a month of 3 a
+    # day is 50. Readings come back with image placeholders only; pictures are
+    # a separate opt-in charge (html_document_image) so a fortnight of
+    # illustrated pages is never billed before the teacher has reviewed it.
+    "engagement_plan": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "questions",
+        "params": {},
+    },
+    # Regenerate ONE task inside a draft (any type, a flashcards deck included)
+    # — a small call, priced so a teacher can
+    # reject and retry a few items without it costing as much as the plan.
+    "engagement_item": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "html_document": {          # first generation (create)
         "request_type": "content",
         "flat_base_credits": Decimal("15"),
@@ -318,6 +389,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("2"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
+        "params": {},
+    },
+    # A question paper PDF (the one a teacher attaches to an offline test) read
+    # into real questions with marks, so an uploaded answer sheet can be checked
+    # question by question. Priced like the other PDF reads: per page for the
+    # MathPix pass, plus a flat base for the extraction call(s). Charged only
+    # when questions actually come back.
+    "paper_digitise": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
         "params": {},
     },
     # One-time, permanent unlock of a curated library (V445). Deliberately low:
@@ -514,13 +597,28 @@ class ToolCostEstimator:
 
         if unit_field == "questions":
             num_q = max(0, int(params.get("num_questions") or 0))
-            q_credits = Decimal(num_q) * per_unit
-            total += q_credits
-            breakdown.append({
-                "component": "questions",
-                "detail": f"{num_q} question(s) × {per_unit}",
-                "credits": float(q_credits),
-            })
+            slabs = extra.get("slabs")
+            if isinstance(slabs, list) and slabs:
+                # Range pricing: params.slabs = [{"upto": 20, "credits": 1.5},
+                # {"upto": 50, "credits": 3}, …, {"upto": null, "credits": 6.5}]
+                # — the first slab whose `upto` the count does not exceed
+                # (null = no ceiling). One price per band, so a teacher knows
+                # the cost of a 40-question paper before uploading it.
+                q_credits = _slab_credits(slabs, num_q)
+                total += q_credits
+                breakdown.append({
+                    "component": "questions",
+                    "detail": f"{num_q} question(s), slab price",
+                    "credits": float(q_credits),
+                })
+            else:
+                q_credits = Decimal(num_q) * per_unit
+                total += q_credits
+                breakdown.append({
+                    "component": "questions",
+                    "detail": f"{num_q} question(s) × {per_unit}",
+                    "credits": float(q_credits),
+                })
             # Image add-on. An explicit `image_count` (charge time — the images
             # actually delivered) takes precedence; otherwise `include_images`
             # means "up to one per question", the preview upper bound. This is

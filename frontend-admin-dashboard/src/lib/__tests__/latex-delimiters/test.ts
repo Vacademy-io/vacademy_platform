@@ -38,6 +38,17 @@ describe('renderLatexDelimiters', () => {
         ).toEqual(['math-block:\\int_0^1 x^2 dx = \\frac{1}{3}']);
     });
 
+    it('converts a coordinate pair or a bare arithmetic expression', () => {
+        // SN Class 9 maths, Q18: "If $(2,0)$ is a solution …" stayed as source.
+        const point = renderLatexDelimiters(
+            '<p>If $(2,0)$ is a solution of $2x+3y=k$, find k.</p>'
+        );
+        expect(point).toContain('data-latex="(2,0)"');
+        expect(point).toContain('data-latex="2x+3y=k"');
+        expect(point).not.toContain('$');
+        expect(renderLatexDelimiters('<p>So $2+2$ is four.</p>')).toContain('data-latex="2+2"');
+    });
+
     it('leaves prices and plain prose alone', () => {
         const money = '<p>Plans cost $5 and $10 per month.</p>';
         expect(renderLatexDelimiters(money)).toBe(money);

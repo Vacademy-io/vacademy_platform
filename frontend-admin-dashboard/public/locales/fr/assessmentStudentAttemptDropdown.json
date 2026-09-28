@@ -81,7 +81,8 @@
         "generatingReport": "Génération du rapport...",
         "downloadReport": "Télécharger le rapport",
         "releaseResult": "Publier le résultat",
-        "downloadAiReport": "Télécharger le rapport IA"
+        "downloadAiReport": "Télécharger le rapport IA",
+        "proctoring": "Surveillance"
     },
     "toasts": {
         "reattemptProvided": "Une nouvelle tentative a été accordée à {{name}}.",
@@ -98,5 +99,33 @@
         "submissionLoadError": "Échec du chargement de la soumission. Veuillez réessayer.",
         "reportGenerateError": "Échec de la génération du rapport. Veuillez réessayer.",
         "aiReportError": "Impossible de télécharger le rapport IA. Veuillez réessayer."
+    },
+    "proctoring": {
+        "title": "Surveillance — {{name}}",
+        "loadError": "Impossible de charger le journal de surveillance.",
+        "flags": "{{count}} signalements",
+        "warnings": "{{count}} avertissements",
+        "snapshots": "{{count}} captures",
+        "tier": "Niveau : {{tier}}",
+        "filter": {
+            "flagsOnly": "Signalements et avertissements",
+            "everything": "Tout"
+        },
+        "empty": "Aucune donnée de surveillance pour cette tentative. La surveillance était désactivée ou l'appareil n'a rien envoyé.",
+        "noFlags": "Rien n'a été signalé.",
+        "viewSnapshot": "Voir la capture",
+        "snapshotMissing": "Capture indisponible",
+        "snapshotAlt": "Capture de surveillance",
+        "events": {
+            "CHECK_IN": "Vérification caméra",
+            "SNAPSHOT": "Capture",
+            "CAMERA_DENIED": "Caméra refusée",
+            "CAMERA_LOST": "Caméra coupée",
+            "NO_FACE": "Aucun visage dans le cadre",
+            "MULTIPLE_FACES": "Plusieurs visages",
+            "TAB_SWITCH": "A quitté la fenêtre du test",
+            "FULLSCREEN_EXIT": "A quitté le plein écran",
+            "AUTO_SUBMITTED": "Soumis automatiquement après trop de signalements"
+        }
     }
 }

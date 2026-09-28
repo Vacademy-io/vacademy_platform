@@ -31,6 +31,8 @@ export interface SidebarItemProps {
     subItems?: subItemsType[];
     selectedItem?: string;
     onClick?: () => void;
+    /** Unread count shown as a pill after the title (hidden when 0/undefined). */
+    badgeCount?: number;
 }
 
 export interface SidebarStateType {

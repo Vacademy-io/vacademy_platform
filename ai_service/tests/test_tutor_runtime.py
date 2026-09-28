@@ -133,3 +133,13 @@ def test_templates_and_prompts_render_in_both_languages():
                      check={"type": "open", "prompt": "Give a push.", "expected": "kick"}, transcript=[{"role": "learner", "text": "hi"}],
                      learner_message="kicking a ball", remediation_no=0, mode="text")
     assert "force.def=0.5" in up and "[heading #h] Force" in up and "FIRST ANSWER" in up
+
+
+def test_voice_nudge_explains_how_to_answer_in_both_languages():
+    # 2026-09-27 review: most voice sessions ended with no answer — students spoke
+    # to a microphone that was never on. The silent-mic nudge says how to answer.
+    from app.services.tutor.runtime import prompts as p
+    for lang in ("en", "hi"):
+        with_hint = p.tpl("nudge_voice_hint", lang, hint="Think of your morning.")
+        assert "Answer" in with_hint and "Think of your morning." in with_hint
+        assert "Answer" in p.tpl("nudge_voice_open", lang)

@@ -53,6 +53,8 @@ export interface CurriculumFacets {
     class: string;
     subject: string;
     medium: string | null;
+    /** "SYLLABUS" when the base is the board's syllabus rather than a textbook. */
+    kind?: 'SYLLABUS' | null;
     /** Listing title — distinguishes several books of one class+subject. */
     book: string | null;
 }

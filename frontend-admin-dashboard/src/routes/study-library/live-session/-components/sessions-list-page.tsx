@@ -1,17 +1,21 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { getPublicUrls } from '@/services/upload_file';
+import { CalendarCheck, ClockCounterClockwise, NotePencil } from '@phosphor-icons/react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MyButton } from '@/components/design-system/button';
 import { SessionStatus, sessionStatusTabLabelKeys } from '../-constants/enums';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
+import { cn } from '@/lib/utils';
 import LiveSessionCard from './live-session-card';
 import { useNavigate } from '@tanstack/react-router';
 import { useSessionSearch } from '../-hooks/useLiveSessions';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { SessionSearchRequest } from '../-services/utils';
+import { SessionSearchRequest, SessionSearchResponse, searchSessions } from '../-services/utils';
 import PreviousSessionCard from './previous-session-card';
 import DraftSessionCard from './draft-session-card';
 import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
@@ -191,12 +195,16 @@ export default function SessionListPage() {
     const currentPage = useLiveSessionListStateStore((s) => s.currentPage);
     const setCurrentPage = useLiveSessionListStateStore((s) => s.setCurrentPage);
 
-    // Build search request based on current filters and tab
-    const searchRequest: SessionSearchRequest = useMemo(() => {
+    // Build search request based on current filters and a given tab.
+    const buildSearchRequest = useCallback((
+        tab: SessionStatus,
+        page: number,
+        size: number
+    ): SessionSearchRequest => {
         const baseRequest: SessionSearchRequest = {
             institute_id: INSTITUTE_ID,
-            page: currentPage,
-            size: ITEMS_PER_PAGE,
+            page,
+            size,
             sort_by: 'meetingDate',
             sort_direction: 'ASC',
         };
@@ -216,7 +224,7 @@ export default function SessionListPage() {
         const farPastFormatted = format(farPast, 'yyyy-MM-dd');
 
         // Configure payload based on Tab (Strict Rules)
-        switch (selectedTab) {
+        switch (tab) {
             case SessionStatus.UPCOMING:
                 baseRequest.statuses = ['LIVE'];
                 baseRequest.time_status = 'UPCOMING';
@@ -325,8 +333,6 @@ export default function SessionListPage() {
         return baseRequest;
     }, [
         INSTITUTE_ID,
-        currentPage,
-        selectedTab,
         searchQuery,
         startDate,
         endDate,
@@ -339,8 +345,56 @@ export default function SessionListPage() {
         selectedBatches,
     ]);
 
+    const searchRequest = useMemo(
+        () => buildSearchRequest(selectedTab, currentPage, ITEMS_PER_PAGE),
+        [buildSearchRequest, selectedTab, currentPage]
+    );
+
     // Fetch sessions using the new search API
     const { data: searchResponse, isLoading, error } = useSessionSearch(searchRequest);
+
+    /**
+     * Per-tab counts for the tab strip.
+     *
+     * One `size: 1` search per INACTIVE tab, built by the same
+     * `buildSearchRequest` the tab itself uses — so a count can never describe
+     * a different query from the rows it sits above. The ACTIVE tab is not
+     * refetched at all: its count is read off the list response already on
+     * screen.
+     *
+     * The key is prefixed `sessionSearch` on purpose. Deleting a session
+     * invalidates `['sessionSearch']`, and react-query matches that by prefix —
+     * so counts refresh with the list instead of sitting stale next to it.
+     *
+     * Caveat worth knowing: LIVE/UPCOMING/PAST are re-filtered client-side for
+     * midnight crossover, so a count can read one higher than the rows on a
+     * session sitting exactly on that boundary.
+     */
+    const countQueries = useQueries({
+        queries: Object.values(SessionStatus).map((status) => {
+            const request = buildSearchRequest(status, 0, 1);
+            return {
+                queryKey: ['sessionSearch', 'count', request],
+                queryFn: () => searchSessions(request),
+                enabled: status !== selectedTab,
+                staleTime: 30_000,
+                select: (data: SessionSearchResponse) => data.pagination.total_elements,
+            };
+        }),
+    });
+
+    const tabCounts = useMemo(() => {
+        const statuses = Object.values(SessionStatus);
+        const counts: Partial<Record<SessionStatus, number>> = {};
+        statuses.forEach((status, idx) => {
+            const value =
+                status === selectedTab
+                    ? searchResponse?.pagination?.total_elements
+                    : countQueries[idx]?.data;
+            if (typeof value === 'number') counts[status] = value;
+        });
+        return counts;
+    }, [countQueries, selectedTab, searchResponse]);
 
     // The restored page index can outlive the result set it belonged to — a
     // session that was Live when the admin opened it has since ended, or a
@@ -1114,6 +1168,46 @@ export default function SessionListPage() {
         );
     };
 
+    const instructorFileIds = useMemo(() => {
+        const ids = new Set<string>();
+        searchResponse?.sessions?.forEach((session) => {
+            session.instructors?.forEach((instructor) => {
+                const fileId = instructor?.profile_pic_file_id?.trim();
+                if (fileId) ids.add(fileId);
+            });
+        });
+        return Array.from(ids).sort();
+    }, [searchResponse]);
+
+    const [instructorAvatars, setInstructorAvatars] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if (instructorFileIds.length === 0) {
+            setInstructorAvatars({});
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const details = await getPublicUrls(instructorFileIds.join(','));
+                if (cancelled) return;
+                const next: Record<string, string> = {};
+                (Array.isArray(details) ? details : []).forEach(
+                    (entry: { id?: string; url?: string }) => {
+                        if (entry?.id && entry?.url) next[entry.id] = entry.url;
+                    }
+                );
+                setInstructorAvatars(next);
+            } catch {
+                // Cosmetic: the card falls back to initials.
+                if (!cancelled) setInstructorAvatars({});
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [instructorFileIds]);
+
     useEffect(() => {
         setNavHeading(getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession));
         clearSessionDetails();
@@ -1236,10 +1330,13 @@ export default function SessionListPage() {
                                 registration_form_link_for_public_sessions:
                                     session.registration_form_link_for_public_sessions || '',
                                 timezone: session.timezone,
+                                link_type: session.link_type,
+                                waiting_room_time: session.waiting_room_time,
                                 default_class_link: session.default_class_link,
                                 defaultClassName: session.default_class_name,
                                 learner_button_config: session.learner_button_config,
                                 package_session_details: session.package_session_details,
+                                instructors: session.instructors,
                             };
 
                             if (selectedTab === SessionStatus.PAST) {
@@ -1247,6 +1344,7 @@ export default function SessionListPage() {
                                     <PreviousSessionCard
                                         key={`${session.session_id}-${session.schedule_id}`}
                                         session={sessionData}
+                                        avatarUrlByFileId={instructorAvatars}
                                     />
                                 );
                             } else if (selectedTab === SessionStatus.DRAFTS) {
@@ -1259,13 +1357,18 @@ export default function SessionListPage() {
                                         session.session_streaming_service_type,
                                 };
                                 return (
-                                    <DraftSessionCard key={session.session_id} session={draftSession} />
+                                    <DraftSessionCard
+                                        key={session.session_id}
+                                        session={draftSession}
+                                        avatarUrlByFileId={instructorAvatars}
+                                    />
                                 );
                             } else {
                                 return (
                                     <LiveSessionCard
                                         key={`${session.session_id}-${session.schedule_id}`}
                                         session={sessionData}
+                                        avatarUrlByFileId={instructorAvatars}
                                     />
                                 );
                             }
@@ -1276,15 +1379,37 @@ export default function SessionListPage() {
                         </div>
                     )}
                 </div>
-                {searchResponse.pagination.total_pages > 1 && (
-                    <div className="mt-6">
+                {/* Result counter + pager share one strip so the list always ends
+                    with "where am I in the set", not with a bare card edge. The
+                    range is counted off what is actually rendered: the LIVE /
+                    UPCOMING / PAST tabs re-filter the page client-side for
+                    midnight crossover, so the server's page_size can overstate it. */}
+                <div className="mt-6 flex flex-col items-center justify-between gap-3 border-t border-neutral-100 pt-4 sm:flex-row">
+                    <p className="text-sm text-neutral-500">
+                        {t('sessions.showingRange', {
+                            from:
+                                searchResponse.pagination.current_page *
+                                    searchResponse.pagination.page_size +
+                                1,
+                            to:
+                                searchResponse.pagination.current_page *
+                                    searchResponse.pagination.page_size +
+                                filteredSessions.length,
+                            total: searchResponse.pagination.total_elements,
+                            term: getTerminologyPlural(
+                                ContentTerms.LiveSession,
+                                SystemTerms.LiveSession
+                            ).toLowerCase(),
+                        })}
+                    </p>
+                    {searchResponse.pagination.total_pages > 1 && (
                         <MyPagination
                             currentPage={searchResponse.pagination.current_page}
                             totalPages={searchResponse.pagination.total_pages}
                             onPageChange={handlePageChange}
                         />
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         );
     };
@@ -1295,7 +1420,35 @@ export default function SessionListPage() {
             <Tabs value={selectedTab} onValueChange={handleTabChange}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <TabsList className="inline-flex h-auto justify-start gap-1 overflow-x-auto rounded-none border-b !bg-transparent p-0 sm:gap-4">
-                        {Object.values(SessionStatus).map((status) => (
+                        {Object.values(SessionStatus).map((status) => {
+                            const liveDotActive =
+                                (tabCounts[SessionStatus.LIVE] ?? 0) > 0 ||
+                                selectedTab === SessionStatus.LIVE;
+                            const tabIcon =
+                                status === SessionStatus.LIVE ? (
+                                    // Red and pulsing whenever a class is
+                                    // actually live, and also while you are
+                                    // standing on the Live tab — a flat grey dot
+                                    // on the tab you just opened read as dead UI.
+                                    <span className="relative flex size-2">
+                                        {liveDotActive ? (
+                                            <span className="absolute inline-flex size-full animate-ping rounded-full bg-danger-400 opacity-75" />
+                                        ) : null}
+                                        <span
+                                            className={cn(
+                                                'relative inline-flex size-2 rounded-full',
+                                                liveDotActive ? 'bg-danger-500' : 'bg-neutral-300'
+                                            )}
+                                        />
+                                    </span>
+                                ) : status === SessionStatus.UPCOMING ? (
+                                    <CalendarCheck size={16} weight="duotone" />
+                                ) : status === SessionStatus.PAST ? (
+                                    <ClockCounterClockwise size={16} weight="duotone" />
+                                ) : (
+                                    <NotePencil size={16} weight="duotone" />
+                                );
+                            return (
                             <TabsTrigger
                                 key={status}
                                 value={status}
@@ -1304,9 +1457,22 @@ export default function SessionListPage() {
                                     : 'border-none bg-transparent'
                                     }`}
                             >
+                                {tabIcon}
                                 {t(`sessions.tabLabels.${sessionStatusTabLabelKeys[status]}`)}
+                                {typeof tabCounts[status] === 'number' ? (
+                                    <span
+                                        className={
+                                            selectedTab === status
+                                                ? 'text-primary-500'
+                                                : 'text-neutral-400'
+                                        }
+                                    >
+                                        ({tabCounts[status]})
+                                    </span>
+                                ) : null}
                             </TabsTrigger>
-                        ))}
+                            );
+                        })}
                     </TabsList>
                     <div className="flex items-center gap-2">
                         <SettingsQuickAccessButton

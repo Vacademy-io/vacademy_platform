@@ -46,4 +46,12 @@ public class FlowExecutionContext {
      * however many delivered/read events arrive for it.
      */
     private String lastProviderMessageId;
+
+    /**
+     * What a SEND_TEMPLATE node just sent — template name, resolved body params, header media —
+     * in the shape {@code WhatsAppTemplateRenderer} reads off notification_log.message_payload.
+     * The engine reads-and-clears it onto the outgoing row, so the Inbox can show the message the
+     * learner actually received instead of a bare "Template: name" line.
+     */
+    private Map<String, Object> lastTemplateSend;
 }

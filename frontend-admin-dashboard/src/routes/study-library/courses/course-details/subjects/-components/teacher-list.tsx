@@ -57,12 +57,6 @@ export const TeachersList = ({ packageSessionId }: { packageSessionId: string })
 
     const removeMutation = useMutation({
         mutationFn: async ({ facultyId, subjects }: { facultyId: string; subjects: { id: string }[] }) => {
-            const subjectAssignments = subjects.map((s) => ({
-                subject_id: s.id,
-                is_new_assignment: false,
-            }));
-            if (subjectAssignments.length === 0) return;
-
             await authenticatedAxiosInstance({
                 method: 'PUT',
                 url: UPDATE_FACULTY_ASSIGNMENTS,
@@ -71,7 +65,17 @@ export const TeachersList = ({ packageSessionId }: { packageSessionId: string })
                     batch_subject_assignments: [
                         {
                             batch_id: packageSessionId,
-                            subject_assignments: subjectAssignments,
+                            subject_assignments: [
+                                // Teachers added from Add Course -> Authors have a batch-level
+                                // row with no subject (Subjects column shows "--"). Always ask
+                                // the backend to retire it too, so "remove from batch" clears
+                                // the teacher whether or not they also hold subject rows.
+                                { subject_id: null, is_new_assignment: false },
+                                ...subjects.map((s) => ({
+                                    subject_id: s.id,
+                                    is_new_assignment: false,
+                                })),
+                            ],
                         },
                     ],
                 },

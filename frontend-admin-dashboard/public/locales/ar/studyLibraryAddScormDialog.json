@@ -28,6 +28,7 @@
     "toasts": {
         "uploadFailed": "فشل تحميل حزمة SCORM",
         "selectZipFile": "الرجاء تحديد ملف .zip",
+        "fileTooLarge": "حزمة SCORM كبيرة جدًا ({{size}}). الحد الأقصى المسموح به هو {{max}}.",
         "uploading": "جارٍ تحميل حزمة SCORM...",
         "uploadSuccessDetected": "تم التحميل بنجاح! تم اكتشاف حزمة SCORM {{version}}.",
         "uploadParseSuccess": "تم تحميل وتحليل حزمة SCORM بنجاح!",

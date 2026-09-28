@@ -49,6 +49,9 @@ public class EngagementRevealJob {
     private final EngagementAttemptRepository attemptRepository;
     private final EngagementScheduleResolver scheduleResolver;
     private final PointsLedgerService pointsLedgerService;
+    /** Plans scheduled in days after joining. Optional so hand-built tests need not wire it. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vacademy.io.admin_core_service.features.engagement.service.EngagementRelativeSchedule relativeSchedule;
 
     @Scheduled(cron = "0 5/15 * * * ?")
     @SchedulerLock(name = "EngagementRevealTick", lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
@@ -72,6 +75,10 @@ public class EngagementRevealJob {
     }
 
     private void settleForPlan(EngagementPlan plan) {
+        if (plan.isRelative()) {
+            if (relativeSchedule != null) settleRelativePlan(plan);
+            return;
+        }
         LocalDate today = LocalDate.now(scheduleResolver.zoneOf(plan));
 
         for (EngagementSlot slot : slotRepository.findActiveByPlan(plan.getId())) {
@@ -84,16 +91,65 @@ public class EngagementRevealJob {
                     if (!Boolean.TRUE.equals(item.getHideResultUntilReveal())) continue;
                     int bonus = item.getCorrectPoints() == null ? 0 : item.getCorrectPoints();
                     if (bonus <= 0) continue;
-                    settleItem(plan, item, bonus);
+                    java.time.Instant revealAt = java.time.LocalDateTime
+                            .of(runDate, slot.effectiveRevealTime())
+                            .atZone(scheduleResolver.zoneOf(plan)).toInstant();
+                    settleItem(plan, item, bonus, revealAt);
                 }
             }
         }
     }
 
-    private void settleItem(EngagementPlan plan, EngagementItem item, int bonus) {
+    /**
+     * Days-after-joining plans: every learner has their own reveal moment, so each
+     * correct hidden answer is checked against the reveal of the learner's own run —
+     * the one in effect when they answered.
+     */
+    private void settleRelativePlan(EngagementPlan plan) {
+        java.time.ZoneId zone = scheduleResolver.zoneOf(plan);
+        java.util.Map<String, LocalDate> dayOnes = relativeSchedule.dayOnesForBatch(plan);
+        for (EngagementSlot stored : slotRepository.findActiveByPlan(plan.getId())) {
+            for (EngagementItem item : itemRepository.findActiveBySlot(stored.getId())) {
+                if (!Boolean.TRUE.equals(item.getHideResultUntilReveal())) continue;
+                int bonus = item.getCorrectPoints() == null ? 0 : item.getCorrectPoints();
+                if (bonus <= 0) continue;
+                settleItem(plan, item, bonus, attempt -> {
+                    LocalDate dayOne = dayOnes.get(attempt.getUserId());
+                    if (dayOne == null || attempt.getCompletedAt() == null) return null;
+                    EngagementSlot mine = relativeSchedule.localize(plan, stored, dayOne);
+                    LocalDate answered = attempt.getCompletedAt().toInstant().atZone(zone).toLocalDate();
+                    LocalDate run = scheduleResolver.mostRecentRunDate(mine, answered);
+                    if (run == null || !scheduleResolver.isRevealed(plan, mine, run)) return null;
+                    return java.time.LocalDateTime.of(run, mine.effectiveRevealTime()).atZone(zone).toInstant();
+                });
+            }
+        }
+    }
+
+    private void settleItem(EngagementPlan plan, EngagementItem item, int fullBonus,
+                            java.time.Instant revealAt) {
+        settleItem(plan, item, fullBonus, attempt -> revealAt);
+    }
+
+    /** {@code revealAtFor} returns null when this attempt's reveal has not happened yet. */
+    private void settleItem(EngagementPlan plan, EngagementItem item, int fullBonus,
+                            java.util.function.Function<EngagementAttempt, java.time.Instant> revealAtFor) {
         for (EngagementAttempt attempt : attemptRepository.findByItem(item.getId())) {
             if (!EngagementEnums.AttemptStatus.COMPLETED.name().equals(attempt.getStatus())) continue;
+            java.time.Instant revealAt = revealAtFor.apply(attempt);
+            if (revealAt == null) continue;
             if (!Boolean.TRUE.equals(attempt.getIsCorrect())) continue;
+            // Answered after the reveal: submit already paid completion only, and the
+            // answer was public by then. Without this a learner answering in the gap
+            // before this job's next tick still collected the bonus.
+            if (attempt.getCompletedAt() != null
+                    && !attempt.getCompletedAt().toInstant().isBefore(revealAt)) continue;
+            // A late (catch-up) answer earns the bonus at the same reduced rate as the
+            // completion points it was paid at submit.
+            int bonus = Boolean.TRUE.equals(attempt.getIsLate())
+                    ? (int) Math.floor(fullBonus * (scheduleResolver.resolveCatchUpPercent(plan, item) / 100.0))
+                    : fullBonus;
+            if (bonus <= 0) continue;
 
             boolean awarded = pointsLedgerService.award(
                     attempt.getUserId(),
@@ -105,7 +161,11 @@ public class EngagementRevealJob {
                     "Correct answer — " + item.getTitle(),
                     // Distinct from the submit-time award for the same item, so both
                     // can exist and neither can be paid twice.
-                    "ENGAGEMENT_BONUS:" + item.getId() + ":v" + item.getVersion()
+                    // Keyed on the version the learner ANSWERED, not the item's current
+                    // one: an in-place edit bumps item.version, and keying on that would
+                    // pay every correct learner a second time.
+                    "ENGAGEMENT_BONUS:" + item.getId() + ":v"
+                            + (attempt.getItemVersion() == null ? item.getVersion() : attempt.getItemVersion())
                             + ":" + attempt.getUserId()).isPresent();
 
             if (awarded) {

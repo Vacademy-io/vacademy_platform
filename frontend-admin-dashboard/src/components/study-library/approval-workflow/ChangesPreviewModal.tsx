@@ -25,6 +25,8 @@ interface ChangesPreviewModalProps {
     courseId: string;
     onSubmitForApproval: () => void;
     isSubmitting: boolean;
+    // false = the role publishes directly (no admin review); copy adapts.
+    requireApproval?: boolean;
 }
 
 interface ChangesSummary {
@@ -46,6 +48,7 @@ export function ChangesPreviewModal({
     courseId,
     onSubmitForApproval,
     isSubmitting,
+    requireApproval = true,
 }: ChangesPreviewModalProps) {
     const { studyLibraryData } = useStudyLibraryStore();
     const { items: chapterSlides } = useContentStore();
@@ -568,12 +571,20 @@ export function ChangesPreviewModal({
                                 <h4 className="mb-2 font-medium text-blue-900">
                                     What happens next?
                                 </h4>
-                                <ul className="space-y-1 text-sm text-blue-800">
-                                    <li>• Your course will be submitted for admin review</li>
-                                    <li>• You'll receive notifications about the review status</li>
-                                    <li>• You can track progress in "Courses In Review"</li>
-                                    <li>• You can withdraw and make changes if needed</li>
-                                </ul>
+                                {requireApproval ? (
+                                    <ul className="space-y-1 text-sm text-blue-800">
+                                        <li>• Your course will be submitted for admin review</li>
+                                        <li>• You'll receive notifications about the review status</li>
+                                        <li>• You can track progress in "Courses In Review"</li>
+                                        <li>• You can withdraw and make changes if needed</li>
+                                    </ul>
+                                ) : (
+                                    <ul className="space-y-1 text-sm text-blue-800">
+                                        <li>• Your course will be published immediately</li>
+                                        <li>• Learners can be enrolled as soon as it is live</li>
+                                        <li>• It will show as Published under "Authored Courses"</li>
+                                    </ul>
+                                )}
                             </div>
                         </div>
                     ) : null}
@@ -592,12 +603,12 @@ export function ChangesPreviewModal({
                         {isSubmitting ? (
                             <>
                                 <Spinner size={16} className="mr-2 animate-spin" />
-                                Submitting...
+                                {requireApproval ? 'Submitting...' : 'Publishing...'}
                             </>
                         ) : (
                             <>
                                 <CheckCircle size={16} className="mr-2" />
-                                Submit for Approval
+                                {requireApproval ? 'Submit for Approval' : 'Publish'}
                             </>
                         )}
                     </MyButton>

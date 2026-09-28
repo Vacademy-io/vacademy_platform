@@ -7,7 +7,8 @@
         "count_other": "{{count}} participants (Internal)"
     },
     "joinLink": {
-        "title": "Join Link"
+        "title": "Join Link",
+        "privateWarning": "This link only works while the assessment is Public. Set it to Public in Step 3 before sharing."
     },
     "qrCode": {
         "title": "QR Code"

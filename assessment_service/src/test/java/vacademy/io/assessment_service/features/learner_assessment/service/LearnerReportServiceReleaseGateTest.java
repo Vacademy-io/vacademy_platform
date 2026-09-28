@@ -19,7 +19,8 @@ import static org.mockito.Mockito.when;
 /**
  * The learner report endpoints (detail, comparison, annotated copy, PDF) must
  * refuse a MANUAL-result attempt that has not been released — the same rule the
- * learner UI applies — while leaving AUTO result types exactly as they were.
+ * learner UI applies — and any attempt explicitly held PENDING for a teacher;
+ * other AUTO results are served as before.
  */
 class LearnerReportServiceReleaseGateTest {
 
@@ -64,10 +65,18 @@ class LearnerReportServiceReleaseGateTest {
 
     @Test
     void autoResultTypesAreNotGatedHere() {
-        // The card offers "Show report" for these regardless of release status.
+        // The card offers "Show report" for these unless the attempt is held.
         access(attempt("AUTO_AFTER_SUBMISSION", null));
-        access(attempt("AUTO_AFTER_ASSESSMENT_END", "PENDING"));
+        access(attempt("AUTO_AFTER_ASSESSMENT_END", "RELEASED"));
         access(attempt(null, null));
+    }
+
+    @Test
+    void anAutoResultHeldPendingForATeacherIsRefused() {
+        // Typed answers the AI is grading: held until the teacher releases.
+        assertThatThrownBy(() -> access(attempt("AUTO_AFTER_SUBMISSION", "PENDING")))
+                .isInstanceOf(VacademyException.class)
+                .hasMessageContaining("not been released");
     }
 
     @Test

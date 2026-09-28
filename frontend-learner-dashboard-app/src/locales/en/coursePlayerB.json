@@ -378,5 +378,25 @@
             "email": "Email",
             "phone": "Phone Number"
         }
+    },
+    "blog": {
+        "readMore": "Read more",
+        "backToList": "All posts",
+        "empty": "No posts yet — check back soon.",
+        "emptyGuidance": "No published posts yet. Write one under Manage Pages → Blog and publish it to see it here.",
+        "homePageHint": "This blog sits on the home page, so posts open with ?post=… in the address. Put it on its own page (for example /blog) to give every article a clean URL of its own.",
+        "categories": "Categories",
+        "allCategories": "All",
+        "loadFailed": "Posts could not be loaded right now.",
+        "pagination": "Blog pages",
+        "newer": "Newer",
+        "older": "Older",
+        "pageOf": "Page {{page}} of {{total}}",
+        "minRead": "{{minutes}} min read",
+        "notFoundTitle": "Post not found",
+        "notFoundBody": "This article may have been unpublished or moved.",
+        "tags": "Tags",
+        "copyLink": "Copy link",
+        "linkCopied": "Link copied"
     }
 }

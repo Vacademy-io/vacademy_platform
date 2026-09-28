@@ -79,11 +79,14 @@ export const isDueEligibleEntry = (entry: PaymentLogEntry): boolean => {
 };
 
 /**
- * A voided (REJECTED) invoice. It stays visible in the table for audit, but is deliberately
- * absent from every total: cancelled money was never collected and is no longer owed.
+ * A voided (REJECTED) invoice, or a payment an admin voided because it was recorded by mistake
+ * (the server reports those as CANCELLED too). Either stays visible in the table for audit, but
+ * is deliberately absent from every total: cancelled money was never collected and is no longer
+ * owed.
  */
 export const isCancelledEntry = (entry: PaymentLogEntry): boolean =>
-    (entry.current_payment_status || '').toUpperCase() === 'CANCELLED';
+    (entry.current_payment_status || '').toUpperCase() === 'CANCELLED' ||
+    (entry.payment_log?.payment_status || '').toUpperCase() === 'VOIDED';
 
 /**
  * Classify one payment record. "pending" absorbs PAYMENT_PENDING, NOT_INITIATED, null and any

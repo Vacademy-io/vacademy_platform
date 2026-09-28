@@ -50,6 +50,12 @@ INTERRUPT = "interrupt"
 _BACKCHANNEL_WORDS = frozenset({
     # Devanagari
     "हाँ", "हां", "हा", "हूँ", "हूं", "हम", "हम्म", "जी", "हाँजी", "हांजी",
+    # The STT writes the nasal grunt as "हं"/"हँ" as often as "हम्म" — it cut
+    # the opening restart in bd9e6a0d as a "real barge-in".
+    "हं", "हँ", "हंजी", "haanji", "hanji", "hmmji",
+    # A greeting while we are greeting is not a barge-in (call 8e2041c8: "नमस्ते।"
+    # cut the restarted opening at 58 of 221 chars — the identity never played).
+    "नमस्ते", "नमस्कार", "namaste", "namaskar", "namaskaar",
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
     "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",
@@ -69,6 +75,9 @@ _BACKCHANNEL_WORDS = frozenset({
     # LLM reply. It is the commonest greeting in English there is.
     "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
     "right", "correct", "sure", "fine", "good", "great", "cool", "alright",
+    # Call 59888de8 (2026-09-22): "Obviously." and "हाँ that's" (the STT cut
+    # "that's right") were real barge-ins, five regenerations of one line.
+    "obviously", "exactly", "absolutely", "definitely", "true", "thats", "perfect",
     "go", "on", "ahead", "continue", "carry",
 })
 
@@ -91,14 +100,18 @@ _STRIP = "।॥.,!?？…\"'`~()[]{}:;-–—"
 def _words(text: str) -> list:
     out = []
     for raw in (text or "").split():
-        w = raw.strip(_STRIP).casefold()
+        # An apostrophe inside a word is not a word boundary and not a letter:
+        # "Ma'am." must read as "maam" (call bd9e6a0d, 2026-09-21: every
+        # "हाँ Ma'am" was a real barge-in, 21 of them, and the parent said
+        # "आपकी आवाज़ अटक रही है").
+        w = raw.strip(_STRIP).replace("'", "").replace("\u2019", "").casefold()
         if w:
             out.append(w)
     return out
 
 
 def mid_reply_action(text: str, extra_backchannels: frozenset = frozenset(),
-                     max_words: int = 3) -> str:
+                     max_words: int = 6) -> str:
     """Classify a caller final that arrived while the bot's reply is ducked.
 
     ABSORB only when EVERY word is a known acknowledgment, the utterance is
@@ -245,9 +258,20 @@ def is_carrier_announcement(text: str) -> bool:
 # means the first response did not work and repeating the sentence again will
 # not either — see TranscriptCollector, which switches to a short "can you hear
 # me?" and then stops talking.
-_AUDIO_CHECK_WORDS = frozenset({
-    "hello", "helo", "hallo", "hlo", "hey", "hi", "hii", "हेलो", "हैलो", "हलो", "हाय",
+# "Hello" as the STT spells it across the agents' languages. Call f9b9f575
+# (2026-09-25, Shreya-marathi): Marathi "हॅलो" matched nothing, so a pickup
+# "hello" read as an answer and the re-said opening was scored a replay.
+HELLO_VARIANTS = frozenset({
+    "hello", "helo", "hallo", "hlo", "hullo",
+    "हेलो", "हैलो", "हलो", "हॅलो", "हॅल्लो", "हेल्लो", "हालो",            # Devanagari (hi, mr)
+    "હેલો", "હલો",                                                      # Gujarati
+    "হ্যালো", "হেলো",                                                    # Bengali
+    "ਹੈਲੋ", "ਹੈਲੋ",                                                      # Gurmukhi
+    "ஹலோ", "ஹல்லோ",                                                    # Tamil
+    "హలో", "హల్లో",                                                     # Telugu
+    "ಹಲೋ", "ಹಲ್ಲೋ",                                                      # Kannada
 })
+_AUDIO_CHECK_WORDS = frozenset({"hey", "hi", "hii", "हाय"}) | HELLO_VARIANTS
 
 
 def is_audio_check(text: str, max_words: int = 3) -> bool:
@@ -349,7 +373,7 @@ def caller_wants_to_end(text: str) -> bool:
     return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
 
 
-_PRESENCE_WORDS = frozenset({"hello", "hallo", "helo", "hullo", "hi", "haan", "ji", "yes", "yeah"})
+_PRESENCE_WORDS = frozenset({"hi", "haan", "ji", "yes", "yeah"}) | HELLO_VARIANTS
 _PRESENCE_PHRASES = ("are you there", "you there", "still there", "can you hear", "sun rahe",
                      "sun rahi", "sun pa rahe", "awaaz aa rahi", "aawaz aa rahi", "hai kya", "koi hai")
 
@@ -364,8 +388,11 @@ def caller_checking_presence(text: str) -> bool:
         return False                       # a synthetic cue, not speech
     if any(p in t for p in _PRESENCE_PHRASES):
         return True
-    ws = re.findall(r"[a-z\u0900-\u097f']+", t)   # _words keeps the '?' on 'hello?'
-    return 1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws) and "hello" in ws
+    # Letters and marks of Latin and every Indic script (U+0900-0DFF), so a
+    # Gujarati or Tamil "hello" is a word here too.
+    ws = re.findall(r"[a-z\u0900-\u0dff']+", t)   # _words keeps the '?' on 'hello?'
+    return (1 <= len(ws) <= 6 and all(w in _PRESENCE_WORDS for w in ws)
+            and any(w in HELLO_VARIANTS for w in ws))
 
 
 def presence_cue(question: str) -> str:
@@ -470,6 +497,50 @@ _WHO_PHRASES = ("who is this", "who's this", "who are you", "who is calling", "w
                 # "Uh, can I know the name of your…" (call b2f6330a) — the model
                 # answered with its script line instead.
                 "know the name", "name of your", "your name", "naam kya", "आपका नाम", "aapka naam")
+
+
+_TAKEOVER_WORDS = frozenset({
+    "कौन", "क्यों", "कहाँ", "कहां", "किसलिए", "कैसे", "किसने", "किससे",
+    "who", "why", "where", "which", "how", "kaun", "kyun", "kyu", "kahan", "kaise",
+})
+
+
+_QUESTION_WORDS = frozenset({
+    "क्या", "कौन", "कितना", "कितनी", "कितने", "कब", "कहाँ", "कहां", "क्यों", "कैसे", "किस",
+    "what", "who", "how", "when", "where", "why", "which", "kya", "kaun", "kitna", "kab",
+    "kahan", "kyun", "kaise",
+})
+
+
+def is_question(text: str) -> bool:
+    """Did the caller ask something? A question mark, or a question word."""
+    t = (text or "").strip()
+    if not t or t.startswith("["):
+        return False
+    if "?" in t or "？" in t:
+        return True
+    return any(w in _QUESTION_WORDS for w in _words(t))
+
+
+def takes_over_opening(text: str) -> bool:
+    """Before our opening has been heard, does THIS utterance earn a model
+    reply instead? Only a question to us, a refusal, or our own cue does.
+    Call 4243a436 (2026-09-22): the callee was mid-conversation with someone
+    in the room — "तो गुजर जाएगी", "सेटिंग कम हो जाएगी", "नहीं वो तो ठीक था" —
+    and each ran the model or cut the opening; he heard "समझ सकती हूँ, नाम
+    क्या है?" from a stranger and asked who was calling at 33 s."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if t.startswith("["):
+        return True                    # our own steering cue
+    if caller_asks_who(t) or caller_wants_to_end(t):
+        return True
+    if is_audio_check(t) or caller_checking_presence(t):
+        return False                   # "Hello?" — the opening IS the answer
+    if "?" in t or "？" in t:
+        return True
+    return any(w in _TAKEOVER_WORDS for w in _words(t))
 
 
 def caller_asks_who(text: str) -> bool:

@@ -192,7 +192,7 @@ export const submitTutorQuizActivity = async (params: {
   );
 };
 
-// ── public 3-minute demo (no auth) ───────────────────────────────────────────
+// ── public demo lesson (no auth; length = tutor.demo.minutes) ───────────────────────────────────────────
 
 export interface TutorDemoTopic {
   key: string;

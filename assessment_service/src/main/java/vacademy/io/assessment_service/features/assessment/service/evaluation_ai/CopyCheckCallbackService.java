@@ -49,6 +49,7 @@ public class CopyCheckCallbackService {
     private final QuestionWiseMarksRepository questionWiseMarksRepository;
     private final StudentAttemptRepository studentAttemptRepository;
     private final AiEvaluationCancellationService cancellationService;
+    private final TypedAnswerEvaluation typedAnswerEvaluation;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -128,8 +129,16 @@ public class CopyCheckCallbackService {
                 : "COMPLETED";
         boolean failed = "FAILED".equals(qStatus);
 
-        Optional<AiQuestionEvaluation> row = questionEvaluationRepository
-                .findByEvaluationProcessIdAndQuestionId(process.getId(), payload.getQuestionId());
+        // Duplicated tracking rows (a double dispatch) used to turn this lookup
+        // into "2 results were returned" and lose the whole verdict; take the
+        // newest row instead and let the rest sit idle.
+        List<AiQuestionEvaluation> rowsForQuestion = questionEvaluationRepository
+                .findAllByEvaluationProcessIdAndQuestionIdOrderByCreatedAtDesc(process.getId(), payload.getQuestionId());
+        if (rowsForQuestion.size() > 1) {
+            log.warn("[copy-check] {} tracking rows for question {} in process {}; using the newest",
+                    rowsForQuestion.size(), payload.getQuestionId(), process.getId());
+        }
+        Optional<AiQuestionEvaluation> row = rowsForQuestion.stream().findFirst();
 
         // Never let a late or retried AI callback overwrite a mark a human has
         // already reviewed/edited on the review page.
@@ -238,13 +247,12 @@ public class CopyCheckCallbackService {
                 // Recompute from the successfully-graded questions rather than
                 // trusting the AI's reported total: FAILED questions are excluded
                 // (not counted as a silent 0) until a teacher grades them, which
-                // recomputes this total via AiEvaluationReviewService.
+                // recomputes this total via AiEvaluationReviewService. An online
+                // attempt's run covers only its written answers; the objective
+                // marks scored on submit are added back in.
                 List<AiQuestionEvaluation> rows = questionEvaluationRepository
                         .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
-                double total = rows.stream()
-                        .filter(q -> "COMPLETED".equals(q.getStatus()) && q.getMarksAwarded() != null)
-                        .mapToDouble(q -> q.getMarksAwarded().doubleValue())
-                        .sum();
+                double total = typedAnswerEvaluation.attemptTotal(attempt, rows);
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
 

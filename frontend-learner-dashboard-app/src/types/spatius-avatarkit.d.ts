@@ -22,11 +22,24 @@ declare module "@spatius/avatarkit" {
   export class AvatarView {
     constructor(avatar: unknown, container: HTMLElement);
     readonly controller: AvatarController;
+    /** Fires once the first frame is drawn — the moment the face is really on screen. */
+    onFirstRendering?: () => void;
     initializeAudioContext?(): Promise<void> | void;
     start?(): Promise<void> | void;
     dispose(): void;
   }
-  export const AvatarManager: { shared: { load(avatarId: string): Promise<unknown> } };
+  export type LoadProgress = "downloading" | "completed" | "failed";
+  export interface LoadProgressInfo {
+    type: LoadProgress;
+    /** 0..1 while downloading. */
+    progress?: number;
+    error?: Error;
+  }
+  export const AvatarManager: {
+    shared: {
+      load(avatarId: string, onProgress?: (info: LoadProgressInfo) => void, useCompressedModel?: boolean): Promise<unknown>;
+    };
+  };
   export const AvatarSDK: {
     initialize(appId: string, options?: {
       drivingServiceMode?: DrivingServiceMode;

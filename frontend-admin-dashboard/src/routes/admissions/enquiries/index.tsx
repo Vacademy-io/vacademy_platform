@@ -33,6 +33,7 @@ import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateE
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 export const Route = createFileRoute('/admissions/enquiries/')({
     component: RouteComponent,
@@ -66,12 +67,6 @@ const buildSourceTypes = (t: TFunction) => [
     { id: 'INSTAGRAM', label: t('sourceTypes.instagram') },
     { id: 'REFERRAL', label: t('sourceTypes.referral') },
     { id: 'OTHER', label: t('sourceTypes.other') },
-];
-
-const buildLeadTiers = (t: TFunction) => [
-    { id: 'HOT', label: `🔴 ${t('leadTiers.hot')}` },
-    { id: 'WARM', label: `🟡 ${t('leadTiers.warm')}` },
-    { id: 'COLD', label: `🔵 ${t('leadTiers.cold')}` },
 ];
 
 // Helper function to calculate date range
@@ -121,7 +116,17 @@ function EnquiryPage() {
     const DATE_RANGES = useMemo(() => buildDateRanges(t), [t]);
     const ENQUIRY_STATUSES = useMemo(() => buildEnquiryStatuses(t), [t]);
     const SOURCE_TYPES = useMemo(() => buildSourceTypes(t), [t]);
-    const LEAD_TIERS = useMemo(() => buildLeadTiers(t), [t]);
+    // Tier pills come from the institute catalog (custom tiers + colours included).
+    const tierCatalog = useLeadTiers();
+    const LEAD_TIERS = useMemo(
+        () =>
+            tierCatalog.tiers.map((tier) => ({
+                id: tier.tier_key,
+                label: tier.label,
+                color: tier.color,
+            })),
+        [tierCatalog.tiers]
+    );
     const [selectedEnquiryId, setSelectedEnquiryId] = useState<string>('');
     const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryListItem | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
@@ -423,16 +428,24 @@ function EnquiryPage() {
                             <button
                                 key={tier.id}
                                 onClick={() => setTierFilter(tierFilter === tier.id ? '' : tier.id)}
-                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                // Inline style: tier colour is admin-picked hex (no design token).
+                                style={
                                     tierFilter === tier.id
-                                        ? tier.id === 'HOT'
-                                            ? 'bg-red-500 text-white'
-                                            : tier.id === 'WARM'
-                                              ? 'bg-amber-500 text-white'
-                                              : 'bg-blue-500 text-white'
+                                        ? { backgroundColor: tier.color, color: '#fff' }
+                                        : undefined
+                                }
+                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                    tierFilter === tier.id
+                                        ? ''
                                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                                 }`}
                             >
+                                {tierFilter !== tier.id && (
+                                    <span
+                                        className="size-2 rounded-full"
+                                        style={{ backgroundColor: tier.color }}
+                                    />
+                                )}
                                 {tier.label}
                             </button>
                         ))}
@@ -463,7 +476,11 @@ function EnquiryPage() {
                         {leadSettings.enabled && (
                             <SelectItem value="LEAD_SCORE">
                                 {t('sortBy.leadScore')}{' '}
-                                {sortBy === 'LEAD_SCORE' ? (sortDirection === 'DESC' ? '↓' : '↑') : ''}
+                                {sortBy === 'LEAD_SCORE'
+                                    ? sortDirection === 'DESC'
+                                        ? '↓'
+                                        : '↑'
+                                    : ''}
                             </SelectItem>
                         )}
                         <SelectItem value="PARENT_NAME">

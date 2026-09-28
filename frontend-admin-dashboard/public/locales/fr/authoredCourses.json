@@ -42,5 +42,8 @@
     "auditLogs": "Journaux d'audit",
     "byActor": "Par : {{actor}}",
     "commentLabel": "Commentaire : {{comment}}",
-    "noHistoryAvailable": "Aucun historique disponible."
+    "noHistoryAvailable": "Aucun historique disponible.",
+    "publish": "Publier",
+    "published": "Cours publié",
+    "publishFailed": "Échec de la publication du cours"
 }

@@ -87,7 +87,8 @@
         "generatingReport": "جارٍ إنشاء التقرير...",
         "downloadReport": "تنزيل التقرير",
         "releaseResult": "نشر النتيجة",
-        "downloadAiReport": "تنزيل تقرير الذكاء الاصطناعي"
+        "downloadAiReport": "تنزيل تقرير الذكاء الاصطناعي",
+        "proctoring": "المراقبة"
     },
     "toasts": {
         "reattemptProvided": "تم منح {{name}} فرصة إعادة المحاولة.",
@@ -104,5 +105,33 @@
         "submissionLoadError": "فشل تحميل المشاركة. يرجى المحاولة مرة أخرى.",
         "reportGenerateError": "فشل إنشاء التقرير. يرجى المحاولة مرة أخرى.",
         "aiReportError": "تعذّر تنزيل تقرير الذكاء الاصطناعي. يرجى المحاولة مرة أخرى."
+    },
+    "proctoring": {
+        "title": "المراقبة — {{name}}",
+        "loadError": "تعذر تحميل سجل المراقبة.",
+        "flags": "{{count}} تعليمات",
+        "warnings": "{{count}} تحذيرات",
+        "snapshots": "{{count}} لقطات",
+        "tier": "المستوى: {{tier}}",
+        "filter": {
+            "flagsOnly": "التعليمات والتحذيرات",
+            "everything": "الكل"
+        },
+        "empty": "لا توجد بيانات مراقبة لهذه المحاولة. كانت المراقبة متوقفة أو لم يرسل جهاز المتعلم شيئاً.",
+        "noFlags": "لم يتم تعليم أي شيء.",
+        "viewSnapshot": "عرض اللقطة",
+        "snapshotMissing": "اللقطة غير متاحة",
+        "snapshotAlt": "لقطة مراقبة",
+        "events": {
+            "CHECK_IN": "تسجيل الكاميرا",
+            "SNAPSHOT": "لقطة",
+            "CAMERA_DENIED": "رُفض إذن الكاميرا",
+            "CAMERA_LOST": "انقطعت الكاميرا",
+            "NO_FACE": "لا وجه في الإطار",
+            "MULTIPLE_FACES": "أكثر من وجه",
+            "TAB_SWITCH": "غادر نافذة الاختبار",
+            "FULLSCREEN_EXIT": "خرج من ملء الشاشة",
+            "AUTO_SUBMITTED": "أُرسل تلقائياً بعد تعليمات كثيرة"
+        }
     }
 }

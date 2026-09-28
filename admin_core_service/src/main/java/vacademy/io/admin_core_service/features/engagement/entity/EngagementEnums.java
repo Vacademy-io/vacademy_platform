@@ -32,7 +32,18 @@ public final class EngagementEnums {
          * second time here, so a lesson finished the ordinary way also finishes the
          * task.
          */
-        COURSE_SLIDE
+        COURSE_SLIDE,
+        /**
+         * A deck of cards the learner flips and self-rates (Got it / Still learning).
+         *
+         * payload_json is {@code flashcards/v1} — see FlashcardsPayloadValidator for the
+         * contract. The deck is plain text rendered natively (never an iframe), and it
+         * pays COMPLETION points only: the self-rating is honest-effort, not graded, so
+         * the server forces isVerifiable=false, hideResultUntilReveal=false,
+         * correctPoints=0 and maxScore=cards.size() on every save. No migration: the
+         * item_type column is varchar(48) with no CHECK constraint.
+         */
+        FLASHCARDS
     }
 
     /** What happens to an item a learner never opened while it was live. */

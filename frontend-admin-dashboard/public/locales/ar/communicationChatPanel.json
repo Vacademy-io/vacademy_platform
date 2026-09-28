@@ -30,5 +30,11 @@
     "accountLevelFailure": "يؤثر هذا على كل رسالة WhatsApp من هذا الرقم، وليس على هذه المحادثة فقط.",
     "errorCode": "رمز خطأ WhatsApp {{code}}",
     "viewDocument": "عرض المستند",
-    "attachmentAlt": "مرفق"
+    "attachmentAlt": "مرفق",
+    "origin": {
+        "workflow": "أُرسلت بواسطة سير العمل «{{name}}»",
+        "workflowUnnamed": "أُرسلت بواسطة سير عمل",
+        "chatbotFlow": "أُرسلت بواسطة تدفق روبوت المحادثة «{{name}}»",
+        "chatbotFlowUnnamed": "أُرسلت بواسطة تدفق روبوت محادثة"
+    }
 }

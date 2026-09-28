@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire, Eye, EyeSlash, ArrowsClockwise, SlidersHorizontal, ArrowsOut, ArrowsIn, Lock } from "@phosphor-icons/react";
-import { TeacherAvatar } from "./TeacherAvatar";
+import { TeacherAvatar, useTeacherPhotoUrl } from "./TeacherAvatar";
 import type { TutorPace } from "@/hooks/useTutorSocket";
 
 export interface TranscriptLine {
@@ -58,15 +58,19 @@ interface TeacherPanelProps {
   pace?: TutorPace;
   onPace?: (pace: TutorPace) => void;
   /** Premium teacher avatar: the container the SDK renders into, its state, and a hide/show toggle. */
-  avatarContainerRef?: React.RefObject<HTMLDivElement | null>;
+  avatarContainerRef?: React.RefObject<HTMLDivElement>;
   avatarState?: "loading" | "on" | "off" | "failed";
   onToggleAvatar?: () => void;
   /** Why the avatar stopped (vendor error code or message), and a way to start it again. */
   avatarError?: string;
   onRetryAvatar?: () => void;
-  /** The face is up but its audio is locked until the learner taps it. */
-  avatarNeedsTap?: boolean;
-  onActivateAvatar?: () => void;
+  /** The SDK has drawn its first frame: the photo poster cross-fades to the live face. */
+  avatarPainted?: boolean;
+  /** Asset download 0..1 while the face loads; null when unknown. */
+  avatarProgress?: number | null;
+  /** Cold load: the browser needs a tap before any audio — asked once, before the teacher speaks. */
+  gate?: boolean;
+  onGateTap?: () => void;
   /** Public demo: dials are shown but locked, and the header carries the time left. */
   locked?: boolean;
   countdown?: string;
@@ -112,8 +116,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarNeedsTap, onActivateAvatar, locked, countdown,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarPainted, avatarProgress, gate, onGateTap, locked, countdown,
 }) => {
+  const photoUrl = useTeacherPhotoUrl(teacherAvatarFileId);
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -137,9 +142,36 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     };
   }, [optionsOpen]);
 
+  // The question card sits at the end of the list, so its arrival must scroll
+  // too — keyed on transcript length alone, the card (and its last options)
+  // landed below the fold behind the answer bar. phase / micOn: the voice
+  // guidance line appears a beat later and shrinks the list after the scroll.
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [transcript.length]);
+  }, [transcript.length, check?.prompt, awaiting, phase, micOn]);
+
+  // The teacher's words are revealed INTO the current bubble while she speaks,
+  // so the list grows with no new message and no effect above fires — the
+  // question card kept ending up behind the answer bar. Follow any growth of
+  // the list while the student is at (or near) the bottom; never pull them
+  // down if they have scrolled up to re-read.
+  const stickToBottomRef = useRef(true);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    const follow = new MutationObserver(() => {
+      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    follow.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      follow.disconnect();
+    };
+  }, []);
 
   const submit = () => {
     const t = text.trim();
@@ -213,18 +245,46 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The teacher: an animated avatar card when it is on, otherwise the photo row. */}
+      {/* The teacher: an animated avatar card when it is on, otherwise the photo row.
+          The card keeps its final size from the first render; the teacher's photo
+          stands in until the SDK paints, then cross-fades to the live face. */}
       {avatarContainerRef && (
-        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-neutral-100 to-neutral-300 ${avatarShown ? "aspect-[21/9] w-full lg:aspect-video" : "h-0"}`}>
-          <div ref={avatarContainerRef} className="size-full" aria-label={`${teacherName}'s avatar`} />
-          {avatarShown && avatarNeedsTap && avatarState === "on" && onActivateAvatar && (
+        <div className={`relative overflow-hidden rounded-2xl bg-primary-100 ${avatarShown ? "aspect-[21/9] w-full lg:aspect-video" : "h-0"}`}>
+          <div
+            ref={avatarContainerRef}
+            className={`size-full transition-opacity duration-700 ${avatarPainted ? "opacity-100" : "opacity-0"}`}
+            aria-label={`${teacherName}'s avatar`}
+          />
+          {avatarShown && (
+            <div className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ${avatarPainted ? "opacity-0" : "opacity-100"}`} aria-hidden={avatarPainted}>
+              {photoUrl ? (
+                <img src={photoUrl} alt="" className="size-full object-cover" />
+              ) : (
+                // No photo: a quiet placeholder. The illustrated face would read
+                // as a different teacher than the one about to fade in.
+                <div className="flex size-full animate-pulse items-center justify-center bg-gradient-to-b from-primary-50 to-primary-100">
+                  <span className="font-semibold text-3xl text-primary-500/70">{teacherName.trim().charAt(0).toUpperCase() || "T"}</span>
+                </div>
+              )}
+              {avatarState === "loading" && (
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-white/30">
+                  {/* Genuinely dynamic value (download progress); same idiom as TutorSidebar's progress bar. */}
+                  <div
+                    className="h-full bg-white transition-[width] duration-300"
+                    style={{ width: `${Math.round((avatarProgress ?? 0) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {avatarShown && gate && onGateTap && (
             <button
               type="button"
-              onClick={onActivateAvatar}
-              className="absolute inset-0 flex items-center justify-center bg-neutral-900/40"
-              aria-label="Tap to start the teacher"
+              onClick={onGateTap}
+              className="absolute inset-0 flex items-center justify-center bg-neutral-900/35"
+              aria-label="Tap to begin"
             >
-              <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-lg">Tap to start the teacher</span>
+              <span className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-lg">Tap to begin</span>
             </button>
           )}
           {avatarShown && (
@@ -235,8 +295,12 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                   <p className="truncate text-sm font-semibold text-white">{teacherName}</p>
                   <p className="flex items-center gap-1.5 text-xs text-neutral-200">
                     {phase === "speaking" && <span className="inline-block size-1.5 animate-pulse rounded-full bg-success-500" />}
-                    {avatarState === "loading" ? "Loading your teacher…" : PHASE_LABEL[phase]}
-                    {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked}{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
+                    {avatarState === "loading"
+                      ? typeof avatarProgress === "number" && avatarProgress > 0 && avatarProgress < 1
+                        ? `Getting your teacher ready · ${Math.round(avatarProgress * 100)}%`
+                        : "Getting your teacher ready…"
+                      : gate ? "Ready when you are" : PHASE_LABEL[phase]}
+                    {stats && stats.asked > 0 && <span className="ms-1 rounded-full bg-white/15 px-1.5 py-px text-white">{stats.correct}/{stats.asked} right{stats.streak >= 2 ? ` · 🔥${stats.streak}` : ""}</span>}
                     {countdown && <span className="ms-1 rounded-full bg-warning-500 px-1.5 py-px font-semibold tabular-nums text-white">{countdown}</span>}
                   </p>
                 </div>
@@ -268,8 +332,13 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
-            <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>
+            <p className="text-xs text-neutral-500">{gate ? "Ready when you are" : PHASE_LABEL[phase]}</p>
           </div>
+          {gate && onGateTap && (
+            <button type="button" onClick={onGateTap} className="shrink-0 rounded-full bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white">
+              Tap to begin
+            </button>
+          )}
           {scoreChip}
           {countdown && <span className="shrink-0 rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-warning-700">{countdown}</span>}
           {optionsButton(false)}
@@ -318,7 +387,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
-      {avatarError && !avatarNeedsTap && (avatarState === "failed" || avatarState === "on") && (
+      {avatarError && !gate && (avatarState === "failed" || avatarState === "on") && (
         <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
           {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
           <span className="font-mono">{avatarError}</span>
@@ -335,6 +404,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
       <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
+          // While the question card is up it IS the question; the spoken prompt's
+          // own bubble would show the same sentence a second time.
+          check && awaiting === "answer" && m.role === "teacher" && m.text.trim() === (check.prompt || "").trim() ? null : (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : m.kind === "nudge" ? "border border-warning-200 bg-warning-50 text-neutral-800" : "bg-neutral-100 text-neutral-800"}`}>
               {m.role === "teacher" && (m.kind === "evaluate" || m.kind === "remediate" || m.kind === "revisit_verdict") && (
@@ -343,6 +415,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               {m.text}
             </div>
           </div>
+          )
         ))}
         {check && awaiting === "answer" && (
           <div className="rounded-xl border border-primary-200 bg-primary-50 p-3">
@@ -362,7 +435,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       </div>
 
       <div className={`space-y-1.5 border-t border-neutral-200 pt-2 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-        <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap">
+        <div className="flex flex-wrap items-center gap-1">
           {awaiting === "continue" && (
             <button
               type="button"
@@ -380,6 +453,17 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
           <button type="button" onClick={onEnd} className="ms-auto shrink-0 rounded-full px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-danger-600">End</button>
         </div>
+        {/* Voice answers are tap-to-talk. Most voice sessions used to end without a
+            single answer: students spoke to a microphone that was never on. */}
+        {voiceMode && awaiting === "answer" && !micOn && phase !== "speaking" && phase !== "thinking" && (
+          <p role="status" className="text-xs font-medium text-primary-500">
+            <Microphone className="me-1 inline size-3.5 align-text-bottom" weight="fill" />
+            Tap <span className="font-semibold">Answer</span>, then speak — it sends when you pause. Or type below.
+          </p>
+        )}
+        {voiceMode && micOn && (
+          <p role="status" className="text-xs font-medium text-danger-500">Listening… tap Done when you finish.</p>
+        )}
         <div className="flex items-center gap-2">
           {voiceMode && (
             <button
@@ -388,7 +472,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               disabled={phase === "thinking" || phase === "connecting"}
               aria-pressed={micOn}
               className={`flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-                micOn ? "bg-danger-500 text-white animate-pulse" : "bg-primary-500 text-white hover:bg-primary-400"
+                micOn
+                  ? "bg-danger-500 text-white animate-pulse"
+                  : `bg-primary-500 text-white hover:bg-primary-400 ${awaiting === "answer" && phase !== "speaking" ? "ring-4 ring-primary-200 animate-pulse" : ""}`
               }`}
             >
               <Microphone className="size-5" weight="fill" />

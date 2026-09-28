@@ -5,7 +5,8 @@
         "questionWise": "Question Wise",
         "entireAssessment": "Entire Assessment",
         "releaseResult": "Release Result",
-        "exportReports": "Export Reports (ZIP)"
+        "exportReports": "Export Reports (ZIP)",
+        "checkWithAi": "Check with AI"
     },
     "actionInfo": {
         "selectedStudents_one": "{{count}} student",

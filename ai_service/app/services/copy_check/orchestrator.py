@@ -21,8 +21,9 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, vision_transcript
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
+from . import annotator, callbacks, cancellation, locate, typed_answers, vision_transcript
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
+from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
@@ -68,6 +69,25 @@ def _new_job_id() -> str:
     return str(uuid.uuid4())
 
 
+def _looks_unattempted(raw: dict[str, Any]) -> bool:
+    """The grader found no answer: the explicit verdict, or the shape the
+    prompt prescribes for one (0 marks, nothing extracted, nothing to draw) for
+    models that leave `verdict` out."""
+    if not isinstance(raw, dict):
+        return False
+    if str(raw.get("verdict") or "").strip().lower() == "unattempted":
+        return True
+    try:
+        marks = float(raw.get("marks_awarded") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (
+        marks == 0
+        and not str(raw.get("extracted_answer") or "").strip()
+        and not raw.get("annotations")
+    )
+
+
 def _render_client() -> CopyCheckRenderClient:
     # ai-service uses RENDER_SERVER_URL/RENDER_SERVER_KEY as the cluster-wide
     # convention (already set on the deployment). Fall through to the names
@@ -89,19 +109,118 @@ async def grade_copy(process_id: Optional[str] = None) -> str:
     return job_id
 
 
+def _mark_label_blocks(questions: list[dict[str, Any]]) -> None:
+    """Tell repeated printed numbers apart.
+
+    A paper with two passages under one section prints 1-10 twice; the student
+    writes both runs. `label_block` = which run this question belongs to (1, 2…)
+    and `label_blocks` = how many runs that section has, worked out from paper
+    order: a printed number that is <= the previous one in the same section
+    starts a new run. Without this "Section A · 1" named two questions and the
+    grader marked one passage's answers against the other's key (2026-09-21).
+    """
+    import re as _re
+
+    def _num(label: Any) -> int | None:
+        m = _re.match(r"\s*(\d+)", str(label or ""))
+        return int(m.group(1)) if m else None
+
+    runs: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for q in questions:
+        section = str(q.get("section") or "").strip()
+        n = _num(q.get("paper_label"))
+        if n is None:
+            q["label_block"] = 1
+            continue
+        if section in last and n <= last[section]:
+            runs[section] = runs.get(section, 1) + 1
+        runs.setdefault(section, 1)
+        last[section] = n
+        q["label_block"] = runs[section]
+    for q in questions:
+        q["label_blocks"] = runs.get(str(q.get("section") or "").strip(), 1)
+
+
+_EMPTY_LAYOUT: dict[str, Any] = {"pages": []}
+
+
+async def _grade_typed(
+    questions: list[dict[str, Any]],
+    rubric_resolver: RubricResolver,
+    grader: CopyCheckGrader,
+    preferred_model: Optional[str],
+    on_verdict,
+    check_cancelled,
+) -> tuple[float, float, int, int]:
+    """Grade every typed answer; post each verdict through `on_verdict`.
+    Returns (awarded, max, evaluated, graded) - `graded` counts the answers a
+    model actually read, which is what the institute is charged for."""
+    total_awarded = 0.0
+    total_max = 0.0
+    evaluated = 0
+    graded = 0
+    for q in questions:
+        check_cancelled()
+        answer = typed_answers.answer_text(q.get("student_answer"))
+        if not answer:
+            verdict = typed_answers.unattempted_verdict(q)
+        else:
+            graded += 1
+            try:
+                rubric = await rubric_resolver.resolve(q, preferred_model)
+                raw = await grader.grade_typed_question(q, rubric, preferred_model)
+                verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+            except cancellation.Cancelled:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Typed grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                )
+                try:
+                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
+                    raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
+                    verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                except cancellation.Cancelled:
+                    raise
+                except Exception as retry_err:
+                    logger.exception(f"Retry also failed for question {q.get('question_id')}")
+                    verdict = {
+                        "question_id": q["question_id"],
+                        "marks_awarded": 0.0,
+                        "max_marks": float(q.get("max_marks") or 0),
+                        "extracted_answer": answer,
+                        "feedback": "This answer could not be evaluated automatically and needs manual review.",
+                        "confidence": 0.0,
+                        "criteria_breakdown": [],
+                        "annotations": [],
+                        "status": "FAILED",
+                        "error_detail": describe_failure(retry_err),
+                    }
+            # What the student typed, not the model's retelling of it.
+            verdict["extracted_answer"] = answer
+            verdict["annotations"] = []
+        total_awarded += verdict["marks_awarded"]
+        total_max += verdict["max_marks"]
+        evaluated += 1
+        verdict.setdefault("question_number", q.get("question_number") or evaluated)
+        await on_verdict(verdict)
+    return total_awarded, total_max, evaluated, graded
+
+
 async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     """The actual pipeline. Designed to never raise out of the BG task — any
     failure ends in a callbacks.failed() POST so Java can surface it."""
     process_id = req["process_id"]
     callback_base = req["callback_base_url"]
-    pdf_url = req["pdf_url"]
+    pdf_url = req.get("pdf_url")
     assessment_id = req["assessment_id"]
     institute_id = req.get("institute_id")
     preferred_model = req.get("preferred_model")
     questions: list[dict[str, Any]] = req["questions"]
 
     llm = ChatLLMClient(ApiKeyResolver(db))
-    grader = CopyCheckGrader(llm, institute_id=institute_id)
+    grader = CopyCheckGrader(llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)))
     mathpix = MathpixFallback()
 
     async def _llm_for_criteria(system: str, user: str, model: str | None) -> dict[str, Any]:
@@ -187,6 +306,43 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 q["model_answer"] = model_answer
         db.close()
 
+        if req.get("answer_mode") == "TYPED":
+            # An online attempt: the answers are exact text already. Nothing to
+            # OCR, locate or draw on - grade each answer and finish.
+            await _progress("GRADING")
+            total_awarded, total_max, evaluated, graded = await _grade_typed(
+                questions, rubric_resolver, grader, preferred_model,
+                lambda verdict: callbacks.question_done(
+                    callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                ),
+                lambda: cancellation.check(job_id, process_id),
+            )
+            await _stop_heartbeat()
+            await callbacks.complete(
+                callback_base, process_id, job_id,
+                total_marks_awarded=round(total_awarded, 2),
+                total_max_marks=round(total_max, 2),
+                questions_evaluated=evaluated,
+                evaluated_file_id=None,
+            )
+            logger.info("copy-check job %s (typed) complete: %s/%s, %d graded, %d tokens",
+                        job_id, total_awarded, total_max, graded, grader.tokens_used)
+            # Blank answers were zeroed without a model call; only the answers
+            # actually read are charged.
+            if graded:
+                record_tool_billing(
+                    tool_key="copy_check_evaluation",
+                    tool_params={"num_questions": graded},
+                    request_type=RequestType.EVALUATION,
+                    model=(preferred_model or DEFAULT_MODEL),
+                    prompt_tokens=grader.prompt_tokens,
+                    completion_tokens=grader.completion_tokens,
+                    institute_id=institute_id,
+                    request_id=job_id,
+                    idempotency_key=process_id,
+                )
+            return
+
         # 1. OCR via render_worker.
         cancellation.check(job_id, process_id)
         render = _render_client()
@@ -243,6 +399,20 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         cancellation.check(job_id, process_id)
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
+        # 2b. Where is each answer? One call over the page prose so every
+        # grading call below gets only the pages that matter (+1 either side)
+        # instead of the whole copy. Without this, cost was pages × questions:
+        # a 100-question/40-page copy re-sent ~18k tokens of transcript 100
+        # times. Advisory only — {} (call failed, copy too small, locator
+        # unconvincing) means every call sees the full transcript, as before.
+        cancellation.check(job_id, process_id)
+        located = await locate.locate_answers(
+            llm, questions, layout_map, DEFAULT_MODEL,
+            institute_id=institute_id, token_sink=grader,
+        )
+        all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
+        question_order = locate.paper_order(questions)
+
         # 3. Per-question grading.
         # Java flips the process to EVALUATING on this step. Python never sent
         # it, so that branch was dead and the UI showed "OCR done" for most of
@@ -253,12 +423,35 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         evaluated = 0
         # Kept so the annotator can draw every verdict in one pass at the end;
         # the per-question callback already fired for each of these.
+        # Every other question's printed label: the grader is told which numbers
+        # exist on the sheet so "2." under Section B is not mistaken for "2." under
+        # Passage I. Labels only reached us from 2026-09-21; before that this list
+        # would have been ids and was not sent at all.
+        _mark_label_blocks(questions)
+        all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
-        for q in questions:
+        for index, q in enumerate(questions):
+            q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
+            qid = str(q["question_id"])
+            page_ids = locate.pages_for_question(qid, located, question_order, all_page_ids)
+            narrowed = page_ids is not None and len(page_ids) < len(all_page_ids)
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
-                raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
+                raw = await grader.grade_question(q, rubric, layout_map, preferred_model, page_ids)
+                if narrowed and _looks_unattempted(raw) and located.get(qid) != []:
+                    # The locator said the answer is on these pages (or did not
+                    # place it at all) and the grader found nothing there. One
+                    # of them is wrong; a wrong locator must never cost a
+                    # student the marks, so look at the whole copy once. An
+                    # explicit [] from the locator ("not attempted") agreeing
+                    # with the grader is left alone — that is two reads
+                    # saying the same thing.
+                    logger.info(
+                        "Q%s unattempted on located pages %s; re-grading against the full copy",
+                        qid, page_ids,
+                    )
+                    raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
                 verdict = validate_and_cap(raw, q, layout_map)
             except cancellation.Cancelled:
                 raise
@@ -274,7 +467,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 )
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
                     verdict = validate_and_cap(raw, q, layout_map)
                 except cancellation.Cancelled:
                     raise
@@ -329,7 +522,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         try:
             questions_meta = [{
                 "question_id": q.get("question_id"),
-                "paper_label": q.get("paper_label") or q.get("label"),
+                # section-qualified so "2" under Section B and "2" under Passage I
+                # stay two different keys inside enforce
+                "paper_label": paper_label_for(q) if (q.get("paper_label") or q.get("label")) else None,
                 "max_marks": q.get("max_marks"),
                 "question_type": q.get("question_type"),
             } for q in questions]

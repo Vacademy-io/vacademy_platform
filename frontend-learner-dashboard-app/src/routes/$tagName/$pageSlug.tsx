@@ -6,6 +6,8 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { RouteMatcher } from "./-services/route-matcher";
 import { CatalogueTagContext } from "./-components/CatalogueTagContext";
 import { CourseCataloguePage } from "./-components/CourseCataloguePage";
+import { RootMountedSegment } from "./-components/RootMountedSegment";
+import { getCachedRootCatalogueTag } from "@/services/domain-routing";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
@@ -67,7 +69,7 @@ function RouteComponent() {
     return <Navigate to={`/${resolvedPageSlug}` as never} search={true} replace />;
   }
 
-  return (
+  const classic = (
     <CatalogueTagContext.Provider value={resolvedTagName}>
       <CourseCataloguePage
         tagName={resolvedTagName}
@@ -77,4 +79,25 @@ function RouteComponent() {
       />
     </CatalogueTagContext.Provider>
   );
+
+  // Root-mounted host, and the first segment is NOT the root tag: "/blog/<slug>"
+  // is most likely a page of the root catalogue plus a blog post slug (the
+  // tagged form of that address is "/<tag>/blog/<slug>", handled by the
+  // $pageSlug_.$postSlug route). Read it as that page first; only when the root
+  // catalogue has no such page is the segment another catalogue's tag.
+  const rootTag = getCachedRootCatalogueTag();
+  if (rootTag && !RouteMatcher.isRootMounted(resolvedTagName)) {
+    return (
+      <RootMountedSegment
+        rootTag={rootTag}
+        segment={resolvedTagName}
+        instituteId={domainRouting.instituteId}
+        instituteThemeCode={domainRouting.instituteThemeCode}
+        fallback={classic}
+        pageOnly
+      />
+    );
+  }
+
+  return classic;
 }

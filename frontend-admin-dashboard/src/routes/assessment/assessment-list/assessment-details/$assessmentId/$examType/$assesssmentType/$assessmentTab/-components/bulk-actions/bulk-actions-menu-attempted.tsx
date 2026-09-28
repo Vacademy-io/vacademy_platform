@@ -20,6 +20,7 @@ interface BulkActionsMenuProps {
     selectedStudents: SubmissionStudentData[];
     trigger: ReactNode;
     onExportReports?: () => void;
+    onCheckWithAi?: () => void;
 }
 
 // Internal action-type constants used for dispatch logic. These must never be
@@ -35,6 +36,7 @@ export const BulkActionsMenuAttempted = ({
     selectedStudents,
     trigger,
     onExportReports,
+    onCheckWithAi,
 }: BulkActionsMenuProps) => {
     const { t } = useTranslation('assessmentBulkActionsMenuAttempted');
     const {
@@ -88,6 +90,11 @@ export const BulkActionsMenuAttempted = ({
                     </MyButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                    {onCheckWithAi && (
+                        <DropdownMenuItem className="cursor-pointer" onClick={onCheckWithAi}>
+                            {t('menu.checkWithAi')}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleMenuOptionsChange(MENU_ACTION.PROVIDE_REATTEMPT)}

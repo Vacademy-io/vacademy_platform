@@ -8,10 +8,12 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
+import vacademy.io.admin_core_service.features.audience.entity.LeadTier;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadTierRepository;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -54,6 +56,9 @@ public class CrmAuditNarrator {
 
     @Autowired
     private LeadStatusRepository leadStatusRepository;
+
+    @Autowired
+    private LeadTierRepository leadTierRepository;
 
     @Autowired
     private LeadFollowupRepository leadFollowupRepository;
@@ -274,6 +279,48 @@ public class CrmAuditNarrator {
                     .orElse(null);
         } catch (Exception e) {
             logger.warn("Could not snapshot lead status {}: {}", leadStatusId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Human label of a lead tier id ("Super Hot"), falling back to the id. */
+    public String leadTierFor(String leadTierId) {
+        if (isBlank(leadTierId)) {
+            return null;
+        }
+        try {
+            return leadTierRepository.findById(leadTierId)
+                    .map(LeadTier::getLabel)
+                    .filter(label -> !isBlank(label))
+                    .map(String::trim)
+                    .orElse(leadTierId);
+        } catch (Exception e) {
+            logger.warn("Could not resolve lead tier label for {}: {}", leadTierId, e.getMessage());
+            return leadTierId;
+        }
+    }
+
+    /** Snapshot of a lead tier row, for UPDATE/DELETE before-payloads. */
+    public Map<String, Object> leadTierSnapshot(String leadTierId) {
+        if (isBlank(leadTierId)) {
+            return null;
+        }
+        try {
+            return leadTierRepository.findById(leadTierId)
+                    .map(tier -> {
+                        Map<String, Object> snapshot = new LinkedHashMap<>();
+                        snapshot.put("id", tier.getId());
+                        snapshot.put("name", tier.getLabel());
+                        snapshot.put("tier_key", tier.getTierKey());
+                        snapshot.put("color", tier.getColor());
+                        snapshot.put("display_order", tier.getDisplayOrder());
+                        snapshot.put("min_score", tier.getMinScore());
+                        snapshot.put("is_active", tier.getIsActive());
+                        return snapshot;
+                    })
+                    .orElse(null);
+        } catch (Exception e) {
+            logger.warn("Could not snapshot lead tier {}: {}", leadTierId, e.getMessage());
             return null;
         }
     }

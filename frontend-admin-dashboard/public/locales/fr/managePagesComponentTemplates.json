@@ -253,5 +253,12 @@
         "heading": "Parcourez notre catalogue",
         "subheading": "Feuilletez chaque page directement ici.",
         "buttonText": "Ouvrir le catalogue"
+    },
+    "blog": {
+        "heading": "Sur le blog",
+        "subheading": "Conseils d’étude, actualités des examens et histoires de nos classes.",
+        "readMoreLabel": "Lire la suite",
+        "backLabel": "Tous les articles",
+        "emptyMessage": "Pas encore d’articles — revenez bientôt."
     }
 }

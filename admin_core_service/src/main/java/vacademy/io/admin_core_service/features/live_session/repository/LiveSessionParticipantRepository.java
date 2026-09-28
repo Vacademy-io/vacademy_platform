@@ -594,13 +594,27 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:search IS NULL
                 OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
                 OR LOWER(ls.title) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND (:hasRatingBelow = 0 OR (
+                SELECT CAST(CAST(fbl.details AS jsonb) ->> (q.value ->> 'id') AS numeric)
+                FROM jsonb_array_elements(
+                        CASE WHEN pg_input_is_valid(ls.feedback_config_json, 'jsonb')
+                              AND pg_input_is_valid(fbl.details, 'jsonb')
+                             THEN CASE WHEN jsonb_typeof(CAST(ls.feedback_config_json AS jsonb) -> 'questions') = 'array'
+                                       THEN CAST(ls.feedback_config_json AS jsonb) -> 'questions' END
+                        END
+                     ) WITH ORDINALITY AS q(value, ord)
+                WHERE q.value ->> 'type' = 'star_rating'
+                  AND (CAST(fbl.details AS jsonb) ->> (q.value ->> 'id')) ~ '^[0-9]+(\\.[0-9]+)?$'
+                ORDER BY q.ord
+                LIMIT 1
+              ) < :ratingBelow)
         ORDER BY ss.meeting_date DESC, fbl.created_at DESC
         """,
             countQuery = """
         SELECT COUNT(*)
         FROM (
             SELECT DISTINCT ON (l.user_source_id, l.session_id, l.schedule_id)
-                   l.id, l.user_source_id, l.session_id, l.schedule_id
+                   l.id, l.user_source_id, l.session_id, l.schedule_id, l.details
             FROM live_session_logs l
             WHERE l.log_type = 'FEEDBACK_SUBMITTED'
               AND l.user_source_type = 'USER'
@@ -628,6 +642,20 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
           AND (:search IS NULL
                 OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
                 OR LOWER(ls.title) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND (:hasRatingBelow = 0 OR (
+                SELECT CAST(CAST(fbl.details AS jsonb) ->> (q.value ->> 'id') AS numeric)
+                FROM jsonb_array_elements(
+                        CASE WHEN pg_input_is_valid(ls.feedback_config_json, 'jsonb')
+                              AND pg_input_is_valid(fbl.details, 'jsonb')
+                             THEN CASE WHEN jsonb_typeof(CAST(ls.feedback_config_json AS jsonb) -> 'questions') = 'array'
+                                       THEN CAST(ls.feedback_config_json AS jsonb) -> 'questions' END
+                        END
+                     ) WITH ORDINALITY AS q(value, ord)
+                WHERE q.value ->> 'type' = 'star_rating'
+                  AND (CAST(fbl.details AS jsonb) ->> (q.value ->> 'id')) ~ '^[0-9]+(\\.[0-9]+)?$'
+                ORDER BY q.ord
+                LIMIT 1
+              ) < :ratingBelow)
         """,
             nativeQuery = true)
     Page<LiveClassFeedbackProjection> searchFeedback(
@@ -639,6 +667,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("subjects") List<String> subjects,
             @Param("subjectsSize") int subjectsSize,
             @Param("search") String search,
+            @Param("hasRatingBelow") int hasRatingBelow,
+            @Param("ratingBelow") double ratingBelow,
             Pageable pageable
     );
 

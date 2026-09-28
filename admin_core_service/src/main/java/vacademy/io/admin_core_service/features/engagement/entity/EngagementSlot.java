@@ -62,6 +62,13 @@ public class EngagementSlot {
     @Column(name = "notify_time")
     private LocalTime notifyTime;
 
+    /** RELATIVE plans only: first and last day, 1-based, after the learner's Day 1. */
+    @Column(name = "start_day")
+    private Integer startDay;
+
+    @Column(name = "end_day")
+    private Integer endDay;
+
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
 
@@ -82,5 +89,30 @@ public class EngagementSlot {
     /** When answers and the leaderboard become visible. */
     public LocalTime effectiveRevealTime() {
         return revealTime == null ? endTime : revealTime;
+    }
+
+    /**
+     * A detached copy with the same schedule shifted onto real dates. Used for RELATIVE
+     * plans, per learner; never saved.
+     */
+    public EngagementSlot shiftedCopy(LocalDate start, LocalDate end) {
+        EngagementSlot copy = new EngagementSlot();
+        copy.id = id;
+        copy.planId = planId;
+        copy.title = title;
+        copy.startDate = start;
+        copy.endDate = end;
+        copy.startTime = startTime;
+        copy.endTime = endTime;
+        copy.dowMask = null;
+        copy.revealTime = revealTime;
+        copy.notifyTime = notifyTime;
+        copy.sortOrder = sortOrder;
+        copy.status = status;
+        copy.startDay = startDay;
+        copy.endDay = endDay;
+        copy.createdAt = createdAt;
+        copy.updatedAt = updatedAt;
+        return copy;
     }
 }

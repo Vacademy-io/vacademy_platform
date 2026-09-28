@@ -31,6 +31,7 @@ import {
   WarningCircle,
   Calculator as CalculatorIcon,
   PencilSimple,
+  SidebarSimple,
 } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { cn } from "@/lib/utils";
@@ -122,6 +123,8 @@ export function Navbar({
     isCompact,
     activeTool,
     toggleTool,
+    isRailOpen,
+    setRailOpen,
     submitRequestId,
   } = useLiveTestUi();
   const {
@@ -131,6 +134,7 @@ export function Navbar({
     updateEntireTestTimer,
     tabSwitchCount,
     incrementTabSwitchCount,
+    proctorAutoSubmitRequested,
     entireTestTimer,
     setEntireTestTimer,
     resetAssessment,
@@ -433,11 +437,14 @@ export function Navbar({
     // where `assessment` is still null that const is never initialized — calling
     // it here would throw "Cannot access 'handleSubmit' before initialization".
     if (!assessment) return;
-    if (evaluationType !== "MANUAL" && tabSwitchCount >= 3) {
+    if (
+      evaluationType !== "MANUAL" &&
+      (tabSwitchCount >= 3 || proctorAutoSubmitRequested)
+    ) {
       setShowSubmitModal(true);
       handleSubmit();
     }
-  }, [tabSwitchCount, evaluationType, assessment]);
+  }, [tabSwitchCount, proctorAutoSubmitRequested, evaluationType, assessment]);
 
   useEffect(() => {
     // Native back (Android hardware/gesture). We register a guard rather than our
@@ -728,6 +735,9 @@ export function Navbar({
   // Tools live in the header on desktop and in the footer's tool menu on a
   // phone, where header width is reserved for the timer and Submit.
   const showHeaderTools = !isCompact;
+  // The question rail's own close button only hides it; this is the one place
+  // that brings it back, so it stays in the header regardless of rail state.
+  const showRailToggle = !isCompact && settings.questionPalette.enabled;
 
   return (
     <>
@@ -789,6 +799,36 @@ export function Navbar({
               )}
             >
               <PencilSimple size={17} />
+            </Button>
+          )}
+
+          {showRailToggle && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={
+                isRailOpen
+                  ? t("navbar.questionPanel.hide")
+                  : t("navbar.questionPanel.show")
+              }
+              title={
+                isRailOpen
+                  ? t("navbar.questionPanel.hide")
+                  : t("navbar.questionPanel.show")
+              }
+              aria-pressed={isRailOpen}
+              onClick={() => setRailOpen(!isRailOpen)}
+              className="size-9 border-neutral-200"
+            >
+              {/* Open is the default, so it reads as weight (like ViewToggle)
+                  rather than the filled "tool active" treatment next door.
+                  The glyph draws its bar on the start side; the rail is on
+                  the end. */}
+              <SidebarSimple
+                size={17}
+                weight={isRailOpen ? "fill" : "regular"}
+                className="-scale-x-100 rtl:scale-x-100"
+              />
             </Button>
           )}
 

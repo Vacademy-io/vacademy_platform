@@ -48,6 +48,39 @@ public class CopyIntakeController {
         return ResponseEntity.ok(service.toDto(batch, false));
     }
 
+    /**
+     * What a check of the learners' own submissions would do - how many have a
+     * copy, how many are already checked or running, how many would be queued -
+     * so the dialog can quote the cost before anything is spent.
+     */
+    @PostMapping("/submitted/preview")
+    public ResponseEntity<CopyIntakeDtos.SubmittedPreviewDto> previewSubmitted(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) CopyIntakeDtos.SubmittedRequest request) {
+        requireAssessmentInInstitute(user, assessmentId, instituteId);
+        return ResponseEntity.ok(service.previewSubmitted(assessmentId,
+                request == null ? null : request.getAttemptIds(),
+                request != null && Boolean.TRUE.equals(request.getIncludeChecked())));
+    }
+
+    /**
+     * Queue the AI check for copies the learners submitted themselves - the
+     * checked rows, or every submitted copy on the assessment - as one batch.
+     */
+    @PostMapping("/submitted/start")
+    public ResponseEntity<CopyIntakeDtos.BatchDto> startFromSubmitted(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) CopyIntakeDtos.SubmittedRequest request) {
+        requireAssessmentInInstitute(user, assessmentId, instituteId);
+        AiCopyIntakeBatch batch = service.startFromSubmitted(user, assessmentId, instituteId, request);
+        runner.run(batch.getId());
+        return ResponseEntity.ok(service.toDto(batch, false));
+    }
+
     @GetMapping("/batches")
     public ResponseEntity<List<CopyIntakeDtos.BatchDto>> list(@RequestAttribute("user") CustomUserDetails user,
                                                               @RequestParam("assessmentId") String assessmentId,

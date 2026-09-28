@@ -23,6 +23,11 @@ public class AiCopyIntakeBatch {
     public static final String COMPLETED = "COMPLETED";
     public static final String FAILED = "FAILED";
 
+    /** PDFs the admin uploaded; each copy is read for a name and matched first. */
+    public static final String SOURCE_UPLOAD = "UPLOAD";
+    /** Copies the learners submitted on their own attempts; nothing to identify. */
+    public static final String SOURCE_SUBMITTED = "SUBMITTED";
+
     @Id
     @UuidGenerator
     @Column(name = "id", length = 36)
@@ -48,6 +53,15 @@ public class AiCopyIntakeBatch {
 
     @Column(name = "status", nullable = false)
     private String status;
+
+    /** {@link #SOURCE_UPLOAD} or {@link #SOURCE_SUBMITTED}. See V49. */
+    @Builder.Default
+    @Column(name = "source", nullable = false)
+    private String source = SOURCE_UPLOAD;
+
+    public boolean isFromSubmissions() {
+        return SOURCE_SUBMITTED.equals(source);
+    }
 
     /** Copies in the upload. Everything else is counted from the items. */
     @Column(name = "total_items", nullable = false)

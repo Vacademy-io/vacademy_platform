@@ -31,6 +31,9 @@ public class InvoiceController {
     @Autowired
     private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.PaymentDeletionService paymentDeletionService;
+
     /**
      * Get invoice by ID. Cross-tenant guard: fetch first (the id alone doesn't reveal the
      * institute), then verify the caller belongs to the invoice's institute before returning
@@ -67,6 +70,11 @@ public class InvoiceController {
      * (no body — the SFP id is enough to derive recipient/amount/dueDate).
      */
     @PostMapping("/sfp/{sfpId}/send-reminder")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "FEE_PLAN",
+            action = "SEND_MESSAGE",
+            entityIdExpr = "#sfpId",
+            descriptionExpr = "'sent a fee reminder for installment ' + #sfpId")
     public ResponseEntity<java.util.Map<String, Object>> sendManualReminder(
             @PathVariable String sfpId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
@@ -147,6 +155,10 @@ public class InvoiceController {
      * POST /admin-core-service/v1/invoices/admin/create
      */
     @PostMapping("/admin/create")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "INVOICE",
+            action = "CREATE",
+            descriptionExpr = "'created ' + (#result?.body?.size() ?: 0) + ' invoice(s)'")
     public ResponseEntity<List<AdminInvoicePaymentLinkResponseDTO>> createAdminInvoices(
             @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
             @RequestAttribute("user") CustomUserDetails userDetails) {
@@ -201,6 +213,12 @@ public class InvoiceController {
      * <p>{@code PUT /v1/invoices/{invoiceId}?instituteId=xxx}
      */
     @PutMapping("/{invoiceId}")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "INVOICE",
+            action = "UPDATE",
+            entityIdExpr = "#invoiceId",
+            captureBefore = "@paymentDeletionService.invoiceAuditSnapshot(#invoiceId)",
+            descriptionExpr = "'edited invoice ' + (#result?.body?.invoiceNumber ?: #invoiceId)")
     public ResponseEntity<InvoiceDTO> updateAdminInvoice(
             @PathVariable String invoiceId,
             @RequestParam String instituteId,
@@ -223,6 +241,12 @@ public class InvoiceController {
      * <p>{@code POST /v1/invoices/{invoiceId}/reject?instituteId=xxx}
      */
     @PostMapping("/{invoiceId}/reject")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "INVOICE",
+            action = "CANCEL",
+            entityIdExpr = "#invoiceId",
+            captureBefore = "@paymentDeletionService.invoiceAuditSnapshot(#invoiceId)",
+            descriptionExpr = "'cancelled invoice ' + (#result?.body?.invoiceNumber ?: #invoiceId) + (#request?.reason != null ? ': ' + #request.reason : '')")
     public ResponseEntity<InvoiceDTO> rejectInvoice(
             @PathVariable String invoiceId,
             @RequestParam String instituteId,
@@ -234,6 +258,24 @@ public class InvoiceController {
     }
 
     /**
+     * Permanently deletes an invoice. OFF unless the caller's role has Display Settings →
+     * Learner Management → "delete payments & invoices" switched on (checked server-side). Refused
+     * while a live payment is recorded against it and for live-class invoices; a bill's own
+     * ledger obligation goes with it. Kept in the admin activity log (before-snapshot).
+     *
+     * <p>{@code DELETE /v1/invoices/{invoiceId}?instituteId=xxx}
+     */
+    @DeleteMapping("/{invoiceId}")
+    public ResponseEntity<java.util.Map<String, Object>> deleteInvoice(
+            @PathVariable String invoiceId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(paymentDeletionService.deleteInvoice(
+                invoiceId, instituteId, userDetails != null ? userDetails.getUserId() : null));
+    }
+
+    /**
      * Record an offline / manual payment against a PENDING_PAYMENT admin invoice.
      * Creates a MANUAL PaymentLog (no UserPlan), links it to the invoice, flips
      * status to PAID, and sends a best-effort confirmation email.
@@ -241,6 +283,12 @@ public class InvoiceController {
      * <p>Body: {@code {"transaction_id": "...", "notes": "..."}} (both optional).
      */
     @PostMapping("/{invoiceId}/mark-paid-manual")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "INVOICE",
+            action = "STATUS_CHANGE",
+            entityIdExpr = "#invoiceId",
+            captureBefore = "@paymentDeletionService.invoiceAuditSnapshot(#invoiceId)",
+            descriptionExpr = "'marked invoice ' + (#result?.body?.invoiceNumber ?: #invoiceId) + ' as paid (offline payment)'")
     public ResponseEntity<InvoiceDTO> markInvoicePaidManually(
             @PathVariable String invoiceId,
             @RequestBody(required = false) vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO request,
@@ -258,6 +306,11 @@ public class InvoiceController {
      * <p>{@code POST /v1/invoices/{invoiceId}/send-reminder}
      */
     @PostMapping("/{invoiceId}/send-reminder")
+    @vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable(
+            entityType = "INVOICE",
+            action = "SEND_MESSAGE",
+            entityIdExpr = "#invoiceId",
+            descriptionExpr = "'sent a payment reminder for invoice ' + #invoiceId")
     public ResponseEntity<java.util.Map<String, Object>> sendInvoiceReminder(
             @PathVariable String invoiceId,
             @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {

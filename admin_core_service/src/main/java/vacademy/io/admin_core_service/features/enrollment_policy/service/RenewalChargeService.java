@@ -53,6 +53,7 @@ public class RenewalChargeService {
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final AuthService authService;
     private final RenewalGracePolicy gracePolicy;
+    private final RenewalFailureRecorder renewalFailureRecorder;
 
     /** Default dunning ceiling when the plan/policy doesn't specify one. */
     private static final int DEFAULT_MAX_ATTEMPTS = 3;
@@ -323,8 +324,14 @@ public class RenewalChargeService {
             log.info("[RenewalCharge] Plan {} charge submitted — awaiting webhook confirmation", plan.getId());
             return Outcome.CHARGED;
         } catch (Exception e) {
-            log.warn("[RenewalCharge] Plan {} charge failed (attempt {}): {}",
+            // ERROR, not WARN: the pods log at DEBUG and rotate within minutes, so a WARN
+            // is gone before anyone asks why a member was not charged; ERROR reaches
+            // Sentry. The gateway's reason is also persisted on a FAILED payment_log --
+            // handleRecurringCharge is @Transactional, so its own log rolled back with
+            // the exception and the failure left no record at all.
+            log.error("[RenewalCharge] Plan {} charge failed (attempt {}): {}",
                     plan.getId(), plan.getRenewalAttemptCount(), e.getMessage());
+            renewalFailureRecorder.record(plan, amount, currency, vendor, invite.getVendorId(), e.getMessage());
             applyDunning(plan, now, instituteId);
             return Outcome.FAILED;
         }

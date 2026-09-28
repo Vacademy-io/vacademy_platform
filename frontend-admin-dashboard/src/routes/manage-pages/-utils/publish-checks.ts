@@ -119,6 +119,19 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     ...cctx,
                 });
             }
+            // A blog on the home page still works (?post=<slug>), but every
+            // article then shares the home URL — no clean links, no sitemap entries.
+            if (c?.type === 'blog' && c?.enabled !== false) {
+                const route = String(page?.route || '').replace(/^\//, '').toLowerCase();
+                if (route === '' || route === 'home' || route === 'homepage' || page?.id === 'home') {
+                    issues.push({
+                        severity: 'warning',
+                        title: 'The Blog section is on the home page',
+                        fix: 'Move it to its own page (for example "blog") so each article gets a clean URL of its own and appears in the sitemap.',
+                        ...cctx,
+                    });
+                }
+            }
 
             // Header/footer nav pointing at pages that do not exist.
             for (const link of [...(p.navLinks || []), ...(p.authLinks || [])]) {

@@ -41,6 +41,10 @@
                 "timeIncrease": "समय बढ़ाने का अनुरोध करें"
             }
         },
+        "questionPanel": {
+            "hide": "प्रश्न पैनल छिपाएँ",
+            "show": "प्रश्न पैनल दिखाएँ"
+        },
         "pdf": {
             "preview": "PDF का पूर्वावलोकन करें",
             "upload": "अपलोड करें",
@@ -174,7 +178,8 @@
         "questionCount_one": "{{count}} प्रश्न",
         "questionCount_other": "{{count}} प्रश्न",
         "legendAriaLabel": "प्रश्न स्थिति लीजेंड",
-        "submitPaper": "पेपर सबमिट करें"
+        "submitPaper": "पेपर सबमिट करें",
+        "hidePanel": "प्रश्न पैनल छिपाएँ"
     },
     "questionPassage": {
         "label": "गद्यांश",

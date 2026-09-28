@@ -141,5 +141,58 @@
     "validation": {
         "cannotSave": "Can't save yet",
         "cannotSaveGeneric": "Can't save yet — some required details are missing or invalid."
+    },
+    "proctoring": {
+        "title": "Proctoring",
+        "description": "Watch for cheating during the attempt. Choose how much monitoring this assessment needs; the learner is told before starting.",
+        "comingSoon": "Coming soon",
+        "tiers": {
+            "NONE": {
+                "label": "Off",
+                "description": "No camera. Fullscreen and tab-switch checks only.",
+                "price": "Free"
+            },
+            "BASIC": {
+                "label": "Basic",
+                "description": "Webcam check-in, on-device face detection, a small snapshot every few seconds. Nothing streams.",
+                "price": "Included"
+            },
+            "PRO": {
+                "label": "Pro",
+                "description": "Basic plus short video clips of each flagged moment and phone detection.",
+                "price": ""
+            },
+            "ULTRA": {
+                "label": "Ultra",
+                "description": "Pro plus a live proctor room and AI review of every attempt.",
+                "price": ""
+            }
+        },
+        "knobs": {
+            "cameraRequired": {
+                "label": "Camera required to start",
+                "description": "The attempt cannot begin until the learner allows the camera."
+            },
+            "faceCheck": {
+                "label": "Face detection",
+                "description": "Flag when no face, or more than one face, is in frame. Runs on the learner's device."
+            },
+            "showSelfView": {
+                "label": "Show learner their camera",
+                "description": "A small preview stays on screen so they know they are being recorded."
+            },
+            "snapshotInterval": {
+                "label": "Snapshot every",
+                "description": "Routine frames for review. Flags always capture one.",
+                "off": "Flags only",
+                "every": "{{seconds}} s"
+            },
+            "maxViolations": {
+                "label": "Auto-submit after",
+                "description": "Flags before the attempt is submitted automatically. Never = only record for review.",
+                "never": "Never",
+                "after": "{{count}} flags"
+            }
+        }
     }
 }

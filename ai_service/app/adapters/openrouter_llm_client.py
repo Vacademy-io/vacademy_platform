@@ -9,6 +9,7 @@ import os
 from ..config import get_settings
 from ..ports.llm_client import OutlineLLMClient
 from ..core.exceptions import PaymentRequiredError
+from ..services.llm_router import post_chat
 
 
 class OpenRouterOutlineLLMClient(OutlineLLMClient):
@@ -129,16 +130,9 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
         for model_to_use in models_to_try:
             try:
                 payload = self._build_payload(prompt=prompt, model=model_to_use, stream=False)
-                headers = self._build_headers(api_key=effective_api_key)
-
-                async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-                    response = await client.post(
-                        url=self._base_url,
-                        headers=headers,
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    data: Dict[str, Any] = response.json()
+                response = await self._post_routed(payload, effective_api_key)
+                response.raise_for_status()
+                data: Dict[str, Any] = response.json()
 
                 # Extract content
                 try:
@@ -210,6 +204,12 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
         # For now, use non-streaming API for simplicity
         result = await self.generate_outline(prompt, model, api_key=api_key)
         yield result
+
+    async def _post_routed(self, payload: Dict[str, Any], api_key: str | None) -> httpx.Response:
+        """POST through the model's gateway (llm_router); a routed gateway that
+        is down or refuses is retried once on OpenRouter."""
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            return await post_chat(client, payload, api_key or self._api_key)
 
     def _build_payload(self, prompt: str, model: str, stream: bool = False) -> Dict[str, Any]:
         payload = {

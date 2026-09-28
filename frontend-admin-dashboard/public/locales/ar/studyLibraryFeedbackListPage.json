@@ -22,6 +22,8 @@
         "clearSearchAriaLabel": "مسح البحث",
         "batch": "الدفعة",
         "subject": "المادة",
+        "ratingsBelow": "التقييمات الأقل من",
+        "anyRating": "الكل",
         "noBatches": "لا توجد دفعات",
         "noSubjects": "لا توجد مواد",
         "clearAll": "مسح الكل"

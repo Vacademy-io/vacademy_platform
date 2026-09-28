@@ -58,6 +58,14 @@ public class EngagementPlan {
     @Column(name = "default_catch_up_percent")
     private Integer defaultCatchUpPercent;
 
+    /** CALENDAR (real dates) or RELATIVE (days after each learner joins). */
+    @Column(name = "schedule_mode", nullable = false)
+    private String scheduleMode = "CALENDAR";
+
+    /** First time the plan went PUBLISHED; RELATIVE plans start existing learners here. */
+    @Column(name = "published_at")
+    private Timestamp publishedAt;
+
     @Column(name = "created_by_user_id", nullable = false)
     private String createdByUserId;
 
@@ -66,4 +74,8 @@ public class EngagementPlan {
 
     @Column(name = "updated_at")
     private Timestamp updatedAt;
+
+    public boolean isRelative() {
+        return "RELATIVE".equals(scheduleMode);
+    }
 }

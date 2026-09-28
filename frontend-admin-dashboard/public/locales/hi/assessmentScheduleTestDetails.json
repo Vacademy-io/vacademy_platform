@@ -20,6 +20,7 @@
         "totalParticipants_other": "कुल प्रतिभागी: {{count}}"
     },
     "joinLink": {
-        "label": "जॉइन लिंक:"
+        "label": "जॉइन लिंक:",
+        "privateWarning": "यह लिंक तभी काम करता है जब असेसमेंट Public हो। शेयर करने से पहले Step 3 में इसे Public करें।"
     }
 }

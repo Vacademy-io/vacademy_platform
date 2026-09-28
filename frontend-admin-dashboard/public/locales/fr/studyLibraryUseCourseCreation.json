@@ -12,10 +12,13 @@
         "initializing": "Initialisation de la création du cours...",
         "creating": "Création du cours...",
         "created": "Cours créé avec succès !",
-        "submitting": "Envoi pour révision..."
+        "submitting": "Envoi pour révision...",
+        "publishing": "Publication du cours..."
     },
     "defaultCourseName": "Nouveau cours",
     "reviewSubmitted": "Cours envoyé pour révision !",
     "reviewSubmitFailed": "Le cours a été créé mais n’a pas pu être envoyé pour révision.",
-    "createFailed": "Échec de la création du cours"
+    "createFailed": "Échec de la création du cours",
+    "coursePublished": "Cours publié !",
+    "publishFailed": "Cours créé mais échec de la publication."
 }

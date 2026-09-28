@@ -562,6 +562,24 @@ def _passages_prompt_block(hits: Sequence[Dict[str, Any]]) -> tuple[str, Dict[st
     return "\n\n".join(blocks), figures
 
 
+def syllabus_scope(kb: Dict[str, Any]) -> Optional[str]:
+    """"ICSE Class 10 Physics" when the base is an official SYLLABUS rather
+    than a textbook (the syllabus loader stamps meta.curriculum.kind), else
+    None. A syllabus lists what is examinable; it does not teach it — so the
+    question prompt must treat its passages as scope, not as the only content
+    a question may draw on."""
+    cur = (kb.get("meta") or {}).get("curriculum") or {}
+    if cur.get("kind") != "SYLLABUS":
+        return None
+    cls = str(cur.get("class") or "")
+    parts = [
+        cur.get("exam") or cur.get("board"),          # "JEE Main", not the key
+        f"Class {cls}" if cls.isdigit() else None,    # exams carry "UG", not a class
+        cur.get("subject"),
+    ]
+    return " ".join(str(x) for x in parts if x) or "the official syllabus"
+
+
 def _question_prompt(
     row: BlueprintRow,
     passages: str,
@@ -569,6 +587,7 @@ def _question_prompt(
     language: Optional[str],
     grade: Optional[str],
     start_number: int,
+    syllabus: Optional[str] = None,
 ) -> str:
     figure_block = (
         f"""
@@ -621,7 +640,38 @@ image tag that is not in that list.
         ),
     }
 
-    return f"""Write {row.count} exam questions for a teacher, using ONLY the passages below from their own material.
+    if syllabus:
+        # The passages are the board's syllabus: units and the points under
+        # them. They fix the SCOPE; the content comes from the model's own
+        # knowledge of what that board teaches at that level.
+        opening = (
+            f"Write {row.count} exam questions for a teacher setting a paper for {syllabus}.\n"
+            f"The passages below are the OFFICIAL SYLLABUS for {syllabus}. They define what is "
+            f"examinable — they are not teaching material. Draw the actual content from your "
+            f"knowledge of the standard {syllabus} curriculum, and stay strictly inside the "
+            f"syllabus points quoted."
+        )
+        passages_heading = f"THE OFFICIAL SYLLABUS ({syllabus}):"
+        grounding_rules = (
+            "- Every question must fall under a syllabus point quoted above; never test a topic\n"
+            "  the syllabus does not list, even if it is common at this level.\n"
+            "- \"source_passage\" and \"source_page\" must point at the syllabus line the question\n"
+            "  falls under. A teacher checks these against the syllabus."
+        )
+    else:
+        opening = (
+            f"Write {row.count} exam questions for a teacher, using ONLY the passages below "
+            f"from their own material."
+        )
+        passages_heading = "PASSAGES FROM THE TEACHER'S MATERIAL:"
+        grounding_rules = (
+            f"- Ground EVERY question in the passages. If the passages do not support {row.count}\n"
+            "  distinct questions, return fewer — a padded paper is worse than a short one.\n"
+            "- \"source_passage\" and \"source_page\" must point at the passage you actually used.\n"
+            "  A teacher checks these; a wrong citation destroys trust in the whole paper."
+        )
+
+    return f"""{opening}
 
 SECTION: {row.section} — {row.topic}
 TYPE: {row.question_type} — {type_rules.get(row.question_type, '')}
@@ -630,7 +680,7 @@ MARKS EACH: {row.marks_each}
 {f'CLASS/LEVEL: {grade}' if grade else ''}
 {f'WRITE THE QUESTIONS IN: {language}' if language else ''}
 {figure_block}
-PASSAGES FROM THE TEACHER'S MATERIAL:
+{passages_heading}
 {passages}
 
 Return STRICT JSON, no prose, no markdown fence:
@@ -675,10 +725,7 @@ RULES THAT MATTER:
   pick the best-supported answer and give clean working for THAT.
 - For MCQS, TRUE_FALSE, PASSAGE and ASSERTION_REASON give EXACTLY ONE correct option. If more than one option
   is defensible, rewrite the options so only one is. For MCQM give at least two.
-- Ground EVERY question in the passages. If the passages do not support {row.count}
-  distinct questions, return fewer — a padded paper is worse than a short one.
-- "source_passage" and "source_page" must point at the passage you actually used.
-  A teacher checks these; a wrong citation destroys trust in the whole paper.
+{grounding_rules}
 - Preserve the source's notation exactly, including LaTeX like $E_k=\\frac{{1}}{{2}}mv^2$.
 - JSON REQUIRES every backslash to be doubled. Write \\\\sqrt, \\\\int, \\\\pi, \\\\frac —
   NOT \\sqrt. A single backslash makes the whole response invalid and it is thrown away.
@@ -906,6 +953,7 @@ async def generate_questions(
     models = [primary, *fallbacks]
     result.model = primary
     language = blueprint.language
+    syllabus = syllabus_scope(kb)
     semaphore = asyncio.Semaphore(GENERATION_CONCURRENCY)
 
     # Stable numbering across rows, assigned up front so concurrent rows cannot
@@ -987,6 +1035,7 @@ async def generate_questions(
                         _question_prompt(
                             batch_row, passages, list(figures.keys()),
                             language, grade, start + len(produced),
+                            syllabus=syllabus,
                         ),
                         models,
                         label=f"kb-paper-{row.id}",

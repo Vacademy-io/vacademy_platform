@@ -543,6 +543,8 @@ public class FeeTrackingService {
 
                 return studentFeeAllocationLedgerRepository.findByStudentFeePaymentIdInOrderByCreatedAtDesc(billIds)
                                 .stream()
+                                // A voided payment's allocations are kept for audit but are not a receipt.
+                                .filter(ledger -> !"VOIDED".equals(ledger.getAllocationType()))
                                 .map(ledger -> mapToLedgerDTO(ledger,
                                                 billIdToMeta.get(ledger.getStudentFeePaymentId())))
                                 .collect(Collectors.toList());
@@ -784,8 +786,12 @@ public class FeeTrackingService {
             String paymentMode = null;
             String transactionId = null;
             if (!sourceIds.isEmpty()) {
+                // A voided payment's allocation is kept for audit; it must not lend its mode or
+                // transaction id to a receipt for a payment that really arrived.
                 List<StudentFeeAllocationLedger> ledgers =
-                        studentFeeAllocationLedgerRepository.findByStudentFeePaymentId(sourceIds.get(0));
+                        studentFeeAllocationLedgerRepository.findByStudentFeePaymentId(sourceIds.get(0)).stream()
+                                .filter(l -> !"VOIDED".equals(l.getAllocationType()))
+                                .collect(Collectors.toList());
                 if (!ledgers.isEmpty() && ledgers.get(0).getRemarks() != null) {
                     String[] parts = ledgers.get(0).getRemarks().split(" \\| ");
                     for (String part : parts) {

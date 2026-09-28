@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # LLM Configuration - Using OpenRouter (your working API key)
     llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
     openrouter_api_key: Optional[str] = None  # Will be populated from OPENROUTER_API_KEY env var
+    # Isoquant (OpenAI-compatible gateway). Only models listed in the route map
+    # (services/llm_router.py) go there; unset = everything stays on OpenRouter.
+    isoquant_api_key: Optional[str] = None  # ISOQUANT_API_KEY
     # Strong default for production-grade tasks (script writing, director planning,
     # per-shot HTML, frame regeneration). Free-tier models like
     # `xiaomi/mimo-v2-flash:free` were producing too-variable HTML for the

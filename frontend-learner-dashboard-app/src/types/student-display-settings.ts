@@ -63,6 +63,10 @@ export type StudentDashboardWidgetId =
   // uses, so an institute can carry them in the sidebar, the dashboard, both,
   // or neither (see `sidebar.appLinks`). Self-hides when no link is set.
   | "getApp"
+  // Today's teacher-scheduled tasks (the Daily Engagement module). Renders
+  // nothing for an institute with no plan running. Placed first in the rail
+  // at lg and up, else right under the hero; see the dashboard route.
+  | "todayTasks"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {

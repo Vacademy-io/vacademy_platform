@@ -173,8 +173,9 @@ public class AttendanceCriteriaEvaluator {
             for (LiveSessionLogs row : rows) {
                 // Learners and guests both correlate: an authenticated learner
                 // joins with our userId as BBB's userID, and GuestController
-                // generates one guest-<uuid> used as both the BBB userID and the
-                // attendance row's userSourceId. PROVIDER_EMAIL rows are skipped —
+                // uses the registration id (EXTERNAL_USER) — or a one-off
+                // guest-<uuid> for an unregistered visitor — as both the BBB
+                // userID and the attendance row's userSourceId. PROVIDER_EMAIL rows are skipped —
                 // those are created by the Zoom sync itself for attendees who
                 // matched no learner, so there is nobody to mark absent.
                 if (!"USER".equalsIgnoreCase(row.getUserSourceType())

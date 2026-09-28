@@ -37,6 +37,10 @@ import { isRichTextEmpty, sanitizeHtml } from "@/lib/utils";
 import {
   calculateTimeDifference,
   calculateTimeLeft,
+  case1,
+  case2,
+  case3,
+  isEffectivelyUnbounded,
   getDynamicSchema,
   getOpenRegistrationUserDetailsByEmail,
 } from "../-utils/helper";
@@ -59,6 +63,7 @@ import {
 } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { AxiosError } from "axios";
+import i18next from "i18next";
 import { toast } from "sonner";
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
 import PostRegistrationOTPVerify from "./PostRegistrationOTPVerify";
@@ -67,6 +72,7 @@ import PhoneInputField from "@/components/design-system/phone-input-field";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useTranslation } from "react-i18next";
+import { classifyRequestError } from "../-utils/request-error";
 
 const MetaChip = ({
   icon,
@@ -117,53 +123,39 @@ const DateBlock = ({
           <span className="inline-flex items-center rounded-md bg-success-50 px-1.5 py-0.5 text-caption font-semibold text-success-700">
             {t("form.dateBlock.start")}
           </span>
-          <span className="text-neutral-700">{start}</span>
+          <span className="text-neutral-700">
+            {start || t("form.dateBlock.noLimit")}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex items-center rounded-md bg-danger-50 px-1.5 py-0.5 text-caption font-semibold text-danger-700">
             {t("form.dateBlock.end")}
           </span>
-          <span className="text-neutral-700">{end}</span>
+          <span className="text-neutral-700">
+            {end || t("form.dateBlock.noLimit")}
+          </span>
         </div>
       </div>
     </div>
   );
 };
 
-const case1 = (serverTime: number, startDate: string) => {
-  const registrationStartDate: number = new Date(
-    Date.parse(startDate),
-  ).getTime();
-  return serverTime < registrationStartDate;
-};
-
-const case2 = (serverTime: number, startDate: string, endDate: string) => {
-  const registrationStartDate: number = new Date(
-    Date.parse(startDate),
-  ).getTime();
-  const registrationEndDate: number = new Date(Date.parse(endDate)).getTime();
-  return (
-    registrationStartDate <= serverTime && serverTime <= registrationEndDate
-  );
-};
-
-const case3 = (serverTime: number, endDate: string) => {
-  const registrationEndDate: number = new Date(Date.parse(endDate)).getTime();
-  return serverTime > registrationEndDate;
-};
-
 // Surface the backend's human-readable message (ErrorInfo.ex) when present,
 // falling back to the axios message. Also toasts plain Errors (e.g. the
 // client-side blank user_id guard) instead of letting them fail silently.
 const showRegistrationError = (error: unknown) => {
+  console.error("[register] registration failed:", error);
   if (error instanceof AxiosError) {
-    const serverMessage = (
-      error.response?.data as { ex?: string } | undefined
-    )?.ex;
-    toast.error(serverMessage || error.message, {
-      className: "error-toast",
-      duration: 2000,
-    });
+    const { kind, message } = classifyRequestError(error);
+    toast.error(
+      kind === "network"
+        ? i18next.t("registrationA:form.toast.networkError")
+        : message || error.message,
+      {
+        className: "error-toast",
+        duration: 3000,
+      },
+    );
   } else if (error instanceof Error) {
     toast.error(error.message, {
       className: "error-toast",
@@ -292,6 +284,11 @@ const AssessmentRegistrationForm = () => {
         data.assessment_public_dto.registration_open_date,
       ),
     );
+
+  const registrationDeadlineIsUnbounded = isEffectivelyUnbounded(
+    serverTime.current,
+    data.assessment_public_dto.registration_close_date,
+  );
 
   const [timeLeftForRegistrationCase2, setTimeLeftForRegistrationCase2] =
     useState(
@@ -520,7 +517,11 @@ const AssessmentRegistrationForm = () => {
   useEffect(() => {
     const fetchToken = async () => {
       const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-      if (accessToken) {
+      if (!accessToken) return;
+      // Best effort: a stale token or a failed lookup simply means we treat
+      // the visitor as not logged in. Never let it surface as an unhandled
+      // rejection.
+      try {
         const decodedData = getTokenDecodedData(accessToken);
         const userId = decodedData?.user;
         const assessmentId = data.assessment_public_dto.assessment_id;
@@ -539,11 +540,13 @@ const AssessmentRegistrationForm = () => {
           psIds,
         );
         if (
-          getTestDetailsOfParticipants.is_already_registered &&
+          getTestDetailsOfParticipants?.is_already_registered &&
           getTestDetailsOfParticipants.remaining_attempts > 0
         ) {
           setIsAlreadyLoggedIn(true);
         }
+      } catch (error) {
+        console.warn("[register] logged-in status check skipped:", error);
       }
     };
 
@@ -845,12 +848,15 @@ const AssessmentRegistrationForm = () => {
               <div className="flex flex-col items-center gap-2 rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-primary-50/30 px-4 py-4">
                 <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary-700">
                   <Timer size={14} weight="bold" />
-                  {t("form.closesIn")}
+                  {registrationDeadlineIsUnbounded
+                    ? t("form.noClosingDate")
+                    : t("form.closesIn")}
                 </div>
-                {(timeLeftForRegistrationCase2.days > 0 ||
+                {(!registrationDeadlineIsUnbounded &&
+                  (timeLeftForRegistrationCase2.days > 0 ||
                   timeLeftForRegistrationCase2.hours > 0 ||
                   timeLeftForRegistrationCase2.minutes > 0 ||
-                  timeLeftForRegistrationCase2.seconds > 0) ? (
+                  timeLeftForRegistrationCase2.seconds > 0)) ? (
                   <div className="flex items-end gap-2 tabular-nums text-primary-600">
                     {timeLeftForRegistrationCase2.days > 0 && (
                       <div className="flex flex-col items-center">
@@ -1052,6 +1058,11 @@ const AssessmentRegistrationForm = () => {
               <FormProvider {...form}>
                 <form className="w-full flex flex-col gap-section mt-5 sm:max-h-screen-70 sm:overflow-auto pe-1">
                   {Object.entries(form.getValues()).map(([key, value]) => {
+                    // A value without `name` is not a real form field (e.g. a
+                    // key injected by a reset for a field this form doesn't
+                    // have). Rendering it throws on `capitalise(value.name)`
+                    // and the route's errorComponent shows "Expired".
+                    if (!value || typeof value.name !== "string") return null;
                     if (key === "phone_number") {
                       return (
                         <FormField

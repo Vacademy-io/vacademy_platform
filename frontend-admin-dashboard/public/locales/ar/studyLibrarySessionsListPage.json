@@ -76,7 +76,8 @@
         "emptyTitle": "لا توجد جلسات {{tab}}",
         "emptyDraftBody": "لم يتم العثور على جلسات مسودة. أنشئ جلسة جديدة للبدء.",
         "emptyDefaultBody": "حدد موعد أول حصة مباشرة للتواصل مع المتعلمين في الوقت الفعلي.",
-        "emptyPage": "لا توجد جلسات {{tab}} في هذه الصفحة."
+        "emptyPage": "لا توجد جلسات {{tab}} في هذه الصفحة.",
+        "showingRange": "عرض {{from}} إلى {{to}} من {{total}} {{term}}"
     },
     "settingsButtonLabel": "إعدادات الجلسات المباشرة",
     "scheduleButton": "جدولة"

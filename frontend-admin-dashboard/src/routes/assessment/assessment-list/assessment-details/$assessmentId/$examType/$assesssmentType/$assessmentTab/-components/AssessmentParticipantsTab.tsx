@@ -20,7 +20,7 @@ import { AssessmentParticipantsIndividualList } from './AssessmentParticipantsIn
 
 const AssessmentParticipantsTab = () => {
     const { t } = useTranslation('assessmentParticipantsTab');
-    const { assessmentId, examType } = Route.useParams();
+    const { assessmentId, examType, assesssmentType } = Route.useParams();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const { batches_for_sessions } = instituteDetails || {};
     const transformedBatches = transformBatchDataEdit(batches_for_sessions || []);
@@ -41,6 +41,11 @@ const AssessmentParticipantsTab = () => {
         instituteDetails?.learner_portal_base_url,
         assessmentDetails[0]?.saved_data.assessment_url
     );
+    // The link and QR render for every assessment, but the backend only honours
+    // them on a PUBLIC one — so a private assessment used to hand the admin a
+    // perfectly copyable link that sends learners to /login. Say so here rather
+    // than hiding it, since the link is still what it will be once made public.
+    const isPrivateAssessment = assesssmentType === 'PRIVATE';
 
     if (isLoading) return <DashboardLoader />;
     return (
@@ -99,6 +104,11 @@ const AssessmentParticipantsTab = () => {
                                 </MyButton>
                             </div>
                         </div>
+                        {isPrivateAssessment && (
+                            <p className="max-w-sm text-xs text-warning-600">
+                                {t('joinLink.privateWarning')}
+                            </p>
+                        )}
                     </div>
                     <div className="flex flex-col justify-start gap-2">
                         <h1 className="text-sm font-semibold">{t('qrCode.title')}</h1>

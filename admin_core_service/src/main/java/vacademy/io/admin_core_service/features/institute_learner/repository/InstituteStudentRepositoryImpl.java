@@ -25,6 +25,13 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
     @PersistenceContext
     private EntityManager entityManager;
 
+    // Custom-field values: start from the rows this enrollment actually has (SSIGM- or
+    // USER-scoped, non-null) and keep those whose field is mapped to the enrollment's
+    // institute. Joining the institute's field definitions per learner first multiplied every
+    // row by thousands of fields (mostly per-session / per-invite copies) and hit the statement
+    // timeout. institute_custom_fields also carries duplicate mapping rows per
+    // (institute_id, custom_field_id), so the mapping side is deduped. Null values are skipped;
+    // parseCustomFields drops them anyway.
     private static final String BASE_SELECT = """
             SELECT
                 s.full_name         AS fullName,
@@ -38,10 +45,10 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                   COALESCE(
                     json_agg(
                       DISTINCT jsonb_build_object(
-                        'custom_field_id', cf.id,
+                        'custom_field_id', icf.custom_field_id,
                         'value', cfv.value
                       )
-                    ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+                    ) FILTER (WHERE icf.custom_field_id IS NOT NULL), '[]'
                   ) AS text
                 ) AS customFieldsJson,
                 s.user_id AS userId,
@@ -86,31 +93,20 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
-            LEFT JOIN (
-                -- institute_custom_fields can carry multiple duplicate mapping
-                -- rows for the same (institute_id, custom_field_id) — some
-                -- institutes have 80+ duplicates for a single field. Joining
-                -- the raw table multiplies every learner row by every
-                -- duplicate (turning e.g. 465 learners into 470k+ intermediate
-                -- rows before the GROUP BY collapses them back down), which is
-                -- what made any filter that routes through this query (custom
-                -- field filters in particular) painfully slow. Dedup to one
-                -- row per (institute_id, custom_field_id) — the most recent —
-                -- before joining.
-                SELECT DISTINCT ON (institute_id, custom_field_id) *
-                FROM institute_custom_fields
-                WHERE (:customFieldStatus IS NULL OR status IN :customFieldStatus)
-                ORDER BY institute_id, custom_field_id, created_at DESC
-            ) icf
-                ON icf.institute_id = ssigm.institute_id
-            LEFT JOIN custom_fields cf
-                ON cf.id = icf.custom_field_id
             LEFT JOIN custom_field_values cfv
-                ON cfv.custom_field_id = cf.id
+                ON cfv.value IS NOT NULL
                 AND (
                     (cfv.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING') AND cfv.source_id = ssigm.id)
                     OR (cfv.source_type = 'USER' AND cfv.source_id = ssigm.user_id)
                 )
+            LEFT JOIN (
+                SELECT DISTINCT icf.institute_id, icf.custom_field_id
+                FROM institute_custom_fields icf
+                JOIN custom_fields cf ON cf.id = icf.custom_field_id
+                WHERE (:customFieldStatus IS NULL OR icf.status IN :customFieldStatus)
+            ) icf
+                ON icf.institute_id = ssigm.institute_id
+                AND icf.custom_field_id = cfv.custom_field_id
             LEFT JOIN user_plan up
                 ON up.id = ssigm.user_plan_id
             LEFT JOIN enroll_invite ei

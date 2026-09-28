@@ -781,6 +781,13 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("customFieldIds") List<String> customFieldIds,
       Pageable pageable);
 
+  // Custom-field values: start from the rows this enrollment actually has (SSIGM- or
+  // USER-scoped, non-null) and keep those whose field is mapped to the enrollment's
+  // institute. Joining every institute_custom_fields row per learner first multiplied each
+  // row by thousands of definitions (mostly per-session / per-invite copies) and hit the
+  // statement timeout. Null values are skipped; parseCustomFields drops them anyway.
+  // Keep prose out of the SQL text: Spring Data does not understand -- comments, so a quote
+  // there breaks repository startup.
   @Query(nativeQuery = true, value = """
       SELECT
           s.full_name         AS "fullName",
@@ -794,10 +801,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             COALESCE(
               json_agg(
                 DISTINCT jsonb_build_object(
-                  'custom_field_id', cf.id,
+                  'custom_field_id', icf.custom_field_id,
                   'value', cfv.value
                 )
-              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+              ) FILTER (WHERE icf.custom_field_id IS NOT NULL), '[]'
             ) AS text
           ) AS "customFieldsJson",
           s.user_id AS "userId",
@@ -845,17 +852,20 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
-      LEFT JOIN institute_custom_fields icf
-          ON icf.institute_id = ssigm.institute_id
-          AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
-      LEFT JOIN custom_fields cf
-          ON cf.id = icf.custom_field_id
       LEFT JOIN custom_field_values cfv
-          ON cfv.custom_field_id = cf.id
+          ON cfv.value IS NOT NULL
           AND (
               (cfv.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING') AND cfv.source_id = ssigm.id)
               OR (cfv.source_type = 'USER' AND cfv.source_id = ssigm.user_id)
           )
+      LEFT JOIN (
+          SELECT DISTINCT icf.institute_id, icf.custom_field_id
+          FROM institute_custom_fields icf
+          JOIN custom_fields cf ON cf.id = icf.custom_field_id
+          WHERE (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+      ) icf
+          ON icf.institute_id = ssigm.institute_id
+          AND icf.custom_field_id = cfv.custom_field_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
       LEFT JOIN (
@@ -984,6 +994,13 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("endDate") LocalDate endDate,
       Pageable pageable);
 
+  // Custom-field values: start from the rows this enrollment actually has (SSIGM- or
+  // USER-scoped, non-null) and keep those whose field is mapped to the enrollment's
+  // institute. Joining every institute_custom_fields row per learner first multiplied each
+  // row by thousands of definitions (mostly per-session / per-invite copies) and hit the
+  // statement timeout. Null values are skipped; parseCustomFields drops them anyway.
+  // Keep prose out of the SQL text: Spring Data does not understand -- comments, so a quote
+  // there breaks repository startup.
   @Query(nativeQuery = true, value = """
       SELECT
           s.full_name         AS "fullName",
@@ -997,10 +1014,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             COALESCE(
               json_agg(
                 DISTINCT jsonb_build_object(
-                  'custom_field_id', cf.id,
+                  'custom_field_id', icf.custom_field_id,
                   'value', cfv.value
                 )
-              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+              ) FILTER (WHERE icf.custom_field_id IS NOT NULL), '[]'
             ) AS text
           ) AS "customFieldsJson",
           s.user_id AS "userId",
@@ -1048,17 +1065,20 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
-      LEFT JOIN institute_custom_fields icf
-          ON icf.institute_id = ssigm.institute_id
-          AND (:customFieldStatus IS NULL OR icf.status IN :customFieldStatus)
-      LEFT JOIN custom_fields cf
-          ON cf.id = icf.custom_field_id
       LEFT JOIN custom_field_values cfv
-          ON cfv.custom_field_id = cf.id
+          ON cfv.value IS NOT NULL
           AND (
               (cfv.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING') AND cfv.source_id = ssigm.id)
               OR (cfv.source_type = 'USER' AND cfv.source_id = ssigm.user_id)
           )
+      LEFT JOIN (
+          SELECT DISTINCT icf.institute_id, icf.custom_field_id
+          FROM institute_custom_fields icf
+          JOIN custom_fields cf ON cf.id = icf.custom_field_id
+          WHERE (:customFieldStatus IS NULL OR icf.status IN :customFieldStatus)
+      ) icf
+          ON icf.institute_id = ssigm.institute_id
+          AND icf.custom_field_id = cfv.custom_field_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
       LEFT JOIN (
@@ -1902,6 +1922,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
 
   // ── V2 enrichment for a specific set of user IDs (used after pagination) ──
 
+  // Custom-field values: start from the rows this learner actually has instead of joining
+  // every institute_custom_fields row per learner (thousands of definitions per institute,
+  // mostly per-session / per-invite copies; that fan-out hit the statement timeout). Null
+  // values are skipped; callers drop them anyway. Per field it yields the same candidates as the
+  // old COALESCE(user-scoped, SSIGM-scoped) join: every USER-scoped value, plus the SSIGM-scoped
+  // values only when the learner has no USER-scoped row for that field or one with a NULL value.
+  // Keep prose out of the SQL text: Spring Data does not understand -- comments, so a quote
+  // there breaks repository startup.
   @Query(nativeQuery = true, value = """
       WITH last_payments AS (
           SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
@@ -1926,8 +1954,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           CAST(
             COALESCE(
               json_agg(
-                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', COALESCE(cfv_user.value, cfv_ssigm.value))
-              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+                DISTINCT jsonb_build_object('custom_field_id', icf.custom_field_id, 'value', cfv.value)
+              ) FILTER (WHERE icf.custom_field_id IS NOT NULL), '[]'
             ) AS text
           ) AS "customFieldsJson",
           s.user_id AS "userId",
@@ -1974,20 +2002,42 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           s.tnc_accepted_date AS "tncAcceptedDate"
       FROM student s
       JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
-      LEFT JOIN institute_custom_fields icf
+      LEFT JOIN LATERAL (
+          SELECT v.custom_field_id, v.value
+          FROM (
+              SELECT cfv_user.custom_field_id, cfv_user.value
+              FROM custom_field_values cfv_user
+              WHERE cfv_user.source_type = 'USER'
+                AND cfv_user.source_id = s.user_id
+              UNION ALL
+              SELECT cfv_ssigm.custom_field_id, cfv_ssigm.value
+              FROM custom_field_values cfv_ssigm
+              WHERE cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
+                AND cfv_ssigm.source_id = ssigm.id
+                AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM custom_field_values cfv_u
+                        WHERE cfv_u.source_type = 'USER'
+                          AND cfv_u.source_id = s.user_id
+                          AND cfv_u.custom_field_id = cfv_ssigm.custom_field_id)
+                    OR EXISTS (
+                        SELECT 1 FROM custom_field_values cfv_u
+                        WHERE cfv_u.source_type = 'USER'
+                          AND cfv_u.source_id = s.user_id
+                          AND cfv_u.custom_field_id = cfv_ssigm.custom_field_id
+                          AND cfv_u.value IS NULL)
+                )
+          ) v
+          WHERE v.value IS NOT NULL
+      ) cfv ON TRUE
+      LEFT JOIN (
+          SELECT DISTINCT icf.institute_id, icf.custom_field_id
+          FROM institute_custom_fields icf
+          JOIN custom_fields cf ON cf.id = icf.custom_field_id
+          WHERE (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+      ) icf
           ON icf.institute_id = ssigm.institute_id
-          AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
-      LEFT JOIN custom_fields cf ON cf.id = icf.custom_field_id
-      -- Primary: user-scoped values (where the edit dialog writes). Fallback: legacy SSIGM-scoped values
-      -- saved at enrollment time. COALESCE picks user-scoped first.
-      LEFT JOIN custom_field_values cfv_user
-          ON cfv_user.source_type = 'USER'
-          AND cfv_user.source_id = s.user_id
-          AND cfv_user.custom_field_id = cf.id
-      LEFT JOIN custom_field_values cfv_ssigm
-          ON cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
-          AND cfv_ssigm.source_id = ssigm.id
-          AND cfv_ssigm.custom_field_id = cf.id
+          AND icf.custom_field_id = cfv.custom_field_id
       LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
       LEFT JOIN last_payments last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
@@ -2020,6 +2070,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   // and the per-row paymentPlan/paymentOption JSON parsing.
   // Payment/plan/source/type columns are aliased as NULL so StudentListV2Projection
   // still maps cleanly without needing a separate projection.
+  // Custom-field values: start from the rows this learner actually has instead of joining
+  // every institute_custom_fields row per learner (thousands of definitions per institute,
+  // mostly per-session / per-invite copies; that fan-out hit the statement timeout). Null
+  // values are skipped; callers drop them anyway. Per field it yields the same candidates as the
+  // old COALESCE(user-scoped, SSIGM-scoped) join: every USER-scoped value, plus the SSIGM-scoped
+  // values only when the learner has no USER-scoped row for that field or one with a NULL value.
+  // Keep prose out of the SQL text: Spring Data does not understand -- comments, so a quote
+  // there breaks repository startup.
   @Query(nativeQuery = true, value = """
       SELECT
           s.full_name         AS "fullName",
@@ -2032,8 +2090,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           CAST(
             COALESCE(
               json_agg(
-                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', COALESCE(cfv_user.value, cfv_ssigm.value))
-              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+                DISTINCT jsonb_build_object('custom_field_id', cfv.custom_field_id, 'value', cfv.value)
+              ) FILTER (WHERE cfv.custom_field_id IS NOT NULL), '[]'
             ) AS text
           ) AS "customFieldsJson",
           s.user_id AS "userId",
@@ -2086,20 +2144,41 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       LEFT JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
           AND ssigm.institute_id IN (:instituteIds)
-      LEFT JOIN institute_custom_fields icf
-          ON icf.institute_id IN (:instituteIds)
-          AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
-      LEFT JOIN custom_fields cf ON cf.id = icf.custom_field_id
-      -- Primary: user-scoped values (where the edit dialog writes). Fallback: legacy SSIGM-scoped values
-      -- saved at enrollment time. COALESCE picks user-scoped first.
-      LEFT JOIN custom_field_values cfv_user
-          ON cfv_user.source_type = 'USER'
-          AND cfv_user.source_id = s.user_id
-          AND cfv_user.custom_field_id = cf.id
-      LEFT JOIN custom_field_values cfv_ssigm
-          ON cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
-          AND cfv_ssigm.source_id = ssigm.id
-          AND cfv_ssigm.custom_field_id = cf.id
+      LEFT JOIN LATERAL (
+          SELECT v.custom_field_id, v.value
+          FROM (
+              SELECT cfv_user.custom_field_id, cfv_user.value
+              FROM custom_field_values cfv_user
+              WHERE cfv_user.source_type = 'USER'
+                AND cfv_user.source_id = s.user_id
+              UNION ALL
+              SELECT cfv_ssigm.custom_field_id, cfv_ssigm.value
+              FROM custom_field_values cfv_ssigm
+              WHERE cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
+                AND cfv_ssigm.source_id = ssigm.id
+                AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM custom_field_values cfv_u
+                        WHERE cfv_u.source_type = 'USER'
+                          AND cfv_u.source_id = s.user_id
+                          AND cfv_u.custom_field_id = cfv_ssigm.custom_field_id)
+                    OR EXISTS (
+                        SELECT 1 FROM custom_field_values cfv_u
+                        WHERE cfv_u.source_type = 'USER'
+                          AND cfv_u.source_id = s.user_id
+                          AND cfv_u.custom_field_id = cfv_ssigm.custom_field_id
+                          AND cfv_u.value IS NULL)
+                )
+          ) v
+          WHERE v.value IS NOT NULL
+            AND v.custom_field_id IN (
+                SELECT cf.id
+                FROM institute_custom_fields icf
+                JOIN custom_fields cf ON cf.id = icf.custom_field_id
+                WHERE icf.institute_id IN (:instituteIds)
+                  AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+            )
+      ) cfv ON TRUE
       LEFT JOIN institutes sub_org ON sub_org.id = ssigm.sub_org_id
       WHERE s.user_id IN (:userIds)
       GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,

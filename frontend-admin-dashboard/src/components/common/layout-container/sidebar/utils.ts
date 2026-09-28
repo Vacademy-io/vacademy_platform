@@ -21,6 +21,7 @@ import {
     Code,
     UserList,
     Notebook,
+    Broadcast,
     PhoneCall,
     ChatCircleDots,
     IdentificationBadge,
@@ -933,6 +934,19 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'admin-activity-logs',
         title: sidebarT('sidebar:adminActivityLogs'),
         to: '/admin-activity-logs',
+        category: 'CRM',
+    },
+
+    // Live Activity. Deliberately ONE tab with no sub-items: the page's category tabs
+    // are in-page state (?category=), not navigation. Display Settings therefore shows a
+    // single on/off switch per role, and it ships hidden (see OPT_IN_TAB_IDS) so an
+    // institute turns it on knowingly -- the feed surfaces prospect PII and payment
+    // amounts to every role that has it enabled.
+    {
+        icon: Broadcast,
+        id: 'live-activity',
+        title: sidebarT('sidebar:liveActivity'),
+        to: '/live-activity',
         category: 'CRM',
     },
 

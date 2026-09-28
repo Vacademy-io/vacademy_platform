@@ -31,6 +31,10 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
 // shipped hidden for historical sub-org reasons.
 const OPT_IN_TAB_IDS = new Set<string>([
     'admin-activity-logs',
+    // Live activity feed. Ships hidden: it surfaces prospect PII (name, email,
+    // phone) to every role that has it enabled, so turning it on is a privacy
+    // decision an institute admin should make deliberately.
+    'live-activity',
     'ai-copilot-tab',
     'mentorship',
     // NOTE: the ERP modules are deliberately NOT listed here. The opt-in gate

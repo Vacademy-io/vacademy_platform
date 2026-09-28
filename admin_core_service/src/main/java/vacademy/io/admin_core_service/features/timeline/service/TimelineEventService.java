@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityLeadRecorder;
 
 /**
  * Pure event-persistence service.
@@ -40,6 +41,11 @@ public class TimelineEventService {
 
         @Autowired
         private TimelineEventRepository timelineEventRepository;
+
+
+        @Autowired
+
+        private LiveActivityLeadRecorder liveActivityLeadRecorder;
 
         @Autowired
         private ObjectMapper objectMapper;
@@ -77,6 +83,13 @@ public class TimelineEventService {
                         String studentUserId) {
                 saveEvent(type, typeId, actionType.name(), actorType, actorId, actorName,
                                 title, description, metadata, studentUserId, TimelineCategory.JOURNEY);
+
+                // Mirror onto the live activity feed. One hook here covers every lead intake
+                // path -- the public submits, all five form webhooks and walk-in -- instead of
+                // six separate edits that would drift. The recorder whitelists LEAD_SUBMITTED
+                // and ignores the other 26 call sites, which are CRM churn rather than
+                // something worth surfacing live.
+                liveActivityLeadRecorder.recordJourneyEvent(typeId, actionType);
         }
 
         // ── Write: manual event from frontend ────────────────────────────────

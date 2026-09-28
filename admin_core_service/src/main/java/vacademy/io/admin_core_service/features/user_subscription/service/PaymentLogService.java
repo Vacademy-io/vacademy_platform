@@ -70,6 +70,12 @@ import java.util.stream.Collectors;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.context.annotation.Lazy;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityDedupeKeys;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityRecorder;
+import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityEvent;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityAction;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityActorType;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityCategory;
 
 @Service
 @Transactional
@@ -86,6 +92,9 @@ public class PaymentLogService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private LiveActivityRecorder liveActivityRecorder;
 
     @Autowired
     public UserPlanService userPlanService;
@@ -716,6 +725,17 @@ public class PaymentLogService {
      * Handles both PAID and FAILED statuses for ABANDONED_CART entry management.
      */
     private void handlePostPaymentLogic(PaymentLog paymentLog, String paymentStatus, String instituteId) {
+        // Live activity feed, recorded here rather than at the webhook layer.
+        //
+        // This method runs ONCE per genuine status transition: updatePaymentLogsByOrderId
+        // makes an atomic conditional claim in pass 1 and only calls this for logs that were
+        // not already in the target status. That matters because one payment produces
+        // several inbound signals -- Razorpay emits payment.captured AND order.paid, every
+        // provider retries on a non-2xx, /webhook/reprocess replays deliberately, and eWay
+        // polling runs on every replica because it has no @SchedulerLock. Hooking any of
+        // those would post the same payment two or more times. Do not move this upward.
+        recordPaymentLiveActivity(paymentLog, paymentStatus, instituteId);
+
         // Handle payment failure - create PAYMENT_FAILED entry
         if (PaymentStatusEnum.FAILED.name().equals(paymentStatus)) {
             log.info("Payment FAILED for log {}, handling failure flow", paymentLog.getId());
@@ -2054,5 +2074,49 @@ public class PaymentLogService {
         }
         return TrialStartResolver.label(
                 TrialStartResolver.nextStart(day, TrialStartResolver.zoneFromInvite(settingJson)));
+    }
+
+    /**
+     * Mirror a payment outcome onto the live activity feed. Best-effort and never throws --
+     * money must not fail because a feed row could not be written.
+     */
+    private void recordPaymentLiveActivity(PaymentLog paymentLog, String paymentStatus, String instituteId) {
+        try {
+            LiveActivityAction action;
+            if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
+                action = LiveActivityAction.PAYMENT_SUCCEEDED;
+            } else if (PaymentStatusEnum.FAILED.name().equals(paymentStatus)) {
+                action = LiveActivityAction.PAYMENT_FAILED;
+            } else {
+                // PAYMENT_PENDING is not an outcome anyone can act on from a feed.
+                return;
+            }
+
+            Map<String, Object> payload = new HashMap<>();
+            if (paymentLog.getPaymentAmount() != null) {
+                payload.put("amount", paymentLog.getPaymentAmount());
+            }
+            if (paymentLog.getCurrency() != null) {
+                payload.put("currency", paymentLog.getCurrency());
+            }
+            if (paymentLog.getVendor() != null) {
+                payload.put("vendor", paymentLog.getVendor());
+            }
+
+            liveActivityRecorder.recordAfterCommit(LiveActivityEvent.builder()
+                    .instituteId(instituteId)
+                    .occurredAtEpochMillis(System.currentTimeMillis())
+                    .category(LiveActivityCategory.PAYMENT)
+                    .action(action)
+                    .actorType(LiveActivityActorType.LEARNER)
+                    .dedupeKey(LiveActivityDedupeKeys.forPayment(paymentLog.getId(), paymentStatus))
+                    .subjectId(paymentLog.getUserId())
+                    .entityId(paymentLog.getId())
+                    .payload(payload)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to record live activity for payment log {}: {}",
+                    paymentLog.getId(), e.getMessage());
+        }
     }
 }

@@ -34,6 +34,9 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                 item.id !== 'automations' &&
                 item.id !== 'manage-contacts' &&
                 item.id !== 'admin-activity-logs' &&
+                // Live activity ships hidden for teachers too -- this is what makes
+                // the toggle genuinely per-role rather than institute-wide.
+                item.id !== 'live-activity' &&
                 // AI Course/Program Creator ships hidden; admins opt in via Display Settings.
                 item.id !== 'ai-copilot-tab'
                     ? true

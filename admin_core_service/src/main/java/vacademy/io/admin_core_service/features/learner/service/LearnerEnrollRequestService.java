@@ -72,6 +72,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityDedupeKeys;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityRecorder;
+import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityEvent;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityAction;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityActorType;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityCategory;
 
 @Slf4j
 @Service
@@ -79,6 +85,10 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private EnrollInviteService enrollInviteService;
+
+
+    @Autowired
+    private LiveActivityRecorder liveActivityRecorder;
 
     @Autowired
     private vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
@@ -647,7 +657,63 @@ public class LearnerEnrollRequestService {
         }
 
         response.setUserPlanId(userPlan.getId());
+
+        // Live activity feed. This completes the enrolment funnel that FORM_NEXT starts:
+        //   PENDING_FOR_PAYMENT -> REACHED_PAYMENT ("got to the gateway and stopped")
+        //   ACTIVE              -> ENROLLED
+        // The distinction matters because "filled the form and vanished" and "reached the
+        // payment page and bailed" are very different follow-ups.
+        //
+        // ACTIVE here is also the ONLY invite-funnel signal a FREE course produces -- those
+        // skip /form-submit entirely, so they never emit FORM_NEXT.
+        recordEnrolmentLiveActivity(learnerEnrollRequestDTO, enrollDTO, userPlan);
+
         return response;
+    }
+
+    /**
+     * Mirror the enrolment outcome onto the live activity feed. Best-effort and never
+     * throws -- an enrolment must not fail because a feed row could not be written.
+     */
+    private void recordEnrolmentLiveActivity(LearnerEnrollRequestDTO learnerEnrollRequestDTO,
+                                             LearnerPackageSessionsEnrollDTO enrollDTO,
+                                             UserPlan userPlan) {
+        try {
+            LiveActivityAction action;
+            if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+                action = LiveActivityAction.ENROLLED;
+            } else if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(userPlan.getStatus())) {
+                action = LiveActivityAction.REACHED_PAYMENT;
+            } else {
+                return;
+            }
+
+            String enrollInviteId = enrollDTO != null ? enrollDTO.getEnrollInviteId() : null;
+            if (!StringUtils.hasText(enrollInviteId)) {
+                // Without an invite there is no funnel to place this on, and no stable key.
+                return;
+            }
+
+            var user = learnerEnrollRequestDTO.getUser();
+            liveActivityRecorder.recordAfterCommit(LiveActivityEvent.builder()
+                    .instituteId(learnerEnrollRequestDTO.getInstituteId())
+                    .occurredAtEpochMillis(System.currentTimeMillis())
+                    .category(LiveActivityCategory.INVITE_FORM)
+                    .action(action)
+                    .actorType(action == LiveActivityAction.ENROLLED
+                            ? LiveActivityActorType.LEARNER
+                            : LiveActivityActorType.PROSPECT)
+                    .dedupeKey(LiveActivityDedupeKeys.forInviteForm(
+                            enrollInviteId, user != null ? user.getId() : userPlan.getId(), action))
+                    .subjectId(user != null ? user.getId() : null)
+                    .subjectName(user != null ? user.getFullName() : null)
+                    .subjectEmail(user != null ? user.getEmail() : null)
+                    .subjectMobile(user != null ? user.getMobileNumber() : null)
+                    .entityId(enrollInviteId)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to record live activity for enrolment: {}", e.getMessage());
+        }
     }
 
     private void sendDynamicNotificationForEnrollment(

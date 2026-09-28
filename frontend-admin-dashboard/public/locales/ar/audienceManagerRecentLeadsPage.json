@@ -52,6 +52,14 @@
             "done": "تم",
             "from": "من",
             "to": "إلى"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -81,7 +89,9 @@
         "statusConverted": "محوَّل",
         "unassigned": "غير مُسنَد",
         "removeAriaLabel": "إزالة {{label}}",
-        "clearAll": "مسح الكل"
+        "clearAll": "مسح الكل",
+        "calledWithin": null,
+        "workedWithin": null
     },
     "search": {
         "placeholder": "البحث عن العملاء المحتملين",
@@ -113,7 +123,8 @@
         "assignLeads": "إسناد العملاء المحتملين",
         "unassignLeads": "إلغاء إسناد العملاء المحتملين",
         "restoreLeads": "استعادة العملاء المحتملين",
-        "deleteLeads": "حذف العملاء المحتملين"
+        "deleteLeads": "حذف العملاء المحتملين",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "تعذّر تحميل العملاء المحتملين",
@@ -160,6 +171,12 @@
         "leadRestored_many": "تمت استعادة {{count}} عميلاً محتملاً",
         "leadRestored_other": "تمت استعادة {{count}} عميل محتمل",
         "restoreFailed": "فشلت الاستعادة. حاول مرة أخرى.",
-        "selectAllFailed": "فشل تحديد جميع العملاء المحتملين"
+        "selectAllFailed": "فشل تحديد جميع العملاء المحتملين",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

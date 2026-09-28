@@ -477,6 +477,9 @@ export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/fie
 export const COUNSELOR_POOL_BASE = `${BASE_URL}/admin-core-service/v1/counselor-pool`;
 export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
+/** The pool a single lead list feeds — 204 when the list is not attached to one. */
+export const COUNSELOR_POOL_BY_AUDIENCE = (audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/by-audience/${audienceId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
 export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>

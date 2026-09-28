@@ -23,7 +23,8 @@
             "audience": "ऑडियंस",
             "source": "स्रोत",
             "status": "स्थिति",
-            "webhook": "वेबहुक"
+            "webhook": "वेबहुक",
+            "connectedOn": null
         },
         "statusActive": "सक्रिय",
         "statusActionNeeded": "कार्रवाई आवश्यक",
@@ -33,7 +34,8 @@
         "testConnection": "कनेक्शन परखें",
         "resubscribeTooltip": "फिर से सब्सक्राइब करें (पूर्ण नियंत्रण देने के बाद)",
         "editDefaultValues": "डिफ़ॉल्ट मान संपादित करें",
-        "deactivateConnector": "कनेक्टर निष्क्रिय करें"
+        "deactivateConnector": "कनेक्टर निष्क्रिय करें",
+        "neverConnected": null
     },
     "vendor": {
         "meta": "Meta",

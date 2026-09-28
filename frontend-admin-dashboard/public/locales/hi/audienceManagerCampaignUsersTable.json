@@ -80,7 +80,8 @@
         "assignLeads": "लीड असाइन करें",
         "unassignLeads": "लीड अनअसाइन करें",
         "deleteLeads": "लीड हटाएं",
-        "sendMessage": "संदेश भेजें"
+        "sendMessage": "संदेश भेजें",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "प्रतिवादी लोड नहीं हो सके",

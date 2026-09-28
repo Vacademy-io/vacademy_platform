@@ -81,7 +81,8 @@
         "unassignLeads": "Unassign leads",
         "deleteLeads": "Delete leads",
         "moveLeads": "Move to another list",
-        "sendMessage": "Send message"
+        "sendMessage": "Send message",
+        "changeStatus": "Change status"
     },
     "emptyState": {
         "errorTitle": "Couldn't load respondents",

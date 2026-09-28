@@ -23,7 +23,8 @@
             "audience": "Audience",
             "source": "Source",
             "status": "Statut",
-            "webhook": "Webhook"
+            "webhook": "Webhook",
+            "connectedOn": null
         },
         "statusActive": "ACTIF",
         "statusActionNeeded": "Action requise",
@@ -33,7 +34,8 @@
         "testConnection": "Tester la connexion",
         "resubscribeTooltip": "Se réabonner (après avoir accordé le contrôle total)",
         "editDefaultValues": "Modifier les valeurs par défaut",
-        "deactivateConnector": "Désactiver le connecteur"
+        "deactivateConnector": "Désactiver le connecteur",
+        "neverConnected": null
     },
     "vendor": {
         "meta": "Meta",

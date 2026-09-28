@@ -114,6 +114,9 @@ import {
     type LeadSortKey,
     type LeadSortDirection,
 } from '@/components/shared/leads';
+import { usePoolForAudience } from '@/services/counselor-pool';
+import { UsersThree, Tag } from '@phosphor-icons/react';
+import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
@@ -619,6 +622,7 @@ const CampaignUsersContent = ({
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
+    const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
 
     // Selection works in every view (previously Unassigned-only, which made
     // reassign/remove unreachable); drop it on filter change so stale ids
@@ -1057,6 +1061,10 @@ const CampaignUsersContent = ({
         }
     };
 
+    // Which counsellor pool this list feeds, if any. Resolves to null for the many
+    // lists that aren't auto-assigned, in which case the chip simply doesn't render.
+    const { data: pool } = usePoolForAudience(campaignId);
+
     return (
         <div className="flex w-full flex-col gap-6">
             {/* Heading */}
@@ -1076,6 +1084,23 @@ const CampaignUsersContent = ({
                                   formattedCount: totalElements.toLocaleString(i18n.language),
                               })}
                     </p>
+                    {/* Where this list's leads get routed. Only auto-assigned lists have a
+                        pool, so its absence is meaningful rather than missing data. */}
+                    {pool && (
+                        <span
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700"
+                            title={`Leads from this list are assigned through the "${pool.name}" pool`}
+                        >
+                            <UsersThree className="size-3.5" weight="fill" />
+                            {pool.name}
+                            {pool.members?.length ? (
+                                <span className="font-normal text-primary-600">
+                                    · {pool.members.length}{' '}
+                                    {pool.members.length === 1 ? 'counsellor' : 'counsellors'}
+                                </span>
+                            ) : null}
+                        </span>
+                    )}
                 </div>
                 {!isOptOut && (
                     <Button
@@ -1416,6 +1441,14 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Not admin-gated, unlike move/delete below: changing
+                                        // status is a counsellor's normal daily action and the
+                                        // per-row status chip already allows it.
+                                        {
+                                            label: t('bulkToolbar.changeStatus'),
+                                            value: 'status',
+                                            icon: <Tag className="size-4" />,
+                                        },
                                         // Move and delete are admin-only, matching those
                                         // endpoints' own checks.
                                         ...(canDeleteLeads
@@ -1436,6 +1469,10 @@ const CampaignUsersContent = ({
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'status') {
+                                            setBulkStatusOpen(true);
+                                            return;
+                                        }
                                         if (value === 'send-message') {
                                             setShowSendMessage(true);
                                             return;
@@ -1519,6 +1556,20 @@ const CampaignUsersContent = ({
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <BulkLeadStatusDialog
+                    open={bulkStatusOpen}
+                    onOpenChange={setBulkStatusOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    statuses={leadStatusCatalog}
+                    onSuccess={(result) => {
+                        // Keep the selection when nothing moved -- the admin probably wants to
+                        // pick a different status rather than reselect every row.
+                        if (result.updated > 0) setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 <DeleteLeadsDialog

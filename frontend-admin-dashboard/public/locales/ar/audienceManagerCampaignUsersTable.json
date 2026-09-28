@@ -92,7 +92,8 @@
         "assignLeads": "تعيين العملاء المحتملين",
         "unassignLeads": "إلغاء تعيين العملاء المحتملين",
         "deleteLeads": "حذف العملاء المحتملين",
-        "sendMessage": "إرسال رسالة"
+        "sendMessage": "إرسال رسالة",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "تعذَّر تحميل المستجيبين",

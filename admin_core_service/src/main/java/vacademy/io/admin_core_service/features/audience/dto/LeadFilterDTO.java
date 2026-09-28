@@ -37,6 +37,24 @@ public class LeadFilterDTO {
     private Timestamp submittedFromLocal;
     private Timestamp submittedToLocal;
 
+    // ── "Worked in the last N days" windows ──
+    // Deliberately separate from submittedFrom/To: that pair answers when the lead
+    // ARRIVED, while counsellors want to know what they have touched recently
+    // ("how many did I call in the last 24h / 7d"). Two independent windows so the
+    // two questions stay answerable on their own:
+    //   called*   -> last telephony_call_log entry for the lead (response, LEAD
+    //                subject, or institute-scoped user link -- the same three
+    //                linkages callHistoryFilter matches on).
+    //   activity* -> last timeline_event for the lead (note, call log, status
+    //                change, follow-up) -- the same feed the Activity column shows,
+    //                so filtering and sorting it agree.
+    // A lead never called / never touched is excluded as soon as the matching
+    // window has either bound set.
+    private Timestamp calledFromLocal;
+    private Timestamp calledToLocal;
+    private Timestamp activityFromLocal;
+    private Timestamp activityToLocal;
+
     // ── Lead Score Filters ──
     private Integer minLeadScore;           // Filter leads with score >= this
     private Integer maxLeadScore;           // Filter leads with score <= this
@@ -125,7 +143,8 @@ public class LeadFilterDTO {
     // Pagination
     private Integer page;
     private Integer size;
-    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, LEAD_TIER, STATUS, PARENT_NAME, CUSTOM_FIELD
+    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, LEAD_TIER, STATUS, PARENT_NAME,
+                                            // LAST_ACTIVITY, LAST_CALLED, CUSTOM_FIELD
     private String sortDirection;           // ASC, DESC
     // When sortBy = CUSTOM_FIELD: the custom_field_id to sort by. The latest
     // AUDIENCE_RESPONSE-scoped answer per lead is the sort key — numeric-aware

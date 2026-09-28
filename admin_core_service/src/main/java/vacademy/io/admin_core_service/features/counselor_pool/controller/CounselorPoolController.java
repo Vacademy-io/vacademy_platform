@@ -47,6 +47,23 @@ public class CounselorPoolController {
         return ResponseEntity.ok(poolService.listPools(instituteId));
     }
 
+    /**
+     * Which pool (if any) a single lead list feeds — powers the pool chip in the lead
+     * list's header, so an admin opening a list can see where its leads get routed
+     * without going to Pools and reading every pool's audience tab.
+     *
+     * <p>An audience belongs to at most ONE pool ({@code existsByAudienceId} blocks a
+     * second at pool create/update time), so this returns a single object. 204 when the
+     * list is not attached to a pool, which is the normal state for lists that are not
+     * auto-assigned.</p>
+     */
+    @GetMapping("/by-audience/{audienceId}")
+    public ResponseEntity<CounselorPoolDTO> getPoolForAudience(@PathVariable String audienceId) {
+        return poolService.findPoolForAudience(audienceId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     @GetMapping("/{poolId}")
     public ResponseEntity<CounselorPoolDTO> getPool(@PathVariable String poolId) {
         return ResponseEntity.ok(poolService.getPool(poolId));

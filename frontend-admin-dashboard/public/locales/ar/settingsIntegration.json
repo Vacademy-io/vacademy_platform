@@ -23,7 +23,8 @@
             "audience": "الجمهور",
             "source": "المصدر",
             "status": "الحالة",
-            "webhook": "الويب هوك"
+            "webhook": "الويب هوك",
+            "connectedOn": null
         },
         "statusActive": "نشط",
         "statusActionNeeded": "يتطلب إجراءً",
@@ -33,7 +34,8 @@
         "testConnection": "اختبار الاتصال",
         "resubscribeTooltip": "إعادة الاشتراك (بعد منح التحكم الكامل)",
         "editDefaultValues": "تعديل القيم الافتراضية",
-        "deactivateConnector": "إلغاء تفعيل الموصل"
+        "deactivateConnector": "إلغاء تفعيل الموصل",
+        "neverConnected": null
     },
     "vendor": {
         "meta": "Meta",

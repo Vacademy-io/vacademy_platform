@@ -78,6 +78,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.common.exceptions.VacademyException;
@@ -94,6 +95,14 @@ public class AudienceService {
 
     @Autowired
     private AudienceRepository audienceRepository;
+
+    // Repositories only (never CounselorPoolService) — the pool service already
+    // depends on this one, so injecting it back would close a bean cycle.
+    @Autowired
+    private vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository counselorPoolAudienceRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolRepository counselorPoolRepository;
 
 
     @Autowired
@@ -461,6 +470,9 @@ public class AudienceService {
                 restrictByList,
                 pageable);
 
+        Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> poolByAudienceId =
+                resolvePoolsForPage(audiences.getContent());
+
         return audiences.map(audience -> AudienceDTO.builder()
                 .id(audience.getId())
                 .instituteId(audience.getInstituteId())
@@ -479,7 +491,60 @@ public class AudienceService {
                 .defaultInitialScore(audience.getDefaultInitialScore())
                 .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
+                .poolId(poolByAudienceId.containsKey(audience.getId())
+                        ? poolByAudienceId.get(audience.getId()).getId() : null)
+                .poolName(poolByAudienceId.containsKey(audience.getId())
+                        ? poolByAudienceId.get(audience.getId()).getName() : null)
                 .build());
+    }
+
+    /**
+     * Which counsellor pool (if any) each audience on this page feeds, so the lead-list
+     * header can say so without the admin going to Pools to find out.
+     *
+     * <p>Two batched queries for the whole page rather than a lookup per row: the campaigns
+     * grid renders 20+ lists at a time and a per-row resolve would be a 40-query N+1.</p>
+     *
+     * <p>Best-effort — a pool-lookup failure returns an empty map and the lists simply render
+     * without the pool chip, rather than failing the campaigns page.</p>
+     */
+    private Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool>
+            resolvePoolsForPage(List<Audience> audiences) {
+        if (audiences == null || audiences.isEmpty()) return Collections.emptyMap();
+        try {
+            List<String> audienceIds = audiences.stream()
+                    .map(Audience::getId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (audienceIds.isEmpty()) return Collections.emptyMap();
+
+            List<vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience> links =
+                    counselorPoolAudienceRepository.findByAudienceIdIn(audienceIds);
+            if (links.isEmpty()) return Collections.emptyMap();
+
+            Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> poolsById =
+                    counselorPoolRepository.findAllById(links.stream()
+                            .map(vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience::getPoolId)
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .collect(Collectors.toList()))
+                    .stream()
+                    .collect(Collectors.toMap(
+                            vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool::getId,
+                            Function.identity(), (a, b) -> a));
+
+            Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> byAudience =
+                    new HashMap<>();
+            for (var link : links) {
+                var pool = poolsById.get(link.getPoolId());
+                if (pool != null) byAudience.put(link.getAudienceId(), pool);
+            }
+            return byAudience;
+        } catch (Exception ex) {
+            logger.warn("Failed to resolve counsellor pools for campaigns page: {}", ex.getMessage());
+            return Collections.emptyMap();
+        }
     }
 
     /** Campaign name used for the auto-provisioned per-institute catalogue lead audience. */
@@ -3212,6 +3277,10 @@ public class AudienceService {
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
                     filterDTO.getSortCustomFieldId(),
+                    filterDTO.getCalledFromLocal(),
+                    filterDTO.getCalledToLocal(),
+                    filterDTO.getActivityFromLocal(),
+                    filterDTO.getActivityToLocal(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -3245,6 +3314,10 @@ public class AudienceService {
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 filterDTO.getSortCustomFieldId(),
+                filterDTO.getCalledFromLocal(),
+                filterDTO.getCalledToLocal(),
+                filterDTO.getActivityFromLocal(),
+                filterDTO.getActivityToLocal(),
                 pageable);
 
         // Resolve the institute for SLA-deadline computation: the filter usually

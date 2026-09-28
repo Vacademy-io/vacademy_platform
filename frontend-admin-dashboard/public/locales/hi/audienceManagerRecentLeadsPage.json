@@ -48,6 +48,14 @@
             "done": "हो गया",
             "from": "से",
             "to": "तक"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -77,7 +85,9 @@
         "statusConverted": "परिवर्तित",
         "unassigned": "असाइन नहीं किया गया",
         "removeAriaLabel": "{{label}} हटाएं",
-        "clearAll": "सभी हटाएं"
+        "clearAll": "सभी हटाएं",
+        "calledWithin": null,
+        "workedWithin": null
     },
     "search": {
         "placeholder": "लीड्स खोजें",
@@ -97,7 +107,8 @@
         "assignLeads": "लीड्स असाइन करें",
         "unassignLeads": "लीड्स अनअसाइन करें",
         "restoreLeads": "लीड्स पुनर्स्थापित करें",
-        "deleteLeads": "लीड्स हटाएं"
+        "deleteLeads": "लीड्स हटाएं",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "लीड्स लोड नहीं हो सकीं",
@@ -136,6 +147,12 @@
         "leadRestored_one": "{{count}} लीड पुनर्स्थापित की गई",
         "leadRestored_other": "{{count}} लीड्स पुनर्स्थापित की गईं",
         "restoreFailed": "पुनर्स्थापित करने में विफल। कृपया फिर से कोशिश करें।",
-        "selectAllFailed": "सभी लीड्स चुनने में विफल"
+        "selectAllFailed": "सभी लीड्स चुनने में विफल",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

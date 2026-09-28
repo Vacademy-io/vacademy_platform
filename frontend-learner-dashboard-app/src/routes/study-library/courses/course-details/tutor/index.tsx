@@ -673,15 +673,17 @@ function TutorPage() {
     socket.sendConfig({ avatar: avatarActive });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarActive]);
-  // The face is on screen: unlock its audio without a second tap when the
-  // document already has user activation; otherwise the gate asks for one.
+  // Unlock the face's audio and connect its motion session as soon as the view
+  // exists — in parallel with the first paint, not after it (that serialised
+  // 2-3 s of a silent face). No second tap when the document already has user
+  // activation; otherwise the gate asks for one.
   useEffect(() => {
-    if (!avatarShown || !avatar.painted || avatar.activated || needsTap) return;
+    if (!avatarShown || !avatar.ready || avatar.activated || needsTap) return;
     void avatar.activate().then((ok) => {
       if (!ok) setNeedsTap(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avatarShown, avatar.painted, avatar.activated, needsTap]);
+  }, [avatarShown, avatar.ready, avatar.activated, needsTap]);
   // Opening: the server keeps the teacher quiet until this device can show and
   // play her — or until the cap, so a slow face never holds the lesson.
   useEffect(() => {

@@ -69,7 +69,9 @@ IDLE_SECONDS = 5 * 60
 # and `{"type": "begin"}` when it is ready. Older bundles (OTA, electron) send
 # neither and get the opening at once, as before. The cap keeps a broken
 # client from holding a lesson forever.
-BEGIN_WAIT_SECONDS = 8.0
+# Longer than the client's own 25 s cap (tutorAudioGate.ts): the client decides;
+# this only rescues a client that never says `begin` at all.
+BEGIN_WAIT_SECONDS = 30.0
 
 
 # Messages that drive a lesson. Before the opening they cannot mean anything

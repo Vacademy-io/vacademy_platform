@@ -107,6 +107,8 @@ function TutorPage() {
   const [awaiting, setAwaiting] = useState<"continue" | "answer" | "done" | null>(null);
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
+  const speakOnRef = useRef(true);
+  speakOnRef.current = speakOn;
   const [micOn, setMicOn] = useState(false);
   const [pace, setPace] = useState<TutorPace>("normal");
   const [language, setLanguage] = useState<"en" | "hi">("en");
@@ -140,7 +142,11 @@ function TutorPage() {
   const [outlineOpen, setOutlineOpen] = useState(false);
   // Phones: one pane at a time — the board, or the teacher's conversation.
   // A question or a nudge flips to the teacher so nothing is missed.
-  const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
+  // Voice lessons open on the Teacher pane: a display:none pane has no size, so
+  // the face could never paint there and the voice always arrived first. The
+  // first thing the teacher writes after the greeting flips it to the Board.
+  const [phoneView, setPhoneView] = useState<"board" | "teacher">(voiceMode ? "teacher" : "board");
+  const arrivalViewRef = useRef(voiceMode);
   // The open question (spoken + shown in the card); appended to the transcript with the answer.
   const pendingAskRef = useRef<TranscriptLine | null>(null);
   const flushAsk = (answer: string) => {
@@ -335,6 +341,11 @@ function TutorPage() {
         }
         if (typeof seg.endTurn === "number") {
           completeTeacherText(seg.endTurn);
+          // Phones: she has greeted the learner face to face; now the board.
+          if (arrivalViewRef.current) {
+            arrivalViewRef.current = false;
+            setPhoneView("board");
+          }
           continue;
         }
         setPhase("speaking");
@@ -419,6 +430,11 @@ function TutorPage() {
       else if (ev.phase === "slide_done") applyPhase("done");
     },
     onBoard: (ops, clear, live, _topicId, replay) => {
+      // Muted voice lesson: no audio turn will end, so flip on the first board.
+      if (arrivalViewRef.current && begunRef.current && ops.length > 0 && !speakOnRef.current) {
+        arrivalViewRef.current = false;
+        setPhoneView("board");
+      }
       if (live) {
         setLiveOps(ops);
         return;

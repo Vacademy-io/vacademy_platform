@@ -99,7 +99,11 @@ export function useSpatiusAvatar() {
   /** Mount the avatar into `container` with the session from the server. Call once per lesson. */
   const mount = useCallback(async (boot: AvatarBoot, container: HTMLDivElement) => {
     try {
+      // Staged progress: AvatarKit's load callback reports no fraction, so the
+      // bar advances on the steps that really completed.
+      setProgress(0.1);
       const kit = kitRef.current ?? (await preloadAvatarKit());
+      setProgress(0.25);
       kitRef.current = kit;
       // Init needs only the app id, so it overlaps the token round-trip.
       if (initializedApp !== boot.app_id) {
@@ -113,13 +117,16 @@ export function useSpatiusAvatar() {
         initializedApp = boot.app_id;
       }
       kit.AvatarSDK.setSessionToken(await boot.session_token);
-      setProgress(0);
+      setProgress(0.4);
       const avatar = await kit.AvatarManager.shared.load(boot.avatar_id, (info) => {
-        if (typeof info.progress === "number") setProgress(Math.max(0, Math.min(1, info.progress)));
-        if (info.type === "completed") setProgress(1);
+        if (typeof info.progress === "number") setProgress(0.4 + 0.45 * Math.max(0, Math.min(1, info.progress)));
       });
+      setProgress(0.9);
       const view = new kit.AvatarView(avatar, container);
-      view.onFirstRendering = () => setPainted(true);
+      view.onFirstRendering = () => {
+        setProgress(1);
+        setPainted(true);
+      };
       containerRef.current = container;
       const c = view.controller;
       c.onConversationState = (state) => {

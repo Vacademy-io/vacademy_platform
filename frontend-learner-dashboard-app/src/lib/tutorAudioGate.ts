@@ -14,8 +14,13 @@ export function hasUserActivation(nav: { userActivation?: { hasBeenActive: boole
   }
 }
 
-/** How long after `ready` the client waits for the face before it begins anyway. */
-export const BEGIN_CAP_MS = 6000;
+/**
+ * How long after `ready` the client waits for a face that is still loading
+ * before it begins on the speaker. A safety net for a stuck vendor, not a
+ * guess at load time: measured on prod the face paints 6-9 s after the tap,
+ * and a 6 s cap here meant the learner heard the teacher before seeing her.
+ */
+export const BEGIN_CAP_MS = 25000;
 
 export interface BeginInputs {
   /** The course has a premium avatar and the lesson is in voice mode. */

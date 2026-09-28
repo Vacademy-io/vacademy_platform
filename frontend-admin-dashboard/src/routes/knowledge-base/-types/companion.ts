@@ -1,4 +1,4 @@
-/** Knowledge Base companions — mirror of ai_service `/kb-companion/v1` (V534 schema). */
+/** Knowledge Base companions — mirror of ai_service `/kb-companion/v1` (V535 schema). */
 
 export type CompanionLanguage = 'en' | 'hi';
 export type CompanionMode = 'learn' | 'practice' | 'ask';

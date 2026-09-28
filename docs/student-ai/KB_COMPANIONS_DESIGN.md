@@ -106,7 +106,7 @@ shipped broken pages from invented image URLs, 2026-09-25).
 - A deterministic **learner memo** (no LLM) is added to Ask prompts: topics completed,
   the current topic, topics with weak checks. It is cheap, exact and cannot drift.
 
-## 6. Data model (admin_core Flyway `V534__Kb_companions.sql`)
+## 6. Data model (admin_core Flyway `V535__Kb_companions.sql`)
 
 | Table | Purpose |
 |---|---|

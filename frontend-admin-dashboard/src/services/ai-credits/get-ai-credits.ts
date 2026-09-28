@@ -113,7 +113,7 @@ export type ToolKey =
     | 'kb_ingest_page'
     | 'kb_ingest_url'
     | 'kb_ask'
-    // Knowledge Base companions for learners (V534)
+    // Knowledge Base companions for learners (V535)
     | 'kb_companion_lesson'
     | 'kb_companion_practice'
     | 'kb_companion_ask'

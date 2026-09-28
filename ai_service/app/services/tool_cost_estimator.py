@@ -364,10 +364,10 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
-    # ---- KB companions for learners (V534) ----------------------------------
+    # ---- KB companions for learners (V535) ----------------------------------
     # The institute pays; lessons and practice sets are compiled once per topic
     # and shared by every learner, so only Ask and uncached speech are per-learner.
-    # MUST agree with the V534 seeds and FE computeToolCredits.
+    # MUST agree with the V535 seeds and FE computeToolCredits.
     "kb_companion_lesson": {
         "request_type": "knowledge_base",
         "flat_base_credits": Decimal("5"),

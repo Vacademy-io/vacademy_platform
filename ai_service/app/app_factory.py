@@ -273,7 +273,7 @@ def create_app() -> FastAPI:
     # Question papers generated from a knowledge base (V436). Shares the
     # /knowledge-base/v1 prefix and the same Caller auth dependency.
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
-    # Student study companions built on a knowledge base (V534).
+    # Student study companions built on a knowledge base (V535).
     app.include_router(kb_companion_router, prefix=settings.api_base_path)
     # A question-paper PDF read into gradable questions for offline tests.
     app.include_router(paper_digitise_router, prefix=settings.api_base_path)

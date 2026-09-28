@@ -1,4 +1,4 @@
-"""SQL for knowledge-base companions (tables from admin_core V534).
+"""SQL for knowledge-base companions (tables from admin_core V535).
 
 Raw SQL, like the KB itself. Every read that a learner can trigger is scoped by
 institute in the WHERE clause, and learner access to a companion is decided by

@@ -21,6 +21,7 @@ import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingResolved
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepFieldConfigDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingSubmittedFieldDTO;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingSubmittedStepDTO;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInstance;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStep;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepInstance;
@@ -534,11 +535,12 @@ public class OnboardingStepInstanceService {
                     instituteCustomFieldRepository.findById(fieldConfig.getInstituteCustomFieldId());
             if (instituteCustomField.isEmpty()) continue;
             String customFieldId = instituteCustomField.get().getCustomFieldId();
-            String fieldName = customFieldRepository.findById(customFieldId)
-                    .map(CustomFields::getFieldName).orElse(null);
+            Optional<CustomFields> customField = customFieldRepository.findById(customFieldId);
             out.add(OnboardingSubmittedFieldDTO.builder()
                     .instituteCustomFieldId(fieldConfig.getInstituteCustomFieldId())
-                    .fieldName(fieldName)
+                    .fieldName(customField.map(CustomFields::getFieldName).orElse(null))
+                    .fieldType(customField.map(CustomFields::getFieldType).orElse(null))
+                    .config(customField.map(CustomFields::getConfig).orElse(null))
                     .value(valueByCustomFieldId.get(customFieldId))
                     .build());
         }
@@ -570,6 +572,41 @@ public class OnboardingStepInstanceService {
     private boolean isLearnerRole(String roleKey) {
         return OnboardingRoleKey.STUDENT.name().equals(roleKey)
                 || OnboardingRoleKey.PARENT.name().equals(roleKey);
+    }
+
+    /**
+     * Every step of one onboarding instance with the answers recorded on it, resolved for
+     * {@code roleKey} -- the whole filled-in history in a single call, for the "what did I
+     * submit during onboarding?" summary a subject can open once the flow is over.
+     *
+     * <p>Steps still PENDING contribute no answers but are still listed, so the summary reads as
+     * the flow rather than as a disconnected pile of fields. Per-field VIEW permission and the
+     * hidden-field filter come from {@link #getResolvedFieldsForRole}, so nothing surfaces here
+     * that the form itself would have withheld from this caller.
+     */
+    public List<OnboardingSubmittedStepDTO> getSubmittedStepsForRole(String onboardingInstanceId, String roleKey) {
+        List<OnboardingStepInstance> stepInstances = listStepInstances(onboardingInstanceId);
+        if (stepInstances.isEmpty()) return List.of();
+
+        // Step name/order live on the DEFINITION, not the instance -- fetched once per step
+        // rather than per field.
+        List<OnboardingSubmittedStepDTO> out = new ArrayList<>();
+        for (OnboardingStepInstance stepInstance : stepInstances) {
+            Optional<OnboardingStep> step = onboardingStepRepository.findById(stepInstance.getStepId());
+            if (step.isEmpty()) continue;
+            out.add(OnboardingSubmittedStepDTO.builder()
+                    .stepInstanceId(stepInstance.getId())
+                    .stepId(stepInstance.getStepId())
+                    .stepName(step.get().getStepName())
+                    .stepOrder(step.get().getStepOrder())
+                    .status(stepInstance.getStatus())
+                    .completedAt(stepInstance.getCompletedAt())
+                    .skipReason(stepInstance.getSkipReason())
+                    .fields(getResolvedFieldsForRole(stepInstance.getId(), roleKey))
+                    .build());
+        }
+        out.sort(Comparator.comparing(s -> s.getStepOrder() == null ? 0 : s.getStepOrder()));
+        return out;
     }
 
     /** The step DEFINITION behind a step instance -- for callers that hold the instance only. */

@@ -17,9 +17,13 @@ import vacademy.io.admin_core_service.features.notification_service.service.Paym
 import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentForecastResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentProgressProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.MonthDueLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UpcomingMonthProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
@@ -64,7 +68,10 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.time.ZoneId;
 import java.util.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 import org.springframework.util.CollectionUtils;
@@ -1234,6 +1241,9 @@ public class PaymentLogService {
                 .learnersUpcoming(
                         row != null && row.getLearnersUpcoming() != null ? row.getLearnersUpcoming() : 0L)
                 .planCount(row != null && row.getPlanCount() != null ? row.getPlanCount() : 0L)
+                .instalmentPlanCount(
+                        row != null && row.getInstalmentPlanCount() != null ? row.getInstalmentPlanCount() : 0L)
+                .livePlanCount(row != null && row.getLivePlanCount() != null ? row.getLivePlanCount() : 0L)
                 .activatedWithoutPaymentCount(
                         row != null && row.getActivatedWithoutPaymentCount() != null
                                 ? row.getActivatedWithoutPaymentCount()
@@ -1315,9 +1325,22 @@ public class PaymentLogService {
      */
     public Page<OutstandingLearnerDTO> getOutstandingLearners(
             BillingSummaryRequestDTO request, int pageNo, int pageSize, boolean includeNotYetDue) {
+        return getOutstandingLearners(request, pageNo, pageSize, includeNotYetDue, null);
+    }
+
+    /**
+     * @param dueMonth optional yyyy-MM. When given, returns only the learners with something
+     *                 falling due in that month (one month of the instalment forecast), each with
+     *                 {@code monthAmount}; {@code includeNotYetDue} is then irrelevant. Blank keeps
+     *                 the Due / Outstanding lists exactly as they were.
+     */
+    public Page<OutstandingLearnerDTO> getOutstandingLearners(
+            BillingSummaryRequestDTO request, int pageNo, int pageSize, boolean includeNotYetDue,
+            String dueMonth) {
         if (!StringUtils.hasText(request.getInstituteId())) {
             throw new VacademyException("institute_id is required");
         }
+        YearMonth month = parseDueMonth(dueMonth);
         LocalDateTime startDate = request.getStartDateInUtc() != null
                 ? request.getStartDateInUtc()
                 : LocalDateTime.of(1970, 1, 1, 0, 0);
@@ -1327,13 +1350,21 @@ public class PaymentLogService {
         boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
 
         List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
-        Page<? extends OutstandingLearnerProjection> page = includeNotYetDue
-                ? userPlanRepository.findLearnersWithBalance(
-                        request.getInstituteId(), startDate, endDate, noPackageSessions,
-                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize))
-                : userPlanRepository.findOutstandingLearners(
-                        request.getInstituteId(), startDate, endDate, noPackageSessions,
-                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+        Page<? extends OutstandingLearnerProjection> page;
+        if (month != null) {
+            page = userPlanRepository.findLearnersDueInMonth(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, month.atDay(1), month.plusMonths(1).atDay(1),
+                    PageRequest.of(pageNo, pageSize));
+        } else if (includeNotYetDue) {
+            page = userPlanRepository.findLearnersWithBalance(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+        } else {
+            page = userPlanRepository.findOutstandingLearners(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+        }
 
         // Names/emails/phones live in the auth service, so resolve the page's learners in one call
         // rather than per row.
@@ -1354,6 +1385,7 @@ public class PaymentLogService {
             return OutstandingLearnerDTO.builder()
                     .outstanding(balance != null ? balance.getOutstanding() : null)
                     .nextDueAmount(balance != null ? balance.getNextDueAmount() : null)
+                    .monthAmount(row instanceof MonthDueLearnerProjection m ? m.getMonthAmount() : null)
                     .userId(row.getUserId())
                     .fullName(user != null ? user.getFullName() : null)
                     .email(user != null ? user.getEmail() : null)
@@ -1374,6 +1406,71 @@ public class PaymentLogService {
         }).collect(Collectors.toList());
 
         return new PageImpl<>(content, PageRequest.of(pageNo, pageSize), page.getTotalElements());
+    }
+
+    /** yyyy-MM, or null when blank. Anything else is a bad request, not "no filter". */
+    private static YearMonth parseDueMonth(String dueMonth) {
+        if (!StringUtils.hasText(dueMonth)) {
+            return null;
+        }
+        try {
+            return YearMonth.parse(dueMonth.trim());
+        } catch (DateTimeParseException e) {
+            throw new VacademyException("due_month must be yyyy-MM");
+        }
+    }
+
+    /**
+     * How far an institute's instalment plans have got, and when the rest comes in, month by month.
+     * Same window and course scope as {@link #getBillingSummary}, and built on the same obligation
+     * rules, so the months add up to its {@code upcomingAll}.
+     *
+     * Read-only and only asked for by instalment institutes; the Collected / Due / Upcoming figures
+     * and their lists are untouched by it.
+     */
+    public InstalmentForecastResponseDTO getInstalmentForecast(BillingSummaryRequestDTO request) {
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
+        List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
+
+        InstalmentProgressProjection progress = userPlanRepository.getInstalmentProgress(
+                request.getInstituteId(), startDate, endDate, noPackageSessions, packageSessionIds,
+                upcomingDays);
+        List<UpcomingMonthProjection> monthRows = userPlanRepository.getUpcomingByMonth(
+                request.getInstituteId(), startDate, endDate, noPackageSessions, packageSessionIds,
+                upcomingDays);
+
+        double overdue = progress != null && progress.getOverdue() != null ? progress.getOverdue() : 0d;
+        double outstanding = progress != null && progress.getOutstanding() != null ? progress.getOutstanding() : 0d;
+
+        List<InstalmentForecastResponseDTO.Month> months = monthRows.stream()
+                .map(row -> InstalmentForecastResponseDTO.Month.builder()
+                        .month(row.getMonthStart() != null ? YearMonth.from(row.getMonthStart()).toString() : null)
+                        .amount(row.getAmount() != null ? row.getAmount() : 0d)
+                        .learners(row.getLearners() != null ? row.getLearners() : 0L)
+                        .dues(row.getDues() != null ? row.getDues() : 0L)
+                        .firstDueOn(row.getFirstDueOn())
+                        .build())
+                .toList();
+
+        return InstalmentForecastResponseDTO.builder()
+                .instalmentBilled(progress != null && progress.getBilled() != null ? progress.getBilled() : 0d)
+                .instalmentPaid(progress != null && progress.getPaid() != null ? progress.getPaid() : 0d)
+                .instalmentOverdue(overdue)
+                .instalmentToCome(Math.max(outstanding - overdue, 0d))
+                .instalmentPlans(progress != null && progress.getPlans() != null ? progress.getPlans() : 0L)
+                .instalmentLearners(
+                        progress != null && progress.getLearners() != null ? progress.getLearners() : 0L)
+                .months(months)
+                .build();
     }
 
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(

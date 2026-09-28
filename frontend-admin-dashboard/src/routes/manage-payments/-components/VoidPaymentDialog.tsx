@@ -32,6 +32,7 @@ const QUERY_KEYS_TOUCHED_BY_VOID: string[][] = [
     ['payment-billing-summary'],
     ['payment-billing-summary-dash'],
     ['payment-outstanding-learners'],
+    ['payment-instalment-forecast'],
     ['payment-outstanding-dash'],
     ['payment-analytics'],
     ['collection-summary-dash'],

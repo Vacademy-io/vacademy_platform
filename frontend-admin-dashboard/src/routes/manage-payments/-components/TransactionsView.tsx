@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DownloadSimple, EnvelopeSimple, Plus, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -14,7 +14,11 @@ import type {
     BatchForSession,
 } from '@/types/payment-logs';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
-import { fetchBillingSummary, fetchOutstandingLearners } from '@/services/payment-logs';
+import {
+    fetchBillingSummary,
+    fetchInstalmentForecast,
+    fetchOutstandingLearners,
+} from '@/services/payment-logs';
 import type { OutstandingLearner } from '@/services/payment-logs';
 import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
 import {
@@ -32,6 +36,7 @@ import { PaymentFilters } from './PaymentFilters';
 import { PaymentControlBar, type SegmentKey, type StatusSegment } from './PaymentControlBar';
 import { DueLearnersTable } from './DueLearnersTable';
 import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
+import { InstalmentForecast, formatForecastMonth, isInstalmentFirst } from './InstalmentForecast';
 import { PaymentLogsTable } from './PaymentLogsTable';
 import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
 import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
@@ -100,6 +105,8 @@ export function TransactionsView() {
     // still to collect, whatever its date — how an admin sees each learner's next instalment).
     // 'upcoming' is the same list opened from the instalment Upcoming card.
     const [balanceScope, setBalanceScope] = useState<'due' | 'outstanding' | 'upcoming'>('due');
+    // One month of the instalment forecast (yyyy-MM) narrowing the Upcoming list; null = all of it.
+    const [dueMonth, setDueMonth] = useState<string | null>(null);
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     // Payment plan is the one detailed filter the API can't apply; it narrows the loaded set
     // locally, before the KPI tiles are computed, so it behaves like the server-side ones.
@@ -231,7 +238,7 @@ export function TransactionsView() {
      * can't answer the last two: an overdue instalment nobody paid has no row at all, and a lapsed
      * renewal leaves only the failed attempt. Same window and course scope as the table.
      */
-    const { data: billingSummary } = useQuery({
+    const { data: billingSummary, isFetchedAfterMount: billingIsFresh } = useQuery({
         queryKey: [
             'payment-billing-summary',
             startDate,
@@ -271,6 +278,8 @@ export function TransactionsView() {
                       learnersUpcomingAll: billingSummary.learners_upcoming_all,
                       nextDueDate: billingSummary.next_due_date,
                       usesInstallments: billingSummary.uses_installments,
+                      instalmentPlanCount: billingSummary.instalment_plan_count,
+                      livePlanCount: billingSummary.live_plan_count,
                       currency: billingSummary.currency || '',
                   }
                 : null,
@@ -280,6 +289,16 @@ export function TransactionsView() {
     // Which cards — and their tabs — the admin chose to show. Defaults follow the fee model.
     const cardPrefs = useKpiCardPrefs(billing);
     const upcomingHasList = !!billing?.usesInstallments && cardPrefs.visible.has('upcoming');
+    // Instalments are this institute's main fee model — counted across the whole institute, so the
+    // page keeps its shape whatever date or course the admin filters to.
+    const instalmentFirst = isInstalmentFirst(billing?.instalmentPlanCount, billing?.livePlanCount);
+    // The month-by-month panel: a card setting (on by default only where instalments are the fee
+    // model), offered wherever there is an instalment plan. Months open the Upcoming list, so it
+    // needs that list too. Only when it is on is the forecast ever asked for.
+    const scheduleVisible =
+        upcomingHasList &&
+        cardPrefs.visible.has('schedule') &&
+        (billing?.instalmentPlanCount ?? 0) > 0;
 
     // A tab can disappear under an open list or filter — a date change removes Outstanding, or
     // the admin switches a card off. Fall back rather than leave an unmarked view on screen.
@@ -291,8 +310,47 @@ export function TransactionsView() {
             (balanceScope === 'upcoming' && !upcomingHasList)
         ) {
             setBalanceScope('due');
+            setDueMonth(null);
         }
     }, [billing, balanceScope, cardPrefs.visible, upcomingHasList]);
+
+    /** Instalment progress and the Upcoming card split by month — only while the panel is on. */
+    const {
+        data: forecast,
+        isLoading: isLoadingForecast,
+        error: forecastError,
+    } = useQuery({
+        queryKey: [
+            'payment-instalment-forecast',
+            startDate,
+            endDate,
+            requestFilters.package_session_ids,
+        ],
+        queryFn: () =>
+            fetchInstalmentForecast({
+                start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
+                end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
+                package_session_ids: requestFilters.package_session_ids,
+            }),
+        enabled: scheduleVisible,
+        staleTime: 60_000,
+        // Refetched with the cards, so the months and the Upcoming card describe one moment.
+        refetchOnMount: 'always',
+        retry: false,
+    });
+
+    // Whether the admin has picked a view yet — the landing rule below never overrides a choice.
+    const viewChosenRef = useRef(false);
+
+    // A month only narrows the Upcoming list while its panel is on screen. Drop it once the panel
+    // goes (switched off, Upcoming hidden) or the new forecast no longer has that month —
+    // otherwise the list stays filtered by a panel nobody can see.
+    useEffect(() => {
+        if (!dueMonth || !billing) return;
+        if (!scheduleVisible || (forecast && !forecast.months.some((m) => m.month === dueMonth))) {
+            setDueMonth(null);
+        }
+    }, [dueMonth, billing, scheduleVisible, forecast]);
     useEffect(() => {
         const hiddenBucket =
             ((statusBucket === 'pending' || statusBucket === 'abandoned') &&
@@ -441,6 +499,8 @@ export function TransactionsView() {
     // Paging only applies while the balances list is on screen; leaving it at 0 otherwise keeps
     // the count in the segmented switch from refetching every time the records table is paged.
     const balancesPage = view === 'balances' ? currentPage : 0;
+    // A forecast month only ever narrows the Upcoming list.
+    const listMonth = balanceScope === 'upcoming' ? dueMonth : null;
     const {
         data: outstanding,
         isLoading: isLoadingOutstanding,
@@ -453,6 +513,7 @@ export function TransactionsView() {
             requestFilters.package_session_ids,
             balancesPage,
             balanceScope,
+            listMonth,
         ],
         queryFn: () =>
             fetchOutstandingLearners(
@@ -463,7 +524,8 @@ export function TransactionsView() {
                 },
                 balancesPage,
                 PAGE_SIZE,
-                balanceScope !== 'due'
+                balanceScope !== 'due',
+                listMonth
             ),
         staleTime: 60_000,
         // Refetched with the cards above it, so the list and the cards never describe two moments.
@@ -473,7 +535,10 @@ export function TransactionsView() {
 
     /** 'due' / 'outstanding' open a balances list; everything else narrows the payment records. */
     const handleSegmentSelect = (key: SegmentKey) => {
+        viewChosenRef.current = true;
         setCurrentPage(0);
+        // A tab or card always opens its whole list; a month is picked from the forecast.
+        setDueMonth(null);
         if (key === 'due' || key === 'outstanding' || (key === 'upcoming' && upcomingHasList)) {
             setBalanceScope(key);
             setView('balances');
@@ -487,6 +552,15 @@ export function TransactionsView() {
     };
 
     const handleSummarySelect = (key: SummaryStatusKey) => handleSegmentSelect(key);
+
+    /** A forecast month lists who pays in it; clicking the picked month again shows all upcoming. */
+    const handleSelectMonth = (month: string | null) => {
+        viewChosenRef.current = true;
+        setCurrentPage(0);
+        setDueMonth(month);
+        setBalanceScope('upcoming');
+        setView('balances');
+    };
 
     // Segmented switch. The first five narrow the payment records; the last swaps in the learners
     // who owe money, counted from the balances query rather than from the records. Abandoned is
@@ -555,6 +629,46 @@ export function TransactionsView() {
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
 
+    // An instalment-first institute with nothing overdue opens on who pays next: an empty Due list
+    // or a page of past payments answers neither "what is coming in" nor "who do I remind".
+    // Decided once, on the first billing figures, and only on a page nobody has touched yet — a
+    // tab, page, search, filter or date picked before the figures arrived always wins.
+    const landedRef = useRef(false);
+    useEffect(() => {
+        // Decide on figures fetched for this visit, never on a copy cached from the last one.
+        if (landedRef.current || !billing || !billingIsFresh) return;
+        landedRef.current = true;
+        const untouched =
+            !viewChosenRef.current &&
+            view === 'records' &&
+            statusBucket === 'total' &&
+            currentPage === 0 &&
+            !searchValue &&
+            detailedFilterCount === 0 &&
+            dateRange === ALL_TIME_RANGE;
+        if (
+            untouched &&
+            instalmentFirst &&
+            upcomingHasList &&
+            billing.due <= 0 &&
+            (billing.upcomingAll ?? 0) > 0
+        ) {
+            setBalanceScope('upcoming');
+            setView('balances');
+        }
+    }, [
+        billing,
+        billingIsFresh,
+        instalmentFirst,
+        upcomingHasList,
+        view,
+        statusBucket,
+        currentPage,
+        searchValue,
+        detailedFilterCount,
+        dateRange,
+    ]);
+
     // Removable chips for the active detailed filters.
     const activeChips: ActiveChip[] = useMemo(() => {
         const chips: ActiveChip[] = [];
@@ -596,6 +710,12 @@ export function TransactionsView() {
                 label: 'Course / session',
                 onRemove: () => setPackageSessionFilter({}),
             });
+        if (listMonth)
+            chips.push({
+                id: 'due-month',
+                label: `Due in: ${formatForecastMonth(listMonth)}`,
+                onRemove: () => setDueMonth(null),
+            });
         return chips;
     }, [
         selectedPaymentTypes,
@@ -603,6 +723,7 @@ export function TransactionsView() {
         selectedPaymentPlans,
         selectedPaymentSources,
         packageSessionFilter,
+        listMonth,
     ]);
 
     const handlePageChange = (page: number) => {
@@ -620,6 +741,7 @@ export function TransactionsView() {
         setStatusBucket('total');
         setView('records');
         setBalanceScope('due');
+        setDueMonth(null);
         setSelectedUserPlanStatuses([]);
         setSelectedPaymentPlans([]);
         setSelectedPaymentSources([]);
@@ -688,6 +810,14 @@ export function TransactionsView() {
                             onToggle={cardPrefs.toggle}
                             onReset={cardPrefs.reset}
                             isCustomised={cardPrefs.isCustomised}
+                            // The schedule option only means something with an instalment plan.
+                            // Offered only where it can show something: instalment plans that have
+                            // a schedule (the same condition that gives Upcoming its list).
+                            hiddenOptions={
+                                billing?.usesInstallments && (billing.instalmentPlanCount ?? 0) > 0
+                                    ? undefined
+                                    : ['schedule']
+                            }
                         />
                         <MyButton
                             buttonType="secondary"
@@ -734,6 +864,25 @@ export function TransactionsView() {
                     onSelect={handleSummarySelect}
                     visibleKeys={cardPrefs.visible}
                 />
+
+                {/* Instalment schedule — progress + Upcoming by month (instalment-first views only) */}
+                {scheduleVisible && (
+                    <InstalmentForecast
+                        data={forecast}
+                        isLoading={isLoadingForecast}
+                        error={forecastError}
+                        currency={billing?.currency ?? ''}
+                        selectedMonth={view === 'balances' ? listMonth : null}
+                        onSelectMonth={handleSelectMonth}
+                        // Only while the Total card is on screen — hide it and the panel's own
+                        // progress row comes back.
+                        cardTotals={
+                            billing && cardPrefs.visible.has('billed')
+                                ? { collected: billing.collected, outstanding: billing.outstanding }
+                                : null
+                        }
+                    />
+                )}
 
                 {/* Control bar */}
                 <PaymentControlBar
@@ -795,6 +944,17 @@ export function TransactionsView() {
                     <DueLearnersTable
                         data={outstanding}
                         mode={balanceScope === 'due' ? 'due' : 'outstanding'}
+                        monthLabel={listMonth ? formatForecastMonth(listMonth) : null}
+                        // An empty Due list is a dead end for an instalment institute — point it
+                        // at the instalments still to come.
+                        emptyAction={
+                            scheduleVisible && (billing?.upcomingAll ?? 0) > 0
+                                ? {
+                                      label: 'See upcoming instalments',
+                                      onClick: () => handleSegmentSelect('upcoming'),
+                                  }
+                                : null
+                        }
                         isLoading={isLoadingOutstanding}
                         error={outstandingError as Error}
                         currentPage={currentPage}

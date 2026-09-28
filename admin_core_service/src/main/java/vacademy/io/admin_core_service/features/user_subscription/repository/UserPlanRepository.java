@@ -8,13 +8,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentProgressProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.MonthDueLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UpcomingMonthProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
@@ -516,6 +520,60 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                 """;
 
         /**
+         * Everything expected but not yet owed, one row per due date: the money behind
+         * {@code upcomingAll} on the billing summary, split out so it can be grouped by month.
+         * Appended to {@link #DUE_OBLIGATION_CTES}, so it prices exactly the same live plans.
+         * <ul>
+         *   <li><b>CPO</b>: each unpaid instalment dated today or later (or undated), at its unpaid
+         *       remainder. Together they are the plan's outstanding minus its overdue.</li>
+         *   <li><b>Invoice</b>: an unpaid invoice whose due date has not passed.</li>
+         *   <li><b>Subscription</b>: a renewal inside the upcoming horizon, dated by the period end.</li>
+         * </ul>
+         * A one-time plan never appears, because it owes nothing. So the amounts add up to
+         * {@code upcomingAll} and their distinct learners to {@code learnersUpcomingAll}.
+         */
+        String UPCOMING_DUES_CTES = """
+                , upcoming_dues AS (
+                  SELECT l.user_id,
+                         sfp.due_date AS due_on,
+                         GREATEST(sfp.amount_expected - COALESCE(sfp.amount_paid, 0), 0) AS amount
+                    FROM obligations l
+                    JOIN student_fee_payment sfp ON sfp.user_plan_id = l.user_plan_id
+                   WHERE l.is_live
+                     AND l.kind = 'CPO'
+                     AND sfp.institute_id = :instituteId
+                     AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
+                     AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected
+                     AND (sfp.due_date IS NULL OR sfp.due_date >= CURRENT_DATE)
+                  UNION ALL
+                  SELECT l.user_id, l.next_due_date, l.outstanding - l.overdue
+                    FROM obligations l
+                   WHERE l.is_live
+                     AND l.kind = 'INVOICE'
+                     AND l.outstanding - l.overdue > 0
+                  UNION ALL
+                  SELECT l.user_id, CAST(sub.end_date AS date), l.upcoming
+                    FROM obligations l
+                    JOIN user_plan sub ON sub.id = l.user_plan_id
+                   WHERE l.is_live
+                     AND l.kind = 'SUBSCRIPTION'
+                     AND l.upcoming > 0
+                )
+                """;
+
+        /** Per learner, what {@link #UPCOMING_DUES_CTES} puts in [monthStart, monthEnd). */
+        String IN_MONTH_CTE = """
+                , in_month AS (
+                  SELECT d.user_id, SUM(d.amount) AS amount, MIN(d.due_on) AS first_due_on
+                    FROM upcoming_dues d
+                   WHERE d.amount > 0
+                     AND d.due_on >= :monthStart
+                     AND d.due_on < :monthEnd
+                   GROUP BY d.user_id
+                )
+                """;
+
+        /**
          * Every enrolment one learner holds at an institute, priced individually — the Due side
          * view.
          *
@@ -608,6 +666,14 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
                 ), live AS (
                   SELECT * FROM obligations WHERE is_live
+                ), inst_mix AS (
+                  SELECT COUNT(*) AS live_plans,
+                         COUNT(*) FILTER (WHERE ipo.type = 'CPO') AS cpo_plans
+                    FROM user_plan iu
+                    JOIN enroll_invite iei ON iei.id = iu.enroll_invite_id
+                    LEFT JOIN payment_option ipo ON ipo.id = iu.payment_option_id
+                   WHERE iei.institute_id = :instituteId
+                     AND iu.status = 'ACTIVE'
                 )
                 SELECT (SELECT COALESCE(amt, 0) FROM paid) AS collected,
                        (SELECT COALESCE(SUM(overdue), 0) FROM live) AS due,
@@ -615,6 +681,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        (SELECT COUNT(DISTINCT user_id) FROM live WHERE overdue > 0) AS learnersOwing,
                        (SELECT COUNT(DISTINCT user_id) FROM live WHERE upcoming > 0) AS learnersUpcoming,
                        (SELECT COUNT(*) FROM live WHERE is_plan) AS planCount,
+                       (SELECT cpo_plans FROM inst_mix) AS instalmentPlanCount,
+                       (SELECT live_plans FROM inst_mix) AS livePlanCount,
                        (SELECT COUNT(*) FROM live WHERE activated_without_payment)
                          AS activatedWithoutPaymentCount,
                        (SELECT COALESCE(SUM(outstanding), 0) FROM live) AS outstanding,
@@ -730,6 +798,96 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds,
                         @Param("upcomingDays") int upcomingDays,
+                        Pageable pageable);
+
+        /**
+         * The Upcoming card split by calendar month: how much falls due each month and from how
+         * many learners. Built on {@link #UPCOMING_DUES_CTES}, so the months add up to
+         * {@code upcomingAll}. Undated instalments come back as one row with a null month, last.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + """
+                SELECT CAST(date_trunc('month', CAST(d.due_on AS timestamp)) AS date) AS monthStart,
+                       SUM(d.amount) AS amount,
+                       COUNT(DISTINCT d.user_id) AS learners,
+                       COUNT(*) AS dues,
+                       MIN(d.due_on) AS firstDueOn
+                  FROM upcoming_dues d
+                 WHERE d.amount > 0
+                 GROUP BY 1
+                 ORDER BY 1 NULLS LAST
+                """, nativeQuery = true)
+        List<UpcomingMonthProjection> getUpcomingByMonth(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays);
+
+        /**
+         * Billed / paid / overdue / outstanding across live instalment (CPO) plans only — the fee
+         * progress of the instalment schedule. One-time and subscription plans are left out on
+         * purpose: a one-time plan is paid or not enrolled, and a subscription has no schedule.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + """
+                SELECT COALESCE(SUM(o.billed), 0) AS billed,
+                       COALESCE(SUM(o.paid), 0) AS paid,
+                       COALESCE(SUM(o.overdue), 0) AS overdue,
+                       COALESCE(SUM(o.outstanding), 0) AS outstanding,
+                       COUNT(*) AS plans,
+                       COUNT(DISTINCT o.user_id) AS learners
+                  FROM obligations o
+                 WHERE o.is_live
+                   AND o.kind = 'CPO'
+                """, nativeQuery = true)
+        InstalmentProgressProjection getInstalmentProgress(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays);
+
+        /**
+         * The learners behind one month of {@link #getUpcomingByMonth}: everyone with something
+         * falling due in [monthStart, monthEnd), soonest first, with how much. Same columns as
+         * {@link #findLearnersWithBalance} plus {@code monthAmount}; the page total equals the
+         * month's learner count.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + IN_MONTH_CTE + """
+                SELECT o.user_id AS userId,
+                       (array_agg(o.course_name ORDER BY o.outstanding DESC))[1] AS courseName,
+                       (array_agg(o.payment_type ORDER BY o.outstanding DESC))[1] AS paymentType,
+                       (array_agg(o.plan_status ORDER BY o.outstanding DESC))[1] AS planStatus,
+                       SUM(o.billed) AS billed,
+                       SUM(o.paid) AS paid,
+                       SUM(o.overdue) AS due,
+                       SUM(o.upcoming) AS upcoming,
+                       SUM(o.outstanding) AS outstanding,
+                       COUNT(*) FILTER (WHERE o.is_plan) AS planCount,
+                       SUM(o.pending_installments) AS pendingInstallments,
+                       MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) AS nextDueDate,
+                       (array_agg(o.next_due_amount ORDER BY o.next_due_date NULLS LAST)
+                          FILTER (WHERE o.outstanding > 0))[1] AS nextDueAmount,
+                       MAX(o.currency) AS currency,
+                       MAX(m.amount) AS monthAmount
+                  FROM obligations o
+                  JOIN in_month m ON m.user_id = o.user_id
+                 WHERE o.is_live
+                 GROUP BY o.user_id
+                 ORDER BY MIN(m.first_due_on), MAX(m.amount) DESC, o.user_id
+                """, countQuery = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + IN_MONTH_CTE + """
+                SELECT COUNT(*) FROM in_month
+                """, nativeQuery = true)
+        Page<MonthDueLearnerProjection> findLearnersDueInMonth(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays,
+                        @Param("monthStart") LocalDate monthStart,
+                        @Param("monthEnd") LocalDate monthEnd,
                         Pageable pageable);
 
         @org.springframework.transaction.annotation.Transactional

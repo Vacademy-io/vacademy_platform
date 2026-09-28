@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { CalendarX, HourglassMedium } from '@phosphor-icons/react';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
+import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { formatMoney } from '@/utils/payment-currency';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -22,6 +23,13 @@ interface DueLearnersTableProps {
     onPageChange: (page: number) => void;
     /** Opens the balance breakdown for one learner. */
     onSelectLearner?: (learner: OutstandingLearner) => void;
+    /**
+     * Outstanding mode narrowed to one month of the instalment forecast: adds a "Due in <month>"
+     * column (the learner's `month_amount`). Omit for the full lists.
+     */
+    monthLabel?: string | null;
+    /** A way out of an empty Due list — e.g. to the Upcoming instalments. */
+    emptyAction?: { label: string; onClick: () => void } | null;
 }
 
 const initialsOf = (name?: string | null): string => {
@@ -72,6 +80,8 @@ export function DueLearnersTable({
     currentPage,
     onPageChange,
     onSelectLearner,
+    monthLabel,
+    emptyAction,
 }: DueLearnersTableProps) {
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
@@ -129,6 +139,17 @@ export function DueLearnersTable({
                     </span>
                 ),
                 size: 150,
+            },
+            {
+                id: 'month_amount',
+                header: `Due in ${monthLabel ?? 'month'}`,
+                accessorFn: (row) => row.month_amount ?? 0,
+                cell: ({ row }) => (
+                    <span className="font-semibold tabular-nums text-neutral-800">
+                        {money(row.original.month_amount ?? 0, row.original.currency)}
+                    </span>
+                ),
+                size: 130,
             },
             {
                 id: 'billed',
@@ -255,19 +276,22 @@ export function DueLearnersTable({
                 size: 170,
             },
         ],
-        [courseTerm]
+        [courseTerm, monthLabel]
     );
 
     // Each list shows the columns that answer its own question: Due is about what is overdue now,
-    // Outstanding about the whole balance and when the next part of it falls due.
+    // Outstanding about the whole balance and when the next part of it falls due. A month of the
+    // forecast adds what falls due in that month.
     const visibleColumns = useMemo(
         () =>
             columns.filter((column) =>
-                mode === 'outstanding'
-                    ? !['due', 'upcoming'].includes(column.id ?? '')
-                    : !['outstanding', 'next_installment'].includes(column.id ?? '')
+                column.id === 'month_amount'
+                    ? mode === 'outstanding' && !!monthLabel
+                    : mode === 'outstanding'
+                      ? !['due', 'upcoming'].includes(column.id ?? '')
+                      : !['outstanding', 'next_installment'].includes(column.id ?? '')
             ),
-        [columns, mode]
+        [columns, mode, monthLabel]
     );
 
     const tableData = useMemo(() => {
@@ -299,7 +323,17 @@ export function DueLearnersTable({
         <div className="space-y-4">
             {isEmpty ? (
                 <div className="rounded-lg border border-border bg-card p-12 text-center">
-                    {mode === 'outstanding' ? (
+                    {mode === 'outstanding' && monthLabel ? (
+                        <>
+                            <p className="text-title font-medium text-neutral-700">
+                                Nothing due in {monthLabel}
+                            </p>
+                            <p className="mt-2 text-body text-neutral-500">
+                                No learner with access in this view has an instalment, invoice or
+                                renewal falling due in {monthLabel}.
+                            </p>
+                        </>
+                    ) : mode === 'outstanding' ? (
                         <>
                             <p className="text-title font-medium text-neutral-700">
                                 Nothing outstanding
@@ -316,6 +350,16 @@ export function DueLearnersTable({
                                 No learner with access in this view has an unpaid instalment,
                                 renewal or invoice past its date.
                             </p>
+                            {emptyAction && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={emptyAction.onClick}
+                                    className="mt-4"
+                                >
+                                    {emptyAction.label}
+                                </MyButton>
+                            )}
                         </>
                     )}
                 </div>

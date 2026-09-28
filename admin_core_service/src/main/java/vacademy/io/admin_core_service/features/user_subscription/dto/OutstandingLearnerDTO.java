@@ -45,6 +45,8 @@ public class OutstandingLearnerDTO {
     private Double outstanding;
     /** Outstanding list only: what falls due on {@link #nextDueDate}. */
     private Double nextDueAmount;
+    /** Month-filtered Upcoming list only: what falls due inside the selected month. */
+    private Double monthAmount;
 
     private String currency;
 }

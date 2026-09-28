@@ -34,7 +34,7 @@ export interface CleanerPlayDashboardHeroProps {
 
 function HeroSkeleton(): JSX.Element {
   return (
-    <div className="cp-card rounded-2xl p-4 md:p-6">
+    <div className="cp-card cp-hero-card rounded-2xl p-4 md:p-6">
       <div className="flex animate-pulse flex-col items-center gap-5 md:flex-row md:gap-8">
         <div className="flex items-center gap-4 self-start md:self-center">
           <div className="h-24 w-24 rounded-full bg-cp-bg-deep" />
@@ -145,7 +145,7 @@ export function CleanerPlayDashboardHero(
       )}
 
       {/* Hero band */}
-      <div className="cp-card rounded-2xl p-4 md:p-6">
+      <div className="cp-card cp-hero-card rounded-2xl p-4 md:p-6">
         <div className="flex flex-col items-stretch gap-5 md:flex-row md:items-center md:gap-8">
           {/* Left: mascot + greeting + chips */}
           <div className="flex items-center gap-4">
@@ -186,7 +186,7 @@ export function CleanerPlayDashboardHero(
                 {/* Daily goal ring chip: today's tasks while a plan runs,
                     else today's points. */}
                 {showGoal && (
-                  <span className="inline-flex h-11 items-center gap-2 rounded-full bg-cp-sage-tint px-3">
+                  <span className="inline-flex h-11 items-center gap-2 rounded-full bg-cp-surface px-3">
                     <ProgressRing
                       value={goalPercent}
                       size={28}

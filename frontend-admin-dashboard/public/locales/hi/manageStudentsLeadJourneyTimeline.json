@@ -18,7 +18,8 @@
         "walkInNote": "वॉक-इन नोट",
         "followupScheduled": "फॉलो-अप शेड्यूल किया गया",
         "statusChange": "स्थिति बदली गई",
-        "fallback": "इवेंट"
+        "fallback": "इवेंट",
+        "reEnquiry": "फिर से संपर्क किया"
     },
     "statusChangeMeta": {
         "previous": "पिछला"

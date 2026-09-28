@@ -1090,6 +1090,154 @@ public class AudienceService {
         return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
     }
 
+    // ==================== WhatsApp chatbot flow leads ====================
+
+    /** Source type stamped on leads captured by a WhatsApp chatbot flow (also the list's campaign type). */
+    public static final String WHATSAPP_FLOW_SOURCE_TYPE = "WHATSAPP_FLOW";
+    private static final String WHATSAPP_LEADS_AUDIENCE_NAME = "WhatsApp Leads";
+
+    /**
+     * Create a lead for a WhatsApp chatbot conversation in the institute's auto-provisioned
+     * "WhatsApp Leads" list. The caller ({@code WhatsAppFlowLeadService}) has already
+     * established that this phone is not a lead anywhere in the institute and holds the
+     * per-phone lock inside its transaction, so this method does no de-dup of its own.
+     * Same intake steps as the other captured-lead channels: timeline, score, counsellor.
+     */
+    public InboundCallLeadRef createWhatsAppFlowLead(String instituteId, String userId, String phone,
+            String name, String flowId) {
+        Audience audience = getOrCreateWhatsAppLeadsAudience(instituteId);
+        String display = StringUtils.hasText(name) ? name.trim() : phone;
+        AudienceResponse saved = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType(WHATSAPP_FLOW_SOURCE_TYPE)
+                .sourceId(StringUtils.hasText(flowId) ? flowId : WHATSAPP_FLOW_SOURCE_TYPE)
+                .userId(userId)
+                .parentName(display)
+                .parentMobile(truncateForParentMobileColumn(phone))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        try {
+            logLeadSubmitted(saved);
+        } catch (Exception e) {
+            logger.error("WhatsApp flow lead {}: logLeadSubmitted failed: {}", saved.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(saved.getId(), saved.getAudienceId(),
+                    instituteId, saved.getSourceType(), saved.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("WhatsApp flow lead {}: score failed: {}", saved.getId(), e.getMessage());
+        }
+        // Swallows its own failures — assignment must never break intake.
+        autoAssignCounsellorOnIntake(saved, userId, instituteId, null, null, display, audience.getCampaignName());
+
+        logger.info("WhatsApp flow lead captured: response={} user={} inst={} flow={}",
+                saved.getId(), userId, instituteId, flowId);
+        return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
+    }
+
+    /**
+     * Resolve the per-institute "WhatsApp Leads" list, creating it on first use. Found by
+     * campaign type rather than name so a renamed list keeps receiving leads. The create
+     * path takes an institute-wide advisory lock and re-checks, so two first leads arriving
+     * together cannot create two lists. Must run inside a transaction (the lock is
+     * transaction-scoped).
+     */
+    private Audience getOrCreateWhatsAppLeadsAudience(String instituteId) {
+        Optional<Audience> existing = audienceRepository
+                .findFirstByInstituteIdAndCampaignTypeAndStatusOrderByCreatedAtAsc(
+                        instituteId, WHATSAPP_FLOW_SOURCE_TYPE, "ACTIVE");
+        if (existing.isPresent()) return existing.get();
+
+        audienceResponseRepository.acquireTransactionLock("whatsapp-leads-list:" + instituteId);
+        return audienceRepository
+                .findFirstByInstituteIdAndCampaignTypeAndStatusOrderByCreatedAtAsc(
+                        instituteId, WHATSAPP_FLOW_SOURCE_TYPE, "ACTIVE")
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(WHATSAPP_LEADS_AUDIENCE_NAME)
+                            .campaignType(WHATSAPP_FLOW_SOURCE_TYPE)
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from WhatsApp chatbot flows")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned WhatsApp Leads audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Attach a custom field to a lead list's form schema (idempotent) so a value saved
+     * against it shows as a column. Public entry to {@link #ensureAudienceFormField} for the
+     * WhatsApp chatbot capture path.
+     */
+    public void attachFieldToLeadList(String instituteId, String audienceId, String customFieldId, int order) {
+        ensureAudienceFormField(instituteId, audienceId, customFieldId, order);
+    }
+
+    /**
+     * Fire AUDIENCE_LEAD_SUBMISSION for a lead captured by a WhatsApp chatbot flow, once its
+     * answers are saved. The context carries the same keys as the form paths (user, audience,
+     * customFields, responseId, phone …) so existing workflow node configs work unchanged.
+     * No respondent/admin email requests are built: the lead came in over WhatsApp and has
+     * no real email, and the chatbot flow already replied to them.
+     */
+    public void fireLeadSubmissionWorkflow(String responseId) {
+        AudienceResponse response = audienceResponseRepository.findById(responseId).orElse(null);
+        if (response == null) return;
+        Audience audience = audienceRepository.findById(response.getAudienceId()).orElse(null);
+        if (audience == null) return;
+        String instituteId = audience.getInstituteId();
+
+        UserDTO user = UserDTO.builder()
+                .id(response.getUserId())
+                .fullName(response.getParentName())
+                .email(response.getParentEmail())
+                .mobileNumber(response.getParentMobile())
+                .build();
+        AudienceDTO audienceDTO = AudienceDTO.builder()
+                .id(audience.getId())
+                .campaignName(audience.getCampaignName())
+                .instituteId(instituteId)
+                .status(audience.getStatus())
+                .toNotify(audience.getToNotify())
+                .sendRespondentEmail(audience.getSendRespondentEmail())
+                .build();
+        String submissionTime = java.time.ZonedDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z"));
+
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", user);
+        contextData.put("audience", audienceDTO);
+        contextData.put("audienceId", audience.getId());
+        contextData.put("instituteId", instituteId);
+        contextData.put("instituteName",
+                instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
+        contextData.put("customFields", buildCustomFieldMapForEmail(responseId));
+        contextData.put("submissionTime", submissionTime);
+        contextData.put("responseId", responseId);
+        contextData.put("userId", response.getUserId());
+        contextData.put("leadUserId", response.getUserId());
+        contextData.put("phone", response.getParentMobile());
+        contextData.put("parentMobile", response.getParentMobile());
+        contextData.put("campaignName", audience.getCampaignName());
+        contextData.put("sendRespondentEmail", false);
+        contextData.put("respondentEmailRequests", new ArrayList<Map<String, Object>>());
+        contextData.put("adminEmailRequests", new ArrayList<Map<String, Object>>());
+
+        workflowTriggerService.handleTriggerEvents(
+                WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                audience.getId(),
+                instituteId,
+                contextData);
+    }
+
     /**
      * Submit a lead from website form
      * Automatically creates/fetches user from auth_service

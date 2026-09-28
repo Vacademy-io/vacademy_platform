@@ -100,8 +100,8 @@ export function ChatPanel({ onLoadOlder, onRetry }: Props) {
                         <p className="font-medium">{t('escalation.title')}</p>
                         <p className="text-amber-700">{escalationReasonText(selectedConvo.escalationReason, t)}</p>
                         {selectedConvo.escalationMessage && (
-                            <p className="mt-0.5 italic text-amber-700">
-                                {t('escalation.askedQuote', { message: selectedConvo.escalationMessage })}
+                            <p className="mt-0.5 whitespace-pre-line italic text-amber-700">
+                                {escalationQuoteText(selectedConvo.escalationReason, selectedConvo.escalationMessage, t)}
                             </p>
                         )}
                     </div>
@@ -309,8 +309,24 @@ function escalationReasonText(reason: string | undefined, t: TFunction): string 
             return t('escalation.reason.aiError');
         case 'MANUAL':
             return t('escalation.reason.manual');
+        case 'EXISTING_LEAD':
+            return t('escalation.reason.existingLead');
+        case 'CRM_SAVE_FAILED':
+            return t('escalation.reason.crmSaveFailed');
         default:
             return t('escalation.reason.default');
+    }
+}
+
+/** The escalation message, introduced for what it is: a question, a returning lead's message, or saved answers. */
+function escalationQuoteText(reason: string | undefined, message: string, t: TFunction): string {
+    switch (reason) {
+        case 'EXISTING_LEAD':
+            return t('escalation.messageQuote', { message });
+        case 'CRM_SAVE_FAILED':
+            return t('escalation.answersQuote', { message });
+        default:
+            return t('escalation.askedQuote', { message });
     }
 }
 

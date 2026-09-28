@@ -2,10 +2,17 @@
     "fallback": {
         "textMessage": "Text message",
         "anyMessage": "Any message",
-        "ai": "AI"
+        "ai": "AI",
+        "noField": "No field chosen"
     },
     "branch": {
         "default": "Default",
-        "numbered": "Branch {{number}}"
+        "numbered": "Branch {{number}}",
+        "newLead": "New lead",
+        "existingLead": "Existing lead"
+    },
+    "saveToCrm": {
+        "setsStatus": "Status → {{status}}",
+        "keepsStatus": "Status unchanged"
     }
 }

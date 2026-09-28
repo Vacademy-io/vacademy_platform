@@ -39,6 +39,7 @@ import {
     CaretDown,
     CaretUp,
     ArrowsClockwise,
+    WhatsappLogo,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 
@@ -157,6 +158,13 @@ function buildActionConfig(t: TFunction): Record<string, ActionConfig> {
             dotBg: 'bg-warning-50 ring-warning-200',
             iconColor: 'text-warning-600',
             label: t('actionConfig.duplicateMerged'),
+        },
+        // An existing lead contacted us again through a WhatsApp chatbot flow — no new lead created.
+        RE_ENQUIRY: {
+            Icon: WhatsappLogo,
+            dotBg: 'bg-info-50 ring-info-200',
+            iconColor: 'text-info-600',
+            label: t('actionConfig.reEnquiry'),
         },
         PAYMENT_RECEIVED: {
             Icon: CurrencyCircleDollar,

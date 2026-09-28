@@ -35,6 +35,10 @@
         "aiError": "L'assistant n'a pas pu générer de réponse",
         "manual": "Transmis par un administrateur",
         "noInfo": "L'assistant n'avait pas l'information nécessaire pour répondre",
-        "withMessage": "{{why}}\n\nIls ont demandé : {{message}}"
+        "withMessage": "{{why}}\n\nIls ont demandé : {{message}}",
+        "existingLead": "Un prospect existant a écrit à nouveau",
+        "crmSaveFailed": "Le chatbot n'a pas pu enregistrer ce prospect dans le CRM",
+        "withLeadMessage": "{{why}}\n\nSon message : {{message}}",
+        "withAnswers": "{{why}}\n\nSes réponses :\n{{message}}"
     }
 }

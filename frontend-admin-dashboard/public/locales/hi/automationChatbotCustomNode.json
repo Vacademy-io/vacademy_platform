@@ -2,10 +2,17 @@
     "fallback": {
         "textMessage": "टेक्स्ट संदेश",
         "anyMessage": "कोई भी संदेश",
-        "ai": "AI"
+        "ai": "AI",
+        "noField": "कोई फ़ील्ड नहीं चुना गया"
     },
     "branch": {
         "default": "डिफ़ॉल्ट",
-        "numbered": "शाखा {{number}}"
+        "numbered": "शाखा {{number}}",
+        "newLead": "नई लीड",
+        "existingLead": "मौजूदा लीड"
+    },
+    "saveToCrm": {
+        "setsStatus": "स्टेटस → {{status}}",
+        "keepsStatus": "स्टेटस अपरिवर्तित"
     }
 }

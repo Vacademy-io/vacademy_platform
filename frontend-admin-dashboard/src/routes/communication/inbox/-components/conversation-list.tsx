@@ -213,6 +213,17 @@ function escalationTitle(c: InboxConversation, t: TFunction): string {
               ? t('escalation.aiError')
               : c.escalationReason === 'MANUAL'
                 ? t('escalation.manual')
-                : t('escalation.noInfo');
-    return c.escalationMessage ? t('escalation.withMessage', { why, message: c.escalationMessage }) : why;
+                : c.escalationReason === 'EXISTING_LEAD'
+                  ? t('escalation.existingLead')
+                  : c.escalationReason === 'CRM_SAVE_FAILED'
+                    ? t('escalation.crmSaveFailed')
+                    : t('escalation.noInfo');
+    if (!c.escalationMessage) return why;
+    if (c.escalationReason === 'EXISTING_LEAD') {
+        return t('escalation.withLeadMessage', { why, message: c.escalationMessage });
+    }
+    if (c.escalationReason === 'CRM_SAVE_FAILED') {
+        return t('escalation.withAnswers', { why, message: c.escalationMessage });
+    }
+    return t('escalation.withMessage', { why, message: c.escalationMessage });
 }

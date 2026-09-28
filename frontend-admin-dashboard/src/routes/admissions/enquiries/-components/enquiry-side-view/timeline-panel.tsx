@@ -37,6 +37,7 @@ import {
     PushPin,
     CalendarCheck,
     GitMerge,
+    WhatsappLogo,
 } from '@phosphor-icons/react';
 
 // ─── Action Type Icons & Colors ──────────────────────────────────────────────
@@ -113,6 +114,12 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
         icon: <GitMerge weight="fill" className="size-4" />,
         color: 'text-neutral-600',
         bgColor: 'bg-neutral-100',
+    },
+    // An existing lead contacted us again through a WhatsApp chatbot flow — no new lead created.
+    RE_ENQUIRY: {
+        icon: <WhatsappLogo weight="fill" className="size-4" />,
+        color: 'text-info-600',
+        bgColor: 'bg-info-100',
     },
     DEFAULT: {
         icon: <PushPin weight="fill" className="size-4" />,

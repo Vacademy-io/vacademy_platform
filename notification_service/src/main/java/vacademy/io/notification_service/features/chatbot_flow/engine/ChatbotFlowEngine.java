@@ -64,12 +64,13 @@ public class ChatbotFlowEngine {
             if (activeSession.isPresent()) {
                 ChatbotFlowSession session = activeSession.get();
 
-                // Check if current node is a CONDITION or AI_RESPONSE (waiting for input)
+                // Check if current node is a CONDITION, AI_RESPONSE or ASK_FIELD (waiting for input)
                 ChatbotFlowNode currentNode = session.getCurrentNodeId() != null
                         ? nodeRepository.findById(session.getCurrentNodeId()).orElse(null) : null;
                 boolean isWaitingNode = currentNode != null && (
                         ChatbotNodeType.CONDITION.name().equals(currentNode.getNodeType())
-                        || ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType()));
+                        || ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType())
+                        || ChatbotNodeType.ASK_FIELD.name().equals(currentNode.getNodeType()));
 
                 if (isWaitingNode) {
                     // Session is waiting for user input on a CONDITION/AI_RESPONSE node.
@@ -82,8 +83,13 @@ public class ChatbotFlowEngine {
                     // Try executing the node with the user's input
                     ChatbotNodeExecutor executor = findExecutor(currentNode.getNodeType());
                     if (executor != null) {
+                        // Tell the node this is the reply it was waiting for (ASK_FIELD uses it to
+                        // tell "answer" from "ask"); clear it at once so nodes reached next in this
+                        // same turn are executed as fresh arrivals.
+                        context.setReplyToWaitingNode(true);
                         NodeExecutionResult condResult = executor.execute(currentNode, session,
                                 userText, context);
+                        context.setReplyToWaitingNode(false);
                         if (condResult.isSuccess()) {
                             // Log outgoing message (esp. AI_RESPONSE replies) so they appear
                             // in the WhatsApp Inbox / chat view. Without this, AI turns inside
@@ -94,8 +100,10 @@ public class ChatbotFlowEngine {
                             mergeSessionContext(session, condResult.getOutputVariables());
 
                             if (condResult.isWaitForInput()
-                                    && ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType())) {
-                                // AI_RESPONSE wants to stay in conversation mode
+                                    && (ChatbotNodeType.AI_RESPONSE.name().equals(currentNode.getNodeType())
+                                        || ChatbotNodeType.ASK_FIELD.name().equals(currentNode.getNodeType()))) {
+                                // AI_RESPONSE wants to stay in conversation mode; ASK_FIELD re-asked
+                                // after an invalid answer and waits for another try.
                                 // History is already saved via mergeSessionContext above
                                 session.setLastActivityAt(new Timestamp(System.currentTimeMillis()));
                                 sessionRepository.save(session);
@@ -108,7 +116,7 @@ public class ChatbotFlowEngine {
                                         + "sessionId={}, branchId={}",
                                         session.getId(), condResult.getSelectedBranchId());
                                 advanceToNextNodes(session, currentNode.getId(),
-                                        condResult.getSelectedBranchId(), context, 0);
+                                        condResult.getSelectedBranchId(), condResult.isStrictBranch(), context, 0);
                                 return true;
                             }
 
@@ -350,7 +358,8 @@ public class ChatbotFlowEngine {
         }
 
         // Advance to next node(s)
-        advanceToNextNodes(session, currentNodeId, result.getSelectedBranchId(), context, 0);
+        advanceToNextNodes(session, currentNodeId, result.getSelectedBranchId(), result.isStrictBranch(),
+                context, 0);
     }
 
     /**
@@ -360,6 +369,17 @@ public class ChatbotFlowEngine {
      */
     private void advanceToNextNodes(ChatbotFlowSession session, String fromNodeId,
                                      String selectedBranchId, FlowExecutionContext context, int depth) {
+        advanceToNextNodes(session, fromNodeId, selectedBranchId, false, context, depth);
+    }
+
+    /**
+     * @param strictBranch follow only an edge whose branchId equals {@code selectedBranchId}; when
+     *                     none is connected the flow ends instead of falling back to the default /
+     *                     first edge (see {@link NodeExecutionResult#isStrictBranch()}).
+     */
+    private void advanceToNextNodes(ChatbotFlowSession session, String fromNodeId,
+                                     String selectedBranchId, boolean strictBranch,
+                                     FlowExecutionContext context, int depth) {
         if (depth >= MAX_TRAVERSAL_DEPTH) {
             log.error("Max traversal depth ({}) reached for session {}, completing to prevent infinite loop",
                     MAX_TRAVERSAL_DEPTH, session.getId());
@@ -377,7 +397,15 @@ public class ChatbotFlowEngine {
 
         // For CONDITION nodes: filter edges by branch ID
         ChatbotFlowEdge nextEdge = null;
-        if (selectedBranchId != null) {
+        if (selectedBranchId != null && strictBranch) {
+            nextEdge = outgoingEdges.stream()
+                    .filter(e -> {
+                        Map<String, Object> config = parseJson(e.getConditionConfig());
+                        return config != null && selectedBranchId.equals(config.get("branchId"));
+                    })
+                    .findFirst()
+                    .orElse(null);
+        } else if (selectedBranchId != null) {
             nextEdge = outgoingEdges.stream()
                     .filter(e -> {
                         Map<String, Object> config = parseJson(e.getConditionConfig());
@@ -447,7 +475,8 @@ public class ChatbotFlowEngine {
                         return;
                     }
                     // Continue advancing
-                    advanceToNextNodes(session, nextNodeId, result.getSelectedBranchId(), context, depth + 1);
+                    advanceToNextNodes(session, nextNodeId, result.getSelectedBranchId(), result.isStrictBranch(),
+                            context, depth + 1);
                 } else {
                     // Send refused by the provider — record the undelivered message so it shows
                     // up in the Inbox rather than leaving a hole in the conversation.
@@ -470,7 +499,10 @@ public class ChatbotFlowEngine {
                 || ChatbotNodeType.WORKFLOW_ACTION.name().equals(nodeType)
                 || ChatbotNodeType.DELAY.name().equals(nodeType)
                 || ChatbotNodeType.HTTP_WEBHOOK.name().equals(nodeType)
-                || ChatbotNodeType.AI_RESPONSE.name().equals(nodeType);
+                || ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)
+                || ChatbotNodeType.CRM_LEAD_CHECK.name().equals(nodeType)
+                || ChatbotNodeType.ASK_FIELD.name().equals(nodeType)
+                || ChatbotNodeType.SAVE_TO_CRM.name().equals(nodeType);
     }
 
     /**
@@ -587,8 +619,18 @@ public class ChatbotFlowEngine {
                                      NodeExecutionResult result) {
         try {
             String nodeType = node.getNodeType();
-            // Only log for send nodes and AI response
-            if (!nodeType.startsWith("SEND_") && !ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)) {
+            // CRM nodes build their message at run time and may send nothing at all this turn
+            // (e.g. ASK_FIELD accepting an answer): log exactly what they report having sent.
+            String crmSentBody = null;
+            if (isCrmNode(nodeType)) {
+                crmSentBody = context.getLastSentBody();
+                context.setLastSentBody(null);
+                if (crmSentBody == null) {
+                    context.setLastProviderMessageId(null);
+                    return;
+                }
+            } else if (!nodeType.startsWith("SEND_") && !ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)) {
+                // Only log for send nodes and AI response
                 return;
             }
 
@@ -609,7 +651,9 @@ public class ChatbotFlowEngine {
             String messageBody = node.getName();
 
             // For AI_RESPONSE: use the actual LLM-generated reply from output variables
-            if (ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)
+            if (crmSentBody != null) {
+                messageBody = crmSentBody;
+            } else if (ChatbotNodeType.AI_RESPONSE.name().equals(nodeType)
                     && result != null && result.getOutputVariables() != null) {
                 Object aiReply = result.getOutputVariables().get("ai_last_response");
                 if (aiReply != null) {
@@ -665,6 +709,9 @@ public class ChatbotFlowEngine {
             } else if (config.containsKey("mediaUrl")) {
                 messageBody = "[" + config.getOrDefault("messageType", "media") + "] "
                         + config.getOrDefault("mediaCaption", config.get("mediaUrl"));
+            } else if (config.containsKey("question")) {
+                // ASK_FIELD — only reached for its undelivered-question row
+                messageBody = (String) config.get("question");
             }
         }
         return messageBody;
@@ -681,7 +728,13 @@ public class ChatbotFlowEngine {
         String nodeType = node.getNodeType();
         // Read-and-clear up front, so no exit below can leave it for the next node.
         Map<String, Object> templateSend = takeTemplateSend(context);
-        if (nodeType == null || !nodeType.startsWith("SEND_")) return;
+        if (nodeType == null) return;
+        if (ChatbotNodeType.ASK_FIELD.name().equals(nodeType)) {
+            // The question never reached the user — show it as undelivered in the Inbox.
+            context.setLastSentBody(null);
+        } else if (!nodeType.startsWith("SEND_")) {
+            return;
+        }
         // The executor may already have logged it (AI_RESPONSE path); read-and-clear the flag.
         if (context.isSendFailureLogged()) {
             context.setSendFailureLogged(false);
@@ -725,6 +778,13 @@ public class ChatbotFlowEngine {
         return messageType != null ? messageType.toString() : "text";
     }
 
+    /** Nodes that turn a conversation into a CRM lead; they report what they sent via lastSentBody. */
+    private static boolean isCrmNode(String nodeType) {
+        return ChatbotNodeType.CRM_LEAD_CHECK.name().equals(nodeType)
+                || ChatbotNodeType.ASK_FIELD.name().equals(nodeType)
+                || ChatbotNodeType.SAVE_TO_CRM.name().equals(nodeType);
+    }
+
     private ChatbotNodeExecutor findExecutor(String nodeType) {
         return executors.stream()
                 .filter(e -> e.canHandle(nodeType))
@@ -762,6 +822,7 @@ public class ChatbotFlowEngine {
         Map<String, Object> sessionVars = parseJson(session != null ? session.getContext() : null);
         Map<String, Object> userDetails = readCachedUserDetails(sessionVars);
         return FlowExecutionContext.builder()
+                .userId(session != null ? session.getUserId() : null)
                 .instituteId(instituteId)
                 .channelType(channelType)
                 .phoneNumber(userPhone)
@@ -790,6 +851,7 @@ public class ChatbotFlowEngine {
         Map<String, Object> sessionVars = parseJson(session != null ? session.getContext() : null);
         Map<String, Object> userDetails = ensureUserDetails(sessionVars, userPhone, session);
         return FlowExecutionContext.builder()
+                .userId(session != null ? session.getUserId() : null)
                 .instituteId(instituteId)
                 .channelType(channelType)
                 .phoneNumber(userPhone)

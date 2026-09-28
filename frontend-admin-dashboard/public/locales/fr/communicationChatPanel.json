@@ -11,9 +11,13 @@
             "maxTurns": "La conversation a atteint sa limite de réponses automatiques.",
             "aiError": "L'assistant n'a pas pu générer de réponse.",
             "manual": "Transférée par un administrateur.",
-            "default": "L'assistant n'avait pas l'information pour répondre, il a donc indiqué qu'il vérifierait auprès de l'équipe."
+            "default": "L'assistant n'avait pas l'information pour répondre, il a donc indiqué qu'il vérifierait auprès de l'équipe.",
+            "existingLead": "Un prospect existant a écrit à nouveau via le chatbot. Aucun nouveau prospect n'a été créé — le contact a été enregistré sur son prospect existant.",
+            "crmSaveFailed": "Le chatbot n'a pas pu enregistrer ce prospect dans le CRM. Ses réponses figurent ci-dessous — ajoutez-les manuellement au CRM."
         },
-        "askedQuote": "Ils ont demandé : « {{message}} »"
+        "askedQuote": "Ils ont demandé : « {{message}} »",
+        "messageQuote": "Son message : « {{message}} »",
+        "answersQuote": "Ses réponses :\n{{message}}"
     },
     "loadError": {
         "retrying": "Nouvelle tentative…",

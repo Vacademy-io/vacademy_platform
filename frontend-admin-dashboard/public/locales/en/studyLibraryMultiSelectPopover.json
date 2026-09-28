@@ -5,5 +5,7 @@
     "selectedCount_other": "{{count}} selected",
     "searchPlaceholder": "Search {{label}}…",
     "allSelected": "All selected",
-    "clear": "Clear"
+    "clear": "Clear",
+    "selectAll": "Select all",
+    "selectAllMatching": "Select all matching"
 }

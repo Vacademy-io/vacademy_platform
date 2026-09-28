@@ -53,11 +53,7 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                         visible:
                             subId !== 'suborg-teams' &&
                             subId !== 'manage-institute-suborgs' &&
-                            subId !== 'notification-hub' &&
-                            // Revenue and per-counsellor performance stay off for
-                            // teachers even if the tab is later switched on.
-                            subId !== 'live-activity-payments' &&
-                            subId !== 'live-activity-counsellors',
+                            subId !== 'notification-hub',
                     };
                 }) || [],
         }));

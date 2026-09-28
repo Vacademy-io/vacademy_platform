@@ -29,11 +29,14 @@ import java.util.stream.Collectors;
  * purpose-built-sibling-field approach as {@code audienceRoleAccess} rather than trying to
  * parse the generic per-role sidebar blob.
  *
- * <p><b>This fails CLOSED, unlike {@code AudienceRoleAccessService}.</b> That one fails open
- * to DEFAULT so a malformed blob cannot lock every counsellor out of the leads pages. Here
- * the risk runs the other way: failing open would expose revenue and counsellor performance
- * data to roles that were never granted it. An unreadable or unconfigured setting therefore
- * yields the safe subset, and only an explicit grant widens it.
+ * <p><b>Reaching this code already means the caller passed the gate.</b> Visibility is
+ * controlled by one Display Settings switch per role on the sidebar tab, which ships hidden.
+ * So an unconfigured or unreadable setting here yields every category rather than a subset:
+ * a role that was granted the tab should not find half the page silently empty.
+ *
+ * <p>The narrowing machinery is kept for the day some role needs payments or counsellor
+ * activity withheld -- populate {@code liveActivityRoleAccess} and it takes effect without
+ * any other change.
  */
 @Service
 public class LiveActivityAccessService {
@@ -51,14 +54,22 @@ public class LiveActivityAccessService {
             .collect(Collectors.toCollection(LinkedHashSet::new));
 
     /**
-     * What a non-admin role sees with nothing configured. PAYMENT and COUNSELLOR are omitted
-     * on purpose -- they ship hidden and require an explicit grant, mirroring how the two
-     * sub-tabs ship hidden in the frontend defaults.
+     * What a role sees with nothing configured: everything.
+     *
+     * <p>Access is gated by a SINGLE Display Settings switch per role -- the sidebar tab has
+     * no sub-items, and the category tabs on the page are in-page state rather than
+     * navigation. So the tab being on IS the grant, and splitting categories here would mean
+     * a role could hold the tab yet find half of it mysteriously empty.
+     *
+     * <p>The per-category plumbing is kept deliberately: the stream token still carries the
+     * permitted set and {@code LiveActivityBus} still filters every frame against it. If
+     * payments or counsellor activity later need narrowing for some role, it is a change to
+     * the map below and nothing else.
+     *
+     * <p>Worth stating plainly: with one switch, turning the tab on for a role exposes
+     * prospect PII AND payment amounts to that role.
      */
-    private static final Set<String> DEFAULT_NON_ADMIN_CATEGORIES = new LinkedHashSet<>(List.of(
-            LiveActivityCategory.INVITE_FORM.name(),
-            LiveActivityCategory.LEAD_FORM.name(),
-            LiveActivityCategory.CALL.name()));
+    private static final Set<String> DEFAULT_CATEGORIES = ALL_CATEGORIES;
 
     private final InstituteSettingService instituteSettingService;
     private final AudienceRoleAccessService audienceRoleAccessService;
@@ -96,7 +107,7 @@ public class LiveActivityAccessService {
 
         Map<String, List<String>> configured = readConfig(instituteId);
         if (configured == null || configured.isEmpty()) {
-            return DEFAULT_NON_ADMIN_CATEGORIES;
+            return DEFAULT_CATEGORIES;
         }
 
         // Most-permissive wins across the caller's roles, matching how Audience resolves a
@@ -117,8 +128,8 @@ public class LiveActivityAccessService {
             }
         }
 
-        // No role of the caller is configured -> the safe subset, not everything.
-        return granted.isEmpty() ? DEFAULT_NON_ADMIN_CATEGORIES : granted;
+        // No role of the caller is configured -> fall back to the tab-level grant.
+        return granted.isEmpty() ? DEFAULT_CATEGORIES : granted;
     }
 
     public boolean canSee(CustomUserDetails user, String instituteId, LiveActivityCategory category) {

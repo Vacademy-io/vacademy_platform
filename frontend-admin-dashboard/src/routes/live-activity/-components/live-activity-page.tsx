@@ -18,6 +18,14 @@ import { ActivityRow } from './ActivityRow';
 
 const ALL_TAB = 'ALL';
 
+const ALL_CATEGORIES: LiveActivityCategory[] = [
+    'INVITE_FORM',
+    'LEAD_FORM',
+    'CALL',
+    'PAYMENT',
+    'COUNSELLOR',
+];
+
 const CATEGORY_LABELS: Record<LiveActivityCategory, string> = {
     INVITE_FORM: 'Enrolments',
     LEAD_FORM: 'Leads',
@@ -69,7 +77,16 @@ export function LiveActivityPage() {
         }
     }, [instituteId]);
 
-    const visibleCategories = allowedCategories.length > 0 ? allowedCategories : [];
+    // Render every category tab regardless of what the token reported.
+    //
+    // These were previously driven by allowedCategories, which only arrives after the
+    // stream token is minted -- so a slow or failed mint left the page with no tabs at
+    // all, which reads as broken rather than degraded. Access is enforced server-side
+    // anyway: the token carries the permitted set and the bus filters each frame against
+    // it, so a tab the caller may not see simply stays empty. allowedCategories is still
+    // consulted below, purely to hide a tab that genuinely returns nothing for this role.
+    const visibleCategories: LiveActivityCategory[] =
+        allowedCategories.length > 0 ? allowedCategories : ALL_CATEGORIES;
 
     const filtered = useMemo(() => {
         if (activeTab === ALL_TAB) return events;

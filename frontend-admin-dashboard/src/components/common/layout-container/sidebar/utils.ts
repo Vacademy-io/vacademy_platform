@@ -937,45 +937,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
     },
 
-    // Live Activity. The sub-items are NOT separate pages -- the route is a single
-    // view with a ?category= param. They exist so Display Settings renders a
-    // per-role toggle for each category using the sub-tab machinery it already has,
-    // instead of inventing a bespoke setting. Payments and Counsellors ship hidden
-    // (see SUB_ITEMS_HIDDEN_BY_DEFAULT) because revenue and per-counsellor
-    // performance are not things to expose to every role by accident.
+    // Live Activity. Deliberately ONE tab with no sub-items: the page's category tabs
+    // are in-page state (?category=), not navigation. Display Settings therefore shows a
+    // single on/off switch per role, and it ships hidden (see OPT_IN_TAB_IDS) so an
+    // institute turns it on knowingly -- the feed surfaces prospect PII and payment
+    // amounts to every role that has it enabled.
     {
         icon: Broadcast,
         id: 'live-activity',
         title: sidebarT('sidebar:liveActivity'),
         to: '/live-activity',
         category: 'CRM',
-        subItems: [
-            {
-                subItem: 'Enrolments',
-                subItemId: 'live-activity-enrolments',
-                subItemLink: '/live-activity?category=INVITE_FORM',
-            },
-            {
-                subItem: 'Leads',
-                subItemId: 'live-activity-leads',
-                subItemLink: '/live-activity?category=LEAD_FORM',
-            },
-            {
-                subItem: 'Calls',
-                subItemId: 'live-activity-calls',
-                subItemLink: '/live-activity?category=CALL',
-            },
-            {
-                subItem: 'Payments',
-                subItemId: 'live-activity-payments',
-                subItemLink: '/live-activity?category=PAYMENT',
-            },
-            {
-                subItem: 'Counsellors',
-                subItemId: 'live-activity-counsellors',
-                subItemLink: '/live-activity?category=COUNSELLOR',
-            },
-        ],
     },
 
     // LMS

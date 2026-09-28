@@ -9,15 +9,6 @@ import { DEFAULT_ASSESSMENT_ACTION_SETTINGS } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
 const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
-    // Live activity categories. The other three (enrolments, leads, calls) are on
-    // by default once the tab itself is enabled; these two are not, because
-    // revenue figures and per-counsellor performance are materially more
-    // sensitive than a lead arriving. Enforced server-side too -- the stream
-    // token carries the permitted set and the bus filters each frame against it,
-    // so hiding a tab here is not the only thing standing between a counsellor
-    // and payment amounts.
-    'live-activity-payments',
-    'live-activity-counsellors',
     'suborg-teams',
     'manage-institute-suborgs',
     'notification-hub',

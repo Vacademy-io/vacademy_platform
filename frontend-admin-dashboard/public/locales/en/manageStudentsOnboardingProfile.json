@@ -97,5 +97,8 @@
         "noFields": "This step has no attached fields.",
         "untitledField": "Untitled field",
         "notAnswered": "Not answered"
+    },
+    "noAccess": {
+        "hint": "Your role does not have access to onboarding for this institute."
     }
 }

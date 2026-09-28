@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -6,6 +6,27 @@ import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { OnboardingFlowsPage } from './-components/onboarding-flows-page';
 import { OnboardingDashboardPage } from './-components/onboarding-dashboard-page';
+import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+
+/**
+ * Building flows is admin-only server-side; working the instances on them is not — a role a
+ * step's access grid names (a COUNSELLOR, a custom role) reaches the Dashboard but would get a
+ * 403 from every builder call. So non-admins are shown the Dashboard only.
+ *
+ * Deliberately case-INSENSITIVE, unlike `isUserAdmin()`: role_id 1 is spelled "Admin" in some
+ * institutes, and the backend's own admin test is equalsIgnoreCase — matching it here keeps an
+ * admin from being shown the counsellor view.
+ */
+function callerIsInstituteAdmin(instituteId: string): boolean {
+    try {
+        const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
+        const roles: string[] = tokenData?.authorities?.[instituteId]?.roles ?? [];
+        return roles.some((role) => String(role).trim().toUpperCase() === 'ADMIN');
+    } catch {
+        return false;
+    }
+}
 
 export const Route = createLazyFileRoute('/audience-manager/onboarding/')({
     component: OnboardingRoute,
@@ -15,14 +36,20 @@ type OnboardingTab = 'flows' | 'dashboard';
 
 function OnboardingRoute() {
     const { t } = useTranslation('audienceManagerOnboardingIndexLazy');
-    const [tab, setTab] = useState<OnboardingTab>('flows');
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
+    const isAdmin = useMemo(() => callerIsInstituteAdmin(instituteId), [instituteId]);
 
-    const tabs = [
-        { id: 'flows', label: t('tabs.flows') },
-        { id: 'dashboard', label: t('tabs.dashboard') },
-    ] as const;
+    const [tab, setTab] = useState<OnboardingTab>(isAdmin ? 'flows' : 'dashboard');
+
+    const tabs = (
+        isAdmin
+            ? [
+                  { id: 'flows', label: t('tabs.flows') },
+                  { id: 'dashboard', label: t('tabs.dashboard') },
+              ]
+            : [{ id: 'dashboard', label: t('tabs.dashboard') }]
+    ) as ReadonlyArray<{ id: OnboardingTab; label: string }>;
 
     return (
         <LayoutContainer>
@@ -50,7 +77,7 @@ function OnboardingRoute() {
                         </button>
                     ))}
                 </div>
-                {tab === 'flows' ? (
+                {tab === 'flows' && isAdmin ? (
                     <OnboardingFlowsPage />
                 ) : (
                     <OnboardingDashboardPage instituteId={instituteId} />

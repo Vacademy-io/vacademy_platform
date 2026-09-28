@@ -113,7 +113,16 @@ export const CustomFieldRenderer = ({
         }
     };
 
-    const effectiveType = type === 'textfield' ? 'text' : type;
+    // Lower-cased before matching: field_type is stored with whatever casing whichever screen
+    // created the field happened to use, and prod holds hundreds of upper-case rows (DROPDOWN,
+    // RADIO, MULTI_SELECT, CHECKBOX, DATE, FILE, PHONE, NUMBER, EMAIL, TEXT) alongside the
+    // lower-case ones. A case-sensitive match sent every one of those to the `default` branch,
+    // which is a plain text box -- so a DROPDOWN silently lost its options and a DATE its
+    // picker, with nothing to indicate the field had been configured at all. The learner app's
+    // renderer already normalises (it upper-cases); this matches that behaviour.
+    // 'textfield' is the legacy alias AddCustomFieldDialog still reports for 'text'.
+    const rawType = String(type ?? '').trim().toLowerCase();
+    const effectiveType = rawType === 'textfield' ? 'text' : rawType;
 
     switch (effectiveType) {
         case 'text':

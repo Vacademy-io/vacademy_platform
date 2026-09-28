@@ -23,6 +23,7 @@ import { RoleAccessGrid } from './role-access-grid';
 import {
     defaultRoleAccess,
     type InstituteCustomFieldDTO,
+    type OnboardingAssignableRole,
     type OnboardingStepFieldConfig,
 } from '../-services/onboarding-service';
 
@@ -49,6 +50,12 @@ export function newFieldRowFromCatalog(field: InstituteCustomFieldDTO, t: TFunct
 interface StepFieldConfigEditorProps {
     instituteId: string;
     catalog: InstituteCustomFieldDTO[];
+    /**
+     * Institute roles the per-field "Access" panel may grant to, beyond the built-in
+     * ADMIN/STUDENT/PARENT — so one field of a step can be singled out for a COUNSELLOR even
+     * when the step as a whole isn't.
+     */
+    assignableRoles?: OnboardingAssignableRole[];
     value: FieldRow[];
     onChange: (rows: FieldRow[]) => void;
     /**
@@ -62,6 +69,7 @@ interface StepFieldConfigEditorProps {
 
 export function StepFieldConfigEditor({
     catalog,
+    assignableRoles = [],
     value,
     onChange,
     onPendingSelectionChange,
@@ -223,6 +231,7 @@ export function StepFieldConfigEditor({
                                         <div className="border-t border-neutral-200 px-3 py-2.5">
                                             <RoleAccessGrid
                                                 compact
+                                                assignableRoles={assignableRoles}
                                                 value={row.role_access ?? defaultRoleAccess()}
                                                 onChange={(next) => updateRow(row._rowId, { role_access: next })}
                                             />

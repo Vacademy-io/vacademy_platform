@@ -7,5 +7,8 @@
     "actions": {
         "view": "देखें",
         "edit": "संपादित करें"
-    }
+    },
+    "addRolePlaceholder": "भूमिका जोड़ें…",
+    "addRoleButton": "जोड़ें",
+    "removeRole": "{{role}} हटाएँ"
 }

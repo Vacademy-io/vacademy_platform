@@ -133,6 +133,15 @@ export const submitStepInstance = async (
 export interface OnboardingResolvedFieldDTO {
   institute_custom_field_id: string;
   field_name: string | null;
+  /**
+   * The field's configured type — text | dropdown | number | email | url | date | phone |
+   * textarea | checkbox | radio | file | multi_select. Without it the form could only ever
+   * render a plain text box, so a dropdown, date or file field degraded to free text.
+   */
+  field_type: string | null;
+  /** custom_fields.config JSON verbatim — CustomFieldRenderer parses options / file limits out of it. */
+  config: string | null;
+  default_value: string | null;
   field_order: number | null;
   is_mandatory: boolean | null;
   can_edit: boolean | null;

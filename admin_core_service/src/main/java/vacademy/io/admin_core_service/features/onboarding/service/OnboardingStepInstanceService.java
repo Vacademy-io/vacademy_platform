@@ -188,16 +188,22 @@ public class OnboardingStepInstanceService {
                 && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")));
 
         // A step that assigns a course, that resolves "filled by a parent" into a brand-new user
-        // account, or whose step-level role_access denies this role edit permission, is not
-        // something a non-admin caller may act on at all -- otherwise a caller could either
-        // enroll themselves in any course (empty pool), create arbitrary new accounts under
-        // themselves-as-parent with zero oversight, or save/complete a step an admin explicitly
-        // locked to themselves via role_access despite it having no create_student config.
-        // Applies to a partial save too, not just complete -- there's no legitimate reason for a
-        // non-admin to write into a step they have no editable field on anyway.
+        // account, or whose role_access denies this role edit permission, is not something an
+        // arbitrary caller may act on -- otherwise a caller could either enroll themselves in
+        // any course (empty pool), create arbitrary new accounts under themselves-as-parent with
+        // zero oversight, or save/complete a step an admin explicitly locked away from them via
+        // role_access. Applies to a partial save too, not just complete -- there's no legitimate
+        // reason to write into a step you have no editable field on anyway.
+        //
+        // The bar is "actionable for this role", NOT "is an admin": a staff role the flow
+        // builder granted edit on this step (a COUNSELLOR, a custom role) is meant to work it.
+        // Only the parent-resolution path stays admin-only, since that one mints a real user
+        // account off free-text name/email in the payload.
         if (!OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)
                 && (requestsParentResolution || !isActionableForRole(step, actorRoleKey))) {
-            throw new ForbiddenException("This action must be completed by an admin.");
+            throw new ForbiddenException(requestsParentResolution
+                    ? "Filling this step in on a parent's behalf must be done by an admin."
+                    : "Your role does not have edit access to this onboarding step.");
         }
 
         // Leads can be filled out by either the student or a parent on their behalf. Resolve
@@ -395,9 +401,11 @@ public class OnboardingStepInstanceService {
     }
 
     /**
-     * Whether a caller acting as {@code roleKey} (STUDENT/PARENT) can actually act on this step --
-     * false for a create_student-configured step (always admin-only, enforced in
-     * {@link #completeStep}); otherwise true only if there's actually something this role may
+     * Whether a caller acting as {@code roleKey} can actually act on this step. {@code roleKey}
+     * is STUDENT/PARENT on the learner surface, or -- on the staff surface -- whichever institute
+     * role {@code OnboardingRoleAccessResolutionService.resolveStaffRoleKeyForStep} resolved the
+     * caller to. False for a create_student-configured step on the LEARNER side only (see the
+     * first check below); otherwise true only if there's actually something this role may
      * DO on the step: either it has no attached fields and the step-level default itself grants
      * edit (a plain "read this, click complete" step), or at least one attached field resolves
      * editable for this role. Deliberately checks per-FIELD access (not just the step-level
@@ -411,8 +419,18 @@ public class OnboardingStepInstanceService {
      * non-admin can't complete a step with nothing they're actually permitted to submit.
      */
     public boolean isActionableForRole(OnboardingStep step, String roleKey) {
-        if (isCreateStudentConfigured(step)) return false;
-        List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
+        // A create_student step assigns a course and can mint an account, so it is closed to the
+        // LEARNER side -- otherwise a lead could enroll themselves in any course (empty pool).
+        // It is not closed to staff: a counsellor explicitly granted edit on the step is exactly
+        // who is meant to enroll their lead. ADMIN is staff too and never reaches here anyway
+        // (every caller short-circuits on ADMIN before asking).
+        if (isLearnerRole(roleKey) && isCreateStudentConfigured(step)) return false;
+        // is_hidden fields are treated as absent everywhere (getResolvedFieldsForRole drops them,
+        // FormStepTypeHandler's mandatory check skips them) -- so a step whose only fields are
+        // hidden must fall into the "no attached fields" branch below, not be judged actionable
+        // on a field nobody is ever shown.
+        List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig())
+                .stream().filter(fc -> !Boolean.TRUE.equals(fc.getIsHidden())).toList();
         if (fieldConfigs.isEmpty()) {
             OnboardingRoleAccessResolutionService.EffectiveAccess stepAccess =
                     roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey);
@@ -437,6 +455,18 @@ public class OnboardingStepInstanceService {
      * whether the role may EDIT it and its already-submitted value if any. Replaces the learner
      * app's previous reliance on the generic (role-unaware) feature-fields lookup, which rendered
      * every field as an editable text input regardless of the caller's actual permission.
+     *
+     * <p>Also serves the ADMIN surface (see {@code OnboardingStepInstanceController}'s /fields),
+     * which used that same generic feature-fields lookup: besides being role-unaware, that
+     * endpoint orders by the institute catalog's own order rather than the step builder's
+     * per-step {@code field_order}, and reports the CATALOG row's is_mandatory (which this
+     * domain never writes -- mandatory lives in the step's fields_config) so every field looked
+     * optional on the admin form while the server still rejected the submit.
+     *
+     * <p>Each field carries its {@code field_type}/{@code config}/{@code default_value} so the
+     * client renders it as its configured type; {@code is_hidden} fields are dropped here (see
+     * {@code FormStepTypeHandler}, which excludes them from the mandatory check for the same
+     * reason -- a hidden mandatory field would make the step permanently unsubmittable).
      */
     public List<OnboardingResolvedFieldDTO> getResolvedFieldsForRole(String stepInstanceId, String roleKey) {
         OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
@@ -452,6 +482,8 @@ public class OnboardingStepInstanceService {
 
         List<OnboardingResolvedFieldDTO> out = new ArrayList<>();
         for (OnboardingStepFieldConfigDTO fieldConfig : fieldConfigs) {
+            if (Boolean.TRUE.equals(fieldConfig.getIsHidden())) continue;
+
             Optional<InstituteCustomField> instituteCustomField =
                     instituteCustomFieldRepository.findById(fieldConfig.getInstituteCustomFieldId());
             if (instituteCustomField.isEmpty()) continue;
@@ -461,11 +493,13 @@ public class OnboardingStepInstanceService {
             if (!access.canView) continue;
 
             String customFieldId = instituteCustomField.get().getCustomFieldId();
-            String fieldName = customFieldRepository.findById(customFieldId)
-                    .map(CustomFields::getFieldName).orElse(null);
+            Optional<CustomFields> customField = customFieldRepository.findById(customFieldId);
             out.add(OnboardingResolvedFieldDTO.builder()
                     .instituteCustomFieldId(fieldConfig.getInstituteCustomFieldId())
-                    .fieldName(fieldName)
+                    .fieldName(customField.map(CustomFields::getFieldName).orElse(null))
+                    .fieldType(customField.map(CustomFields::getFieldType).orElse(null))
+                    .config(customField.map(CustomFields::getConfig).orElse(null))
+                    .defaultValue(customField.map(CustomFields::getDefaultValue).orElse(null))
                     .fieldOrder(fieldConfig.getFieldOrder())
                     .isMandatory(fieldConfig.getIsMandatory())
                     .canEdit(access.canEdit)
@@ -509,6 +543,40 @@ public class OnboardingStepInstanceService {
                     .build());
         }
         return out;
+    }
+
+    /**
+     * {@link #getSubmittedFieldValues} narrowed to the fields {@code roleKey} may VIEW, for the
+     * "View form" dialog. ADMIN sees every field, as before; a staff role given access to only
+     * part of a step must not be handed the rest of the answers just because the step is
+     * finished. Mirrors {@link #getResolvedFieldsForRole}'s own view filter.
+     */
+    public List<OnboardingSubmittedFieldDTO> getSubmittedFieldValuesForRole(String stepInstanceId, String roleKey) {
+        List<OnboardingSubmittedFieldDTO> all = getSubmittedFieldValues(stepInstanceId);
+        if (OnboardingRoleKey.ADMIN.name().equals(roleKey)) return all;
+        String stepId = getStepInstance(stepInstanceId).getStepId();
+        return all.stream()
+                .filter(f -> roleAccessResolutionService
+                        .resolveFieldAccess(stepId, f.getInstituteCustomFieldId(), roleKey).canView)
+                .toList();
+    }
+
+    /**
+     * The two roles the LEARNER surface can ever resolve a caller to
+     * ({@code OnboardingRoleAccessResolutionService.resolveRoleKey}). Everything else -- ADMIN
+     * and any institute role named in a step's grid -- is staff, acting through the admin
+     * surface, and is trusted with the staff-only step behaviours.
+     */
+    private boolean isLearnerRole(String roleKey) {
+        return OnboardingRoleKey.STUDENT.name().equals(roleKey)
+                || OnboardingRoleKey.PARENT.name().equals(roleKey);
+    }
+
+    /** The step DEFINITION behind a step instance -- for callers that hold the instance only. */
+    public OnboardingStep getStepDefinition(OnboardingStepInstance stepInstance) {
+        return onboardingStepRepository.findById(stepInstance.getStepId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Onboarding step not found: " + stepInstance.getStepId()));
     }
 
     private String readPayloadString(Map<String, Object> payload, String key) {

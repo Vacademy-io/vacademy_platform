@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import type { LiveActivityCategory } from '../-services/live-activity-service';
-import type { CollapsedActivity } from './collapse-events';
+import type { CollapsedActivity, JourneyState } from './collapse-events';
 import { describeActivity } from './activity-sentence';
 
 const CATEGORY_TONE: Record<LiveActivityCategory, string> = {
@@ -20,10 +20,30 @@ const CATEGORY_LABEL: Record<LiveActivityCategory, string> = {
     COUNSELLOR: 'Counsellor',
 };
 
+/**
+ * State badges.
+ *
+ * <p>Stage is a badge rather than a sentence because it is the field an admin scans for.
+ * "Payment pending" buried mid-prose in a list of twenty rows is invisible -- as a pill it
+ * is the first thing read. Each carries a word, never colour alone.
+ */
+const STATE_BADGE: Record<JourneyState, { label: string; tone: string } | null> = {
+    FORM_FILLED: { label: 'Form filled', tone: 'bg-neutral-100 text-neutral-600' },
+    // Amber: this is the one an admin should act on, and the only feed state that is a
+    // call to action rather than a record of something finished.
+    PAYMENT_PENDING: { label: 'Payment pending', tone: 'bg-warning-50 text-warning-700' },
+    PAID: { label: 'Paid', tone: 'bg-success-50 text-success-700' },
+    ENROLLED: { label: 'Enrolled', tone: 'bg-success-50 text-success-700' },
+    CALL_IN_PROGRESS: { label: 'On call', tone: 'bg-info-50 text-info-700' },
+    CALL_ENDED: null,
+    NONE: null,
+};
+
 export function ActivityRow({ group }: { group: CollapsedActivity }) {
     const [expanded, setExpanded] = useState(false);
-    const { latest, transitions } = group;
+    const { latest, transitions, state } = group;
     const sentence = describeActivity(latest);
+    const badge = STATE_BADGE[state];
     // Length > 1 only happens for a call, where several transitions fold into one row.
     const hasTransitions = transitions.length > 1;
 
@@ -44,6 +64,13 @@ export function ActivityRow({ group }: { group: CollapsedActivity }) {
                         {sentence.verb}
                         {sentence.detail && (
                             <span className="text-neutral-500"> · {sentence.detail}</span>
+                        )}
+                        {badge && (
+                            <span
+                                className={`ms-2 inline-block rounded px-1.5 py-0.5 text-caption ${badge.tone}`}
+                            >
+                                {badge.label}
+                            </span>
                         )}
                     </p>
 

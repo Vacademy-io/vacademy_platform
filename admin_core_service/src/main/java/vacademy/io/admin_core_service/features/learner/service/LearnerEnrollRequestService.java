@@ -679,20 +679,26 @@ public class LearnerEnrollRequestService {
                                              LearnerPackageSessionsEnrollDTO enrollDTO,
                                              UserPlan userPlan) {
         try {
+            String planStatus = userPlan.getStatus();
             LiveActivityAction action;
-            if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            if (UserPlanStatusEnum.ACTIVE.name().equals(planStatus)) {
                 action = LiveActivityAction.ENROLLED;
-            } else if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(userPlan.getStatus())) {
+            } else if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(planStatus)
+                    || UserPlanStatusEnum.PENDING.name().equals(planStatus)) {
+                // Both mean "money not in yet". PENDING_FOR_PAYMENT is the gateway flow and
+                // PENDING is the stacked-enrolment flow -- matching only the first is why a
+                // pending enrolment showed as a form fill and then went quiet.
                 action = LiveActivityAction.REACHED_PAYMENT;
             } else {
+                log.debug("No live activity action for user plan status {}", planStatus);
                 return;
             }
 
+            // Fall back to the plan when no invite is attached rather than dropping the
+            // event. An enrolment with no invite is still an enrolment, and silently
+            // skipping it made the feed look broken rather than incomplete.
             String enrollInviteId = enrollDTO != null ? enrollDTO.getEnrollInviteId() : null;
-            if (!StringUtils.hasText(enrollInviteId)) {
-                // Without an invite there is no funnel to place this on, and no stable key.
-                return;
-            }
+            String funnelKey = StringUtils.hasText(enrollInviteId) ? enrollInviteId : userPlan.getId();
 
             var user = learnerEnrollRequestDTO.getUser();
             liveActivityRecorder.recordAfterCommit(LiveActivityEvent.builder()
@@ -704,12 +710,12 @@ public class LearnerEnrollRequestService {
                             ? LiveActivityActorType.LEARNER
                             : LiveActivityActorType.PROSPECT)
                     .dedupeKey(LiveActivityDedupeKeys.forInviteForm(
-                            enrollInviteId, user != null ? user.getId() : userPlan.getId(), action))
+                            funnelKey, user != null ? user.getId() : userPlan.getId(), action))
                     .subjectId(user != null ? user.getId() : null)
                     .subjectName(user != null ? user.getFullName() : null)
                     .subjectEmail(user != null ? user.getEmail() : null)
                     .subjectMobile(user != null ? user.getMobileNumber() : null)
-                    .entityId(enrollInviteId)
+                    .entityId(funnelKey)
                     .build());
         } catch (Exception e) {
             log.warn("Failed to record live activity for enrolment: {}", e.getMessage());

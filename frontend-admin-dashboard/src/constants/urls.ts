@@ -265,6 +265,7 @@ export const LIVE_ACTIVITY_STREAM_TOKEN = (instituteId: string) =>
 export const LIVE_ACTIVITY_STREAM = (token: string) =>
     `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/stream?token=${encodeURIComponent(token)}`;
 export const LIVE_ACTIVITY_EVENTS = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/events`;
+export const LIVE_ACTIVITY_ANALYTICS = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/analytics`;
 export const LIVE_ACTIVITY_COUNTS = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/counts`;
 export const LIVE_ACTIVITY_UNSEEN_COUNT = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/unseen-count`;
 export const LIVE_ACTIVITY_MARK_SEEN = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/mark-seen`;

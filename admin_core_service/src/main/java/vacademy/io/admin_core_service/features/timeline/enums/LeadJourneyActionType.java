@@ -17,6 +17,12 @@ public enum LeadJourneyActionType {
     /** A duplicate submission was detected and merged into this lead. */
     DUPLICATE_MERGED,
 
+    /**
+     * An existing lead got in touch again through a WhatsApp chatbot flow. No new lead is
+     * created; this records the repeat contact (metadata: channel, flow_id, flow_name, message).
+     */
+    RE_ENQUIRY,
+
     // ── Curation ─────────────────────────────────────────────────────────────
     /** An admin soft-deleted this lead (metadata: scope, campaign_name, deleted_by). */
     LEAD_DELETED,

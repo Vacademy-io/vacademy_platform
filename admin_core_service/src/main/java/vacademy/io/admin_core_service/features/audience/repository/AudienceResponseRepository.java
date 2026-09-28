@@ -80,6 +80,38 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10);
 
         /**
+         * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
+         * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
+         * 10 digits. Opted-out leads count — someone who opted out and writes again is still a
+         * known person, not a new lead. Rows flagged as duplicates are skipped. A live row wins
+         * over a soft-deleted one, then the newest wins. Returns
+         * {@code [audience_response.id, user_id, audience_status]}.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id, ar.audience_status
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                ORDER BY CASE WHEN ar.audience_status = 'INACTIVE' THEN 1 ELSE 0 END, ar.created_at DESC
+                LIMIT 1
+                """, nativeQuery = true)
+        List<Object[]> findChatbotLeadMatchByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /**
+         * Transaction-scoped Postgres advisory lock on an arbitrary key. Held until the
+         * surrounding transaction commits or rolls back, so two concurrent callers with the
+         * same key run one after the other. Used to stop two WhatsApp messages arriving at
+         * once from both creating a lead for the same phone.
+         */
+        @Query(value = "SELECT 1 FROM pg_advisory_xact_lock(hashtext(:lockKey))", nativeQuery = true)
+        Integer acquireTransactionLock(@Param("lockKey") String lockKey);
+
+        /**
          * The most recent {@code audience_response.id} for a given user in this
          * institute — i.e. confirms the user IS a lead here and returns the lead's
          * response id. Used by the telephony resolver after it finds the user by

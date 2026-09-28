@@ -471,6 +471,8 @@ public class ChatbotEscalationService {
             case "NO_CONTEXT" -> "The assistant did not have the information to answer this.";
             case "MAX_TURNS" -> "The conversation reached its automated reply limit.";
             case "AI_ERROR" -> "The assistant could not generate a reply.";
+            case "EXISTING_LEAD" -> "An existing lead got in touch again on WhatsApp.";
+            case "CRM_SAVE_FAILED" -> "The chatbot could not save this lead's answers to the CRM — please add them by hand.";
             default -> "This conversation was handed over for a human reply.";
         };
     }

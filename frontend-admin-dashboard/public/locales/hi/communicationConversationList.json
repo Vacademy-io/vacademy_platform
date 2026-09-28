@@ -33,6 +33,10 @@
         "aiError": "सहायक कोई जवाब नहीं बना सका",
         "manual": "किसी एडमिन ने सौंपा",
         "noInfo": "सहायक के पास जवाब देने के लिए जानकारी नहीं थी",
-        "withMessage": "{{why}}\n\nउन्होंने पूछा: {{message}}"
+        "withMessage": "{{why}}\n\nउन्होंने पूछा: {{message}}",
+        "existingLead": "एक मौजूदा लीड ने फिर से संदेश भेजा",
+        "crmSaveFailed": "चैटबॉट इस लीड को CRM में सेव नहीं कर सका",
+        "withLeadMessage": "{{why}}\n\nउनका संदेश: {{message}}",
+        "withAnswers": "{{why}}\n\nउनके जवाब:\n{{message}}"
     }
 }

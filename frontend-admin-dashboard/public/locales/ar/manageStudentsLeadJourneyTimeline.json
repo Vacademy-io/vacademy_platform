@@ -18,7 +18,8 @@
         "walkInNote": "ملاحظة زيارة شخصية",
         "followupScheduled": "تمت جدولة المتابعة",
         "statusChange": "تم تغيير الحالة",
-        "fallback": "حدث"
+        "fallback": "حدث",
+        "reEnquiry": "تواصل مجددًا"
     },
     "statusChangeMeta": {
         "previous": "السابق"

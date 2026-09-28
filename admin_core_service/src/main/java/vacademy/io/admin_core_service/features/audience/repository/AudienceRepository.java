@@ -91,6 +91,14 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
     Optional<Audience> findFirstByInstituteIdAndCampaignName(String instituteId, String campaignName);
 
     /**
+     * The oldest campaign of a given type and status for an institute. Used to resolve the
+     * auto-provisioned "WhatsApp Leads" list by its type rather than its name, so an admin
+     * renaming the list does not make the next chatbot lead create a second one.
+     */
+    Optional<Audience> findFirstByInstituteIdAndCampaignTypeAndStatusOrderByCreatedAtAsc(
+            String instituteId, String campaignType, String status);
+
+    /**
      * Find active campaigns for an institute
      */
     @Query("SELECT a FROM Audience a " +

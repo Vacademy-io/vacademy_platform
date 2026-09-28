@@ -19,6 +19,7 @@ import {
     GitMerge,
     Buildings,
     BookOpen,
+    WhatsappLogo,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -65,6 +66,7 @@ const CATEGORY_MAP: Record<string, Category> = {
     FOLLOW_UP: 'communication',
     MEETING: 'communication',
     DUPLICATE_MERGED: 'enrollment',
+    RE_ENQUIRY: 'communication',
     CAMPUS_VISIT: 'admission',
 };
 
@@ -99,6 +101,7 @@ const EVENT_STYLE_MAP: Record<string, EventStyle> = {
     PAYMENT_SUCCESS:         { icon: CurrencyCircleDollar, tone: 'success' },
     CAMPUS_VISIT:            { icon: Buildings,            tone: 'neutral' },
     DUPLICATE_MERGED:        { icon: GitMerge,             tone: 'neutral' },
+    RE_ENQUIRY:              { icon: WhatsappLogo,         tone: 'info' },
 };
 const FALLBACK_STYLE: EventStyle = { icon: BookOpen, tone: 'neutral' };
 

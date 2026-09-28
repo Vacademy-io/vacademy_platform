@@ -5,8 +5,19 @@ import type { MessageOrigin } from '@/components/shared/whatsapp/message-origin'
 
 export type InboxFilter = 'ALL' | 'UNANSWERED' | 'FAILED';
 
-/** Why the chatbot handed a conversation to a human. */
-export type EscalationReason = 'NO_CONTEXT' | 'MAX_TURNS' | 'AI_ERROR' | 'MANUAL';
+/**
+ * Why the chatbot handed a conversation to a human. EXISTING_LEAD: a lead already in the CRM
+ * messaged again through a chatbot flow. CRM_SAVE_FAILED: the flow couldn't save the lead to the
+ * CRM — the collected answers are in the escalation message.
+ */
+export type EscalationReason =
+    | 'NO_CONTEXT'
+    | 'MAX_TURNS'
+    | 'AI_ERROR'
+    | 'MANUAL'
+    | 'NO_CREDITS'
+    | 'EXISTING_LEAD'
+    | 'CRM_SAVE_FAILED';
 
 export interface InboxConversation {
     phone: string;

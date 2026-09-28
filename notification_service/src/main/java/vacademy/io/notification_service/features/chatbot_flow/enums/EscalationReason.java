@@ -15,5 +15,9 @@ public enum EscalationReason {
      */
     NO_CREDITS,
     /** Raised by an admin from the Inbox rather than by the bot. */
-    MANUAL
+    MANUAL,
+    /** A person who is already a CRM lead messaged again through a chatbot flow (CRM_LEAD_CHECK). */
+    EXISTING_LEAD,
+    /** The chatbot could not save the collected answers to the CRM lead (SAVE_TO_CRM). */
+    CRM_SAVE_FAILED
 }

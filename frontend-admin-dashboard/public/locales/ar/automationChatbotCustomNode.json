@@ -2,10 +2,17 @@
     "fallback": {
         "textMessage": "رسالة نصية",
         "anyMessage": "أي رسالة",
-        "ai": "الذكاء الاصطناعي"
+        "ai": "الذكاء الاصطناعي",
+        "noField": "لم يتم اختيار حقل"
     },
     "branch": {
         "default": "افتراضي",
-        "numbered": "الفرع {{number}}"
+        "numbered": "الفرع {{number}}",
+        "newLead": "عميل محتمل جديد",
+        "existingLead": "عميل محتمل حالي"
+    },
+    "saveToCrm": {
+        "setsStatus": "الحالة: {{status}}",
+        "keepsStatus": "الحالة دون تغيير"
     }
 }

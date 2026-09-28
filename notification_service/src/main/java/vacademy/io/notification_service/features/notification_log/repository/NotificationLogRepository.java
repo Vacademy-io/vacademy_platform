@@ -1005,6 +1005,25 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("emails") List<String> emails);
 
     /**
+     * The WhatsApp profile name the provider reported on this number's latest inbound message
+     * to the institute. Used to name a lead created by a chatbot flow. Empty list when none.
+     */
+    @Query(value = """
+            SELECT nl.sender_name
+            FROM notification_log nl
+            WHERE nl.institute_id = :instituteId
+              AND nl.channel_id = :phone
+              AND nl.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND nl.sender_name IS NOT NULL
+              AND nl.sender_name <> ''
+            ORDER BY nl.notification_date DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    List<String> findLatestWhatsAppSenderName(
+            @Param("instituteId") String instituteId,
+            @Param("phone") String phone);
+
+    /**
      * Batch unread counts for email conversations: number of INBOUND_EMAIL rows newer than
      * the latest OUTBOUND EMAIL row to the same counterparty. Mirrors WhatsApp behavior.
      * Not affected by the direction filter — unread is intrinsically about inbound vs outbound.

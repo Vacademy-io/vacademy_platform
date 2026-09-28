@@ -35,7 +35,7 @@ public class InboxConversationDTO {
     private boolean awaitingReply;
     /** Id of the open escalation, so the UI can resolve it without replying. */
     private String escalationId;
-    /** NO_CONTEXT | MAX_TURNS | AI_ERROR | MANUAL — why the bot handed over. */
+    /** NO_CONTEXT | MAX_TURNS | AI_ERROR | NO_CREDITS | MANUAL | EXISTING_LEAD | CRM_SAVE_FAILED — why the bot handed over. */
     private String escalationReason;
     /** The learner message the bot could not answer. */
     private String escalationMessage;

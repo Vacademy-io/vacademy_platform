@@ -24,7 +24,7 @@ public class EscalationDTO {
     private String userPhone;
     private String userId;
     private String userName;
-    /** NO_CONTEXT | MAX_TURNS | AI_ERROR | MANUAL */
+    /** NO_CONTEXT | MAX_TURNS | AI_ERROR | NO_CREDITS | MANUAL | EXISTING_LEAD | CRM_SAVE_FAILED */
     private String reason;
     /** The learner message the bot could not answer. */
     private String userMessage;

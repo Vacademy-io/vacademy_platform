@@ -122,7 +122,7 @@ export interface DashboardUrlState {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Reads a shared link back into filters; anything malformed is ignored. */
+/** Reads URL filters back into state; anything malformed is ignored. */
 export const parseDashboardUrl = (search: DashboardUrlState) => {
     const list = (v?: string) =>
         (v ?? '')

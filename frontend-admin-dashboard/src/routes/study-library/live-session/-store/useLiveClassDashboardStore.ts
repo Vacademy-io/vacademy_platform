@@ -4,7 +4,7 @@ import { rangeForPreset } from '../-utils/dashboard-format';
 /**
  * In-memory filters of the Live Session Dashboard page, so opening a class from
  * the dashboard and pressing back returns to the same view. Not persisted: a
- * hard refresh starts from the URL (shared link) or the default range.
+ * hard refresh starts from the URL filters or the default range.
  */
 interface LiveClassDashboardState {
     startDate: string;

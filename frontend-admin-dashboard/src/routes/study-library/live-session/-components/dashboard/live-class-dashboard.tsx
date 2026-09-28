@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { format, parse } from 'date-fns';
-import {
-    ChartLineUp,
-    DownloadSimple,
-    FilePdf,
-    LinkSimple,
-    WarningCircle,
-} from '@phosphor-icons/react';
+import { ChartLineUp, DownloadSimple, FilePdf, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -103,7 +96,7 @@ export default function LiveClassDashboard() {
         term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
     });
 
-    // Keep the URL on the current view so "Copy link" (or a refresh) reopens it.
+    // Keep the filters in the URL so a refresh or a bookmark reopens the same view.
     useEffect(() => {
         navigate({
             to: '/study-library/live-session/dashboard',
@@ -225,15 +218,6 @@ export default function LiveClassDashboard() {
         }
     };
 
-    const copyLink = async () => {
-        try {
-            await navigator.clipboard.writeText(window.location.href);
-            toast.success(t('share.copied'));
-        } catch {
-            toast.error(t('share.failed'));
-        }
-    };
-
     const filters = (
         <div {...printHide}>
             <DashboardFilters
@@ -307,16 +291,6 @@ export default function LiveClassDashboard() {
                         >
                             <FilePdf size={16} />
                             {t('share.pdf')}
-                        </MyButton>
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            scale="medium"
-                            className="gap-1.5 bg-white sm:min-w-0"
-                            onClick={copyLink}
-                        >
-                            <LinkSimple size={16} />
-                            {t('share.copyLink')}
                         </MyButton>
                     </div>
                 </div>

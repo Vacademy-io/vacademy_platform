@@ -187,10 +187,7 @@
     },
     "share": {
         "csv": "Exporter CSV",
-        "pdf": "Télécharger le PDF",
-        "copyLink": "Copier le lien",
-        "copied": "Lien copié — il ouvre exactement cette vue",
-        "failed": "Impossible de copier le lien"
+        "pdf": "Télécharger le PDF"
     },
     "actions": {
         "whatsapp": "WhatsApp",

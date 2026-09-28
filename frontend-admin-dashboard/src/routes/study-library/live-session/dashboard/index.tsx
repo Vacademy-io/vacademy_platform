@@ -18,7 +18,7 @@ const text = (value: unknown): string | undefined =>
 
 /**
  * Live Session Dashboard (sidebar: Live Sessions → Dashboard). The optional
- * search params are what "Copy link" writes, so a shared link reopens the same
+ * search params mirror the filters, so a refresh or a bookmarked URL reopens the same
  * range, batches and teachers.
  */
 export const Route = createFileRoute('/study-library/live-session/dashboard/')({
@@ -39,7 +39,7 @@ function RouteComponent() {
         term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
     });
 
-    // A shared link sets the filters once, before the dashboard's first request.
+    // Filters in the URL are applied once, before the dashboard's first request.
     useState(() => {
         const linked = parseDashboardUrl(search);
         if (linked.range || linked.batchIds.length || linked.teacherIds.length) {

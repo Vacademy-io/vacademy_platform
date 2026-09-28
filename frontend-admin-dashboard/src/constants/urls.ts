@@ -246,20 +246,29 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
 
 // ── Live activity feed (User Live Events) ──
+//
+// These point at their own base so the feature can be exercised against a locally-run
+// admin-core while everything else (auth, media, notifications) still goes to the normal
+// backend. Set VITE_LIVE_ACTIVITY_BASE_URL in .env.local (gitignored) to e.g.
+// http://localhost:8072. Unset, it falls back to BASE_URL and behaves exactly as every
+// other endpoint here -- so this is safe to ship.
+const LIVE_ACTIVITY_BASE =
+    (import.meta.env as unknown as Record<string, string | undefined>)
+        .VITE_LIVE_ACTIVITY_BASE_URL || BASE_URL;
 // The stream sits on a permitAll path because EventSource cannot send an Authorization
 // header. Unlike TELEPHONY_CALL_EVENTS above -- where the call-log UUID is itself an
 // unguessable capability -- an instituteId is guessable, so the stream is gated on a
 // short-lived signed token minted by the authenticated /stream-token endpoint. The token
 // also carries the caller's permitted categories, which the server enforces per frame.
 export const LIVE_ACTIVITY_STREAM_TOKEN = (instituteId: string) =>
-    `${BASE_URL}/admin-core-service/v1/live-activity/stream-token?instituteId=${encodeURIComponent(instituteId)}`;
+    `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/stream-token?instituteId=${encodeURIComponent(instituteId)}`;
 export const LIVE_ACTIVITY_STREAM = (token: string) =>
-    `${BASE_URL}/admin-core-service/v1/live-activity/stream?token=${encodeURIComponent(token)}`;
-export const LIVE_ACTIVITY_EVENTS = `${BASE_URL}/admin-core-service/v1/live-activity/events`;
-export const LIVE_ACTIVITY_COUNTS = `${BASE_URL}/admin-core-service/v1/live-activity/counts`;
-export const LIVE_ACTIVITY_UNSEEN_COUNT = `${BASE_URL}/admin-core-service/v1/live-activity/unseen-count`;
-export const LIVE_ACTIVITY_MARK_SEEN = `${BASE_URL}/admin-core-service/v1/live-activity/mark-seen`;
-export const LIVE_ACTIVITY_EXPORT_CSV = `${BASE_URL}/admin-core-service/v1/live-activity/export.csv`;
+    `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/stream?token=${encodeURIComponent(token)}`;
+export const LIVE_ACTIVITY_EVENTS = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/events`;
+export const LIVE_ACTIVITY_COUNTS = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/counts`;
+export const LIVE_ACTIVITY_UNSEEN_COUNT = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/unseen-count`;
+export const LIVE_ACTIVITY_MARK_SEEN = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/mark-seen`;
+export const LIVE_ACTIVITY_EXPORT_CSV = `${LIVE_ACTIVITY_BASE}/admin-core-service/v1/live-activity/export.csv`;
 
 // ── Call Intelligence (transcription + AI analysis of call recordings) ──
 /** Intelligence for a single call, keyed by the universal call_log id. */

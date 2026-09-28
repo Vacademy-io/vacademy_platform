@@ -150,12 +150,15 @@ export function AskPanel({
       }));
     } catch (err) {
       const e = readCompanionError(err);
-      if (e.status === 429) {
-        // Not stored server-side: give the learner their question back.
+      if (e.status === 429 || e.status === 402) {
+        // Refused before it was stored: give the learner their question back.
         setInput(question);
-        setNotice({ tone: "warn", text: e.message || t("ask.errors.limit") });
+        setNotice({
+          tone: "warn",
+          text: e.message || (e.status === 402 ? t("errors.credits") : t("ask.errors.limit")),
+        });
       } else {
-        // 402 / 502: the question was stored, so keep it in the thread.
+        // 502 and other failures: the question was stored, so keep it in the thread.
         queryClient.setQueryData<AskThread>(threadKey, (prev) => ({
           messages: [...(prev?.messages ?? []), localUser],
           questions_today: (prev?.questions_today ?? 0) + 1,
@@ -165,7 +168,7 @@ export function AskPanel({
           tone: "error",
           text:
             e.message ||
-            (e.status === 402 ? t("errors.credits") : e.status === 403 ? t("errors.forbidden") : t("ask.errors.failed")),
+            (e.status === 403 ? t("errors.forbidden") : t("ask.errors.failed")),
         });
       }
     } finally {

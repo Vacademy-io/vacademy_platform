@@ -614,14 +614,18 @@ async def ask(companion_id: str, body: AskIn, caller: Caller = Depends(_caller))
         history = repo.thread(companion_id, caller.user_id, limit=ask_svc.HISTORY_TURNS)
         rows = repo.progress_rows(companion_id, caller.user_id)
         name = repo.learner_first_name(caller.user_id)
-        repo.add_message(companion_id, caller.institute_id, caller.user_id, "user", question,
-                         {"node_id": node["id"] if node else None})
+        user_meta = {"node_id": node["id"] if node else None}
         if ask_svc.is_distress(question):
+            # Answered even when the institute is out of credits: no model call.
+            repo.add_message(companion_id, caller.institute_id, caller.user_id, "user", question, user_meta)
             reply = ask_svc.DISTRESS_REPLY.get(c["language"], ask_svc.DISTRESS_REPLY["en"])
             mid = repo.add_message(companion_id, caller.institute_id, caller.user_id, "assistant", reply,
                                    {"kind": "care", "grounded": False})
             return {"message": {"id": mid, "role": "assistant", "content": reply, "meta": {"kind": "care"}}}
+        # Before the question is stored: a 402 (like a 429) leaves no trace, so
+        # the learner app hands the question back to retry later.
         _credits_or_402(db, ask_svc.ASK_TOOL, caller.institute_id)
+        repo.add_message(companion_id, caller.institute_id, caller.user_id, "user", question, user_meta)
         db.commit()
         hits = await ask_svc.retrieve(db, kb=kb, institute_id=caller.institute_id, question=question, node=node)
         covered = [leaf["title"] for t in scoped for leaf in t["leaves"] if leaf.get("title")]

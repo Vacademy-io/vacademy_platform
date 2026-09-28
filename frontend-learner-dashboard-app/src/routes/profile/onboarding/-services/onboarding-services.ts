@@ -158,6 +158,36 @@ export const getResolvedStepFields = async (
   return Array.isArray(response?.data) ? response.data : [];
 };
 
+/** One step of the onboarding, with whatever was recorded on it. */
+export interface OnboardingSubmittedStepDTO {
+  step_instance_id: string;
+  step_id: string;
+  step_name: string;
+  step_order: number | null;
+  status: OnboardingStepStatus;
+  completed_at: string | null;
+  skip_reason: string | null;
+  fields: OnboardingResolvedFieldDTO[];
+}
+
+/**
+ * The whole filled-in history of one onboarding instance in a single call — what backs the
+ * "my onboarding details" summary the learner can open long after the flow finished.
+ * Per-step `getResolvedStepFields` is still the right call for the live FORM (one step), but
+ * would turn this view into one request per step.
+ *
+ * Already filtered server-side to the fields this caller's role may VIEW, hidden fields
+ * excluded — the same rules the form itself applies.
+ */
+export const getSubmittedSteps = async (
+  instanceId: string
+): Promise<OnboardingSubmittedStepDTO[]> => {
+  const response = await authenticatedAxiosInstance.get<OnboardingSubmittedStepDTO[]>(
+    `${ONBOARDING_BASE}/instances/${instanceId}/submitted-steps`
+  );
+  return Array.isArray(response?.data) ? response.data : [];
+};
+
 /**
  * Extracts a human-readable message from a backend error. VacademyException
  * responses carry the message in `ex` ({ url, ex, responseCode, date }); we

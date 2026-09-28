@@ -582,10 +582,18 @@ export async function skipStepInstance(
     return data;
 }
 
-/** One field's actual submitted value for a completed FORM step instance. */
+/**
+ * One field's actual submitted value for a completed FORM step instance.
+ *
+ * `field_type`/`config` ride along so a read-only view can render the value AS ITS TYPE: a
+ * `file` field's value is the uploaded object's URL, and printing that raw leaves the viewer a
+ * URL to copy-paste instead of a file to open.
+ */
 export interface OnboardingSubmittedFieldDTO {
     institute_custom_field_id: string;
     field_name: string | null;
+    field_type: string | null;
+    config: string | null;
     value: string | null;
 }
 

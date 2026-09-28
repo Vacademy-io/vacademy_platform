@@ -68,6 +68,7 @@ import {
     type OnboardingStepDTO,
 } from '@/routes/audience-manager/onboarding/-services/onboarding-service';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { CustomFieldValueDisplay } from '@/components/common/custom-fields/CustomFieldValueDisplay';
 import { parseFieldOptions } from '@/routes/audience-manager/list/-utils/parseFieldOptions';
 import { configJsonToFullConfig } from '@/services/custom-field-settings';
 
@@ -1000,9 +1001,13 @@ function SubmittedFormDialog({
                                     {f.field_name ?? t('submittedFormDialog.untitledField')}
                                 </div>
                                 <div className="text-body text-neutral-800">
-                                    {f.value?.trim() ? f.value : (
-                                        <span className="text-neutral-400">{t('submittedFormDialog.notAnswered')}</span>
-                                    )}
+                                    {/* By type, not as a string: a file field's value is the
+                                        uploaded object's URL, which is useless as raw text. */}
+                                    <CustomFieldValueDisplay
+                                        value={f.value}
+                                        fieldType={f.field_type}
+                                        emptyLabel={t('submittedFormDialog.notAnswered')}
+                                    />
                                 </div>
                             </li>
                         ))}

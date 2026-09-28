@@ -22,6 +22,7 @@ import {
   OnboardingStepForm,
 } from "./-components/onboarding-step-form";
 import { OnboardingProgressList } from "./-components/onboarding-progress-list";
+import { OnboardingDetailsCard } from "./-components/onboarding-details-card";
 import {
   getCurrentStepInfo,
   getMyOnboardingInstances,
@@ -206,6 +207,12 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
         </p>
         <OnboardingProgressList stepInstances={instance.step_instances} />
       </ModernCard>
+
+      {/* Everything already submitted, laid out in full. Rendered whatever the instance's
+          status: mid-flow it shows the steps done so far, and once the flow is COMPLETED it
+          becomes the reason to keep this page reachable at all. Renders nothing when there is
+          nothing this learner may see. */}
+      <OnboardingDetailsCard instanceId={instance.id} />
     </div>
   );
 }

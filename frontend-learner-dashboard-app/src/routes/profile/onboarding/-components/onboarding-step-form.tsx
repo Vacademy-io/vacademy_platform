@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard } from "@/components/design-system/modern-card";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
+import { CustomFieldValueDisplay } from "@/components/common/custom-fields/CustomFieldValueDisplay";
 import { cn } from "@/lib/utils";
 import {
   getResolvedStepFields,
@@ -213,7 +214,11 @@ export const OnboardingStepForm = ({
                   {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                 </span>
                 <span className="text-sm text-neutral-700">
-                  {field.value || t("onboardingStepForm.notFilledIn")}
+                  {field.value ? (
+                    <CustomFieldValueDisplay value={field.value} fieldType={field.field_type} />
+                  ) : (
+                    t("onboardingStepForm.notFilledIn")
+                  )}
                 </span>
               </div>
             ))}

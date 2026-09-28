@@ -247,6 +247,8 @@ export function PaymentDashboard() {
               learnersUpcomingAll: billingSummary.learners_upcoming_all,
               nextDueDate: billingSummary.next_due_date,
               usesInstallments: billingSummary.uses_installments,
+              instalmentPlanCount: billingSummary.instalment_plan_count,
+              livePlanCount: billingSummary.live_plan_count,
               currency: billingSummary.currency || '',
           }
         : null;
@@ -316,6 +318,8 @@ export function PaymentDashboard() {
                         onToggle={cardPrefs.toggle}
                         onReset={cardPrefs.reset}
                         isCustomised={cardPrefs.isCustomised}
+                        // The instalment schedule panel lives on Manage Payments only.
+                        hiddenOptions={['schedule']}
                     />
                     <MyButton
                         buttonType="secondary"

@@ -13,6 +13,10 @@ public interface BillingSummaryProjection {
     Long getLearnersOwing();
     Long getLearnersUpcoming();
     Long getPlanCount();
+    /** Live instalment (CPO) plans across the whole institute — any date, any course. */
+    Long getInstalmentPlanCount();
+    /** Live plans across the whole institute — any date, any course. */
+    Long getLivePlanCount();
     /** Live, priced one-time plans with no payment recorded — activated by hand. */
     Long getActivatedWithoutPaymentCount();
     /** Every unpaid installment / invoice on live enrolments, whatever its due date. */

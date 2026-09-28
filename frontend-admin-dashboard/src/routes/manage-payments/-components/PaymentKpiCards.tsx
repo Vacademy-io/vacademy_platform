@@ -2,6 +2,7 @@ import {
     CalendarBlank,
     CheckCircle,
     Clock,
+    Coins,
     HourglassMedium,
     Receipt,
     Wallet,
@@ -30,8 +31,12 @@ export type SummaryStatusKey =
     | 'abandoned'
     | 'failed';
 
-/** The cards an admin can switch on or off (Total and Abandoned are tabs only). */
-export type KpiCardKey = Exclude<SummaryStatusKey, 'total' | 'abandoned'>;
+/**
+ * What an admin can switch on or off in the card settings (the "All" and Abandoned tabs have no
+ * card). 'billed' is the Total card — collected plus still to collect; 'schedule' is the instalment
+ * schedule panel under the cards. Neither has a list behind it, so neither is ever a tab or filter.
+ */
+export type KpiCardKey = Exclude<SummaryStatusKey, 'total' | 'abandoned'> | 'billed' | 'schedule';
 
 /** The statuses that map onto payment records, so they can filter the table. */
 export type RecordStatusKey = Exclude<SummaryStatusKey, 'outstanding' | 'due' | 'upcoming'>;
@@ -72,6 +77,12 @@ export interface KpiBilling {
      * 30-day Upcoming would read ₹0 — Upcoming shows every future instalment instead.
      */
     usesInstallments?: boolean;
+    /**
+     * The institute's fee model: live instalment plans and all live plans across the whole
+     * institute, whatever the window (null on an older server). Decides the default row.
+     */
+    instalmentPlanCount?: number | null;
+    livePlanCount?: number | null;
     currency: string;
 }
 
@@ -91,6 +102,14 @@ const formatDueDate = (iso?: string | null): string | null => {
     });
 };
 
+/**
+ * With the Total card on, four cards (Total, Collected, Due, Upcoming) sit in one row from lg up.
+ * Every row without Total keeps exactly the layout it had.
+ */
+const LG_COLS_WITH_TOTAL: Record<number, string> = {
+    4: 'lg:grid-cols-4',
+};
+
 /** Tailwind needs literal class names, so the xl column count is looked up, not interpolated. */
 const XL_COLS: Record<number, string> = {
     1: 'xl:grid-cols-1',
@@ -99,6 +118,8 @@ const XL_COLS: Record<number, string> = {
     4: 'xl:grid-cols-4',
     5: 'xl:grid-cols-5',
     6: 'xl:grid-cols-6',
+    // Only reachable with Total plus all six others on: two even rows rather than 3/3/1.
+    7: 'xl:grid-cols-4',
 };
 
 interface PaymentKpiCardsProps {
@@ -119,7 +140,8 @@ interface PaymentKpiCardsProps {
 }
 
 interface CardDef {
-    key: KpiCardKey;
+    /** The schedule is a panel, not a card, so it never appears here. */
+    key: Exclude<KpiCardKey, 'schedule'>;
     label: string;
     /** One line spelling out what the number actually is, so two "pending"s can't be confused. */
     caption: string;
@@ -141,6 +163,15 @@ interface CardDef {
  * is an abandoned checkout and is in neither (see the Abandoned segment).
  */
 const CARDS: CardDef[] = [
+    {
+        key: 'billed',
+        label: 'Total',
+        caption: 'Collected + still to collect',
+        icon: Coins,
+        iconClass: 'bg-primary-50 text-primary-500',
+        accentClass: 'bg-success-500',
+        source: 'billing',
+    },
     {
         key: 'paid',
         label: 'Collected',
@@ -224,9 +255,14 @@ export function PaymentKpiCards({
     visibleKeys,
     className,
 }: PaymentKpiCardsProps) {
+    // Without the admin's choices the row is the built-in one, which has no Total card.
     const cards = visibleKeys
         ? CARDS.filter((card) => visibleKeys.has(card.key))
-        : CARDS.filter((card) => card.key !== 'outstanding' || hasNotYetDueBalance(billing));
+        : CARDS.filter(
+              (card) =>
+                  card.key !== 'billed' &&
+                  (card.key !== 'outstanding' || hasNotYetDueBalance(billing))
+          );
     const allFuture = upcomingIsAllFuture(billing);
     if (cards.length === 0) return null;
     const money = (amount: number) =>
@@ -235,7 +271,9 @@ export function PaymentKpiCards({
     return (
         <div
             className={cn(
-                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3',
+                'grid grid-cols-1 gap-3 sm:grid-cols-2',
+                (cards.some((card) => card.key === 'billed') && LG_COLS_WITH_TOTAL[cards.length]) ||
+                    'lg:grid-cols-3',
                 XL_COLS[Math.max(cards.length, 3)],
                 className
             )}
@@ -249,8 +287,27 @@ export function PaymentKpiCards({
                 let meta = '';
                 let hint: string | undefined;
                 let caption = card.caption;
+                // The Total card's collected share, drawn as a bar in place of the accent.
+                let progress: number | undefined;
 
                 switch (card.key) {
+                    case 'billed': {
+                        // Everything billed on live enrolments in view: what came in plus what is
+                        // still to collect (overdue, future instalments, unpaid invoices).
+                        const total = billing ? billing.collected + billing.outstanding : 0;
+                        amountDisplay = billing ? money(total) : '—';
+                        if (!billing) {
+                            meta = 'Needs the billing summary';
+                        } else if (total > 0.005) {
+                            progress = billing.collected / total;
+                            meta = `${Math.round(progress * 100)}% collected · ${money(
+                                billing.outstanding
+                            )} to collect`;
+                        } else {
+                            meta = 'Nothing billed in this view';
+                        }
+                        break;
+                    }
                     case 'paid':
                         // Prefer the server's figure (it also counts invoice payments); the paid
                         // records are the fallback, never the two summed.
@@ -326,7 +383,11 @@ export function PaymentKpiCards({
                 const Icon = card.icon;
                 // The 30-day Upcoming is informational — there is no list behind it. With
                 // instalments it opens the learners and their next instalment.
-                const interactive = Boolean(onSelect) && (card.key !== 'upcoming' || allFuture);
+                // Total has no list of its own.
+                const interactive =
+                    Boolean(onSelect) &&
+                    card.key !== 'billed' &&
+                    (card.key !== 'upcoming' || allFuture);
 
                 const content = (
                     <>
@@ -365,8 +426,18 @@ export function PaymentKpiCards({
                             <div className="mt-1 text-2xs font-medium text-warning-600">{hint}</div>
                         )}
 
-                        <div className="mt-auto pt-3">
-                            <div className={cn('h-1 w-10 rounded-full', card.accentClass)} />
+                        <div className={cn('mt-auto pt-3', progress !== undefined && 'w-full')}>
+                            {progress !== undefined ? (
+                                <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+                                    {/* Width is the collected share — data, so inline style. */}
+                                    <div
+                                        className={cn('h-full rounded-full', card.accentClass)}
+                                        style={{ width: `${Math.min(100, progress * 100)}%` }}
+                                    />
+                                </div>
+                            ) : (
+                                <div className={cn('h-1 w-10 rounded-full', card.accentClass)} />
+                            )}
                         </div>
                     </>
                 );
@@ -391,7 +462,9 @@ export function PaymentKpiCards({
                     <button
                         key={card.key}
                         type="button"
-                        onClick={() => onSelect?.(card.key)}
+                        onClick={() => {
+                            if (card.key !== 'billed') onSelect?.(card.key);
+                        }}
                         aria-pressed={isActive}
                         className={cardClass}
                     >

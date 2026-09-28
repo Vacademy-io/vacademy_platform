@@ -14,7 +14,12 @@ vi.stubGlobal('localStorage', {
 
 import { emptyPaymentSummary } from '../paymentSummary';
 import { PaymentKpiCards, type KpiBilling } from '../../-components/PaymentKpiCards';
-import { defaultVisibleKpiCards, useKpiCardPrefs } from '../../-components/KpiCardSettings';
+import {
+    KpiCardSettings,
+    defaultVisibleKpiCards,
+    useKpiCardPrefs,
+} from '../../-components/KpiCardSettings';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 /**
  * Vasco runs instalment plans whose next instalment is weeks away, so the 30-day Upcoming read ₹0
@@ -149,5 +154,104 @@ describe('card preferences', () => {
         act(() => result.current.reset());
         expect(result.current.visible.has('failed')).toBe(true);
         expect(localStorage.getItem('payment-kpi-cards:inst-1')).toBeNull();
+    });
+});
+
+describe('Total card', () => {
+    beforeEach(() => store.clear());
+
+    const vasco = () => billing({ livePlanCount: 28, instalmentPlanCount: 28 });
+    const shikshaNation = () =>
+        billing({ livePlanCount: 14032, instalmentPlanCount: 2, due: 42000 });
+
+    it('starts on only where instalments are the fee model', () => {
+        expect(defaultVisibleKpiCards(vasco()).has('billed')).toBe(true);
+        expect(defaultVisibleKpiCards(shikshaNation()).has('billed')).toBe(false);
+        // Subscription / one-time institutes: exactly the old row.
+        expect(
+            defaultVisibleKpiCards(
+                billing({ usesInstallments: false, livePlanCount: 120, instalmentPlanCount: 0 })
+            ).has('billed')
+        ).toBe(false);
+        // An older server sends no instalment count: old row.
+        expect(defaultVisibleKpiCards(billing()).has('billed')).toBe(false);
+    });
+
+    it('appears for an admin who saved a row before Total existed', () => {
+        store.set('payment-kpi-cards:inst-1', JSON.stringify(['paid', 'due', 'upcoming']));
+        const { result } = renderHook(() => useKpiCardPrefs(vasco()));
+        expect([...result.current.visible].sort()).toEqual([
+            'billed',
+            'due',
+            'paid',
+            'schedule',
+            'upcoming',
+        ]);
+
+        // …but not where it would not be on by default.
+        const sn = renderHook(() => useKpiCardPrefs(shikshaNation()));
+        expect(sn.result.current.visible.has('billed')).toBe(false);
+    });
+
+    it('stays off once the admin switches it off, and Reset brings the default back', () => {
+        store.set('payment-kpi-cards:inst-1', JSON.stringify(['paid', 'due', 'upcoming']));
+        const { result } = renderHook(() => useKpiCardPrefs(vasco()));
+
+        act(() => result.current.toggle('billed'));
+        expect(result.current.visible.has('billed')).toBe(false);
+        // Only Total goes; the schedule it showed by default is kept as the admin saw it.
+        expect(JSON.parse(store.get('payment-kpi-cards:inst-1')!)).toEqual([
+            'paid',
+            'due',
+            'upcoming',
+            'schedule',
+        ]);
+        expect(store.get('payment-kpi-cards-v2:inst-1')).toBe('1');
+
+        act(() => result.current.reset());
+        expect(result.current.visible.has('billed')).toBe(true);
+        expect(store.has('payment-kpi-cards-v2:inst-1')).toBe(false);
+    });
+
+    it('can be switched on by any institute', () => {
+        const { result } = renderHook(() => useKpiCardPrefs(shikshaNation()));
+        act(() => result.current.toggle('billed'));
+        expect(result.current.visible.has('billed')).toBe(true);
+    });
+});
+
+describe('Instalment schedule setting', () => {
+    beforeEach(() => store.clear());
+
+    const newton = () => billing({ livePlanCount: 54, instalmentPlanCount: 28 });
+    const enark = () => billing({ livePlanCount: 299, instalmentPlanCount: 25 });
+
+    it('starts on where instalments are at least half the plans, off where they are fewer', () => {
+        expect(defaultVisibleKpiCards(newton()).has('schedule')).toBe(true);
+        expect(defaultVisibleKpiCards(enark()).has('schedule')).toBe(false);
+    });
+
+    it('can be switched on by a mixed institute with fewer instalment plans', () => {
+        const { result } = renderHook(() => useKpiCardPrefs(enark()));
+        act(() => result.current.toggle('schedule'));
+        expect(result.current.visible.has('schedule')).toBe(true);
+        expect(JSON.parse(store.get('payment-kpi-cards:inst-1')!)).toContain('schedule');
+    });
+
+    it('is not offered where the screen hides it', () => {
+        render(
+            <TooltipProvider>
+                <KpiCardSettings
+                    visible={new Set(['paid'])}
+                    onToggle={() => {}}
+                    onReset={() => {}}
+                    isCustomised={false}
+                    hiddenOptions={['schedule']}
+                />
+            </TooltipProvider>
+        );
+        act(() => screen.getByRole('button', { name: 'Choose which cards to show' }).click());
+        expect(screen.getByText('Total')).toBeTruthy();
+        expect(screen.queryByText('Instalment schedule')).toBeNull();
     });
 });

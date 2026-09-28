@@ -61,6 +61,12 @@ export interface BillingSummary {
     /** Live enrolments in the window. */
     plan_count: number;
     /**
+     * The institute's fee model — live instalment (CPO) plans and all live plans across the whole
+     * institute, whatever the date window or course filter. Null on an older server.
+     */
+    instalment_plan_count: number | null;
+    live_plan_count: number | null;
+    /**
      * Live, priced one-time plans with no payment recorded — activated by an admin by hand. Could
      * be an offline payment nobody recorded or a free grant, so it is reported, not billed.
      */
@@ -128,6 +134,9 @@ export const fetchBillingSummary = async (
         learners_owing: num(d.learners_owing),
         learners_upcoming: num(d.learners_upcoming),
         plan_count: num(d.plan_count),
+        instalment_plan_count:
+            typeof d.instalment_plan_count === 'number' ? d.instalment_plan_count : null,
+        live_plan_count: typeof d.live_plan_count === 'number' ? d.live_plan_count : null,
         activated_without_payment_count: num(d.activated_without_payment_count),
         // An older server has no outstanding figure; Due is the closest honest floor.
         outstanding: Math.max(0, typeof d.outstanding === 'number' ? d.outstanding : due),
@@ -137,6 +146,74 @@ export const fetchBillingSummary = async (
         next_due_date: typeof d.next_due_date === 'string' ? d.next_due_date : null,
         uses_installments: d.uses_installments === true,
         currency: d.currency ?? null,
+    };
+};
+
+export const INSTALMENT_FORECAST_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/instalment-forecast`;
+
+/** One calendar month of the Upcoming card. */
+export interface UpcomingMonth {
+    /** yyyy-MM; null for instalments with no due date. */
+    month: string | null;
+    amount: number;
+    learners: number;
+    /** Instalments, invoices and renewals behind `amount`. */
+    dues: number;
+    /** Earliest due date inside the month, yyyy-MM-dd. */
+    first_due_on: string | null;
+}
+
+/**
+ * How far the instalment plans have got, and when the rest comes in. The `instalment_*` figures
+ * cover instalment plans only; `months` covers everything on the Upcoming card, so the months add
+ * up to its `upcoming_all`.
+ */
+export interface InstalmentForecast {
+    instalment_billed: number;
+    instalment_paid: number;
+    instalment_overdue: number;
+    instalment_to_come: number;
+    instalment_plans: number;
+    instalment_learners: number;
+    months: UpcomingMonth[];
+}
+
+/**
+ * Instalment progress and the Upcoming card split by month. Same window and course scope as the
+ * billing summary. Only asked for by institutes that run instalment plans.
+ */
+export const fetchInstalmentForecast = async (
+    requestBody: BillingSummaryRequest = {}
+): Promise<InstalmentForecast> => {
+    const instituteId = getCurrentInstituteId();
+
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+
+    const response = await authenticatedAxiosInstance.post(INSTALMENT_FORECAST_URL, {
+        ...requestBody,
+        institute_id: instituteId,
+    });
+
+    const d = (response.data ?? {}) as Partial<InstalmentForecast>;
+    const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    return {
+        instalment_billed: Math.max(0, num(d.instalment_billed)),
+        instalment_paid: Math.max(0, num(d.instalment_paid)),
+        instalment_overdue: Math.max(0, num(d.instalment_overdue)),
+        instalment_to_come: Math.max(0, num(d.instalment_to_come)),
+        instalment_plans: num(d.instalment_plans),
+        instalment_learners: num(d.instalment_learners),
+        months: Array.isArray(d.months)
+            ? d.months.map((m) => ({
+                  month: typeof m?.month === 'string' ? m.month : null,
+                  amount: Math.max(0, num(m?.amount)),
+                  learners: num(m?.learners),
+                  dues: num(m?.dues),
+                  first_due_on: typeof m?.first_due_on === 'string' ? m.first_due_on : null,
+              }))
+            : [],
     };
 };
 
@@ -206,6 +283,8 @@ export interface OutstandingLearner {
     outstanding?: number | null;
     /** Outstanding list only: what falls due on `next_due_date`. */
     next_due_amount?: number | null;
+    /** Month-filtered Upcoming list only: what falls due inside the selected month. */
+    month_amount?: number | null;
     currency: string | null;
 }
 
@@ -254,7 +333,9 @@ export const fetchOutstandingLearners = async (
      * false: the Due list — learners with something already overdue. true: the Outstanding
      * list — anyone with a balance still to collect, soonest next instalment first.
      */
-    includeNotYetDue = false
+    includeNotYetDue = false,
+    /** yyyy-MM: only the learners with something falling due in that month (instalment forecast). */
+    dueMonth?: string | null
 ): Promise<OutstandingLearnersPage> => {
     const instituteId = getCurrentInstituteId();
 
@@ -262,10 +343,16 @@ export const fetchOutstandingLearners = async (
         throw new Error('Institute ID not found');
     }
 
+    const params: Record<string, string | number | boolean> = includeNotYetDue
+        ? { pageNo, pageSize, includeNotYetDue }
+        : { pageNo, pageSize };
+    // Only sent when a month is picked, so every other list asks the server exactly what it did.
+    if (dueMonth) params.dueMonth = dueMonth;
+
     const response = await authenticatedAxiosInstance.post(
         OUTSTANDING_LEARNERS_URL,
         { ...requestBody, institute_id: instituteId },
-        { params: includeNotYetDue ? { pageNo, pageSize, includeNotYetDue } : { pageNo, pageSize } }
+        { params }
     );
 
     const d = (response.data ?? {}) as Partial<OutstandingLearnersPage>;

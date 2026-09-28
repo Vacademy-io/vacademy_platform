@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { getPublicUrls } from '@/services/upload_file';
-import { CalendarCheck, ClockCounterClockwise, NotePencil } from '@phosphor-icons/react';
+import { CalendarCheck, ChartBar, ClockCounterClockwise, NotePencil } from '@phosphor-icons/react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MyButton } from '@/components/design-system/button';
 import { SessionStatus, sessionStatusTabLabelKeys } from '../-constants/enums';
@@ -11,7 +11,7 @@ import { SettingsQuickAccessButton } from '@/components/settings/quick-access/Se
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { cn } from '@/lib/utils';
 import LiveSessionCard from './live-session-card';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useSessionSearch } from '../-hooks/useLiveSessions';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -24,6 +24,9 @@ import {
     ALL_BATCHES_OPTION,
 } from '../-store/useLiveSessionListStateStore';
 import { useLiveSessionStore } from '../schedule/-store/sessionIdstore';
+import { useLiveClassDashboardStore } from '../-store/useLiveClassDashboardStore';
+import { parseDashboardUrl } from '../-utils/dashboard-export';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { CaretDown, VideoCameraSlash, Clock, FunnelSimple, X } from '@phosphor-icons/react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -42,8 +45,30 @@ import { useTranslation } from 'react-i18next';
 
 const AllBatchesOption: SelectOption = ALL_BATCHES_OPTION;
 
+// Recharts + the dashboard only load when the Dashboard tab is opened.
+const LiveClassDashboard = lazy(() => import('./dashboard/live-class-dashboard'));
+// Tab value for the dashboard. Deliberately not a SessionStatus: every status
+// value drives a session search and a tab-count query, the dashboard does neither.
+const DASHBOARD_TAB = 'Dashboard';
+
 export default function SessionListPage() {
     const { t } = useTranslation('studyLibrarySessionsListPage');
+    const pageSearch = useSearch({ from: '/study-library/live-session/' });
+
+    // A shared dashboard link (?view=dashboard&from=…) opens the Dashboard tab
+    // with its filters. Done once, before the store is read below, so the
+    // dashboard's first request already uses the linked view.
+    useState(() => {
+        if (pageSearch.view !== 'dashboard') return null;
+        const linked = parseDashboardUrl(pageSearch);
+        useLiveClassDashboardStore.setState({
+            open: true,
+            ...(linked.range ? { startDate: linked.range.start, endDate: linked.range.end } : {}),
+            batchIds: linked.batchIds,
+            teacherIds: linked.teacherIds,
+        });
+        return null;
+    });
     const { setNavHeading } = useNavHeadingStore();
     const { clearSessionDetails } = useSessionDetailsStore();
     const { clearSessionId } = useLiveSessionStore();
@@ -61,6 +86,8 @@ export default function SessionListPage() {
     // existed. A hard refresh resets the store and lands on Live, page 0, unfiltered.
     const selectedTab = useLiveSessionListStateStore((s) => s.selectedTab);
     const setSelectedTab = useLiveSessionListStateStore((s) => s.setSelectedTab);
+    const dashboardOpen = useLiveClassDashboardStore((s) => s.open);
+    const setDashboardOpen = useLiveClassDashboardStore((s) => s.setOpen);
 
     // Committed filter state (see the store for the reset rules).
     const searchQuery = useLiveSessionListStateStore((s) => s.searchQuery);
@@ -408,6 +435,16 @@ export default function SessionListPage() {
     }, [searchResponse, currentPage, setCurrentPage]);
 
     const handleTabChange = (value: string) => {
+        if (value === DASHBOARD_TAB) {
+            setDashboardOpen(true);
+            return;
+        }
+        // Leaving the dashboard for the tab that was already selected keeps its
+        // filters, the same as coming back from a class detail.
+        if (dashboardOpen) {
+            navigate({ to: '/study-library/live-session', search: {}, replace: true });
+        }
+        setDashboardOpen(false);
         if (value === selectedTab) return;
         // Deliberately switching tabs is the one navigation that starts a fresh
         // browse — the store drops the filters and the page index with the tab.
@@ -1416,14 +1453,24 @@ export default function SessionListPage() {
 
     return (
         <>
-            {renderFilterBar()}
-            <Tabs value={selectedTab} onValueChange={handleTabChange}>
+            {!dashboardOpen && renderFilterBar()}
+            <Tabs value={dashboardOpen ? DASHBOARD_TAB : selectedTab} onValueChange={handleTabChange}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <TabsList className="inline-flex h-auto justify-start gap-1 overflow-x-auto rounded-none border-b !bg-transparent p-0 sm:gap-4">
+                        <TabsTrigger
+                            value={DASHBOARD_TAB}
+                            className={`flex shrink-0 gap-1.5 rounded-none px-4 py-2 text-sm !shadow-none sm:px-12 ${dashboardOpen
+                                ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                : 'border-none bg-transparent'
+                                }`}
+                        >
+                            <ChartBar size={16} weight="duotone" />
+                            {t('sessions.tabLabels.dashboard')}
+                        </TabsTrigger>
                         {Object.values(SessionStatus).map((status) => {
                             const liveDotActive =
                                 (tabCounts[SessionStatus.LIVE] ?? 0) > 0 ||
-                                selectedTab === SessionStatus.LIVE;
+                                (!dashboardOpen && selectedTab === SessionStatus.LIVE);
                             const tabIcon =
                                 status === SessionStatus.LIVE ? (
                                     // Red and pulsing whenever a class is
@@ -1452,7 +1499,7 @@ export default function SessionListPage() {
                             <TabsTrigger
                                 key={status}
                                 value={status}
-                                className={`flex shrink-0 gap-1.5 rounded-none px-4 py-2 text-sm !shadow-none sm:px-12 ${selectedTab === status
+                                className={`flex shrink-0 gap-1.5 rounded-none px-4 py-2 text-sm !shadow-none sm:px-12 ${!dashboardOpen && selectedTab === status
                                     ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                                     : 'border-none bg-transparent'
                                     }`}
@@ -1462,7 +1509,7 @@ export default function SessionListPage() {
                                 {typeof tabCounts[status] === 'number' ? (
                                     <span
                                         className={
-                                            selectedTab === status
+                                            !dashboardOpen && selectedTab === status
                                                 ? 'text-primary-500'
                                                 : 'text-neutral-400'
                                         }
@@ -1489,6 +1536,13 @@ export default function SessionListPage() {
                     </div>
                 </div>
 
+                <TabsContent value={DASHBOARD_TAB} className="space-y-4">
+                    {dashboardOpen && (
+                        <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
+                            <LiveClassDashboard />
+                        </Suspense>
+                    )}
+                </TabsContent>
                 <TabsContent value={SessionStatus.LIVE} className="space-y-4">
                     {renderSessions()}
                 </TabsContent>

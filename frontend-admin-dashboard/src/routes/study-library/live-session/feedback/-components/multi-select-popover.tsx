@@ -28,6 +28,8 @@ interface MultiSelectPopoverProps {
     /** Overrides the option list's max height (default `max-h-60`) — e.g. a
      *  short fixed list that should never need to scroll. */
     listClassName?: string;
+    /** Adds "Select all", which ticks every option matching the current search. */
+    selectAll?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export function MultiSelectPopover({
     allText,
     summary = 'count',
     listClassName,
+    selectAll = false,
 }: MultiSelectPopoverProps) {
     const { t } = useTranslation('studyLibraryMultiSelectPopover');
     const resolvedEmptyText = emptyText ?? t('noOptions');
@@ -84,7 +87,7 @@ export function MultiSelectPopover({
                     className={cn(
                         'flex h-9 min-w-48 items-center justify-between gap-2 rounded-md border px-3 text-sm transition-colors focus:outline-none focus:ring-1 focus:ring-primary-500',
                         selected.length > 0
-                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            ? 'border-primary-500 bg-primary-50 text-primary-600'
                             : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
                     )}
                 >
@@ -111,15 +114,32 @@ export function MultiSelectPopover({
                     <span className="text-xs font-medium text-neutral-500">
                         {selected.length === 0 ? t('allSelected') : t('selectedCount', { count: selected.length })}
                     </span>
-                    {selected.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => onChange([])}
-                            className="text-xs font-medium text-primary-600 hover:underline"
-                        >
-                            {t('clear')}
-                        </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                        {selectAll && filtered.some((o) => !selected.includes(o.value)) && (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    onChange(
+                                        Array.from(
+                                            new Set([...selected, ...filtered.map((o) => o.value)])
+                                        )
+                                    )
+                                }
+                                className="text-xs font-medium text-primary-600 hover:underline"
+                            >
+                                {search.trim() ? t('selectAllMatching') : t('selectAll')}
+                            </button>
+                        )}
+                        {selected.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => onChange([])}
+                                className="text-xs font-medium text-primary-600 hover:underline"
+                            >
+                                {t('clear')}
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className={cn('max-h-60 overflow-y-auto py-1', listClassName)}>
                     {filtered.length === 0 ? (
@@ -138,13 +158,13 @@ export function MultiSelectPopover({
                                         type="checkbox"
                                         checked={checked}
                                         onChange={() => toggle(opt.value)}
-                                        className="mt-0.5 size-3.5 shrink-0 rounded border-neutral-300 text-primary-500 focus:ring-primary-500"
+                                        className="mt-0.5 size-3.5 shrink-0 rounded border-neutral-300 text-primary-500 accent-primary-500 focus:ring-primary-500"
                                     />
                                     <span
                                         className={cn(
                                             'text-xs leading-snug',
                                             checked
-                                                ? 'font-medium text-primary-700'
+                                                ? 'font-medium text-primary-600'
                                                 : 'text-neutral-700'
                                         )}
                                     >

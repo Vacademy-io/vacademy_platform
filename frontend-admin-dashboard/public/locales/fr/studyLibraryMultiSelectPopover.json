@@ -6,5 +6,7 @@
     "selectedCount_other": "{{count}} sélectionnés",
     "searchPlaceholder": "Rechercher {{label}}…",
     "allSelected": "Tout sélectionné",
-    "clear": "Effacer"
+    "clear": "Effacer",
+    "selectAll": "Tout sélectionner",
+    "selectAllMatching": "Sélectionner les résultats"
 }

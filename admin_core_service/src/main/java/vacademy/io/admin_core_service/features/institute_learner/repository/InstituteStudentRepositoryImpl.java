@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.common.util.CustomFieldValueSql;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 
 import java.time.LocalDate;
@@ -338,7 +339,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 whereClause.append("  WHERE cfv_filter").append(filterIndex).append(".source_type = 'USER' ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".source_id = ssigm.user_id ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".custom_field_id = :").append(paramFieldId).append(" ");
-                whereClause.append("    AND cfv_filter").append(filterIndex).append(".value IN (:").append(paramValues).append(") ");
+                whereClause.append("    AND ")
+                        .append(CustomFieldValueSql.matchesAnyOf("cfv_filter" + filterIndex + ".value", paramValues))
+                        .append(" ");
                 whereClause.append(") ");
                 
                 parameters.put(paramFieldId, fieldId);
@@ -453,7 +456,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 whereClause.append("  WHERE cfv_filter").append(filterIndex).append(".source_type = 'USER' ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".source_id = ssigm.user_id ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".custom_field_id = :").append(paramFieldId).append(" ");
-                whereClause.append("    AND cfv_filter").append(filterIndex).append(".value IN (:").append(paramValues).append(") ");
+                whereClause.append("    AND ")
+                        .append(CustomFieldValueSql.matchesAnyOf("cfv_filter" + filterIndex + ".value", paramValues))
+                        .append(" ");
                 whereClause.append(") ");
                 
                 parameters.put(paramFieldId, fieldId);

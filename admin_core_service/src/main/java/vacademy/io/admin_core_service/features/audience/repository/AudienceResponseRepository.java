@@ -1380,30 +1380,42 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * filter bar. Scoped to the institute via custom_field_values →
          * audience_response → audience; backed by idx_cfv_field_source_value.
          * `:search` is a case-insensitive substring (blank = all values).
+         * JSON-array answers (MULTI_SELECT) are split into one value per option;
+         * the filter side matches them via CustomFieldValueSql.matchesAnyOf.
          */
         @Query(value = """
-                            SELECT DISTINCT cfv.value
+                            SELECT DISTINCT opt.v
                             FROM custom_field_values cfv
                             JOIN audience_response ar ON ar.id = cfv.source_id
                             JOIN audience a ON a.id = ar.audience_id
+                            CROSS JOIN LATERAL jsonb_array_elements_text(
+                                CASE WHEN cfv.value LIKE '[%' AND pg_input_is_valid(cfv.value, 'jsonb')
+                                     THEN CAST(cfv.value AS jsonb)
+                                     ELSE jsonb_build_array(cfv.value) END) AS opt(v)
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
-                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
-                            ORDER BY cfv.value ASC
+                              AND opt.v <> ''
+                              AND (COALESCE(:search, '') = '' OR opt.v ILIKE CONCAT('%', :search, '%'))
+                            ORDER BY opt.v ASC
                         """, countQuery = """
-                            SELECT COUNT(DISTINCT cfv.value)
+                            SELECT COUNT(DISTINCT opt.v)
                             FROM custom_field_values cfv
                             JOIN audience_response ar ON ar.id = cfv.source_id
                             JOIN audience a ON a.id = ar.audience_id
+                            CROSS JOIN LATERAL jsonb_array_elements_text(
+                                CASE WHEN cfv.value LIKE '[%' AND pg_input_is_valid(cfv.value, 'jsonb')
+                                     THEN CAST(cfv.value AS jsonb)
+                                     ELSE jsonb_build_array(cfv.value) END) AS opt(v)
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
-                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                              AND opt.v <> ''
+                              AND (COALESCE(:search, '') = '' OR opt.v ILIKE CONCAT('%', :search, '%'))
                         """, nativeQuery = true)
         Page<String> findDistinctLeadCustomFieldValues(
                         @Param("instituteId") String instituteId,

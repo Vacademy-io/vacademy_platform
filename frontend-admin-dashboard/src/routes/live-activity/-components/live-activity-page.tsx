@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Helmet } from 'react-helmet';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Broadcast, Pause, Play } from '@phosphor-icons/react';
+import { Broadcast, Pause, Play, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -210,16 +210,35 @@ export function LiveActivityPage() {
              * me now". Only on All -- a category tab is a filtered stream, and repeating
              * institute-wide totals above it would be answering a question nobody asked.
              */}
-            {activeTab === ALL_TAB && analytics.data && (
+            {activeTab === ALL_TAB && (
                 <div className="mt-4 space-y-4">
-                    <KpiTiles data={analytics.data} />
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                        <EnrolmentFunnel data={analytics.data} />
-                        <ActivityTimeline data={analytics.data} />
-                        <LeadSources data={analytics.data} />
-                        <CounsellorActivity data={analytics.data} />
-                        <CallOutcomes data={analytics.data} />
-                    </div>
+                    {analytics.isLoading && <DashboardSkeleton />}
+
+                    {/*
+                     * An explicit failure state, not a silent one. The first version
+                     * rendered this block only when data was present, so any error left the
+                     * page looking exactly like a feed with no dashboard -- indistinguishable
+                     * from "not deployed yet" and impossible to diagnose from the UI.
+                     */}
+                    {analytics.isError && (
+                        <DashboardError
+                            message={errorMessage(analytics.error)}
+                            onRetry={() => void analytics.refetch()}
+                        />
+                    )}
+
+                    {analytics.data && (
+                        <>
+                            <KpiTiles data={analytics.data} />
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                <EnrolmentFunnel data={analytics.data} />
+                                <ActivityTimeline data={analytics.data} />
+                                <LeadSources data={analytics.data} />
+                                <CounsellorActivity data={analytics.data} />
+                                <CallOutcomes data={analytics.data} />
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
@@ -289,4 +308,63 @@ function EmptyState({ loading }: { loading: boolean }) {
             )}
         </div>
     );
+}
+
+function DashboardSkeleton() {
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                {[0, 1, 2, 3, 4].map((i) => (
+                    <div
+                        key={i}
+                        className="h-20 animate-pulse rounded-lg border border-neutral-200 bg-neutral-50"
+                    />
+                ))}
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {[0, 1].map((i) => (
+                    <div
+                        key={i}
+                        className="h-56 animate-pulse rounded-lg border border-neutral-200 bg-neutral-50"
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
+    return (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3">
+            <div className="flex items-start gap-2">
+                <WarningCircle className="mt-0.5 size-4 shrink-0 text-danger-600" weight="fill" />
+                <div className="min-w-0 flex-1">
+                    <p className="text-body font-medium text-danger-700">
+                        Could not load the dashboard
+                    </p>
+                    {/* The actual reason, verbatim. A generic "something went wrong" here
+                        would leave exactly the diagnostic gap this block exists to close. */}
+                    <p className="mt-0.5 break-words text-caption text-danger-600">{message}</p>
+                    <p className="mt-1 text-caption text-neutral-600">
+                        The activity feed below is unaffected.
+                    </p>
+                </div>
+                <MyButton buttonType="secondary" scale="small" onClick={onRetry}>
+                    Retry
+                </MyButton>
+            </div>
+        </div>
+    );
+}
+
+/** Surface the status and server message rather than a generic string. */
+function errorMessage(error: unknown): string {
+    const e = error as
+        | { response?: { status?: number; data?: { message?: string } }; message?: string }
+        | undefined;
+    const status = e?.response?.status;
+    const body = e?.response?.data?.message;
+    if (status && body) return `HTTP ${status} - ${body}`;
+    if (status) return `HTTP ${status}`;
+    return e?.message ?? 'Unknown error';
 }

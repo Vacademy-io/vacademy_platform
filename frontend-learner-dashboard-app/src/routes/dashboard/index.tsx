@@ -132,6 +132,7 @@ import { useEngagementFeed } from "./-components/engagement/use-engagement-feed"
 import type { DailyTaskProgress } from "./-components/play/useDashboardHeroData";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { fetchPointsSummary, pointsMeKey, useCurrentInstituteId } from "@/services/points";
+import { StudyCompanionsShelf } from "./-components/StudyCompanionsShelf";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import {
@@ -1334,6 +1335,9 @@ export function DashboardComponent() {
               >
                 {/* Without a rail, announcements lead the main column */}
                 {!hasRail && <DashboardPinsPanel maxPins={3} />}
+                {/* Knowledge-base study companions. Renders null when the learner
+                    has none, so the layout is unchanged for everyone else. */}
+                <StudyCompanionsShelf />
                 {mainColumnWidgets.map((w) => (
                   <div key={w.id} className="empty:hidden">
                     {w.render}

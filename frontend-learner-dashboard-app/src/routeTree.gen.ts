@@ -86,6 +86,7 @@ import { Route as GoUsernameIndexRouteImport } from './routes/go/$username/index
 import { Route as EngagementHistoryIndexRouteImport } from './routes/engagement/history/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
 import { Route as CoursesCourseDetailsIndexRouteImport } from './routes/courses/course-details/index'
+import { Route as CompanionCompanionIdIndexRouteImport } from './routes/companion/$companionId/index'
 import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/reports/index'
 import { Route as AssessmentListIndexRouteImport } from './routes/assessment/list/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
@@ -526,6 +527,12 @@ const CoursesCourseDetailsIndexRoute =
     path: '/courses/course-details/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const CompanionCompanionIdIndexRoute =
+  CompanionCompanionIdIndexRouteImport.update({
+    id: '/companion/$companionId/',
+    path: '/companion/$companionId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssessmentReportsIndexRoute = AssessmentReportsIndexRouteImport.update({
   id: '/assessment/reports/',
   path: '/assessment/reports/',
@@ -805,6 +812,7 @@ export interface FileRoutesByFullPath {
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
+  '/companion/$companionId': typeof CompanionCompanionIdIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
@@ -920,6 +928,7 @@ export interface FileRoutesByTo {
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
   '/assessment/reports': typeof AssessmentReportsIndexRoute
+  '/companion/$companionId': typeof CompanionCompanionIdIndexRoute
   '/courses/course-details': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/engagement/history': typeof EngagementHistoryIndexRoute
@@ -1038,6 +1047,7 @@ export interface FileRoutesById {
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/list/': typeof AssessmentListIndexRoute
   '/assessment/reports/': typeof AssessmentReportsIndexRoute
+  '/companion/$companionId/': typeof CompanionCompanionIdIndexRoute
   '/courses/course-details/': typeof CoursesCourseDetailsIndexRoute
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/engagement/history/': typeof EngagementHistoryIndexRoute
@@ -1157,6 +1167,7 @@ export interface FileRouteTypes {
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
+    | '/companion/$companionId'
     | '/courses/course-details'
     | '/dashboard/notifications'
     | '/engagement/history'
@@ -1272,6 +1283,7 @@ export interface FileRouteTypes {
     | '/assessment/examination'
     | '/assessment/list'
     | '/assessment/reports'
+    | '/companion/$companionId'
     | '/courses/course-details'
     | '/dashboard/notifications'
     | '/engagement/history'
@@ -1389,6 +1401,7 @@ export interface FileRouteTypes {
     | '/assessment/examination/'
     | '/assessment/list/'
     | '/assessment/reports/'
+    | '/companion/$companionId/'
     | '/courses/course-details/'
     | '/dashboard/notifications/'
     | '/engagement/history/'
@@ -1507,6 +1520,7 @@ export interface RootRouteChildren {
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentListIndexRoute: typeof AssessmentListIndexRoute
   AssessmentReportsIndexRoute: typeof AssessmentReportsIndexRoute
+  CompanionCompanionIdIndexRoute: typeof CompanionCompanionIdIndexRoute
   CoursesCourseDetailsIndexRoute: typeof CoursesCourseDetailsIndexRoute
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   EngagementHistoryIndexRoute: typeof EngagementHistoryIndexRoute
@@ -2103,6 +2117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoursesCourseDetailsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/companion/$companionId/': {
+      id: '/companion/$companionId/'
+      path: '/companion/$companionId'
+      fullPath: '/companion/$companionId'
+      preLoaderRoute: typeof CompanionCompanionIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assessment/reports/': {
       id: '/assessment/reports/'
       path: '/assessment/reports'
@@ -2467,6 +2488,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentListIndexRoute: AssessmentListIndexRoute,
   AssessmentReportsIndexRoute: AssessmentReportsIndexRoute,
+  CompanionCompanionIdIndexRoute: CompanionCompanionIdIndexRoute,
   CoursesCourseDetailsIndexRoute: CoursesCourseDetailsIndexRoute,
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   EngagementHistoryIndexRoute: EngagementHistoryIndexRoute,

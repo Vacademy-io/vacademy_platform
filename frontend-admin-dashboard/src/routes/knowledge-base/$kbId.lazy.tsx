@@ -26,6 +26,7 @@ import { AddSourceDialog } from './-components/AddSourceDialog';
 import { AskPanel } from './-components/AskPanel';
 import { SourcesTable } from './-components/SourcesTable';
 import { GenerationHistory } from './-components/GenerationHistory';
+import { CompanionsSection } from './-components/companion/CompanionsSection';
 import type { OutlineNode } from './-types';
 
 export const Route = createLazyFileRoute('/knowledge-base/$kbId')({
@@ -428,6 +429,10 @@ function KnowledgeBaseDetailPage() {
                                 />
                             </div>
                         </div>
+
+                        {kb.purpose !== 'institute_info' && (
+                            <CompanionsSection kbId={kbId} kbName={kb.name} />
+                        )}
 
                         <div className="flex flex-col gap-2">
                             <p className="text-subtitle font-semibold text-neutral-700">

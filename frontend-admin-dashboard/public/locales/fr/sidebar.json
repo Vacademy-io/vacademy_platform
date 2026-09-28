@@ -115,6 +115,7 @@
     "salesDashboard": "Tableau de bord des ventes",
     "scannedAnswerSheetEvaluation": "Évaluation de copies scannées",
     "scheduleAnnouncement": "Programmer une annonce",
+    "liveSessionDashboard": "Tableau de bord : {{term}}",
     "scheduledLiveSessions": "{{term}} programmées",
     "scheduledTests": "Tests programmés",
     "sessions": "Sessions",

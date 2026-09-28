@@ -5,5 +5,7 @@
     "selectedCount_other": "{{count}} चयनित",
     "searchPlaceholder": "{{label}} खोजें…",
     "allSelected": "सभी चयनित",
-    "clear": "साफ़ करें"
+    "clear": "साफ़ करें",
+    "selectAll": "सभी चुनें",
+    "selectAllMatching": "मिलते हुए सभी चुनें"
 }

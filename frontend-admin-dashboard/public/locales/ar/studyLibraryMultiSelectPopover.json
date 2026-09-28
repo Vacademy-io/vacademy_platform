@@ -9,5 +9,7 @@
     "selectedCount_other": "{{count}} عنصر محدد",
     "searchPlaceholder": "بحث في {{label}}…",
     "allSelected": "الكل محدد",
-    "clear": "مسح"
+    "clear": "مسح",
+    "selectAll": "تحديد الكل",
+    "selectAllMatching": "تحديد كل النتائج"
 }

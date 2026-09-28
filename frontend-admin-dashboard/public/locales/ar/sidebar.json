@@ -115,6 +115,7 @@
     "salesDashboard": "لوحة المبيعات",
     "scannedAnswerSheetEvaluation": "تقييم أوراق الإجابة الممسوحة",
     "scheduleAnnouncement": "جدولة إعلان",
+    "liveSessionDashboard": "لوحة معلومات {{term}}",
     "scheduledLiveSessions": "{{term}} المجدولة",
     "scheduledTests": "الاختبارات المجدولة",
     "sessions": "الجلسات",

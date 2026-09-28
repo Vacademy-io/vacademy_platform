@@ -41,18 +41,34 @@ public interface LiveActivityAnalyticsRepository extends JpaRepository<UserLiveE
 
     /**
      * Revenue. The amount lives in the JSONB payload rather than a column because the feed
-     * stores whatever each producer had in hand -- so it is cast here rather than summed as
-     * a typed column.
+     * stores whatever each producer had in hand, so it is cast here rather than summed as a
+     * typed column.
+     *
+     * <p><b>CAST(... AS numeric) rather than the Postgres {@code ::} shorthand.</b> Written
+     * with {@code ::numeric} this query reached the driver as
+     * {@code (payload->>'amount'):numeric} -- one colon eaten -- and Postgres rejected it
+     * with a syntax error at the colon. JPA reserves a leading colon for named parameters,
+     * and something in that interaction consumed it.
+     *
+     * <p>Other native queries in this service do use {@code ::} successfully, so the trigger
+     * is narrower than "Hibernate always mangles it" and is not worth pinning down here. The
+     * standard-SQL form has no colon to lose, which makes the question moot. Prefer it in
+     * native queries -- this failure compiles, passes review, and only appears at runtime.
+     *
+     * <p>Also guarded with {@code jsonb_typeof(...) = 'number'} rather than a NOT NULL check.
+     * Postgres has no TRY_CAST, so one row holding a non-numeric amount would fail the cast
+     * and take the whole dashboard down with it. Asking the document what type it holds is
+     * the only check that cannot throw.
      */
     @Query(value = """
-            SELECT COALESCE(SUM((payload->>'amount')::numeric), 0)
+            SELECT COALESCE(SUM(CAST(payload->>'amount' AS numeric)), 0)
               FROM user_live_event
              WHERE institute_id = :instituteId
                AND category = 'PAYMENT'
                AND action = 'PAYMENT_SUCCEEDED'
                AND occurred_at >= :from
                AND occurred_at < :to
-               AND payload->>'amount' IS NOT NULL
+               AND jsonb_typeof(payload->'amount') = 'number'
             """, nativeQuery = true)
     Double sumRevenue(@Param("instituteId") String instituteId,
                       @Param("from") Timestamp from,

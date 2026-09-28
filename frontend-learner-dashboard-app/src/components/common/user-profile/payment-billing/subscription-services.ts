@@ -74,8 +74,12 @@ export interface PlanChangeTarget {
   direction: string;
   /** IMMEDIATE | END_OF_CYCLE */
   effective_type: string;
-  /** Unused value of the current plan, credited against this plan's price. */
+  /** The current plan's price, allowed against this plan's price. Zero when nothing is traded in. */
   proration_credit?: number | null;
+  /** True when the current plan was traded in, so amount_due_now is the price DIFFERENCE. */
+  trade_in_applied?: boolean;
+  /** Days this change adds to the access window. */
+  extension_days?: number | null;
   /** What the learner pays now. 0 for a scheduled downgrade. */
   amount_due_now?: number | null;
   effective_from?: string | null;

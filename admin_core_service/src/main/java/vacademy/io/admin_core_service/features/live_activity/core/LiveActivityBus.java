@@ -12,6 +12,9 @@ import vacademy.io.admin_core_service.features.live_activity.config.LiveActivity
 import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityEvent;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -41,10 +44,14 @@ import java.util.concurrent.TimeUnit;
  *       before every write.</li>
  * </ol>
  *
- * <p>Cross-replica delivery is NOT this class's job -- a producer on another replica reaches
- * us via {@code pg_notify} and {@link LiveActivityListener}, which then calls
- * {@link #publishLocal}. This is what CallEventBus never got, and why its multi-pod caveat
- * does not apply here.
+ * <p>Cross-replica delivery is NOT this class's job -- {@link LiveActivityPoller} tails the
+ * table and calls {@link #publishLocal} for anything produced elsewhere. This is what
+ * CallEventBus never got, and why its multi-pod caveat does not apply here.
+ *
+ * <p>Both the recorder (immediately, for the replica that produced the event) and the
+ * poller (for everything else) call {@link #publishLocal}, and the poller deliberately
+ * re-reads a small overlap window. So the same event arrives here more than once by design,
+ * and {@link #publishLocal} suppresses the repeats by id.
  */
 @Component
 @RequiredArgsConstructor
@@ -67,6 +74,21 @@ public class LiveActivityBus {
 
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<Subscription>> subsByInstitute =
             new ConcurrentHashMap<>();
+
+    /**
+     * Ids delivered recently, so a repeat is dropped rather than shown twice.
+     *
+     * <p>Bounded LRU rather than an unbounded set: this runs for the lifetime of the pod, so
+     * anything that only grows is a slow leak. The cap needs to exceed what one poll overlap
+     * can contain, which it does by a wide margin.
+     */
+    private final Map<String, Boolean> recentlyPublished = Collections.synchronizedMap(
+            new LinkedHashMap<>(1024, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > 2000;
+                }
+            });
 
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
@@ -121,6 +143,12 @@ public class LiveActivityBus {
         if (list == null || list.isEmpty()) {
             return;
         }
+        if (event.getEventId() != null
+                && recentlyPublished.put(event.getEventId(), Boolean.TRUE) != null) {
+            // Already delivered -- either the poller's overlap window re-read it, or this
+            // replica produced it and published immediately before the poller saw it.
+            return;
+        }
 
         String category = event.getCategory() == null ? null : event.getCategory().name();
 
@@ -144,6 +172,14 @@ public class LiveActivityBus {
     public int subscriberCount(String instituteId) {
         CopyOnWriteArrayList<Subscription> list = subsByInstitute.get(instituteId);
         return list == null ? 0 : list.size();
+    }
+
+    /**
+     * Whether anyone on this replica is watching. The poller checks this first so a quiet
+     * institute costs no queries at all.
+     */
+    public boolean hasSubscribers() {
+        return !subsByInstitute.isEmpty();
     }
 
     private void sendJson(Subscription sub, String eventName, String json, String instituteId) {

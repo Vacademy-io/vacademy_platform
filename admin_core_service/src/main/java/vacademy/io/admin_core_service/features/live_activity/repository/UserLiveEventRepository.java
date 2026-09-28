@@ -19,7 +19,7 @@ public interface UserLiveEventRepository
      * The idempotent insert. Returns 1 when this call actually wrote the row and 0 when
      * another replica, a retried webhook or a provider sibling event got there first.
      *
-     * <p>The caller fires pg_notify only on a non-zero return, which is what makes the whole
+     * <p>The caller publishes only on a non-zero return, which is what makes the whole
      * pipeline exactly-once without a distributed lock -- Postgres is the arbiter.
      */
     @Modifying
@@ -52,12 +52,15 @@ public interface UserLiveEventRepository
                        @Param("payload") String payload);
 
     /**
-     * Listener recovery. LISTEN delivers at-most-once, so anything published while a
-     * replica's connection was down is simply gone from the notification stream -- this
-     * replays it from the table on reconnect. Persistence is what makes that hole
-     * recoverable rather than silent.
+     * The poller's tail query. Reading forward from a cursor is the whole cross-replica
+     * mechanism: an event produced on another pod reaches this one's subscribers here.
+     *
+     * <p>Capped deliberately. A burst -- a bulk lead import, a call storm -- would otherwise
+     * have every replica re-reading thousands of rows several times a second. With the cap
+     * the cursor simply advances over several ticks, and anything a viewer misses in the
+     * meantime is still served by the backfill query when they load or reconnect.
      */
-    List<UserLiveEvent> findByOccurredAtGreaterThanOrderByOccurredAtAsc(Timestamp since);
+    List<UserLiveEvent> findTop200ByOccurredAtGreaterThanOrderByOccurredAtAsc(Timestamp since);
 
     /**
      * Per-category chunked retention delete. Loops until it returns 0.

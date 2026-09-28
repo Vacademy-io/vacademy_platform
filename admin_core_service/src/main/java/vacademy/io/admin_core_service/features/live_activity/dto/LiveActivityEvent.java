@@ -14,9 +14,9 @@ import java.util.Map;
  * The wire and in-process shape of one activity event. Immutable, provider-neutral, and
  * modelled on {@code telephony/spi/dto/NormalizedCallEvent}.
  *
- * <p>This is what producers build, what crosses the pg_notify channel as JSON, and what the
- * browser receives over SSE -- one shape end to end, so the listener can deserialize a
- * notification straight into something publishable without a second mapping layer.
+ * <p>This is what producers build and what the browser receives over SSE -- one shape end
+ * to end, so a row tailed from the table and a freshly recorded event are indistinguishable
+ * to the client.
  */
 @Value
 @Builder

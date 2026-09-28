@@ -6,8 +6,9 @@
 -- prospects filling forms, learners at checkout, counsellors calling, AI agents dialling,
 -- webhook threads and scheduled jobs -- none of which the aspect can reach.
 --
--- Rows are written by LiveActivityRecorder, which then fires pg_notify('live_activity')
--- so every replica's LISTEN connection can push the event to its SSE subscribers.
+-- Rows are written by LiveActivityRecorder, which publishes to its own replica's SSE
+-- subscribers immediately. Other replicas pick the row up by tailing this table on a short
+-- interval, which is why occurred_at carries an index -- see LiveActivityPoller.
 
 CREATE TABLE user_live_event (
     id                 VARCHAR(36)  PRIMARY KEY,
@@ -41,8 +42,8 @@ CREATE TABLE user_live_event (
 --
 -- Rather than harden each hook separately, the recorder does
 --   INSERT ... ON CONFLICT (dedupe_key) DO NOTHING
--- and fires pg_notify ONLY when a row was actually inserted. The database is the arbiter;
--- the losing replica stays silent and subscribers see the event once.
+-- and publishes ONLY when a row was actually inserted. The database is the arbiter; the
+-- losing replica stays silent and subscribers see the event once.
 CREATE UNIQUE INDEX uq_ule_dedupe ON user_live_event (dedupe_key);
 
 -- Read paths:

@@ -4,11 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.live_activity.config.LiveActivityProperties;
 import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityEvent;
 import vacademy.io.admin_core_service.features.live_activity.repository.UserLiveEventRepository;
 
@@ -36,26 +34,19 @@ public class LiveActivityTxOps {
 
     private static final Logger log = LoggerFactory.getLogger(LiveActivityTxOps.class);
 
-    /** NOTIFY caps payloads at 8000 bytes. Stay well clear of it. */
-    private static final int MAX_NOTIFY_PAYLOAD = 7000;
-
     private final UserLiveEventRepository repository;
-    private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-    private final LiveActivityProperties properties;
 
     /**
-     * Insert-if-absent, then notify only when this call actually wrote the row.
+     * Insert-if-absent.
      *
-     * <p>Both statements share one transaction, and Postgres queues notifications until
-     * commit. That ordering is what guarantees a subscriber is never told about a row that
-     * subsequently rolls back.
-     *
-     * @return the stamped event when it was newly recorded, or {@code null} when another
-     *         replica, a retried webhook or a provider sibling event got there first.
+     * @return the stamped event when this call actually wrote the row, or {@code null} when
+     *         another replica, a retried webhook or a provider sibling event got there
+     *         first. Callers publish only on a non-null return, so a duplicate never
+     *         reaches a subscriber twice.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public LiveActivityEvent insertAndNotify(LiveActivityEvent event) {
+    public LiveActivityEvent insertIfAbsent(LiveActivityEvent event) {
         long millis = event.getOccurredAtEpochMillis() > 0
                 ? event.getOccurredAtEpochMillis()
                 : System.currentTimeMillis();
@@ -79,53 +70,12 @@ public class LiveActivityTxOps {
                 serialisePayload(event));
 
         if (inserted == 0) {
-            log.debug("live activity event already recorded, skipping notify: {}",
+            log.debug("live activity event already recorded, skipping: {}",
                     event.getDedupeKey());
             return null;
         }
 
-        LiveActivityEvent stamped = stamp(event, id, millis);
-        notifyChannel(stamped, id);
-        return stamped;
-    }
-
-    private void notifyChannel(LiveActivityEvent stamped, String id) {
-        String payload;
-        try {
-            payload = objectMapper.writeValueAsString(stamped);
-        } catch (Exception e) {
-            log.warn("live activity notify serialisation failed for {}", id, e);
-            return;
-        }
-
-        if (payload.length() > MAX_NOTIFY_PAYLOAD) {
-            // The complete record is already in the table, so shedding the optional fields
-            // beats failing the notification. Listeners still get identity and category,
-            // which is everything the feed needs to render the row.
-            try {
-                payload = objectMapper.writeValueAsString(LiveActivityEvent.builder()
-                        .eventId(id)
-                        .instituteId(stamped.getInstituteId())
-                        .occurredAtEpochMillis(stamped.getOccurredAtEpochMillis())
-                        .category(stamped.getCategory())
-                        .action(stamped.getAction())
-                        .actorType(stamped.getActorType())
-                        .dedupeKey(stamped.getDedupeKey())
-                        .subjectName(stamped.getSubjectName())
-                        .entityId(stamped.getEntityId())
-                        .build());
-            } catch (Exception e) {
-                log.warn("live activity trimmed notify serialisation failed for {}", id, e);
-                return;
-            }
-        }
-
-        try {
-            jdbcTemplate.queryForObject("SELECT pg_notify(?, ?)", String.class,
-                    properties.getChannel(), payload);
-        } catch (Exception e) {
-            log.warn("pg_notify failed for live activity event {}: {}", id, e.getMessage());
-        }
+        return stamp(event, id, millis);
     }
 
     private LiveActivityEvent stamp(LiveActivityEvent event, String id, long millis) {

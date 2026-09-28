@@ -14,28 +14,10 @@ public class LiveActivityProperties {
 
     private boolean enabled = true;
 
-    /**
-     * JDBC URL for the dedicated LISTEN connection, which MUST bypass PgBouncer.
-     *
-     * <p>Blank disables the listener entirely and the push becomes replica-local. That is a
-     * safe degradation only because events are persisted: the row is still written and the
-     * UI's backfill still surfaces it, so a misconfigured deployment gets a slower feed
-     * rather than a wrong one.
-     *
-     * <p>Never point this at PgBouncer. It runs pool_mode=transaction, where LISTEN appears
-     * to succeed, delivers nothing, and can leak the subscription onto a shared server
-     * connection handed to an unrelated caller.
-     */
-    private String directDbUrl = "";
-    private String directDbUsername = "";
-    private String directDbPassword = "";
-
-    private String channel = "live_activity";
-
     private Sse sse = new Sse();
     private Buffer backfill = new Buffer();
     private Retention retention = new Retention();
-    private Listener listener = new Listener();
+    private Poll poll = new Poll();
 
     @Data
     public static class Sse {
@@ -55,9 +37,22 @@ public class LiveActivityProperties {
     }
 
     @Data
-    public static class Listener {
-        private int reconnectDelaySeconds = 5;
-        private int pollMillis = 500;
+    public static class Poll {
+        /**
+         * How often a replica tails the table for events produced elsewhere. Only ticks
+         * while this replica has an SSE subscriber, so a quiet institute costs nothing.
+         *
+         * <p>This is NOT the latency for most events: the replica that produced one
+         * publishes to its own subscribers immediately.
+         */
+        private long intervalMillis = 300;
+
+        /**
+         * How far back each tick re-reads. Two rows can share a millisecond, and a strict
+         * cursor would drop the second -- the bus suppresses the resulting echo by id, so
+         * overlapping costs nothing but closes that gap.
+         */
+        private long overlapMillis = 2000;
     }
 
     @Data

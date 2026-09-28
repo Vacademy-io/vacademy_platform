@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -33,24 +32,16 @@ public class LiveActivityRecorder {
     private final LiveActivityTxOps txOps;
     private final LiveActivityProperties properties;
     private final LiveActivityBus bus;
-    private final LiveActivityListener listener;
     private final Executor executor;
 
-    /**
-     * The listener is injected lazily only so a future change making it reach back into the
-     * recorder cannot become a startup-time context failure. Today the graph is acyclic:
-     * recorder depends on listener and bus, listener depends on bus.
-     */
     @Autowired
     public LiveActivityRecorder(LiveActivityTxOps txOps,
                                 LiveActivityProperties properties,
                                 LiveActivityBus bus,
-                                @Lazy LiveActivityListener listener,
                                 @Qualifier("taskExecutor") Executor executor) {
         this.txOps = txOps;
         this.properties = properties;
         this.bus = bus;
-        this.listener = listener;
         this.executor = executor;
     }
 
@@ -75,8 +66,8 @@ public class LiveActivityRecorder {
         // starves the pool for unrelated requests. Handing the work to the shared executor
         // lets the caller return and release its connection first.
         //
-        // This also removes the 2-5ms the insert and notify were adding to every payment,
-        // enrolment, call transition and lead submission.
+        // It also removes the 2-5ms the insert was adding to every payment, enrolment,
+        // call transition and lead submission.
         //
         // taskExecutor is bounded (8/16, queue 2000) with CallerRunsPolicy, so a genuine
         // flood degrades to running inline -- slower, but never unbounded thread growth.
@@ -88,18 +79,17 @@ public class LiveActivityRecorder {
 
     private void persist(LiveActivityEvent event) {
         try {
-            LiveActivityEvent stamped = txOps.insertAndNotify(event);
+            LiveActivityEvent stamped = txOps.insertIfAbsent(event);
             if (stamped == null) {
                 // A duplicate. Another replica, a webhook retry, or a provider sibling event
                 // already recorded this moment and already notified for it.
                 return;
             }
-            // With the listener running, the notification reaches every replica including
-            // this one, so publishing here as well would double-deliver to whichever replica
-            // happened to serve the request. Only fan out locally when nothing else will.
-            if (!listener.isActive()) {
-                bus.publishLocal(stamped);
-            }
+            // Publish to this replica's subscribers straight away -- zero added latency for
+            // whoever is watching on the pod that produced the event. Other replicas pick it
+            // up on their next poll. The bus suppresses the echo when the poller's overlap
+            // window re-reads this same row.
+            bus.publishLocal(stamped);
         } catch (Exception e) {
             // Deliberately swallowed. Losing a feed row is always preferable to failing the
             // payment, enrolment or call that produced it.

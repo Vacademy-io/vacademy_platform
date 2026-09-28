@@ -17,8 +17,8 @@ import java.sql.Timestamp;
 /**
  * One row per real-world moment in the live activity feed.
  *
- * <p>Written only through {@code LiveActivityRecorder}, never directly -- the recorder owns
- * the ON CONFLICT DO NOTHING insert and the pg_notify that follows it.
+ * <p>Written only through {@code LiveActivityRecorder}, never directly -- it owns the
+ * ON CONFLICT DO NOTHING insert and the fan-out that follows it.
  */
 @Entity
 @Table(name = "user_live_event")

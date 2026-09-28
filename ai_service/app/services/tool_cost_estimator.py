@@ -364,6 +364,38 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ---- KB companions for learners (V534) ----------------------------------
+    # The institute pays; lessons and practice sets are compiled once per topic
+    # and shared by every learner, so only Ask and uncached speech are per-learner.
+    # MUST agree with the V534 seeds and FE computeToolCredits.
+    "kb_companion_lesson": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("5"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "kb_companion_practice": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "kb_companion_ask": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "kb_companion_speech": {
+        "request_type": "knowledge_base",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     # ---- Question papers from a knowledge base (V441) -----------------------
     # request_type 'assessment' is already in the ai_token_usage CHECK — reusing
     # it avoids another DROP+ADD of that constraint (the V325/V435 trap).

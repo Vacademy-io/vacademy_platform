@@ -72,7 +72,8 @@
             "language": "Language",
             "languages": {
                 "en": "English",
-                "hi": "Hindi"
+                "hi": "Hindi",
+                "kn": "Kannada"
             }
         },
         "scope": {

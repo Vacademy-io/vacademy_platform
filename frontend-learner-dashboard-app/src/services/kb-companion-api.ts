@@ -14,7 +14,7 @@ const BASE = `${AI_SERVICE_URL}/kb-companion/v1`;
 // ── types ────────────────────────────────────────────────────────────────────
 
 export type CompanionMode = "learn" | "practice" | "ask";
-export type CompanionLanguage = "en" | "hi";
+export type CompanionLanguage = "en" | "hi" | "kn";
 
 export interface CompanionProgressSummary {
   leaves_total: number;

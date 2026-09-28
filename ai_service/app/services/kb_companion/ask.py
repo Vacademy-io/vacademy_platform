@@ -34,7 +34,7 @@ MAX_QUESTION_CHARS = 1000
 
 _DISTRESS_RE = re.compile(
     r"(kill\s+my\s*self|suicid|want\s+to\s+die|end\s+my\s+life|self[\s-]?harm|hurt\s+my\s*self|"
-    r"आत्महत्या|मर\s+जाना\s+चाहत|खुद\s+को\s+नुकसान)",
+    r"आत्महत्या|मर\s+जाना\s+चाहत|खुद\s+को\s+नुकसान|ಆತ್ಮಹತ್ಯೆ|ಸಾಯಬೇಕು|ಸಾಯಲು\s+ಬಯಸ)",
     re.IGNORECASE,
 )
 
@@ -52,6 +52,13 @@ DISTRESS_REPLY = {
         "भारत में आप **Tele-MANAS 14416** पर कॉल कर सकते हैं (मुफ़्त, किसी भी समय)। "
         "अगर आप अभी खतरे में हैं, तो तुरंत आपातकालीन नंबर पर कॉल करें।\n\n"
         "जब भी आप पढ़ाई जारी रखना चाहें, मैं यहाँ हूँ। 💙"
+    ),
+    "kn": (
+        "ನೀವು ಹೀಗೆ ಅನುಭವಿಸುತ್ತಿರುವುದಕ್ಕೆ ನನಗೆ ತುಂಬಾ ಬೇಸರವಾಗಿದೆ, ಹೇಳಿದ್ದು ಒಳ್ಳೆಯದಾಯಿತು. "
+        "ದಯವಿಟ್ಟು ಇಂದೇ ನಿಮಗೆ ನಂಬಿಕೆಯಿರುವ ಯಾರೊಂದಿಗಾದರೂ ಮಾತನಾಡಿ — ಪೋಷಕರು, ಶಿಕ್ಷಕರು ಅಥವಾ ಹತ್ತಿರದ ಹಿರಿಯರು. "
+        "ಭಾರತದಲ್ಲಿ **Tele-MANAS 14416** ಗೆ ಕರೆ ಮಾಡಬಹುದು (ಉಚಿತ, ಯಾವುದೇ ಸಮಯದಲ್ಲಿ). "
+        "ನೀವು ಈಗ ಅಪಾಯದಲ್ಲಿದ್ದರೆ, ತಕ್ಷಣ ತುರ್ತು ಸಂಖ್ಯೆಗೆ ಕರೆ ಮಾಡಿ.\n\n"
+        "ನೀವು ಓದನ್ನು ಮುಂದುವರಿಸಲು ಬಯಸಿದಾಗ ನಾನು ಇಲ್ಲಿದ್ದೇನೆ. 💙"
     ),
 }
 
@@ -77,6 +84,10 @@ def not_found_reply(language: str, suggestions: Sequence[str]) -> str:
         base = "यह आपकी पढ़ाई की सामग्री में नहीं मिला, इसलिए मैं इसका उत्तर अंदाज़े से नहीं दूँगा।"
         more = (" आप इनके बारे में पूछ सकते हैं: " + ", ".join(tops) + ".") if tops else ""
         return base + more + " सवाल को किताब के शब्दों में दोबारा पूछकर देखें।"
+    if language == "kn":
+        base = "ಇದು ನಿಮ್ಮ ಪಠ್ಯ ಸಾಮಗ್ರಿಯಲ್ಲಿ ಸಿಗಲಿಲ್ಲ, ಆದ್ದರಿಂದ ನಾನು ಊಹಿಸಿ ಉತ್ತರಿಸುವುದಿಲ್ಲ."
+        more = (" ನೀವು ಇವುಗಳ ಬಗ್ಗೆ ಕೇಳಬಹುದು: " + ", ".join(tops) + ".") if tops else ""
+        return base + more + " ಪುಸ್ತಕದಲ್ಲಿರುವ ಪದಗಳನ್ನು ಬಳಸಿ ಮತ್ತೊಮ್ಮೆ ಕೇಳಿ ನೋಡಿ."
     base = "I couldn't find that in your study material, so I won't guess."
     more = (" You could ask me about: " + ", ".join(tops) + ".") if tops else ""
     return base + more + " Try asking again using the words your book uses."
@@ -194,6 +205,6 @@ async def answer(*, companion, learner_name, memo, question, excerpts, figures_t
         ask_messages(companion=companion, learner_name=learner_name, memo=memo, question=question,
                      excerpts=excerpts, figures_text=figures_text, history=history,
                      covered_topics=covered_topics, current_topic=current_topic),
-        max_tokens=1800, temperature=0.3, label="kbc-ask",
+        max_tokens=1800, temperature=0.3, label="kbc-ask", language=companion.get("language"),
     )
     return shape_answer(parsed, citations, figures), res

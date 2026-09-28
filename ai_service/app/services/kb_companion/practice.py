@@ -103,7 +103,7 @@ async def _run(job: PracticeJob) -> None:
             parsed, res = await llm.complete_json(
                 practice_messages(kb_name=job.kb.get("name") or "", node_title=job.node.get("title") or "",
                                   passages=material.passages_text(), language=job.language),
-                max_tokens=6000, temperature=0.4, label="kbc-practice",
+                max_tokens=6000, temperature=0.4, label="kbc-practice", language=job.language,
             )
         questions = validate_questions(parsed)
         if len(questions) < 3:

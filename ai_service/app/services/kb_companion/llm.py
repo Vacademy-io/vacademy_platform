@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 PRIMARY_MODEL = os.getenv("KB_COMPANION_MODEL", "z-ai/glm-5.3-flash")
 FALLBACK_MODEL = os.getenv("KB_COMPANION_FALLBACK_MODEL", "google/gemini-2.5-flash")
+# A language whose writing quality differs by model can be pointed elsewhere
+# without touching the rest, e.g. KB_COMPANION_MODEL_KN=google/gemini-2.5-flash.
+
+
+def primary_for(language: Optional[str]) -> str:
+    if language:
+        override = os.getenv(f"KB_COMPANION_MODEL_{language.upper()}")
+        if override:
+            return override.strip()
+    return PRIMARY_MODEL
 REASONING_EFFORT = os.getenv("KB_COMPANION_REASONING_EFFORT", "low").strip().lower()
 TIMEOUT_SECONDS = float(os.getenv("KB_COMPANION_LLM_TIMEOUT", "180"))
 # Thinking tokens count against max_tokens on reasoning models: add headroom so
@@ -107,9 +117,10 @@ async def complete(
     temperature: float = 0.4,
     json_mode: bool = False,
     label: str = "kb-companion",
+    language: Optional[str] = None,
 ) -> LlmResult:
     last: Optional[Exception] = None
-    for model in dict.fromkeys([PRIMARY_MODEL, FALLBACK_MODEL]):
+    for model in dict.fromkeys([primary_for(language), FALLBACK_MODEL]):
         try:
             return await _call(model, messages, max_tokens=max_tokens, temperature=temperature, json_mode=json_mode)
         except Exception as exc:  # noqa: BLE001
@@ -139,11 +150,12 @@ def parse_json(text: str) -> Dict[str, Any]:
 
 
 async def complete_json(messages: List[Dict[str, str]], *, max_tokens: int = 6000, temperature: float = 0.4,
-                        label: str = "kb-companion") -> tuple[Dict[str, Any], LlmResult]:
+                        label: str = "kb-companion", language: Optional[str] = None) -> tuple[Dict[str, Any], LlmResult]:
     """complete() + parse, with one retry when the output is not valid JSON."""
     last: Optional[Exception] = None
     for _ in range(2):
-        res = await complete(messages, max_tokens=max_tokens, temperature=temperature, json_mode=True, label=label)
+        res = await complete(messages, max_tokens=max_tokens, temperature=temperature, json_mode=True, label=label,
+                             language=language)
         try:
             return parse_json(res.content), res
         except ValueError as exc:

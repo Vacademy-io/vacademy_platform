@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 SPEECH_TOOL = "kb_companion_speech"
 MAX_SPEECH_CHARS = 700
-LANG_CODES = {"en": "en-IN", "hi": "hi-IN"}
+LANG_CODES = {"en": "en-IN", "hi": "hi-IN", "kn": "kn-IN"}
+# Languages Sarvam voices well and the default engine may not.
+SARVAM_FIRST = {"kn"}
 PACE = "1.0"
 
 _MD_RE = re.compile(r"[*_`#>|~]+")
@@ -40,7 +42,8 @@ def speakable(text: str) -> str:
 
 def voice_for(companion: Dict) -> Tuple[str, str, str]:
     lang = LANG_CODES.get(companion.get("language") or "en", "en-IN")
-    provider = (companion.get("voice_provider") or ("smallest" if smallest_available() else "sarvam")).lower()
+    default = "sarvam" if companion.get("language") in SARVAM_FIRST or not smallest_available() else "smallest"
+    provider = (companion.get("voice_provider") or default).lower()
     voice = companion.get("voice_id") or default_voice_for(provider, lang)
     return provider, voice, lang
 

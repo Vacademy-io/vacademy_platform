@@ -72,7 +72,9 @@ export function masteryTone(mastery: number | null | undefined): MasteryTone {
 
 /** BCP-47 voice tag for the browser speech fallback. */
 export function speechLangFor(language: string | null | undefined): string {
-  return language === "hi" ? "hi-IN" : "en-IN";
+  if (language === "hi") return "hi-IN";
+  if (language === "kn") return "kn-IN";
+  return "en-IN";
 }
 
 /** Fisher-Yates; returns a new array. */

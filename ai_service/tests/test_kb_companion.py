@@ -249,3 +249,26 @@ def test_not_found_reply_suggests_covered_topics():
 def test_speakable_drops_markdown_and_citations():
     t = speech.speakable("**Chlorophyll** absorbs light [1][2].\n| A | B |\n|---|---|\n| x | y |")
     assert "[1]" not in t and "*" not in t and "---" not in t and "Chlorophyll absorbs light" in t
+
+
+# ── Kannada ─────────────────────────────────────────────────────────────────
+
+def test_kannada_is_a_teaching_language():
+    assert "Kannada" in lesson.LANG_NAMES["kn"] and "brackets" in lesson.LANG_NAMES["kn"]
+    assert speech.LANG_CODES["kn"] == "kn-IN"
+    assert "Tele-MANAS" in ask.DISTRESS_REPLY["kn"]
+    assert "ಪಠ್ಯ" in ask.not_found_reply("kn", ["ಆಮ್ಲಗಳು"]) and "ಆಮ್ಲಗಳು" in ask.not_found_reply("kn", ["ಆಮ್ಲಗಳು"])
+    assert ask.is_distress("ನನಗೆ ಸಾಯಬೇಕು ಅನಿಸುತ್ತಿದೆ")
+
+
+def test_kannada_voice_defaults_to_sarvam():
+    provider, voice, lang = speech.voice_for({"language": "kn"})
+    assert provider == "sarvam" and lang == "kn-IN"
+
+
+def test_per_language_model_override(monkeypatch):
+    from app.services.kb_companion import llm
+    monkeypatch.setenv("KB_COMPANION_MODEL_KN", "google/gemini-2.5-flash")
+    assert llm.primary_for("kn") == "google/gemini-2.5-flash"
+    assert llm.primary_for("en") == llm.PRIMARY_MODEL
+    assert llm.primary_for(None) == llm.PRIMARY_MODEL

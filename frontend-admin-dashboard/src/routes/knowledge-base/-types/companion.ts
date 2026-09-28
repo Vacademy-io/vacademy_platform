@@ -1,6 +1,6 @@
 /** Knowledge Base companions — mirror of ai_service `/kb-companion/v1` (V535 schema). */
 
-export type CompanionLanguage = 'en' | 'hi';
+export type CompanionLanguage = 'en' | 'hi' | 'kn';
 export type CompanionMode = 'learn' | 'practice' | 'ask';
 export type CompanionStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 export type CompanionTargetType = 'INSTITUTE' | 'BATCH' | 'LEARNER';

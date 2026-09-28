@@ -187,7 +187,7 @@ SHELL_CSS = """
 :root{--vk-accent:%(accent)s;--vk-ink:#1f2937;--vk-muted:#6b7280;--vk-line:#e5e7eb;--vk-soft:color-mix(in srgb,var(--vk-accent) 9%%,#fff);--vk-soft2:color-mix(in srgb,var(--vk-accent) 16%%,#fff);--vk-r:16px}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent}
-body{font:16px/1.6 "Inter","Segoe UI",system-ui,-apple-system,"Noto Sans","Noto Sans Devanagari",sans-serif;color:var(--vk-ink);padding:4px 2px 12px;overflow-wrap:break-word}
+body{font:16px/1.6 "Inter","Segoe UI",system-ui,-apple-system,"Noto Sans","Noto Sans Devanagari","Noto Sans Kannada","Tunga",sans-serif;color:var(--vk-ink);padding:4px 2px 12px;overflow-wrap:break-word}
 h1,h2,h3{line-height:1.25;margin:.2em 0 .5em;color:#111827}
 h1{font-size:1.6rem}h2{font-size:1.3rem}h3{font-size:1.08rem}
 p{margin:.45em 0}

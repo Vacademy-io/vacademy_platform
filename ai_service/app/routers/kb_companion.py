@@ -113,7 +113,7 @@ class CompanionFields(BaseModel):
     avatar_emoji: Optional[str] = Field(None, max_length=16)
     accent_color: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     persona: Optional[str] = Field(None, max_length=1000)
-    language: Optional[str] = Field(None, pattern=r"^(en|hi)$")
+    language: Optional[str] = Field(None, pattern=r"^(en|hi|kn)$")
     modes: Optional[List[str]] = None
     scope_node_ids: Optional[List[str]] = None
     voice_enabled: Optional[bool] = None

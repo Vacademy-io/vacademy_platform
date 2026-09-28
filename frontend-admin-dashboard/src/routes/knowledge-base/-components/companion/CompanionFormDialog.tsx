@@ -398,7 +398,7 @@ export function CompanionFormDialog({
                                 onValueChange={(v) => setLanguage(v as CompanionLanguage)}
                                 className="flex gap-4"
                             >
-                                {(['en', 'hi'] as const).map((lang) => (
+                                {(['en', 'hi', 'kn'] as const).map((lang) => (
                                     <label key={lang} className="flex items-center gap-2 text-body">
                                         <RadioGroupItem value={lang} />
                                         {t(`form.basics.languages.${lang}`)}

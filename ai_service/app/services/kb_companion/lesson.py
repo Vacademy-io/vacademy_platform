@@ -37,7 +37,13 @@ MAX_CARDS = 9
 RENDER_CONCURRENCY = 4
 VISUAL_KINDS = ("hook", "concept", "figure", "compare", "process", "example", "flashcards", "recap")
 CHECK_KIND = "check"
-LANG_NAMES = {"en": "English", "hi": "Hindi (Devanagari script)"}
+LANG_NAMES = {
+    "en": "English",
+    "hi": "Hindi (Devanagari script)",
+    # As Karnataka Kannada-medium textbooks do: Kannada, with the English term in
+    # brackets the first time a technical word appears.
+    "kn": "Kannada (Kannada script); give the English term in brackets the first time a technical or scientific word appears, as Karnataka textbooks do",
+}
 
 # Every compile in this pod, kept referenced so the event loop does not drop it.
 _BACKGROUND: set = set()
@@ -368,7 +374,7 @@ async def compile_lesson(job: CompileJob) -> None:
         plan, res = await llm.complete_json(
             plan_messages(kb_name=job.kb.get("name") or "", node_title=job.node.get("title") or "",
                           material=material, language=job.language),
-            max_tokens=7000, temperature=0.4, label="kbc-plan",
+            max_tokens=7000, temperature=0.4, label="kbc-plan", language=job.language,
         )
     _count(job, res)
     title, objective, cards = validate_plan(plan, list(material.figures.keys()))
@@ -420,7 +426,8 @@ async def _render_card(job: CompileJob, card: Dict[str, Any], material: Material
     for attempt in range(2):
         try:
             async with _POD_LLM_SLOTS:
-                res = await llm.complete(msgs, max_tokens=5000, temperature=0.5, label="kbc-card")
+                res = await llm.complete(msgs, max_tokens=5000, temperature=0.5, label="kbc-card",
+                                         language=job.language)
             _count(job, res)
             html, used = sanitize_fragment(res.content, material.figures, citation_page=page)
             if len(re.sub(r"<[^>]+>", "", html).strip()) >= 20:

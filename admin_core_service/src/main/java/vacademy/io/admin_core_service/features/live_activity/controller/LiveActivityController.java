@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityBus;
+import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityAnalyticsDTO;
 import vacademy.io.admin_core_service.features.live_activity.dto.LiveActivityFeedItemDTO;
 import vacademy.io.admin_core_service.features.live_activity.dto.StreamTokenResponse;
 import vacademy.io.admin_core_service.features.live_activity.service.LiveActivityAccessService;
+import vacademy.io.admin_core_service.features.live_activity.service.LiveActivityAnalyticsService;
 import vacademy.io.admin_core_service.features.live_activity.service.LiveActivityReadService;
 import vacademy.io.admin_core_service.features.live_activity.service.LiveActivityStreamTokenService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -40,6 +42,7 @@ public class LiveActivityController {
 
     private final LiveActivityBus bus;
     private final LiveActivityReadService readService;
+    private final LiveActivityAnalyticsService analyticsService;
     private final LiveActivityAccessService accessService;
     private final LiveActivityStreamTokenService tokenService;
     private final InstituteAccessValidator instituteAccessValidator;
@@ -104,6 +107,25 @@ public class LiveActivityController {
 
         return ResponseEntity.ok(readService.feed(
                 instituteId, allowed, categories, from, to, counsellorUserId, page, size));
+    }
+
+    /**
+     * The whole dashboard in one call.
+     *
+     * <p>One endpoint rather than one per card, on purpose. Institute Pulse split its rails
+     * across five endpoints and a cross-service fan-out, which is what made it expensive --
+     * every figure here is a grouped query over a single table, so splitting them would buy
+     * nothing and cost a round trip each.
+     */
+    @GetMapping("/analytics")
+    public ResponseEntity<LiveActivityAnalyticsDTO> analytics(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("from") long from,
+            @RequestParam("to") long to) {
+
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(analyticsService.analytics(instituteId, from, to));
     }
 
     /** Counter strip. */

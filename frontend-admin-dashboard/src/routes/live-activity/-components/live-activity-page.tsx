@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Helmet } from 'react-helmet';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Broadcast, Pause, Play } from '@phosphor-icons/react';
@@ -8,6 +9,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { getInstituteId } from '@/constants/helper';
 import {
     markLiveActivitySeen,
+    useLiveActivityAnalytics,
     useLiveActivityBackfill,
     useLiveActivityCounts,
     type LiveActivityCategory,
@@ -15,6 +17,14 @@ import {
 import { useLiveActivityStream } from '../-hooks/useLiveActivityStream';
 import { collapseEvents } from './collapse-events';
 import { ActivityRow } from './ActivityRow';
+import { KpiTiles } from './KpiTiles';
+import {
+    ActivityTimeline,
+    CallOutcomes,
+    CounsellorActivity,
+    EnrolmentFunnel,
+    LeadSources,
+} from './DashboardCharts';
 
 const ALL_TAB = 'ALL';
 
@@ -55,6 +65,22 @@ export function LiveActivityPage() {
 
     const backfill = useLiveActivityBackfill(instituteId, { size: 100 });
     const counts = useLiveActivityCounts(instituteId, since);
+    const analytics = useLiveActivityAnalytics(instituteId, since, since + 24 * 60 * 60 * 1000);
+
+    // Refresh the numbers when the stream delivers something, rather than on a timer. The
+    // dashboard is a view of the same events the feed is already receiving, so polling it
+    // would re-ask a question we have just been told the answer to.
+    const queryClient = useQueryClient();
+    const eventCount = events.length;
+    useEffect(() => {
+        if (eventCount === 0) return;
+        const t = setTimeout(() => {
+            void queryClient.invalidateQueries({ queryKey: ['live-activity', 'analytics'] });
+            void queryClient.invalidateQueries({ queryKey: ['live-activity', 'counts'] });
+        }, 3000);
+        // Debounced: a burst of events should cost one refresh, not one per event.
+        return () => clearTimeout(t);
+    }, [eventCount, queryClient]);
 
     useEffect(() => {
         setNavHeading(<h1 className="text-subtitle font-medium">Live Activity</h1>);
@@ -177,6 +203,28 @@ export function LiveActivityPage() {
                 >
                     {bufferedCount} new {bufferedCount === 1 ? 'event' : 'events'} — show
                 </button>
+            )}
+
+            {/*
+             * The dashboard answers "how are we doing"; the stream below answers "who needs
+             * me now". Only on All -- a category tab is a filtered stream, and repeating
+             * institute-wide totals above it would be answering a question nobody asked.
+             */}
+            {activeTab === ALL_TAB && analytics.data && (
+                <div className="mt-4 space-y-4">
+                    <KpiTiles data={analytics.data} />
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <EnrolmentFunnel data={analytics.data} />
+                        <ActivityTimeline data={analytics.data} />
+                        <LeadSources data={analytics.data} />
+                        <CounsellorActivity data={analytics.data} />
+                        <CallOutcomes data={analytics.data} />
+                    </div>
+                </div>
+            )}
+
+            {activeTab === ALL_TAB && (
+                <h2 className="mt-6 text-body font-medium text-neutral-700">Recent activity</h2>
             )}
 
             <div

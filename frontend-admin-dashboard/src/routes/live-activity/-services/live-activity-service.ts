@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     LIVE_ACTIVITY_COUNTS,
+    LIVE_ACTIVITY_ANALYTICS,
     LIVE_ACTIVITY_EVENTS,
     LIVE_ACTIVITY_MARK_SEEN,
     LIVE_ACTIVITY_STREAM_TOKEN,
@@ -135,6 +136,63 @@ export const useLiveActivityCounts = (instituteId: string, since: number) =>
     useQuery({
         queryKey: ['live-activity', 'counts', instituteId, since],
         queryFn: () => fetchLiveActivityCounts(instituteId, since),
+        enabled: !!instituteId,
+        refetchOnWindowFocus: false,
+    });
+
+// ── Analytics dashboard ──
+
+export interface NamedCount {
+    name: string;
+    count: number;
+}
+
+export interface TimeBucket {
+    startEpochMillis: number;
+    count: number;
+}
+
+export interface LiveActivityAnalytics {
+    kpis: {
+        leads: number;
+        enrolments: number;
+        revenue: number;
+        currency?: string;
+        callsPlaced: number;
+        callsConnected: number;
+        needsAttention: number;
+        previousLeads: number;
+        previousEnrolments: number;
+        previousRevenue: number;
+    };
+    funnel: NamedCount[];
+    timeline: TimeBucket[];
+    leadSources: NamedCount[];
+    counsellors: NamedCount[];
+    callOutcomes: NamedCount[];
+}
+
+export const fetchLiveActivityAnalytics = async (
+    instituteId: string,
+    from: number,
+    to: number
+): Promise<LiveActivityAnalytics> => {
+    const response = await authenticatedAxiosInstance.get(LIVE_ACTIVITY_ANALYTICS, {
+        params: { instituteId, from, to },
+    });
+    return response.data;
+};
+
+/**
+ * One query for the whole dashboard.
+ *
+ * refetchInterval is deliberately absent: the numbers move when the stream delivers an
+ * event, so the page invalidates this itself rather than polling on a timer.
+ */
+export const useLiveActivityAnalytics = (instituteId: string, from: number, to: number) =>
+    useQuery({
+        queryKey: ['live-activity', 'analytics', instituteId, from, to],
+        queryFn: () => fetchLiveActivityAnalytics(instituteId, from, to),
         enabled: !!instituteId,
         refetchOnWindowFocus: false,
     });

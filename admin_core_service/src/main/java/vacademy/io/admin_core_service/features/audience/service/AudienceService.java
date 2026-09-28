@@ -81,6 +81,7 @@ import java.util.Random;
 import java.util.stream.Collectors;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityLeadRecorder;
 
 /**
  * Service for Audience Management
@@ -93,6 +94,10 @@ public class AudienceService {
 
     @Autowired
     private AudienceRepository audienceRepository;
+
+
+    @Autowired
+    private LiveActivityLeadRecorder liveActivityLeadRecorder;
 
     @Autowired
     private LeadTierService leadTierService;
@@ -6769,5 +6774,12 @@ public class AudienceService {
             logger.warn("Failed to log LEAD_SUBMITTED journey event for response {}: {}",
                     savedResponse.getId(), e.getMessage(), e);
         }
+
+        // Live activity feed. Hooked here rather than inside logJourneyEvent above: that
+        // method is REQUIRES_NEW, so a recorder running within it sits in its own
+        // transaction and cannot see this still-uncommitted audience_response row. The
+        // first version did exactly that and silently dropped every lead. Passing the
+        // saved entity removes the read altogether.
+        liveActivityLeadRecorder.recordLeadSubmitted(savedResponse);
     }
 }

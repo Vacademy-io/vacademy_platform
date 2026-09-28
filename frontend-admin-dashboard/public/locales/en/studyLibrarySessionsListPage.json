@@ -63,8 +63,7 @@
             "live": "Live",
             "upcoming": "Upcoming",
             "past": "Past",
-            "draft": "Draft",
-            "dashboard": "Dashboard"
+            "draft": "Draft"
         },
         "emptyTitle": "No {{tab}} Sessions",
         "emptyDraftBody": "No draft sessions found. Create a new session to get started.",

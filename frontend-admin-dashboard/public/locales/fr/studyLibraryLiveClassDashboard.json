@@ -291,5 +291,8 @@
         "showMore": "Afficher {{n}} de plus",
         "showLess": "Afficher moins",
         "anonymous": "Apprenant"
+    },
+    "page": {
+        "description": "Présence, temps en cours, engagement et avis des cours en direct, par enseignant et par groupe."
     }
 }

@@ -14,7 +14,10 @@ import { MyButton } from '@/components/design-system/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getInstituteId } from '@/constants/helper';
-import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { SendMessageDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-message-dialog';
@@ -96,15 +99,15 @@ export default function LiveClassDashboard() {
     const classesTerm = getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession);
     const batchesTerm = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
     const teachersTerm = getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher);
+    const pageTitle = t('hero.title', {
+        term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+    });
 
     // Keep the URL on the current view so "Copy link" (or a refresh) reopens it.
     useEffect(() => {
         navigate({
-            to: '/study-library/live-session',
-            search: {
-                view: 'dashboard',
-                ...toDashboardUrl({ startDate, endDate, batchIds, teacherIds }),
-            },
+            to: '/study-library/live-session/dashboard',
+            search: toDashboardUrl({ startDate, endDate, batchIds, teacherIds }),
             replace: true,
         });
     }, [navigate, startDate, endDate, batchIds, teacherIds]);
@@ -218,10 +221,7 @@ export default function LiveClassDashboard() {
 
     const downloadPdf = () => {
         if (rootRef.current) {
-            printElement(
-                rootRef.current,
-                `${t('hero.title', { term: classesTerm })} ${formatRange(startDate, endDate)}`
-            );
+            printElement(rootRef.current, `${pageTitle} ${formatRange(startDate, endDate)}`);
         }
     };
 
@@ -267,9 +267,7 @@ export default function LiveClassDashboard() {
                         <ChartLineUp size={14} weight="bold" />
                         {t('hero.eyebrow')}
                     </span>
-                    <h2 className="text-h2-semibold text-neutral-900">
-                        {t('hero.title', { term: classesTerm })}
-                    </h2>
+                    <h2 className="text-h2-semibold text-neutral-900">{pageTitle}</h2>
                     <p className="text-body text-neutral-600">
                         {formatRange(startDate, endDate)}
                         {compareLabel ? (

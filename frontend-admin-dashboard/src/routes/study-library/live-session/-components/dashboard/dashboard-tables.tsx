@@ -109,7 +109,7 @@ export function ClassesTable({
         return [
             {
                 id: 'when',
-                size: 150,
+                size: 115,
                 header: t('table.when'),
                 cell: ({ row }) => (
                     <div className="flex flex-col">
@@ -124,7 +124,7 @@ export function ClassesTable({
             },
             {
                 id: 'class',
-                size: 300,
+                size: 180,
                 header: t('table.class'),
                 cell: ({ row }) => (
                     <div className="flex min-w-0 flex-col">
@@ -148,7 +148,7 @@ export function ClassesTable({
             },
             {
                 id: 'teacher',
-                size: 180,
+                size: 125,
                 header: teachersTerm,
                 cell: ({ row }) => {
                     const first = row.original.instructors[0];
@@ -174,7 +174,7 @@ export function ClassesTable({
             },
             {
                 id: 'status',
-                size: 130,
+                size: 110,
                 header: t('table.status'),
                 cell: ({ row }) => {
                     const style = STATUS_STYLE[row.original.status];
@@ -193,7 +193,7 @@ export function ClassesTable({
             },
             {
                 id: 'attendance',
-                size: 190,
+                size: 140,
                 header: t('table.attendance'),
                 cell: ({ row }) => {
                     const r = row.original;
@@ -232,7 +232,7 @@ export function ClassesTable({
             },
             {
                 id: 'avgTime',
-                size: 120,
+                size: 95,
                 header: t('table.avgTime'),
                 cell: ({ row }) => (
                     <span className="block whitespace-nowrap text-right tabular-nums text-neutral-700">
@@ -249,7 +249,7 @@ export function ClassesTable({
             },
             {
                 id: 'engagement',
-                size: 110,
+                size: 90,
                 header: t('table.engagement'),
                 cell: ({ row }) => (
                     <span className="block text-right tabular-nums text-neutral-700">
@@ -259,7 +259,7 @@ export function ClassesTable({
             },
             {
                 id: 'feedback',
-                size: 110,
+                size: 70,
                 header: t('table.feedback'),
                 cell: ({ row }) =>
                     row.original.avg_rating === null ? (

@@ -115,6 +115,7 @@
     "salesDashboard": "बिक्री डैशबोर्ड",
     "scannedAnswerSheetEvaluation": "स्कैन उत्तर पुस्तिका मूल्यांकन",
     "scheduleAnnouncement": "घोषणा शेड्यूल करें",
+    "liveSessionDashboard": "{{term}} डैशबोर्ड",
     "scheduledLiveSessions": "शेड्यूल किए गए {{term}}",
     "scheduledTests": "शेड्यूल किए गए टेस्ट",
     "sessions": "सत्र",

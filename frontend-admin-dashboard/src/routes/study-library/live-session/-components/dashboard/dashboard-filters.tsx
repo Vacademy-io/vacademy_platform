@@ -85,7 +85,7 @@ export function DashboardFilters({
 
     return (
         <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <Tabs
                     value={customOpen || !activePreset ? CUSTOM : activePreset}
                     onValueChange={onRangeTab}

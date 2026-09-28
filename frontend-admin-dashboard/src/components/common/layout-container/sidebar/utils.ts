@@ -985,6 +985,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'LMS',
         subItems: [
             {
+                subItem: sidebarT('sidebar:liveSessionDashboard', {
+                    term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                }),
+                subItemLink: '/study-library/live-session/dashboard',
+                subItemId: 'live-session-dashboard',
+            },
+            {
                 subItem: sidebarT('sidebar:scheduledLiveSessions', {
                     term: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession),
                 }),

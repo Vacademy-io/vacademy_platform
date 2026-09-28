@@ -115,6 +115,7 @@
     "salesDashboard": "Sales Dashboard",
     "scannedAnswerSheetEvaluation": "Scanned Answer sheet Evaluation",
     "scheduleAnnouncement": "Schedule Announcement",
+    "liveSessionDashboard": "{{term}} Dashboard",
     "scheduledLiveSessions": "Scheduled {{term}}",
     "scheduledTests": "Scheduled Tests",
     "sessions": "Sessions",

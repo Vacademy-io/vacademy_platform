@@ -65,8 +65,7 @@
             "live": "En direct",
             "upcoming": "À venir",
             "past": "Passées",
-            "draft": "Brouillon",
-            "dashboard": "Tableau de bord"
+            "draft": "Brouillon"
         },
         "emptyTitle": "Aucune session {{tab}}",
         "emptyDraftBody": "Aucune session brouillon trouvée. Créez une nouvelle session pour commencer.",

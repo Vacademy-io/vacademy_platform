@@ -1,7 +1,7 @@
 {
     "hero": {
         "eyebrow": "Live class analytics",
-        "title": "{{term}} dashboard",
+        "title": "{{term}} Dashboard",
         "compared": "compared with {{range}}"
     },
     "presets": {
@@ -291,5 +291,8 @@
         "showMore": "Show {{n}} more",
         "showLess": "Show less",
         "anonymous": "Learner"
+    },
+    "page": {
+        "description": "Attendance, time in class, engagement and feedback of live classes, by teacher and batch."
     }
 }

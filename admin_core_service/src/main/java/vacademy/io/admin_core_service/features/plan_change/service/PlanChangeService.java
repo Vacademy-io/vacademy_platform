@@ -97,10 +97,22 @@ public class PlanChangeService {
     private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
     private final vacademy.io.admin_core_service.features.payments.service.MandateRequestDefaults mandateRequestDefaults;
 
-    /** Statuses from which a learner may initiate a change. */
+    /**
+     * Statuses from which a learner may initiate a change.
+     *
+     * <p>Includes the recovery states on purpose. A learner whose charge was refused, whose
+     * grace ran out, or whose first checkout never completed is exactly the person who may
+     * want to come back on a different plan, and hiding the option precisely then left
+     * "Pay to continue" as the only way back. The pricing already handles them correctly:
+     * a lapsed plan fails the trade-in test, so they pay the target's full price for its
+     * full validity -- a re-purchase, not a discounted upgrade -- and applying the change
+     * revives the mappings a previous expiry deactivated.
+     */
     private static final List<String> CHANGEABLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
-            UserPlanStatusEnum.CANCELED.name());
+            UserPlanStatusEnum.CANCELED.name(),
+            UserPlanStatusEnum.EXPIRED.name(),
+            UserPlanStatusEnum.PAYMENT_FAILED.name());
 
     // ─────────────────────────────────────────────────────────────────────────
     // Read: what can this learner switch to?
@@ -855,6 +867,8 @@ public class PlanChangeService {
                 .direction(candidate.direction().name())
                 .effectiveType(candidate.effectiveType().name())
                 .prorationCredit(candidate.proration().credit().doubleValue())
+                .tradeInApplied(candidate.proration().credit().signum() > 0)
+                .extensionDays(candidate.proration().extensionDays())
                 .amountDueNow(immediate ? candidate.proration().amountDueNow().doubleValue() : 0d)
                 .effectiveFrom(immediate ? new Date() : userPlan.getEndDate())
                 .requiresMandateReauth(candidate.requiresMandateReauth())

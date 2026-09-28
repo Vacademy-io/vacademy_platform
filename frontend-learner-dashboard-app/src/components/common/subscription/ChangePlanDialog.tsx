@@ -284,13 +284,24 @@ export function ChangePlanDialog({
                             : t("membership.planChangeFreeAtCycleEnd")}
                       </p>
 
-                      {immediate && (target.proration_credit ?? 0) > 0 && (
+                      {/* Say which of the two quotes this is: the difference against the plan
+                          being traded in, or the target bought outright (a trial or a lapsed
+                          plan has nothing to trade). */}
+                      {immediate && target.trade_in_applied && (target.proration_credit ?? 0) > 0 && (
                         <p className="mt-0.5 text-caption text-success-600">
                           {t("membership.planChangeCredit", {
                             amount: formatPrice(
                               target.proration_credit,
                               target.currency
                             ),
+                            days: target.extension_days ?? 0,
+                          })}
+                        </p>
+                      )}
+                      {immediate && !target.trade_in_applied && (
+                        <p className="mt-0.5 text-caption text-muted-foreground">
+                          {t("membership.planChangeFullPrice", {
+                            days: target.extension_days ?? target.validity_in_days ?? 0,
                           })}
                         </p>
                       )}

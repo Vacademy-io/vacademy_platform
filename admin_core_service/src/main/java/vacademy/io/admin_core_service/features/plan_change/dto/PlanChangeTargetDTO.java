@@ -44,6 +44,17 @@ public class PlanChangeTargetDTO {
     private Double prorationCredit;
     /** What the learner pays right now. 0 for a scheduled downgrade. */
     private Double amountDueNow;
+
+    /**
+     * True when the learner's current plan was traded in, i.e. amountDueNow is the price
+     * DIFFERENCE and the window is extended by the validity difference. False for a trial
+     * or a lapsed plan: the target is bought outright at full price for its full validity.
+     * The dialog uses this to say which of the two is being quoted.
+     */
+    private boolean tradeInApplied;
+
+    /** Days this change adds to the access window. */
+    private Integer extensionDays;
     /** When the learner would actually be on this plan. */
     private Date effectiveFrom;
 

@@ -197,16 +197,27 @@ export function StepDialog({
         if (!isEditing || !existingFieldsQuery.data) return;
         const nameById = new Map(existingFieldsQuery.data.map((f) => [f.id, f]));
         const configured = (editingStep?.fields ?? []).filter((f) => f.institute_custom_field_id);
-        const rows = (
-            configured.length > 0
-                ? configured
-                      .slice()
-                      .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
-                      .map((f) => ({ config: f, catalog: nameById.get(f.institute_custom_field_id!) }))
-                : // No fields_config (a step saved before it was written, or unparseable JSON):
-                  // fall back to the catalog rows so the admin at least sees the attached fields.
-                  existingFieldsQuery.data.map((f) => ({ config: undefined, catalog: f }))
-        ).filter((r) => r.catalog);
+        const configuredIds = new Set(configured.map((f) => f.institute_custom_field_id));
+        // UNION, not either/or. fields_config is the authority for each field's settings, but a
+        // field can exist as an ACTIVE ONBOARDING_STEP mapping while being absent from
+        // fields_config — historic drift, from back when removing a field left its mapping
+        // ACTIVE and some saves dropped a field from fields_config without touching the mapping
+        // (this is how CustomInsti's "Book Tracking details" step showed TrackingId in the
+        // builder while the form rendered only Status and Vendor). Showing fields_config ALONE
+        // would quietly finish the job and delete such a field on the next save. Appending the
+        // orphans instead surfaces them, and saving writes them back into fields_config —
+        // repairing the step. A genuinely removed field can't come back this way: removal now
+        // soft-deletes the mapping (OnboardingStepService.deactivateMappingsNotIn), so it is no
+        // longer in this list at all.
+        const rows = [
+            ...configured
+                .slice()
+                .sort((a, b) => (a.field_order ?? 0) - (b.field_order ?? 0))
+                .map((f) => ({ config: f, catalog: nameById.get(f.institute_custom_field_id!) })),
+            ...existingFieldsQuery.data
+                .filter((f) => !configuredIds.has(f.id))
+                .map((f) => ({ config: undefined, catalog: f })),
+        ].filter((r) => r.catalog);
         setFieldRows(
             rows.map(({ config, catalog }) => ({
                 ...newFieldRowFromCatalog(catalog!, tFieldConfigEditor),

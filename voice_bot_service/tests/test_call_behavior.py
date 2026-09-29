@@ -6503,3 +6503,104 @@ async def test_a_reply_that_asked_for_a_fresh_line_does_not_also_speak_its_held_
     await _reply(g, first)              # the whole previous turn, again
     assert asked, "a fresh line should have been requested"
     assert not any("क्या परमजीत" in t for t in rec.text), rec.text
+
+
+# ── Call 22062aac (2026-09-29): a stale next-step, a gagged question, "जी सर।"×4 ──
+def _nr_with_steps(caller):
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append((held, kind, attempt))
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g, rec, asked
+
+
+@pytest.mark.asyncio
+async def test_no_recovery_for_a_reply_a_newer_turn_already_superseded():
+    """"हाँ जी।" ran, then "9th में पढ़ रहा है।" ran before that reply ended. The
+    first reply said nothing new, and the next-step request made for it was a
+    SECOND reply on top of the real answer's — both played back to back."""
+    caller = {"t": "हाँ जी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    g.note_run()                      # the held short answer's run
+    g.note_run()                      # the full answer's run, queued behind it
+    await _reply(g, "जी सर।")
+    assert not asked, "asked for a next step although a newer turn was queued: %r" % asked
+    # The newer run's reply is untouched.
+    caller["t"] = "9th में पढ़ रहा है।"
+    rec.text.clear()
+    await _reply(g, "यही वो साल है जब syllabus heavy लगने लगता है। ",
+                 "पिछली class में कितने marks आए थे?")
+    assert any("marks" in t for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_a_filler_reply_with_nothing_queued_still_recovers():
+    caller = {"t": "कोशिश करता है।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    g.note_run()
+    await _reply(g, "जी सर।")
+    assert asked, "the ordinary filler-only recovery stopped working"
+
+
+def test_an_acknowledgment_that_only_echoes_a_word_is_a_filler():
+    f = b.NoRepeatGate._is_filler
+    assert f("जी सर, Pragyan.")
+    assert f("जी सर, प्रज्ञान।")
+    assert f("Okay, Raman.")
+    assert not f("जी सर, धन्यवाद।")          # a thanks means something
+    assert not f("जी सर, Pragyan कैसा है?")  # a question is never a filler
+    assert not f("जी सर, यही वो साल है जब syllabus heavy लगता है।")
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_question_is_what_the_recovery_is_about():
+    """"जी सर, Pragyan." + the marks question (already said) + its explanation
+    (already said): the recovery must name the QUESTION, and the model may ask
+    it once more — the father had answered a different question."""
+    Q = "क्या मैं जान सकती हूँ कि Pragyan के previous class में कितने marks आए थे? "
+    WHY = "So that मुझे उसकी performance के बारे में थोड़ा idea मिल सके।"
+    caller = {"t": "9th में पढ़ रहा है।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, Q, WHY)
+    caller["t"] = "ये प्रज्ञान है।"
+    rec.text.clear()
+    await _reply(g, "जी सर, Pragyan. ", Q, WHY)
+    assert asked, "silence: no recovery after an ack-only reply"
+    held, kind, _ = asked[-1]
+    assert "marks" in held and kind == "all-repeat", asked
+    what, cue = b.next_step_cue(held, kind)
+    assert "still unanswered" in cue
+    # The model judged it unanswered and asks again: this one gets through.
+    rec.text.clear()
+    await _reply(g, "पिछली class में Pragyan के कितने marks आए थे?")
+    assert any("marks" in t for t in rec.text), "the permitted re-ask was blocked"
+
+
+@pytest.mark.asyncio
+async def test_a_second_acknowledgment_only_reply_gets_the_firm_cue():
+    caller = {"t": "अब पढ़ने में तो।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    await _reply(g, "जी।")
+    caller["t"] = "कोशिश करता है।"
+    await _reply(g, "जी सर।")
+    assert [a for _h, _k, a in asked] == [0, 2], asked
+    assert g.owes_line()
+    caller["t"] = "अच्छा।"
+    await _reply(g, "आमतौर पर parents की तीन-चार expectations होती हैं।")
+    assert not g.owes_line()
+
+
+def test_a_hindi_final_ending_in_a_connective_is_unfinished():
+    """Sarvam ends every final with "।", which made the check dead for Hindi."""
+    def unfinished(text):
+        msgs = [{"role": "assistant", "content": "क्या Pragyan के साथ भी ऐसा ही है सर?"},
+                {"role": "user", "content": text}]
+        return b.RunGuard._ends_mid_clause(b.RunGuard, msgs)
+    assert unfinished("अब पढ़ने में तो।")
+    assert unfinished("वो class में और।")
+    assert not unfinished("कोशिश करता है।")
+    assert not unfinished("और?")

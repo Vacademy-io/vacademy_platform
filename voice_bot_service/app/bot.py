@@ -2043,6 +2043,29 @@ class NoRepeatGate(FrameProcessor):
         # asked for a "next step" again. The budget is per CALL; this is per
         # TURN — the caller has to have said something new to earn another.
         self._next_step_for = None
+        # Run ledger (call 22062aac, 2026-09-29). Every LLM run the RunGuard
+        # lets through is counted here (note_run) and every response START is
+        # counted against it, so at a reply's END we know whether a NEWER run
+        # is already queued behind it. That reply has been superseded: asking
+        # for a "next step" on top of it put two LLM replies on the line back
+        # to back — "…कितने marks आए थे? जी सर, 9th क्लास। और बच्चे का नाम
+        # क्या है सर?" (the name asked right after it was used).
+        self._runs_passed = 0
+        self._responses_started = 0
+        self._last_run_t = 0.0
+        # The last QUESTION the gate dropped as already-said in this reply —
+        # the line a recovery should be about. _held_tail is the last dropped
+        # sentence of any kind; on 22062aac that was the explanation after the
+        # question ("So that मुझे उसकी performance…").
+        self._held_question = ""
+        # (topic, response index, normalised line): a question the model may ask again once, in
+        # the next reply or two — set when a next-step cue told it "if they have
+        # not answered it, ask it once more".
+        self._reask_ok_topic = None
+        # Replies in a row that were nothing but an acknowledgment. "जी सर।" is a
+        # filler, not a handback, so _consecutive_handbacks never saw three of
+        # them in a row on 22062aac — and nothing escalated.
+        self._filler_streak = 0
         # "Just a second." queued while the model composed, arriving at the TTS
         # AFTER the reply's audio began (the LLM processor holds frames during a
         # generation): call dd5eb5cc heard the question, then "Just a second."
@@ -2131,6 +2154,28 @@ class NoRepeatGate(FrameProcessor):
         r"^\W*(good\s+(morning|afternoon|evening)|hello|hi|hey|namaste|namaskar|"
         r"नमस्ते|नमस्कार|हेलो|हैलो)(\s+(ji|जी|sir|ma'?am|madam))?\W*$", re.I)
 
+    def note_run(self) -> None:
+        """RunGuard let an LLM run through (see the run ledger in __init__)."""
+        self._runs_passed += 1
+        self._last_run_t = time.time()
+
+    def _newer_run_queued(self) -> bool:
+        """A run passed that has not started its response yet — this reply is
+        about to be followed by the answer to something newer. Bounded in time:
+        a run that died without a response must not disable recovery for good."""
+        return (self._runs_passed > self._responses_started
+                and time.time() - self._last_run_t < 4.0)
+
+    def owed_line_requested(self) -> None:
+        """The idle handler asked for the owed line; the next idle, if the model
+        still says nothing, is an ordinary presence check."""
+        self._filler_streak = 0
+
+    def owes_line(self) -> bool:
+        """The bot's last reply was only an acknowledgment after the caller
+        spoke: the silence that follows is the BOT's, not the caller's."""
+        return self._filler_streak > 0 and not self._end_forced()
+
     def _may_ask_next_step(self) -> bool:
         """At most five per call AND at most one per caller turn. Two ran out
         by the middle of a scripted call (97c06634): every repeat after that
@@ -2217,6 +2262,16 @@ class NoRepeatGate(FrameProcessor):
         # this (597aeb3f's pair scores ~0.7), so the topic supplies the candidate
         # and a looser similarity bar confirms it.
         topic = question_topic(sentence)
+        ok = self._reask_ok_topic
+        if (ok and self._responses_started <= ok[1] + 2
+                and ((topic and topic == ok[0])
+                     or (not ok[0] and is_repeat(sentence, [ok[2]], threshold=0.6)))):
+            # We told the model "if they have not answered it, ask it once
+            # more" and it did: it read the caller's words, we cannot.
+            self._reask_ok_topic = None
+            logger.info("no-repeat: re-asking %r — the model judged it unanswered",
+                        sentence.strip()[:48])
+            return True
         prev_ask = self._asked.get(topic) if topic else None
         same_topic_reask = prev_ask is not None and is_repeat(
             sentence, [prev_ask], threshold=self._TOPIC_REASK_THRESHOLD)
@@ -2323,12 +2378,34 @@ class NoRepeatGate(FrameProcessor):
         """Would the caller get NOTHING out of this reply? ("जी, बोलिए।")"""
         return cls._cf_key(text) in cls._CONTENT_FREE
 
+    # Words that make an "ack + word" line mean something (a thanks, a no).
+    _ACK_PLUS_MEANINGFUL = frozenset({
+        "धन्यवाद", "शुक्रिया", "thanks", "thank", "bye", "नमस्ते", "sorry", "माफ़",
+        "माफ", "नहीं", "no", "not", "please",
+    })
+
     @classmethod
     def _is_filler(cls, text: str) -> bool:
         """A sentence that carries nothing answerable: a hand-back OR an
-        acknowledgment noise."""
+        acknowledgment noise — including an acknowledgment that only echoes a
+        word or two back. Call 22062aac (2026-09-29): "जी सर, Pragyan." was the
+        whole reply once the marks question behind it was dropped as a repeat,
+        and because the name made it "real content" nothing recovered — 8 s of
+        silence, then "Hello? are you there?"."""
         k = cls._cf_key(text)
-        return k in cls._CONTENT_FREE or k in cls._FILLER
+        if k in cls._CONTENT_FREE or k in cls._FILLER:
+            return True
+        if "?" in (text or "") or "？" in (text or ""):
+            return False
+        words = k.split()
+        if not 2 <= len(words) <= 4:
+            return False
+        for i in range(1, len(words)):
+            rest = words[i:]
+            if (" ".join(words[:i]) in cls._FILLER and len(rest) <= 2
+                    and not any(w in cls._ACK_PLUS_MEANINGFUL for w in rest)):
+                return True
+        return False
 
     async def _emit(self, text: str, direction, past_cap: bool = False):
         cap = self._max_sentences()
@@ -2417,6 +2494,10 @@ class NoRepeatGate(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            self._responses_started += 1
+            if self._responses_started > self._runs_passed:
+                self._runs_passed = self._responses_started    # a run we did not see
+            self._held_question = ""
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._body_chars = 0
             self._next_step_this_reply = False
@@ -2437,6 +2518,8 @@ class NoRepeatGate(FrameProcessor):
             return
 
         if isinstance(frame, InterruptionFrame):
+            # An interruption flushes the LLM's queued runs: nothing is queued now.
+            self._responses_started = max(self._responses_started, self._runs_passed)
             # Whatever the previous interruption left unsaid is history: only
             # THIS cut's words may be resumed (else a stale tail could surface
             # minutes later, mid-topic).
@@ -2585,6 +2668,8 @@ class NoRepeatGate(FrameProcessor):
                     await self._emit(sentence, direction)
                 else:
                     self._held_tail = self._last_suppressed = sentence
+                    if "?" in sentence or "？" in sentence:
+                        self._held_question = sentence
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", sentence.strip()[:56])
@@ -2610,6 +2695,8 @@ class NoRepeatGate(FrameProcessor):
                     await self._emit(tail, direction)
                 else:
                     self._held_tail = self._last_suppressed = tail
+                    if "?" in tail or "？" in tail:
+                        self._held_question = tail
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", tail[:56])
@@ -2624,6 +2711,16 @@ class NoRepeatGate(FrameProcessor):
                 held, self._capped = self._capped, []
                 if asks and self._keep(last):
                     await self._emit(last, direction, past_cap=True)
+            # Superseded: a newer caller run is already queued, and its reply
+            # will answer everything this one failed to. Any recovery here
+            # (a next-step request, a handback, speaking a held line) would be
+            # a SECOND reply to the same moment — call 22062aac (2026-09-29).
+            superseded = self._newer_run_queued() and not self._end_forced()
+            if superseded and (not self._real_this_reply or self._echo_held or self._cf_held):
+                logger.info("no-repeat: a newer caller turn is already queued — "
+                            "no recovery for this reply")
+                self._held_tail = self._held_question = ""
+                self._echo_held = self._cf_held = ""
             # "Nothing answerable was said" — not "nothing was said". Call
             # 08df7128: "Right." survived, the three real sentences behind it were
             # already-said drops, and the caller got "Right." then 12 s of
@@ -2633,22 +2730,32 @@ class NoRepeatGate(FrameProcessor):
             # case — ask for the next line — but only when the caller actually
             # said something to move on from (call 612f5e37, 2026-09-13).
             if (not self._real_this_reply and self._emitted and not self._held_tail
-                    and not self._end_forced()
+                    and not self._held_question
+                    and not self._end_forced() and not superseded
                     and self._request_next_step is not None and self._may_ask_next_step()
                     and (self._last_caller_text() or "").strip()
                     and not (self._last_caller_text() or "").startswith("[")):
                 self._next_steps += 1
                 self._next_step_for = normalize_spoken(self._last_caller_text() or "")
+                # The second acknowledgment-only reply in a row gets the firm
+                # cue (ask ONE new question, or close) — the soft one had just
+                # been ignored. Call 22062aac: "जी।" "जी सर।" "जी सर।" "जी सर।"
+                # to a parent explaining his son, each on attempt 0.
+                attempt = 2 if self._filler_streak >= 1 else 0
                 logger.info("no-repeat: reply was only a filler after the caller spoke "
-                            "— asking for the next step")
+                            "— asking for the next step (streak %d)", self._filler_streak + 1)
                 if self._diag is not None:
                     self._diag.bump("handbacks")
                 try:
-                    await self._request_next_step("")
+                    await self._request_next_step("", attempt=attempt)
                 except Exception:
                     logger.exception("no-repeat: next-step request failed")
+            if self._held_question:
+                # Recover about the QUESTION that was dropped, not whatever
+                # sentence happened to be dropped last.
+                self._held_tail = self._held_question
             if (not self._real_this_reply and self._held_tail
-                    and not self._end_forced()):
+                    and not self._end_forced() and not superseded):
                 if self._consecutive_handbacks >= 1:
                     # ESCALATE (call 3148ccd4). We already handed the turn back
                     # once and the caller still has nothing to answer. Saying
@@ -2703,6 +2810,10 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("handbacks")
                     self._next_step_this_reply = True
+                    if "?" in self._held_tail or "？" in self._held_tail:
+                        self._reask_ok_topic = (question_topic(self._held_tail),
+                                                self._responses_started,
+                                                normalize_spoken(self._held_tail))
                     try:
                         await self._request_next_step(self._held_tail, kind="all-repeat",
                                                       attempt=self._next_steps)
@@ -2780,6 +2891,10 @@ class NoRepeatGate(FrameProcessor):
             # Did this turn give the caller anything to answer? A reply the MODEL
             # wrote that is only "Ji, boliye." counts the same as our own handback
             # — see _CONTENT_FREE. Two in a row and the next one is forced out.
+            if self._real_this_reply:
+                self._filler_streak = 0
+            elif self._emitted:
+                self._filler_streak += 1
             if self._said_real:
                 self._consecutive_handbacks = 0
             elif self._emitted:
@@ -2963,9 +3078,16 @@ class RunGuard(FrameProcessor):
                 continue                              # a steering cue, look behind it
             if not text:
                 return False
-            if text[-1] in ".!?।":
+            if text[-1] in "?？":
                 return False
-            last = re.split(r"[\s,]+", text.casefold())[-1] if text else ""
+            # Sarvam ends EVERY final with a danda or full stop, so a punctuation
+            # test made this dead for Hindi callers: "अब पढ़ने में तो।" (call
+            # 22062aac, 2026-09-29) went to the model mid-sentence, got "जी।",
+            # and started a four-acknowledgment chain. The last WORD decides.
+            text = text.rstrip(".!।॥… \t")
+            if not text:
+                return False
+            last = re.split(r"[\s,]+", text.casefold())[-1]
             return last in self._CLAUSE_TAILS
         return False
 
@@ -3056,6 +3178,19 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
         why = ("[Your last reply only said their answer back to them and asked "
                "nothing. Do not restate it again. ")
         what = "restatement"
+    elif held and ("?" in held or "？" in held):
+        # A dropped QUESTION. The gate cannot tell whether the caller's words
+        # answered it; the model can. Call 22062aac (2026-09-29): two replies
+        # played back to back, the father answered the SECOND question (the
+        # name), and the marks question was then blocked as "already said" on
+        # every attempt — 8 s of silence. The gate lets exactly one re-ask of
+        # this topic through (_reask_ok_topic).
+        line = " ".join((held or "").split()).replace("]", "").replace('"', "'")[:160]
+        why = ("[You just asked: \"" + line + "\". If their reply answered it, do not "
+               "ask it again, not even reworded — continue with what comes AFTER it in "
+               "your script. If they said something else and it is still unanswered, "
+               "ask it once more in fewer words. ")
+        what = "all-repeat"
     elif held:
         # Name the line. A generic "you repeated yourself" left Gemini to guess
         # what it had repeated, and it said the same line again — then the
@@ -4854,8 +4989,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     eng = stt_lang == "en-IN"
     orphan_text = ("Sorry, I didn't catch that — could you say it again?" if eng
                    else "माफ़ कीजिए, आवाज़ कट गई — क्या आप दोबारा बोल सकते हैं?")
+    # Devanagari for a Hindi agent: the romanised line reached the caller on
+    # 22062aac in the middle of an all-Devanagari call.
     nudge_text = ("Hello? Are you still there?" if eng
-                  else "Hello? Kya aap sun paa rahe hain?")
+                  else "हेलो? क्या आप मुझे सुन पा रहे हैं?")
     cap_farewell = ("I have to end the call now — our team will reach out to you shortly. "
                     "Thank you!" if eng else
                     "Mujhe ab call samaapt karni hogi. Hamari team aapse jald sampark karegi. "
@@ -5336,8 +5473,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          short_answer_max_words=settings.short_answer_max_words,
                          quiet_for=lambda: (time.time() - flags["voice_tick_t"]
                                             if flags["voice_tick_t"] else float("inf")),
-                         on_run=lambda text: outcome.replay["runs"].append(
-                             [round(time.time() - outcome.connected_at, 2), text]),
+                         on_run=lambda text: (
+                             no_repeat.note_run(),
+                             outcome.replay["runs"].append(
+                                 [round(time.time() - outcome.connected_at, 2), text])),
                          opening_pending=lambda: _opening_pending(),
                          noise_cap_secs=settings.short_answer_noise_cap_secs)
 
@@ -5490,7 +5629,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             outcome.end_requested = True
             await _begin_stop()
             return
-        if flags["nudge_count"] < settings.max_nudges:
+        if flags["nudge_count"] < settings.max_nudges and no_repeat.owes_line():
+            # The bot's last reply was only "जी सर।" after the caller spoke: the
+            # silence is OURS. "Are you there?" to someone waiting for us is
+            # wrong twice over (call 22062aac: 8 s, then the presence check,
+            # twice). Ask the model for the next line with the firm cue.
+            flags["nudge_count"] += 1
+            diag.bump("nudges")
+            logger.info("idle: the bot owes the next line — asking for it, not "
+                        "'are you there?' corr=%s", corr)
+            no_repeat.owed_line_requested()
+            await _ask_for_next_step("", attempt=2)
+        elif flags["nudge_count"] < settings.max_nudges:
             flags["nudge_count"] += 1
             diag.bump("nudges")
             logger.info("idle: nudge %d corr=%s", flags["nudge_count"], corr)

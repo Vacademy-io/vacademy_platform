@@ -688,8 +688,11 @@ def spoken_key(text: str) -> str:
 # repeat however it is phrased.
 _QUESTION_TOPICS = (
     ("child_name", ("naam", "नाम", "name")),
-    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
+    # marks BEFORE klass: "पिछली class में कितने marks आए थे?" is the marks
+    # question, and filing it under klass made the gate treat it as a re-ask
+    # of the class question (call 22062aac, 2026-09-29).
     ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
+    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
     ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
     ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
     # BEFORE quiz_link: "Is this number on WhatsApp?" shares the word with the

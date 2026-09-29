@@ -1297,6 +1297,23 @@ async def main():
             res = await run_scenario(sc, sc_ctx, args.verbose, args.real_stt)
         except Exception as e:  # noqa: BLE001
             res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"], "turn_latency": []}
+        if res["fails"] and args.ci:
+            # ONE immediate re-run of a failed scenario. hindi_pieces_bare_acks
+            # (2026-09-29) passed 11/11 alone and 3/5 in full runs, failing only
+            # with zero LLM runs — the CI runner's timing, not the pipeline
+            # (the same rule never misfired on 263 live calls). A second failure
+            # still blocks the deploy; a pass is reported as FLAKY, never hidden.
+            first = res["fails"]
+            try:
+                res = await run_scenario(sc, sc_ctx, args.verbose, args.real_stt)
+            except Exception as e:  # noqa: BLE001
+                res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"],
+                       "turn_latency": []}
+            if not res["fails"]:
+                res["flaky_first_run"] = first
+                print(f"FLAKY {k}: failed once, passed on re-run — first run: {first}")
+                print(f"::warning title=Timing simulator flaky::{k} failed once and passed "
+                      f"on re-run: {'; '.join(first)[:300]}")
         results.append(res)
         st = "FAIL" if res["fails"] else "ok  "
         print(f"{st} {k:28s} latency {res.get('turn_latency')} ended {res.get('ended_at')} nudges {res.get('nudges', '?')} llm_runs {res.get('llm_runs', '?')}")

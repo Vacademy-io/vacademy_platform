@@ -272,7 +272,15 @@ async def main():
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--out", default="sim_replay.json")
     ap.add_argument("--ci", action="store_true")
+    ap.add_argument("--app-log", action="store_true",
+                    help="show app.* INFO lines (the gates' decisions) alongside events")
     args = ap.parse_args()
+    if args.app_log:
+        import logging
+        h = logging.StreamHandler()
+        h.setFormatter(logging.Formatter("        app: %(message)s"))
+        logging.getLogger("app").addHandler(h)
+        logging.getLogger("app").setLevel(logging.INFO)
     files = [Path(args.file)] if args.file else sorted(Path(args.dir).glob("*.json"))
     results = []
     for fp in files:

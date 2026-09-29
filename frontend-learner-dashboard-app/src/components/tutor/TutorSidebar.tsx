@@ -1,4 +1,6 @@
 import { ArrowLeft, CaretDoubleLeft, CaretDoubleRight, CheckCircle, Circle, RadioButton } from "@phosphor-icons/react";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface TutorTopicItem {
   id: string;
@@ -33,7 +35,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
     return (
       <aside className="flex h-full flex-col items-center gap-2 py-1" aria-label="Lesson outline (collapsed)">
         {onBack && (
-          <button type="button" onClick={onBack} className="rounded-full p-1.5 text-neutral-500 hover:bg-neutral-100" title="Back to course">
+          <button type="button" onClick={onBack} className="rounded-full p-1.5 text-neutral-500 hover:bg-neutral-100" title={`Back to ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}>
             <ArrowLeft className="size-4" />
           </button>
         )}
@@ -113,7 +115,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
       </div>
       {nextSlides.length > 1 && (
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">This chapter</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">This {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}</p>
           <ol className="space-y-0.5">
             {nextSlides.map((s) => (
               <li key={s.slide_id}>

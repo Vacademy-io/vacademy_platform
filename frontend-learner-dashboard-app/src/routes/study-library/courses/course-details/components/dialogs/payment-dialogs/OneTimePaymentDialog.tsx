@@ -399,7 +399,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 </DialogTitle>
                 {enrollmentData && (
                   <p className="text-gray-600 text-sm">
-                    Complete your one-time payment to access the course
+                    Complete your one-time payment to access the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
                   </p>
                 )}
               </div>
@@ -414,11 +414,11 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             {/* Course Info */}
             <Card className="shadow-sm border border-gray-200">
               <CardHeader className="pb-4">
-                <CardTitle className="text-lg font-semibold text-gray-900">Course Information</CardTitle>
+                <CardTitle className="text-lg font-semibold text-gray-900">{getTerminology(ContentTerms.Course, SystemTerms.Course)} Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Course:</span>
+                  <span className="text-gray-600">{getTerminology(ContentTerms.Course, SystemTerms.Course)}:</span>
                   <span className="font-medium text-gray-900">{courseTitle}</span>
                 </div>
                 <div className="flex justify-between items-center">

@@ -6,6 +6,8 @@ import { MyButton } from "@/components/design-system/button";
 import { fetchUserPlanStatus } from "@/services/payment-status-api";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface ApprovalStatusPollingDialogProps {
   open: boolean;
@@ -238,7 +240,7 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
                   </div>
                   <div className="flex items-center space-x-2 text-sm text-yellow-700">
                     <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                    <span>Course access will be granted immediately</span>
+                    <span>{getTerminology(ContentTerms.Course, SystemTerms.Course)} access will be granted immediately</span>
                   </div>
                 </div>
               </div>
@@ -277,7 +279,7 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
               Approval Successful!
             </h3>
             <p className="text-gray-600 text-lg">
-              Your enrollment has been approved and you now have access to the course.
+              Your enrollment has been approved and you now have access to the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.
             </p>
           </div>
           
@@ -293,7 +295,7 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
                   Ready to Learn!
                 </h4>
                 <p className="text-sm text-green-800">
-                  You can now access the course content and start learning.
+                  You can now access the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} content and start learning.
                 </p>
               </div>
             </div>

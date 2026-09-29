@@ -472,7 +472,7 @@ export const CourseStructureDetails = ({
       // Add course discussion tab if enabled
       if (shouldShowCourseDiscussion) {
         finalTabs.push({
-          label: "Course Discussion",
+          label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Discussion`,
           value: TabType.COURSE_DISCUSSION,
         });
       }
@@ -3381,7 +3381,7 @@ export const CourseStructureDetails = ({
                 return (
                   <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center">
                     <p className="text-neutral-500 italic">
-                      No content available in this chapter.
+                      No content available in this {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}.
                     </p>
                   </div>
                 );
@@ -3952,7 +3952,7 @@ export const CourseStructureDetails = ({
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
-        <div>Course Details</div>
+        <div>{getTerminology(ContentTerms.Course, SystemTerms.Course)} Details</div>
       </div>,
     );
   }, [setNavHeading]);

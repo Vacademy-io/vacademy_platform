@@ -21,6 +21,8 @@ import type {
     UploadMode,
 } from './types';
 import type { CsvResolveResult, CsvRowResult } from './csv-manifest';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export type WizardPhase = 'select' | 'parsing' | 'preview' | 'committing' | 'results';
 
@@ -367,7 +369,11 @@ export const selectMultiReadiness = (state: {
         return { ready: false, reason: state.fatalErrors[0] };
     }
     const sections = selectSectionsOrdered(state.courseSections);
-    if (sections.length === 0) return { ready: false, reason: 'No course folders found.' };
+    if (sections.length === 0)
+        return {
+            ready: false,
+            reason: `No ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} folders found.`,
+        };
     for (const section of sections) {
         if (section.status === 'skipped') continue;
         if (section.status === 'unmatched') {
@@ -379,7 +385,7 @@ export const selectMultiReadiness = (state: {
         if (section.status === 'blocked') {
             return {
                 ready: false,
-                reason: `Skip or remap the folder “${section.topFolderDisplay}” — you can't edit that course.`,
+                reason: `Skip or remap the folder “${section.topFolderDisplay}” — you can't edit that ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.`,
             };
         }
         if (section.status === 'needs-batch' || !section.packageSessionId) {

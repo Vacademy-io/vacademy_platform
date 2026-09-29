@@ -18,6 +18,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { StorageKey } from '@/constants/storage/storage';
 import useLocalStorage from '@/hooks/use-local-storage';
+import { notifyNamingSettingsUpdated } from '@/hooks/useNamingSettingsVersion';
 import { isNullOrEmptyOrUndefined } from '@/lib/utils';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { THEME_ROLE_SETTINGS_KEY } from '@/types/theme-role-settings';
@@ -249,6 +250,8 @@ export const useInstituteLightweightQuery = () => {
                             localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
                         }
                         syncLanguageSettingCache(instituteSettings);
+                        // Terms feed the translation catalogs too (i18n/naming-terms.ts).
+                        notifyNamingSettingsUpdated();
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -313,6 +316,8 @@ export const useInstituteFullQuery = () => {
                             localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
                         }
                         syncLanguageSettingCache(instituteSettings);
+                        // Terms feed the translation catalogs too (i18n/naming-terms.ts).
+                        notifyNamingSettingsUpdated();
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -377,6 +382,8 @@ export const useInstituteQuery = () => {
                             localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
                         }
                         syncLanguageSettingCache(instituteSettings);
+                        // Terms feed the translation catalogs too (i18n/naming-terms.ts).
+                        notifyNamingSettingsUpdated();
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {

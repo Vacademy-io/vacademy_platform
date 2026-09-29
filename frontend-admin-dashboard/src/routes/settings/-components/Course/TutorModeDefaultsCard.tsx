@@ -28,6 +28,11 @@ import {
 } from '@/services/tutor';
 import { TeacherPresenceField } from '@/components/common/tutor/TeacherPresenceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const DEFAULTS: TutorModeSetting = {
     enabled: true,
@@ -53,6 +58,8 @@ const DEFAULTS: TutorModeSetting = {
  * own Tutor Mode tab overrides field by field.
  */
 export const TutorModeDefaultsCard: React.FC = () => {
+    const courseLower = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
     const [value, setValue] = useState<TutorModeSetting>(DEFAULTS);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -157,8 +164,8 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     {loading && <CircleNotch className="size-4 animate-spin text-neutral-400" />}
                 </CardTitle>
                 <p className="text-sm text-neutral-500">
-                    Institute-wide defaults for the one-to-one AI teacher. Each course can override
-                    any of these from its Tutor Mode tab.
+                    Institute-wide defaults for the one-to-one AI teacher. Each {courseLower} can
+                    override any of these from its Tutor Mode tab.
                 </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -168,7 +175,7 @@ export const TutorModeDefaultsCard: React.FC = () => {
                             checked={!!value.enabled}
                             onCheckedChange={(v) => update('enabled', v)}
                         />
-                        Tutor mode available to courses
+                        Tutor mode available to {coursesTerm.toLocaleLowerCase()}
                     </label>
                     <label className="flex items-center gap-2 text-sm">
                         <Switch
@@ -179,7 +186,7 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     </label>
                     <label
                         className="flex items-center gap-2 text-sm"
-                        title="AI-generated pictures on whiteboards where a photo teaches better than a diagram. About 1 credit each, at most 4 per slide. Courses created by the copilot follow this default."
+                        title={`AI-generated pictures on whiteboards where a photo teaches better than a diagram. About 1 credit each, at most 4 per slide. ${coursesTerm} created by the copilot follow this default.`}
                     >
                         <Switch
                             checked={value.generateImages !== false}
@@ -324,7 +331,7 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         Upload a clean 5–15 second recording of the teacher speaking (mp3, wav, mp4
                         or webm, under 5 MB). Only upload a voice you have the person&apos;s
                         permission to use. The cloned voice is private to this institute and becomes
-                        the tutor voice for every course that inherits these defaults.
+                        the tutor voice for every {courseLower} that inherits these defaults.
                         {options?.fees?.voice
                             ? ` Charged once: ${options.fees.voice} credits per voice.`
                             : ''}

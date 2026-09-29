@@ -378,7 +378,7 @@ export const AddCourseForm = ({
                                 );
                                 if (!packageSessionId) {
                                     throw new Error(
-                                        'Package session ID not found for the created course'
+                                        `Package session ID not found for the created ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`
                                     );
                                 }
                             }
@@ -469,7 +469,9 @@ export const AddCourseForm = ({
                             Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step {step} of 2
                         </h1>
                         <span className="text-xs font-medium text-primary-500/80">
-                            {step === 1 ? 'Course Details' : 'Course Structure'}
+                            {step === 1
+                                ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`
+                                : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Structure`}
                         </span>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
@@ -537,7 +539,9 @@ export const AddCourseForm = ({
                                 {isEdit ? 'Edit' : 'Create'} {getTerminology(ContentTerms.Course, SystemTerms.Course)} - Step {step} of 2
                             </h1>
                             <span className="text-xs font-medium text-primary-500/80">
-                                {step === 1 ? 'Course Details' : 'Course Structure'}
+                                {step === 1
+                                    ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`
+                                    : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Structure`}
                             </span>
                         </div>
                         <div className="mt-3 flex items-center gap-2">

@@ -9,6 +9,11 @@ import type {
     BasketPricingTier,
     MappingRow,
 } from '../-types/product-page-types';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Authors a whole-basket price: "any 3 subjects for ₹799, ₹150 each after".
@@ -32,6 +37,9 @@ const num = (v: string, fallback = 0) => {
 };
 
 export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
+    const courseLower = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const coursesLower = coursesTerm.toLocaleLowerCase();
     const [openGroup, setOpenGroup] = useState<number | null>(null);
     const [openCombo, setOpenCombo] = useState<number | null>(null);
 
@@ -136,8 +144,8 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
     return (
         <div className="space-y-4 bg-neutral-50/60 px-5 py-4 ps-14">
             <p className="text-2xs text-neutral-500">
-                Prices the basket as a whole rather than course by course. The cheapest applicable
-                rule always wins, so a bigger basket never costs more.
+                Prices the basket as a whole rather than {courseLower} by {courseLower}. The
+                cheapest applicable rule always wins, so a bigger basket never costs more.
             </p>
 
             {/* ── Pricing basis ──────────────────────────────────────────────── */}
@@ -147,13 +155,13 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                     [
                         [
                             'DISCOUNT',
-                            'Discount off the course prices',
-                            'The courses keep the price set on their enroll invite and the basket takes a percentage or amount off. Change a price once, on the invite, and every basket follows.',
+                            `Discount off the ${courseLower} prices`,
+                            `The ${coursesLower} keep the price set on their enroll invite and the basket takes a percentage or amount off. Change a price once, on the invite, and every basket follows.`,
                         ],
                         [
                             'FLAT',
                             'A fixed price per number of subjects',
-                            'The basket costs a set amount whatever the courses cost. Needed only when the courses are free and there is nothing to discount — otherwise the per-subject rate ends up written down twice and the two drift apart.',
+                            `The basket costs a set amount whatever the ${coursesLower} cost. Needed only when the ${coursesLower} are free and there is nothing to discount — otherwise the per-subject rate ends up written down twice and the two drift apart.`,
                         ],
                     ] as const
                 ).map(([option, label, hint]) => {
@@ -176,16 +184,17 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                 })}
                 {basis === 'DISCOUNT' && typicalPrice === 0 && (
                     <p className="rounded border border-danger-200 bg-danger-50 p-2 text-2xs text-danger-600">
-                        These courses have no price on their enroll invites, so there is nothing to
-                        discount and every basket will be <strong>free</strong>. Price the courses
-                        on their invites, or use a fixed price per number of subjects.
+                        These {coursesLower} have no price on their enroll invites, so there is
+                        nothing to discount and every basket will be <strong>free</strong>. Price
+                        the {coursesLower} on their invites, or use a fixed price per number of
+                        subjects.
                     </p>
                 )}
                 {basis === 'FLAT' && typicalPrice > 0 && (
                     <p className="rounded border border-warning-200 bg-warning-50 p-2 text-2xs text-warning-700">
-                        These courses are priced ({typicalPrice} each on their invite), so a fixed
-                        price ignores that. Repricing a course on its invite will not change what a
-                        basket costs.
+                        These {coursesLower} are priced ({typicalPrice} each on their invite), so a
+                        fixed price ignores that. Repricing a {courseLower} on its invite will not
+                        change what a basket costs.
                     </p>
                 )}
             </div>
@@ -202,7 +211,7 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                     </p>
                     {tiers.length === 0 && (
                         <p className="text-2xs text-neutral-400">
-                            No tiers yet — every basket pays full course price.
+                            No tiers yet — every basket pays full {courseLower} price.
                         </p>
                     )}
                     {tiers.map((tier, index) => {
@@ -618,7 +627,8 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                                 <div className="mt-2 max-h-48 space-y-1 overflow-y-auto border-t pt-2">
                                     {levelNames.length === 0 && (
                                         <p className="text-2xs text-neutral-400">
-                                            No courses on this page yet — add them in the Courses tab.
+                                            No {coursesLower} on this page yet — add them in the{' '}
+                                            {coursesTerm} tab.
                                         </p>
                                     )}
                                     {levelNames.map((level) => (
@@ -661,8 +671,8 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
             <div className="space-y-2 border-t border-neutral-200 pt-3">
                 <Label className="text-xs">Combos</Label>
                 <p className="text-2xs text-neutral-400">
-                    A fixed price for one exact set of courses, matched inside a group. Chosen by
-                    course rather than level, so a single combo covers every class.
+                    A fixed price for one exact set of {coursesLower}, matched inside a group.
+                    Chosen by {courseLower} rather than level, so a single combo covers every class.
                 </p>
 
                 {combos.map((combo, index) => {
@@ -700,8 +710,8 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                                 onClick={() => setOpenCombo(open ? null : index)}
                                 className="mt-1 text-2xs text-neutral-500"
                             >
-                                {combo.packages?.length || 0} course
-                                {combo.packages?.length === 1 ? '' : 's'} ·{' '}
+                                {combo.packages?.length || 0}{' '}
+                                {combo.packages?.length === 1 ? courseLower : coursesLower} ·{' '}
                                 {open ? 'hide' : 'choose'}
                             </button>
 

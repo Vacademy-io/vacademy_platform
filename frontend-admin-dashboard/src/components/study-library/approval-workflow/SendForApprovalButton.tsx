@@ -10,6 +10,8 @@ import {
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { ChangesPreviewModal } from './ChangesPreviewModal';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface SendForApprovalButtonProps {
     courseId: string;
@@ -27,6 +29,7 @@ export function SendForApprovalButton({
     // Role toggle: off (default) publishes the draft directly; on routes it
     // through Submit for Review -> admin approval.
     const requireApproval = isCourseApprovalRequired();
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
     // Submit for review / direct publish mutation
     const submitMutation = useMutation({
@@ -35,8 +38,8 @@ export function SendForApprovalButton({
         onSuccess: () => {
             toast.success(
                 requireApproval
-                    ? 'Course submitted for review successfully!'
-                    : 'Course published successfully!'
+                    ? `${courseTerm} submitted for review successfully!`
+                    : `${courseTerm} published successfully!`
             );
             // Land on the tab where the course now shows up
             navigate({
@@ -48,8 +51,8 @@ export function SendForApprovalButton({
             toast.error(
                 error.message ||
                     (requireApproval
-                        ? 'Failed to submit course for review'
-                        : 'Failed to publish course')
+                        ? `Failed to submit ${courseTerm.toLocaleLowerCase()} for review`
+                        : `Failed to publish ${courseTerm.toLocaleLowerCase()}`)
             );
         },
     });

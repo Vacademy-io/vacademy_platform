@@ -5,6 +5,8 @@
  * the left of the screen and another way on the right.
  */
 import type { ProductPageMappingResponse } from '../-types/product-page-types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 
 /**
  * Rotating avatar tints. Semantic token families only (each has a 50/600 pair)
@@ -39,7 +41,7 @@ export function getInitials(name: string): string {
  * Course/Subject/Module terminology setting) instead of the literal below, for
  * the case where a mapping carries no names at all.
  */
-export function itemTitle(mapping: ProductPageMappingResponse, fallback = 'Course'): string {
+export function itemTitle(mapping: ProductPageMappingResponse, fallback = getTerminology(ContentTerms.Course, SystemTerms.Course)): string {
     const parts = [mapping.package_name, mapping.level_name, mapping.session_name].filter(Boolean);
     return parts.join(' · ') || mapping.payment_plan?.name || fallback;
 }
@@ -49,6 +51,6 @@ export function itemTitle(mapping: ProductPageMappingResponse, fallback = 'Cours
  * Repeating "Class 5" on every row under a "Class 5" header is noise the
  * parent has to read past to find the one row they want to remove.
  */
-export function itemSubject(mapping: ProductPageMappingResponse, fallback = 'Course'): string {
+export function itemSubject(mapping: ProductPageMappingResponse, fallback = getTerminology(ContentTerms.Course, SystemTerms.Course)): string {
     return mapping.package_name || mapping.payment_plan?.name || fallback;
 }

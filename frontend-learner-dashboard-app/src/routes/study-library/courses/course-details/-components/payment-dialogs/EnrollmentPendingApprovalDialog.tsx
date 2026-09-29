@@ -79,7 +79,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-yellow-700">
                       <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                      <span>Course access will be granted automatically</span>
+                      <span>{getTerminology(ContentTerms.Course, SystemTerms.Course)} access will be granted automatically</span>
                     </div>
                   </div>
                 </div>

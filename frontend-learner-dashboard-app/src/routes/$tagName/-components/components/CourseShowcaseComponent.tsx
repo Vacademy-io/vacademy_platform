@@ -7,6 +7,8 @@ import { urlCourseDetails } from "@/constants/urls";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { cn } from "@/lib/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 /**
  * A CURATED strip of courses — "new", "on sale", one tag, or a hand-picked
@@ -309,7 +311,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                               layout="inline"
                                           />
                                           <span className="catalogue-btn catalogue-btn-primary mt-3 w-full justify-center">
-                                              {t("courseCatalog.viewCourse", { course: "Course" })}
+                                              {t("courseCatalog.viewCourse", { course: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                                           </span>
                                       </div>
                                   </div>

@@ -736,7 +736,7 @@ export function TransactionsView() {
         if (packageSessionFilter.packageId || packageSessionFilter.packageSessionIds?.length)
             chips.push({
                 id: 'course',
-                label: 'Course / session',
+                label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} / session`,
                 onRemove: () => setPackageSessionFilter({}),
             });
         if (listMonth)

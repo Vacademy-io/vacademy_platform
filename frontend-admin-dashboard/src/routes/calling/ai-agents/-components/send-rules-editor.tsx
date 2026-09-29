@@ -30,6 +30,8 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchEmailTemplates } from '@/routes/calling/ai-agents/-services/ai-agents';
 import type { AiCallActionRule } from '@/routes/settings/-components/AiAgentsCard';
 import type { MetaWhatsAppTemplate } from '@/types/message-template-types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type TriggerKind = 'promised' | 'declined' | 'custom' | 'disposition' | 'meeting' | 'extracted';
 
@@ -318,7 +320,7 @@ export function SendRulesEditor({
                             />
                             <Input
                                 className="h-8 flex-1"
-                                placeholder="Name this rule, e.g. Course brochure"
+                                placeholder={`Name this rule, e.g. ${getTerminology(ContentTerms.Course, SystemTerms.Course)} brochure`}
                                 value={rule.label || ''}
                                 onChange={(e) => {
                                     const label = e.target.value;

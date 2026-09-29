@@ -124,6 +124,12 @@ def _sentences(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"(?<=[.!?।])\s+", text or "") if p.strip()]
 
 
+def _is_presence_check(text: str) -> bool:
+    t = (text or "").casefold()
+    return any(k in t for k in ("सुन पा रहे", "sun paa rahe", "are you still there",
+                                "can you hear me"))
+
+
 def invariants(res: Dict[str, Any]) -> List[str]:
     """What must hold for ANY call, whatever its shape."""
     from app.turntake import caller_checking_presence, caller_asked_to_repeat
@@ -194,6 +200,32 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         if gap > 2.0:
             f.append(f"backchannel {' '.join(words)[:20]!r} at {cs:.1f}s cost "
                      f"{gap:.1f}s of silence before the bot spoke again")
+    # 8. "Are you there?" right after the bot's OWN acknowledgment-only reply:
+    #    the silence was the bot's — it owed the next line (call 22062aac,
+    #    2026-09-29: "जी सर।" x4, then 12 s, then the presence check; twice).
+    from app.bot import NoRepeatGate
+    prev_bot = None
+    for t in tr:
+        if t["role"] != "assistant":
+            continue
+        txt = t["text"] or ""
+        if (prev_bot is not None and _is_presence_check(txt)
+                and _sentences(prev_bot)
+                and all(NoRepeatGate._is_filler(x) for x in _sentences(prev_bot))):
+            f.append(f"asked 'are you there?' after its own bare {prev_bot.strip()[:24]!r} — "
+                     f"the bot owed the next line")
+        prev_bot = txt
+    # 9. two DIFFERENT questions in one bot turn: the caller can answer one,
+    #    and the other is then "already said" (call 22062aac: the marks
+    #    question and the name question played back to back).
+    from app.turntake import question_topic
+    for t in tr:
+        if t["role"] != "assistant":
+            continue
+        topics = {question_topic(x) or _key(x)[:24] for x in _sentences(t["text"] or "")
+                  if "?" in x or "？" in x}
+        if len(topics) >= 2:
+            f.append(f"two different questions in one turn: {(t['text'] or '')[:80]!r}")
     # 7. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     for cs, ce in res.get("caller", []):
         heard = any(cs <= t <= ce + 3.0 and x.strip() for t, x in finals)
@@ -246,7 +278,9 @@ async def main():
     for fp in files:
         rec = json.loads(fp.read_text(encoding="utf-8"))
         corr = args.corr or fp.stem.replace("replay_", "")
-        ctx = await _context_for(corr if not args.context else None, rec.get("agent"), args.context)
+        # A committed fixture names its own offline context (no admin-core in CI).
+        ctx_file = args.context or (str(T.FIXTURE_DIR / rec["_context"]) if rec.get("_context") else None)
+        ctx = await _context_for(corr if not ctx_file else None, rec.get("agent"), ctx_file)
         try:
             res = await replay_one(rec, corr, ctx, args.verbose)
         except Exception as e:  # noqa: BLE001

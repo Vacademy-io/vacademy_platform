@@ -38,6 +38,7 @@ import { DueLearnersTable } from './DueLearnersTable';
 import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
 import { InstalmentForecast, formatForecastMonth, isInstalmentFirst } from './InstalmentForecast';
 import { PaymentLogsTable } from './PaymentLogsTable';
+import { hideColumnsAddedLater } from '../-utils/hideColumnsAddedLater';
 import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
 import { KpiCardSettings, useKpiCardPrefs } from './KpiCardSettings';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
@@ -63,8 +64,24 @@ const COLUMN_PREFS_KEY = 'manage-payments:hidden-columns';
 /** Where the left-to-right column order is remembered, per browser. */
 const COLUMN_ORDER_KEY = 'manage-payments:column-order';
 
-/** Columns hidden until someone asks for them — the tracking trio is a niche reconciliation aid. */
-const DEFAULT_HIDDEN_COLUMNS = ['tracking_id', 'tracking_source', 'order_status'];
+/**
+ * Columns hidden until someone asks for them — the tracking trio is a niche reconciliation aid,
+ * and the enrolment / next-due dates are opt-in extras.
+ */
+const DEFAULT_HIDDEN_COLUMNS = [
+    'tracking_id',
+    'tracking_source',
+    'order_status',
+    'enrolled_date',
+    'next_due_date',
+];
+
+/**
+ * Columns shipped after admins may already have saved a layout. A saved layout replaces the
+ * defaults outright, so these are added to it once (see hideColumnsAddedLater).
+ */
+const COLUMNS_ADDED_HIDDEN = ['enrolled_date', 'next_due_date'];
+const COLUMNS_ADDED_FLAG = 'manage-payments:hidden-columns:dates-added';
 
 /** Header actions (Send reminders / Record payment) are hidden until the flows are ready. */
 const SHOW_HEADER_ACTIONS = false;
@@ -137,6 +154,21 @@ export function TransactionsView() {
         [batchesForSessions]
     );
 
+    // Column layout, remembered per browser: which columns are on, and their order. The
+    // migration runs first, in this render, so the prefs hook reads the updated hidden set.
+    useState(() =>
+        hideColumnsAddedLater(COLUMN_PREFS_KEY, COLUMNS_ADDED_HIDDEN, COLUMNS_ADDED_FLAG)
+    );
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        COLUMN_PREFS_KEY,
+        DEFAULT_HIDDEN_COLUMNS
+    );
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
+    // The enrolment / next-due dates cost the API an extra query per page, so they are only asked
+    // for while one of their columns is switched on. With both hidden the request is unchanged.
+    const showPlanDates =
+        !hiddenColumns.has('enrolled_date') || !hiddenColumns.has('next_due_date');
+
     const requestFilters: Omit<PaymentLogsRequest, 'institute_id'> = useMemo(() => {
         const filters: Omit<PaymentLogsRequest, 'institute_id'> = {
             sort_columns: { createdAt: 'DESC' },
@@ -150,6 +182,7 @@ export function TransactionsView() {
         if (selectedPaymentTypes.length > 0)
             filters.payment_types = selectedPaymentTypes.map((t) => t.value);
         if (debouncedSearch) filters.search_string = debouncedSearch;
+        if (showPlanDates) filters.include_plan_dates = true;
 
         if (
             packageSessionFilter.packageSessionIds &&
@@ -181,6 +214,7 @@ export function TransactionsView() {
         debouncedSearch,
         packageSessionFilter,
         batchesForSessions,
+        showPlanDates,
     ]);
 
     const {
@@ -390,13 +424,6 @@ export function TransactionsView() {
         return map;
     }, [batchesForSessions]);
 
-    // Column layout, remembered per browser: which columns are on, and their order.
-    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
-        COLUMN_PREFS_KEY,
-        DEFAULT_HIDDEN_COLUMNS
-    );
-    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
-
     /**
      * Every column the table can render, in the order PaymentLogsTable defines them. Date &
      * Time and Amount are `locked` — they can be dragged but not switched off, because a
@@ -415,6 +442,8 @@ export function TransactionsView() {
             { id: 'vendor', label: 'Payment Method' },
             { id: 'user_plan_status', label: 'Plan Status' },
             { id: 'enroll_invite', label: `${courseTerm}/Membership` },
+            { id: 'enrolled_date', label: 'Enrollment Date' },
+            { id: 'next_due_date', label: 'Next Due Date' },
             { id: 'invoice', label: 'Invoice' },
             { id: 'transaction_id', label: 'Transaction ID' },
             { id: 'tracking_id', label: 'Tracking ID' },

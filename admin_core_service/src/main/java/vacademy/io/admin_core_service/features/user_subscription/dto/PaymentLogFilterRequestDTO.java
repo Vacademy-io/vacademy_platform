@@ -57,5 +57,12 @@ public class PaymentLogFilterRequestDTO {
      * this string.
      */
     private String searchString;
+
+    /**
+     * Fill each row's enrolled_date / next_due_on, for the optional Enrollment Date and Next Due
+     * Date columns. Off unless asked for, so the list costs exactly what it did for everyone who
+     * keeps those columns hidden.
+     */
+    private Boolean includePlanDates;
 }
 

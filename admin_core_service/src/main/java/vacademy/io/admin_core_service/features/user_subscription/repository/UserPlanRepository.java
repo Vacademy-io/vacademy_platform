@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlan
 import vacademy.io.admin_core_service.features.user_subscription.dto.MonthDueLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UpcomingMonthProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDatesProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
@@ -889,6 +890,72 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("monthStart") LocalDate monthStart,
                         @Param("monthEnd") LocalDate monthEnd,
                         Pageable pageable);
+
+        /**
+         * Enrolment date and next due date for a page of plans, for the optional Enrolled on and
+         * Next due columns on the payment list.
+         *
+         * <p>Enrolled on is when the learner joined the batch: the stored {@code enrolled_date} on
+         * the batch mapping linked to this plan, and failing that on the learner's mapping for a
+         * batch of the plan's invite. So a pending or failed renewal by an existing member shows the
+         * date they joined. Only mappings where the learner actually got in count (ACTIVE /
+         * INACTIVE / TERMINATED / EXPIRED). An invite, a pending approval, or the DELETED
+         * placeholder a checkout leaves behind is not an enrolment, so someone who never got in
+         * has no date.
+         *
+         * <p>Mappings are reached through the plan's user (indexed); student_session_institute_group_mapping
+         * has no index on user_plan_id, and filtering on it directly scanned the whole table.
+         *
+         * <p>Next due follows the Due / Upcoming rules of {@link #DUE_OBLIGATION_CTES}. Only an
+         * ACTIVE plan owes anything. For an instalment plan it is the first instalment not yet fully
+         * paid, and for a priced subscription it is the end of the paid period (a free one owes
+         * nothing, as on the Due tab). One-time plans are never due.
+         */
+        @Query(value = """
+                WITH plans AS (
+                  SELECT up.id, up.user_id, up.enroll_invite_id, up.status, up.end_date, po.type,
+                         COALESCE(pp.actual_price, 0) AS price
+                    FROM user_plan up
+                    LEFT JOIN payment_option po ON po.id = up.payment_option_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                   WHERE up.id IN (:userPlanIds)
+                ), linked AS (
+                  SELECT p.id AS user_plan_id, MIN(s.enrolled_date) AS enrolled_date
+                    FROM plans p
+                    JOIN student_session_institute_group_mapping s
+                      ON s.user_id = p.user_id
+                     AND s.user_plan_id = p.id
+                   WHERE UPPER(s.status) IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')
+                   GROUP BY p.id
+                ), by_batch AS (
+                  SELECT p.id AS user_plan_id, MIN(s.enrolled_date) AS enrolled_date
+                    FROM plans p
+                    JOIN package_session_learner_invitation_to_payment_option psli
+                      ON psli.enroll_invite_id = p.enroll_invite_id
+                    JOIN student_session_institute_group_mapping s
+                      ON s.package_session_id = psli.package_session_id
+                     AND s.user_id = p.user_id
+                   WHERE UPPER(s.status) IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')
+                   GROUP BY p.id
+                ), next_instalment AS (
+                  SELECT sfp.user_plan_id, MIN(CAST(sfp.due_date AS date)) AS due_on
+                    FROM student_fee_payment sfp
+                   WHERE sfp.user_plan_id IN (:userPlanIds)
+                     AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
+                     AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected
+                   GROUP BY sfp.user_plan_id
+                )
+                SELECT p.id AS userPlanId,
+                       COALESCE(l.enrolled_date, b.enrolled_date) AS enrolledDate,
+                       CASE WHEN p.status = 'ACTIVE' AND p.type = 'CPO' THEN ni.due_on END AS nextInstalmentDue,
+                       CASE WHEN p.status = 'ACTIVE' AND p.type = 'SUBSCRIPTION' AND p.price > 0
+                            THEN p.end_date END AS renewalDue
+                  FROM plans p
+                  LEFT JOIN linked l ON l.user_plan_id = p.id
+                  LEFT JOIN by_batch b ON b.user_plan_id = p.id
+                  LEFT JOIN next_instalment ni ON ni.user_plan_id = p.id
+                """, nativeQuery = true)
+        List<UserPlanDatesProjection> findPlanDates(@Param("userPlanIds") List<String> userPlanIds);
 
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)

@@ -548,9 +548,12 @@ public class LearnerAuthManager {
                                         List<String> permissions = userPermissionRepository.findByUserId(user.getId())
                                                         .stream()
                                                         .map(UserPermission::getPermissionId).toList();
+                                        // Echo the (still valid) refresh token: the learner app stores
+                                        // response.refreshToken, and a missing one would wipe its copy.
                                         return JwtResponseDto.builder()
                                                         .accessToken(jwtService.generateToken(user,
                                                                         user.getRoles().stream().toList(), permissions))
+                                                        .refreshToken(refreshTokenRequestDTO.getToken())
                                                         .build();
                                 })
                                 .orElseThrow(() -> new ExpiredTokenException(

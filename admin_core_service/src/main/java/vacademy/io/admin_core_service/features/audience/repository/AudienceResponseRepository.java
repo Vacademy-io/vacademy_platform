@@ -244,7 +244,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 -- neither the matching window NOR the matching sort is requested.
                                 -- Without it these six correlated MAXes would run for every row of
                                 -- EVERY leads-list call, including the overwhelming majority that
-                                -- never touch these filters -- and this is the CRM's hottest query.
+                                -- never touch these filters, and this is the hottest query in the CRM.
                                 -- CASE does not evaluate the branch it does not take, so the
                                 -- default path costs nothing.
                                 SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
@@ -612,7 +612,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 -- neither the matching window NOR the matching sort is requested.
                                 -- Without it these six correlated MAXes would run for every row of
                                 -- EVERY leads-list call, including the overwhelming majority that
-                                -- never touch these filters -- and this is the CRM's hottest query.
+                                -- never touch these filters, and this is the hottest query in the CRM.
                                 -- CASE does not evaluate the branch it does not take, so the
                                 -- default path costs nothing.
                                 SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
@@ -972,7 +972,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 -- neither the matching window NOR the matching sort is requested.
                                 -- Without it these six correlated MAXes would run for every row of
                                 -- EVERY leads-list call, including the overwhelming majority that
-                                -- never touch these filters -- and this is the CRM's hottest query.
+                                -- never touch these filters, and this is the hottest query in the CRM.
                                 -- CASE does not evaluate the branch it does not take, so the
                                 -- default path costs nothing.
                                 SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
@@ -1340,7 +1340,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 -- neither the matching window NOR the matching sort is requested.
                                 -- Without it these six correlated MAXes would run for every row of
                                 -- EVERY leads-list call, including the overwhelming majority that
-                                -- never touch these filters -- and this is the CRM's hottest query.
+                                -- never touch these filters, and this is the hottest query in the CRM.
                                 -- CASE does not evaluate the branch it does not take, so the
                                 -- default path costs nothing.
                                 SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL

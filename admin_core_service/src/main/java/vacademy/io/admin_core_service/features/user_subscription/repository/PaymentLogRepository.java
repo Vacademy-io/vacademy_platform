@@ -143,6 +143,13 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * status filters.
    */
   /**
+   * Both payment-log arms classify through the same joins on purpose. The row mapper loads
+   * `paymentLog.getUserPlan()` for every row regardless of the arm it arrived on, so the arm that
+   * reaches a log through an invoice has to read its plan too — otherwise it reports a different
+   * status and currency for the same payment. That is also what keeps UNION de-duplicating: a log
+   * with both a plan and an invoice appears in both arms, and UNION only collapses rows that match
+   * on every column, not on id alone.
+   *
    * The three arms this screen unions together: payment logs reached through a user plan,
    * payment logs reached through an invoice, and invoices raised but never paid against.
    *
@@ -232,15 +239,29 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                  WHEN pl.payment_status IS NULL THEN 'NOT_INITIATED'
                  WHEN pl.payment_status = 'PAID' THEN 'PAID'
                  WHEN pl.payment_status = 'VOIDED' THEN 'CANCELLED'
+                 WHEN pl.payment_status = 'FAILED'
+                      AND iup.enroll_invite_id IS NOT NULL AND iup.user_id IS NOT NULL
+                      AND (SELECT nxt.status FROM user_plan nxt
+                            WHERE nxt.user_id = iup.user_id
+                              AND nxt.enroll_invite_id = iup.enroll_invite_id
+                              AND nxt.created_at > iup.created_at
+                            ORDER BY nxt.created_at ASC LIMIT 1) = 'ACTIVE' THEN 'PAID'
+                 WHEN pl.payment_status = 'FAILED' THEN 'FAILED'
                  WHEN pl.payment_status = 'PAYMENT_PENDING' AND pl.created_at IS NOT NULL
                       AND pl.created_at + make_interval(hours => CAST(:abandonedAfterHours AS int)) < NOW()
                       THEN 'ABANDONED'
                  ELSE pl.payment_status
                END AS row_status,
                pl.payment_amount AS row_amount,
-               UPPER(TRIM(COALESCE(pl.currency, ''))) AS row_currency,
-               true AS due_eligible
+               UPPER(TRIM(COALESCE(NULLIF(pl.currency, ''), NULLIF(ipp.currency, ''), iei.currency, '')))
+                 AS row_currency,
+               CASE WHEN iup.status IS NULL THEN true
+                    WHEN UPPER(TRIM(iup.status)) IN ('ACTIVE', 'PENDING_FOR_PAYMENT') THEN true
+                    ELSE false END AS due_eligible
         FROM payment_log pl
+        LEFT JOIN user_plan iup ON pl.user_plan_id = iup.id
+        LEFT JOIN enroll_invite iei ON iup.enroll_invite_id = iei.id
+        LEFT JOIN payment_plan ipp ON ipp.id = iup.plan_id
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
         WHERE :includeInvoiceLogs = true
@@ -284,12 +305,16 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
 
   /**
    * The KPI tile the admin has selected, applied to the already-classified rows. Kept outside
-   * COMBINED_PAYMENT_ROWS so the summary can aggregate every bucket while the table shows one:
-   * a tile and the rows it filters to have to describe the same set, and this is the only place
-   * that rule lives. A voided row belongs to no tile, so it survives only under "All".
+   * COMBINED_PAYMENT_ROWS so the summary can aggregate every bucket while the table shows one.
+   *
+   * A voided *payment* belongs to no tile, so it survives only under "All". A cancelled *invoice*
+   * is deliberately not treated the same way: it keeps its long-standing place in the Pending tab,
+   * which is where admins go to chase it. That asymmetry predates this query — it is carried over
+   * from the filter this replaced, not introduced here.
    */
   String BUCKET_PREDICATE = """
-      (:noBucketFilter = true OR (combined.row_status <> 'CANCELLED' AND (
+      (:noBucketFilter = true OR (
+       NOT (combined.row_status = 'CANCELLED' AND combined.row_type = 'PAYMENT_LOG') AND (
             (:bucketPaid = true AND combined.row_status = 'PAID')
          OR (:bucketFailed = true AND combined.row_status = 'FAILED')
          OR (:bucketAbandoned = true AND combined.row_status = 'ABANDONED')

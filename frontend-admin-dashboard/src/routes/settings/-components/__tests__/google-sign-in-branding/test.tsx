@@ -216,7 +216,7 @@ describe('GoogleSignInBrandingCard', () => {
         expect(text).toContain(CALLBACK);
         expect(text).toContain('developer@vidyayatan.com');
         expect(screen.getByRole('link', { name: /PDF guide/ }).getAttribute('href')).toMatch(
-            /guides\/google-sign-in-branding-guide\.pdf$/
+            /^https:\/\/d1om4dxj9e7kkd\.cloudfront\.net\/guides\/google-sign-in-branding-guide-[\d-]+\.pdf$/
         );
     });
 });

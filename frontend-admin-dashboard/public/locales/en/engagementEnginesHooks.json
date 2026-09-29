@@ -37,6 +37,7 @@
         "dismiss": "Dismissed",
         "reopen": "Reopened",
         "send": "Sent",
-        "default": "Done"
+        "default": "Done",
+        "sendNotConfirmed": "Not confirmed as sent. The task is now under Failed. Check the message log before sending again."
     }
 }

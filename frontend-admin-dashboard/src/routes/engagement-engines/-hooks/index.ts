@@ -30,8 +30,15 @@ import {
 } from '../-services';
 
 const errMsg = (e: unknown, fallback: string): string => {
-    const anyErr = e as { response?: { data?: { message?: string } }; message?: string };
-    return anyErr?.response?.data?.message || anyErr?.message || fallback;
+    // A VacademyException body carries its text in `ex`; reading only `message` showed axios's own
+    // "Request failed with status code 510" instead of the server's reason.
+    const anyErr = e as {
+        response?: { data?: { ex?: string; message?: string } };
+        message?: string;
+    };
+    return (
+        anyErr?.response?.data?.ex || anyErr?.response?.data?.message || anyErr?.message || fallback
+    );
 };
 
 // ---- Engines ----
@@ -195,8 +202,18 @@ export const useTaskAction = () => {
                     return sendTask(taskId, instituteId, editedBody);
             }
         },
-        onSuccess: (_d, vars) => {
+        onSuccess: (data, vars) => {
             qc.invalidateQueries({ queryKey: ['engagementTasks'] });
+            if (vars.verb === 'send') {
+                // The graduation count on the engine page moves with every approved send.
+                qc.invalidateQueries({ queryKey: ['engagementEngine'] });
+                // An unknown-outcome send comes back 200 with status FAILED: it must not read "Sent".
+                const status = (data as { status?: string } | undefined)?.status;
+                if (status && status !== 'SENT') {
+                    toast.error(t('taskAction.sendNotConfirmed'));
+                    return;
+                }
+            }
             const msg: Record<string, string> = {
                 ack: t('taskAction.ack'),
                 done: t('taskAction.done'),
@@ -206,7 +223,11 @@ export const useTaskAction = () => {
             };
             toast.success(msg[vars.verb] ?? t('taskAction.default'));
         },
-        onError: (e) => toast.error(errMsg(e, t('toast.taskActionFailed'))),
+        onError: (e) => {
+            // Refresh either way: a task another admin already handled should leave the list.
+            qc.invalidateQueries({ queryKey: ['engagementTasks'] });
+            toast.error(errMsg(e, t('toast.taskActionFailed')));
+        },
     });
 };
 

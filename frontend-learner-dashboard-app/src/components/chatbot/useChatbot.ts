@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { ChatMessage, ChatbotContext, QuizSubmission } from "./types";
 import { getCachedInstituteBranding } from "@/services/domain-routing";
+import { INSTITUTE_SELECTED_EVENT } from "@/lib/auth/post-login-redirect";
 import {
   chatbotAPI,
   ContextType,
@@ -183,6 +184,12 @@ export const useChatbot = () => {
       }
     };
     fetchSettings();
+    // A multi-institute learner's pick on /institute-selection changes the
+    // institute getChatbotSettings() resolves; refetch so the name, avatar,
+    // pages, voice and enable flag are the picked institute's.
+    window.addEventListener(INSTITUTE_SELECTED_EVENT, fetchSettings);
+    return () =>
+      window.removeEventListener(INSTITUTE_SELECTED_EVENT, fetchSettings);
   }, []);
 
   const shouldShowChatbot = () => {

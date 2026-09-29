@@ -46,6 +46,23 @@ const Verdict: React.FC<{ line: TranscriptLine }> = ({ line }) => {
   );
 };
 
+/**
+ * A teacher line already said, word for word, since the learner last spoke —
+ * the question spoken inside the narration and then again as its own line, or
+ * re-asked after a nudge. Shown once.
+ */
+const repeatsEarlierTeacherLine = (lines: TranscriptLine[], i: number): boolean => {
+  const m = lines[i];
+  const text = m?.text.trim() ?? "";
+  if (!m || m.role !== "teacher" || text.length < 12) return false;
+  for (let j = i - 1; j >= 0; j -= 1) {
+    const prev = lines[j]!;
+    if (prev.role === "learner") return false;
+    if (prev.text.includes(text)) return true;
+  }
+  return false;
+};
+
 export type TutorPhase = "connecting" | "speaking" | "listening" | "thinking" | "idle" | "question" | "media" | "done";
 
 interface TeacherPanelProps {
@@ -98,6 +115,8 @@ interface TeacherPanelProps {
   disabled?: boolean;
   /** Phones: the page shows its own teacher strip, so the panel header hides below lg. */
   compact?: boolean;
+  /** Opt-in camera activeness card (consent, preview, live score); laptops only. */
+  activeness?: React.ReactNode;
 }
 
 const PHASE_LABEL: Record<TutorPhase, string> = {
@@ -116,7 +135,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled, pace, onPace, stats, language, languages, onLanguage,
-  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarPainted, avatarProgress, gate, onGateTap, locked, countdown,
+  avatarContainerRef, avatarState, onToggleAvatar, avatarError, onRetryAvatar, avatarPainted, avatarProgress, gate, onGateTap, locked, countdown, activeness,
 }) => {
   const photoUrl = useTeacherPhotoUrl(teacherAvatarFileId);
   const [text, setText] = useState("");
@@ -387,6 +406,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </div>
       )}
 
+      {activeness}
+
       {avatarError && !gate && (avatarState === "failed" || avatarState === "on") && (
         <p role="status" className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
           {avatarState === "failed" ? "Teacher avatar stopped: " : "Teacher avatar hiccup: "}
@@ -405,8 +426,10 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
           // While the question card is up it IS the question; the spoken prompt's
-          // own bubble would show the same sentence a second time.
-          check && awaiting === "answer" && m.role === "teacher" && m.text.trim() === (check.prompt || "").trim() ? null : (
+          // own bubble would show the same sentence a second time. The same
+          // teacher line twice in a row (a re-asked question) shows once.
+          (check && awaiting === "answer" && m.role === "teacher" && m.text.trim() === (check.prompt || "").trim()) ||
+          repeatsEarlierTeacherLine(transcript, i) ? null : (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : m.kind === "nudge" ? "border border-warning-200 bg-warning-50 text-neutral-800" : "bg-neutral-100 text-neutral-800"}`}>
               {m.role === "teacher" && (m.kind === "evaluate" || m.kind === "remediate" || m.kind === "revisit_verdict") && (

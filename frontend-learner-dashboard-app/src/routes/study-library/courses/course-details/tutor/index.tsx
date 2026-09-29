@@ -13,6 +13,8 @@ import { TeacherAvatar } from "@/components/tutor/TeacherAvatar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ListBullets } from "@phosphor-icons/react";
 import { TeacherPanel, type LessonStats, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
+import { ActivenessCard } from "@/components/tutor/ActivenessCard";
+import { useActiveness } from "@/hooks/useActiveness";
 import {
   endTutorSession,
   getTutorAvatarToken,
@@ -481,6 +483,7 @@ function TutorPage() {
       // The bubble fills sentence by sentence as the audio plays (voice mode).
       setTranscript((prev) => [...prev, line]);
       if (!(voiceMode && speakOn)) setPhase("idle");
+      if (meta.kind === "nudge") activeness.markNudged();
       // Scoreboard: a verdict on a check, a cleared revisit, a miss.
       const k = meta.kind;
       const score = typeof meta.score === "number" ? meta.score : null;
@@ -615,6 +618,20 @@ function TutorPage() {
       setPhase((p) => (p === "done" ? p : "idle"));
       setDisconnected((d) => d ?? { reason: "lost" });
     },
+  });
+
+  // ── activeness (opt-in camera, on-device) ──
+  // Stepping away pauses the teacher: what she was saying stops here, and the
+  // server says she will wait. Back in front of the camera, she picks up again.
+  const activeness = useActiveness({
+    active: readyAt !== null && !disconnected && phase !== "connecting" && phase !== "done",
+    speaking: phase === "speaking",
+    questionOpen: awaiting === "answer",
+    onPresence: (present) => {
+      if (!present && phase === "speaking") stopAudio();
+      socket.sendPresence(present);
+    },
+    onReport: (report) => socket.sendActiveness({ ...report }),
   });
 
   const currentSlideType = () =>
@@ -882,6 +899,7 @@ function TutorPage() {
 
   const endAndLeave = () => {
     stopAudio();
+    activeness.flush();
     socket.sendEndSession();
     setTimeout(() => {
       if (isDemo) {
@@ -1121,6 +1139,17 @@ function TutorPage() {
               showNotice(l === "hi" ? "The teacher will continue in Hindi from the next line." : "The teacher will continue in English from the next line.");
             }}
             stats={stats}
+            activeness={
+              <ActivenessCard
+                status={activeness.status}
+                score={activeness.score}
+                parts={activeness.parts}
+                away={activeness.away}
+                attachVideo={activeness.attachVideo}
+                onEnable={activeness.enable}
+                onDisable={activeness.disable}
+              />
+            }
             awaiting={awaiting}
             voiceMode={voiceMode}
             micOn={micOn}
@@ -1143,6 +1172,7 @@ function TutorPage() {
               socket.sendContinue();
             }}
             onControl={(intent) => {
+              if (intent === "skip") activeness.markSkipped();
               setAwaiting(null);
               socket.sendControl(intent);
             }}

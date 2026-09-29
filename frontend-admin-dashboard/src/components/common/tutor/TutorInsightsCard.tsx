@@ -29,6 +29,19 @@ const ALL = '__all__';
 const fmtScore = (v: number | null) =>
     v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
 
+// Activeness is 0-100 (camera opt-in); "—" when the learner never turned it on.
+const fmtActiveness = (v: number | null | undefined, sessions?: number) =>
+    v === null || v === undefined ? '—' : `${Math.round(v)}${sessions ? ` (${sessions})` : ''}`;
+
+const activenessTone = (v: number | null | undefined) =>
+    v === null || v === undefined
+        ? 'text-neutral-400'
+        : v >= 70
+          ? 'text-success-700'
+          : v >= 40
+            ? 'text-warning-700'
+            : 'text-danger-600';
+
 const SHEETS: Array<{ key: TutorInsightsSheet; label: string }> = [
     { key: 'learners', label: 'Learners CSV' },
     { key: 'concepts', label: 'Concepts CSV' },
@@ -230,8 +243,14 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                             ['Minutes', totals.minutes],
                             ['Voice lessons', totals.voice_sessions],
                             ['Left mid-way', totals.abandoned],
+                            ['Avg activeness', fmtActiveness(totals.activeness)],
                         ]
                             .filter(([label]) => instituteWide || label !== coursesTerm)
+                            .filter(
+                                ([label]) =>
+                                    label !== 'Avg activeness' ||
+                                    (totals.activeness_sessions ?? 0) > 0
+                            )
                             .map(([label, value]) => (
                                 <div
                                     key={String(label)}
@@ -269,6 +288,12 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                             <th className="py-2 pe-3 text-end">Minutes</th>
                                             <th className="py-2 pe-3 text-end">Answers</th>
                                             <th className="py-2 pe-3 text-end">Avg score</th>
+                                            <th
+                                                className="py-2 pe-3 text-end"
+                                                title="Average activeness (0-100) in lessons where the learner turned the camera on; lessons counted in brackets"
+                                            >
+                                                Activeness
+                                            </th>
                                             <th className="py-2 pe-3 text-end">Weak</th>
                                             <th className="py-2 pe-3 text-end">Last lesson</th>
                                         </tr>
@@ -297,6 +322,14 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                                 <td className="py-2 pe-3 text-end">{c.attempts}</td>
                                                 <td className="py-2 pe-3 text-end">
                                                     {fmtScore(c.avg_score)}
+                                                </td>
+                                                <td
+                                                    className={`py-2 pe-3 text-end ${activenessTone(c.activeness)}`}
+                                                >
+                                                    {fmtActiveness(
+                                                        c.activeness,
+                                                        c.activeness_sessions
+                                                    )}
                                                 </td>
                                                 <td className="py-2 pe-3 text-end">
                                                     {c.weak_attempts > 0 ? (
@@ -415,6 +448,12 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                         <th className="py-2 pe-3 text-end">Minutes</th>
                                         <th className="py-2 pe-3 text-end">Answers</th>
                                         <th className="py-2 pe-3 text-end">Avg score</th>
+                                        <th
+                                            className="py-2 pe-3 text-end"
+                                            title="Average activeness (0-100) in lessons where the learner turned the camera on; lessons counted in brackets"
+                                        >
+                                            Activeness
+                                        </th>
                                         <th className="py-2 pe-3 text-end">Weak</th>
                                         <th className="py-2 pe-3 text-end">Last lesson</th>
                                     </tr>
@@ -446,6 +485,11 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                             <td className="py-2 pe-3 text-end">{l.attempts}</td>
                                             <td className="py-2 pe-3 text-end">
                                                 {fmtScore(l.avg_score)}
+                                            </td>
+                                            <td
+                                                className={`py-2 pe-3 text-end ${activenessTone(l.activeness)}`}
+                                            >
+                                                {fmtActiveness(l.activeness, l.activeness_sessions)}
                                             </td>
                                             <td className="py-2 pe-3 text-end">
                                                 {l.weak_attempts > 0 ? (

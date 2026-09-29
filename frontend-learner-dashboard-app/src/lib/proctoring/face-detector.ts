@@ -68,9 +68,9 @@ interface MediaPipeVisionModule {
   };
 }
 
-const MEDIAPIPE_VERSION = "0.10.14";
-const MEDIAPIPE_BUNDLE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
-const MEDIAPIPE_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
+export const MEDIAPIPE_VERSION = "0.10.14";
+export const MEDIAPIPE_BUNDLE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
+export const MEDIAPIPE_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const MEDIAPIPE_MODEL =
   "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 
@@ -88,7 +88,7 @@ const isFrameReady = (video: HTMLVideoElement) =>
  * use successfully, so detection and evidence now see identical pixels.
  * One canvas per counter, reused every tick.
  */
-const makeFrameReader = () => {
+export const makeFrameReader = () => {
   let canvas: HTMLCanvasElement | null = null;
   return (video: HTMLVideoElement): HTMLCanvasElement | null => {
     if (!isFrameReady(video)) return null;

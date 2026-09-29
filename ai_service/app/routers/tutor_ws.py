@@ -199,6 +199,17 @@ def learner_chapter_slides(
     return {"chapter_id": chapter_id, "slides": svc.chapter_slides(db, package_session_id=package_session_id, chapter_id=chapter_id)}
 
 
+@router.get("/v1/learner/packages/{package_session_id}/outline",
+            summary="Every chapter of the batch with its slides and tutor readiness (tutor left rail)")
+def learner_course_outline(
+    package_session_id: str,
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    _batch_access(db, caller, package_session_id)
+    return {"package_session_id": package_session_id, "chapters": svc.course_outline(db, package_session_id=package_session_id)}
+
+
 @router.post("/v1/sessions", summary="Start (or resume) a tutor session")
 def start_session(
     payload: StartSessionRequest,

@@ -71,17 +71,41 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
      * TTL sweep. A call queued yesterday for a lead who has since been worked by a
      * human is not a call anyone wants placed; expiring it is visible (status +
      * reason) rather than a silent drop.
+     *
+     * <p>A PAUSED institute is excluded. Pause means "hold these, lose nothing", and
+     * the TTL is a guard against a call going stale while the queue moves past it —
+     * not a deadline the customer is racing. Without this exclusion a queue paused for
+     * a weekend would quietly EXPIRE itself, which is exactly the outcome pausing is
+     * supposed to prevent. The clock effectively stops for the duration of the pause.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE ai_call_queue q
+               SET status = 'EXPIRED',
+                   status_reason = 'Waited past its time limit without a free line.',
+                   updated_at = NOW()
+             WHERE q.status = 'QUEUED' AND q.expires_at IS NOT NULL AND q.expires_at <= :now
+               AND NOT EXISTS (SELECT 1 FROM ai_call_lane l
+                                WHERE l.institute_id = q.institute_id AND l.paused = TRUE)
+            """, nativeQuery = true)
+    int expireOverdue(@Param("now") Instant now);
+
+    /**
+     * Push a paused institute's expiries forward by however long it was held, so the
+     * pause does not eat into the TTL the calls had left when they were frozen.
+     * Called once on resume, before the lane is un-paused.
      */
     @Modifying
     @Transactional
     @Query(value = """
             UPDATE ai_call_queue
-               SET status = 'EXPIRED',
-                   status_reason = 'Waited past its time limit without a free line.',
+               SET expires_at = expires_at + (:heldSeconds * INTERVAL '1 second'),
                    updated_at = NOW()
-             WHERE status = 'QUEUED' AND expires_at IS NOT NULL AND expires_at <= :now
+             WHERE institute_id = :instituteId AND status = 'QUEUED' AND expires_at IS NOT NULL
             """, nativeQuery = true)
-    int expireOverdue(@Param("now") Instant now);
+    int extendExpiryAfterPause(@Param("instituteId") String instituteId,
+                               @Param("heldSeconds") long heldSeconds);
 
     /**
      * Release items stuck in DISPATCHING — only reachable if the drainer died between

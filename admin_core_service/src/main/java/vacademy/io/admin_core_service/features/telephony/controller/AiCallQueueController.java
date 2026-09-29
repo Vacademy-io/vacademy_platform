@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.BulkRunSummary;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueItemView;
+import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.LaneView;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueSummary;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -44,6 +45,29 @@ public class AiCallQueueController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(queueService.list(instituteId, status, sourceRef, page, size));
+    }
+
+    /**
+     * Hold this institute's queue. Nothing is cancelled — the calls keep their place
+     * and their order, the dialler just steps over them until the queue is resumed.
+     * Scoped to the caller's own institute, so an admin can stop their own campaign
+     * without needing a super-admin.
+     */
+    @PostMapping("/pause")
+    public ResponseEntity<LaneView> pause(
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.setQueuePaused(instituteId, true));
+    }
+
+    /** Release a held queue. The next drain tick picks the calls up where they left off. */
+    @PostMapping("/resume")
+    public ResponseEntity<LaneView> resume(
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(queueService.setQueuePaused(instituteId, false));
     }
 
     /** Bulk runs this institute has queued, newest first — the campaign filter's options. */

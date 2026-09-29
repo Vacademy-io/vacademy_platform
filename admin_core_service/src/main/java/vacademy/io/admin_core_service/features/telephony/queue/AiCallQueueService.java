@@ -697,6 +697,41 @@ public class AiCallQueueService {
         return laneView(instituteId);
     }
 
+    /**
+     * Hold or release one institute's queue.
+     *
+     * <p>Pausing writes a single flag. Nothing is cancelled, re-timed or removed: the
+     * rows keep their status, their order and their place in the campaign, the drain
+     * job simply steps over the lane ({@code Snapshot#isPaused}), and the TTL sweep
+     * leaves them alone. Resuming lets the very next tick pick them up.
+     *
+     * <p>On resume the expiries are pushed forward by the time held, so a lead queued
+     * before a two-day pause still gets the TTL it had when it was frozen rather than
+     * expiring the moment the queue restarts.
+     */
+    @Transactional
+    public LaneView setQueuePaused(String instituteId, boolean paused) {
+        AiCallLane lane = laneRepository.findById(instituteId)
+                .orElseGet(() -> AiCallLane.builder().instituteId(instituteId).weight(1).build());
+        boolean was = lane.isPaused();
+        if (was == paused) {
+            log.info("ai-call queue: institute {} already {}", instituteId, paused ? "paused" : "running");
+            return laneView(instituteId);
+        }
+        if (!paused && lane.getUpdatedAt() != null) {
+            long held = Math.max(0, Duration.between(lane.getUpdatedAt(), Instant.now()).getSeconds());
+            if (held > 0) {
+                int moved = repository.extendExpiryAfterPause(instituteId, held);
+                log.info("ai-call queue: resumed institute {} after {}s — extended expiry on {} held call(s)",
+                        instituteId, held, moved);
+            }
+        }
+        lane.setPaused(paused);
+        laneRepository.save(lane);
+        log.info("ai-call queue: institute {} {}", instituteId, paused ? "PAUSED (queue held)" : "RESUMED");
+        return laneView(instituteId);
+    }
+
     public List<LaneView> allLanes() {
         return allLanes(capacityService.snapshot());
     }

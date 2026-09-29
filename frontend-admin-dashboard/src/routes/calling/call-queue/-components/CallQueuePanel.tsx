@@ -16,7 +16,7 @@
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowsClockwise, Prohibit, Warning } from '@phosphor-icons/react';
+import { ArrowsClockwise, Pause, Play, Prohibit, Warning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import {
     cancelAllQueued,
+    setQueuePaused,
     cancelQueuedItem,
     fetchQueueItems,
     fetchQueueRuns,
@@ -116,6 +117,22 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
         onError: () => toast.error('Could not cancel the queue'),
     });
 
+    // Pause/resume is deliberately separate from cancel: it stops calls going out
+    // without giving up any of them, so an admin can look at what the last batch did
+    // before letting the rest run.
+    const togglePause = useMutation({
+        mutationFn: (paused: boolean) => setQueuePaused(instituteId, paused),
+        onSuccess: (r) => {
+            toast.success(
+                r.paused
+                    ? 'Queue paused — waiting calls are held, nothing cancelled'
+                    : 'Queue resumed — calls will start dialling again'
+            );
+            invalidate();
+        },
+        onError: () => toast.error('Could not change the queue state'),
+    });
+
     const cancelOne = useMutation({
         mutationFn: (id: string) =>
             cancelQueuedItem(instituteId, id, 'Cancelled from the call queue'),
@@ -162,8 +179,9 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
             {summary?.paused && (
                 <div className="flex items-center gap-2 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
                     <Warning size={16} weight="fill" />
-                    Calling is paused for this institute — queued calls are held until it is
-                    resumed.
+                    Calling is paused for this institute — {summary.queued} queued call
+                    {summary.queued === 1 ? ' is' : 's are'} held and will dial when you resume.
+                    Nothing has been cancelled.
                 </div>
             )}
 
@@ -226,6 +244,22 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                         waiting call the institute has — including automations and other
                         people's manual calls — which is not what someone stopping one
                         campaign expects. */}
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={togglePause.isPending || !summary}
+                        onClick={() => togglePause.mutate(!summary?.paused)}
+                        title={
+                            summary?.paused
+                                ? 'Let the queue dial again'
+                                : 'Hold every waiting call — nothing is cancelled'
+                        }
+                    >
+                        {summary?.paused ? <Play size={14} /> : <Pause size={14} />}
+                        {summary?.paused ? 'Resume queue' : 'Pause queue'}
+                    </Button>
+
                     <Button
                         size="sm"
                         variant="outline"

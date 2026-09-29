@@ -501,6 +501,18 @@ public class PlanChangeService {
             }
         }
 
+        // The learner has just paid for this plan, so the membership is live again: a
+        // change applied to an EXPIRED or PAYMENT_FAILED plan left the status untouched,
+        // which meant class access came back (extendMappings revives the mappings) while
+        // billing did not -- findDueForRenewal and getUpcomingAutopayCharges both require
+        // status ACTIVE, so the fresh mandate would never have been charged and the
+        // dashboard would still have read "Expired". The trial flag and the dunning
+        // counters go with it: real money has been taken.
+        userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        userPlan.setIsTrial(false);
+        userPlan.setRenewalAttemptCount(0);
+        userPlan.setLastRenewalAttemptAt(null);
+
         reapplyAutopay(userPlan, changeRequest, newEndDate);
         userPlanRepository.save(userPlan);
 

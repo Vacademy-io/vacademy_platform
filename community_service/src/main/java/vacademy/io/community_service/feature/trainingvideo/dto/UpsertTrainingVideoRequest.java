@@ -14,4 +14,8 @@ public class UpsertTrainingVideoRequest {
     /** 1..3 breadcrumb segments, e.g. ["LMS","Course creation","AI based course"]. */
     private List<String> modulePath;
     private Boolean active;
+    /** Extra search words. On update: null = unchanged, empty list = clear. */
+    private List<String> keywords;
+    /** Step number inside its section. On update: null = unchanged, 0 or less = clear. */
+    private Integer sortOrder;
 }

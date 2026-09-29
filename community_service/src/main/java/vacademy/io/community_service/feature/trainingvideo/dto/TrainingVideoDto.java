@@ -20,6 +20,10 @@ public class TrainingVideoDto {
     private String fileUrl;
     /** Breadcrumb segments, e.g. ["LMS","Course creation","AI based course"]. */
     private List<String> modulePath;
+    /** Extra search words (synonyms, Hinglish, old names); never null. */
+    private List<String> keywords;
+    /** Step number inside its section; null = unordered. */
+    private Integer sortOrder;
     private boolean active;
     private Date createdAt;
     private Date updatedAt;

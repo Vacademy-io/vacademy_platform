@@ -204,7 +204,9 @@ function EngagementPage() {
         : data && data.scheduledToday > 0
           ? openToday > 0
             ? t("page.stats.todayLeft", { count: openToday })
-            : t("page.stats.todayAllDone")
+            : data.completedToday >= data.scheduledToday
+              ? t("page.stats.todayAllDone")
+              : null
           : null,
     footer:
       data && data.scheduledToday > 0 ? (

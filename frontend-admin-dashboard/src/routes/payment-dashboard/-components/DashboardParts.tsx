@@ -32,9 +32,9 @@ export function SectionCard({
                     </h3>
                     {subtitle && <p className="mt-0.5 text-caption text-neutral-500">{subtitle}</p>}
                 </div>
-                {action}
+                {action && <div className="shrink-0">{action}</div>}
             </div>
-            <div className={cn('flex-1 px-5 pb-4 pt-3', bodyClassName)}>{children}</div>
+            <div className={cn('flex-1 px-5 pb-5 pt-3', bodyClassName)}>{children}</div>
         </Card>
     );
 }
@@ -80,70 +80,43 @@ export function DeltaPill({
     );
 }
 
-/** A thin trend line for a KPI tile — shape only, no axes. */
-export function Sparkline({ values, className }: { values: number[]; className?: string }) {
-    if (values.length < 2 || values.every((v) => v === 0)) return null;
-    const w = 72;
-    const h = 26;
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-    const pts = values.map((v, i) => {
-        const x = (i / (values.length - 1)) * w;
-        const y = h - 3 - ((v - min) / (max - min || 1)) * (h - 6);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    return (
-        <svg
-            width={w}
-            height={h}
-            viewBox={`0 0 ${w} ${h}`}
-            className={cn('shrink-0 text-primary-500', className)}
-            aria-hidden
-        >
-            <polyline
-                points={pts.join(' ')}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-export function KpiTile({
+/** A small labelled figure with an optional delta, for the hero card's supporting numbers. */
+export function MiniStat({
+    icon,
     label,
-    info,
     value,
     delta,
-    caption,
-    trend,
+    info,
 }: {
+    icon: ReactNode;
     label: string;
-    info: string;
     value: string;
     delta?: ReactNode;
-    caption: string;
-    trend?: number[];
+    info?: string;
 }) {
     return (
-        <Card className="flex flex-col rounded-xl border-neutral-200 p-4 shadow-sm">
-            <div className="flex items-center gap-1.5 text-caption font-medium text-neutral-600">
-                {label}
-                <InfoTip text={info} />
+        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-primary-500 shadow-sm">
+                {icon}
+            </span>
+            <div className="min-w-0">
+                <div className="flex items-center gap-1 text-caption text-neutral-500">
+                    <span className="truncate">{label}</span>
+                    {info && <InfoTip text={info} />}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-h3 font-bold tabular-nums text-neutral-900">{value}</span>
+                    {delta}
+                </div>
             </div>
-            <div className="mt-2 text-h3 font-bold tabular-nums text-neutral-900">{value}</div>
-            <div className="mt-2 flex min-h-7 items-end justify-between gap-2">
-                <span>{delta}</span>
-                {trend && <Sparkline values={trend} />}
-            </div>
-            <div className="mt-1 text-caption text-neutral-500">{caption}</div>
-        </Card>
+        </div>
     );
 }
 
-/** Ranked horizontal bars: a label, a proportional track and the value. */
+/**
+ * Ranked horizontal bars: the label and value on one line, the proportional bar under it, so a
+ * long label never has to be cut short.
+ */
 export function BarList({
     rows,
     formatValue,
@@ -158,40 +131,70 @@ export function BarList({
     const max = Math.max(0, ...rows.map((r) => r.value));
     const total = rows.reduce((s, r) => s + r.value, 0);
     if (rows.length === 0 || total <= 0) {
-        return <p className="py-6 text-center text-caption text-neutral-500">{emptyText}</p>;
+        return <p className="py-8 text-center text-caption text-neutral-500">{emptyText}</p>;
     }
     return (
-        <div className="divide-y divide-neutral-100">
+        <ul className="space-y-4">
             {rows.map((r) => (
-                <div key={r.key} className="grid grid-cols-12 items-center gap-3 py-2.5 text-body">
-                    <span className="col-span-5 truncate text-neutral-700" title={r.label}>
-                        {r.label}
-                    </span>
-                    <span className="col-span-4 h-2 overflow-hidden rounded-full bg-neutral-100">
+                <li key={r.key}>
+                    <div className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 text-body font-medium text-neutral-700">
+                            {r.label}
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                            <span className="text-body font-semibold text-neutral-900">
+                                {formatValue(r.value)}
+                            </span>
+                            <span className="ml-1.5 text-caption text-neutral-400">
+                                {Math.round((r.value / total) * 100)}%
+                            </span>
+                        </span>
+                    </div>
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-100">
                         {/* Width is the row's share of the largest — data, so inline style. */}
-                        <span
-                            className={cn(
-                                'block h-full rounded-full',
-                                r.barClassName ?? barClassName
-                            )}
+                        <div
+                            className={cn('h-full rounded-full', r.barClassName ?? barClassName)}
                             style={{
                                 width: `${max > 0 ? Math.max(2, (r.value / max) * 100) : 0}%`,
                             }}
                         />
-                    </span>
-                    <span className="col-span-3 text-right tabular-nums">
-                        <span className="font-semibold text-neutral-800">
-                            {formatValue(r.value)}
-                        </span>
-                        <span className="ml-1 text-caption text-neutral-400">
-                            {Math.round((r.value / total) * 100)}%
-                        </span>
-                        {r.detail && (
-                            <span className="block text-caption text-neutral-400">{r.detail}</span>
-                        )}
-                    </span>
-                </div>
+                    </div>
+                    {r.detail && (
+                        <div className="mt-1 text-caption text-neutral-400">{r.detail}</div>
+                    )}
+                </li>
             ))}
+        </ul>
+    );
+}
+
+/**
+ * One bar split into segments (collected / overdue / still to come …). Each segment's width is
+ * its share of the whole — data, so inline style.
+ */
+export function SegmentBar({
+    segments,
+    className,
+}: {
+    segments: { key: string; value: number; className: string }[];
+    className?: string;
+}) {
+    const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0);
+    return (
+        <div className={cn('flex h-2.5 overflow-hidden rounded-full bg-neutral-100', className)}>
+            {total > 0 &&
+                segments
+                    .filter((s) => s.value > 0)
+                    .map((s) => (
+                        <div
+                            key={s.key}
+                            className={cn(
+                                'h-full first:rounded-l-full last:rounded-r-full',
+                                s.className
+                            )}
+                            style={{ width: `${(s.value / total) * 100}%` }}
+                        />
+                    ))}
         </div>
     );
 }

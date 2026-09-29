@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { DashboardBatchRow, PaymentDashboard } from '@/services/payment-dashboard';
 import {
+    batchLabel,
+    batchParts,
     buildHighlights,
     collectionRate,
     formatCompact,
     heatLevel,
     percentChange,
     resolveDashboardPeriod,
+    formatFull,
     toCourseRows,
     toMethodSlices,
+    visibleYears,
 } from '../dashboardMath';
 
 const batch = (over: Partial<DashboardBatchRow>): DashboardBatchRow => ({
@@ -187,5 +191,48 @@ describe('buildHighlights', () => {
         expect(buildHighlights(d).find((h) => h.tone === 'danger')?.text).toContain(
             '₹20K has been overdue'
         );
+    });
+});
+
+describe('display polish', () => {
+    it('writes rupees in Indian grouping', () => {
+        expect(formatFull(427000, 'INR')).toBe('₹4,27,000');
+        expect(formatFull(3842000, null)).toBe('₹38,42,000');
+    });
+
+    it('never shows the placeholder default level or session', () => {
+        expect(batchParts('default', 'DEFAULT')).toBe('');
+        expect(batchParts('Class 12', 'DEFAULT')).toBe('Class 12');
+        expect(
+            batchLabel(
+                batch({
+                    package_name: 'GP Rating Course',
+                    level_name: 'default',
+                    session_name: 'DEFAULT',
+                })
+            )
+        ).toBe('GP Rating Course');
+        expect(batchLabel(batch({ level_name: 'Class 11', session_name: '2026-27' }))).toBe(
+            'Class 11 · 2026-27'
+        );
+    });
+
+    it('drops financial years before the first payment but keeps two to compare', () => {
+        const y = (financial_year: string, collected: number) => ({
+            financial_year,
+            collected,
+            partial: false,
+        });
+        expect(
+            visibleYears([y('23', 0), y('24', 0), y('25', 0), y('26', 5)]).map(
+                (x) => x.financial_year
+            )
+        ).toEqual(['25', '26']);
+        expect(
+            visibleYears([y('23', 0), y('24', 9), y('25', 0), y('26', 5)]).map(
+                (x) => x.financial_year
+            )
+        ).toEqual(['24', '25', '26']);
+        expect(visibleYears([y('23', 1), y('24', 9)]).length).toBe(2);
     });
 });

@@ -13,19 +13,20 @@ import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bu
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
 import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
-import { BookOpen, Lightning } from '@phosphor-icons/react';
+import { BookOpen, Lightning, Question } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
-import { getActiveWorkflowsQuery } from '@/services/workflow-service';
+import { getActiveWorkflowsQuery, getWorkflowRawQuery } from '@/services/workflow-service';
+import { evaluateEntryCondition, findEntryCondition } from './workflow-entry-condition';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -377,6 +378,9 @@ interface LinkedWorkflowsSectionProps {
  *   - Global block (rendered once): institute-wide workflows (event_id IS NULL) that
  *     fire on every batch enrollment — listed in a single line as the user requested,
  *     since they apply identically to every selected course.
+ *   - A global workflow gated on the course by an entry CONDITION (e.g. "only UnlockX
+ *     courses") is left out of the global line and listed only under the courses it will
+ *     actually fire for.
  */
 const LinkedWorkflowsSection = ({
     instituteId,
@@ -417,13 +421,64 @@ const LinkedWorkflowsSection = ({
         return { perCourse: byCourse, globalWorkflows: globals };
     }, [workflows, selectedPackageSessions]);
 
+    // A global enrollment workflow can still gate itself on the course (TRIGGER → CONDITION
+    // with no false branch). Read those workflows' nodes so a gated one is shown only under the
+    // courses it will fire for. Other events (e.g. LEARNER_TERMINATION) run with a different
+    // context, so they are never evaluated and keep showing as before. On a failed fetch the
+    // workflow is treated as ungated — the pre-existing display.
+    const enrollmentGlobals = globalWorkflows.filter(
+        (w) => w.trigger?.trigger_event_name === 'LEARNER_BATCH_ENROLLMENT'
+    );
+    const rawEnrollmentGlobals = useQueries({
+        queries: enrollmentGlobals.map((w) => ({
+            ...getWorkflowRawQuery(w.id),
+            staleTime: 60_000,
+            retry: 1,
+        })),
+    });
+    const rawLoading = rawEnrollmentGlobals.some((q) => q.isLoading);
+    const entryConditions = new Map<string, string>();
+    rawEnrollmentGlobals.forEach((q, i) => {
+        const condition = q.data ? findEntryCondition(q.data.nodes ?? []) : null;
+        if (condition) entryConditions.set(enrollmentGlobals[i]!.id, condition);
+    });
+    const alwaysGlobals = globalWorkflows.filter((w) => !entryConditions.has(w.id));
+    const conditionalGlobals = globalWorkflows.filter((w) => entryConditions.has(w.id));
+
+    // Conditional globals that will (or may, for learner-based conditions) fire for a course.
+    // Like WorkflowTriggerService.handleTriggerEvents: an ACTIVE batch-specific trigger for the
+    // same event replaces every global one for that batch.
+    const conditionalFor = (ps: SelectedPackageSession) => {
+        const own = perCourse.get(ps.packageSessionId)?.workflows ?? [];
+        return conditionalGlobals
+            .filter(
+                (w) =>
+                    !own.some(
+                        (s) =>
+                            s.trigger?.trigger_status === 'ACTIVE' &&
+                            s.trigger?.trigger_event_name === w.trigger?.trigger_event_name
+                    )
+            )
+            .map((w) => ({
+                workflow: w,
+                verdict: evaluateEntryCondition(entryConditions.get(w.id)!, {
+                    packageName: ps.courseName,
+                    packageSessionId: ps.packageSessionId,
+                }),
+            }))
+            .filter((g) => g.verdict !== 'skips');
+    };
+
     if (selectedPackageSessions.length === 0) return null;
 
     const totalSpecific = Array.from(perCourse.values()).reduce(
         (n, entry) => n + entry.workflows.length,
         0
     );
-    const hasAny = totalSpecific > 0 || globalWorkflows.length > 0;
+    const hasAny =
+        totalSpecific > 0 ||
+        alwaysGlobals.length > 0 ||
+        selectedPackageSessions.some((ps) => conditionalFor(ps).length > 0);
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -434,19 +489,19 @@ const LinkedWorkflowsSection = ({
                 </h3>
             </div>
 
-            {isLoading && (
+            {(isLoading || rawLoading) && (
                 <p className="text-xs text-neutral-400">{t('workflows.loading')}</p>
             )}
 
-            {!isLoading && !hasAny && (
+            {!isLoading && !rawLoading && !hasAny && (
                 <p className="text-xs text-neutral-400">
                     {t('workflows.noneLinked', { term: courseTerm.toLowerCase() })}
                 </p>
             )}
 
-            {!isLoading && hasAny && (
+            {!isLoading && !rawLoading && hasAny && (
                 <div className="flex flex-col gap-3">
-                    {globalWorkflows.length > 0 && (
+                    {alwaysGlobals.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
                             <Badge
                                 variant="outline"
@@ -458,7 +513,7 @@ const LinkedWorkflowsSection = ({
                                 {t('workflows.firesOnEveryEnrollment')}
                             </span>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {globalWorkflows.map((w, idx) => (
+                                {alwaysGlobals.map((w, idx) => (
                                     <span key={w.id} className="inline-flex items-center gap-1">
                                         <button
                                             type="button"
@@ -470,7 +525,7 @@ const LinkedWorkflowsSection = ({
                                             {w.name}
                                             <ArrowSquareOut size={12} weight="duotone" />
                                         </button>
-                                        {idx < globalWorkflows.length - 1 && (
+                                        {idx < alwaysGlobals.length - 1 && (
                                             <span className="text-xs text-neutral-400">,</span>
                                         )}
                                     </span>
@@ -482,6 +537,7 @@ const LinkedWorkflowsSection = ({
                     {selectedPackageSessions.map((ps) => {
                         const entry = perCourse.get(ps.packageSessionId);
                         const list = entry?.workflows ?? [];
+                        const gated = conditionalFor(ps);
                         return (
                             <div
                                 key={ps.packageSessionId}
@@ -500,7 +556,7 @@ const LinkedWorkflowsSection = ({
                                         {ps.levelName}
                                     </span>
                                 </div>
-                                {list.length === 0 ? (
+                                {list.length === 0 && gated.length === 0 ? (
                                     <p className="text-caption text-neutral-400">
                                         {t('workflows.noCourseSpecific')}
                                     </p>
@@ -536,6 +592,49 @@ const LinkedWorkflowsSection = ({
                                                         {w.trigger.trigger_event_name}
                                                     </span>
                                                 )}
+                                            </li>
+                                        ))}
+                                        {gated.map(({ workflow: w, verdict }) => (
+                                            <li
+                                                key={w.id}
+                                                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-700"
+                                            >
+                                                {verdict === 'runs' ? (
+                                                    <Lightning
+                                                        size={12}
+                                                        weight="fill"
+                                                        className="text-primary-500"
+                                                    />
+                                                ) : (
+                                                    <Question
+                                                        size={12}
+                                                        className="text-warning-500"
+                                                    />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        navigate({
+                                                            to: `/workflow/${w.id}` as never,
+                                                        })
+                                                    }
+                                                    className="inline-flex items-center gap-1 font-medium text-primary-600 hover:underline"
+                                                >
+                                                    {w.name}
+                                                    <ArrowSquareOut size={12} weight="duotone" />
+                                                </button>
+                                                <span
+                                                    className={cn(
+                                                        'text-caption',
+                                                        verdict === 'runs'
+                                                            ? 'text-neutral-400'
+                                                            : 'text-warning-600'
+                                                    )}
+                                                >
+                                                    {t(`workflows.verdict.${verdict}`, {
+                                                        term: courseTerm.toLowerCase(),
+                                                    })}
+                                                </span>
                                             </li>
                                         ))}
                                     </ul>

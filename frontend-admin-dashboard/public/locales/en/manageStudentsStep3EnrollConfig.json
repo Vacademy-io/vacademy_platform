@@ -38,6 +38,10 @@
         "noneLinked": "No automation workflows are linked to the selected {{term}}s.",
         "global": "Global",
         "firesOnEveryEnrollment": "Fires on every batch enrollment:",
-        "noCourseSpecific": "No course-specific workflows linked."
+        "noCourseSpecific": "No course-specific workflows linked.",
+        "verdict": {
+            "runs": "Global — its condition matches this {{term}}",
+            "unknown": "Global — fires only if the learner matches its condition"
+        }
     }
 }

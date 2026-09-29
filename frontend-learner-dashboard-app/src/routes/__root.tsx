@@ -599,15 +599,33 @@ const RootComponent = () => {
               "@/lib/auth/sessionUtility"
             );
             const decoded = getTokenDecodedData(accessToken);
+            // Several institutes on the token: open this app's own institute,
+            // not whichever one the backend happened to list first.
+            const { pickLoginInstituteId } = await import(
+              "@/lib/auth/pick-login-institute"
+            );
+            const pickedInstituteId = await pickLoginInstituteId(
+              decoded?.authorities,
+              decoded?.user,
+              url.searchParams.get("instituteId"),
+            );
             const instituteId =
-              decoded?.authorities &&
-              Object.keys(decoded.authorities)[0];
+              pickedInstituteId ||
+              (decoded?.authorities &&
+                Object.keys(decoded.authorities)[0]);
 
             if (instituteId) {
               await performFullAuthCycle(
                 { accessToken, refreshToken },
                 instituteId,
               );
+              // getInstituteId() reads this first: pin it to the institute just
+              // hydrated so a pick (or a stale value from an earlier login on
+              // this device) can never disagree with InstituteDetails.
+              await Preferences.set({
+                key: "selectedInstituteId",
+                value: instituteId,
+              });
               console.log(
                 "[OAuth DeepLink] Auth cycle complete, navigating to dashboard",
               );
@@ -861,8 +879,18 @@ export const Route = createRootRouteWithContext<{
         const { getTokenDecodedData } =
           await import("@/lib/auth/sessionUtility");
         const decoded = getTokenDecodedData(urlAccessToken);
+        // Several institutes on the token: open the link's / this host's own
+        // institute, not whichever one the backend happened to list first.
+        const { pickLoginInstituteId } =
+          await import("@/lib/auth/pick-login-institute");
+        const pickedInstituteId = await pickLoginInstituteId(
+          decoded?.authorities,
+          decoded?.user,
+          urlParams.get("instituteId"),
+        );
         // Institute ID is the first key in JWT authorities, or fallback to institute_id claim
         const instituteId =
+          pickedInstituteId ||
           (decoded?.authorities && Object.keys(decoded.authorities)[0]) ||
           (decoded as { institute_id?: string })?.institute_id;
 
@@ -871,6 +899,13 @@ export const Route = createRootRouteWithContext<{
             { accessToken: urlAccessToken, refreshToken: urlRefreshToken },
             instituteId,
           );
+          // getInstituteId() reads this first: pin it to the institute just
+          // hydrated so a pick (or a stale value from an earlier login on this
+          // device) can never disagree with InstituteDetails.
+          await Preferences.set({
+            key: "selectedInstituteId",
+            value: instituteId,
+          });
 
           // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard);
           // otherwise land on the institute's configured post-login route.

@@ -53,6 +53,12 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # VERTEX_CREDENTIALS_JSON lives in the `voice-bot` ENVIRONMENT: the repo is
+    # at GitHub's 100-secret limit (2026-09-29). Same service account the box
+    # mounts at /etc/vertex-sa.json (voice-bot-vertex@vacademy-app). Without it
+    # the conversation simulator fell back to a key with no Vertex access, got
+    # 403 on every persona and printed "ok … turns 0" on every deploy.
+    environment: voice-bot
     steps:
       - name: Checkout source
         uses: actions/checkout@v3

@@ -24,7 +24,8 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment: voice-bot          # VERTEX_CREDENTIALS_JSON (see the deploy workflow)
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +35,11 @@ jobs:
           python-version: "3.12"
 
       - name: Run the probe
+        env:
+          VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
+          VERTEX_PROJECT_ID: vacademy-app
+          VERTEX_LOCATION: asia-south1
+          LLM_PROVIDER: vertex
         run: |
           cd voice_bot_service
           pip install -q -r requirements.txt pytest pytest-asyncio

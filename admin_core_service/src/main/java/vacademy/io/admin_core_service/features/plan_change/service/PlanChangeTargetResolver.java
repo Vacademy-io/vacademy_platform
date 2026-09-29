@@ -84,8 +84,21 @@ public class PlanChangeTargetResolver {
 
     /** The package sessions this UserPlan currently grants. Empty means nothing to switch. */
     public List<String> activePackageSessionIds(String userPlanId) {
+        List<String> active = packageSessionIds(userPlanId, LearnerSessionStatusEnum.ACTIVE.name());
+        if (!active.isEmpty()) {
+            return active;
+        }
+        // An expired or terminated membership has no ACTIVE mapping -- expiry deactivates
+        // them -- so keying only on ACTIVE left exactly the learners in a recovery state
+        // with no targets, and no "Change plan" on their dashboard, however permissive
+        // CHANGEABLE_STATUSES was. Their INACTIVE rows still name the course they were
+        // enrolled in, which is all this needs; applying a change revives them.
+        return packageSessionIds(userPlanId, LearnerSessionStatusEnum.INACTIVE.name());
+    }
+
+    private List<String> packageSessionIds(String userPlanId, String status) {
         return mappingRepository
-                .findByUserPlanIdAndStatus(userPlanId, LearnerSessionStatusEnum.ACTIVE.name())
+                .findByUserPlanIdAndStatus(userPlanId, status)
                 .stream()
                 .map(StudentSessionInstituteGroupMapping::getPackageSession)
                 .filter(java.util.Objects::nonNull)

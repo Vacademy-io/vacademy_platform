@@ -225,6 +225,14 @@ public class PlanChangeService {
         return new PlanChangeSummary(!targets.isEmpty(), null);
     }
 
+    /**
+     * The package sessions a plan change may be resolved against: the learner's ACTIVE
+     * enrollments, or their INACTIVE ones when expiry has already deactivated them.
+     */
+    public List<String> packageSessionIdsForChange(String userPlanId) {
+        return targetResolver.activePackageSessionIds(userPlanId);
+    }
+
     public ScheduledPlanChangeDTO getScheduledChange(String userPlanId) {
         return toScheduledDto(openRequest(userPlanId));
     }

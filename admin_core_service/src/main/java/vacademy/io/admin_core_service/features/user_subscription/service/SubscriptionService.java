@@ -120,6 +120,13 @@ public class SubscriptionService {
                 .map(ps -> ps.getId())
                 .distinct()
                 .toList();
+        // What the learner is enrolled in, for plan-change purposes: an expired membership
+        // has no ACTIVE mapping, and passing an empty list makes the resolver return no
+        // targets, which hid "Change plan" from precisely the learners who need it. The DTO
+        // keeps reporting only the ACTIVE ones -- that is what "currently enrolled" means.
+        List<String> changeablePackageSessionIds = packageSessionIds.isEmpty()
+                ? planChangeService.packageSessionIdsForChange(plan.getId())
+                : packageSessionIds;
 
         // Manual renewal is offered whenever autopay will NOT charge this plan:
         // cancelled/failed/expired plans, an active plan whose mandate is gone, a plan
@@ -141,7 +148,7 @@ public class SubscriptionService {
                 ? mandate.getCurrency()
                 : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
 
-        var planChange = planChangeSummary(plan, instituteId, packageSessionIds);
+        var planChange = planChangeSummary(plan, instituteId, changeablePackageSessionIds);
 
         return SubscriptionDTO.builder()
                 .userPlanId(plan.getId())

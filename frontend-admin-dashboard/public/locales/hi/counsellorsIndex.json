@@ -13,7 +13,10 @@
     "header": {
         "breadcrumbFallback": "काउंसलिंग टीम",
         "titleFallback": "काउंसलर",
-        "subtitle": "उस व्यक्ति की पूछताछ और हाल की गतिविधि देखने के लिए कोई भी कार्ड क्लिक करें।"
+        "subtitle": "किसी पर भी क्लिक करें और उनकी पूछताछ, कॉल, फ़ॉलो-अप और लक्ष्य देखें।",
+        "teamSize_one": "{{count}} काउंसलर · {{active}} सक्रिय",
+        "teamSize_other": "{{count}} काउंसलर · {{active}} सक्रिय",
+        "periodLabel": "आंकड़े दिखाएँ"
     },
     "stats": {
         "counsellors": "काउंसलर",
@@ -57,7 +60,12 @@
         "reassignLeads": "पूछताछ पुनः असाइन करें",
         "markInactive": "निष्क्रिय चिह्नित करें",
         "markActive": "सक्रिय चिह्नित करें",
-        "confirmMarkActive": "क्या {{name}} को फिर से सक्रिय चिह्नित करें?"
+        "confirmMarkActive": "क्या {{name}} को फिर से सक्रिय चिह्नित करें?",
+        "teamLine": "टीम: {{team}}",
+        "overdueFollowUps": "बकाया फ़ॉलो-अप",
+        "dueToday": "आज बाकी",
+        "converted": "कन्वर्ट हुए",
+        "convertedOf": "{{total}} में से {{converted}}"
     },
     "table": {
         "colCounsellor": "काउंसलर",
@@ -66,7 +74,14 @@
         "colAssignedLeads": "असाइन की गई पूछताछ",
         "colTargets": "लक्ष्य",
         "colStatus": "स्थिति",
-        "colActions": "कार्रवाई"
+        "colActions": "कार्रवाई",
+        "colFollowUps": "फ़ॉलो-अप",
+        "colConverted": "कन्वर्ट हुए",
+        "overdueValue_one": "{{count}} बकाया",
+        "overdueValue_other": "{{count}} बकाया",
+        "dueTodayValue_one": "आज {{count}} बाकी",
+        "dueTodayValue_other": "आज {{count}} बाकी",
+        "convertedSub": "{{total}} नई में से {{rate}}"
     },
     "drawer": {
         "tabLeads": "पूछताछ ({{count}})",
@@ -75,5 +90,59 @@
         "tabCoaching": "कोचिंग",
         "tabPerformance": "प्रदर्शन",
         "tabTargets": "लक्ष्य"
+    },
+    "period": {
+        "week": "इस सप्ताह",
+        "month": "इस महीने",
+        "custom": "चुनी गई तारीखों",
+        "range": "{{from}} – {{to}}"
+    },
+    "kpi": {
+        "periodCaption": "नई पूछताछ, कन्वर्ज़न और पहला जवाब {{period}} के हैं। असाइन की गई पूछताछ और फ़ॉलो-अप अभी की स्थिति हैं।",
+        "assignedLeads": "असाइन की गई पूछताछ",
+        "assignedLeadsDetail": "अभी टीम के पास",
+        "newLeads": "नई पूछताछ",
+        "contacted_one": "{{count}} से संपर्क हुआ",
+        "contacted_other": "{{count}} से संपर्क हुआ",
+        "notContacted_one": "{{count}} से अभी संपर्क नहीं हुआ",
+        "notContacted_other": "{{count}} से अभी संपर्क नहीं हुआ",
+        "noData": "उपलब्ध नहीं",
+        "converted": "कन्वर्ट हुए",
+        "convertedDetail": "नई पूछताछ का {{rate}}",
+        "overdue": "बकाया फ़ॉलो-अप",
+        "dueToday_one": "आज {{count}} और बाकी",
+        "dueToday_other": "आज {{count}} और बाकी",
+        "openFollowUps": "फ़ॉलो-अप खोलें",
+        "firstResponse": "पहला जवाब",
+        "firstResponseDetail": "पहले संपर्क तक का औसत समय",
+        "pickDates": "देखने के लिए दोनों तारीखें चुनें"
+    },
+    "attention": {
+        "title": "ध्यान देने योग्य",
+        "count_one": "{{count}} आइटम",
+        "count_other": "{{count}} आइटम",
+        "allClear": "सब ठीक है: कोई फ़ॉलो-अप बकाया नहीं और कोई पूछताछ निष्क्रिय काउंसलर के पास अटकी नहीं।",
+        "overdue_one": "{{name}} के {{count}} फ़ॉलो-अप बकाया हैं",
+        "overdue_other": "{{name}} के {{count}} फ़ॉलो-अप बकाया हैं",
+        "overdueOldest_one": "सबसे पुराना {{count}} दिन से बकाया है",
+        "overdueOldest_other": "सबसे पुराना {{count}} दिन से बकाया है",
+        "overdueHint": "तय समय निकल चुका है",
+        "viewFollowUps": "फ़ॉलो-अप देखें",
+        "inactive_one": "{{name}} निष्क्रिय हैं लेकिन उनके पास अभी भी {{count}} पूछताछ है",
+        "inactive_other": "{{name}} निष्क्रिय हैं लेकिन उनके पास अभी भी {{count}} पूछताछ हैं",
+        "inactiveHint": "जब तक आप इन्हें किसी सक्रिय काउंसलर को नहीं देते, इन पर कोई काम नहीं करेगा",
+        "reassign": "पुनः असाइन करें"
+    },
+    "summary": {
+        "assignedLeads": "असाइन की गई पूछताछ",
+        "overdue": "बकाया",
+        "oldest_one": "सबसे पुराना {{count}} दिन",
+        "oldest_other": "सबसे पुराना {{count}} दिन",
+        "dueToday": "आज बाकी",
+        "newLeads": "नई पूछताछ",
+        "converted": "कन्वर्ट हुए",
+        "firstResponse": "पहला जवाब",
+        "firstResponseSub": "औसत",
+        "followUps": "फ़ॉलो-अप"
     }
 }

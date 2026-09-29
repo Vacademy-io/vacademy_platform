@@ -13,7 +13,10 @@
     "header": {
         "breadcrumbFallback": "Counselling team",
         "titleFallback": "Counsellors",
-        "subtitle": "Click any card to see that person's leads and recent activity."
+        "subtitle": "Click anyone to see their leads, calls, follow-ups and targets.",
+        "teamSize_one": "{{count}} counsellor · {{active}} active",
+        "teamSize_other": "{{count}} counsellors · {{active}} active",
+        "periodLabel": "Show numbers for"
     },
     "stats": {
         "counsellors": "Counsellors",
@@ -57,7 +60,12 @@
         "reassignLeads": "Reassign leads",
         "markInactive": "Mark inactive",
         "markActive": "Mark active",
-        "confirmMarkActive": "Mark {{name}} active again?"
+        "confirmMarkActive": "Mark {{name}} active again?",
+        "teamLine": "Team: {{team}}",
+        "overdueFollowUps": "Overdue follow-ups",
+        "dueToday": "Due today",
+        "converted": "Converted",
+        "convertedOf": "{{converted}} of {{total}}"
     },
     "table": {
         "colCounsellor": "Counsellor",
@@ -66,7 +74,14 @@
         "colAssignedLeads": "Assigned leads",
         "colTargets": "Targets",
         "colStatus": "Status",
-        "colActions": "Actions"
+        "colActions": "Actions",
+        "colFollowUps": "Follow-ups",
+        "colConverted": "Converted",
+        "overdueValue_one": "{{count}} overdue",
+        "overdueValue_other": "{{count}} overdue",
+        "dueTodayValue_one": "{{count}} due today",
+        "dueTodayValue_other": "{{count}} due today",
+        "convertedSub": "{{rate}} of {{total}} new"
     },
     "drawer": {
         "tabLeads": "Leads ({{count}})",
@@ -75,5 +90,59 @@
         "tabCoaching": "Coaching",
         "tabPerformance": "Performance",
         "tabTargets": "Targets"
+    },
+    "period": {
+        "week": "this week",
+        "month": "this month",
+        "custom": "the selected dates",
+        "range": "{{from}} – {{to}}"
+    },
+    "kpi": {
+        "periodCaption": "New leads, conversions and first response are for {{period}}. Assigned leads and follow-ups are as of right now.",
+        "assignedLeads": "Assigned leads",
+        "assignedLeadsDetail": "Held by the team right now",
+        "newLeads": "New leads",
+        "contacted_one": "{{count}} contacted",
+        "contacted_other": "{{count}} contacted",
+        "notContacted_one": "{{count}} not contacted yet",
+        "notContacted_other": "{{count}} not contacted yet",
+        "noData": "Not available",
+        "converted": "Converted",
+        "convertedDetail": "{{rate}} of new leads",
+        "overdue": "Follow-ups overdue",
+        "dueToday_one": "{{count}} more due today",
+        "dueToday_other": "{{count}} more due today",
+        "openFollowUps": "Open follow-ups",
+        "firstResponse": "First response",
+        "firstResponseDetail": "Average time to first contact",
+        "pickDates": "Pick both dates to see this"
+    },
+    "attention": {
+        "title": "Needs attention",
+        "count_one": "{{count}} item",
+        "count_other": "{{count}} items",
+        "allClear": "All clear: no overdue follow-ups and no leads stuck with inactive counsellors.",
+        "overdue_one": "{{name}} has {{count}} overdue follow-up",
+        "overdue_other": "{{name}} has {{count}} overdue follow-ups",
+        "overdueOldest_one": "The oldest one is {{count}} day late",
+        "overdueOldest_other": "The oldest one is {{count}} days late",
+        "overdueHint": "Past their due time",
+        "viewFollowUps": "View follow-ups",
+        "inactive_one": "{{name}} is inactive but still has {{count}} assigned lead",
+        "inactive_other": "{{name}} is inactive but still has {{count}} assigned leads",
+        "inactiveHint": "Nobody is working these leads until you move them to someone active",
+        "reassign": "Reassign"
+    },
+    "summary": {
+        "assignedLeads": "Assigned leads",
+        "overdue": "Overdue",
+        "oldest_one": "oldest {{count}} day",
+        "oldest_other": "oldest {{count}} days",
+        "dueToday": "Due today",
+        "newLeads": "New leads",
+        "converted": "Converted",
+        "firstResponse": "First response",
+        "firstResponseSub": "average",
+        "followUps": "follow-ups"
     }
 }

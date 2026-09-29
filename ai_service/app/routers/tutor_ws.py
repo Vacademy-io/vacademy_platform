@@ -1149,7 +1149,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             nonlocal paused_for_away
             paused_for_away = False
             await _say(prompts.tpl("welcome_back", _spoken_lang()), meta={"kind": "welcome_back"})
-            if pending is None and pointer.phase in (sm.TEACH, sm.MEDIA_TASK):
+            if pending is None and pointer.phase in (sm.TEACH, sm.MEDIA_TASK, sm.PREDICT, sm.AWAIT_ANSWER, sm.REMEDIATE):
+                # They missed (part of) the explanation: the same "say that again"
+                # step the Repeat button uses — the concept, then its question.
                 await _apply_step(sm.repeat(lesson, pointer))
             else:
                 # A transition cut off mid-narration, or a topic recap: carry on.
@@ -1258,8 +1260,12 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     away_since = now
                     svc.bump_telemetry(tutor_session_id, away_events=1)
                     # Only the teaching pauses; an open question simply waits
-                    # (its nudge restarts when they are back).
-                    if opened_once and pending is None and revisit is None and pointer.phase in (sm.TEACH, sm.TOPIC_SUMMARY):
+                    # (its nudge restarts when they are back). The server moves on
+                    # to the question as soon as the narration TEXT is sent, while
+                    # the learner still hears it for many seconds: `interrupted`
+                    # = the device cut the teacher off mid-speech, so it is teaching.
+                    teaching = pointer.phase in (sm.TEACH, sm.TOPIC_SUMMARY) or msg.get("interrupted") is True
+                    if opened_once and revisit is None and teaching:
                         await _cancel_current()
                         _spawn(_away())
                     else:

@@ -10,6 +10,10 @@ export interface TrainingVideoDto {
     fileUrl: string;
     /** Breadcrumb segments, e.g. ["LMS","Course creation","AI based course"]. */
     modulePath: string[];
+    /** Extra search words (synonyms, Hinglish, old names) set from the health dashboard. */
+    keywords?: string[];
+    /** Step number inside its section; null = unordered. */
+    sortOrder?: number | null;
     active: boolean;
     createdAt: string;
     updatedAt: string;

@@ -14,7 +14,10 @@ import vacademy.io.community_service.feature.trainingvideo.entity.TrainingVideo;
 import vacademy.io.community_service.feature.trainingvideo.repository.TrainingVideoRepository;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,6 +33,8 @@ public class TrainingVideoService {
 
     /** Module path depth the admin popup's tree supports: Module → Sub-module → Topic. */
     private static final int MAX_PATH_DEPTH = 3;
+    private static final int MAX_KEYWORDS = 40;
+    private static final int MAX_KEYWORD_LENGTH = 80;
 
     @Autowired
     private TrainingVideoRepository repository;
@@ -62,6 +67,8 @@ public class TrainingVideoService {
                 .fileId(request.getFileId())
                 .fileUrl(request.getFileUrl().trim())
                 .modulePath(writePath(modulePath))
+                .keywords(writePath(normalizeKeywords(request.getKeywords())))
+                .sortOrder(normalizeSortOrder(request.getSortOrder()))
                 .active(request.getActive() == null || request.getActive())
                 .build();
         return toDto(repository.save(video));
@@ -85,6 +92,12 @@ public class TrainingVideoService {
         }
         if (request.getActive() != null) {
             video.setActive(request.getActive());
+        }
+        if (request.getKeywords() != null) {
+            video.setKeywords(writePath(normalizeKeywords(request.getKeywords())));
+        }
+        if (request.getSortOrder() != null) {
+            video.setSortOrder(normalizeSortOrder(request.getSortOrder()));
         }
         return toDto(repository.save(video));
     }
@@ -120,6 +133,25 @@ public class TrainingVideoService {
                 .collect(Collectors.toList());
     }
 
+    /** Trims, drops blanks and case-insensitive duplicates, caps count and length. */
+    private List<String> normalizeKeywords(List<String> raw) {
+        if (raw == null) {
+            return Collections.emptyList();
+        }
+        Set<String> seen = new HashSet<>();
+        return raw.stream()
+                .filter(StringUtils::hasText)
+                .map(k -> k.trim().replaceAll("\\s+", " "))
+                .map(k -> k.length() > MAX_KEYWORD_LENGTH ? k.substring(0, MAX_KEYWORD_LENGTH) : k)
+                .filter(k -> seen.add(k.toLowerCase(Locale.ROOT)))
+                .limit(MAX_KEYWORDS)
+                .collect(Collectors.toList());
+    }
+
+    private Integer normalizeSortOrder(Integer value) {
+        return value == null || value <= 0 ? null : value;
+    }
+
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
@@ -137,6 +169,8 @@ public class TrainingVideoService {
                 .fileId(v.getFileId())
                 .fileUrl(v.getFileUrl())
                 .modulePath(readPath(v.getModulePath()))
+                .keywords(readPath(v.getKeywords()))
+                .sortOrder(v.getSortOrder())
                 .active(v.isActive())
                 .createdAt(v.getCreatedAt())
                 .updatedAt(v.getUpdatedAt())

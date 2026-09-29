@@ -46,15 +46,18 @@ const Verdict: React.FC<{ line: TranscriptLine }> = ({ line }) => {
   );
 };
 
+const QUESTION_KINDS = new Set(["ask", "revisit_ask", "predict"]);
+
 /**
- * A teacher line already said, word for word, since the learner last spoke —
- * the question spoken inside the narration and then again as its own line, or
- * re-asked after a nudge. Shown once.
+ * A question already said, word for word, since the learner last spoke — the
+ * question spoken inside the narration and then again as its own line. Shown
+ * once. Only question lines: a re-taught explanation (Repeat, welcome back)
+ * is meant to be read again.
  */
 const repeatsEarlierTeacherLine = (lines: TranscriptLine[], i: number): boolean => {
   const m = lines[i];
   const text = m?.text.trim() ?? "";
-  if (!m || m.role !== "teacher" || text.length < 12) return false;
+  if (!m || m.role !== "teacher" || !QUESTION_KINDS.has(m.kind ?? "") || text.length < 12) return false;
   for (let j = i - 1; j >= 0; j -= 1) {
     const prev = lines[j]!;
     if (prev.role === "learner") return false;
@@ -429,7 +432,9 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           // own bubble would show the same sentence a second time. The same
           // teacher line twice in a row (a re-asked question) shows once.
           (check && awaiting === "answer" && m.role === "teacher" && m.text.trim() === (check.prompt || "").trim()) ||
-          repeatsEarlierTeacherLine(transcript, i) ? null : (
+          repeatsEarlierTeacherLine(transcript, i) ||
+          // A turn cut off before any of it was spoken (barge-in, stepped away).
+          (m.role === "teacher" && !m.text.trim() && i < transcript.length - 1) ? null : (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : m.kind === "nudge" ? "border border-warning-200 bg-warning-50 text-neutral-800" : "bg-neutral-100 text-neutral-800"}`}>
               {m.role === "teacher" && (m.kind === "evaluate" || m.kind === "remediate" || m.kind === "revisit_verdict") && (

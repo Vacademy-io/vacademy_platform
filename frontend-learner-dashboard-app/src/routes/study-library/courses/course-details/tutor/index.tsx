@@ -760,16 +760,17 @@ function TutorPage() {
 
   // Voice mode: after the audio of a no-question concept (or a topic summary)
   // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
-  // `awaiting`/`micOn`/`phase` and cancels the timer.
+  // `awaiting`/`micOn`/`phase` and cancels the timer. Never while the camera
+  // says the learner stepped away: the teacher is waiting for them to return.
   useEffect(() => {
-    if (!voiceMode || awaiting !== "continue" || phase !== "idle" || micOn || !!disconnected) return;
+    if (!voiceMode || awaiting !== "continue" || phase !== "idle" || micOn || !!disconnected || activeness.away) return;
     const t = window.setTimeout(() => {
       setAwaiting(null);
       socket.sendContinue();
     }, AUTO_CONTINUE_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceMode, awaiting, phase, micOn, disconnected]);
+  }, [voiceMode, awaiting, phase, micOn, disconnected, activeness.away]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const isDemo = search.demo === "1";

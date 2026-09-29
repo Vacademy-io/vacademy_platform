@@ -52,10 +52,13 @@ export const bulkSessionRowSchema = z
             .default([]),
 
         /**
-         * Instructors for THIS row, as typed in the CSV's `instructors` column
-         * — user id, email or username. Resolved server-side against the
-         * institute directory; entries that match nobody come back as a row
-         * warning rather than a failure, so one typo doesn't cost the import.
+         * Teachers (instructors) for THIS row. Each entry is a user id when
+         * picked in the grid's Teacher column, or the raw text of the CSV's
+         * teacher column: email (recommended), username or user id. The grid
+         * resolves entries against the staff directory (see
+         * `-utils/teacherDirectory.ts`); entries that match nobody are flagged
+         * on the row and skipped with a warning, never failing the row.
+         * Empty = whoever schedules the classes.
          */
         instructorIdentifiers: z.array(z.string()).default([]),
 

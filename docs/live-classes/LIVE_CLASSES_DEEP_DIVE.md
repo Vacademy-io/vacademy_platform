@@ -425,7 +425,11 @@ Role membership can't be joined in SQL — admin_core has no `users`/`user_role`
 
 ### Bulk CSV
 
-New `instructors` column (pipe/semicolon separated user ids, emails or usernames), carried as `step2.instructor_identifiers`. `BulkLiveSessionService` resolves the whole import against **one** staff-directory fetch before the row loop; identifiers matching nobody become a per-row `warnings[]` on an otherwise successful row (and land in the downloadable results CSV's remarks column) rather than failing the row.
+`teacher_emails` column (also read as `instructors`, the original header, and `teacher` / `teachers` / `teacher_email` / `instructor*`): emails (recommended), usernames or user ids, separated by `|`, `;` or `,`. The bulk grid has a matching **Teacher** column (`RowTeacherPicker.tsx`), a searchable multi-select over the institute's staff, and a "Teacher reference" download listing every staff member's name, email and username.
+
+Resolution happens in the **grid**, not the backend: `-utils/teacherDirectory.ts` matches each entry against the staff directory (`fetchEligibleOrgUsers`, non-students only) as id → email → username, case-insensitive. An email shared by two staff members is reported as ambiguous and not guessed. Matched people are sent as `step2.instructor_user_ids`. Entries that match nobody are flagged on the row before submit, left out of the request, and written to that row's `warnings[]` (the results CSV's remarks column). Rows are never failed over a teacher.
+
+`step2.instructor_identifiers` is sent only when the staff directory could not be loaded. `BulkLiveSessionService` then resolves the whole import against one staff-directory fetch before the row loop. That server-side lookup (`LiveSessionUserDirectoryClient.findInstituteStaff`) sends no role filter and reads only the first 2,000 ACTIVE users, students included. On a large institute it can therefore miss a teacher or match a student. This is why it is only the fallback.
 
 ### Frontends
 

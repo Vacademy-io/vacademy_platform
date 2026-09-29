@@ -23,7 +23,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.auth_service.feature.institute_oauth.service.InstituteOAuthClientService;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
+import vacademy.io.common.institute.OriginInstituteResolver;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 import vacademy.io.common.auth.config.JsonAuthEntryPoint;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
@@ -119,6 +121,12 @@ public class ApplicationSecurityConfig {
     @Autowired
     private AuthenticationFailureHandler customOAuth2FailureHandler;
 
+    @Autowired
+    private InstituteOAuthClientService instituteOAuthClientService;
+
+    @Autowired
+    private OriginInstituteResolver originInstituteResolver;
+
     /**
      * Security filter chain for OAuth2 flows - Sessions enabled for OAuth2 state
      * management.
@@ -136,6 +144,9 @@ public class ApplicationSecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain oAuth2SecurityFilterChain(HttpSecurity http) throws Exception {
+        // Platform registrations plus white-label institutes' own clients (brand name on Google's screen).
+        InstituteAwareClientRegistrationRepository registrations =
+                new InstituteAwareClientRegistrationRepository(clientRegistrationRepository, instituteOAuthClientService);
         http
                 // Match OAuth2 paths - both with and without /auth-service prefix
                 // The authorization starts at /auth-service/oauth2/authorization/google
@@ -149,12 +160,13 @@ public class ApplicationSecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         .anyRequest().permitAll())
                 .oauth2Login(oauth2 -> oauth2
+                        .clientRegistrationRepository(registrations)
                         .authorizationEndpoint(auth -> auth
                                 .baseUri("/auth-service/oauth2/authorization")
                                 .authorizationRequestRepository(authorizationRequestRepository())
                                 .authorizationRequestResolver(
-                                        new CustomAuthorizationRequestResolver(clientRegistrationRepository,
-                                                "/auth-service/oauth2/authorization")))
+                                        new CustomAuthorizationRequestResolver(registrations,
+                                                "/auth-service/oauth2/authorization", originInstituteResolver)))
                         .successHandler(customOAuth2SuccessHandler)
                         .failureHandler(customOAuth2FailureHandler));
 

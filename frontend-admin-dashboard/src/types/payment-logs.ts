@@ -138,6 +138,18 @@ export interface PaymentLogEntry {
      * the separate bulk lookup.
      */
     invoice?: PaymentLogInvoiceRow | null;
+    /**
+     * When the learner joined the batch this payment's plan is for — the stored enrolled_date
+     * ("2026-09-28"), shown on renewal attempts too. Null for invoice rows and for someone never
+     * enrolled there.
+     */
+    enrolled_date?: string | null;
+    /**
+     * When the plan's next payment falls due: a plain day for an instalment or an unpaid invoice,
+     * or a UTC instant for a subscription renewal. Null when nothing is due (plan not active,
+     * one-time or free, or fully paid). Read it with parsePlanDate.
+     */
+    next_due_on?: string | null;
 }
 
 /** The invoice carried inline on an invoice-backed row. Mirrors PaymentLogInvoiceDTO. */
@@ -194,6 +206,8 @@ export interface PaymentLogsRequest {
     payment_types?: string[]; // High-level payment type filter (SUB_ORG_ADMIN, LIVE_CLASS, CPO, USER_INVOICE, ...)
     search_string?: string; // Free-text search across user name/email/phone (via auth) and amount
     sort_columns?: Record<string, string>;
+    /** Fill enrolled_date / next_due_on on each row (only while those columns are shown). */
+    include_plan_dates?: boolean;
 }
 
 export interface PackageSession {

@@ -114,6 +114,9 @@ public class PaymentLogService {
     @Autowired
     private UserPlanRepository userPlanRepository;
 
+    @Autowired
+    private PaymentPlanDatesLoader paymentPlanDatesLoader;
+
     /**
      * How far ahead the Upcoming card looks. Obligations falling due inside this window are
      * reported as expected money, not as due.
@@ -1606,6 +1609,9 @@ public class PaymentLogService {
         Map<String, PaymentLogWithUserPlanDTO> byRowId = new HashMap<>();
         paymentLogs.forEach(pl -> byRowId.put(pl.getId(), mapEntityToDTO(pl, userMap, instituteMap)));
         unpaidInvoices.forEach(inv -> byRowId.put(inv.getId(), mapUnpaidInvoiceToDTO(inv, userMap)));
+        if (Boolean.TRUE.equals(filterDTO.getIncludePlanDates())) {
+            attachPlanDates(byRowId.values());
+        }
 
         // Emit in the order the query established (created_at DESC across both arms).
         List<PaymentLogWithUserPlanDTO> content = rows.stream()
@@ -1614,6 +1620,49 @@ public class PaymentLogService {
                 .collect(Collectors.toList());
 
         return new PageImpl<>(content, pageable, idsPage.getTotalElements());
+    }
+
+    /**
+     * Fills the optional Enrollment Date / Next Due Date columns for one page of rows, with a single
+     * query over the page's plans ({@link UserPlanRepository#findPlanDates}). Only called when the
+     * request asks for them. The query runs in its own transaction ({@link PaymentPlanDatesLoader}),
+     * so a failure is logged and the page is returned without the two columns instead of failing
+     * the whole list. Unpaid invoice rows get their due date in {@link #mapUnpaidInvoiceToDTO}.
+     */
+    private void attachPlanDates(Collection<PaymentLogWithUserPlanDTO> rows) {
+        List<String> planIds = rows.stream()
+                .map(PaymentLogWithUserPlanDTO::getUserPlan)
+                .filter(Objects::nonNull)
+                .map(UserPlanDTO::getId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (planIds.isEmpty()) {
+            return;
+        }
+        Map<String, PaymentPlanDatesLoader.PlanDates> byPlan;
+        try {
+            byPlan = paymentPlanDatesLoader.load(planIds);
+        } catch (Exception e) {
+            log.warn("Could not load enrolment / next-due dates for the payment list: {}", e.getMessage());
+            return;
+        }
+        for (PaymentLogWithUserPlanDTO row : rows) {
+            if (row.getUserPlan() == null) continue;
+            PaymentPlanDatesLoader.PlanDates d = byPlan.get(row.getUserPlan().getId());
+            if (d == null) continue;
+            row.setEnrolledDate(d.enrolledDate());
+            if (d.nextInstalmentDue() != null) {
+                row.setNextDueOn(d.nextInstalmentDue().toString());
+            } else if (d.renewalDue() != null) {
+                row.setNextDueOn(utcInstant(d.renewalDue()));
+            }
+        }
+    }
+
+    /** A stored UTC timestamp as an ISO instant, so the client can show it in the admin's zone. */
+    private static String utcInstant(LocalDateTime utc) {
+        return utc.atOffset(java.time.ZoneOffset.UTC).toInstant().toString();
     }
 
     // -------------------- Helper Methods --------------------
@@ -1703,6 +1752,11 @@ public class PaymentLogService {
                 .userPlan(null)
                 .currentPaymentStatus(voided ? "CANCELLED" : "NOT_INITIATED")
                 .user(userMap.get(invoice.getUserId()))
+                // Still owed unless voided (or somehow already paid). The UTC calendar day, exactly
+                // as the Due tab reads an invoice's due date.
+                .nextDueOn(voided || "PAID".equalsIgnoreCase(invoice.getStatus()) || invoice.getDueDate() == null
+                        ? null
+                        : invoice.getDueDate().toLocalDate().toString())
                 .invoice(PaymentLogInvoiceDTO.builder()
                         .paymentLogId(invoice.getId())
                         .invoiceId(invoice.getId())

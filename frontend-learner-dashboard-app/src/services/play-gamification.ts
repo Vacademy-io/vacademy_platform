@@ -10,6 +10,8 @@ import {
 } from "@/services/badge-config";
 import type { AwardedBadge } from "@/services/awarded-badges";
 import type { PointsStreakDay, PointsSummary } from "@/services/points";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -217,7 +219,7 @@ function computeXp(
     },
     {
       key: "completion",
-      label: "Course completion",
+      label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} completion`,
       points: Math.round(scoring.courseCompletion * (ctx.completionPct / 100)),
     },
     {

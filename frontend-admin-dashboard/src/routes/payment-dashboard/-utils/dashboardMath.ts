@@ -4,6 +4,8 @@ import type {
     DashboardSlice,
     PaymentDashboard,
 } from '@/services/payment-dashboard';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /** The period presets on the dashboard toolbar. */
 export type DashboardPeriodKey = 'this_month' | '3m' | 'fy' | '12m' | 'all' | 'custom';
@@ -140,7 +142,10 @@ export const toCourseRows = (batches: DashboardBatchRow[]): CourseRow[] => {
         const key = b.package_id ?? '__none__';
         const row = byCourse.get(key) ?? {
             key,
-            name: b.package_id ? b.package_name || 'Untitled course' : 'Not linked to a course',
+            name: b.package_id
+                ? b.package_name ||
+                  `Untitled ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`
+                : `Not linked to a ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`,
             collected: 0,
             collectedAllTime: 0,
             overdue: 0,

@@ -50,6 +50,8 @@ import {
     type NotesFormat,
 } from './use-add-to-course';
 import { countAnswerable } from './transformGeneratedQuestions';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     open: boolean;
@@ -402,7 +404,11 @@ export function AddToCourseDialog({
     const permission = useMemo(
         () =>
             selectedCourse
-                ? canBulkUploadToCourse(selectedCourse.course, roleDisplay, 'Course')
+                ? canBulkUploadToCourse(
+                      selectedCourse.course,
+                      roleDisplay,
+                      getTerminology(ContentTerms.Course, SystemTerms.Course)
+                  )
                 : { allowed: true as boolean, reason: undefined as string | undefined },
         [selectedCourse, roleDisplay]
     );

@@ -17,6 +17,8 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface P { props: any }
 
@@ -1747,7 +1749,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             return (
                 <div className="bg-catalogue-bg-elevated px-8 py-6">
                     <div className="mb-1 text-center text-lg font-semibold text-neutral-800">
-                        {props.title || 'Course showcase'}
+                        {props.title ||
+                            `${getTerminology(ContentTerms.Course, SystemTerms.Course)} showcase`}
                     </div>
                     {props.subtitle && (
                         <div className="mb-3 text-center text-xs text-neutral-500">{props.subtitle}</div>

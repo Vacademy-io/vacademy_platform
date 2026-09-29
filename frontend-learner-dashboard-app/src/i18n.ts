@@ -10,6 +10,11 @@ import i18n from "i18next";
 import type { BackendModule, ReadCallback } from "i18next";
 import { initReactI18next } from "react-i18next";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, normalizeLocale } from "./i18n/locales";
+import {
+  NAMING_TERMS_CHANGED_EVENT,
+  applyNamingTerms,
+  installNamingTermsSync,
+} from "./i18n/naming-terms";
 
 /** Must match the zustand persist key in stores/localization/useLanguageStore. */
 const LOCALE_STORAGE_KEY = "vacademy-locale";
@@ -72,7 +77,9 @@ const lazyLocaleBackend: BackendModule = {
   },
   read(lng: string, ns: string, callback: ReadCallback) {
     import(`./locales/${lng}/${ns}.json`)
-      .then((module) => callback(null, module.default ?? module))
+      .then((module) =>
+        callback(null, applyNamingTerms(lng, ns, module.default ?? module))
+      )
       .catch((error) => callback(error as Error, null));
   },
 };
@@ -95,7 +102,11 @@ i18n
     react: {
       // Catalogs load async; don't suspend the whole tree while they do.
       useSuspense: false,
+      // Re-render on institute renames too — see i18n/naming-terms.ts.
+      bindI18n: `languageChanged ${NAMING_TERMS_CHANGED_EVENT}`,
     },
   });
+
+installNamingTermsSync(i18n);
 
 export default i18n;

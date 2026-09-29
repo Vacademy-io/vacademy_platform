@@ -1627,8 +1627,12 @@ export const AddCourseStep2 = ({
                                 {!isEdit && !courseSettings?.courseStructure?.fixCourseDepth && (
                                     <div>
                                         <h3 className="mb-3 text-base font-medium text-gray-900">
-                                            Select course structure that is suitable for your
-                                            institute
+                                            Select{' '}
+                                            {getTerminology(
+                                                ContentTerms.Course,
+                                                SystemTerms.Course
+                                            ).toLocaleLowerCase()}{' '}
+                                            structure that is suitable for your institute
                                         </h3>
                                         <AddCourseStep2StructureTypes
                                             form={form}
@@ -3340,9 +3344,15 @@ export const AddCourseStep2 = ({
                                                         (!selectedInstructors ||
                                                             selectedInstructors.length === 0) && (
                                                             <p className="text-sm text-gray-600">
-                                                                No authors assigned yet. Select one below to
-                                                                add a subtitle and description; until then the
-                                                                catalogue shows the course creator.
+                                                                No authors assigned yet. Select one
+                                                                below to add a subtitle and
+                                                                description; until then the
+                                                                catalogue shows the{' '}
+                                                                {getTerminology(
+                                                                    ContentTerms.Course,
+                                                                    SystemTerms.Course
+                                                                ).toLocaleLowerCase()}{' '}
+                                                                creator.
                                                             </p>
                                                         )}
 
@@ -4548,11 +4558,20 @@ export const AddCourseStep2 = ({
                                         </CollapsibleTrigger>
                                         <CollapsibleContent className="mt-3 space-y-2">
                                             <p className="text-xs text-muted-foreground">
-                                                Advanced per-course settings used by workflows (LMS
-                                                config, retention, etc.). Must be a JSON object
-                                                wrapped in a <code>{'{ "setting": { ... } }'}</code>{' '}
-                                                envelope. You can also edit this later from the
-                                                course&apos;s Settings tab. Leave empty to skip.
+                                                Advanced per-
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}{' '}
+                                                settings used by workflows (LMS config, retention,
+                                                etc.). Must be a JSON object wrapped in a{' '}
+                                                <code>{'{ "setting": { ... } }'}</code> envelope.
+                                                You can also edit this later from the{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}
+                                                &apos;s Settings tab. Leave empty to skip.
                                             </p>
                                             <Textarea
                                                 spellCheck={false}

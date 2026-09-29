@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CaretDoubleLeft, CaretDoubleRight, CaretDown, CaretRight, CheckCircle, Circle, RadioButton } from "@phosphor-icons/react";
 import type { TutorOutlineChapter } from "@/services/tutor-api";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface TutorTopicItem {
   id: string;
@@ -55,7 +57,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
     return (
       <aside className="flex h-full flex-col items-center gap-2 py-1" aria-label="Lesson outline (collapsed)">
         {onBack && (
-          <button type="button" onClick={onBack} className="rounded-full p-1.5 text-neutral-500 hover:bg-neutral-100" title="Back to course">
+          <button type="button" onClick={onBack} className="rounded-full p-1.5 text-neutral-500 hover:bg-neutral-100" title={`Back to ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}>
             <ArrowLeft className="size-4" />
           </button>
         )}
@@ -135,7 +137,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
       </div>
       {outline && outline.length > 0 ? (
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">Course</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">{getTerminology(ContentTerms.Course, SystemTerms.Course)}</p>
           <ol className="space-y-0.5">
             {outline.map((ch) => {
               const open = openChapters.has(ch.chapter_id);
@@ -150,7 +152,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
                     className={`flex w-full items-start gap-1 rounded-md px-1.5 py-1 text-start text-xs leading-snug hover:bg-neutral-50 ${isCurrent ? "font-semibold text-neutral-900" : "text-neutral-700"}`}
                   >
                     {open ? <CaretDown className="mt-px size-3 shrink-0" /> : <CaretRight className="mt-px size-3 shrink-0" />}
-                    <span className="line-clamp-2 flex-1">{ch.chapter_name || "Untitled chapter"}</span>
+                    <span className="line-clamp-2 flex-1">{ch.chapter_name || `Untitled ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}`}</span>
                     {!open && ch.slides.length > 0 && (
                       <span className="shrink-0 tabular-nums text-neutral-400" title={`${ready} of ${ch.slides.length} slides ready for tutor mode`}>
                         {ready}/{ch.slides.length}
@@ -187,7 +189,7 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
         </div>
       ) : nextSlides.length > 1 && (
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">This chapter</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">This {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}</p>
           <ol className="space-y-0.5">
             {nextSlides.map((s) => (
               <li key={s.slide_id}>

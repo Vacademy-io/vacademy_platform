@@ -7,6 +7,8 @@ import { createProductPageCoupon, deleteProductPageCoupon } from '../-services/p
 import { Trash2, Plus, Tag } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
 import type { ProductPageCouponRequest } from '../-types/product-page-types';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface LocalCoupon {
     id: string;
@@ -185,7 +187,10 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                                 />
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-xs text-neutral-500">Minimum Courses</Label>
+                                <Label className="text-xs text-neutral-500">
+                                    Minimum{' '}
+                                    {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
+                                </Label>
                                 <Input
                                     type="number"
                                     min={2}
@@ -195,7 +200,12 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                                     className="focus:border-primary-400 focus:ring-primary-300"
                                 />
                                 <p className="text-caption text-neutral-400">
-                                    Only usable once the cart holds this many courses.
+                                    Only usable once the cart holds this many{' '}
+                                    {getTerminologyPlural(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ).toLocaleLowerCase()}
+                                    .
                                 </p>
                             </div>
                         </div>
@@ -255,7 +265,11 @@ export const CouponManager = ({ productPageId }: CouponManagerProps) => {
                                 </span>
                                 {coupon.minItems && (
                                     <span className="rounded bg-neutral-100 px-2 py-0.5 text-caption text-neutral-500">
-                                        min {coupon.minItems} courses
+                                        min {coupon.minItems}{' '}
+                                        {getTerminologyPlural(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
+                                        ).toLocaleLowerCase()}
                                     </span>
                                 )}
                                 {coupon.maxUses && (

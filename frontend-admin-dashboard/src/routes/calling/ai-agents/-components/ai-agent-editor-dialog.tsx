@@ -42,6 +42,8 @@ import {
     voicePreviewUrl,
     type AiAgent,
 } from '../-services/ai-agents';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export function AiAgentEditorDialog({
     agent,
@@ -433,9 +435,7 @@ export function AiAgentEditorDialog({
                         <Textarea
                             rows={3}
                             value={(draft.extractionQuestions ?? []).join('\n')}
-                            placeholder={
-                                'What class is the student in?\nWhich course are they interested in?'
-                            }
+                            placeholder={`What class is the student in?\nWhich ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} are they interested in?`}
                             onChange={(e) =>
                                 patch({
                                     extractionQuestions: e.target.value

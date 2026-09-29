@@ -421,7 +421,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   Subscription Payment
                 </h2>
                 <p className="text-gray-600 text-sm">
-                  Complete your subscription to access the course
+                  Complete your subscription to access the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
                 </p>
               </div>
             </div>

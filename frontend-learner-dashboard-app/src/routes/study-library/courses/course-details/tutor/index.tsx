@@ -27,6 +27,8 @@ import {
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
 import { submitTutorQuizActivity } from "@/services/tutor-api";
 import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface TutorSearch {
   courseId: string;
@@ -1040,7 +1042,7 @@ function TutorPage() {
                 </button>
               )}
               <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">
-                Back to course
+                Back to {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
               </button>
             </div>
           )}
@@ -1069,7 +1071,7 @@ function TutorPage() {
                 </button>
               ) : (
                 <button type="button" onClick={endAndLeave} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
-                  Back to course
+                  Back to {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
                 </button>
               )}
             </div>

@@ -7,6 +7,11 @@ import type {
     CourseFinderSettings,
     MappingRow,
 } from '../-types/product-page-types';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Authors the "choose your class" screen learners see before the course grid.
@@ -72,6 +77,9 @@ export const stripSharedPrefix = (names: string[]): ((name: string) => string) =
 
 export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
     const [openGroup, setOpenGroup] = useState<number | null>(null);
+    const courseLower = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const coursesLower = coursesTerm.toLocaleLowerCase();
 
     const groups = value.groups ?? [];
     const set = (patch: Partial<CourseFinderSettings>) => onChange({ ...value, ...patch });
@@ -112,7 +120,7 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
         if (
             groups.length > 0 &&
             !window.confirm(
-                `Replace all ${groups.length} button${groups.length === 1 ? '' : 's'} with one per course? Your current grouping will be lost.`
+                `Replace all ${groups.length} button${groups.length === 1 ? '' : 's'} with one per ${courseLower}? Your current grouping will be lost.`
             )
         ) {
             return;
@@ -131,9 +139,9 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
     return (
         <div className="space-y-3 bg-neutral-50/60 px-5 py-4 ps-14">
             <p className="text-2xs text-neutral-500">
-                Learners pick one button before they see any course, and the catalogue is then
-                limited to that button&apos;s courses. Use it when a visitor only ever wants the one
-                course meant for them — a class, a stream, a city.
+                Learners pick one button before they see any {courseLower}, and the catalogue is
+                then limited to that button&apos;s {coursesLower}. Use it when a visitor only ever
+                wants the one {courseLower} meant for them — a class, a stream, a city.
             </p>
 
             {/* ── Copy ───────────────────────────────────────────────────────── */}
@@ -155,7 +163,7 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                     <Input
                         value={value.subheading ?? ''}
                         onChange={(e) => set({ subheading: e.target.value })}
-                        placeholder="Pick yours to see the courses available for you"
+                        placeholder={`Pick yours to see the ${coursesLower} available for you`}
                         className="h-8"
                     />
                 </div>
@@ -188,7 +196,7 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                         <Input
                             value={value.skipLabel ?? ''}
                             onChange={(e) => set({ skipLabel: e.target.value })}
-                            placeholder="Show all courses"
+                            placeholder={`Show all ${coursesLower}`}
                             className="mt-1 h-8"
                         />
                     )}
@@ -201,7 +209,7 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                 <div className="mt-1 flex gap-2">
                     {(
                         [
-                            ['SHOW_COURSES', 'Show their courses'],
+                            ['SHOW_COURSES', `Show their ${coursesLower}`],
                             ['GO_TO_FORM', 'Skip to registration'],
                         ] as const
                     ).map(([mode, label]) => (
@@ -227,22 +235,22 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                         placeholder={
                             (value.onPick ?? 'SHOW_COURSES') === 'GO_TO_FORM'
                                 ? 'Continue to register'
-                                : 'Show my courses'
+                                : `Show my ${coursesLower}`
                         }
                         className="h-8"
                     />
                     <p className="mt-1 text-2xs text-neutral-400">
-                        Type <code>{'{{class}}'}</code> to drop in what they picked — &ldquo;Register
-                        for {'{{class}}'}&rdquo; becomes &ldquo;Register for Class 9&rdquo;. Left
-                        empty it follows the setting above, so a button that opens a registration
-                        form never promises to show courses.
+                        Type <code>{'{{class}}'}</code> to drop in what they picked —
+                        &ldquo;Register for {'{{class}}'}&rdquo; becomes &ldquo;Register for Class
+                        9&rdquo;. Left empty it follows the setting above, so a button that opens a
+                        registration form never promises to show {coursesLower}.
                     </p>
                 </div>
                 <p className="mt-1 text-2xs text-neutral-400">
                     Skipping goes straight to the details step, cart and all. It only applies to a
-                    button holding exactly one course — anything wider still shows the courses, so
-                    the learner picks which. The order summary appears on the details step either
-                    way, so nothing about the purchase is hidden.
+                    button holding exactly one {courseLower} — anything wider still shows the{' '}
+                    {coursesLower}, so the learner picks which. The order summary appears on the
+                    details step either way, so nothing about the purchase is hidden.
                 </p>
             </div>
 
@@ -257,7 +265,9 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                             className="inline-flex items-center gap-1 text-2xs font-semibold text-primary-500"
                         >
                             <MagicWand className="size-3.5" />{' '}
-                            {groups.length > 0 ? 'Rebuild: one per course' : 'One button per course'}
+                            {groups.length > 0
+                                ? `Rebuild: one per ${courseLower}`
+                                : `One button per ${courseLower}`}
                         </button>
                     )}
                 </div>
@@ -330,7 +340,7 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                                 onClick={() => setOpenGroup(open ? null : index)}
                                 className="mt-1 text-2xs text-neutral-500"
                             >
-                                {picked.length} course{picked.length === 1 ? '' : 's'} ·{' '}
+                                {picked.length} {picked.length === 1 ? courseLower : coursesLower} ·{' '}
                                 {open ? 'hide' : 'choose'}
                             </button>
                             {picked.length === 0 && (
@@ -343,8 +353,8 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                                 <div className="mt-2 max-h-48 space-y-1 overflow-y-auto border-t pt-2">
                                     {pickable.length === 0 && (
                                         <p className="text-2xs text-neutral-400">
-                                            No courses on this page yet — add them in the Courses
-                                            tab.
+                                            No {coursesLower} on this page yet — add them in the{' '}
+                                            {coursesTerm} tab.
                                         </p>
                                     )}
                                     {pickable.map((course) => {
@@ -408,7 +418,8 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
 
                 {unassigned.length > 0 && groups.length > 0 && (
                     <p className="text-2xs text-warning-600">
-                        {unassigned.length} course{unassigned.length === 1 ? '' : 's'} on no button
+                        {unassigned.length} {unassigned.length === 1 ? courseLower : coursesLower}{' '}
+                        on no button
                         {unassigned.length === 1 ? '' : 's'} — learners cannot reach{' '}
                         {unassigned.length === 1 ? 'it' : 'them'} unless skipping is allowed.
                     </p>

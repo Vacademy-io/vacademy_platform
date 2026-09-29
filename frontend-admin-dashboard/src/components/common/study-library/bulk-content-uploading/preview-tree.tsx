@@ -28,7 +28,10 @@ import {
     scopeEntitiesForNode,
 } from './matching';
 import type { NodeMapping } from './types';
-import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminologyPlural,
+    getTerminology,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     groupItemsByChapter,
@@ -218,7 +221,9 @@ const NodeRow = ({ node, depth }: { node: BulkNode; depth: number }) => {
                     node.mapping.action === 'skip' && 'text-neutral-400 line-through'
                 )}
             >
-                {isSyntheticRoot ? 'Course content (flat zip)' : node.displayName}
+                {isSyntheticRoot
+                    ? `${getTerminology(ContentTerms.Course, SystemTerms.Course)} content (flat zip)`
+                    : node.displayName}
             </span>
             <MappingBadge node={node} createMissing={createMissing} />
             {existingSlideCount > 0 && (

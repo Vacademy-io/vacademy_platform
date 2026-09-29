@@ -1,5 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { StudentRow } from '../-types/mentorship-types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Selection helpers for the mentee picker.
@@ -85,7 +87,7 @@ export function buildBatchOptions(
     const options = live.map((batch) => {
         const course =
             stripDefaultPrefix(batch.package_dto?.package_name ?? '') ||
-            (t ? t('courseFallback') : 'Course');
+            (t ? t('courseFallback') : getTerminology(ContentTerms.Course, SystemTerms.Course));
         const parts = [course];
         if (!isPlaceholderLevel(batch.level)) {
             parts.push(stripDefaultPrefix(batch.level?.level_name ?? ''));

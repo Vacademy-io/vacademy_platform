@@ -108,7 +108,7 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
           <div className="text-center space-y-4">
             <h3 className="text-lg font-semibold">Already Enrolled</h3>
             <p className="text-gray-600">
-              You are already enrolled in this course.
+              You are already enrolled in this {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.
             </p>
             <Button onClick={() => onOpenChange(false)} variant="outline">
               Close
@@ -155,7 +155,7 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
             <div className="text-center space-y-4">
               <h3 className="text-lg font-semibold">Payment Required</h3>
               <p className="text-gray-600">
-                You have an active plan but need to complete payment for this course.
+                You have an active plan but need to complete payment for this {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.
               </p>
               <div className="space-x-2">
                 <Button onClick={() => onOpenChange(false)} variant="outline">

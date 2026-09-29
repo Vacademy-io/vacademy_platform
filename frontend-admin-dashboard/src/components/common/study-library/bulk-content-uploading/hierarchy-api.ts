@@ -6,6 +6,8 @@
 
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ADD_CHAPTER, ADD_MODULE, ADD_SUBJECT } from '@/constants/urls';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /** Backend responses vary between {id}, {data:{id}} and bare entity — normalize. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,6 +81,9 @@ export const createChapter = async (
         payload
     );
     const id = extractId(response.data);
-    if (!id) throw new Error(`Chapter "${chapterName}" was not created (no id returned).`);
+    if (!id)
+        throw new Error(
+            `${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} "${chapterName}" was not created (no id returned).`
+        );
     return id;
 };

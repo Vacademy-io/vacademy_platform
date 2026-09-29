@@ -2,6 +2,8 @@ import { Percent, Plus, Trash } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { OfferRule, OffersSettings } from '../-types/product-page-types';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Predefined offers for a product page — "₹99 off on orders above ₹500".
@@ -40,7 +42,7 @@ export const OffersEditor = ({ value, currencySymbol = '₹', onChange }: Props)
         const on = r.minAmount
             ? ` on orders above ${currencySymbol}${r.minAmount}`
             : r.minCourses
-              ? ` on ${r.minCourses}+ courses`
+              ? ` on ${r.minCourses}+ ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`
               : '';
         return `${off}${on}`;
     };
@@ -121,7 +123,12 @@ export const OffersEditor = ({ value, currencySymbol = '₹', onChange }: Props)
                             }
                             className="h-8 w-20"
                         />
-                        <span className="text-2xs text-neutral-500">courses</span>
+                        <span className="text-2xs text-neutral-500">
+                            {getTerminologyPlural(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                            ).toLocaleLowerCase()}
+                        </span>
                     </div>
 
                     {rule.discountType === 'PERCENTAGE' && (

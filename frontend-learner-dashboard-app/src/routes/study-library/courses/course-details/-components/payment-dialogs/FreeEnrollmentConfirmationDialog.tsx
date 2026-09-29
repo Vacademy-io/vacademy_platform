@@ -379,7 +379,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
                             </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium text-slate-800">
-                                Course access will be granted automatically
+                                {getTerminology(ContentTerms.Course, SystemTerms.Course)} access will be granted automatically
                               </p>
                             </div>
                           </div>
@@ -410,7 +410,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
                             Ready to Enroll
                           </h4>
                           <p className="text-sm text-green-700">
-                            You'll get instant access to the course after
+                            You'll get instant access to the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} after
                             enrollment
                           </p>
                         </div>

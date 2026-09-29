@@ -14,6 +14,11 @@ import i18n from 'i18next';
 import type { BackendModule, ReadCallback } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, normalizeLocale } from './i18n/locales';
+import {
+    NAMING_TERMS_CHANGED_EVENT,
+    applyNamingTerms,
+    installNamingTermsSync,
+} from './i18n/naming-terms';
 
 /** Must match the zustand persist key in stores/localization/useLanguageStore. */
 const LOCALE_STORAGE_KEY = 'vacademy-locale';
@@ -91,7 +96,7 @@ const lazyLocaleBackend: BackendModule = {
                     return res.json() as Promise<Record<string, unknown>>;
                 });
             })
-            .then((data) => callback(null, data))
+            .then((data) => callback(null, applyNamingTerms(lng, ns, data)))
             .catch((error) => callback(error as Error, null));
     },
 };
@@ -113,8 +118,12 @@ i18n.use(lazyLocaleBackend)
         react: {
             // Catalogs load async; don't suspend the whole tree while they do.
             useSuspense: false,
+            // Re-render on institute renames too — see i18n/naming-terms.ts.
+            bindI18n: `languageChanged ${NAMING_TERMS_CHANGED_EVENT}`,
         },
     });
+
+installNamingTermsSync(i18n);
 
 /**
  * Fetch a language's merged catalog and seed every namespace into i18next's
@@ -128,7 +137,13 @@ async function seedLanguage(lng: string): Promise<void> {
     const merged = await loadMergedCatalog(lng);
     if (!merged) return; // dev, or locale without a merged file — lazy path handles it
     for (const [ns, data] of Object.entries(merged)) {
-        i18n.addResourceBundle(lng, ns, data as Record<string, unknown>, true, true);
+        i18n.addResourceBundle(
+            lng,
+            ns,
+            applyNamingTerms(lng, ns, data as Record<string, unknown>),
+            true,
+            true
+        );
     }
 }
 

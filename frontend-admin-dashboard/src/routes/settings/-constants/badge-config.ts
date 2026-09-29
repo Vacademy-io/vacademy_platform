@@ -9,6 +9,9 @@
  * `frontend-learner-dashboard-app/src/services/badge-config.ts`.
  */
 
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+
 export const BADGES_REWARDS_SETTING_KEY = 'BADGES_REWARDS_SETTING';
 
 export type BadgeTriggerType =
@@ -86,8 +89,13 @@ export const SCORING_FIELDS: Array<{
     },
     {
         key: 'courseCompletion',
-        label: 'Course completion',
-        help: 'Points for finishing a course (scaled by completion %).',
+        // Getters so the institute's Course term is read when rendered, not at import.
+        get label() {
+            return `${getTerminology(ContentTerms.Course, SystemTerms.Course)} completion`;
+        },
+        get help() {
+            return `Points for finishing a ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} (scaled by completion %).`;
+        },
     },
     {
         key: 'assessmentBestScore',

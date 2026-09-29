@@ -29,6 +29,8 @@ import {
 } from '@/services/tag-management';
 import { AssignCoursesToTagsDialog } from '@/routes/user-tags/-components/assign-courses-to-tags-dialog';
 import { toast } from 'sonner';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createFileRoute('/user-tags/institute/')({
     component: () => (
@@ -275,7 +277,12 @@ function RouteComponent() {
                 <div>
                     <h1 className="text-xl font-bold text-neutral-900">User Tags</h1>
                     <p className="mt-1 text-sm text-neutral-500">
-                        Manage tags and assign courses to tagged users
+                        Manage tags and assign{' '}
+                        {getTerminologyPlural(
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                        ).toLocaleLowerCase()}{' '}
+                        to tagged users
                     </p>
                 </div>
                 {selectedTagIds.size > 0 && (

@@ -1666,8 +1666,8 @@ export default function ScheduleStep2() {
                             >
                                 <SectionCard
                                     icon={<VideoCamera size={18} />}
-                                    title="Auto-add recordings to course"
-                                    description="When a recording of this class becomes available, automatically add it as a video slide in the chosen chapter — no manual step needed."
+                                    title={`Auto-add recordings to ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}
+                                    description={`When a recording of this class becomes available, automatically add it as a video slide in the chosen ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()} — no manual step needed.`}
                                     headerRight={
                                         <div className="flex items-center gap-2">
                                             <Switch
@@ -1696,7 +1696,12 @@ export default function ScheduleStep2() {
                                         {recordingAutoLinkBatches.length === 0 ? (
                                             <p className="text-body text-neutral-500">
                                                 Select at least one batch above to choose a
-                                                destination chapter.
+                                                destination{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Chapters,
+                                                    SystemTerms.Chapters
+                                                ).toLocaleLowerCase()}
+                                                .
                                             </p>
                                         ) : (
                                             <SessionContentDestinationPicker

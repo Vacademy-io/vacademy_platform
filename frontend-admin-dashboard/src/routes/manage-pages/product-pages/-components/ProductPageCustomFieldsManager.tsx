@@ -35,6 +35,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ProductPageAggregatedField } from '../-types/product-page-types';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     productPageId: string;
@@ -324,12 +326,26 @@ export const ProductPageCustomFieldsManager = ({ productPageId, instituteId }: P
                     {hasNoInvites ? (
                         <p className="flex items-center gap-1.5 text-xs text-warning-600">
                             <AlertCircle className="size-3.5 shrink-0" />
-                            Add courses under the <strong>Courses</strong> tab and save the page first.
+                            Add{' '}
+                            {getTerminologyPlural(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                            ).toLocaleLowerCase()}{' '}
+                            under the{' '}
+                            <strong>
+                                {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
+                            </strong>{' '}
+                            tab and save the page first.
                         </p>
                     ) : (
                         <p className="flex items-center gap-1.5 text-xs text-neutral-400">
                             <Info className="size-3.5 shrink-0" />
-                            If you added new courses, save the page first so changes are reflected here.
+                            If you added new{' '}
+                            {getTerminologyPlural(
+                                ContentTerms.Course,
+                                SystemTerms.Course
+                            ).toLocaleLowerCase()}
+                            , save the page first so changes are reflected here.
                         </p>
                     )}
                 </div>

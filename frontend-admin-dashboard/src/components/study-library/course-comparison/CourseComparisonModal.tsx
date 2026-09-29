@@ -33,7 +33,10 @@ import {
     getPackageSessionsForCourse,
 } from '@/services/study-library/course-comparison';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CourseComparisonModalProps {
@@ -108,6 +111,11 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
     defaultPackageSessionId,
     chapterId,
 }) => {
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const coursesLower = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
     const [packageSessions, setPackageSessions] = useState<PackageSession[]>([]);
     const [selectedPackageSession, setSelectedPackageSession] = useState<string>(
         defaultPackageSessionId || ''
@@ -182,8 +190,8 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
         onSuccess: () => {
             toast.success(
                 requireApproval
-                    ? 'Course submitted for review successfully!'
-                    : 'Course published successfully!'
+                    ? `${courseTerm} submitted for review successfully!`
+                    : `${courseTerm} published successfully!`
             );
             // Land on the tab where the course now shows up
             navigate({
@@ -197,8 +205,8 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
             toast.error(
                 error.message ||
                     (requireApproval
-                        ? 'Failed to submit course for review'
-                        : 'Failed to publish course')
+                        ? `Failed to submit ${courseTerm.toLocaleLowerCase()} for review`
+                        : `Failed to publish ${courseTerm.toLocaleLowerCase()}`)
             );
         },
     });
@@ -275,8 +283,8 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
             }
         } catch (error) {
             console.error('Failed to compare courses:', error);
-            setError('Failed to compare courses. Please try again.');
-            toast.error('Failed to compare courses');
+            setError(`Failed to compare ${coursesLower}. Please try again.`);
+            toast.error(`Failed to compare ${coursesLower}`);
         } finally {
             setIsLoading(false);
         }
@@ -350,14 +358,16 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                             </div>
                             <div className="min-w-0">
                                 <h2 className="truncate text-lg font-semibold text-gray-900">
-                                    {isNewCourse ? 'Course Content Overview' : 'Preview Changes'}
+                                    {isNewCourse
+                                        ? `${courseTerm} Content Overview`
+                                        : 'Preview Changes'}
                                 </h2>
                                 <p className="mt-0.5 text-xs text-gray-500">
                                     {isNewCourse
                                         ? requireApproval
-                                            ? 'Review your course content before submitting for approval'
-                                            : 'Review your course content before publishing'
-                                        : 'Compare your draft course with the published version'}
+                                            ? `Review your ${courseTerm.toLocaleLowerCase()} content before submitting for approval`
+                                            : `Review your ${courseTerm.toLocaleLowerCase()} content before publishing`
+                                        : `Compare your draft ${courseTerm.toLocaleLowerCase()} with the published version`}
                                 </p>
                             </div>
                         </div>
@@ -432,7 +442,9 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                                 <div className="flex justify-center py-8">
                                     <div className="text-center">
                                         <DashboardLoader size={32} />
-                                        <p className="mt-4 text-gray-600">Comparing courses...</p>
+                                        <p className="mt-4 text-gray-600">
+                                            Comparing {coursesLower}...
+                                        </p>
                                     </div>
                                 </div>
                             )}
@@ -547,11 +559,11 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                                                 s ({comparisonResult.modules.length})
                                             </TabsTrigger>
                                             <TabsTrigger value="chapters" className="text-xs">
-                                                {getTerminology(
+                                                {getTerminologyPlural(
                                                     ContentTerms.Chapters,
                                                     SystemTerms.Chapters
-                                                )}
-                                                s ({comparisonResult.chapters.length})
+                                                )}{' '}
+                                                ({comparisonResult.chapters.length})
                                             </TabsTrigger>
                                             <TabsTrigger value="slides" className="text-xs">
                                                 {getTerminology(
@@ -594,7 +606,12 @@ export const CourseComparisonModal: React.FC<CourseComparisonModalProps> = ({
                                                     </div>
                                                 ) : (
                                                     <p className="py-4 text-center text-sm text-gray-500">
-                                                        No chapters to compare
+                                                        No{' '}
+                                                        {getTerminologyPlural(
+                                                            ContentTerms.Chapters,
+                                                            SystemTerms.Chapters
+                                                        ).toLocaleLowerCase()}{' '}
+                                                        to compare
                                                     </p>
                                                 )}
                                             </div>

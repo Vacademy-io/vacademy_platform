@@ -2730,23 +2730,26 @@ class NoRepeatGate(FrameProcessor):
             # model acknowledged and stopped. Same remedy as the all-repeat
             # case — ask for the next line — but only when the caller actually
             # said something to move on from (call 612f5e37, 2026-09-13).
-            _turn = normalize_spoken(self._last_caller_text() or "")
             # The soft next-step cue came back as another bare acknowledgment:
             # one FIRM request for the same caller turn, outside the per-turn
             # limit — otherwise the firm cue waits for the idle timer (8 s).
+            # Keyed on the turn the soft request was FOR: by now the context's
+            # last entry is our own "जी सर।", so last_caller_text() is empty.
             escalate_now = (self._filler_streak >= 1 and self._next_steps < 5
-                            and self._escalated_for != _turn)
+                            and self._next_step_for is not None
+                            and self._escalated_for != self._next_step_for)
+            _caller = (self._last_caller_text() or "").strip()
             if (not self._real_this_reply and self._emitted and not self._held_tail
                     and not self._held_question
                     and not self._end_forced() and not superseded
                     and self._request_next_step is not None
-                    and (escalate_now or self._may_ask_next_step())
-                    and (self._last_caller_text() or "").strip()
-                    and not (self._last_caller_text() or "").startswith("[")):
+                    and (escalate_now or (self._may_ask_next_step()
+                                          and _caller and not _caller.startswith("[")))):
                 if escalate_now:
-                    self._escalated_for = _turn
+                    self._escalated_for = self._next_step_for
                 self._next_steps += 1
-                self._next_step_for = normalize_spoken(self._last_caller_text() or "")
+                if not escalate_now:
+                    self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                 # The second acknowledgment-only reply in a row gets the firm
                 # cue (ask ONE new question, or close) — the soft one had just
                 # been ignored. Call 22062aac: "जी।" "जी सर।" "जी सर।" "जी सर।"

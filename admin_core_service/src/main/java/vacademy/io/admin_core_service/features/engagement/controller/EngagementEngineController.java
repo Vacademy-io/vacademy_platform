@@ -85,6 +85,12 @@ public class EngagementEngineController {
         body.put("activeMembers", memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE"));
         body.put("prompt", promptRepository.findTopByEngineIdAndStatusOrderByVersionDesc(engineId, "ACTIVE").orElse(null));
         body.put("approvedSends", actionRepository.countApprovedSends(engineId));
+        // Graduation is per channel; the detail page shows each auto-send channel's own progress.
+        Map<String, Long> byChannel = new java.util.HashMap<>();
+        for (Object[] row : actionRepository.countApprovedSendsByChannel(engineId)) {
+            if (row[0] != null) byChannel.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        body.put("approvedSendsByChannel", byChannel);
         body.put("effectiveFirstN", effectiveFirstN);
         return ResponseEntity.ok(body);
     }
@@ -169,6 +175,8 @@ public class EngagementEngineController {
                 .map(p -> {
                     DataPointSpec spec = p.declare();
                     spec.setKey(p.key());
+                    // The wizard showed these as optional checkboxes that unchecking did nothing to.
+                    spec.setAlwaysOn(p.alwaysOn());
                     return spec;
                 }).toList());
     }

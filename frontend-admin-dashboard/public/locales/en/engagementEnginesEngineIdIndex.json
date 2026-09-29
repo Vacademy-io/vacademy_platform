@@ -43,9 +43,6 @@
         "allowAutoSend": "Allow auto-send",
         "keepAsCopilot": "Keep as copilot",
         "autoSendChannels": "Auto-send channels",
-        "status": "Status",
-        "rampingHint_one": "Still copilot — send {{count}} more approved draft and this engine graduates to sending on its own.",
-        "rampingHint_other": "Still copilot — send {{count}} more approved drafts and this engine graduates to sending on its own.",
         "noAutoSend": "No auto-send channels — this engine only drafts tasks for you to send.",
         "holdout": "Holdout",
         "holdoutValue": "{{pct}}% (enrolled, never messaged)",
@@ -55,6 +52,15 @@
             "sendingAutonomously": "Sending autonomously",
             "dryRun": "Dry run (simulated)",
             "onEngineStatus": "Autonomy on · engine {{status}}"
-        }
+        },
+        "statusFor": "{{channel}} status",
+        "rampingHintChannel_one": "Still copilot on {{channel}}. Send {{count}} more approved {{channel}} draft and this channel starts sending on its own.",
+        "rampingHintChannel_other": "Still copilot on {{channel}}. Send {{count}} more approved {{channel}} drafts and this channel starts sending on its own."
+    },
+    "archiveDialog": {
+        "title": "Archive this engine?",
+        "description": "It stops deciding and sending for good. Tasks already in the inbox and past messages stay.",
+        "cancel": "Keep it",
+        "confirm": "Archive"
     }
 }

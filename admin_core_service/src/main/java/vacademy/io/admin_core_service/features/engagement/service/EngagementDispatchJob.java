@@ -9,8 +9,10 @@ import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementAction;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementEngine;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementMember;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementActionRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementEngineRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementMemberRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +44,8 @@ public class EngagementDispatchJob {
 
     private final EngagementActionRepository actionRepository;
     private final EngagementEngineRepository engineRepository;
+    private final EngagementMemberRepository memberRepository;
+    private final PolicyGate policyGate;
     private final EngagementDispatcher dispatcher;
     private final CreditClient creditClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -90,10 +94,32 @@ public class EngagementDispatchJob {
         if (!"ACTIVE".equals(engine.getStatus())) {
             return false; // paused/archived/dry-run — leave OPEN; reaper expires if it goes stale
         }
+        // The person, re-checked at send time and before autonomy: a SEND is scheduled up to
+        // a week ahead, so they may have opted out or left the audience since the decision. Withdrawn,
+        // not demoted — a copilot task would invite a human to message someone who said no.
+        EngagementMember member = memberRepository.findById(action.getMemberId()).orElse(null);
+        if (member == null || !"ACTIVE".equals(member.getStatus())) {
+            actionRepository.withdrawDueSend(action.getId(),
+                    "Not sent: this person is no longer active in the engine (opted out, paused or left the audience).",
+                    now);
+            return false;
+        }
+        if (member.getUserId() != null
+                && policyGate.optedOutUserIds(instituteId, List.of(member.getUserId())).contains(member.getUserId())) {
+            actionRepository.withdrawDueSend(action.getId(), "Not sent: this person opted out after the decision.", now);
+            return false;
+        }
         if (Boolean.TRUE.equals(engine.getAutoSendKilled())
                 || !channelAutoEnabled(engine, action.getChannel())) {
             actionRepository.demoteSendToTask(action.getId(),
                     "Autonomy off for this channel — sent to the inbox for review.", now);
+            return false;
+        }
+
+        // 1b. The clock: an engine resumed at night must not fire its past-due SENDs in quiet hours.
+        Instant allowedAt = policyGate.clampToAllowedWindow(engine, now);
+        if (allowedAt.isAfter(now)) {
+            actionRepository.rescheduleDueSend(action.getId(), allowedAt, now);
             return false;
         }
 
@@ -124,7 +150,9 @@ public class EngagementDispatchJob {
         }
 
         // 3. Send-once claim, then dispatch.
-        if (actionRepository.claimForDispatch(action.getId(), instituteId, now) != 1) {
+        // Stamped with the claim time, not the batch start: in a slow batch the batch start is already
+        // past the reaper's staleness cut-off, and it flipped rows to FAILED while they were sending.
+        if (actionRepository.claimForDispatch(action.getId(), instituteId, Instant.now()) != 1) {
             return false; // another replica grabbed it
         }
         EngagementAction claimed = actionRepository.findById(action.getId()).orElse(action);
@@ -197,7 +225,9 @@ public class EngagementDispatchJob {
     private boolean channelAutoEnabled(EngagementEngine engine, String channel) {
         if (channel == null) return false;
         try {
-            return objectMapper.readTree(engine.getChannels()).path(channel).path("auto").asBoolean(false);
+            // Enabled AND auto: an "auto" flag left on a channel that was later switched off must not send.
+            com.fasterxml.jackson.databind.JsonNode ch = objectMapper.readTree(engine.getChannels()).path(channel);
+            return ch.path("enabled").asBoolean(false) && ch.path("auto").asBoolean(false);
         } catch (Exception e) {
             return false;
         }

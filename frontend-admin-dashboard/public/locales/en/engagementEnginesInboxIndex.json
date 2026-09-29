@@ -7,7 +7,8 @@
         "needsAction": "Needs action",
         "sent": "Sent",
         "failed": "Failed",
-        "handled": "Handled"
+        "handled": "Handled",
+        "dryRun": "Dry run"
     },
     "errors": {
         "loadFailed": "Could not load tasks."
@@ -34,5 +35,6 @@
         "editableNotice": "Edit before sending if you like — your edit is what goes out.",
         "sending": "Sending…",
         "sendNow": "Send now"
-    }
+    },
+    "needsTemplate": "WhatsApp can only send an approved template, and this task has none. Handle it another way, or dismiss it."
 }

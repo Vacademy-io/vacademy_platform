@@ -7,7 +7,8 @@
         "needsAction": "Action requise",
         "sent": "Envoyé",
         "failed": "Échoué",
-        "handled": "Traité"
+        "handled": "Traité",
+        "dryRun": "Essai"
     },
     "errors": {
         "loadFailed": "Impossible de charger les tâches."
@@ -34,5 +35,6 @@
         "editableNotice": "Modifiez avant l'envoi si vous le souhaitez — votre modification sera envoyée telle quelle.",
         "sending": "Envoi en cours…",
         "sendNow": "Envoyer maintenant"
-    }
+    },
+    "needsTemplate": "WhatsApp ne peut envoyer qu’un modèle approuvé, et cette tâche n’en a pas. Traitez-la autrement ou ignorez-la."
 }

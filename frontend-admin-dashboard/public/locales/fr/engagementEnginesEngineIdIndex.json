@@ -44,10 +44,6 @@
         "allowAutoSend": "Autoriser l'envoi automatique",
         "keepAsCopilot": "Garder en mode copilote",
         "autoSendChannels": "Canaux d'envoi automatique",
-        "status": "Statut",
-        "rampingHint_one": "Encore en mode copilote — envoyez {{count}} brouillon approuvé de plus et ce moteur passera à l'envoi autonome.",
-        "rampingHint_many": "Encore en mode copilote — envoyez {{count}} brouillons approuvés de plus et ce moteur passera à l'envoi autonome.",
-        "rampingHint_other": "Encore en mode copilote — envoyez {{count}} brouillons approuvés de plus et ce moteur passera à l'envoi autonome.",
         "noAutoSend": "Aucun canal d'envoi automatique — ce moteur ne fait que préparer des tâches que vous envoyez vous-même.",
         "holdout": "Groupe témoin",
         "holdoutValue": "{{pct}} % (inscrits, jamais contactés)",
@@ -57,6 +53,16 @@
             "sendingAutonomously": "Envoi autonome en cours",
             "dryRun": "Essai à blanc (simulé)",
             "onEngineStatus": "Autonomie activée · moteur {{status}}"
-        }
+        },
+        "statusFor": "Statut {{channel}}",
+        "rampingHintChannel_one": "Encore en mode copilote sur {{channel}}. Envoyez {{count}} brouillon {{channel}} approuvé de plus et ce canal passera à l'envoi autonome.",
+        "rampingHintChannel_many": "Encore en mode copilote sur {{channel}}. Envoyez {{count}} brouillons {{channel}} approuvés de plus et ce canal passera à l'envoi autonome.",
+        "rampingHintChannel_other": "Encore en mode copilote sur {{channel}}. Envoyez {{count}} brouillons {{channel}} approuvés de plus et ce canal passera à l'envoi autonome."
+    },
+    "archiveDialog": {
+        "title": "Archiver ce moteur ?",
+        "description": "Il cesse définitivement de décider et d'envoyer. Les tâches déjà dans la boîte de réception et les messages envoyés sont conservés.",
+        "cancel": "Le garder",
+        "confirm": "Archiver"
     }
 }

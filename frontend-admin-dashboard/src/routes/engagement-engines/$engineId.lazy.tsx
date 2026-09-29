@@ -11,6 +11,16 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ToneBadge } from './-components/ToneBadge';
 import { TemplateNegotiation } from './-components/TemplateNegotiation';
 import { buildChannelMeta } from './-constants';
@@ -49,6 +59,7 @@ function EngineDetailPage() {
     const editPrompt = useEditPrompt();
     const setAutonomy = useSetAutonomy();
     const [amendOpen, setAmendOpen] = useState(false);
+    const [confirmArchive, setConfirmArchive] = useState(false);
     const [delta, setDelta] = useState('');
     const { t } = useTranslation('engagementEnginesEngineIdIndex');
     const { t: tConstants } = useTranslation('engagementEnginesConstants');
@@ -141,13 +152,46 @@ function EngineDetailPage() {
                                 buttonType={s === 'ACTIVE' ? 'primary' : 'secondary'}
                                 scale="small"
                                 disable={transition.isPending}
-                                onClick={() => transition.mutate({ engineId: engine.id, toStatus: s })}
+                                onClick={() =>
+                                    s === 'ARCHIVED'
+                                        ? setConfirmArchive(true)
+                                        : transition.mutate({ engineId: engine.id, toStatus: s })
+                                }
                             >
                                 {STATUS_ACTION_LABEL[s] ?? s}
                             </MyButton>
                         ))}
                     </div>
                 </Card>
+
+                <AlertDialog open={confirmArchive} onOpenChange={setConfirmArchive}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>{t('archiveDialog.title')}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                {t('archiveDialog.description')}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={transition.isPending}>
+                                {t('archiveDialog.cancel')}
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                                disabled={transition.isPending}
+                                className="bg-danger-600 hover:bg-danger-700"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    transition.mutate(
+                                        { engineId: engine.id, toStatus: 'ARCHIVED' },
+                                        { onSettled: () => setConfirmArchive(false) }
+                                    );
+                                }}
+                            >
+                                {t('archiveDialog.confirm')}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
 
                 {engine.status === 'TEMPLATES_PENDING' && hasWhatsApp && (
                     <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-caption text-warning-600">
@@ -315,15 +359,17 @@ function AutonomyPanel({
 }) {
     const { t } = useTranslation('engagementEnginesEngineIdIndex');
     const { t: tConstants } = useTranslation('engagementEnginesConstants');
-    const { engine, approvedSends, effectiveFirstN } = detail;
+    const { engine, approvedSends, approvedSendsByChannel, effectiveFirstN } = detail;
     const autoChannels = autoSendChannels(engine);
     // Only meaningful once at least one channel is set to auto-send, or a holdout exists.
     if (autoChannels.length === 0 && !(engine.holdoutPct && engine.holdoutPct > 0)) return null;
 
     const killed = engine.autoSendKilled === true;
     const target = effectiveFirstN ?? 0;
-    const approved = approvedSends ?? 0;
-    const graduated = target <= 0 || approved >= target;
+    // Graduation is per channel. An older backend sends only the engine-wide total.
+    const approvedOn = (channel: string) =>
+        approvedSendsByChannel ? approvedSendsByChannel[channel] ?? 0 : approvedSends ?? 0;
+    const channelMeta = buildChannelMeta(tConstants);
 
     return (
         <Card className="flex flex-col gap-3 p-4">
@@ -360,23 +406,36 @@ function AutonomyPanel({
                         label={t('autonomy.autoSendChannels')}
                         value={autoChannels.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
                     />
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-body text-neutral-500">{t('autonomy.status')}</span>
-                        <AutonomyStatusBadge
-                            killed={killed}
-                            graduated={graduated}
-                            approved={approved}
-                            target={target}
-                            engineStatus={engine.status}
-                        />
-                    </div>
-                    {!killed && !graduated && (
-                        <p className="text-caption text-neutral-500">
-                            {t('autonomy.rampingHint', {
-                                count: Math.max(0, target - approved),
-                            })}
-                        </p>
-                    )}
+                    {autoChannels.map((channel) => {
+                        const approved = approvedOn(channel);
+                        const graduated = target <= 0 || approved >= target;
+                        return (
+                            <div key={channel} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-body text-neutral-500">
+                                        {t('autonomy.statusFor', {
+                                            channel: channelMeta[channel].label,
+                                        })}
+                                    </span>
+                                    <AutonomyStatusBadge
+                                        killed={killed}
+                                        graduated={graduated}
+                                        approved={approved}
+                                        target={target}
+                                        engineStatus={engine.status}
+                                    />
+                                </div>
+                                {!killed && !graduated && (
+                                    <p className="text-caption text-neutral-500">
+                                        {t('autonomy.rampingHintChannel', {
+                                            channel: channelMeta[channel].label,
+                                            count: Math.max(0, target - approved),
+                                        })}
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    })}
                 </>
             ) : (
                 <p className="text-caption text-neutral-500">{t('autonomy.noAutoSend')}</p>

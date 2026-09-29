@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { buildTimezoneOptions } from '@/routes/study-library/live-session/schedule/-constants/options';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -42,12 +43,13 @@ export const Route = createLazyFileRoute('/engagement-engines/create/')({
     component: CreateEnginePage,
 });
 
-const STEPS = ['Basics', 'Data points', 'Channels', 'Audience', 'Cadence', 'Review'] as const;
+const STEP_KEYS = ['basics', 'dataPoints', 'channels', 'audience', 'cadence', 'review'] as const;
 
-function StepRail({ current }: { current: number }) {
+function StepRail({ current, t }: { current: number; t: TFunction }) {
     return (
         <div className="flex flex-row gap-4 overflow-x-auto lg:w-52 lg:flex-col">
-            {STEPS.map((label, i) => {
+            {STEP_KEYS.map((key, i) => {
+                const label = t(`steps.${key}`);
                 const done = i < current;
                 const active = i === current;
                 return (
@@ -83,6 +85,7 @@ function CreateEnginePage() {
     // options namespace rather than being a module-level constant.
     const { t: tOptions } = useTranslation('studyLibraryOptions');
     const { t: tConstants } = useTranslation('engagementEnginesConstants');
+    const { t } = useTranslation('engagementEnginesCreateIndex');
     const TIMEZONE_OPTIONS = buildTimezoneOptions(tOptions);
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId() || '';
@@ -95,7 +98,7 @@ function CreateEnginePage() {
     });
     const campaigns = campaignsPage?.content ?? [];
 
-    useEffect(() => setNavHeading('New engine'), [setNavHeading]);
+    useEffect(() => setNavHeading(t('heading')), [setNavHeading, t]);
 
     const [step, setStep] = useState(0);
 
@@ -120,9 +123,12 @@ function CreateEnginePage() {
     const audiencesLabel = getTerminologyPlural(OtherTerms.AudienceList, SystemTerms.AudienceList);
     const learnersLower = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase();
 
+    // Always-on data points are read whatever the selection, so their sensitivity counts too.
     const highSelected = useMemo(
         () =>
-            (catalog ?? []).some((d) => d.sensitivity === 'HIGH' && dataPoints.includes(d.key)),
+            (catalog ?? []).some(
+                (d) => d.sensitivity === 'HIGH' && (d.alwaysOn || dataPoints.includes(d.key))
+            ),
         [catalog, dataPoints]
     );
 
@@ -192,7 +198,7 @@ function CreateEnginePage() {
 
     const submit = () => {
         if (!canProceed(0)) {
-            toast.error('An engine needs a name and a brief.');
+            toast.error(t('errors.nameAndBrief'));
             setStep(0);
             return;
         }
@@ -205,49 +211,48 @@ function CreateEnginePage() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>New engagement engine</title>
+                <title>{t('pageTitle')}</title>
             </Helmet>
             <div className="flex flex-col gap-5 p-1">
-                <h1 className="text-h3 font-semibold text-neutral-700">New engine</h1>
+                <h1 className="text-h3 font-semibold text-neutral-700">{t('heading')}</h1>
                 <div className="flex flex-col gap-6 lg:flex-row">
-                    <StepRail current={step} />
+                    <StepRail current={step} t={t} />
                     <Card className="flex-1 p-5">
                         {step === 0 && (
                             <div className="flex flex-col gap-4">
                                 <MyInput
-                                    label="Engine name"
+                                    label={t('basics.name')}
                                     required
                                     inputType="text"
-                                    inputPlaceholder={`Re-engage dormant ${learnersLower}`}
+                                    inputPlaceholder={t('basics.namePlaceholder', { learners: learnersLower })}
                                     input={name}
                                     onChangeFunction={(e) => setName(e.target.value)}
                                 />
                                 <MyInput
-                                    label="Objective (short)"
+                                    label={t('basics.objective')}
                                     inputType="text"
-                                    inputPlaceholder={`Bring back ${learnersLower} who went quiet`}
+                                    inputPlaceholder={t('basics.objectivePlaceholder', { learners: learnersLower })}
                                     input={objective}
                                     onChangeFunction={(e) => setObjective(e.target.value)}
                                 />
                                 <div className="flex flex-col gap-1">
                                     <label htmlFor="engine-brief" className="text-subtitle font-regular">
-                                        The brief<span className="text-danger-600">*</span>
+                                        {t('basics.brief')}
+                                        <span className="text-danger-600">*</span>
                                     </label>
-                                    <p className="text-caption text-neutral-500">
-                                        Describe the objective, tone, what to say and what to avoid, and any
-                                        links. This becomes the AI&apos;s instructions — the more specific,
-                                        the better.
-                                    </p>
+                                    <p className="text-caption text-neutral-500">{t('basics.briefHint')}</p>
                                     <Textarea
                                         id="engine-brief"
                                         rows={7}
                                         value={brief}
                                         onChange={(e) => setBrief(e.target.value)}
-                                        placeholder={`You are re-engaging ${learnersLower} who stopped attending. Be warm and brief…`}
+                                        placeholder={t('basics.briefPlaceholder', { learners: learnersLower })}
                                     />
                                 </div>
                                 <div className="w-full sm:w-80">
-                                    <label className="mb-1 block text-subtitle font-regular">Language</label>
+                                    <label className="mb-1 block text-subtitle font-regular">
+                                        {t('basics.language')}
+                                    </label>
                                     <SearchableSelect
                                         options={buildLanguageOptions(tConstants).map((l) => ({
                                             label: l.label,
@@ -262,17 +267,16 @@ function CreateEnginePage() {
 
                         {step === 1 && (
                             <div className="flex flex-col gap-3">
-                                <p className="text-body text-neutral-500">
-                                    Pick the signals the AI may read about each person. More context means
-                                    smarter, better-timed messages.
-                                </p>
+                                <p className="text-body text-neutral-500">{t('dataPoints.intro')}</p>
                                 <div className="flex flex-col gap-2">
                                     {(catalog ?? []).map((d) => {
-                                        const selected = dataPoints.includes(d.key);
+                                        const alwaysOn = d.alwaysOn === true;
+                                        const selected = alwaysOn || dataPoints.includes(d.key);
                                         return (
                                             <button
                                                 key={d.key}
                                                 type="button"
+                                                disabled={alwaysOn}
                                                 onClick={() =>
                                                     setDataPoints((prev) =>
                                                         selected
@@ -284,7 +288,8 @@ function CreateEnginePage() {
                                                     'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
                                                     selected
                                                         ? 'border-primary-300 bg-primary-50'
-                                                        : 'border-neutral-200 hover:border-primary-200'
+                                                        : 'border-neutral-200 hover:border-primary-200',
+                                                    alwaysOn && 'cursor-default'
                                                 )}
                                             >
                                                 <Checkbox checked={selected} className="mt-0.5" />
@@ -295,7 +300,12 @@ function CreateEnginePage() {
                                                         </span>
                                                         {d.sensitivity === 'HIGH' && (
                                                             <span className="rounded bg-warning-50 px-1.5 py-0.5 text-caption text-warning-600">
-                                                                sensitive
+                                                                {t('dataPoints.sensitive')}
+                                                            </span>
+                                                        )}
+                                                        {alwaysOn && (
+                                                            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-neutral-500">
+                                                                {t('dataPoints.alwaysOn')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -317,8 +327,7 @@ function CreateEnginePage() {
                                             className="mt-0.5"
                                         />
                                         <span className="text-caption text-neutral-600">
-                                            I confirm this institute has consent to use the sensitive data
-                                            points selected above for messaging.
+                                            {t('dataPoints.consent')}
                                         </span>
                                     </label>
                                 )}
@@ -327,10 +336,7 @@ function CreateEnginePage() {
 
                         {step === 2 && (
                             <div className="flex flex-col gap-3">
-                                <p className="text-body text-neutral-500">
-                                    Which channels can this engine use? You review every message before it
-                                    sends. WhatsApp needs Meta-approved templates (set up after creating).
-                                </p>
+                                <p className="text-body text-neutral-500">{t('channels.intro')}</p>
                                 {CHANNEL_ORDER.map((c) => {
                                     const meta = buildChannelMeta(tConstants)[c];
                                     const cfg = channels[c] ?? {};
@@ -344,7 +350,7 @@ function CreateEnginePage() {
                                                     {meta.label}
                                                 </span>
                                                 <Switch
-                                                    aria-label={`Enable ${meta.label}`}
+                                                    aria-label={t('channels.enableAria', { channel: meta.label })}
                                                     checked={!!cfg.enabled}
                                                     onCheckedChange={(v) => toggleChannel(c, { enabled: v })}
                                                 />
@@ -352,11 +358,10 @@ function CreateEnginePage() {
                                             {cfg.enabled && meta.supportsAuto && (
                                                 <label className="flex items-center justify-between pl-1">
                                                     <span className="text-caption text-neutral-500">
-                                                        Auto-send proactively (after the engine graduates;
-                                                        until then you review &amp; send each one)
+                                                        {t('channels.auto')}
                                                     </span>
                                                     <Switch
-                                                        aria-label={`Auto-send proactively on ${meta.label}`}
+                                                        aria-label={t('channels.autoAria', { channel: meta.label })}
                                                         checked={!!cfg.auto}
                                                         onCheckedChange={(v) => toggleChannel(c, { auto: v })}
                                                     />
@@ -365,11 +370,10 @@ function CreateEnginePage() {
                                             {cfg.enabled && meta.supportsAutoReply && (
                                                 <label className="flex items-center justify-between pl-1">
                                                     <span className="text-caption text-neutral-500">
-                                                        Auto-answer replies (AI replies within 24h; money /
-                                                        anger / uncertainty always escalate to you)
+                                                        {t('channels.autoReply')}
                                                     </span>
                                                     <Switch
-                                                        aria-label={`Auto-answer replies for ${meta.label}`}
+                                                        aria-label={t('channels.autoReplyAria', { channel: meta.label })}
                                                         checked={!!cfg.autoReply}
                                                         onCheckedChange={(v) =>
                                                             toggleChannel(c, { autoReply: v })
@@ -386,8 +390,10 @@ function CreateEnginePage() {
                         {step === 3 && (
                             <div className="flex flex-col gap-4">
                                 <p className="text-body text-neutral-500">
-                                    Who should this engine engage? Combine {batchesLabel.toLowerCase()} and{' '}
-                                    {audiencesLabel.toLowerCase()} — people are de-duplicated automatically.
+                                    {t('audience.intro', {
+                                        batches: batchesLabel.toLowerCase(),
+                                        audiences: audiencesLabel.toLowerCase(),
+                                    })}
                                 </p>
                                 <div>
                                     <label className="mb-1 block text-subtitle font-regular">
@@ -410,11 +416,11 @@ function CreateEnginePage() {
                                         options={campaignOptions}
                                         selected={audienceIds}
                                         onChange={setAudienceIds}
-                                        placeholder={`Select ${audiencesLabel.toLowerCase()}`}
+                                        placeholder={t('audience.select', { audiences: audiencesLabel.toLowerCase() })}
                                     />
                                 </div>
                                 <p className="text-caption text-neutral-400">
-                                    {audienceCount} source{audienceCount === 1 ? '' : 's'} selected.
+                                    {t('audience.count', { count: audienceCount })}
                                 </p>
                             </div>
                         )}
@@ -422,35 +428,29 @@ function CreateEnginePage() {
                         {step === 4 && (
                             <div className="flex flex-col gap-4">
                                 <MyInput
-                                    label="Re-check each person every (hours)"
+                                    label={t('cadence.recheck')}
                                     required
                                     inputType="number"
                                     inputPlaceholder="72"
                                     input={cadenceHours}
                                     onChangeFunction={(e) => setCadenceHours(e.target.value)}
                                 />
-                                <p className="-mt-2 text-caption text-neutral-500">
-                                    A safety floor. The AI decides the actual timing; this caps how often it
-                                    revisits someone.
-                                </p>
+                                <p className="-mt-2 text-caption text-neutral-500">{t('cadence.recheckHint')}</p>
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-subtitle font-regular">Quiet hours</label>
-                                    <p className="text-caption text-neutral-500">
-                                        No messages between these hours (the institute&apos;s own quiet-hours
-                                        floor still applies on top of this).
-                                    </p>
+                                    <label className="text-subtitle font-regular">{t('cadence.quietHours')}</label>
+                                    <p className="text-caption text-neutral-500">{t('cadence.quietHint')}</p>
                                     <div className="flex flex-wrap items-end gap-3">
-                                        <HourSelect label="From" value={quietStart} onChange={setQuietStart} />
-                                        <HourSelect label="To" value={quietEnd} onChange={setQuietEnd} />
+                                        <HourSelect label={t('cadence.from')} value={quietStart} onChange={setQuietStart} />
+                                        <HourSelect label={t('cadence.to')} value={quietEnd} onChange={setQuietEnd} />
                                         <div className="w-56">
                                             <label className="mb-1 block text-caption text-neutral-500">
-                                                Timezone
+                                                {t('cadence.timezone')}
                                             </label>
                                             <SearchableSelect
                                                 options={TIMEZONE_OPTIONS.map(
-                                                    (t: { label: string; value: string }) => ({
-                                                        label: t.label,
-                                                        value: t.value,
+                                                    (o: { label: string; value: string }) => ({
+                                                        label: o.label,
+                                                        value: o.value,
                                                     })
                                                 )}
                                                 value={timezone}
@@ -462,25 +462,21 @@ function CreateEnginePage() {
 
                                 <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
                                     <div>
-                                        <p className="text-subtitle font-regular text-neutral-700">Autonomy</p>
-                                        <p className="text-caption text-neutral-500">
-                                            Controls that apply only to channels you set to auto-send.
+                                        <p className="text-subtitle font-regular text-neutral-700">
+                                            {t('autonomy.title')}
                                         </p>
+                                        <p className="text-caption text-neutral-500">{t('autonomy.hint')}</p>
                                     </div>
                                     <MyInput
-                                        label="Graduate after N approved sends"
+                                        label={t('autonomy.firstN')}
                                         inputType="number"
-                                        inputPlaceholder="default (5)"
+                                        inputPlaceholder={t('autonomy.firstNPlaceholder')}
                                         input={firstN}
                                         onChangeFunction={(e) => setFirstN(e.target.value)}
                                     />
-                                    <p className="-mt-2 text-caption text-neutral-500">
-                                        The engine stays copilot until you&apos;ve approved this many of its
-                                        drafts; then auto-send channels start sending on their own. Leave
-                                        blank for the default.
-                                    </p>
+                                    <p className="-mt-2 text-caption text-neutral-500">{t('autonomy.firstNHint')}</p>
                                     <MyInput
-                                        label="Holdout %"
+                                        label={t('autonomy.holdout')}
                                         inputType="number"
                                         inputPlaceholder="0"
                                         input={holdoutPct}
@@ -493,54 +489,51 @@ function CreateEnginePage() {
                                             setHoldoutPct(String(Math.max(0, Math.min(100, n))));
                                         }}
                                     />
-                                    <p className="-mt-2 text-caption text-neutral-500">
-                                        A share of the audience (0–100%) that is enrolled but never messaged,
-                                        so you can measure the engine&apos;s real lift against them.
-                                    </p>
+                                    <p className="-mt-2 text-caption text-neutral-500">{t('autonomy.holdoutHint')}</p>
                                 </div>
                             </div>
                         )}
 
                         {step === 5 && (
                             <div className="flex flex-col gap-3">
-                                <ReviewRow label="Name" value={name} />
-                                <ReviewRow label="Objective" value={objective || '—'} />
+                                <ReviewRow label={t('review.name')} value={name} />
+                                <ReviewRow label={t('review.objective')} value={objective || '—'} />
                                 <ReviewRow
-                                    label="Language"
+                                    label={t('review.language')}
                                     value={buildLanguageOptions(tConstants).find((l) => l.value === language)?.label ?? language}
                                 />
                                 <ReviewRow
-                                    label="Data points"
-                                    value={dataPoints.length ? dataPoints.join(', ') : 'Always-on only'}
+                                    label={t('review.dataPoints')}
+                                    value={dataPoints.length ? dataPoints.join(', ') : t('review.dataPointsNone')}
                                 />
                                 <ReviewRow
-                                    label="Channels"
+                                    label={t('review.channels')}
                                     value={enabledChannelKeys.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
                                 />
-                                <ReviewRow label="Audience sources" value={`${audienceCount}`} />
-                                <ReviewRow label="Cadence" value={`every ${cadenceHours}h`} />
+                                <ReviewRow label={t('review.audienceSources')} value={`${audienceCount}`} />
                                 <ReviewRow
-                                    label="Quiet hours"
+                                    label={t('review.cadence')}
+                                    value={t('review.cadenceValue', { hours: cadenceHours })}
+                                />
+                                <ReviewRow
+                                    label={t('review.quietHours')}
                                     value={`${quietStart}:00–${quietEnd}:00 ${timezone}`}
                                 />
                                 <ReviewRow
-                                    label="Auto-send channels"
+                                    label={t('review.autoSendChannels')}
                                     value={
                                         CHANNEL_ORDER.filter((c) => channels[c]?.enabled && channels[c]?.auto)
                                             .map((c) => buildChannelMeta(tConstants)[c].label)
-                                            .join(', ') || 'None (copilot only)'
+                                            .join(', ') || t('review.autoSendNone')
                                     }
                                 />
                                 <ReviewRow
-                                    label="Holdout"
+                                    label={t('review.holdout')}
                                     value={`${Math.max(0, Math.min(100, Number(holdoutPct) || 0))}%`}
                                 />
                                 <div className="mt-2 flex items-start gap-2 rounded-lg border border-info-200 bg-info-50 p-3">
                                     <Warning className="mt-0.5 size-4 shrink-0 text-info-600" />
-                                    <p className="text-caption text-neutral-600">
-                                        The engine starts as a <b>Draft</b>. After creating it, enroll the
-                                        audience and (for WhatsApp) set up templates, then activate it.
-                                    </p>
+                                    <p className="text-caption text-neutral-600">{t('review.draftNote')}</p>
                                 </div>
                             </div>
                         )}
@@ -552,16 +545,16 @@ function CreateEnginePage() {
                                 disable={step === 0}
                                 onClick={() => setStep((s) => Math.max(0, s - 1))}
                             >
-                                Back
+                                {t('actions.back')}
                             </MyButton>
-                            {step < STEPS.length - 1 ? (
+                            {step < STEP_KEYS.length - 1 ? (
                                 <MyButton
                                     buttonType="primary"
                                     scale="medium"
                                     disable={!canProceed(step)}
                                     onClick={() => setStep((s) => s + 1)}
                                 >
-                                    Continue
+                                    {t('actions.continue')}
                                 </MyButton>
                             ) : (
                                 <MyButton
@@ -570,7 +563,7 @@ function CreateEnginePage() {
                                     disable={createEngine.isPending}
                                     onClick={submit}
                                 >
-                                    {createEngine.isPending ? 'Creating…' : 'Create engine'}
+                                    {createEngine.isPending ? t('actions.creating') : t('actions.create')}
                                 </MyButton>
                             )}
                         </div>

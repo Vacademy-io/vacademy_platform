@@ -66,6 +66,8 @@ T = {
                     "hi": "आपके संस्थान के पाठ क्रेडिट अभी समाप्त हो गए हैं, इसलिए मैं यहीं रुकती हूँ। आपकी जगह सुरक्षित है; टॉप-अप के बाद हम आगे बढ़ेंगे।"},
     "idle_end": {"en": "We've been quiet for a while, so I'll stop here. Come back any time and we'll pick up where we left off.",
                  "hi": "काफ़ी देर से कोई बात नहीं हुई, इसलिए मैं यहीं रुकती हूँ। जब चाहें वापस आइए, हम वहीं से आगे बढ़ेंगे।"},
+    "away": {"en": "Looks like you stepped away. I'll wait right here.", "hi": "लगता है आप थोड़ी देर के लिए चले गए। मैं यहीं इंतज़ार कर रही हूँ।"},
+    "welcome_back": {"en": "Welcome back! Let's pick up where we left off.", "hi": "वापसी पर स्वागत है! चलिए वहीं से आगे बढ़ते हैं।"},
     "slower": {"en": "Sure, I'll go slower.", "hi": "ज़रूर, मैं धीरे बोलूँगी।"},
     "faster": {"en": "Sure, I'll speed up a little.", "hi": "ज़रूर, थोड़ा तेज़ चलते हैं।"},
     "fallback_correct": {"en": "That's right. Let's continue.", "hi": "बिल्कुल सही। चलिए आगे बढ़ते हैं।"},

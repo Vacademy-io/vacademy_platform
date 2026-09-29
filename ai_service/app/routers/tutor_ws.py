@@ -389,6 +389,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # at all, because the student spoke to a microphone that was never on.
         heard_audio = False
 
+        # The camera says the learner stepped away (activeness tracker, opt-in):
+        # teaching pauses until they are back. None = present / not tracked.
+        away_since: Optional[float] = None
+        last_activeness_write = 0.0
+
         async def _await(what: str) -> None:
             nonlocal awaiting_answer_since, nudged, heard_audio
             awaiting_answer_since = time.time() if what == "answer" else None
@@ -529,6 +534,16 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             t = lesson.topic_at(pointer)
             await _send({"type": "board", "clear": False, "ops": [note], "topic_id": t.id if t else None, "concept_id": concept.id})
 
+        def _spoken_lang(concept: Optional[sm.Concept] = None) -> str:
+            """The language the lesson is actually being spoken in: the session
+            language when the plan carries it, else the course language (an
+            English-only plan narrates in English even for a Hindi learner, and
+            canned lines must not switch language mid-lesson)."""
+            if lang == lesson.language:
+                return lang
+            c = concept or lesson.concept_at(pointer)
+            return lang if c is not None and (c.say_i18n or {}).get(lang) else lesson.language
+
         async def _nudge() -> None:
             """A minute of silence on a question: a hint, not a timeout."""
             open_question = bool(revisit and revisit.get("current")) or (
@@ -549,7 +564,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             # Voice lesson and not a sound from the microphone: the likely problem is
             # how to answer, not what to answer — say how first, then the hint.
             how = "voice_" if mode == "voice" and not heard_audio else ""
-            await _say(prompts.tpl(f"nudge_{how}hint", lang, hint=hint) if hint else prompts.tpl(f"nudge_{how}open", lang),
+            nl = _spoken_lang(concept)
+            await _say(prompts.tpl(f"nudge_{how}hint", nl, hint=hint) if hint else prompts.tpl(f"nudge_{how}open", nl),
                        meta={"kind": "nudge"})
             await _send({"type": "await", "what": "answer"})
 
@@ -1120,6 +1136,25 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     pass
             current_task = None
 
+        paused_for_away = False
+
+        async def _away() -> None:
+            nonlocal paused_for_away
+            paused_for_away = True
+            await _say(prompts.tpl("away", _spoken_lang()), meta={"kind": "away"})
+            await _await("continue")
+
+        async def _welcome_back() -> None:
+            """Back in front of the camera: pick up the concept they missed."""
+            nonlocal paused_for_away
+            paused_for_away = False
+            await _say(prompts.tpl("welcome_back", _spoken_lang()), meta={"kind": "welcome_back"})
+            if pending is None and pointer.phase in (sm.TEACH, sm.MEDIA_TASK):
+                await _apply_step(sm.repeat(lesson, pointer))
+            else:
+                # A transition cut off mid-narration, or a topic recap: carry on.
+                await _handle_continue()
+
         def _spawn(coro) -> None:
             nonlocal current_task
             current_task = asyncio.create_task(coro)
@@ -1211,7 +1246,40 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     break
                 await _send({"type": "pong"})
                 continue
+            if t == "activeness":
+                # Once a minute from the client; a faster sender is not written through.
+                if now - last_activeness_write >= 20 or msg.get("final"):
+                    last_activeness_write = now
+                    svc.set_activeness(tutor_session_id, msg)
+                continue
+            if t == "presence":
+                present = msg.get("present")
+                if present is False and away_since is None:
+                    away_since = now
+                    svc.bump_telemetry(tutor_session_id, away_events=1)
+                    # Only the teaching pauses; an open question simply waits
+                    # (its nudge restarts when they are back).
+                    if opened_once and pending is None and revisit is None and pointer.phase in (sm.TEACH, sm.TOPIC_SUMMARY):
+                        await _cancel_current()
+                        _spawn(_away())
+                    else:
+                        awaiting_answer_since = None
+                    continue
+                if present is True and away_since is not None:
+                    was_teaching = paused_for_away
+                    paused_for_away = False
+                    away_since = None
+                    last_activity = now
+                    if was_teaching:
+                        await _cancel_current()
+                        _spawn(_welcome_back())
+                    elif pointer.phase in (sm.AWAIT_ANSWER, sm.REMEDIATE, sm.PREDICT) or (revisit and revisit.get("current")):
+                        awaiting_answer_since, nudged = now, False
+                continue
             last_activity = now
+            if t in LESSON_MESSAGES:
+                # The learner moved the lesson on themselves while "away".
+                paused_for_away = False
             if t == "auth":
                 continue
             elif t == "begin":

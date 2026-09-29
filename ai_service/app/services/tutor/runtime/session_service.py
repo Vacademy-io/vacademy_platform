@@ -869,6 +869,53 @@ def bump_telemetry(tutor_session_id: str, **counters: int) -> None:
         pass
 
 
+def _pct(v: Any) -> Optional[int]:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else int(round(min(100.0, max(0.0, f))))
+
+
+def clean_activeness(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The client's running activeness report, reduced to clamped numbers
+    (it is computed on the learner's device; nothing else is trusted or kept)."""
+    avg = _pct(msg.get("avg"))
+    if avg is None:
+        return None
+    parts = msg.get("parts") if isinstance(msg.get("parts"), dict) else {}
+    out: Dict[str, Any] = {"avg": avg}
+    for k in ("attention", "listening", "answering"):
+        v = _pct(parts.get(k))
+        if v is not None:
+            out[k] = v
+    for k, cap in (("seconds", 6 * 3600), ("away_count", 10000), ("away_seconds", 6 * 3600)):
+        try:
+            out[k] = max(0, min(cap, int(msg.get(k) or 0)))
+        except (TypeError, ValueError):
+            out[k] = 0
+    return out
+
+
+def set_activeness(tutor_session_id: str, msg: Dict[str, Any]) -> None:
+    """Latest session-average activeness from the learner's camera tracker
+    (opt-in); overwritten on every report, so the last one is the session's."""
+    act = clean_activeness(msg)
+    if act is None:
+        return
+    try:
+        with db_session() as db:
+            ts = db.get(TutorSession, tutor_session_id)
+            if ts is None or ts.status != "ACTIVE":
+                return
+            summ = dict(ts.summary_json or {})
+            summ["activeness"] = act
+            ts.summary_json = summ
+            db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def end_session(*, tutor_session_id: str, user_id: str, package_session_id: str, lesson: Optional[LessonPlan],
                 pointer: Optional[Pointer], status: str = "ENDED") -> Dict[str, Any]:
     """Close the session, stamp minutes, write a short rolling summary from the

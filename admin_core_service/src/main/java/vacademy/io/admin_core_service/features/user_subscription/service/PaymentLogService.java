@@ -17,6 +17,8 @@ import vacademy.io.admin_core_service.features.notification_service.service.Paym
 import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogSummaryResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentStatusTotalProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentForecastResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentProgressProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownDTO;
@@ -1476,11 +1478,31 @@ public class PaymentLogService {
                 .build();
     }
 
-    public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
-            PaymentLogFilterRequestDTO filterDTO,
-            int pageNo,
-            int pageSize) {
+    /**
+     * Everything the combined payment query needs, resolved once from a filter set.
+     *
+     * <p>The list and the summary must see the same rows, so they read their bind values from
+     * here rather than each deriving them — a filter fixed in one place is fixed for both.</p>
+     */
+    private record ResolvedPaymentFilters(
+            String instituteId, LocalDateTime startDate, LocalDateTime endDate,
+            List<String> paymentStatusesBound, boolean noPaymentStatusFilter,
+            List<String> userPlanStatusesBound, boolean noUserPlanStatusFilter,
+            List<String> sourcesBound, boolean noSourceFilter,
+            List<String> enrollInviteIdsBound, boolean noEnrollInviteFilter,
+            List<String> packageSessionIdsBound, boolean noPackageSessionFilter,
+            String userId, boolean includeInvoiceLogs,
+            boolean noPaymentTypeFilter, boolean typeSubOrgAdmin, boolean typeSubOrgLearner,
+            boolean typeLiveClass, boolean typeCourse, boolean typeCpo,
+            boolean typeEnrollInvite, boolean typeUserInvoice,
+            boolean noSearchFilter, boolean noSearchUserIds,
+            List<String> searchUserIdsBound, boolean searchNumeric, String searchString,
+            List<String> paymentPlanNamesBound, boolean noPaymentPlanFilter,
+            boolean noBucketFilter, boolean bucketPaid, boolean bucketPending,
+            boolean bucketAbandoned, boolean bucketFailed) {
+    }
 
+    private ResolvedPaymentFilters resolvePaymentFilters(PaymentLogFilterRequestDTO filterDTO) {
         validateFilter(filterDTO);
 
         List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
@@ -1529,6 +1551,14 @@ public class PaymentLogService {
 
         // Free-text search: resolve name/email/phone to a set of user IDs via the auth service, and
         // match the amount directly on payment_log. A payment matches if its user OR amount matches.
+        String statusBucket = StringUtils.hasText(filterDTO.getStatusBucket())
+                ? filterDTO.getStatusBucket().trim().toLowerCase()
+                : "total";
+        boolean noBucketFilter = "total".equals(statusBucket);
+
+        List<String> paymentPlanNames = safeList(filterDTO.getPaymentPlanNames());
+        boolean noPaymentPlanFilter = paymentPlanNames.isEmpty();
+
         String searchString = StringUtils.hasText(filterDTO.getSearchString())
                 ? filterDTO.getSearchString().trim()
                 : null;
@@ -1542,39 +1572,95 @@ public class PaymentLogService {
         boolean noSearchUserIds = searchUserIds.isEmpty();
         List<String> searchUserIdsBound = noSearchUserIds ? SENTINEL : searchUserIds;
 
+        return new ResolvedPaymentFilters(
+                filterDTO.getInstituteId(), startDate, endDate,
+                paymentStatusesBound, noPaymentStatusFilter,
+                userPlanStatusesBound, noUserPlanStatusFilter,
+                sourcesBound, noSourceFilter,
+                enrollInviteIdsBound, noEnrollInviteFilter,
+                packageSessionIdsBound, noPackageSessionFilter,
+                userId, includeInvoiceLogs,
+                noPaymentTypeFilter, typeSubOrgAdmin, typeSubOrgLearner,
+                typeLiveClass, typeCourse, typeCpo,
+                typeEnrollInvite, typeUserInvoice,
+                noSearchFilter, noSearchUserIds,
+                searchUserIdsBound, searchNumeric, searchString,
+                noPaymentPlanFilter ? List.of("") : paymentPlanNames, noPaymentPlanFilter,
+                noBucketFilter, "paid".equals(statusBucket), "pending".equals(statusBucket),
+                "abandoned".equals(statusBucket), "failed".equals(statusBucket));
+    }
+
+    /**
+     * Per-status counts and totals for every row the list would return under the same filters.
+     * Lets Manage Payments show tiles and tab counts for the whole set while the table itself
+     * fetches one page at a time.
+     */
+    public PaymentLogSummaryResponseDTO getPaymentLogSummary(PaymentLogFilterRequestDTO filterDTO) {
+        ResolvedPaymentFilters f = resolvePaymentFilters(filterDTO);
+        List<PaymentStatusTotalProjection> rows = paymentLogRepository.aggregateCombinedPaymentLogs(
+                f.instituteId(), f.startDate(), f.endDate(),
+                f.paymentStatusesBound(), f.noPaymentStatusFilter(),
+                f.userPlanStatusesBound(), f.noUserPlanStatusFilter(),
+                f.sourcesBound(), f.noSourceFilter(),
+                f.enrollInviteIdsBound(), f.noEnrollInviteFilter(),
+                f.packageSessionIdsBound(), f.noPackageSessionFilter(),
+                f.userId(), f.includeInvoiceLogs(), f.includeInvoiceLogs(),
+                f.noPaymentTypeFilter(), f.typeSubOrgAdmin(), f.typeSubOrgLearner(),
+                f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
+                f.typeEnrollInvite(), f.typeUserInvoice(),
+                f.noSearchFilter(), f.noSearchUserIds(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(),
+                f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours);
+
+        List<PaymentLogSummaryResponseDTO.StatusTotal> totals = rows.stream()
+                .map(r -> PaymentLogSummaryResponseDTO.StatusTotal.builder()
+                        .status(r.getStatus())
+                        .currency(r.getCurrency())
+                        .dueEligible(r.getDueEligible())
+                        .count(r.getRowCount())
+                        .amount(r.getTotalAmount() == null ? 0d : r.getTotalAmount())
+                        .build())
+                .collect(Collectors.toList());
+        return PaymentLogSummaryResponseDTO.builder()
+                // Cancelled/voided money was never collected and is no longer owed, so it sits in
+                // no tile — the headline totals leave it out too, exactly as the cards do.
+                .totalCount(totals.stream().filter(t -> !"CANCELLED".equals(t.getStatus()))
+                        .mapToLong(PaymentLogSummaryResponseDTO.StatusTotal::getCount).sum())
+                .totalAmount(totals.stream().filter(t -> !"CANCELLED".equals(t.getStatus()))
+                        .mapToDouble(PaymentLogSummaryResponseDTO.StatusTotal::getAmount).sum())
+                .statusTotals(totals)
+                // The plan picker lists every plan the institute has, not just the plans surviving
+                // the current filters — otherwise selecting one plan would empty the dropdown.
+                .paymentPlanNames(paymentLogRepository.findDistinctPaymentPlanNames(f.instituteId()))
+                .build();
+    }
+
+    public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
+            PaymentLogFilterRequestDTO filterDTO,
+            int pageNo,
+            int pageSize) {
+
+        ResolvedPaymentFilters f = resolvePaymentFilters(filterDTO);
+
         // Use unsorted pageable — ORDER BY is hardcoded in the native query (created_at DESC)
         Pageable pageable = PageRequest.of(pageNo, pageSize);
 
         Page<CombinedPaymentRowProjection> idsPage = paymentLogRepository.findCombinedPaymentLogIdsPaginated(
-                filterDTO.getInstituteId(),
-                startDate,
-                endDate,
-                paymentStatusesBound,
-                noPaymentStatusFilter,
-                userPlanStatusesBound,
-                noUserPlanStatusFilter,
-                sourcesBound,
-                noSourceFilter,
-                enrollInviteIdsBound,
-                noEnrollInviteFilter,
-                packageSessionIdsBound,
-                noPackageSessionFilter,
-                userId,
-                includeInvoiceLogs,
-                includeInvoiceLogs,
-                noPaymentTypeFilter,
-                typeSubOrgAdmin,
-                typeSubOrgLearner,
-                typeLiveClass,
-                typeCourse,
-                typeCpo,
-                typeEnrollInvite,
-                typeUserInvoice,
-                noSearchFilter,
-                noSearchUserIds,
-                searchUserIdsBound,
-                searchNumeric,
-                searchString,
+                f.instituteId(), f.startDate(), f.endDate(),
+                f.paymentStatusesBound(), f.noPaymentStatusFilter(),
+                f.userPlanStatusesBound(), f.noUserPlanStatusFilter(),
+                f.sourcesBound(), f.noSourceFilter(),
+                f.enrollInviteIdsBound(), f.noEnrollInviteFilter(),
+                f.packageSessionIdsBound(), f.noPackageSessionFilter(),
+                f.userId(), f.includeInvoiceLogs(), f.includeInvoiceLogs(),
+                f.noPaymentTypeFilter(), f.typeSubOrgAdmin(), f.typeSubOrgLearner(),
+                f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
+                f.typeEnrollInvite(), f.typeUserInvoice(),
+                f.noSearchFilter(), f.noSearchUserIds(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(),
+                f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours,
+                f.noBucketFilter(), f.bucketPaid(), f.bucketPending(),
+                f.bucketAbandoned(), f.bucketFailed(),
                 pageable);
 
         List<CombinedPaymentRowProjection> rows = idsPage.getContent();

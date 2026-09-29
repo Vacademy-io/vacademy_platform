@@ -194,6 +194,10 @@ export interface PaymentLogsResponse {
 }
 
 export interface PaymentLogsRequest {
+    /** Plan names to keep. Invoice rows carry no plan, so any value here drops them. */
+    payment_plan_names?: string[];
+    /** Which KPI tile the table is showing: total | paid | pending | abandoned | failed. */
+    status_bucket?: string;
     institute_id: string;
     user_id?: string;
     start_date_in_utc?: string;

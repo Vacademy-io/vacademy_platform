@@ -68,6 +68,18 @@ public class UserPlanController {
     }
 
     /**
+     * Per-status counts and totals for the same rows {@code POST /payment-logs} would list under
+     * the same filters. Manage Payments reads its tiles and tab counts from here so the table can
+     * page normally instead of pulling every row into the browser to add them up.
+     */
+    @PostMapping("/payment-logs/summary")
+    public ResponseEntity<PaymentLogSummaryResponseDTO> getPaymentLogSummary(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody PaymentLogFilterRequestDTO filterDTO) {
+        return ResponseEntity.ok(paymentLogService.getPaymentLogSummary(filterDTO));
+    }
+
+    /**
      * Aggregated PAID collection total + per-day series for an institute, optionally
      * scoped to one sub-org, over a UTC date window. Powers the dashboard "amount
      * collected (last 3/7/24 days / all)" panels. Omit dates for all-time.

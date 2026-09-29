@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentStatusTotalProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 
@@ -141,13 +142,63 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * payment_plan primary key) evaluated only over rows that already passed the institute, date and
    * status filters.
    */
-  @Query(value = """
-      SELECT combined.id AS rowId, combined.row_type AS rowType FROM (
-        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type
+  /**
+   * Currency is picked the way the cards pick it: the first value that is actually a currency
+   * code. `payment_log.currency` also holds blanks and junk ('string', 'N/A') from older callers,
+   * and those have to fall through to the plan's or the invite's code rather than be reported as
+   * the row's currency — a card drops an amount it cannot format, so taking the junk would quietly
+   * lose the money instead of showing it in rupees.
+   *
+   * Both payment-log arms classify through the same joins on purpose. The row mapper loads
+   * `paymentLog.getUserPlan()` for every row regardless of the arm it arrived on, so the arm that
+   * reaches a log through an invoice has to read its plan too — otherwise it reports a different
+   * status and currency for the same payment. That is also what keeps UNION de-duplicating: a log
+   * with both a plan and an invoice appears in both arms, and UNION only collapses rows that match
+   * on every column, not on id alone.
+   *
+   * The three arms this screen unions together: payment logs reached through a user plan,
+   * payment logs reached through an invoice, and invoices raised but never paid against.
+   *
+   * <p>Held as one constant because the list, its count and the summary must filter on exactly
+   * the same rows — the list and count used to carry separate copies of this SQL, so a filter
+   * fixed in one could silently drift from the other. {@code row_status} / {@code row_amount}
+   * are carried so the summary can aggregate without a fourth copy; the outer list query simply
+   * ignores them. UNION (not UNION ALL) still de-duplicates on id, which is a primary key in
+   * every arm, so the extra columns cannot change which rows survive.</p>
+   */
+  String COMBINED_PAYMENT_ROWS = """
+        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type,
+               CASE
+                 WHEN pl.payment_status IS NULL THEN 'NOT_INITIATED'
+                 WHEN pl.payment_status = 'PAID' THEN 'PAID'
+                 WHEN pl.payment_status = 'VOIDED' THEN 'CANCELLED'
+                 WHEN pl.payment_status = 'FAILED'
+                      AND up.enroll_invite_id IS NOT NULL AND up.user_id IS NOT NULL
+                      AND (SELECT nxt.status FROM user_plan nxt
+                            WHERE nxt.user_id = up.user_id
+                              AND nxt.enroll_invite_id = up.enroll_invite_id
+                              AND nxt.created_at > up.created_at
+                            ORDER BY nxt.created_at ASC LIMIT 1) = 'ACTIVE' THEN 'PAID'
+                 WHEN pl.payment_status = 'FAILED' THEN 'FAILED'
+                 WHEN pl.payment_status = 'PAYMENT_PENDING' AND pl.created_at IS NOT NULL
+                      AND pl.created_at + make_interval(hours => CAST(:abandonedAfterHours AS int)) < NOW()
+                      THEN 'ABANDONED'
+                 ELSE pl.payment_status
+               END AS row_status,
+               pl.payment_amount AS row_amount,
+               UPPER(COALESCE(
+                   CASE WHEN pl.currency ~ '^[A-Za-z]{3}$' THEN pl.currency END,
+                   CASE WHEN cpp.currency ~ '^[A-Za-z]{3}$' THEN cpp.currency END,
+                   CASE WHEN ei.currency ~ '^[A-Za-z]{3}$' THEN ei.currency END,
+                   '')) AS row_currency,
+               CASE WHEN up.status IS NULL THEN true
+                    WHEN UPPER(TRIM(up.status)) IN ('ACTIVE', 'PENDING_FOR_PAYMENT') THEN true
+                    ELSE false END AS due_eligible
         FROM payment_log pl
         JOIN user_plan up ON pl.user_plan_id = up.id
         JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
         LEFT JOIN payment_option po ON up.payment_option_id = po.id
+        LEFT JOIN payment_plan cpp ON cpp.id = up.plan_id
         WHERE ei.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
@@ -181,6 +232,9 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 OR (:typeCpo = true AND po.type = 'CPO')
                 OR (:typeEnrollInvite = true AND ei.tag = 'DEFAULT')
           ))
+          AND (:noPaymentPlanFilter = true OR EXISTS (
+                SELECT 1 FROM payment_plan fpp
+                WHERE fpp.id = up.plan_id AND fpp.name IN (:paymentPlanNames)))
           AND NOT EXISTS (
                 SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
                 WHERE psli_int.enroll_invite_id = ei.id
@@ -189,11 +243,41 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                     JOIN package pe ON ps.package_id = pe.id
                     WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
         UNION
-        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type
+        SELECT pl.id, pl.created_at, 'PAYMENT_LOG' AS row_type,
+               CASE
+                 WHEN pl.payment_status IS NULL THEN 'NOT_INITIATED'
+                 WHEN pl.payment_status = 'PAID' THEN 'PAID'
+                 WHEN pl.payment_status = 'VOIDED' THEN 'CANCELLED'
+                 WHEN pl.payment_status = 'FAILED'
+                      AND iup.enroll_invite_id IS NOT NULL AND iup.user_id IS NOT NULL
+                      AND (SELECT nxt.status FROM user_plan nxt
+                            WHERE nxt.user_id = iup.user_id
+                              AND nxt.enroll_invite_id = iup.enroll_invite_id
+                              AND nxt.created_at > iup.created_at
+                            ORDER BY nxt.created_at ASC LIMIT 1) = 'ACTIVE' THEN 'PAID'
+                 WHEN pl.payment_status = 'FAILED' THEN 'FAILED'
+                 WHEN pl.payment_status = 'PAYMENT_PENDING' AND pl.created_at IS NOT NULL
+                      AND pl.created_at + make_interval(hours => CAST(:abandonedAfterHours AS int)) < NOW()
+                      THEN 'ABANDONED'
+                 ELSE pl.payment_status
+               END AS row_status,
+               pl.payment_amount AS row_amount,
+               UPPER(COALESCE(
+                   CASE WHEN pl.currency ~ '^[A-Za-z]{3}$' THEN pl.currency END,
+                   CASE WHEN ipp.currency ~ '^[A-Za-z]{3}$' THEN ipp.currency END,
+                   CASE WHEN iei.currency ~ '^[A-Za-z]{3}$' THEN iei.currency END,
+                   '')) AS row_currency,
+               CASE WHEN iup.status IS NULL THEN true
+                    WHEN UPPER(TRIM(iup.status)) IN ('ACTIVE', 'PENDING_FOR_PAYMENT') THEN true
+                    ELSE false END AS due_eligible
         FROM payment_log pl
+        LEFT JOIN user_plan iup ON pl.user_plan_id = iup.id
+        LEFT JOIN enroll_invite iei ON iup.enroll_invite_id = iei.id
+        LEFT JOIN payment_plan ipp ON ipp.id = iup.plan_id
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
         WHERE :includeInvoiceLogs = true
+          AND :noPaymentPlanFilter = true
           AND i.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
@@ -209,9 +293,16 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         -- Invoices that have been raised but never paid against. These have NO payment_log at all
         -- (one is only created when the learner initiates payment), so without this arm an invoice
         -- an admin raised is invisible on this screen until someone tries to pay it.
-        SELECT i.id, i.created_at, 'INVOICE' AS row_type
+        SELECT i.id, i.created_at, 'INVOICE' AS row_type,
+               CASE WHEN UPPER(i.status) = 'REJECTED' THEN 'CANCELLED'
+                    ELSE 'NOT_INITIATED' END AS row_status,
+               i.total_amount AS row_amount,
+               UPPER(COALESCE(CASE WHEN i.currency ~ '^[A-Za-z]{3}$' THEN i.currency END, ''))
+                 AS row_currency,
+               true AS due_eligible
         FROM invoice i
         WHERE :includeUnpaidInvoices = true
+          AND :noPaymentPlanFilter = true
           AND i.institute_id = :instituteId
           AND i.created_at >= :startDate
           AND i.created_at <= :endDate
@@ -223,91 +314,32 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
                 OR (:searchNumeric = true AND CAST(i.total_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
                 OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
-      ) combined
-      ORDER BY combined.created_at DESC
-      """,
-      countQuery = """
-      SELECT COUNT(*) FROM (
-        SELECT pl.id, 'PAYMENT_LOG' AS row_type
-        FROM payment_log pl
-        JOIN user_plan up ON pl.user_plan_id = up.id
-        JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
-        LEFT JOIN payment_option po ON up.payment_option_id = po.id
-        WHERE ei.institute_id = :instituteId
-          AND pl.created_at >= :startDate
-          AND pl.created_at <= :endDate
-          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
-          AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
-          AND (:noSourceFilter = true OR up.source IN (:sources))
-          AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
-          AND (:noPackageSessionFilter = true OR EXISTS (
-                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
-                WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
-                  AND psli.package_session_id IN (:packageSessionIds)))
-          AND (:userId IS NULL OR up.user_id = :userId)
-          AND (:noSearchFilter = true
-                OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
-                OR (:noSearchFilter = false AND EXISTS (
-                      SELECT 1 FROM invoice_payment_log_mapping sm
-                      JOIN invoice si ON si.id = sm.invoice_id
-                      WHERE sm.payment_log_id = pl.id
-                        AND si.institute_id = :instituteId
-                        AND si.invoice_number ILIKE CONCAT('%', :searchString, '%')))
-                OR (:noSearchFilter = false AND EXISTS (
-                      SELECT 1 FROM payment_plan spp
-                      WHERE spp.id = up.plan_id
-                        AND spp.name ILIKE CONCAT('%', :searchString, '%'))))
-          AND (:noPaymentTypeFilter = true OR (
-                (:typeSubOrgAdmin = true AND ei.tag = 'SUB_ORG')
-                OR (:typeSubOrgLearner = true AND ei.tag = 'SUBORG_LEARNER')
-                OR (:typeLiveClass = true AND po.source = 'LIVE_SESSION')
-                OR (:typeCourse = true AND po.source = 'PACKAGE_SESSION')
-                OR (:typeCpo = true AND po.type = 'CPO')
-                OR (:typeEnrollInvite = true AND ei.tag = 'DEFAULT')
-          ))
-          AND NOT EXISTS (
-                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
-                WHERE psli_int.enroll_invite_id = ei.id
-                  AND psli_int.package_session_id IN (
-                    SELECT ps.id FROM package_session ps
-                    JOIN package pe ON ps.package_id = pe.id
-                    WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
-        UNION
-        SELECT pl.id, 'PAYMENT_LOG' AS row_type
-        FROM payment_log pl
-        JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
-        JOIN invoice i ON iplm.invoice_id = i.id
-        WHERE :includeInvoiceLogs = true
-          AND i.institute_id = :instituteId
-          AND pl.created_at >= :startDate
-          AND pl.created_at <= :endDate
-          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
-          AND (:noSourceFilter = true OR i.source IN (:sources))
-          AND (:userId IS NULL OR i.user_id = :userId)
-          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
-          AND (:noSearchFilter = true
-                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
-                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
-        UNION
-        -- Raised-but-never-paid invoices; see the note on the same arm in the main query.
-        SELECT i.id, 'INVOICE' AS row_type
-        FROM invoice i
-        WHERE :includeUnpaidInvoices = true
-          AND i.institute_id = :instituteId
-          AND i.created_at >= :startDate
-          AND i.created_at <= :endDate
-          AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um WHERE um.invoice_id = i.id)
-          AND (:noSourceFilter = true OR i.source IN (:sources))
-          AND (:userId IS NULL OR i.user_id = :userId)
-          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
-          AND (:noSearchFilter = true
-                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
-                OR (:searchNumeric = true AND CAST(i.total_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
-                OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
-      ) count_q
-      """,
+      """;
+
+  /**
+   * The KPI tile the admin has selected, applied to the already-classified rows. Kept outside
+   * COMBINED_PAYMENT_ROWS so the summary can aggregate every bucket while the table shows one.
+   *
+   * A voided *payment* belongs to no tile, so it survives only under "All". A cancelled *invoice*
+   * is deliberately not treated the same way: it keeps its long-standing place in the Pending tab,
+   * which is where admins go to chase it. That asymmetry predates this query — it is carried over
+   * from the filter this replaced, not introduced here.
+   */
+  String BUCKET_PREDICATE = """
+      (:noBucketFilter = true OR (
+       NOT (combined.row_status = 'CANCELLED' AND combined.row_type = 'PAYMENT_LOG') AND (
+            (:bucketPaid = true AND combined.row_status = 'PAID')
+         OR (:bucketFailed = true AND combined.row_status = 'FAILED')
+         OR (:bucketAbandoned = true AND combined.row_status = 'ABANDONED')
+         OR (:bucketPending = true AND combined.due_eligible = true
+             AND combined.row_status NOT IN ('PAID', 'FAILED', 'ABANDONED')))))
+      """;
+
+  @Query(value = "SELECT combined.id AS rowId, combined.row_type AS rowType FROM ("
+      + COMBINED_PAYMENT_ROWS + ") combined WHERE " + BUCKET_PREDICATE
+      + " ORDER BY combined.created_at DESC",
+      countQuery = "SELECT COUNT(*) FROM (" + COMBINED_PAYMENT_ROWS + ") combined WHERE "
+          + BUCKET_PREDICATE,
       nativeQuery = true)
   Page<CombinedPaymentRowProjection> findCombinedPaymentLogIdsPaginated(
       @Param("instituteId") String instituteId,
@@ -339,7 +371,63 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("searchUserIds") List<String> searchUserIds,
       @Param("searchNumeric") boolean searchNumeric,
       @Param("searchString") String searchString,
+      @Param("paymentPlanNames") List<String> paymentPlanNames,
+      @Param("noPaymentPlanFilter") boolean noPaymentPlanFilter,
+      @Param("abandonedAfterHours") long abandonedAfterHours,
+      @Param("noBucketFilter") boolean noBucketFilter,
+      @Param("bucketPaid") boolean bucketPaid,
+      @Param("bucketPending") boolean bucketPending,
+      @Param("bucketAbandoned") boolean bucketAbandoned,
+      @Param("bucketFailed") boolean bucketFailed,
       Pageable pageable);
+
+  /**
+   * Per-status totals for exactly the rows {@link #findCombinedPaymentLogIdsPaginated} would
+   * return, so the Manage Payments tiles and tab counts describe the whole filtered set without
+   * the page having to download it. Takes the same arguments as the list — anything that narrows
+   * one narrows the other, because both are built from {@link #COMBINED_PAYMENT_ROWS}.
+   */
+  @Query(value = "SELECT combined.row_status AS status, combined.row_currency AS currency,"
+      + " combined.due_eligible AS dueEligible, COUNT(*) AS rowCount,"
+      + " COALESCE(SUM(combined.row_amount), 0) AS totalAmount FROM ("
+      + COMBINED_PAYMENT_ROWS + ") combined"
+      + " GROUP BY combined.row_status, combined.row_currency, combined.due_eligible",
+      nativeQuery = true)
+  List<PaymentStatusTotalProjection> aggregateCombinedPaymentLogs(
+
+      @Param("instituteId") String instituteId,
+      @Param("startDate") LocalDateTime startDate,
+      @Param("endDate") LocalDateTime endDate,
+      @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("noPaymentStatusFilter") boolean noPaymentStatusFilter,
+      @Param("userPlanStatuses") List<String> userPlanStatuses,
+      @Param("noUserPlanStatusFilter") boolean noUserPlanStatusFilter,
+      @Param("sources") List<String> sources,
+      @Param("noSourceFilter") boolean noSourceFilter,
+      @Param("enrollInviteIds") List<String> enrollInviteIds,
+      @Param("noEnrollInviteFilter") boolean noEnrollInviteFilter,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("noPackageSessionFilter") boolean noPackageSessionFilter,
+      @Param("userId") String userId,
+      @Param("includeInvoiceLogs") boolean includeInvoiceLogs,
+      @Param("includeUnpaidInvoices") boolean includeUnpaidInvoices,
+      @Param("noPaymentTypeFilter") boolean noPaymentTypeFilter,
+      @Param("typeSubOrgAdmin") boolean typeSubOrgAdmin,
+      @Param("typeSubOrgLearner") boolean typeSubOrgLearner,
+      @Param("typeLiveClass") boolean typeLiveClass,
+      @Param("typeCourse") boolean typeCourse,
+      @Param("typeCpo") boolean typeCpo,
+      @Param("typeEnrollInvite") boolean typeEnrollInvite,
+      @Param("typeUserInvoice") boolean typeUserInvoice,
+      @Param("noSearchFilter") boolean noSearchFilter,
+      @Param("noSearchUserIds") boolean noSearchUserIds,
+      @Param("searchUserIds") List<String> searchUserIds,
+      @Param("searchNumeric") boolean searchNumeric,
+      @Param("searchString") String searchString,
+      @Param("paymentPlanNames") List<String> paymentPlanNames,
+      @Param("noPaymentPlanFilter") boolean noPaymentPlanFilter,
+      @Param("abandonedAfterHours") long abandonedAfterHours);
+
 
   /**
    * Per-day PAID collection totals for an institute over a date window, optionally
@@ -538,4 +626,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("newStatus") String newStatus,
       @Param("paidStatus") String paidStatus);
 
+
+  /**
+   * Plan names the institute actually has plans for. Feeds the plan filter's dropdown, which must
+   * stay complete regardless of which plans the current filters leave visible.
+   */
+  @Query(value = """
+      SELECT DISTINCT pp.name FROM payment_plan pp
+      JOIN user_plan up ON up.plan_id = pp.id
+      JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ei.institute_id = :instituteId AND pp.name IS NOT NULL
+      ORDER BY pp.name
+      """, nativeQuery = true)
+  List<String> findDistinctPaymentPlanNames(@Param("instituteId") String instituteId);
 }

@@ -37,6 +37,50 @@ export const fetchPaymentLogs = async (
     return response.data;
 };
 
+export const PAYMENT_LOGS_SUMMARY_URL = `${PAYMENT_LOGS_URL}/summary`;
+
+/**
+ * One group of the filtered set: rows sharing a classified status, a currency and whether they
+ * can still turn into money. The server classifies exactly as the row mapper does, so a tile
+ * built from these agrees with the rows the tile filters to.
+ */
+export interface PaymentStatusTotal {
+    status: string;
+    currency: string;
+    due_eligible: boolean;
+    count: number;
+    amount: number;
+}
+
+export interface PaymentLogsSummary {
+    total_count: number;
+    total_amount: number;
+    status_totals: PaymentStatusTotal[];
+    /** Every plan the institute has, for the plan filter — not just the plans currently visible. */
+    payment_plan_names: string[];
+}
+
+/**
+ * Totals for every row matching the filters. Replaces walking the whole result set a page at a
+ * time in the browser just to add the tiles up.
+ */
+export const fetchPaymentLogsSummary = async (
+    requestBody: Omit<PaymentLogsRequest, 'institute_id'>
+): Promise<PaymentLogsSummary> => {
+    const instituteId = getCurrentInstituteId();
+
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+
+    const response = await authenticatedAxiosInstance.post<PaymentLogsSummary>(
+        PAYMENT_LOGS_SUMMARY_URL,
+        { ...requestBody, institute_id: instituteId }
+    );
+
+    return response.data;
+};
+
 export const BILLING_SUMMARY_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/billing-summary`;
 
 /**
@@ -486,7 +530,8 @@ export const deletePaymentLog = async (
  * `{ ex: "<message>" }`; some handlers use `message`. Null when there is nothing readable.
  */
 export const serverErrorMessage = (err: unknown): string | null => {
-    const data = (err as { response?: { data?: { ex?: unknown; message?: unknown } } })?.response?.data;
+    const data = (err as { response?: { data?: { ex?: unknown; message?: unknown } } })?.response
+        ?.data;
     if (typeof data?.ex === 'string' && data.ex.trim()) return data.ex;
     if (typeof data?.message === 'string' && data.message.trim()) return data.message;
     return null;

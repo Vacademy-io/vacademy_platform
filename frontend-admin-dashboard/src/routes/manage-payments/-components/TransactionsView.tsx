@@ -9,7 +9,6 @@ import type { SelectOption } from '@/components/design-system/SelectChips';
 import type {
     PaymentLogEntry,
     PaymentLogsRequest,
-    PaymentLogsResponse,
     PackageSessionFilter,
     BatchForSession,
 } from '@/types/payment-logs';
@@ -46,15 +45,10 @@ import { SendRemindersModal } from './SendRemindersModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
 import { DateRangeDropdown } from './DateRangeDropdown';
 import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
-import {
-    classifyEntry,
-    isDueEligibleEntry,
-    computePaymentSummary,
-    summarizeBucketAmount,
-} from '../-utils/paymentSummary';
+import { fetchPaymentLogs, fetchPaymentLogsSummary } from '@/services/payment-logs';
+import { summaryFromStatusTotals, summarizeBucketAmount } from '../-utils/paymentSummary';
 import { ALL_TIME_RANGE, type DateRangeValue } from '../-utils/dateRange';
 import { resolvePaymentLogInvoices } from '../-utils/resolvePaymentLogInvoices';
-import { derivePaymentPlanOptions, filterEntriesByPaymentPlan } from '../-utils/paymentPlanFilter';
 
 const PAGE_SIZE = 20;
 
@@ -204,6 +198,9 @@ export function TransactionsView() {
                 .map((batch) => batch.id);
             if (resolvedIds.length > 0) filters.package_session_ids = resolvedIds;
         }
+        if (selectedPaymentPlans.length > 0) {
+            filters.payment_plan_names = selectedPaymentPlans.map((plan) => plan.value);
+        }
         return filters;
     }, [
         startDate,
@@ -215,56 +212,60 @@ export function TransactionsView() {
         packageSessionFilter,
         batchesForSessions,
         showPlanDates,
+        selectedPaymentPlans,
     ]);
 
+    // Paging is the server's job now, so a narrowed result no longer silently clamps the page the
+    // way slicing an array did: without this, applying a filter while deep in the list asks for a
+    // page past the end and shows nothing. Covers every filter at once, including ones added later.
+    useEffect(() => {
+        setCurrentPage(0);
+    }, [requestFilters]);
+
+    // The table asks for one bucket; the tiles have to keep describing every bucket, so the
+    // selected tile is deliberately not part of the filters the summary is fetched with.
+    const tableFilters = useMemo(
+        () => ({ ...requestFilters, status_bucket: statusBucket }),
+        [requestFilters, statusBucket]
+    );
+
     const {
-        data: allData,
+        data: pageData,
         isLoading: isLoadingPayments,
         error: paymentsError,
         refetch: refetchPaymentLogs,
     } = useQuery({
-        queryKey: ['payment-logs-all', requestFilters],
-        queryFn: () => fetchAllPaymentLogs(requestFilters),
+        queryKey: ['payment-logs-page', tableFilters, currentPage],
+        queryFn: () => fetchPaymentLogs(currentPage, PAGE_SIZE, tableFilters),
+        staleTime: 30000,
+        placeholderData: (previous) => previous,
+    });
+
+    // Totals over every matching row, and the institute's full plan list. One small call, so the
+    // tiles stay accurate without the table having to download the whole result set.
+    const { data: summaryData, refetch: refetchSummary } = useQuery({
+        queryKey: ['payment-logs-summary', requestFilters],
+        queryFn: () => fetchPaymentLogsSummary(requestFilters),
         staleTime: 30000,
     });
 
-    // Everything the API returned for the current filters. The plan picker offers the plans seen
-    // in this set — before the plan filter narrows it — so choosing one never hides the others.
-    const loadedEntries = useMemo(() => allData?.entries ?? [], [allData]);
-    const paymentPlanOptions = useMemo(
-        () => derivePaymentPlanOptions(loadedEntries),
-        [loadedEntries]
-    );
-
-    // The loaded set narrowed to the selected plans — the KPI tiles always describe this set, so
-    // the numbers don't collapse to whichever tile is selected.
-    const allEntries = useMemo(
-        () => filterEntriesByPaymentPlan(loadedEntries, selectedPaymentPlans),
-        [loadedEntries, selectedPaymentPlans]
-    );
-
-    const paymentSummary = useMemo(() => computePaymentSummary(allEntries), [allEntries]);
-
-    // What the table shows: the same set narrowed to the selected KPI bucket.
-    const filteredEntries = useMemo(
+    // Every plan the institute has, listed by the server — not just the plans present in the rows
+    // on screen, so choosing one never empties the picker.
+    const paymentPlanOptions = useMemo<SelectOption[]>(
         () =>
-            statusBucket === 'total'
-                ? allEntries
-                : allEntries.filter((entry) => {
-                      // A voided payment is in no card, so it is in no card's rows either — it
-                      // stays visible under "All" only. (Scoped to voided payments: cancelled
-                      // invoice rows keep their existing place in the Pending tab.)
-                      if ((entry.payment_log?.payment_status || '').toUpperCase() === 'VOIDED')
-                          return false;
-                      if (classifyEntry(entry) !== statusBucket) return false;
-                      // The Pending tile no longer counts records on a cancelled/terminated/expired
-                      // enrolment, so the rows it filters to must not include them either — the
-                      // count on the tile and the rows in the table have to describe one set. They
-                      // remain visible under "All".
-                      if (statusBucket === 'pending') return isDueEligibleEntry(entry);
-                      return true;
-                  }),
-        [allEntries, statusBucket]
+            (summaryData?.payment_plan_names ?? []).map((name) => ({
+                label: name,
+                value: name,
+                _id: name,
+            })),
+        [summaryData]
+    );
+
+    // The tiles describe every row matching the filters — the selected tile is not among them, so
+    // the numbers don't collapse to whichever tile is selected.
+    const paymentSummary = useMemo(
+        () => summaryFromStatusTotals(summaryData?.status_totals ?? []),
+        [summaryData]
     );
 
     /**
@@ -393,27 +394,14 @@ export function TransactionsView() {
         if (hiddenBucket) setStatusBucket('total');
     }, [statusBucket, cardPrefs.visible]);
 
-    const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
-        if (!allData) return undefined;
-        const total = filteredEntries.length;
-        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-        const page = Math.min(currentPage, totalPages - 1);
-        const start = page * PAGE_SIZE;
-        const content = filteredEntries.slice(start, start + PAGE_SIZE);
-        return {
-            content,
-            totalPages,
-            totalElements: total,
-            size: PAGE_SIZE,
-            number: page,
-            numberOfElements: content.length,
-            first: page === 0,
-            last: page >= totalPages - 1,
-            empty: total === 0,
-            pageable: {},
-            sort: {},
-        } as unknown as PaymentLogsResponse;
-    }, [allData, filteredEntries, currentPage]);
+    const pagedData = pageData;
+
+    // Rows can disappear between fetches (a void, a refund). If that empties the page being
+    // viewed, fall back to the last page that still has rows rather than leaving a blank table.
+    useEffect(() => {
+        const totalPages = pageData?.totalPages ?? 0;
+        if (totalPages > 0 && currentPage > totalPages - 1) setCurrentPage(totalPages - 1);
+    }, [pageData, currentPage]);
 
     const packageSessionsMap = useMemo(() => {
         const map: Record<string, string> = {};
@@ -597,7 +585,7 @@ export function TransactionsView() {
     // Each tab follows its card in the Cards settings; All and Paid are always there.
     const shown = cardPrefs.visible;
     const segments: StatusSegment[] = [
-        { key: 'total', label: 'All', count: allEntries.length },
+        { key: 'total', label: 'All', count: paymentSummary.total.count },
         { key: 'paid', label: 'Paid', count: paymentSummary.paid.count },
         ...(shown.has('pending')
             ? [
@@ -781,11 +769,18 @@ export function TransactionsView() {
 
     const handleExportCsv = async () => {
         try {
-            if (filteredEntries.length === 0) {
+            if (paymentSummary.total.count === 0) {
                 toast.info('No payment records to export.');
                 return;
             }
-            const count = exportEntriesToCsv(filteredEntries, instituteDetails?.institute_name);
+            // The table only holds one page now, so the export fetches the rows it needs at click
+            // time — with the tile the admin is looking at, so the file matches what they see.
+            const { entries } = await fetchAllPaymentLogs(tableFilters);
+            if (entries.length === 0) {
+                toast.info('No payment records to export.');
+                return;
+            }
+            const count = exportEntriesToCsv(entries, instituteDetails?.institute_name);
             toast.success(`Exported ${count.toLocaleString()} payment records.`);
         } catch (error) {
             console.error('Failed to export payment logs:', error);
@@ -816,7 +811,7 @@ export function TransactionsView() {
                             ) : (
                                 <>
                                     <span className="font-medium text-neutral-700">
-                                        {allEntries.length.toLocaleString()}
+                                        {paymentSummary.total.count.toLocaleString()}
                                     </span>{' '}
                                     payments
                                     {collectedAmount && (
@@ -854,7 +849,7 @@ export function TransactionsView() {
                             onAsyncClick={handleExportCsv}
                             loadingText="Exporting…"
                             className="gap-2"
-                            disable={filteredEntries.length === 0}
+                            disable={paymentSummary.total.count === 0}
                         >
                             <DownloadSimple size={16} />
                             Export
@@ -1008,7 +1003,10 @@ export function TransactionsView() {
                         invoicesByPaymentLog={invoicesByPaymentLog}
                         isLoadingInvoices={isLoadingInvoices}
                         onPreviewInvoice={setPreviewInvoice}
-                        onRefresh={() => refetchPaymentLogs()}
+                        onRefresh={() => {
+                            refetchPaymentLogs();
+                            refetchSummary();
+                        }}
                         onViewDetails={openDetail}
                     />
                 )}
@@ -1083,7 +1081,10 @@ export function TransactionsView() {
                     entry={detailEntry}
                     open={detailOpen}
                     onOpenChange={setDetailOpen}
-                    onVoided={() => refetchPaymentLogs()}
+                    onVoided={() => {
+                        refetchPaymentLogs();
+                        refetchSummary();
+                    }}
                 />
 
                 {/* Balance breakdown, opened from a Due row */}

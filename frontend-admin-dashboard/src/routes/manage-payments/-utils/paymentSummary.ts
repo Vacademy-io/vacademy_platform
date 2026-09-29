@@ -1,4 +1,5 @@
 import type { PaymentLogEntry } from '@/types/payment-logs';
+import type { PaymentStatusTotal } from '@/services/payment-logs';
 import { formatMoney, isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 
 /** A single KPI bucket: how many payments and their total amount, split by currency. */
@@ -127,6 +128,54 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
         }
 
         addToBucket(summary[bucket], amount, currency);
+    }
+
+    return summary;
+};
+
+/**
+ * The same aggregation as {@link computePaymentSummary}, but from the server's pre-grouped totals
+ * instead of the rows themselves — so the tiles describe every row matching the filters while the
+ * table only ever downloads one page.
+ *
+ * The server classifies each row exactly as the row mapper does (a FAILED payment superseded by an
+ * ACTIVE plan reads PAID, a stale PAYMENT_PENDING reads ABANDONED, a voided one reads CANCELLED),
+ * so the bucket rules below are the row-level rules applied to whole groups.
+ */
+export const summaryFromStatusTotals = (totals: PaymentStatusTotal[]): PaymentSummary => {
+    const summary = emptyPaymentSummary();
+
+    for (const group of totals) {
+        const status = (group.status || '').toUpperCase();
+        // Cancelled money was never collected and is no longer owed: it sits in no card.
+        if (status === 'CANCELLED') continue;
+
+        const add = (bucket: StatBucket) => {
+            bucket.count += group.count;
+            if (group.amount) {
+                const key = group.currency || 'N/A';
+                bucket.amountByCurrency[key] = (bucket.amountByCurrency[key] || 0) + group.amount;
+            }
+        };
+
+        const bucket: PaymentBucketKey =
+            status === 'PAID'
+                ? 'paid'
+                : status === 'FAILED'
+                  ? 'failed'
+                  : status === 'ABANDONED'
+                    ? 'abandoned'
+                    : 'pending';
+
+        add(summary.total);
+
+        // An unsettled record on a dead enrolment is money that will never arrive.
+        if (bucket === 'pending' && !group.due_eligible) {
+            add(summary.notCounted);
+            continue;
+        }
+
+        add(summary[bucket]);
     }
 
     return summary;

@@ -274,7 +274,7 @@ export function useTutorSocket(callbacks: Callbacks) {
     sendEndSession: () => send({ type: "end_session" }),
     // Activeness tracker (opt-in camera): the learner left / came back, and the
     // running session average. Neither counts as activity on the server.
-    sendPresence: (present: boolean) => send({ type: "presence", present }),
+    sendPresence: (present: boolean, interrupted = false) => send({ type: "presence", present, interrupted }),
     sendActiveness: (report: Record<string, unknown>) => send({ type: "activeness", ...report }),
   };
 }

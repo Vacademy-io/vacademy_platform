@@ -628,8 +628,10 @@ function TutorPage() {
     speaking: phase === "speaking",
     questionOpen: awaiting === "answer",
     onPresence: (present) => {
-      if (!present && phase === "speaking") stopAudio();
-      socket.sendPresence(present);
+      // Cut off mid-speech: the server is told, so she repeats what was missed.
+      const cut = !present && phase === "speaking";
+      if (cut) stopAudio();
+      socket.sendPresence(present, cut);
     },
     onReport: (report) => socket.sendActiveness({ ...report }),
   });

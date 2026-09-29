@@ -24,6 +24,7 @@ import { MyButton } from '@/components/design-system/button';
 import { Funnel, X, Users, ArrowElbowDownLeft } from '@phosphor-icons/react';
 import {
   getAllRoles,
+  LEGACY_ROLE_NAMES,
   listUserSubOrgLinks,
   listAccessibleSubOrgs,
   type CustomRole,
@@ -218,29 +219,42 @@ function RouteComponent() {
   // value comes straight from the users-of-status response (row.original.password).
   const allowViewPassword = viewerTeamManagement?.allowViewPassword !== false;
 
-  // All roles from the API for filters and dropdowns. Exclude STUDENT and any
-  // roles the viewer's display settings have hidden — self-role is never
-  // hidden to prevent lockout from admin/teacher self-management.
-  const allRoles = useMemo(() => {
+  // A role is hidden when the viewer's display settings hide it — self-role is
+  // never hidden to prevent lockout from admin/teacher self-management.
+  const isRoleVisibleToViewer = useMemo(() => {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const viewerRoles = (getUserRoles(accessToken) || []).map((r) => r.toUpperCase());
+    return (roleName: string) => {
+      const key = roleName.toUpperCase();
+      if (viewerRoles.includes(key)) return true;
+      return viewerVisibleRoles[key] !== false;
+    };
+  }, [viewerVisibleRoles]);
+
+  // All roles from the API for filters and dropdowns, minus STUDENT and hidden roles.
+  const allRoles = useMemo(() => {
     return customRoles
       .filter((cr) => cr.name !== 'STUDENT')
-      .filter((cr) => {
-        const key = cr.name.toUpperCase();
-        if (viewerRoles.includes(key)) return true;
-        return viewerVisibleRoles[key] !== false;
-      })
+      .filter((cr) => isRoleVisibleToViewer(cr.name))
       .map((cr) => ({
         id: cr.id,
         name: cr.name,
       }));
-  }, [customRoles, viewerVisibleRoles]);
+  }, [customRoles, isRoleVisibleToViewer]);
 
-  // Default filter with all roles (used in API calls when no filter selected)
+  // Default filter with all roles (used in API calls when no filter selected).
+  // getAllRoles() hides the legacy roles from every picker, but real users still
+  // hold them until their rows are migrated — keep matching them here or those
+  // users silently drop out of the list. Nothing is added before the roles load,
+  // so the first fetch can't come back with only legacy-role users.
   const allRolesFilter = useMemo(() => {
-    return allRoles.map((r) => ({ id: r.id, name: r.name }));
-  }, [allRoles]);
+    if (allRoles.length === 0) return [];
+    const legacyRoles = LEGACY_ROLE_NAMES.filter(isRoleVisibleToViewer).map((name) => ({
+      id: name,
+      name,
+    }));
+    return [...allRoles.map((r) => ({ id: r.id, name: r.name })), ...legacyRoles];
+  }, [allRoles, isRoleVisibleToViewer]);
 
   // The tab's default status set (Institute Users = ACTIVE/DISABLED, Invites = INVITED).
   const statusDefaultForTab = (tab: TabKey) =>

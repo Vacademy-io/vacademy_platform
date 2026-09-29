@@ -2066,6 +2066,7 @@ class NoRepeatGate(FrameProcessor):
         # filler, not a handback, so _consecutive_handbacks never saw three of
         # them in a row on 22062aac — and nothing escalated.
         self._filler_streak = 0
+        self._escalated_for = None     # the caller turn that got the firm filler cue
         # "Just a second." queued while the model composed, arriving at the TTS
         # AFTER the reply's audio began (the LLM processor holds frames during a
         # generation): call dd5eb5cc heard the question, then "Just a second."
@@ -2729,12 +2730,21 @@ class NoRepeatGate(FrameProcessor):
             # model acknowledged and stopped. Same remedy as the all-repeat
             # case — ask for the next line — but only when the caller actually
             # said something to move on from (call 612f5e37, 2026-09-13).
+            _turn = normalize_spoken(self._last_caller_text() or "")
+            # The soft next-step cue came back as another bare acknowledgment:
+            # one FIRM request for the same caller turn, outside the per-turn
+            # limit — otherwise the firm cue waits for the idle timer (8 s).
+            escalate_now = (self._filler_streak >= 1 and self._next_steps < 5
+                            and self._escalated_for != _turn)
             if (not self._real_this_reply and self._emitted and not self._held_tail
                     and not self._held_question
                     and not self._end_forced() and not superseded
-                    and self._request_next_step is not None and self._may_ask_next_step()
+                    and self._request_next_step is not None
+                    and (escalate_now or self._may_ask_next_step())
                     and (self._last_caller_text() or "").strip()
                     and not (self._last_caller_text() or "").startswith("[")):
+                if escalate_now:
+                    self._escalated_for = _turn
                 self._next_steps += 1
                 self._next_step_for = normalize_spoken(self._last_caller_text() or "")
                 # The second acknowledgment-only reply in a row gets the firm

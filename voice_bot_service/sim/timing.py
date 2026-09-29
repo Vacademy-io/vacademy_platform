@@ -114,6 +114,10 @@ class Scenario:
     # Replay: pick the recorded reply for THIS run by its trigger text instead
     # of consuming replies in order (the fixed pipeline may run fewer times).
     reply_for: Callable[[str], str | None] | None = None
+    # Agent context fixture (sim/fixtures/<name>); default = the English yoga agent.
+    # Hindi-only behaviour (Devanagari fillers, "।"-terminated finals, the Hindi
+    # presence check) never ran in the gate before 2026-09-29.
+    context: str = ""
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -588,6 +592,50 @@ def _after_word(text: str, word: str, ttfb: float = 0.35) -> float:
 
 def _assistant_texts(res):
     return [t["text"] for t in res["transcript"] if t["role"] == "assistant"]
+
+
+# ── call 22062aac (2026-09-29): a Hindi father answering in pieces ──────────
+HI_Q_CLASS = "जी सर। बच्चा अभी किस class में पढ़ रहा है?"
+HI_Q_EFFORT = "यही वो साल है जब syllabus heavy लगने लगता है। क्या बच्चा पढ़ाई में मेहनत करता है?"
+HI_EXPECT = "आमतौर पर parents की तीन-चार expectations होती हैं। पहली, faculty अच्छे हों और concepts clear करें।"
+
+
+def _hindi_pieces_reply(last_user: str) -> str:
+    """Gemini's behaviour on the real call: a bare "जी।"/"जी सर।" to every piece
+    and to the SOFT next-step cue; it moved on only when told firmly."""
+    u = last_user or ""
+    if u.startswith("["):
+        return HI_EXPECT if "ONE new question" in u else "जी सर।"
+    if "पिताजी" in u:
+        return HI_Q_CLASS
+    if "नौवीं" in u:
+        return HI_Q_EFFORT
+    if "कोशिश" in u:
+        return "जी सर।"
+    return "जी।"
+
+
+def chk_hindi_pieces_bare_acks(res):
+    f = []
+    texts = _assistant_texts(res)
+    joined = " ".join(texts)
+    presence = [i for i, t in enumerate(texts) if "सुन पा रहे" in t or "sun paa" in t]
+    moved_on = [i for i, t in enumerate(texts) if "expectations" in t]
+    if not moved_on:
+        f.append("the bot never moved on after the pieces — only acknowledgments")
+    if presence and (not moved_on or presence[0] < moved_on[0]):
+        f.append("asked 'are you there?' while the bot owed the next line")
+    acks = 0
+    for t in _after_user(res, "कोशिश"):
+        if "expectations" in t:
+            break
+        acks += sum(1 for x in t.replace("।", "।\n").splitlines()
+                    if x.strip() in ("जी।", "जी सर।"))
+    if acks > 2:
+        f.append(f"{acks} bare acknowledgments after the pieces")
+    if "Kya aap" in joined:
+        f.append("romanised presence check on a Hindi agent")
+    return f
 
 
 def _after_user(res, needle):
@@ -1199,6 +1247,17 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "Just to clarify, is it that you don't take online classes, or someone handles it?"],
              checks=chk_forced_close, max_secs=45,
              note="call ada2e60c: the model clarifies instead of ending; the gate must end the call anyway"),
+    Scenario("hindi_pieces_bare_acks",
+             caller=[Say("हाँ जी पिताजी हैं।", 1.2, after_bot_stop=1, offset=0.6),
+                     Say("नौवीं में पढ़ रहा है।", 1.3, after_bot_stop=2, offset=0.6),
+                     Say("अब पढ़ने में तो।", 1.0, after_bot_stop=3, offset=0.6),
+                     Say("कोशिश करता है।", 1.1, after_bot_stop=3, offset=2.9)],
+             replies=[],
+             reply_for=_hindi_pieces_reply,
+             context="hindi_parent_agent_context.json",
+             checks=chk_hindi_pieces_bare_acks, max_secs=75,
+             note="call 22062aac: 'अब पढ़ने में तो।' / 'कोशिश करता है।' got 'जी।' 'जी सर।' x3, "
+                  "then 12 s of silence and 'are you there?'"),
 ]
 BY_KEY = {s.key: s for s in SCENARIOS}
 
@@ -1232,8 +1291,10 @@ async def main():
     results = []
     for k in keys:
         sc = BY_KEY[k]
+        sc_ctx = (json.loads((FIXTURE_DIR / sc.context).read_text(encoding="utf-8"))
+                  if sc.context else ctx)
         try:
-            res = await run_scenario(sc, ctx, args.verbose, args.real_stt)
+            res = await run_scenario(sc, sc_ctx, args.verbose, args.real_stt)
         except Exception as e:  # noqa: BLE001
             res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"], "turn_latency": []}
         results.append(res)

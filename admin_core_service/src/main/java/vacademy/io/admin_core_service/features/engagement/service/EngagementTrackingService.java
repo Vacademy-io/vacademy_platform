@@ -451,9 +451,16 @@ public class EngagementTrackingService {
         StringBuilder csv = new StringBuilder(CSV_BOM);
         csv.append("Name,Username,Email,Progress,Done,Available,Overdue,Missed,Points,Last completed at");
         for (EngagementItem item : model.items) {
-            Occurrence o = model.occurrences.get(item.getId());
-            LocalDate date = o.runDate() != null ? o.runDate() : model.slots.get(item.getSlotId()).getStartDate();
-            csv.append(',').append(csvCell(date + " · " + item.getTitle()));
+            String when;
+            if (isRelative(model)) {
+                // Every learner is on their own dates; the day number is what they share.
+                when = "Day " + model.storedSlots.get(item.getSlotId()).getStartDay();
+            } else {
+                Occurrence o = model.occurrences.get(item.getId());
+                LocalDate date = o.runDate() != null ? o.runDate() : model.slots.get(item.getSlotId()).getStartDate();
+                when = date.toString();
+            }
+            csv.append(',').append(csvCell(when + " · " + item.getTitle()));
         }
         csv.append('\n');
 
@@ -471,7 +478,7 @@ public class EngagementTrackingService {
                .append(csvCell(p.getLastCompletedAt()));
             Map<String, AttemptLite> mine = model.attempts.getOrDefault(p.getUserId(), Map.of());
             for (EngagementItem item : model.items) {
-                csv.append(',').append(csvCell(cellLabel(model, item, mine.get(item.getId()))));
+                csv.append(',').append(csvCell(cellLabel(model, p.getUserId(), item, mine.get(item.getId()))));
             }
             csv.append('\n');
         }
@@ -522,6 +529,8 @@ public class EngagementTrackingService {
         Map<String, LocalDate> dayOnes = new HashMap<>();
         /** RELATIVE plans: stored slots (virtual dates), kept for per-learner shifting. */
         Map<String, EngagementSlot> storedSlots = new HashMap<>();
+        /** CALENDAR plans: each learner's local join day. A run before it was never theirs. */
+        Map<String, LocalDate> joinDates = new HashMap<>();
         /** userId -> itemId -> attempt. */
         Map<String, Map<String, AttemptLite>> attempts = new HashMap<>();
         private final Map<LocalDate, Set<String>> visibleByDate = new HashMap<>();
@@ -570,6 +579,10 @@ public class EngagementTrackingService {
             }
         } else {
             for (EngagementSlot slot : slots) m.slots.put(slot.getId(), slot);
+            for (Object[] row : planRepository.findJoinDatesForBatch(plan.getPackageSessionId())) {
+                LocalDate joined = localDate(row[1], m.zone);
+                if (row[0] != null && joined != null) m.joinDates.put((String) row[0], joined);
+            }
         }
         List<EngagementItem> items = slots.isEmpty()
                 ? List.of()
@@ -640,19 +653,8 @@ public class EngagementTrackingService {
                 available++;
                 continue;
             }
-            Occurrence o;
-            boolean capHidden;
-            if (m.plan.isRelative() && relativeSchedule != null) {
-                LocalDate dayOne = m.dayOnes.get(userId);
-                if (dayOne == null) continue;
-                EngagementSlot learnerSlot = relativeSchedule.localize(m.plan, m.storedSlots.get(item.getSlotId()), dayOne);
-                o = occurrenceOf(m.plan, learnerSlot, item, m.now);
-                capHidden = false;
-            } else {
-                o = m.occurrences.get(item.getId());
-                capHidden = m.capHidden(item);
-            }
-            if (!o.opened() || capHidden) continue;
+            Occurrence o = occurrenceFor(m, userId, item);
+            if (o == null || !o.opened() || capHiddenFor(m, item)) continue;
             available++;
             if (o.pastDue()) overdue++;
             if (o.closed()) missed++;
@@ -800,14 +802,50 @@ public class EngagementTrackingService {
         return null;
     }
 
-    private String cellLabel(PlanModel m, EngagementItem item, AttemptLite a) {
+    private String cellLabel(PlanModel m, String userId, EngagementItem item, AttemptLite a) {
         if (a != null && a.completed()) return a.late() ? "Done (late)" : "Done";
-        Occurrence o = m.occurrences.get(item.getId());
+        Occurrence o = occurrenceFor(m, userId, item);
+        if (o == null) return isRelative(m) ? "Not open yet" : "Before joining";
         if (!o.opened()) return "Not open yet";
-        if (m.capHidden(item)) return "Hidden (daily cap)";
+        if (capHiddenFor(m, item)) return "Hidden (daily cap)";
         if (o.closed()) return "Missed";
         if (a != null && STARTED.equals(a.status())) return o.pastDue() ? "Opened, overdue" : "Opened";
         return o.pastDue() ? "Overdue" : "Not done";
+    }
+
+    private boolean isRelative(PlanModel m) {
+        return m.plan.isRelative() && relativeSchedule != null;
+    }
+
+    /**
+     * This task's run as one learner meets it: on their own days for a RELATIVE plan. Null
+     * when it isn't theirs to do: a calendar run from before they joined, or no Day 1.
+     */
+    private Occurrence occurrenceFor(PlanModel m, String userId, EngagementItem item) {
+        if (isRelative(m)) {
+            LocalDate dayOne = m.dayOnes.get(userId);
+            if (dayOne == null) return null;
+            EngagementSlot learnerSlot = relativeSchedule.localize(m.plan, m.storedSlots.get(item.getSlotId()), dayOne);
+            return occurrenceOf(m.plan, learnerSlot, item, m.now);
+        }
+        Occurrence o = m.occurrences.get(item.getId());
+        LocalDate joined = m.joinDates.get(userId);
+        if (o != null && joined != null && o.runDate() != null && o.runDate().isBefore(joined)) return null;
+        return o;
+    }
+
+    /** The daily cap is modelled plan-wide on calendar days; RELATIVE plans have no shared day to cap. */
+    private boolean capHiddenFor(PlanModel m, EngagementItem item) {
+        return !isRelative(m) && m.capHidden(item);
+    }
+
+    private static LocalDate localDate(Object value, ZoneId zone) {
+        if (value instanceof Timestamp t) return t.toInstant().atZone(zone).toLocalDate();
+        if (value instanceof java.sql.Date d) return d.toLocalDate(); // a calendar date has no zone
+        if (value instanceof java.util.Date d) return d.toInstant().atZone(zone).toLocalDate();
+        if (value instanceof java.time.Instant i) return i.atZone(zone).toLocalDate();
+        if (value instanceof java.time.LocalDateTime l) return Timestamp.valueOf(l).toInstant().atZone(zone).toLocalDate();
+        return null;
     }
 
     private static String classLabel(String cls) {
@@ -1083,6 +1121,11 @@ public class EngagementTrackingService {
     }
 
     private static String slotDateLabel(EngagementSlot slot) {
+        if (slot != null && slot.getStartDay() != null) {
+            // Days after joining: the stored dates are placeholders (2000-01-0N), never shown.
+            int end = slot.getEndDay() == null ? slot.getStartDay() : slot.getEndDay();
+            return end == slot.getStartDay() ? "Day " + end : "Days " + slot.getStartDay() + " to " + end;
+        }
         if (slot == null || slot.getStartDate() == null) return null;
         LocalDate end = slot.effectiveEndDate();
         return end.equals(slot.getStartDate()) ? slot.getStartDate().toString()

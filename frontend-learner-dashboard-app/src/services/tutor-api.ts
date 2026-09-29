@@ -94,6 +94,34 @@ export const getTutorChapterSlides = async (
   return res.data.slides;
 };
 
+/** One slide in the course outline (tutor left rail). */
+export interface TutorOutlineSlide {
+  slide_id: string;
+  title: string | null;
+  source_type: string;
+  order: number | null;
+  teachable: boolean;
+}
+
+/** One chapter of the batch, in course order, with its slides. */
+export interface TutorOutlineChapter {
+  chapter_id: string;
+  chapter_name: string | null;
+  module_id: string | null;
+  module_name: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
+  slides: TutorOutlineSlide[];
+}
+
+/** Every chapter of the batch with tutor readiness — lets the rail and "Next" cross chapters. */
+export const getTutorCourseOutline = async (packageSessionId: string): Promise<TutorOutlineChapter[]> => {
+  const res = await authenticatedAxiosInstance.get<{ chapters: TutorOutlineChapter[] }>(
+    `${BASE}/learner/packages/${packageSessionId}/outline`,
+  );
+  return res.data.chapters ?? [];
+};
+
 export const startTutorSession = async (params: {
   packageSessionId: string;
   slideId?: string;

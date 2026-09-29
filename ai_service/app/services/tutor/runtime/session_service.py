@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from ....db import db_session
@@ -101,6 +101,55 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
          "plan_id": ready[r[0]].id if r[0] in ready else None,
          "chapter_id": chapter_id, **lineage}
         for r in rows
+    ]
+
+
+def course_outline(db: Session, *, package_session_id: str) -> List[Dict[str, Any]]:
+    """Every chapter of a batch, in course order, with its slides and their
+    tutor readiness — the tutor's left rail used to list only the current
+    chapter, so a one-slide chapter showed nothing to move on to.
+
+    Same slide rules as chapter_slides (published slides, tutor-supported
+    types with a READY/STALE plan are teachable). Two queries for the whole
+    course, not one per chapter."""
+    chapters = db.execute(text("""
+        SELECT c.id, c.chapter_name, m.id, m.module_name, s.id, s.subject_name
+        FROM subject_session ss
+        JOIN subject s ON s.id = ss.subject_id AND COALESCE(s.status, '') <> 'DELETED'
+        JOIN subject_module_mapping smm ON smm.subject_id = s.id
+        JOIN modules m ON m.id = smm.module_id AND COALESCE(m.status, '') <> 'DELETED'
+        JOIN module_chapter_mapping mcm ON mcm.module_id = m.id
+        JOIN chapter c ON c.id = mcm.chapter_id AND COALESCE(c.status, '') <> 'DELETED'
+        JOIN chapter_package_session_mapping cpsm
+          ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :ps AND cpsm.status = 'ACTIVE'
+        WHERE ss.session_id = :ps
+        ORDER BY ss.subject_order NULLS LAST, smm.module_order NULLS LAST, cpsm.chapter_order NULLS LAST, c.chapter_name
+    """), {"ps": package_session_id}).fetchall()
+    if not chapters:
+        return []
+    # A chapter reference-copied into two modules of the same batch appears once.
+    seen: set = set()
+    ordered = [r for r in chapters if not (r[0] in seen or seen.add(r[0]))]
+    chapter_ids = [r[0] for r in ordered]
+
+    slide_rows = db.execute(text("""
+        SELECT cts.chapter_id, sl.id, sl.title, sl.source_type, cts.slide_order
+        FROM chapter_to_slides cts
+        JOIN slide sl ON sl.id = cts.slide_id AND sl.status IN ('PUBLISHED', 'UNSYNC')
+        WHERE cts.chapter_id IN :cids AND cts.status <> 'DELETED'
+        ORDER BY cts.slide_order NULLS LAST, sl.title
+    """).bindparams(bindparam("cids", expanding=True)), {"cids": chapter_ids}).fetchall()
+    ready = plan_store.latest_plans_for_slides(db, [r[1] for r in slide_rows], ready_only=True)
+
+    by_chapter: Dict[str, List[Dict[str, Any]]] = {cid: [] for cid in chapter_ids}
+    for cid, sid, title, src, order in slide_rows:
+        src_u = (src or "").upper()
+        by_chapter[cid].append({"slide_id": sid, "title": title, "source_type": src_u, "order": order,
+                                "teachable": src_u in SUPPORTED and sid in ready})
+    return [
+        {"chapter_id": cid, "chapter_name": cname, "module_id": mid, "module_name": mname,
+         "subject_id": sjid, "subject_name": sjname, "slides": by_chapter.get(cid, [])}
+        for cid, cname, mid, mname, sjid, sjname in ordered
     ]
 
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -23,6 +23,10 @@ import { SuggestionsPanel } from './SuggestionsPanel';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+// Well above the largest page today (296 invites). For staff limited to certain
+// invites the server filters after paging and reports that page as the last,
+// so for them nothing past the first page is fetched.
+const INVITE_BATCH_PAGE_SIZE = 1000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +52,11 @@ interface EnrollInvite {
     id: string;
     name: string;
     invite_code: string;
+    /** Only the sessions that were asked for, not every session on the invite. */
+    package_session_ids?: string[];
 }
+
+const NO_INVITES: EnrollInvite[] = [];
 
 interface PackageSessionPaymentOption {
     id: string; // ps_invite_payment_option_id
@@ -97,42 +105,34 @@ function useDebounce<T>(value: T, delay: number): T {
 interface SelectedRowProps {
     row: MappingRow;
     session: CourseSearchItem | undefined;
+    /** This session's invites, from the parent's single batched list call. */
+    invites: EnrollInvite[];
+    invitesLoading: boolean;
     onChange: (updated: MappingRow) => void;
     onRemove: () => void;
     index: number;
 }
 
 const SelectedRow = ({
-    row, session, onChange, onRemove, index,
+    row,
+    session,
+    invites,
+    invitesLoading,
+    onChange,
+    onRemove,
+    index,
 }: SelectedRowProps) => {
     const { t } = useTranslation('managePagesCourseSessionSelector');
     const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
     const instituteId = getCurrentInstituteId() || getInstituteId() || '';
     const [showInviteDropdown, setShowInviteDropdown] = useState(false);
 
-    // Fetch invites for this session
-    const { data: inviteListData, isLoading: invitesLoading } = useQuery({
-        queryKey: ['PP_SESSION_INVITES', row.packageSessionId, instituteId],
-        queryFn: async () => {
-            const res = await authenticatedAxiosInstance.post(
-                `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=100`,
-                {
-                    search_name: '',
-                    package_session_ids: [row.packageSessionId],
-                    payment_option_ids: [],
-                    sort_columns: {},
-                    tags: [],
-                }
-            );
-            return (res.data?.content || []) as EnrollInvite[];
-        },
-        enabled: !!row.packageSessionId && !!instituteId,
-        staleTime: 5 * 60 * 1000,
-    });
+    // Saved rows arrive without a name; the batched list already has it.
+    const inviteName = row.inviteName || invites.find((i) => i.id === row.inviteId)?.name;
 
-    const invites = inviteListData || [];
-
-    // Fetch details of the currently selected invite
+    // Full invite details are only needed to resolve a row that has no payment
+    // option yet (a new row, or one whose invite was just changed). Saved rows
+    // already carry option, plan and price from the product page response.
     const { data: inviteDetails, isLoading: detailsLoading } = useQuery({
         queryKey: ['PP_INVITE_DETAILS', row.inviteId, instituteId],
         queryFn: async () => {
@@ -143,7 +143,7 @@ const SelectedRow = ({
             const res = await authenticatedAxiosInstance.get(url);
             return res.data as InviteDetails;
         },
-        enabled: !!row.inviteId && !!instituteId,
+        enabled: !!row.inviteId && !row.psInvitePaymentOptionId && !!instituteId,
         staleTime: 5 * 60 * 1000,
     });
 
@@ -246,7 +246,7 @@ const SelectedRow = ({
                         className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:opacity-70"
                     >
                         <span className="max-w-44 truncate font-medium">
-                            {row.inviteName || t('selectedRow.selectingInvite')}
+                            {inviteName || t('selectedRow.selectingInvite')}
                         </span>
                         {invites.length > 1 && (
                             <>
@@ -347,6 +347,46 @@ export const CourseSessionSelector = ({
 
     const debouncedSearch = useDebounce(search, SEARCH_DEBOUNCE_MS);
     const selectedSessionIds = new Set(mappingRows.map((r) => r.packageSessionId));
+
+    // One invite-list call for every selected session, split per session here.
+    // Each row used to fetch its own list plus its invite's full details, so
+    // opening this tab on a 163-course page fired ~326 requests at once.
+    const rowSessionIds = useMemo(
+        () =>
+            Array.from(new Set(mappingRows.map((r) => r.packageSessionId).filter(Boolean))).sort(),
+        [mappingRows]
+    );
+    const { data: invitesBySession, isError: invitesError } = useQuery({
+        queryKey: ['PP_SESSION_INVITES', instituteId, rowSessionIds.join(',')],
+        queryFn: async () => {
+            const bySession = new Map<string, EnrollInvite[]>(rowSessionIds.map((id) => [id, []]));
+            for (let pageNo = 0; ; pageNo++) {
+                const res = await authenticatedAxiosInstance.post(
+                    `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=${pageNo}&pageSize=${INVITE_BATCH_PAGE_SIZE}`,
+                    {
+                        search_name: '',
+                        package_session_ids: rowSessionIds,
+                        payment_option_ids: [],
+                        sort_columns: {},
+                        tags: [],
+                    }
+                );
+                const content = (res.data?.content || []) as EnrollInvite[];
+                for (const invite of content) {
+                    for (const psId of invite.package_session_ids ?? []) {
+                        bySession.get(psId)?.push(invite);
+                    }
+                }
+                if (res.data?.last !== false || content.length === 0) break;
+            }
+            return bySession;
+        },
+        enabled: !!instituteId && rowSessionIds.length > 0,
+        staleTime: 5 * 60 * 1000,
+        // Adding or removing a course changes the key; keep the other rows'
+        // invites on screen while the new batch loads.
+        placeholderData: keepPreviousData,
+    });
 
     // Paginated sessions fetch — server-side search via search_by_name
     const {
@@ -595,16 +635,23 @@ export const CourseSessionSelector = ({
                     </div>
 
                     <div className="space-y-3">
-                        {mappingRows.map((row, idx) => (
-                            <SelectedRow
-                                key={row.rowId}
-                                row={row}
-                                session={getSession(row.packageSessionId)}
-                                index={idx}
-                                onChange={(updated) => onUpdate(row.rowId, updated)}
-                                onRemove={() => handleRemoveRow(row.rowId)}
-                            />
-                        ))}
+                        {mappingRows.map((row, idx) => {
+                            const rowInvites = invitesBySession?.get(row.packageSessionId);
+                            return (
+                                <SelectedRow
+                                    key={row.rowId}
+                                    row={row}
+                                    session={getSession(row.packageSessionId)}
+                                    invites={rowInvites ?? NO_INVITES}
+                                    invitesLoading={
+                                        !!row.packageSessionId && !invitesError && !rowInvites
+                                    }
+                                    index={idx}
+                                    onChange={(updated) => onUpdate(row.rowId, updated)}
+                                    onRemove={() => handleRemoveRow(row.rowId)}
+                                />
+                            );
+                        })}
                     </div>
 
                     {/* Total price summary */}

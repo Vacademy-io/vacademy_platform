@@ -79,23 +79,27 @@ public class EngagementRevealJob {
             if (relativeSchedule != null) settleRelativePlan(plan);
             return;
         }
-        LocalDate today = LocalDate.now(scheduleResolver.zoneOf(plan));
+        java.time.ZoneId zone = scheduleResolver.zoneOf(plan);
+        LocalDate today = LocalDate.now(zone);
 
         for (EngagementSlot slot : slotRepository.findActiveByPlan(plan.getId())) {
-            for (int back = 0; back <= LOOKBACK_DAYS; back++) {
+            // Only a slot with a run revealed inside the look-back window has anything new.
+            boolean recentReveal = false;
+            for (int back = 0; back <= LOOKBACK_DAYS && !recentReveal; back++) {
                 LocalDate runDate = today.minusDays(back);
-                if (!scheduleResolver.runsOn(slot, runDate)) continue;
-                if (!scheduleResolver.isRevealed(plan, slot, runDate)) continue;
+                recentReveal = scheduleResolver.runsOn(slot, runDate)
+                        && scheduleResolver.isRevealed(plan, slot, runDate);
+            }
+            if (!recentReveal) continue;
 
-                for (EngagementItem item : itemRepository.findActiveBySlot(slot.getId())) {
-                    if (!Boolean.TRUE.equals(item.getHideResultUntilReveal())) continue;
-                    int bonus = item.getCorrectPoints() == null ? 0 : item.getCorrectPoints();
-                    if (bonus <= 0) continue;
-                    java.time.Instant revealAt = java.time.LocalDateTime
-                            .of(runDate, slot.effectiveRevealTime())
-                            .atZone(scheduleResolver.zoneOf(plan)).toInstant();
-                    settleItem(plan, item, bonus, revealAt);
-                }
+            for (EngagementItem item : itemRepository.findActiveBySlot(slot.getId())) {
+                if (!Boolean.TRUE.equals(item.getHideResultUntilReveal())) continue;
+                int bonus = item.getCorrectPoints() == null ? 0 : item.getCorrectPoints();
+                if (bonus <= 0) continue;
+                // Each answer against the reveal of the run it was given in. Checking it
+                // against every run in the window paid an answer given after its own
+                // run's reveal, because it was still "before" the next run's reveal.
+                settleItem(plan, item, bonus, attempt -> revealOfRunAnswered(plan, slot, attempt, zone));
             }
         }
     }
@@ -115,20 +119,24 @@ public class EngagementRevealJob {
                 if (bonus <= 0) continue;
                 settleItem(plan, item, bonus, attempt -> {
                     LocalDate dayOne = dayOnes.get(attempt.getUserId());
-                    if (dayOne == null || attempt.getCompletedAt() == null) return null;
-                    EngagementSlot mine = relativeSchedule.localize(plan, stored, dayOne);
-                    LocalDate answered = attempt.getCompletedAt().toInstant().atZone(zone).toLocalDate();
-                    LocalDate run = scheduleResolver.mostRecentRunDate(mine, answered);
-                    if (run == null || !scheduleResolver.isRevealed(plan, mine, run)) return null;
-                    return java.time.LocalDateTime.of(run, mine.effectiveRevealTime()).atZone(zone).toInstant();
+                    if (dayOne == null) return null;
+                    return revealOfRunAnswered(plan, relativeSchedule.localize(plan, stored, dayOne), attempt, zone);
                 });
             }
         }
     }
 
-    private void settleItem(EngagementPlan plan, EngagementItem item, int fullBonus,
-                            java.time.Instant revealAt) {
-        settleItem(plan, item, fullBonus, attempt -> revealAt);
+    /**
+     * The reveal instant of the run in effect when the attempt was completed, or null when
+     * that run has not revealed yet (or the attempt has no completion time).
+     */
+    private java.time.Instant revealOfRunAnswered(EngagementPlan plan, EngagementSlot slot,
+                                                  EngagementAttempt attempt, java.time.ZoneId zone) {
+        if (attempt.getCompletedAt() == null) return null;
+        LocalDate answered = attempt.getCompletedAt().toInstant().atZone(zone).toLocalDate();
+        LocalDate run = scheduleResolver.mostRecentRunDate(slot, answered);
+        if (run == null || !scheduleResolver.isRevealed(plan, slot, run)) return null;
+        return java.time.LocalDateTime.of(run, slot.effectiveRevealTime()).atZone(zone).toInstant();
     }
 
     /** {@code revealAtFor} returns null when this attempt's reveal has not happened yet. */

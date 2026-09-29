@@ -293,7 +293,13 @@ export function TodayTab({ feed, showPoints }: TodayTabProps) {
 
   const data = feed.feed;
   const openCount = view.mustDo.length + view.bonus.length;
-  const allDone = data.scheduledToday > 0 && openCount === 0 && !data.capApplied;
+  // Nothing open is not the same as all done: a task can still unlock later today, or
+  // have closed unfinished.
+  const allDone =
+    data.scheduledToday > 0 &&
+    data.completedToday >= data.scheduledToday &&
+    openCount === 0 &&
+    !data.capApplied;
   const nothingToday = data.scheduledToday === 0 && openCount === 0 && view.done.length === 0;
   const open = (item: EngagementItem, readOnly = false) =>
     host.open(item.id, { queue: readOnly ? [item.id] : view.queue, readOnly, item });

@@ -378,6 +378,33 @@ class EngagementPlanServiceTest {
         return out;
     }
 
+    @Test
+    @DisplayName("a slot id from another plan is refused, not moved into this one")
+    void slotOfAnotherPlanIsRefused() {
+        EngagementSlot foreign = slot("foreign-slot", "plan-of-another-institute", today(), null);
+        when(slots.findById("foreign-slot")).thenReturn(Optional.of(foreign));
+        EngagementSlotRequest r = slotRequest();
+        r.setId("foreign-slot");
+
+        assertThrows(VacademyException.class, () -> service.upsertSlot(PLAN, r, INSTITUTE));
+        assertEquals("plan-of-another-institute", foreign.getPlanId());
+        verify(slots, never()).save(any(EngagementSlot.class));
+    }
+
+    @Test
+    @DisplayName("a plan can't be created on a batch outside the institute")
+    void planOnForeignBatchIsRefused() {
+        when(plans.countBatchInInstitute("other-batch", INSTITUTE)).thenReturn(0L);
+        vacademy.io.admin_core_service.features.engagement.dto.EngagementPlanRequest r =
+                new vacademy.io.admin_core_service.features.engagement.dto.EngagementPlanRequest();
+        r.setTitle("Steal");
+        r.setPackageSessionId("other-batch");
+        r.setDefaultMissPolicy("EXPIRES");
+
+        assertThrows(VacademyException.class, () -> service.createPlan(r, INSTITUTE, "u"));
+        verify(plans, never()).save(any(EngagementPlan.class));
+    }
+
     private static LocalDate today() {
         return LocalDate.now(ZoneOffset.UTC);
     }

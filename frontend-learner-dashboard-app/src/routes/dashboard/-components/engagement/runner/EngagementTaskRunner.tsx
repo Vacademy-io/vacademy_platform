@@ -66,6 +66,9 @@ import { openLessonTarget } from "./use-lesson-return";
 /** Query key prefix of the full item (kept apart from the feed's keys). */
 export const ENGAGEMENT_ITEM_KEY = ["engagement", "item"] as const;
 
+/** Types whose body is the item's document, which the feed leaves off done rows. */
+const DOCUMENT_TYPES = new Set<EngagementItem["itemType"]>(["READING_HTML", "VISUAL_NOTE", "GAME"]);
+
 /** Server defaults, used when an older server sends no gate in the DTO. */
 export const DEFAULT_MIN_READ_MS = 15_000;
 export const DEFAULT_MIN_GAME_MS = 20_000;
@@ -261,7 +264,11 @@ function RunnerSession({
   const [openedAt] = useState(() => Date.now());
 
   // A read-only Done row already has everything; GET would refuse a closed task.
-  const seedOnly = readOnly && seed != null;
+  // Except the document: the feed drops contentHtml from done rows, so a reading or a
+  // game still asks GET for it (a refusal falls back to the seed below).
+  const seedHasDocument =
+    seed != null && (!DOCUMENT_TYPES.has(seed.itemType) || Boolean(seed.contentHtml));
+  const seedOnly = readOnly && seed != null && seedHasDocument;
   const query = useQuery({
     queryKey: [...ENGAGEMENT_ITEM_KEY, itemId],
     queryFn: () => fetchEngagementItem(itemId),

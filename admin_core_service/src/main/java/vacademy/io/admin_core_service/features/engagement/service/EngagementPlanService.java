@@ -95,6 +95,11 @@ public class EngagementPlanService {
         if (request.getTitle() == null || request.getTitle().isBlank()) {
             throw new VacademyException("title is required");
         }
+        if (planRepository.countBatchInInstitute(request.getPackageSessionId(), instituteId) == 0) {
+            // Without this, staff of one institute could aim a plan at another's batch and
+            // read its roster through tracking, or push to its learners.
+            throw new VacademyException("Batch not found in this institute");
+        }
 
         EngagementPlan plan = new EngagementPlan();
         plan.setInstituteId(instituteId);
@@ -105,7 +110,10 @@ public class EngagementPlanService {
         plan.setStatus(safeStatus(request.getStatus()));
         // Snapshot, not a live read — see EngagementPlan.timezone.
         plan.setTimezone(instituteTimezoneService.getTimezoneId(instituteId));
-        plan.setDefaultMissPolicy(safeMissPolicy(request.getDefaultMissPolicy()));
+        // Same default as the column: a caller that leaves it out gets EXPIRES.
+        plan.setDefaultMissPolicy(request.getDefaultMissPolicy() == null
+                ? EngagementEnums.MissPolicy.EXPIRES.name()
+                : safeMissPolicy(request.getDefaultMissPolicy()));
         plan.setDefaultCatchUpDays(request.getDefaultCatchUpDays());
         plan.setDefaultCatchUpPercent(request.getDefaultCatchUpPercent());
         plan.setScheduleMode(safeScheduleMode(request.getScheduleMode()));
@@ -578,6 +586,9 @@ public class EngagementPlanService {
         EngagementSlot slot = (request.getId() == null || request.getId().isBlank())
                 ? new EngagementSlot()
                 : slotRepository.findById(request.getId())
+                    .filter(existing -> plan.getId().equals(existing.getPlanId()))
+                    // A slot id from another plan (or another institute) must not be moved
+                    // into this one: that handed over its tasks, answer keys and tracking.
                     .orElseThrow(() -> new VacademyException("Slot not found"));
 
         slot.setPlanId(plan.getId());

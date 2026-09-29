@@ -468,8 +468,11 @@ public class EngagementLearnerService {
             // Past tab hands out today's answer (and its bonus).
             SlotState currentState = currentRun == null ? null
                     : scheduleResolver.stateOn(plan, slot, item, currentRun, now);
+            // Same while a later run is still to come (today's not open yet, or a coming
+            // day): the learner will be able to answer it then.
             boolean answerableNow = !completed
-                    && (currentState == SlotState.OPEN || currentState == SlotState.CATCH_UP);
+                    && (currentState == SlotState.OPEN || currentState == SlotState.CATCH_UP
+                        || hasRunStillToCome(plan, slot, item, today, now));
 
             // Which occurrence the completion belongs to.
             LocalDate doneRun = null;
@@ -565,6 +568,16 @@ public class EngagementLearnerService {
     }
 
     /** Next local date on/after today that the slot runs; null if it never runs again. */
+    /** A run of this slot that has not closed yet: today's before or during its window, or a later day's. */
+    private boolean hasRunStillToCome(EngagementPlan plan, EngagementSlot slot, EngagementItem item,
+                                      LocalDate today, ZonedDateTime now) {
+        if (scheduleResolver.runsOn(slot, today)) {
+            SlotState state = scheduleResolver.stateOn(plan, slot, item, today, now);
+            if (state == SlotState.UPCOMING || state == SlotState.OPEN) return true;
+        }
+        return nextRunDate(slot, today.plusDays(1)) != null;
+    }
+
     private LocalDate nextRunDate(EngagementSlot slot, LocalDate today) {
         LocalDate cursor = today.isBefore(slot.getStartDate()) ? slot.getStartDate() : today;
         for (int i = 0; i < 8; i++) {
@@ -618,13 +631,15 @@ public class EngagementLearnerService {
     public EngagementSubmitResponse submit(String itemId, String instituteId, String userId,
                                            EngagementSubmitRequest request) {
         Context ctx = loadContext(itemId, instituteId, userId);
-        rejectUnlessOpen(ctx);
         EngagementSubmitRequest req = request == null ? new EngagementSubmitRequest() : request;
 
+        // Idempotency before the window check: a retried submit that lands after the close
+        // must still hear "already done", not TASK_CLOSED for work that was saved.
         Optional<EngagementAttempt> existing = attemptRepository.findByItemIdAndUserId(itemId, userId);
         if (existing.isPresent() && isCompleted(existing.get())) {
             return buildResponse(ctx, existing.get(), instituteId, userId, true, null);
         }
+        rejectUnlessOpen(ctx);
 
         EngagementEnums.ItemType type = itemType(ctx.item);
         boolean isLate = ctx.state == SlotState.CATCH_UP;
@@ -811,6 +826,9 @@ public class EngagementLearnerService {
                 if (request.getSelectedOptionId() == null || request.getSelectedOptionId().isBlank()) {
                     return Grade.reject(EngagementRejectedException.ANSWER_REQUIRED, "An answer is required");
                 }
+                if (!isAuthoredOption(item, request.getSelectedOptionId())) {
+                    return Grade.reject(EngagementRejectedException.ANSWER_REQUIRED, "Pick one of the options");
+                }
                 boolean correct = correctOptionId.equals(request.getSelectedOptionId());
                 int points = completion + (correct ? nz(item.getCorrectPoints()) : 0);
                 return Grade.of(correct, BigDecimal.valueOf(correct ? 1 : 0), points);
@@ -873,6 +891,10 @@ public class EngagementLearnerService {
             case POLL -> {
                 if (request.getSelectedOptionId() == null || request.getSelectedOptionId().isBlank()) {
                     return Grade.reject(EngagementRejectedException.ANSWER_REQUIRED, "Pick an option");
+                }
+                if (!isAuthoredOption(item, request.getSelectedOptionId())) {
+                    // An unknown id would become its own bucket in the poll results.
+                    return Grade.reject(EngagementRejectedException.ANSWER_REQUIRED, "Pick one of the options");
                 }
                 return Grade.of(null, null, completion);
             }
@@ -1434,6 +1456,12 @@ public class EngagementLearnerService {
         return out;
     }
 
+    /** True when the id is one of the item's options (or the item lists none to check against). */
+    private boolean isAuthoredOption(EngagementItem item, String optionId) {
+        List<String> ids = optionIds(item.getPayloadJson());
+        return ids.isEmpty() || ids.contains(optionId);
+    }
+
     /** Option ids in authored order from {"options":[{"id",...}]}. */
     private List<String> optionIds(String payloadJson) {
         List<String> out = new ArrayList<>();
@@ -1522,6 +1550,11 @@ public class EngagementLearnerService {
         }
         EngagementSlot slot = slotRepository.findById(item.getSlotId())
                 .orElseThrow(() -> new VacademyException("Task not found"));
+        // Removing a day marks only the slot DELETED; its tasks stay ACTIVE rows, so the
+        // slot's status is what takes them away from learners.
+        if (!EngagementEnums.SlotStatus.ACTIVE.name().equals(slot.getStatus())) {
+            throw new VacademyException("Task not found");
+        }
         EngagementPlan plan = planRepository.findById(slot.getPlanId())
                 .orElseThrow(() -> new VacademyException("Task not found"));
 

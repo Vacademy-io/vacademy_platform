@@ -285,7 +285,13 @@ function saveCsv(data: Blob, title: string, suffix: string): void {
     const url = window.URL.createObjectURL(new Blob([data], { type: 'text/csv' }));
     const link = document.createElement('a');
     link.href = url;
-    const safeTitle = title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'engagement';
+    // Letters of any script stay (a Hindi or Arabic title was reduced to "-"); marks keep
+    // Devanagari vowel signs attached. Edge dashes trimmed so the fallback still applies.
+    const safeTitle =
+        title
+            .replace(/[^\p{L}\p{M}\p{N}]+/gu, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase() || 'engagement';
     link.download = `${safeTitle}-${suffix}.csv`;
     document.body.appendChild(link);
     link.click();

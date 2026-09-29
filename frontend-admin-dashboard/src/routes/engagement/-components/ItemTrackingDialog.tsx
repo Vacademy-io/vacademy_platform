@@ -29,6 +29,7 @@ import {
     formatNumber,
     formatPercent,
     formatSlotWindow,
+    formatTimeRange,
     formatTime,
     instituteTimeZone,
     slotLastDate,
@@ -244,6 +245,17 @@ export function ItemTrackingDialog({
     });
     const slot = slotProp ?? planQuery.data?.slots?.find((s) => s.id === item?.slotId) ?? null;
     const timeZone = timezoneProp || planQuery.data?.timezone || instituteTimeZone();
+    // A days-after-joining slot stores placeholder dates (2000-01-0N); name its days instead.
+    const slotCaption = !slot
+        ? null
+        : slot.startDay != null
+          ? [
+                (slot.endDay ?? slot.startDay) > slot.startDay
+                    ? t('composer.relative.dayRange', { from: slot.startDay, to: slot.endDay })
+                    : t('composer.relative.day', { n: slot.startDay }),
+                formatTimeRange(slot.startTime, slot.endTime, lang),
+            ].join(' · ')
+          : formatSlotWindow(slot, lang, timeZone);
 
     const tablePage = optionFilter ? 0 : page;
     const trackingQuery = useQuery({
@@ -731,9 +743,7 @@ export function ItemTrackingDialog({
                             {slot ? (
                                 <>
                                     <span aria-hidden="true">·</span>
-                                    <span className="whitespace-nowrap">
-                                        {formatSlotWindow(slot, lang, timeZone)}
-                                    </span>
+                                    <span className="whitespace-nowrap">{slotCaption}</span>
                                 </>
                             ) : planQuery.isLoading ? (
                                 <Skeleton className="h-4 w-40" />

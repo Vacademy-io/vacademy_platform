@@ -35,7 +35,10 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { loadLearnerTrackingSettings } from "@/services/learner-tracking-settings";
-import { resolvePostLoginRoute } from "@/lib/auth/post-login-redirect";
+import {
+  INSTITUTE_SELECTED_EVENT,
+  resolvePostLoginRoute,
+} from "@/lib/auth/post-login-redirect";
 import type { StudentUIType } from "@/types/student-display-settings";
 import {
   resolveDomainRouting,
@@ -493,6 +496,41 @@ const RootComponent = () => {
     } catch (e) {
       console.warn("Failed to initialize UI debug helpers", e);
     }
+
+    // The loads above ran once, on mount. If that mount came before a
+    // multi-institute learner picked an institute (full page load onto
+    // /institute-selection), getInstituteId() answered the token's first
+    // institute. Reload the same institute-keyed settings for the pick.
+    const onInstituteSelected = () => {
+      getChatbotSettings(false)
+        .then((settings) => setIsChatbotEnabled(settings?.enable === true))
+        .catch(() => setIsChatbotEnabled(false));
+      let override = "";
+      try {
+        override = localStorage.getItem(DEBUG_KEY) || "";
+      } catch {
+        /* ignore */
+      }
+      if (
+        !["vibrant", "default", "play", "cleanerPlay", "corporate"].includes(
+          override
+        )
+      ) {
+        getStudentDisplaySettings(false)
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
+          .catch(() => {
+            /* ignore */
+          });
+      }
+      void loadLearnerTrackingSettings().catch(() => {});
+    };
+    window.addEventListener(INSTITUTE_SELECTED_EVENT, onInstituteSelected);
+    return () =>
+      window.removeEventListener(INSTITUTE_SELECTED_EVENT, onInstituteSelected);
     // We intentionally skip deps here to avoid re-running in StrictMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

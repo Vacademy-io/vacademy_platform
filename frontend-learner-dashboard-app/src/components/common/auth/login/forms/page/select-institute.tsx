@@ -27,7 +27,10 @@ import {
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL, SELECT_INSTITUTE_SESSION } from "@/constants/urls";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
-import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import {
+    INSTITUTE_SELECTED_EVENT,
+    navigateAfterLogin,
+} from "@/lib/auth/post-login-redirect";
 import {
     getCurrentDomainInfo,
     resolveDomainRouting,
@@ -277,6 +280,10 @@ export function InstituteSelection() {
                 setIsSubmitting(false);
                 return;
             }
+
+            // Institute is now stored: let the root layout reload the
+            // institute-keyed settings it may have loaded before the pick.
+            window.dispatchEvent(new Event(INSTITUTE_SELECTED_EVENT));
 
             // Always redirect to dashboard after institute selection, regardless of course enrollment
             if (type) {

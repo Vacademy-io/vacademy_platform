@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { CopyShareLink } from './CopyShareLink';
 import type { Library, LibraryVideo, Section } from './search';
 import { SectionTile, VideoMeta, formatDuration, totalDuration } from './parts';
 import { trainingLocal, useTrainingLocalVersion } from './useTrainingLocal';
@@ -216,6 +217,7 @@ export function TrainingPlayer({
                             <SkipForward size={14} />
                         </MyButton>
                     ) : null}
+                    <CopyShareLink video={video} />
                 </div>
 
                 {video.topics.length ? (

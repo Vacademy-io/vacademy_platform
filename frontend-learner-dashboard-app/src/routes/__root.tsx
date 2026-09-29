@@ -29,9 +29,7 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { applyTabBranding } from "@/utils/branding";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { hasLearnerSession } from "@/lib/auth/session-guard";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { loadLearnerTrackingSettings } from "@/services/learner-tracking-settings";
@@ -122,36 +120,9 @@ const isReaderBlockedPath = (pathname: string): boolean =>
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-const isAuthenticated = async () => {
-  const token = await getTokenFromStorage(TokenKey.accessToken);
-  const studentDetails = await Preferences.get({
-    key: "StudentDetails",
-  });
-  const instituteDetails = await Preferences.get({
-    key: "InstituteDetails",
-  });
-
-  const hasToken = !isNullOrEmptyOrUndefined(token);
-  const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails?.value);
-  const hasInstituteDetails = !isNullOrEmptyOrUndefined(
-    instituteDetails?.value,
-  );
-
-  console.log(`🔍 Authentication check:`, {
-    hasToken,
-    hasStudentDetails,
-    hasInstituteDetails,
-    tokenLength: token ? token.length : 0,
-    studentDetailsLength: studentDetails?.value
-      ? studentDetails.value.length
-      : 0,
-    instituteDetailsLength: instituteDetails?.value
-      ? instituteDetails.value.length
-      : 0,
-  });
-
-  return hasToken && hasStudentDetails && hasInstituteDetails;
-};
+// Shared with the per-route guards that need the same check (see
+// lib/auth/session-guard) so "is this learner signed in?" has one definition.
+const isAuthenticated = hasLearnerSession;
 
 // Helper function to check if a route is public
 const isPublicRoute = (pathname: string): boolean => {

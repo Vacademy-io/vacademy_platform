@@ -27,7 +27,11 @@
         "sessionsCreated_one": "{{count}} सेशन बनाया गया",
         "sessionsCreated_other": "{{count}} सेशन बनाए गए",
         "rowsHaveErrorsBeforePreview": "कुछ rows में त्रुटियाँ हैं। प्रीव्यू से पहले उन्हें ठीक करें।",
-        "rowsHaveErrors": "कुछ rows में त्रुटियाँ हैं। कृपया उन्हें ठीक करें।"
+        "rowsHaveErrors": "कुछ rows में त्रुटियाँ हैं। कृपया उन्हें ठीक करें।",
+        "teachersApplied_one": "{{count}} row पर लागू किया गया",
+        "teachersApplied_other": "सभी {{count}} rows पर लागू किया गया",
+        "teachersNotMatched_one": "CSV का {{count}} शिक्षक किसी एक स्टाफ़ सदस्य से मेल नहीं खा सका — हाइलाइट किए गए शिक्षक सेल देखें।",
+        "teachersNotMatched_other": "CSV के {{count}} शिक्षक किसी एक स्टाफ़ सदस्य से मेल नहीं खा सके — हाइलाइट किए गए शिक्षक सेल देखें।"
     },
     "config": {
         "title": "कॉन्फ़िगरेशन",
@@ -102,6 +106,7 @@
             "platform": "प्लेटफ़ॉर्म",
             "link": "लिंक",
             "batches": "बैच",
+            "teacher": "शिक्षक",
             "recording": "रिकॉर्डिंग",
             "waitingRoom": "वेटिंग रूम",
             "description": "विवरण",
@@ -111,6 +116,7 @@
         "importCsv": "CSV इम्पोर्ट करें",
         "template": "टेम्पलेट",
         "batchReference": "बैच संदर्भ",
+        "teacherReference": "शिक्षक संदर्भ",
         "pasteHint": "सुझाव: टैब-सेपरेटेड rows पेस्ट करें, या CSV इम्पोर्ट करें।"
     },
     "access": {
@@ -172,7 +178,9 @@
         "unknownError": "अज्ञात त्रुटि",
         "downloadResults": "परिणाम डाउनलोड करें (CSV)",
         "stayAndRetry": "रुकें और दोबारा प्रयास करें",
-        "doneViewSessions": "पूर्ण — सेशन देखें"
+        "doneViewSessions": "पूर्ण — सेशन देखें",
+        "teachersSkipped": "ये शिक्षक इस संस्थान में नहीं मिले और छोड़ दिए गए: {{list}}",
+        "teachersAmbiguous": "ये एक से ज़्यादा स्टाफ़ सदस्यों से मेल खाते हैं, इसलिए छोड़ दिए गए: {{list}}"
     },
     "rowBatchPicker": {
         "session": "सेशन",
@@ -187,6 +195,24 @@
         "batchesSelected_one": "{{count}} बैच चुना गया",
         "batchesSelected_other": "{{count}} बैच चुने गए",
         "clear": "साफ़ करें"
+    },
+    "rowTeacherPicker": {
+        "defaultYou": "आप (डिफ़ॉल्ट)",
+        "nameAndMore": "{{name}} +{{more}}",
+        "notFound": "· नहीं मिला",
+        "ambiguous": "· {{people}} लोगों में साझा",
+        "remove": "हटाएँ",
+        "searchPlaceholder": "नाम, ईमेल या यूज़रनेम से खोजें…",
+        "clearSearch": "खोज साफ़ करें",
+        "loading": "शिक्षक लोड हो रहे हैं…",
+        "loadFailed": "संस्थान का स्टाफ़ लोड नहीं हो सका। क्लास बनाते समय CSV के ईमेल फिर भी मिलाए जाएँगे।",
+        "noMatch": "इस खोज से कोई मेल नहीं खाता।",
+        "noStaff": "इस संस्थान में कोई स्टाफ़ नहीं मिला।",
+        "emptyHint": "खाली छोड़ें तो आप ही शिक्षक होंगे।",
+        "applyToAll": "सभी rows पर लागू करें",
+        "clear": "साफ़ करें",
+        "problemCount_one": "{{count}} का मिलान नहीं हो सका — छोड़ दिया जाएगा",
+        "problemCount_other": "{{count}} का मिलान नहीं हो सका — छोड़ दिए जाएँगे"
     },
     "waitingRoomPicker": {
         "off": "बंद",

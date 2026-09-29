@@ -101,7 +101,20 @@ import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
 import { BulkCsvImportDialog } from './BulkCsvImportDialog';
-import { downloadScheduleTemplate, downloadBatchReference, downloadResultsCsv } from '../-utils/bulkCsv';
+import {
+    downloadScheduleTemplate,
+    downloadBatchReference,
+    downloadResultsCsv,
+    downloadTeacherReference,
+} from '../-utils/bulkCsv';
+import {
+    STAFF_DIRECTORY_PAGE_SIZE,
+    buildTeacherIndex,
+    problemTeacherEntries,
+    splitTeacherEntries,
+} from '../-utils/teacherDirectory';
+import { fetchEligibleOrgUsers } from '@/routes/manage-institute/teams/-services/institute-users-service';
+import { RowTeacherPicker, type TeacherDirectory } from './RowTeacherPicker';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -910,6 +923,49 @@ export function BulkScheduleGrid() {
     const INSTITUTE_ID =
         (tokenData?.authorities && Object.keys(tokenData.authorities)[0]) || '';
 
+    // Staff directory behind the Teacher column, fetched once for the whole
+    // grid rather than per row. Non-students only, the same people the
+    // single-class instructor picker offers. It is also what the CSV's
+    // teacher emails / usernames are matched against: the backend's own
+    // lookup reads every active user, students included, so it is only the
+    // fallback for when this fetch fails.
+    const teacherDirectoryQuery = useQuery({
+        queryKey: ['live-session-bulk-teacher-directory', INSTITUTE_ID],
+        queryFn: () => fetchEligibleOrgUsers(INSTITUTE_ID),
+        enabled: !!INSTITUTE_ID,
+        staleTime: 5 * 60_000,
+    });
+    const teacherDirectory = useMemo<TeacherDirectory>(() => {
+        const users = teacherDirectoryQuery.data;
+        if (users) {
+            return {
+                status: 'ready',
+                users,
+                index: buildTeacherIndex(users),
+                truncated: users.length >= STAFF_DIRECTORY_PAGE_SIZE,
+            };
+        }
+        return {
+            status: teacherDirectoryQuery.isError ? 'error' : 'loading',
+            users: [],
+            index: null,
+            truncated: false,
+        };
+    }, [teacherDirectoryQuery.data, teacherDirectoryQuery.isError]);
+
+    const applyTeachersToAllRows = useCallback(
+        (entries: string[]) => {
+            const count = form.getValues('rows')?.length ?? 0;
+            for (let i = 0; i < count; i++) {
+                form.setValue(`rows.${i}.instructorIdentifiers` as const, [...entries], {
+                    shouldDirty: true,
+                });
+            }
+            toast.success(t('toast.teachersApplied', { count }));
+        },
+        [form, t]
+    );
+
     const addRow = () =>
         append(
             blankRow(
@@ -976,6 +1032,16 @@ export function BulkScheduleGrid() {
             for (const row of rows) append(row as never);
         }
         toast.success(t('toast.importedRows', { count: rows.length }));
+        // Teacher emails / usernames that matched nobody stay on their rows,
+        // flagged in the Teacher column; say so now rather than at submit.
+        const index = teacherDirectory.index;
+        if (index) {
+            const unmatched = rows.reduce(
+                (n, r) => n + problemTeacherEntries(index, r.instructorIdentifiers ?? []).length,
+                0
+            );
+            if (unmatched > 0) toast.warning(t('toast.teachersNotMatched', { count: unmatched }));
+        }
     };
 
     const onSubmit = async (data: BulkSessionForm) => {
@@ -1159,7 +1225,14 @@ export function BulkScheduleGrid() {
                     ? (data.recordingAutoLink.destinations ?? []).filter((d) => d.chapter_id)
                     : [];
 
-            const step2PerRow = data.rows.map((row) => {
+            // Teacher entries that were left out of a row, reported on that
+            // row's result (and in the downloadable results CSV).
+            const skippedTeachersByRow = new Map<
+                number,
+                { notFound: string[]; ambiguous: string[] }
+            >();
+
+            const step2PerRow = data.rows.map((row, rowIndex) => {
                 const joinLinkForRow =
                     data.accessType === AccessType.PUBLIC
                         ? `${learnerBaseUrl}/register/live-class?sessionId={{SESSION_ID}}`
@@ -1208,16 +1281,36 @@ export function BulkScheduleGrid() {
                     rowPackageSessionIds
                 );
 
-                // Instructors from the CSV's `instructors` column, still as the
-                // admin typed them (id / email / username). The backend resolves
-                // them against the institute directory once for the whole import
-                // and reports unmatched entries as a per-row warning.
+                // Teachers: user ids picked in the grid, or the CSV's emails /
+                // usernames. With the staff directory loaded they are resolved
+                // here; entries that match nobody (or two people) are left out
+                // and reported on the row's result. Without the directory the
+                // raw entries go to the backend, which resolves them itself and
+                // reports what it couldn't match. The same goes for misses
+                // against a directory that came back cut off at its page size.
                 //
-                // Only sent when the row actually named someone: an empty list
-                // would mean "remove all instructors" and would wipe the creator
-                // the backend seeds for rows that named nobody.
-                if ((row.instructorIdentifiers?.length ?? 0) > 0) {
-                    rowStep2.instructor_identifiers = row.instructorIdentifiers;
+                // Only sent when the row names someone: an empty list would mean
+                // "remove all instructors" and would wipe the creator the backend
+                // seeds for rows that named nobody.
+                const teacherEntries = row.instructorIdentifiers ?? [];
+                if (teacherEntries.length > 0) {
+                    const index = teacherDirectory.index;
+                    if (index) {
+                        const { userIds, unmatched, ambiguous } = splitTeacherEntries(
+                            index,
+                            teacherEntries
+                        );
+                        if (userIds.length > 0) rowStep2.instructor_user_ids = userIds;
+                        const notFound = teacherDirectory.truncated ? [] : unmatched;
+                        if (teacherDirectory.truncated && unmatched.length > 0) {
+                            rowStep2.instructor_identifiers = unmatched;
+                        }
+                        if (notFound.length > 0 || ambiguous.length > 0) {
+                            skippedTeachersByRow.set(rowIndex, { notFound, ambiguous });
+                        }
+                    } else {
+                        rowStep2.instructor_identifiers = teacherEntries;
+                    }
                 }
 
                 return rowStep2;
@@ -1225,13 +1318,36 @@ export function BulkScheduleGrid() {
 
             // Throttled creation: send rows in small chunks with a short pause
             // between each so the server isn't hit with everything at once.
-            const response = await createLiveSessionsChunked(sessions, step2PerRow, {
+            const chunkedResponse = await createLiveSessionsChunked(sessions, step2PerRow, {
                 // One session per request so the UI can count progress per class
                 // ("Scheduling 1/200…"). Total time is backend-bound, so this
                 // doesn't slow things down meaningfully vs larger chunks.
                 chunkSize: 1,
                 onProgress: (done, total) => setCreateProgress({ done, total }),
             });
+            const response = {
+                ...chunkedResponse,
+                results: chunkedResponse.results.map((r) => {
+                    const skipped = skippedTeachersByRow.get(r.index);
+                    if (!r.success || !skipped) return r;
+                    const warnings = [...(r.warnings ?? [])];
+                    if (skipped.notFound.length > 0) {
+                        warnings.push(
+                            t('resultDialog.teachersSkipped', {
+                                list: skipped.notFound.join(', '),
+                            })
+                        );
+                    }
+                    if (skipped.ambiguous.length > 0) {
+                        warnings.push(
+                            t('resultDialog.teachersAmbiguous', {
+                                list: skipped.ambiguous.join(', '),
+                            })
+                        );
+                    }
+                    return { ...r, warnings };
+                }),
+            };
 
             const successfulResults = response.results.filter(
                 (r) => r.success && r.session_id
@@ -2085,6 +2201,9 @@ export function BulkScheduleGrid() {
                                     <TableHead className="min-w-[160px] text-[11px] uppercase tracking-wide text-neutral-500">
                                         {t('sessionsSection.columns.batches')}
                                     </TableHead>
+                                    <TableHead className="min-w-44 text-2xs uppercase tracking-wide text-neutral-500">
+                                        {t('sessionsSection.columns.teacher')}
+                                    </TableHead>
                                     {autoUploadConfigurable && (
                                         <TableHead className="min-w-28 text-2xs uppercase tracking-wide text-neutral-500">
                                             {t('sessionsSection.columns.recording')}
@@ -2117,6 +2236,8 @@ export function BulkScheduleGrid() {
                                     showRecordingDest={autoUploadConfigurable}
                                     onOpenRecordingDest={setRecordingDestRowIndex}
                                     resolveRowBatches={resolveRowBatches}
+                                    teacherDirectory={teacherDirectory}
+                                    onApplyTeachersToAll={applyTeachersToAllRows}
                                     disableRemove={fields.length === 1}
                                     onDuplicate={duplicateRow}
                                     onRemove={remove}
@@ -2170,6 +2291,16 @@ export function BulkScheduleGrid() {
                                 className="h-8 gap-1.5"
                             >
                                 <DownloadSimple size={14} /> {t('sessionsSection.batchReference')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={teacherDirectory.status !== 'ready'}
+                                onClick={() => downloadTeacherReference(teacherDirectory.users)}
+                                className="h-8 gap-1.5"
+                            >
+                                <DownloadSimple size={14} /> {t('sessionsSection.teacherReference')}
                             </Button>
                         </div>
                         <span className="hidden text-xs text-neutral-500 sm:inline">
@@ -3513,6 +3644,9 @@ type RowEditorProps = {
     resolveRowBatches: (
         selectedLevels: Array<{ courseId: string; sessionId: string; levelId: string }>
     ) => DestinationBatch[];
+    /** Staff directory for the Teacher cell — owned by the parent so it is fetched once. */
+    teacherDirectory: TeacherDirectory;
+    onApplyTeachersToAll: (entries: string[]) => void;
     disableRemove: boolean;
     onDuplicate: (index: number) => void;
     onRemove: (index: number) => void;
@@ -3539,6 +3673,8 @@ const RowEditor = memo(function RowEditor({
     showRecordingDest,
     onOpenRecordingDest,
     resolveRowBatches,
+    teacherDirectory,
+    onApplyTeachersToAll,
     disableRemove,
     onDuplicate,
     onRemove,
@@ -3729,6 +3865,20 @@ const RowEditor = memo(function RowEditor({
                         {rowErrors.selectedLevels.message as string}
                     </p>
                 )}
+            </TableCell>
+            <TableCell>
+                <Controller
+                    control={control}
+                    name={`rows.${index}.instructorIdentifiers` as const}
+                    render={({ field }) => (
+                        <RowTeacherPicker
+                            value={field.value ?? []}
+                            onChange={field.onChange}
+                            directory={teacherDirectory}
+                            onApplyToAll={onApplyTeachersToAll}
+                        />
+                    )}
+                />
             </TableCell>
             {showRecordingDest && (
                 <TableCell>

@@ -43,7 +43,19 @@
         "sessionsCreated_many": "تم إنشاء {{count}} جلسة",
         "sessionsCreated_other": "تم إنشاء {{count}} جلسة",
         "rowsHaveErrorsBeforePreview": "تحتوي بعض الصفوف على أخطاء. يرجى إصلاحها قبل المعاينة.",
-        "rowsHaveErrors": "تحتوي بعض الصفوف على أخطاء. يرجى إصلاحها."
+        "rowsHaveErrors": "تحتوي بعض الصفوف على أخطاء. يرجى إصلاحها.",
+        "teachersApplied_zero": "لم يتم التطبيق على أي صف",
+        "teachersApplied_one": "تم التطبيق على صف واحد",
+        "teachersApplied_two": "تم التطبيق على صفين",
+        "teachersApplied_few": "تم التطبيق على {{count}} صفوف",
+        "teachersApplied_many": "تم التطبيق على {{count}} صفًا",
+        "teachersApplied_other": "تم التطبيق على {{count}} صف",
+        "teachersNotMatched_zero": "تمت مطابقة كل المعلمين في ملف CSV.",
+        "teachersNotMatched_one": "تعذّرت مطابقة معلّم واحد في ملف CSV مع موظف واحد — راجع خلايا المعلّم المميّزة.",
+        "teachersNotMatched_two": "تعذّرت مطابقة معلّمَين في ملف CSV مع موظف واحد — راجع خلايا المعلّم المميّزة.",
+        "teachersNotMatched_few": "تعذّرت مطابقة {{count}} معلّمين في ملف CSV مع موظف واحد — راجع خلايا المعلّم المميّزة.",
+        "teachersNotMatched_many": "تعذّرت مطابقة {{count}} معلّمًا في ملف CSV مع موظف واحد — راجع خلايا المعلّم المميّزة.",
+        "teachersNotMatched_other": "تعذّرت مطابقة {{count}} معلّم في ملف CSV مع موظف واحد — راجع خلايا المعلّم المميّزة."
     },
     "config": {
         "title": "الإعدادات",
@@ -118,6 +130,7 @@
             "platform": "المنصة",
             "link": "الرابط",
             "batches": "الدفعات",
+            "teacher": "المعلّم",
             "recording": "التسجيل",
             "waitingRoom": "غرفة الانتظار",
             "description": "الوصف",
@@ -127,6 +140,7 @@
         "importCsv": "استيراد CSV",
         "template": "القالب",
         "batchReference": "مرجع الدفعات",
+        "teacherReference": "مرجع المعلمين",
         "pasteHint": "نصيحة: الصق صفوفًا مفصولة بعلامات جدولة، أو استورد ملف CSV."
     },
     "access": {
@@ -192,7 +206,9 @@
         "unknownError": "خطأ غير معروف",
         "downloadResults": "تحميل النتائج (CSV)",
         "stayAndRetry": "البقاء وإعادة المحاولة",
-        "doneViewSessions": "تم — عرض الجلسات"
+        "doneViewSessions": "تم — عرض الجلسات",
+        "teachersSkipped": "لم يتم العثور على هؤلاء المعلمين في هذه المؤسسة وتم تخطيهم: {{list}}",
+        "teachersAmbiguous": "هذه تطابق أكثر من موظف واحد وتم تخطيها: {{list}}"
     },
     "rowBatchPicker": {
         "session": "الجلسة",
@@ -215,6 +231,28 @@
         "batchesSelected_many": "تم تحديد {{count}} دفعة",
         "batchesSelected_other": "تم تحديد {{count}} دفعة",
         "clear": "مسح"
+    },
+    "rowTeacherPicker": {
+        "defaultYou": "أنت (افتراضي)",
+        "nameAndMore": "{{name}} +{{more}}",
+        "notFound": "· غير موجود",
+        "ambiguous": "· مشترك بين {{people}} أشخاص",
+        "remove": "إزالة",
+        "searchPlaceholder": "ابحث بالاسم أو البريد الإلكتروني أو اسم المستخدم…",
+        "clearSearch": "مسح البحث",
+        "loading": "جارٍ تحميل المعلمين…",
+        "loadFailed": "تعذّر تحميل موظفي المؤسسة. ستتم مطابقة رسائل البريد الإلكتروني من ملف CSV عند إنشاء الفصول.",
+        "noMatch": "لا أحد يطابق هذا البحث.",
+        "noStaff": "لا يوجد موظفون في هذه المؤسسة.",
+        "emptyHint": "اتركه فارغًا لتكون أنت المعلّم.",
+        "applyToAll": "استخدم لكل الصفوف",
+        "clear": "مسح",
+        "problemCount_zero": "تمت مطابقة الكل",
+        "problemCount_one": "تعذّرت مطابقة واحد — سيتم تخطيه",
+        "problemCount_two": "تعذّرت مطابقة اثنين — سيتم تخطيهما",
+        "problemCount_few": "تعذّرت مطابقة {{count}} — سيتم تخطيها",
+        "problemCount_many": "تعذّرت مطابقة {{count}} — سيتم تخطيها",
+        "problemCount_other": "تعذّرت مطابقة {{count}} — سيتم تخطيها"
     },
     "waitingRoomPicker": {
         "off": "معطّلة",

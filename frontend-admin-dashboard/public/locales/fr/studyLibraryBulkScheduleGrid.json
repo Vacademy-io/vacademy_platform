@@ -31,7 +31,13 @@
         "sessionsCreated_many": "{{count}} sessions créées",
         "sessionsCreated_other": "{{count}} sessions créées",
         "rowsHaveErrorsBeforePreview": "Certaines lignes contiennent des erreurs. Corrigez-les avant l'aperçu.",
-        "rowsHaveErrors": "Certaines lignes contiennent des erreurs. Veuillez les corriger."
+        "rowsHaveErrors": "Certaines lignes contiennent des erreurs. Veuillez les corriger.",
+        "teachersApplied_one": "Appliqué à {{count}} ligne",
+        "teachersApplied_many": "Appliqué aux {{count}} lignes",
+        "teachersApplied_other": "Appliqué aux {{count}} lignes",
+        "teachersNotMatched_one": "{{count}} enseignant du CSV n'a pas pu être associé à un seul membre du personnel — vérifiez les cellules Enseignant signalées.",
+        "teachersNotMatched_many": "{{count}} enseignants du CSV n'ont pas pu être associés à un seul membre du personnel — vérifiez les cellules Enseignant signalées.",
+        "teachersNotMatched_other": "{{count}} enseignants du CSV n'ont pas pu être associés à un seul membre du personnel — vérifiez les cellules Enseignant signalées."
     },
     "config": {
         "title": "Configuration",
@@ -106,6 +112,7 @@
             "platform": "Plateforme",
             "link": "Lien",
             "batches": "Groupes",
+            "teacher": "Enseignant",
             "recording": "Enregistrement",
             "waitingRoom": "Salle d'attente",
             "description": "Description",
@@ -115,6 +122,7 @@
         "importCsv": "Importer un CSV",
         "template": "Modèle",
         "batchReference": "Référence des groupes",
+        "teacherReference": "Référence des enseignants",
         "pasteHint": "Astuce : collez des lignes séparées par des tabulations, ou importez un CSV."
     },
     "access": {
@@ -177,7 +185,9 @@
         "unknownError": "Erreur inconnue",
         "downloadResults": "Télécharger les résultats (CSV)",
         "stayAndRetry": "Rester et réessayer",
-        "doneViewSessions": "Terminé — voir les sessions"
+        "doneViewSessions": "Terminé — voir les sessions",
+        "teachersSkipped": "Enseignants introuvables dans cet établissement, ignorés : {{list}}",
+        "teachersAmbiguous": "Ces identifiants correspondent à plusieurs membres du personnel et ont été ignorés : {{list}}"
     },
     "rowBatchPicker": {
         "session": "Session",
@@ -194,6 +204,25 @@
         "batchesSelected_many": "{{count}} groupes sélectionnés",
         "batchesSelected_other": "{{count}} groupes sélectionnés",
         "clear": "Effacer"
+    },
+    "rowTeacherPicker": {
+        "defaultYou": "Vous (par défaut)",
+        "nameAndMore": "{{name}} +{{more}}",
+        "notFound": "· introuvable",
+        "ambiguous": "· partagé par {{people}} personnes",
+        "remove": "Retirer",
+        "searchPlaceholder": "Rechercher par nom, e-mail ou identifiant…",
+        "clearSearch": "Effacer la recherche",
+        "loading": "Chargement des enseignants…",
+        "loadFailed": "Impossible de charger le personnel de l'établissement. Les e-mails d'un CSV seront tout de même associés à la création des classes.",
+        "noMatch": "Personne ne correspond à cette recherche.",
+        "noStaff": "Aucun membre du personnel dans cet établissement.",
+        "emptyHint": "Laissez vide et vous serez l'enseignant.",
+        "applyToAll": "Utiliser pour toutes les lignes",
+        "clear": "Effacer",
+        "problemCount_one": "{{count}} non associé — sera ignoré",
+        "problemCount_many": "{{count}} non associés — seront ignorés",
+        "problemCount_other": "{{count}} non associés — seront ignorés"
     },
     "waitingRoomPicker": {
         "off": "Désactivée",

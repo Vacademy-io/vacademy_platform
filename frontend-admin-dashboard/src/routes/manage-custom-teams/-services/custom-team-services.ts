@@ -253,13 +253,25 @@ export const getSubOrgsWithDetails = async (
     };
 };
 
+// Global role rows seeded in 2024 that nothing uses any more. "Admin" (id 1) is a
+// near-duplicate of the real "ADMIN" (id 5): both render as "Admin" in pickers, and
+// anyone given id 1 lands on a stripped admin dashboard because the FE gates on
+// 'ADMIN' case-sensitively. Matched by exact name — role_name is unique, so these
+// strings can never collide with ADMIN or a custom role. The auth service filters
+// the same list; this keeps them hidden regardless of deploy order.
+export const LEGACY_ROLE_NAMES = ['Admin', 'User', 'Moderator', 'Guest'];
+
 export const getAllRoles = async () => {
     const instituteId = getCurrentInstituteId();
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: `${ROLES_BASE}/${instituteId}/roles`,
     });
-    return response.data;
+    return Array.isArray(response.data)
+        ? response.data.filter(
+              (role: { name?: string }) => !LEGACY_ROLE_NAMES.includes(role?.name ?? '')
+          )
+        : response.data;
 };
 
 export const createCustomRole = async (payload: CreateRoleDTO) => {

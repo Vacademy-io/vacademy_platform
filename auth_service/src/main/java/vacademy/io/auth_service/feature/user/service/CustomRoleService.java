@@ -104,9 +104,17 @@ public class CustomRoleService {
         roleRepository.delete(role);
     }
 
+    // Global rows seeded in 2024 that are no longer used. "Admin" (id 1) duplicates the
+    // real "ADMIN" (id 5) and every one of them showed up in the role pickers, so admins
+    // kept assigning them. Exact-case match: role_name is unique, so these never hit
+    // ADMIN or an institute's custom role.
+    private static final Set<String> LEGACY_ROLE_NAMES = Set.of("Admin", "User", "Moderator", "Guest");
+
     public List<CustomRoleDTO> getRolesForInstitute(String instituteId) {
         // System roles have institute_id IS NULL
-        List<Role> systemRoles = roleRepository.findAllByInstituteIdIsNull();
+        List<Role> systemRoles = roleRepository.findAllByInstituteIdIsNull().stream()
+                .filter(role -> !LEGACY_ROLE_NAMES.contains(role.getName()))
+                .collect(Collectors.toList());
         List<Role> customRoles = roleRepository.findAllByInstituteId(instituteId);
 
         List<Role> allRoles = new java.util.ArrayList<>(systemRoles);

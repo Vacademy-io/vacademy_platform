@@ -442,14 +442,14 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
-                subItem: sidebarT('sidebar:managePayments'),
-                subItemLink: '/manage-payments',
-                subItemId: 'manage-payments-sub',
-            },
-            {
                 subItem: sidebarT('sidebar:paymentDashboard'),
                 subItemLink: '/payment-dashboard',
                 subItemId: 'payment-dashboard-sub',
+            },
+            {
+                subItem: sidebarT('sidebar:managePayments'),
+                subItemLink: '/manage-payments',
+                subItemId: 'manage-payments-sub',
             },
             {
                 subItem: sidebarT('sidebar:manageExpiry'),

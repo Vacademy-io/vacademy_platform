@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.domain_routing.service.LearnerPortalUrlResolver;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPage;
@@ -28,6 +30,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentP
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 
 import org.springframework.util.StringUtils;
 
@@ -72,6 +75,12 @@ public class ProductPageService {
     private InstituteSettingService instituteSettingService;
     private CouponValidationService couponValidationService;
 
+    @Autowired
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private LearnerPortalUrlResolver learnerPortalUrlResolver;
+
     // -------------------------------------------------------------------------
     // Admin CRUD
     // -------------------------------------------------------------------------
@@ -90,7 +99,7 @@ public class ProductPageService {
         saveMappings(page, request.getMappings());
 
         String shortUrl = shortUrlManagementService.createShortUrl(
-                buildLearnerUrl(page.getCode()), SOURCE_TYPE, page.getId(), instituteId);
+                buildLearnerUrl(page.getCode(), instituteId), SOURCE_TYPE, page.getId(), instituteId);
         page.setShortUrl(shortUrl);
         page = coursePageRepository.save(page);
 
@@ -678,10 +687,15 @@ public class ProductPageService {
         return code;
     }
 
-    private String buildLearnerUrl(String code) {
-        // Resolved at runtime; placeholder value — ShortUrlManagementService fetches
-        // institute base URL
-        return "/product-pages/" + code;
+    /**
+     * Where the page's short link sends people. Must be absolute: a bare "/product-pages/x" is
+     * resolved against the short-link host (u.vacademy.io) and 404s. instituteId is always
+     * appended — the shared learner.vacademy.io portal can't tell institutes apart by host.
+     */
+    private String buildLearnerUrl(String code, String instituteId) {
+        Institute institute = instituteRepository.findById(instituteId).orElse(null);
+        return learnerPortalUrlResolver.resolveBaseUrl(instituteId, institute)
+                + "/product-pages/" + code + "?instituteId=" + instituteId;
     }
 
     double computeDiscount(AppliedCouponDiscount discount, double totalAmount) {

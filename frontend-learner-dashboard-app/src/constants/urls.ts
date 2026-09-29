@@ -216,6 +216,11 @@ export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 
+// Where a learner should land once their password is set, when their coursework lives on a
+// connected WordPress/LearnDash site rather than in Vacademy. Takes no userId - it answers
+// only for the caller, from their token.
+export const LEARNER_LMS_LANDING = `${BASE_URL}/admin-core-service/learner/lms/v1/landing`;
+
 // User enrollment check API endpoint (expects POST request with empty body)
 export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-details/by-email`;
 

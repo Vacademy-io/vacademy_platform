@@ -23,9 +23,11 @@ import {
 } from '@/components/ui/select';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
-import { AiAgentPromptAssistant } from '@/routes/settings/-components/AiAgentPromptAssistant';
+import {
+    AiAgentPromptAssistant,
+    type AgentAssistUpdate,
+} from '@/routes/settings/-components/AiAgentPromptAssistant';
 import { SendRulesEditor } from './send-rules-editor';
-import type { AssistDerived } from '@/routes/settings/-services/ai-agent-assist';
 import {
     DEFAULT_SAMPLE_TEXT,
     EXPRESSIVENESS_OPTIONS,
@@ -36,7 +38,6 @@ import {
     resolveTtsModel,
     voicesForModel,
     patchForModelChange,
-
     fetchVoices,
     saveAgent,
     voicePreviewUrl,
@@ -224,9 +225,7 @@ export function AiAgentEditorDialog({
                         <Select
                             value={ttsModel}
                             onValueChange={(v) =>
-                                patch(
-                                    patchForModelChange(v as TtsModelId, draft.voice, allVoices)
-                                )
+                                patch(patchForModelChange(v as TtsModelId, draft.voice, allVoices))
                             }
                         >
                             <SelectTrigger>
@@ -242,11 +241,11 @@ export function AiAgentEditorDialog({
                         </Select>
                         <p className="text-caption text-neutral-500">
                             {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
-                                {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
-                                    <span className="mt-0.5 block font-medium text-neutral-700">
-                                        {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
-                                    </span>
-                                )}
+                            {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
+                                <span className="mt-0.5 block font-medium text-neutral-700">
+                                    {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
+                                </span>
+                            )}
                         </p>
                     </div>
                     <div className="space-y-1.5">
@@ -416,17 +415,14 @@ export function AiAgentEditorDialog({
                     instituteId={instituteId}
                     agentId={draft.id}
                     prompt={draft.systemPrompt ?? ''}
-                    language={draft.language}
-                    onPromptChange={(p) => patch({ systemPrompt: p })}
-                    onApplyDerived={(d: AssistDerived) =>
-                        patch({
-                            ...(d.opening_line ? { openingLine: d.opening_line } : {}),
-                            ...(d.extraction_questions?.length
-                                ? { extractionQuestions: d.extraction_questions }
-                                : {}),
-                            ...(d.dispositions?.length ? { dispositions: d.dispositions } : {}),
-                        })
-                    }
+                    fields={{
+                        agentName: draft.name,
+                        language: draft.language,
+                        openingLine: draft.openingLine,
+                        extractionQuestions: draft.extractionQuestions,
+                        dispositions: draft.dispositions,
+                    }}
+                    onApply={(u: AgentAssistUpdate) => patch(u)}
                 />
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

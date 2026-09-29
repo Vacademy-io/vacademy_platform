@@ -30,23 +30,43 @@
         "useButton": "Use suggested opening line, questions & outcomes"
     },
     "toasts": {
-        "draftReady": "Draft ready — review the score and refine",
-        "suggestionsApplied": "Suggestions applied — prompt updated and re-scored",
         "derivedApplied": "Opening line, questions and outcomes filled in",
-        "revisionApplied": "Revised prompt applied — remember to Save"
+        "applied": "Updated prompt, opening line, questions and outcomes — remember to Save"
     },
     "errors": {
         "insufficientCredits": "Not enough AI credits",
-        "genericFailure": "The AI assistant failed — retry"
+        "genericFailure": "The AI assistant failed — retry",
+        "timeout": "The AI assistant is taking too long — please retry"
     },
     "feedback": {
         "toggle": "Improve from call feedback",
         "placeholder": "e.g. It gives up too easily when someone says 'email me'. Callers asked about fees and it had no answer.",
         "hint": "The assistant also reads this agent's recent real calls (transcripts, outcomes) to ground the revision.",
         "revising": "Revising…",
-        "action": "Suggest revision",
-        "proposedRevision": "Proposed revision (score {{score}})",
-        "applyRevision": "Apply revision",
+        "action": "Suggest revision"
+    },
+    "progress": {
+        "working": "Working… {{seconds}}s. Long prompts can take a few minutes; it keeps running if you close this."
+    },
+    "proposal": {
+        "title": "Proposed update (score {{score}})",
+        "willUpdate": "Apply all updates these together:",
+        "openingLine": "Opening line",
+        "questions": "Questions to find out",
+        "outcomes": "Call outcomes",
+        "unchanged": "unchanged",
+        "prompt": "System prompt: {{before}} → {{after}} characters",
+        "applyAll": "Apply all",
         "discard": "Discard"
+    },
+    "lint": {
+        "title": "Things that break on live calls"
+    },
+    "regenerate": {
+        "label": "Regenerate with my notes",
+        "placeholder": "e.g. Ask about the scholarship test before fees. Keep it shorter. Offer a counsellor callback instead of a demo.",
+        "hint": "Rewrites the prompt, opening line, questions and outcomes together. Keeps your facts unless your notes change them, and reads this agent's recent calls.",
+        "running": "Regenerating…",
+        "action": "Regenerate"
     }
 }

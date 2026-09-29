@@ -58,7 +58,12 @@ interface InstituteOAuthClientResponse {
  * Google only verifies a brand when a project owner has verified every authorized domain.
  */
 export const PLATFORM_VERIFICATION_ACCOUNT = 'developer@vidyayatan.com';
-export const GOOGLE_SIGN_IN_GUIDE_PDF = `${import.meta.env.BASE_URL}guides/google-sign-in-branding-guide.pdf`;
+/**
+ * On the public media CDN (bucket vacademy-media-storage-public, immutable cache). The CDN cannot
+ * be invalidated, so a new version of the guide goes to a new dated key and this URL moves with it.
+ */
+export const GOOGLE_SIGN_IN_GUIDE_PDF =
+    'https://d1om4dxj9e7kkd.cloudfront.net/guides/google-sign-in-branding-guide-2026-09-29.pdf';
 const DEFAULT_REDIRECT_URI = 'https://backend-stage.vacademy.io/login/oauth2/code/google';
 const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
 

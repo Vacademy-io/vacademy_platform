@@ -17,9 +17,11 @@ import {
   endTutorSession,
   getTutorAvatarToken,
   getTutorChapterSlides,
+  getTutorCourseOutline,
   getTutorDemoAvatarToken,
   startTutorSession,
   type TutorChapterSlide,
+  type TutorOutlineChapter,
   type TutorStartResponse,
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
@@ -106,6 +108,10 @@ function TutorPage() {
   const [check, setCheck] = useState<TutorCheckEvent | null>(null);
   const [awaiting, setAwaiting] = useState<"continue" | "answer" | "done" | null>(null);
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
+  // Every chapter of the course: the rail and "Next" cross chapters with it.
+  const [courseOutline, setCourseOutline] = useState<TutorOutlineChapter[]>([]);
+  // Read by socket callbacks, which must see the latest list, not a stale render's.
+  const courseSlidesRef = useRef<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
   const speakOnRef = useRef(true);
   speakOnRef.current = speakOn;
@@ -558,11 +564,13 @@ function TutorPage() {
       setAwaiting(null);
       setCheck(null);
       const slideType = currentSlideType();
-      const current = chapterSlides.find((s) => s.slide_id === ev.slide_id);
+      const current = courseSlidesRef.current.find((s) => s.slide_id === ev.slide_id);
+      // The slide's own chapter first: after moving to another chapter from the
+      // rail, the chapter in the URL is the one the lesson STARTED in.
       const ids = {
-        chapterId: search.chapterId || current?.chapter_id || undefined,
-        moduleId: search.moduleId || current?.module_id || undefined,
-        subjectId: search.subjectId || current?.subject_id || undefined,
+        chapterId: current?.chapter_id || search.chapterId || undefined,
+        moduleId: current?.module_id || search.moduleId || undefined,
+        subjectId: current?.subject_id || search.subjectId || undefined,
       };
       try {
         if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
@@ -608,7 +616,7 @@ function TutorPage() {
   });
 
   const currentSlideType = () =>
-    chapterSlides.find((s) => s.slide_id === currentSlideRef.current)?.source_type || "DOCUMENT";
+    courseSlidesRef.current.find((s) => s.slide_id === currentSlideRef.current)?.source_type || "DOCUMENT";
 
   // ── mic ──
   const recorder = useVoiceRecorder({
@@ -763,11 +771,15 @@ function TutorPage() {
     setReadyAt(null);
     setGate(false);
     try {
-      const [b, slides] = await Promise.all([
+      const [b, slides, outlineRes] = await Promise.all([
         isDemo
           ? (guestRef.current ? Promise.resolve(guestRef.current.boot) : Promise.reject(new Error("Your free lesson has expired. Start again from tutezy.ai.")))
           : startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
         search.chapterId && !isDemo ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+        // Optional: without it the rail falls back to this chapter's slides.
+        !isDemo && search.packageSessionId
+          ? getTutorCourseOutline(search.packageSessionId).catch(() => [] as TutorOutlineChapter[])
+          : Promise.resolve([] as TutorOutlineChapter[]),
       ]);
       if (seq !== bootSeq.current) {
         // The page moved on while the request was in flight: close what we opened.
@@ -778,6 +790,7 @@ function TutorPage() {
       setTopics(b.topics ?? []);
       setSlideTitle(b.slide_title || "");
       setChapterSlides(slides);
+      setCourseOutline(outlineRes);
       currentSlideRef.current = b.slide_id;
       sessionRef.current = b.tutor_session_id;
       socket.connect(b.socket_path);
@@ -830,10 +843,23 @@ function TutorPage() {
     () => chapterSlides.map((s) => ({ ...s, current: s.slide_id === (state?.slide_id ?? boot?.slide_id) })),
     [chapterSlides, state?.slide_id, boot?.slide_id],
   );
+  // The whole course in order, each slide carrying its chapter lineage; falls
+  // back to this chapter's slides when the outline is unavailable.
+  const courseSlides = useMemo<TutorChapterSlide[]>(
+    () =>
+      courseOutline.length > 0
+        ? courseOutline.flatMap((ch) =>
+            ch.slides.map((sl) => ({ ...sl, plan_id: null, chapter_id: ch.chapter_id, module_id: ch.module_id, subject_id: ch.subject_id })),
+          )
+        : chapterSlides,
+    [courseOutline, chapterSlides],
+  );
+  courseSlidesRef.current = courseSlides;
+  // "Next" continues into the next chapter instead of stopping at the chapter's end.
   const nextTeachable = useMemo(() => {
-    const idx = chapterSlides.findIndex((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id));
-    return chapterSlides.slice(idx + 1).find((s) => s.teachable) || null;
-  }, [chapterSlides, state?.slide_id, boot?.slide_id]);
+    const idx = courseSlides.findIndex((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id));
+    return courseSlides.slice(idx + 1).find((s) => s.teachable) || null;
+  }, [courseSlides, state?.slide_id, boot?.slide_id]);
 
   const goToSlide = (slideId: string) => {
     stopAudio();
@@ -883,7 +909,7 @@ function TutorPage() {
     );
   }
 
-  const title = slideTitle || chapterSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson";
+  const title = slideTitle || courseSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson";
   const progress = state?.progress ?? boot?.progress ?? { done: 0, total: 1, percent: 0 };
   const lessonOver = phase === "done" && !audioBusy();
 
@@ -896,6 +922,8 @@ function TutorPage() {
       done={progress.done}
       total={progress.total}
       nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
       onPickSlide={(id) => {
         setOutlineOpen(false);
         goToSlide(id);
@@ -970,6 +998,8 @@ function TutorPage() {
               done={progress.done}
               total={progress.total}
               nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
               onPickSlide={goToSlide}
               onBack={endAndLeave}
               collapsed
@@ -984,6 +1014,8 @@ function TutorPage() {
               done={progress.done}
               total={progress.total}
               nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
               onPickSlide={goToSlide}
               onBack={endAndLeave}
               onToggleCollapse={toggleOutline}

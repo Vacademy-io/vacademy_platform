@@ -62,11 +62,19 @@ export const formatCompact = (amount: number, currency: string | null | undefine
     return formatMoney(n, cur, { notation: 'compact', maximumFractionDigits: 1 });
 };
 
-/** Exact amount for tooltips and tables. */
-export const formatFull = (amount: number, currency: string | null | undefined): string =>
-    formatMoney(Number.isFinite(amount) ? amount : 0, (currency || 'INR').toUpperCase(), {
-        maximumFractionDigits: 0,
-    });
+/** Exact amount for tooltips and tables; rupees in Indian grouping (₹4,27,000). */
+export const formatFull = (amount: number, currency: string | null | undefined): string => {
+    const cur = (currency || 'INR').toUpperCase();
+    const n = Number.isFinite(amount) ? amount : 0;
+    if (cur === 'INR') {
+        return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            maximumFractionDigits: 0,
+        }).format(n);
+    }
+    return formatMoney(n, cur, { maximumFractionDigits: 0 });
+};
 
 /** Change from previous to current in percent, or null when there is nothing to compare with. */
 export const percentChange = (
@@ -84,10 +92,34 @@ export const collectionRate = (collectedAllTime: number, outstanding: number): n
     return total > 0 ? (collectedAllTime / total) * 100 : null;
 };
 
-/** "Pre-Sea DNS · Level 1 · 2026" — the batch's course, level and session, whichever exist. */
+/**
+ * Courses without levels or sessions get placeholder ones named "default" / "DEFAULT" — they
+ * mean nothing to an admin, so they are never shown.
+ */
+export const isPlaceholderName = (name: string | null | undefined): boolean =>
+    !name || /^default$/i.test(name.trim());
+
+/** A batch's level and session, leaving out placeholder names; empty when there are none. */
+export const batchParts = (level?: string | null, session?: string | null): string =>
+    [level, session].filter((n) => !isPlaceholderName(n)).join(' · ');
+
+/**
+ * What a batch is called on the page: its level and session ("Class 12 · 2026-27"), or the
+ * course name when those are placeholders.
+ */
 export const batchLabel = (b: DashboardBatchRow): string => {
     if (!b.package_session_id) return 'Not linked to a batch';
-    return [b.level_name, b.session_name].filter(Boolean).join(' · ') || 'Batch';
+    return batchParts(b.level_name, b.session_name) || b.package_name || 'Batch';
+};
+
+/**
+ * Financial years worth drawing: from the first one with any money, but always at least the
+ * last two so the current year has something to stand next to.
+ */
+export const visibleYears = <T extends { collected: number }>(years: T[]): T[] => {
+    const first = years.findIndex((y) => y.collected > 0);
+    const from = first < 0 ? years.length - 2 : Math.min(first, years.length - 2);
+    return years.slice(Math.max(0, from));
 };
 
 export interface CourseRow {

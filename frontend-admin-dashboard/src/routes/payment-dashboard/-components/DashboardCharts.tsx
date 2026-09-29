@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
+    Area,
+    AreaChart,
     Bar,
     BarChart,
     CartesianGrid,
@@ -24,6 +26,7 @@ import {
     heatLevel,
     monthLabel,
     percentChange,
+    visibleYears,
 } from '../-utils/dashboardMath';
 
 // Theme tokens as CSS values, so charts follow the institute's own colours.
@@ -34,6 +37,89 @@ const MUTED = 'hsl(var(--muted-foreground))';
 const GRID = 'hsl(var(--border))';
 
 const axisTick = { fill: MUTED, fontSize: 11 };
+
+/**
+ * The hero card's trend: money collected in each of the last 12 months as a filled area, with the
+ * same months a year earlier as a dashed line for scale.
+ */
+export function CollectedTrend({
+    months,
+    currency,
+}: {
+    months: DashboardSeriesPoint[];
+    currency: string | null;
+}) {
+    const last12 = months.slice(-12);
+    const prior12 = months.slice(-24, -12);
+    const data = last12.map((p, i) => ({
+        label: monthLabel(p.bucket),
+        full: monthLabel(p.bucket, true),
+        current: p.collected,
+        previous: prior12[i]?.collected ?? 0,
+    }));
+    const hasPrevious = data.some((d) => d.previous > 0);
+    return (
+        <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+                    <defs>
+                        <linearGradient id="collected-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={PRIMARY} stopOpacity={0.35} />
+                            <stop offset="100%" stopColor={PRIMARY} stopOpacity={0.02} />
+                        </linearGradient>
+                    </defs>
+                    <XAxis
+                        dataKey="label"
+                        tick={axisTick}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                    />
+                    <YAxis hide />
+                    <ChartTooltip
+                        cursor={{ stroke: GRID }}
+                        content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const p = payload[0]!.payload as (typeof data)[number];
+                            return (
+                                <div className="rounded-lg bg-neutral-900 px-3 py-2 text-caption text-white shadow-lg">
+                                    <div className="font-semibold">{p.full}</div>
+                                    <div>{formatFull(p.current, currency)} collected</div>
+                                    {hasPrevious && (
+                                        <div className="text-neutral-300">
+                                            A year earlier: {formatFull(p.previous, currency)}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }}
+                    />
+                    {hasPrevious && (
+                        <Area
+                            dataKey="previous"
+                            type="monotone"
+                            stroke={MUTED}
+                            strokeDasharray="4 4"
+                            strokeWidth={1.5}
+                            fill="none"
+                            isAnimationActive={false}
+                        />
+                    )}
+                    <Area
+                        dataKey="current"
+                        type="monotone"
+                        stroke={PRIMARY}
+                        strokeWidth={2.5}
+                        fill="url(#collected-fill)"
+                        dot={false}
+                        activeDot={{ r: 4, fill: PRIMARY, strokeWidth: 0 }}
+                        isAnimationActive={false}
+                    />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
 
 type Metric = 'collected' | 'payers' | 'new_payers';
 
@@ -302,7 +388,8 @@ export function YearChart({
     years: DashboardYearPoint[];
     currency: string | null;
 }) {
-    const data = years.map((y) => ({
+    // Years before the institute took any money are empty bars that only push the real ones aside.
+    const data = visibleYears(years).map((y) => ({
         label: `FY ${y.financial_year}`,
         amount: y.collected,
         partial: y.partial,

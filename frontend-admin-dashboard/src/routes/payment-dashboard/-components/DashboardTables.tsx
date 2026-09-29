@@ -8,7 +8,14 @@ import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { cn } from '@/lib/utils';
 import type { DashboardBatchRow } from '@/services/payment-dashboard';
-import { batchLabel, formatFull, toCourseRows, type CourseRow } from '../-utils/dashboardMath';
+import {
+    batchLabel,
+    formatCompact,
+    formatFull,
+    toCourseRows,
+    type CourseRow,
+} from '../-utils/dashboardMath';
+import { SegmentBar } from './DashboardParts';
 
 const money = (v: number, currency: string | null, tone?: string) => (
     <span className={cn('tabular-nums', v > 0 ? tone : 'text-neutral-400')}>
@@ -26,10 +33,11 @@ const asTableData = <T,>(rows: T[], page: number, pageSize: number) => ({
 });
 
 /**
- * One row per course: collected in the period and over all time, and what is overdue / still to
- * come on its live enrolments. Clicking a course narrows the whole page to it.
+ * Courses ranked by money collected in the period. Each row shows the course's whole fee
+ * position as one bar — collected so far, overdue, still to come — so a course that sells well
+ * but collects badly stands out. Clicking a course narrows the whole page to it.
  */
-export function CoursesTable({
+export function CourseLeaderboard({
     batches,
     currency,
     courseTerm,
@@ -41,79 +49,9 @@ export function CoursesTable({
     onSelectCourse?: (course: CourseRow) => void;
 }) {
     const rows = useMemo(() => toCourseRows(batches), [batches]);
+    const [showAll, setShowAll] = useState(false);
     const periodTotal = rows.reduce((s, r) => s + r.collected, 0);
-    const columns = useMemo<ColumnDef<CourseRow>[]>(
-        () => [
-            {
-                id: 'name',
-                header: courseTerm,
-                size: 260,
-                cell: ({ row }) => (
-                    <span
-                        className={cn(
-                            'font-medium',
-                            row.original.key === '__none__'
-                                ? 'text-neutral-500'
-                                : 'text-neutral-800'
-                        )}
-                    >
-                        {row.original.name}
-                    </span>
-                ),
-            },
-            {
-                id: 'collected',
-                header: 'Collected',
-                size: 170,
-                cell: ({ row }) => {
-                    const share =
-                        periodTotal > 0 ? (row.original.collected / periodTotal) * 100 : 0;
-                    return (
-                        <div className="flex flex-col gap-1">
-                            {money(
-                                row.original.collected,
-                                currency,
-                                'font-semibold text-neutral-800'
-                            )}
-                            <span className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-                                {/* Share of the period's total — data, so inline width. */}
-                                <span
-                                    className="block h-full rounded-full bg-primary-500"
-                                    style={{ width: `${share}%` }}
-                                />
-                            </span>
-                        </div>
-                    );
-                },
-            },
-            {
-                id: 'collected_all_time',
-                header: 'Collected (all time)',
-                size: 150,
-                cell: ({ row }) =>
-                    money(row.original.collectedAllTime, currency, 'text-neutral-700'),
-            },
-            {
-                id: 'overdue',
-                header: 'Overdue',
-                size: 130,
-                cell: ({ row }) =>
-                    money(row.original.overdue, currency, 'font-medium text-danger-600'),
-            },
-            {
-                id: 'still_to_come',
-                header: 'Still to come',
-                size: 130,
-                cell: ({ row }) => money(row.original.stillToCome, currency, 'text-success-700'),
-            },
-        ],
-        [courseTerm, currency, periodTotal]
-    );
-    const [page, setPage] = useState(0);
-    // New data (another period or filter) starts from the first page, or a short list could
-    // leave the table on a page that no longer exists.
-    useEffect(() => setPage(0), [batches]);
-    const pageSize = 8;
+    const shown = showAll ? rows : rows.slice(0, LEADERBOARD_SIZE);
 
     if (rows.length === 0) {
         return (
@@ -123,32 +61,121 @@ export function CoursesTable({
         );
     }
     return (
-        <div className="space-y-3">
-            <MyTable<CourseRow>
-                data={asTableData(rows, page, pageSize)}
-                columns={columns}
-                isLoading={false}
-                error={null}
-                currentPage={page}
-                enableColumnResizing={false}
-                enableColumnPinning={false}
-                scrollable
-                onCellClick={(row) => {
-                    if (row.key !== '__none__' && onSelectCourse) onSelectCourse(row);
-                }}
-            />
-            {rows.length > pageSize && (
-                <MyPagination
-                    currentPage={page}
-                    totalPages={Math.ceil(rows.length / pageSize)}
-                    onPageChange={setPage}
-                    totalElements={rows.length}
-                    pageSize={pageSize}
-                />
-            )}
+        <div>
+            <ul className="divide-y divide-neutral-100">
+                {shown.map((r, i) => {
+                    const unlinked = r.key === '__none__';
+                    const share =
+                        periodTotal > 0 ? Math.round((r.collected / periodTotal) * 100) : 0;
+                    const clickable = !unlinked && !!onSelectCourse;
+                    return (
+                        <li key={r.key}>
+                            <button
+                                type="button"
+                                disabled={!clickable}
+                                onClick={() => clickable && onSelectCourse?.(r)}
+                                className={cn(
+                                    'flex w-full items-center gap-4 rounded-lg px-2 py-3 text-left transition-colors',
+                                    clickable ? 'hover:bg-neutral-50' : 'cursor-default'
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        'flex size-8 shrink-0 items-center justify-center rounded-full text-caption font-bold',
+                                        i === 0 && !unlinked
+                                            ? 'bg-primary-500 text-white'
+                                            : 'bg-neutral-100 text-neutral-600'
+                                    )}
+                                >
+                                    {unlinked ? '–' : i + 1}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-baseline justify-between gap-3">
+                                        <span
+                                            className={cn(
+                                                'truncate text-body font-semibold',
+                                                unlinked ? 'text-neutral-500' : 'text-neutral-800'
+                                            )}
+                                            title={r.name}
+                                        >
+                                            {r.name}
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                            <span className="text-body font-bold text-neutral-900">
+                                                {formatFull(r.collected, currency)}
+                                            </span>
+                                            {periodTotal > 0 && (
+                                                <span className="ml-1.5 text-caption text-neutral-400">
+                                                    {share}%
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                    <SegmentBar
+                                        className="mt-2 h-2"
+                                        segments={[
+                                            {
+                                                key: 'collected',
+                                                value: r.collectedAllTime,
+                                                className: 'bg-primary-500',
+                                            },
+                                            {
+                                                key: 'overdue',
+                                                value: r.overdue,
+                                                className: 'bg-danger-400',
+                                            },
+                                            {
+                                                key: 'to_come',
+                                                value: r.stillToCome,
+                                                className: 'bg-success-400',
+                                            },
+                                        ]}
+                                    />
+                                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-caption text-neutral-500">
+                                        <span>
+                                            {formatCompact(r.collectedAllTime, currency)} collected
+                                            in all
+                                        </span>
+                                        <span className={r.overdue > 0 ? 'text-danger-600' : ''}>
+                                            {formatCompact(r.overdue, currency)} overdue
+                                        </span>
+                                        <span
+                                            className={r.stillToCome > 0 ? 'text-success-700' : ''}
+                                        >
+                                            {formatCompact(r.stillToCome, currency)} still to come
+                                        </span>
+                                    </div>
+                                </div>
+                            </button>
+                        </li>
+                    );
+                })}
+            </ul>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-3">
+                <div className="flex flex-wrap items-center gap-4 text-caption text-neutral-500">
+                    <span className="flex items-center gap-1.5">
+                        <span className="size-2.5 rounded-sm bg-primary-500" /> Collected
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="size-2.5 rounded-sm bg-danger-400" /> Overdue
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="size-2.5 rounded-sm bg-success-400" /> Still to come
+                    </span>
+                </div>
+                {rows.length > LEADERBOARD_SIZE && (
+                    <MyButton buttonType="text" scale="small" onClick={() => setShowAll((v) => !v)}>
+                        {showAll
+                            ? 'Show fewer'
+                            : `Show all ${rows.length} ${courseTerm.toLowerCase()}s`}
+                    </MyButton>
+                )}
+            </div>
         </div>
     );
 }
+
+const LEADERBOARD_SIZE = 6;
 
 const csvCell = (v: string | number) => {
     const s = String(v);
@@ -196,44 +223,49 @@ export function BatchesTable({
             {
                 id: 'batch',
                 header: batchTerm,
-                size: 420,
-                cell: ({ row }) => (
-                    <div className="min-w-0">
-                        <div className="truncate font-medium text-neutral-800">
-                            {batchLabel(row.original)}
-                        </div>
-                        {row.original.package_name && (
-                            <div className="truncate text-caption text-neutral-500">
-                                {row.original.package_name}
+                size: 320,
+                cell: ({ row }) => {
+                    const label = batchLabel(row.original);
+                    const course = row.original.package_name;
+                    return (
+                        <div className="min-w-0">
+                            <div className="truncate font-medium text-neutral-800" title={label}>
+                                {label}
                             </div>
-                        )}
-                    </div>
-                ),
+                            {/* The course line only when the label isn't already the course. */}
+                            {course && course !== label && (
+                                <div className="truncate text-caption text-neutral-500">
+                                    {course}
+                                </div>
+                            )}
+                        </div>
+                    );
+                },
             },
             {
                 id: 'collected',
                 header: 'Collected',
-                size: 220,
+                size: 160,
                 cell: ({ row }) =>
                     money(row.original.collected, currency, 'font-semibold text-neutral-800'),
             },
             {
                 id: 'overdue',
                 header: 'Overdue',
-                size: 220,
+                size: 150,
                 cell: ({ row }) =>
                     money(row.original.overdue, currency, 'font-medium text-danger-600'),
             },
             {
                 id: 'still_to_come',
                 header: 'Still to come',
-                size: 220,
+                size: 150,
                 cell: ({ row }) => money(row.original.still_to_come, currency, 'text-success-700'),
             },
             {
                 id: 'learners',
                 header: 'Learners owing',
-                size: 180,
+                size: 130,
                 cell: ({ row }) => <span className="tabular-nums">{row.original.learners}</span>,
             },
         ],

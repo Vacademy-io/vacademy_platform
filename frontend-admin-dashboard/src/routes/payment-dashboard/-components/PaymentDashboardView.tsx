@@ -3,10 +3,15 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
     ArrowRight,
+    ChartLineUp,
     CheckCircle,
     DownloadSimple,
     Lightning,
+    Receipt,
     TrendUp,
+    UserPlus,
+    Users,
+    Wallet,
     Warning,
     WarningCircle,
 } from '@phosphor-icons/react';
@@ -36,9 +41,12 @@ import {
     AGEING_ORDER,
     DASHBOARD_PERIODS,
     SOURCE_LABELS,
+    batchParts,
     buildHighlights,
     collectionRate,
     formatCompact,
+    formatFull,
+    monthLabel,
     percentChange,
     resolveDashboardPeriod,
     toApiDateTime,
@@ -47,9 +55,15 @@ import {
     type DashboardPeriodKey,
     type Highlight,
 } from '../-utils/dashboardMath';
-import { BarList, DeltaPill, KpiTile, SectionCard } from './DashboardParts';
-import { CollectionCalendar, ForecastChart, RevenueByMonth, YearChart } from './DashboardCharts';
-import { BatchesTable, CoursesTable } from './DashboardTables';
+import { BarList, DeltaPill, InfoTip, MiniStat, SectionCard, SegmentBar } from './DashboardParts';
+import {
+    CollectedTrend,
+    CollectionCalendar,
+    ForecastChart,
+    RevenueByMonth,
+    YearChart,
+} from './DashboardCharts';
+import { BatchesTable, CourseLeaderboard } from './DashboardTables';
 
 const ALL = '__all__';
 /** Matches no batch — see packageSessionIds. */
@@ -125,16 +139,16 @@ export function PaymentDashboardView() {
         const out = new Map<string, string>();
         for (const b of batches) {
             if (b.package_dto?.id !== courseId) continue;
-            out.set(
-                b.id,
-                [b.level?.level_name, b.session?.session_name].filter(Boolean).join(' · ')
-            );
+            out.set(b.id, batchParts(b.level?.level_name, b.session?.session_name));
         }
         if (pickedCourse?.key === courseId) {
             for (const b of pickedCourse.batches) if (!out.has(b.id)) out.set(b.id, b.label);
         }
-        return [...out.entries()].map(([value, label]) => ({ value, label: label || batchTerm }));
-    }, [batches, batchTerm, courseId, pickedCourse]);
+        return [...out.entries()].map(([value, label]) => ({
+            value,
+            label: label || courseOptions.find((c) => c.value === courseId)?.label || batchTerm,
+        }));
+    }, [batches, batchTerm, courseId, pickedCourse, courseOptions]);
     const batchOptions = useMemo(
         () => [
             { value: ALL, label: `All ${batchTerm.toLowerCase()}es` },
@@ -143,8 +157,7 @@ export function PaymentDashboardView() {
                       value: b.id,
                       label: [
                           b.package_dto?.package_name,
-                          b.level?.level_name,
-                          b.session?.session_name,
+                          batchParts(b.level?.level_name, b.session?.session_name),
                       ]
                           .filter(Boolean)
                           .join(' · '),
@@ -219,30 +232,58 @@ export function PaymentDashboardView() {
 
     return (
         <div className="space-y-5">
-            {/* Header: what the page covers, and the period that governs every flow figure */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <h2 className="text-h3 font-semibold text-neutral-900">Payment overview</h2>
-                    <p className="mt-0.5 text-body text-neutral-500">
-                        {data ? (
-                            <>
-                                {formatWindow(data.period_start, data.period_end)}
-                                {data.previous_start && data.previous_end && (
+            {/* Hero band: what the page covers, the period, and the filters that govern it */}
+            <div className="rounded-2xl border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white shadow-sm">
+                            <ChartLineUp size={22} weight="bold" />
+                        </span>
+                        <div className="min-w-0">
+                            <h2 className="text-h3 font-bold text-neutral-900">Payment overview</h2>
+                            <p className="mt-0.5 text-body text-neutral-600">
+                                {data ? (
                                     <>
-                                        {' '}
-                                        · compared with{' '}
-                                        {formatWindow(data.previous_start, data.previous_end)}
+                                        <span className="font-medium text-neutral-800">
+                                            {formatWindow(data.period_start, data.period_end)}
+                                        </span>
+                                        {data.previous_start && data.previous_end && (
+                                            <span className="text-neutral-500">
+                                                {' '}
+                                                · compared with{' '}
+                                                {formatWindow(
+                                                    data.previous_start,
+                                                    data.previous_end
+                                                )}
+                                            </span>
+                                        )}
                                     </>
+                                ) : (
+                                    'Money collected, still owed and on its way'
                                 )}
-                            </>
-                        ) : (
-                            'Money collected, still owed and on its way'
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {isFetching && !isLoading && (
+                            <span className="text-caption text-neutral-400">Updating…</span>
                         )}
-                    </p>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            className="gap-2 bg-white"
+                            onClick={handleExport}
+                            disable={exporting}
+                        >
+                            <DownloadSimple size={16} />
+                            {exporting ? 'Exporting…' : 'Export'}
+                        </MyButton>
+                    </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                     <div
-                        className="flex rounded-lg border border-neutral-200 bg-white p-0.5"
+                        className="flex flex-wrap rounded-lg border border-neutral-200 bg-white p-0.5 shadow-sm"
                         role="tablist"
                     >
                         {PERIOD_TABS.map((p) => (
@@ -255,7 +296,7 @@ export function PaymentDashboardView() {
                                 className={cn(
                                     'rounded-md px-3 py-1.5 text-caption font-medium transition-colors',
                                     period === p.key
-                                        ? 'bg-primary-500 text-white'
+                                        ? 'bg-primary-500 text-white shadow-sm'
                                         : 'text-neutral-600 hover:bg-neutral-100'
                                 )}
                             >
@@ -265,51 +306,36 @@ export function PaymentDashboardView() {
                     </div>
                     {/* Only a custom period has dates to pick; the presets are the tabs themselves. */}
                     {period === 'custom' && (
-                        <DateRangeDropdown
-                            value={customRange}
-                            align="end"
-                            onChange={setCustomRange}
-                        />
+                        <DateRangeDropdown value={customRange} onChange={setCustomRange} />
                     )}
-                    <MyButton
-                        buttonType="secondary"
-                        scale="medium"
-                        className="gap-2"
-                        onClick={handleExport}
-                        disable={exporting}
-                    >
-                        <DownloadSimple size={16} />
-                        {exporting ? 'Exporting…' : 'Export'}
-                    </MyButton>
+                    <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+                        <SearchableSelect
+                            options={courseOptions}
+                            value={courseId}
+                            onChange={(v) => selectCourse(v || ALL)}
+                            placeholder={`All ${courseTerm.toLowerCase()}s`}
+                            searchPlaceholder={`Search ${courseTerm.toLowerCase()}`}
+                            className="w-full sm:w-48"
+                        />
+                        <SearchableSelect
+                            options={batchOptions}
+                            value={batchId}
+                            onChange={(v) => setBatchId(v || ALL)}
+                            placeholder={`All ${batchTerm.toLowerCase()}es`}
+                            searchPlaceholder={`Search ${batchTerm.toLowerCase()}`}
+                            className="w-full sm:w-48"
+                        />
+                        {(courseId !== ALL || batchId !== ALL) && (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => selectCourse(ALL)}
+                            >
+                                Clear
+                            </MyButton>
+                        )}
+                    </div>
                 </div>
-            </div>
-
-            {/* Filters: a course or batch narrows every figure on the page */}
-            <div className="flex flex-wrap items-center gap-2">
-                <SearchableSelect
-                    options={courseOptions}
-                    value={courseId}
-                    onChange={(v) => selectCourse(v || ALL)}
-                    placeholder={`All ${courseTerm.toLowerCase()}s`}
-                    searchPlaceholder={`Search ${courseTerm.toLowerCase()}`}
-                    className="w-full sm:w-64"
-                />
-                <SearchableSelect
-                    options={batchOptions}
-                    value={batchId}
-                    onChange={(v) => setBatchId(v || ALL)}
-                    placeholder={`All ${batchTerm.toLowerCase()}es`}
-                    searchPlaceholder={`Search ${batchTerm.toLowerCase()}`}
-                    className="w-full sm:w-72"
-                />
-                {(courseId !== ALL || batchId !== ALL) && (
-                    <MyButton buttonType="text" scale="small" onClick={() => selectCourse(ALL)}>
-                        Clear
-                    </MyButton>
-                )}
-                {isFetching && !isLoading && (
-                    <span className="text-caption text-neutral-400">Updating…</span>
-                )}
             </div>
 
             {isLoading ? (
@@ -369,9 +395,6 @@ function DashboardBody({
 }) {
     const k = data.kpis;
     const cur = data.currency;
-    const compared = k.previous_collected !== null;
-    const last12 = data.months.slice(-12);
-    const rate = collectionRate(k.collected_all_time, k.outstanding);
     const highlights = useMemo(() => buildHighlights(data), [data]);
     const methods = useMemo(() => toMethodSlices(data.methods), [data.methods]);
     const ageing = useMemo(
@@ -387,65 +410,13 @@ function DashboardBody({
                 })),
         [data.ageing]
     );
-    const comparedCaption = compared ? 'vs the same period a year earlier' : 'All time';
 
     return (
         <div className="space-y-5">
-            {/* KPI row: three flows for the period, three balances as of today */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-                <KpiTile
-                    label="Collected"
-                    info="Money received in the selected period from successful payments. Failed or abandoned payment attempts are not counted."
-                    value={formatCompact(k.collected, cur)}
-                    delta={<DeltaPill change={percentChange(k.collected, k.previous_collected)} />}
-                    caption={`${k.payments.toLocaleString('en-IN')} payments · ${comparedCaption}`}
-                    trend={last12.map((m) => m.collected)}
-                />
-                <KpiTile
-                    label="Paying learners"
-                    info="Distinct learners who made at least one successful payment in the selected period."
-                    value={k.paying_learners.toLocaleString('en-IN')}
-                    delta={
-                        <DeltaPill
-                            change={percentChange(k.paying_learners, k.previous_paying_learners)}
-                        />
-                    }
-                    caption={comparedCaption}
-                    trend={last12.map((m) => m.payers)}
-                />
-                <KpiTile
-                    label="New paying learners"
-                    info="Learners whose first ever payment to your institute was in the selected period."
-                    value={k.new_paying_learners.toLocaleString('en-IN')}
-                    delta={
-                        <DeltaPill
-                            change={percentChange(
-                                k.new_paying_learners,
-                                k.previous_new_paying_learners
-                            )}
-                        />
-                    }
-                    caption={comparedCaption}
-                    trend={last12.map((m) => m.new_payers ?? 0)}
-                />
-                <KpiTile
-                    label="Overdue"
-                    info="Instalments, renewals and invoices whose due date has passed and are still unpaid, on every active enrolment. This is as of today and does not change with the period."
-                    value={formatCompact(k.overdue, cur)}
-                    caption={`${k.learners_overdue.toLocaleString('en-IN')} learner${k.learners_overdue === 1 ? '' : 's'} · as of today`}
-                />
-                <KpiTile
-                    label={`Due in next ${k.upcoming_days} days`}
-                    info={`Unpaid instalments, renewals and invoices falling due within the next ${k.upcoming_days} days. As of today.`}
-                    value={formatCompact(k.due_soon, cur)}
-                    caption={`${k.learners_due_soon.toLocaleString('en-IN')} learner${k.learners_due_soon === 1 ? '' : 's'} · as of today`}
-                />
-                <KpiTile
-                    label="Collection rate"
-                    info="Share of the fee on your enrolments that has been collected: everything collected so far, divided by that plus what is still owed (overdue amounts and unpaid instalments and invoices). Subscription renewals that have not fallen due yet are not counted."
-                    value={rate === null ? '—' : `${rate.toFixed(1)}%`}
-                    caption={`${formatCompact(k.outstanding, cur)} still owed in total`}
-                />
+            {/* Headline: what came in this period, and where the institute's fees stand today */}
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+                <CollectedHero data={data} className="xl:col-span-2" />
+                <FeePosition data={data} onOpenManagePayments={onOpenManagePayments} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
@@ -472,7 +443,10 @@ function DashboardBody({
                                 const style = HIGHLIGHT_STYLES[h.tone];
                                 const Icon = style.icon;
                                 return (
-                                    <li key={h.text} className="flex gap-3">
+                                    <li
+                                        key={h.text}
+                                        className="flex gap-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3"
+                                    >
                                         <span
                                             className={cn(
                                                 'flex size-8 shrink-0 items-center justify-center rounded-lg',
@@ -494,10 +468,10 @@ function DashboardBody({
                 <SectionCard
                     className="xl:col-span-2"
                     title={`${courseTerm}s`}
-                    info={`Money collected in the selected period for each ${courseTerm.toLowerCase()}, with what is overdue and still to come on its active enrolments. When one payment covers several ${batchTerm.toLowerCase()}es, it is split evenly between them.`}
-                    subtitle={`Collected, overdue and still to come · click a ${courseTerm.toLowerCase()} to filter the page`}
+                    info={`Money collected in the selected period for each ${courseTerm.toLowerCase()}. The bar is its whole fee position on active enrolments: collected so far, overdue, and still to come. When one payment covers several ${batchTerm.toLowerCase()}es, it is split evenly between them.`}
+                    subtitle={`Ranked by money collected in this period · click one to filter the page`}
                 >
-                    <CoursesTable
+                    <CourseLeaderboard
                         batches={data.batches}
                         currency={cur}
                         courseTerm={courseTerm}
@@ -515,11 +489,12 @@ function DashboardBody({
                             className="gap-1"
                             onClick={onOpenManagePayments}
                         >
-                            See learners <ArrowRight size={14} />
+                            Learners <ArrowRight size={14} />
                         </MyButton>
                     }
                 >
                     <ForecastChart months={data.forecast} currency={cur} />
+                    <ForecastSummary months={data.forecast} currency={cur} />
                 </SectionCard>
             </div>
 
@@ -536,7 +511,7 @@ function DashboardBody({
                 />
             </SectionCard>
 
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                 <SectionCard
                     title="Revenue by source"
                     info="Where the money in the selected period came from: online checkout (payment links, catalogue and invite pages), live class registration, payments recorded manually by an admin, or a sub-organisation."
@@ -572,14 +547,7 @@ function DashboardBody({
                 </SectionCard>
             </div>
 
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                <SectionCard
-                    title="Year over year"
-                    info="Money collected in each financial year (April to March)."
-                    subtitle="Collected per financial year"
-                >
-                    <YearChart years={data.years} currency={cur} />
-                </SectionCard>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                 <SectionCard
                     title="Overdue ageing"
                     info="Overdue money grouped by how long ago it fell due. The older the balance, the harder it usually is to collect."
@@ -601,11 +569,32 @@ function DashboardBody({
                         ) : undefined
                     }
                 >
-                    <BarList
-                        rows={ageing}
-                        formatValue={(v) => formatCompact(v, cur)}
-                        emptyText="Nothing is overdue right now."
-                    />
+                    {ageing.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 py-8 text-center">
+                            <span className="flex size-10 items-center justify-center rounded-full bg-success-50 text-success-600">
+                                <CheckCircle size={22} weight="fill" />
+                            </span>
+                            <p className="text-body font-medium text-neutral-700">
+                                Nothing is overdue right now
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                Every instalment and renewal due so far has been paid.
+                            </p>
+                        </div>
+                    ) : (
+                        <BarList
+                            rows={ageing}
+                            formatValue={(v) => formatCompact(v, cur)}
+                            emptyText="Nothing is overdue right now."
+                        />
+                    )}
+                </SectionCard>
+                <SectionCard
+                    title="Year over year"
+                    info="Money collected in each financial year (April to March). Years before the first payment are left out."
+                    subtitle="Collected per financial year"
+                >
+                    <YearChart years={data.years} currency={cur} />
                 </SectionCard>
             </div>
 
@@ -620,13 +609,241 @@ function DashboardBody({
     );
 }
 
+/** Under the forecast chart: the total still expected and the next month money is due in. */
+function ForecastSummary({
+    months,
+    currency,
+}: {
+    months: PaymentDashboard['forecast'];
+    currency: string | null;
+}) {
+    const total = months.reduce((s, m) => s + m.amount, 0);
+    const next = months.find((m) => m.month && m.amount > 0);
+    if (total <= 0) return null;
+    return (
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4">
+            <div className="rounded-lg bg-success-50 p-3">
+                <dt className="text-caption text-success-700">Expected in all</dt>
+                <dd className="text-subtitle font-bold tabular-nums text-neutral-900">
+                    {formatCompact(total, currency)}
+                </dd>
+            </div>
+            {next?.month && (
+                <div className="rounded-lg bg-neutral-50 p-3">
+                    <dt className="text-caption text-neutral-500">
+                        Next · {monthLabel(next.month, true)}
+                    </dt>
+                    <dd className="text-subtitle font-bold tabular-nums text-neutral-900">
+                        {formatCompact(next.amount, currency)}
+                    </dd>
+                    <dd className="text-caption text-neutral-500">
+                        {next.learners} learner{next.learners === 1 ? '' : 's'}
+                    </dd>
+                </div>
+            )}
+        </dl>
+    );
+}
+
+/**
+ * The headline: money collected in the period, how it compares with a year earlier, the
+ * payments and learners behind it, and the 12-month trend.
+ */
+function CollectedHero({ data, className }: { data: PaymentDashboard; className?: string }) {
+    const k = data.kpis;
+    const cur = data.currency;
+    const compared = k.previous_collected !== null;
+    const change = percentChange(k.collected, k.previous_collected);
+    return (
+        <Card className={cn('overflow-hidden rounded-xl border-neutral-200 shadow-sm', className)}>
+            <div className="p-5">
+                <div className="flex items-center gap-1.5 text-caption font-medium uppercase tracking-wide text-neutral-500">
+                    <Wallet size={14} weight="bold" className="text-primary-500" />
+                    Collected
+                    <InfoTip text="Money received in the selected period from successful payments. Failed or abandoned payment attempts are not counted." />
+                </div>
+                <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                    <span className="text-h1 font-bold tabular-nums text-neutral-900">
+                        {formatFull(k.collected, cur)}
+                    </span>
+                    <DeltaPill change={change} />
+                </div>
+                <p className="mt-1 text-caption text-neutral-500">
+                    {!compared
+                        ? 'All time'
+                        : change === null
+                          ? 'Nothing was collected in the same period a year earlier'
+                          : `${formatCompact(k.previous_collected ?? 0, cur)} in the same period a year earlier`}
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <MiniStat
+                        icon={<Receipt size={18} weight="bold" />}
+                        label="Payments"
+                        value={k.payments.toLocaleString('en-IN')}
+                        delta={
+                            <DeltaPill change={percentChange(k.payments, k.previous_payments)} />
+                        }
+                    />
+                    <MiniStat
+                        icon={<Users size={18} weight="bold" />}
+                        label="Paying learners"
+                        info="Distinct learners who made at least one successful payment in the selected period."
+                        value={k.paying_learners.toLocaleString('en-IN')}
+                        delta={
+                            <DeltaPill
+                                change={percentChange(
+                                    k.paying_learners,
+                                    k.previous_paying_learners
+                                )}
+                            />
+                        }
+                    />
+                    <MiniStat
+                        icon={<UserPlus size={18} weight="bold" />}
+                        label="New payers"
+                        info="Learners whose first ever payment to your institute was in the selected period."
+                        value={k.new_paying_learners.toLocaleString('en-IN')}
+                        delta={
+                            <DeltaPill
+                                change={percentChange(
+                                    k.new_paying_learners,
+                                    k.previous_new_paying_learners
+                                )}
+                            />
+                        }
+                    />
+                </div>
+            </div>
+            <div className="border-t border-neutral-100 px-3 pb-2 pt-3">
+                <div className="flex items-center justify-between px-2 text-caption text-neutral-500">
+                    <span>Collected per month, last 12 months</span>
+                    <span className="flex items-center gap-3">
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-0.5 w-3 rounded bg-primary-500" /> This year
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="h-0.5 w-3 rounded bg-neutral-400" /> A year earlier
+                        </span>
+                    </span>
+                </div>
+                <CollectedTrend months={data.months} currency={cur} />
+            </div>
+        </Card>
+    );
+}
+
+/**
+ * Where the institute's fees stand today, whatever period is picked: how much of the fee on its
+ * enrolments is in, and what is overdue, due soon and still to come.
+ */
+function FeePosition({
+    data,
+    onOpenManagePayments,
+}: {
+    data: PaymentDashboard;
+    onOpenManagePayments: () => void;
+}) {
+    const k = data.kpis;
+    const cur = data.currency;
+    const rate = collectionRate(k.collected_all_time, k.outstanding);
+    const notYetDue = Math.max(0, k.outstanding - k.overdue);
+    const learners = (n: number) => `${n.toLocaleString('en-IN')} learner${n === 1 ? '' : 's'}`;
+    const rows = [
+        {
+            key: 'overdue',
+            dot: 'bg-danger-500',
+            label: 'Overdue',
+            info: 'Instalments, renewals and invoices whose due date has passed and are still unpaid.',
+            amount: k.overdue,
+            detail: learners(k.learners_overdue),
+            tone: k.overdue > 0 ? 'text-danger-600' : 'text-neutral-900',
+        },
+        {
+            key: 'soon',
+            dot: 'bg-warning-500',
+            label: `Due in next ${k.upcoming_days} days`,
+            info: `Unpaid instalments, renewals and invoices falling due within the next ${k.upcoming_days} days.`,
+            amount: k.due_soon,
+            detail: learners(k.learners_due_soon),
+            tone: 'text-neutral-900',
+        },
+        {
+            key: 'later',
+            dot: 'bg-success-500',
+            label: 'Still to come',
+            info: 'Everything scheduled that has not fallen due yet: future instalments and invoices, and renewals within the next 30 days.',
+            amount: k.still_to_come,
+            detail: learners(k.learners_still_to_come),
+            tone: 'text-neutral-900',
+        },
+    ];
+    return (
+        <Card className="flex flex-col rounded-xl border-neutral-200 p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-caption font-medium uppercase tracking-wide text-neutral-500">
+                    Fee position
+                    <InfoTip text="Where the fees on your active enrolments stand today. This does not change with the period picked above." />
+                </div>
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600">
+                    As of today
+                </span>
+            </div>
+            <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-h1 font-bold tabular-nums text-neutral-900">
+                    {rate === null ? '—' : `${rate.toFixed(1)}%`}
+                </span>
+                <span className="flex items-center gap-1 text-caption text-neutral-500">
+                    collected
+                    <InfoTip text="Everything collected so far, divided by that plus what is still owed (overdue amounts and unpaid instalments or invoices). Subscription renewals that have not fallen due yet are not counted." />
+                </span>
+            </div>
+            <SegmentBar
+                className="mt-3"
+                segments={[
+                    { key: 'in', value: k.collected_all_time, className: 'bg-primary-500' },
+                    { key: 'overdue', value: k.overdue, className: 'bg-danger-500' },
+                    { key: 'owed', value: notYetDue, className: 'bg-success-400' },
+                ]}
+            />
+            <p className="mt-2 text-caption text-neutral-500">
+                {formatCompact(k.collected_all_time, cur)} collected ·{' '}
+                {formatCompact(k.outstanding, cur)} still owed
+            </p>
+            <ul className="mt-4 flex-1 divide-y divide-neutral-100">
+                {rows.map((r) => (
+                    <li key={r.key} className="flex items-center justify-between gap-3 py-2.5">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <span className={cn('size-2 shrink-0 rounded-full', r.dot)} />
+                            <span className="truncate text-body text-neutral-700">{r.label}</span>
+                            <InfoTip text={r.info} />
+                        </div>
+                        <div className="shrink-0 text-right">
+                            <div className={cn('text-body font-semibold tabular-nums', r.tone)}>
+                                {formatCompact(r.amount, cur)}
+                            </div>
+                            <div className="text-caption text-neutral-400">{r.detail}</div>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+            <MyButton
+                buttonType="secondary"
+                scale="small"
+                className="mt-3 w-full gap-1"
+                onClick={onOpenManagePayments}
+            >
+                Open Manage Payments <ArrowRight size={14} />
+            </MyButton>
+        </Card>
+    );
+}
+
 function DashboardSkeleton() {
     return (
         <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-                {Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton key={i} className="h-36 rounded-xl" />
-                ))}
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+                <Skeleton className="h-80 rounded-xl xl:col-span-2" />
+                <Skeleton className="h-80 rounded-xl" />
             </div>
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
                 <Skeleton className="h-96 rounded-xl xl:col-span-2" />

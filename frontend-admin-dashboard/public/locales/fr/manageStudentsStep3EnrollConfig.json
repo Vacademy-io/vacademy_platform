@@ -38,6 +38,10 @@
         "noneLinked": "Aucun workflow d'automatisation n'est lié aux {{term}} sélectionnés.",
         "global": "Global",
         "firesOnEveryEnrollment": "Se déclenche à chaque inscription groupée :",
-        "noCourseSpecific": "Aucun workflow spécifique à ce cours n'est lié."
+        "noCourseSpecific": "Aucun workflow spécifique à ce cours n'est lié.",
+        "verdict": {
+            "runs": "Global — sa condition correspond à ce {{term}}",
+            "unknown": "Global — se déclenche uniquement si l'apprenant remplit sa condition"
+        }
     }
 }

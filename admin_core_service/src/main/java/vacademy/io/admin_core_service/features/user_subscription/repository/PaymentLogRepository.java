@@ -143,6 +143,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * status filters.
    */
   /**
+   * Currency is picked the way the cards pick it: the first value that is actually a currency
+   * code. `payment_log.currency` also holds blanks and junk ('string', 'N/A') from older callers,
+   * and those have to fall through to the plan's or the invite's code rather than be reported as
+   * the row's currency — a card drops an amount it cannot format, so taking the junk would quietly
+   * lose the money instead of showing it in rupees.
+   *
    * Both payment-log arms classify through the same joins on purpose. The row mapper loads
    * `paymentLog.getUserPlan()` for every row regardless of the arm it arrived on, so the arm that
    * reaches a log through an invoice has to read its plan too — otherwise it reports a different
@@ -180,8 +186,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                  ELSE pl.payment_status
                END AS row_status,
                pl.payment_amount AS row_amount,
-               UPPER(TRIM(COALESCE(NULLIF(pl.currency, ''), NULLIF(cpp.currency, ''), ei.currency, '')))
-                 AS row_currency,
+               UPPER(COALESCE(
+                   CASE WHEN pl.currency ~ '^[A-Za-z]{3}$' THEN pl.currency END,
+                   CASE WHEN cpp.currency ~ '^[A-Za-z]{3}$' THEN cpp.currency END,
+                   CASE WHEN ei.currency ~ '^[A-Za-z]{3}$' THEN ei.currency END,
+                   '')) AS row_currency,
                CASE WHEN up.status IS NULL THEN true
                     WHEN UPPER(TRIM(up.status)) IN ('ACTIVE', 'PENDING_FOR_PAYMENT') THEN true
                     ELSE false END AS due_eligible
@@ -253,8 +262,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                  ELSE pl.payment_status
                END AS row_status,
                pl.payment_amount AS row_amount,
-               UPPER(TRIM(COALESCE(NULLIF(pl.currency, ''), NULLIF(ipp.currency, ''), iei.currency, '')))
-                 AS row_currency,
+               UPPER(COALESCE(
+                   CASE WHEN pl.currency ~ '^[A-Za-z]{3}$' THEN pl.currency END,
+                   CASE WHEN ipp.currency ~ '^[A-Za-z]{3}$' THEN ipp.currency END,
+                   CASE WHEN iei.currency ~ '^[A-Za-z]{3}$' THEN iei.currency END,
+                   '')) AS row_currency,
                CASE WHEN iup.status IS NULL THEN true
                     WHEN UPPER(TRIM(iup.status)) IN ('ACTIVE', 'PENDING_FOR_PAYMENT') THEN true
                     ELSE false END AS due_eligible
@@ -285,7 +297,8 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                CASE WHEN UPPER(i.status) = 'REJECTED' THEN 'CANCELLED'
                     ELSE 'NOT_INITIATED' END AS row_status,
                i.total_amount AS row_amount,
-               UPPER(TRIM(COALESCE(i.currency, ''))) AS row_currency,
+               UPPER(COALESCE(CASE WHEN i.currency ~ '^[A-Za-z]{3}$' THEN i.currency END, ''))
+                 AS row_currency,
                true AS due_eligible
         FROM invoice i
         WHERE :includeUnpaidInvoices = true

@@ -88,6 +88,21 @@ export interface RecentLeadsRequest {
      *  ("exactly N") or CALLED_N_PLUS_TIMES ("N or more"). Omitted otherwise. */
     call_count_value?: number;
     /**
+     * "Worked in the last N" windows — ISO-8601 instants, open-ended at the top.
+     *
+     * Deliberately separate from submitted_from/to_local, which bound when the lead
+     * ARRIVED. These bound when the COUNSELLOR last touched it, which is the question
+     * "how many did I call / work in the last 24h" actually asks:
+     *   called_from_local   -> last telephony_call_log entry for the lead
+     *   activity_from_local -> last timeline_event (note, call log, status change,
+     *                          follow-up) — the same feed the Activity column shows
+     * A lead never called / never touched is excluded once the matching bound is set.
+     */
+    called_from_local?: string;
+    called_to_local?: string;
+    activity_from_local?: string;
+    activity_to_local?: string;
+    /**
      * Soft-delete visibility — defaults to EXCLUDE_DELETED on the backend, so deleted leads stay
      * hidden unless explicitly asked for. ONLY_DELETED backs the "Deleted leads" view that restore
      * is driven from.

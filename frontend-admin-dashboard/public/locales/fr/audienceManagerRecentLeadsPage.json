@@ -49,6 +49,14 @@
             "done": "Terminé",
             "from": "Du",
             "to": "Au"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -78,7 +86,9 @@
         "statusConverted": "Converti",
         "unassigned": "Non assigné",
         "removeAriaLabel": "Supprimer {{label}}",
-        "clearAll": "Tout effacer"
+        "clearAll": "Tout effacer",
+        "calledWithin": null,
+        "workedWithin": null
     },
     "search": {
         "placeholder": "Rechercher des prospects",
@@ -101,7 +111,8 @@
         "assignLeads": "Assigner les prospects",
         "unassignLeads": "Désassigner les prospects",
         "restoreLeads": "Restaurer les prospects",
-        "deleteLeads": "Supprimer les prospects"
+        "deleteLeads": "Supprimer les prospects",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "Impossible de charger les prospects",
@@ -142,6 +153,12 @@
         "leadRestored_many": "{{count}} prospects restaurés",
         "leadRestored_other": "{{count}} prospects restaurés",
         "restoreFailed": "Échec de la restauration. Veuillez réessayer.",
-        "selectAllFailed": "Échec de la sélection de tous les prospects"
+        "selectAllFailed": "Échec de la sélection de tous les prospects",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

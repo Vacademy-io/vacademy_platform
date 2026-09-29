@@ -282,19 +282,41 @@ public class LeadAutomationScheduler {
         int dueEmitted = 0;
         int overdueEmitted = 0;
 
+        // The claim MUST precede the emit -- it is what makes the one-fire guarantee hold across
+        // replicas. But the status only ever moves FORWARD, so a claim followed by a failed emit
+        // burned the follow-up permanently: the row sat at ONGOING with the trigger never
+        // dispatched, and no later scan would pick it up again. Since the institute's workflow is
+        // what actually mails the counsellor, a lost emit means a lost email, with only a
+        // log.warn to show for it. Measured on Shiksha Nation: of 395 counsellor-scheduled
+        // follow-ups that reached DUE in a three-week window, only 332 produced a workflow
+        // execution -- 63 (16%) silently never notified anyone.
+        //
+        // Releasing the claim lets the next scan retry -- but ONLY when the failure happened
+        // before the trigger was dispatched, because the trigger's idempotency strategy is
+        // institute config and its default (UUID) dedups nothing. See EmitOutcome.
         for (LeadFollowup fu : leadFollowupRepository.findDueCandidates(nowTs)) {
-            if (leadFollowupRepository.claimDueTransition(fu.getId()) == 1
-                    && emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_DUE.name(),
-                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE)) {
+            if (leadFollowupRepository.claimDueTransition(fu.getId()) != 1) continue;
+            EmitOutcome outcome = emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_DUE.name(),
+                    LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE);
+            if (outcome == EmitOutcome.EMITTED) {
                 dueEmitted++;
+            } else if (outcome == EmitOutcome.FAILED_BEFORE_DISPATCH) {
+                leadFollowupRepository.releaseDueTransition(fu.getId());
+                log.warn("[LeadFollowup] Released DUE claim for followup {} (nothing was"
+                        + " dispatched) -- it will be retried on the next scan", fu.getId());
             }
         }
 
         for (LeadFollowup fu : leadFollowupRepository.findOverdueCandidates(overdueAt)) {
-            if (leadFollowupRepository.claimOverdueTransition(fu.getId()) == 1
-                    && emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(),
-                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE)) {
+            if (leadFollowupRepository.claimOverdueTransition(fu.getId()) != 1) continue;
+            EmitOutcome outcome = emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(),
+                    LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE);
+            if (outcome == EmitOutcome.EMITTED) {
                 overdueEmitted++;
+            } else if (outcome == EmitOutcome.FAILED_BEFORE_DISPATCH) {
+                leadFollowupRepository.releaseOverdueTransition(fu.getId());
+                log.warn("[LeadFollowup] Released OVERDUE claim for followup {} (nothing was"
+                        + " dispatched) -- it will be retried on the next scan", fu.getId());
             }
         }
 
@@ -304,7 +326,8 @@ public class LeadAutomationScheduler {
         }
     }
 
-    private boolean emitFollowup(LeadFollowup fu, String eventName, String stage) {
+    private EmitOutcome emitFollowup(LeadFollowup fu, String eventName, String stage) {
+        boolean dispatched = false;
         try {
             AudienceResponse ar = audienceResponseRepository
                     .findById(fu.getAudienceResponseId()).orElse(null);
@@ -336,15 +359,45 @@ public class LeadAutomationScheduler {
             leadAssignmentNotifier.notifyFollowUpDue(
                     fu.getInstituteId(), counselorId, (String) ctx.get("leadName"), overdue);
 
+            // Past this point the trigger has been handed off, so a retry could re-run the
+            // workflow. Flipped BEFORE the call, not after, precisely so a throw inside it still
+            // counts as dispatched. See the EmitOutcome javadoc.
+            dispatched = true;
+
             // eventId = followup id so EVENT_BASED idempotency dedups per follow-up row,
             // not per lead — a lead can have many follow-ups over time.
             workflowTriggerService.handleTriggerEvents(
                     eventName, fu.getId(), fu.getInstituteId(), ctx);
-            return true;
+            return EmitOutcome.EMITTED;
         } catch (Exception ex) {
-            log.warn("[LeadFollowup] Failed to emit {} for followup {}: {}",
-                    eventName, fu.getId(), ex.getMessage());
-            return false;
+            log.warn("[LeadFollowup] Failed to emit {} for followup {} (dispatched={}): {}",
+                    eventName, fu.getId(), dispatched, ex.getMessage());
+            return dispatched ? EmitOutcome.FAILED_AFTER_DISPATCH : EmitOutcome.FAILED_BEFORE_DISPATCH;
         }
+    }
+
+    /**
+     * Why a retry is only safe for one of the two failure modes.
+     *
+     * <p>Retrying re-emits the trigger, and whether that re-runs the workflow depends on the
+     * trigger's idempotency strategy — which is per-institute configuration, not something this
+     * scheduler controls. The default, {@code UUID}, generates a fresh key per emission, so it
+     * dedups NOTHING: a second emit is a second execution and, for a workflow with a SEND_EMAIL
+     * node, a second email. Only the deterministic strategies would collapse a retry.
+     *
+     * <p>So the claim can only be made about ordering, not about idempotency:</p>
+     * <ul>
+     *   <li>{@code FAILED_BEFORE_DISPATCH} — the failure happened while building ctx, before the
+     *       trigger was handed to the engine. Nothing ran, nothing was sent, and releasing the
+     *       claim so the next scan retries is safe under ANY strategy.</li>
+     *   <li>{@code FAILED_AFTER_DISPATCH} — the hand-off was entered and then threw. Work may
+     *       already have happened. The claim is NOT released: this keeps today's behaviour
+     *       (the reminder is lost) rather than trading a lost email for a duplicated one.</li>
+     * </ul>
+     */
+    private enum EmitOutcome {
+        EMITTED,
+        FAILED_BEFORE_DISPATCH,
+        FAILED_AFTER_DISPATCH
     }
 }

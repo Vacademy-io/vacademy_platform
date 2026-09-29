@@ -94,6 +94,11 @@ import {
     BulkAssignCounsellorDialog,
     type BulkAssignMode,
 } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    WorkedWindowFilter,
+    workedWindowFromIso,
+} from '@/components/shared/leads/worked-window-filter';
+import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
@@ -108,6 +113,7 @@ import {
     ArrowsLeftRight,
     CaretDown,
     CircleNotch,
+    Tag,
     Trash,
     UserMinus,
     UserPlus,
@@ -290,6 +296,16 @@ const RecentLeadsContent = () => {
     const [customFrom, setCustomFrom] = useState(urlSearch.from ?? '');
     const [customTo, setCustomTo] = useState(urlSearch.to ?? '');
     const [customOpen, setCustomOpen] = useState(false);
+    // "Worked in the last …" windows. Rolling, and independent of the submitted-date
+    // range above: a lead submitted 3 months ago that I called this morning belongs in
+    // "called in the last 24h", and the submitted filter can never say so.
+    const [calledWindow, setCalledWindow] = useState(urlSearch.calledWithin ?? '');
+    const [workedWindow, setWorkedWindow] = useState(urlSearch.workedWithin ?? '');
+    // Recomputed per render on purpose — an absolute instant frozen in state would
+    // silently go stale as the page sits open, so "last 24 hours" would keep meaning
+    // 24 hours before the page loaded rather than 24 hours before now.
+    const calledFromIso = workedWindowFromIso(calledWindow);
+    const workedFromIso = workedWindowFromIso(workedWindow);
     const appliedRange = useMemo(
         () =>
             rangeDays === CUSTOM_DATE_VALUE
@@ -423,6 +439,8 @@ const RecentLeadsContent = () => {
                 source: sourceFilter || undefined,
                 called: callHistoryFilter || undefined,
                 calledCount: callCountParam ? String(callCountParam) : undefined,
+                calledWithin: calledWindow || undefined,
+                workedWithin: workedWindow || undefined,
                 utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
                 utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
                 utmCampaign: utmFilters.campaign?.length
@@ -450,6 +468,8 @@ const RecentLeadsContent = () => {
         sourceFilter,
         callHistoryFilter,
         callCountParam,
+        calledWindow,
+        workedWindow,
         utmFilters,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
@@ -589,6 +609,8 @@ const RecentLeadsContent = () => {
             sourceFilter,
             callHistoryFilter,
             callCountParam,
+            calledWindow,
+            workedWindow,
             customFieldFiltersKey,
             utmFiltersKey,
             page,
@@ -616,6 +638,8 @@ const RecentLeadsContent = () => {
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
+                called_from_local: calledFromIso,
+                activity_from_local: workedFromIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -715,6 +739,7 @@ const RecentLeadsContent = () => {
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
     const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
@@ -785,6 +810,8 @@ const RecentLeadsContent = () => {
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
+                called_from_local: calledFromIso,
+                activity_from_local: workedFromIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -889,6 +916,8 @@ const RecentLeadsContent = () => {
         counsellorFilters.length > 0 ||
         !!sourceFilter ||
         !!callHistoryFilter ||
+        !!calledWindow ||
+        !!workedWindow ||
         customFieldFiltersPayload.length > 0 ||
         hasUtmSelection(utmFilters);
 
@@ -1132,6 +1161,8 @@ const RecentLeadsContent = () => {
                     source_type: sourceFilter || undefined,
                     call_history_filter: callHistoryFilter || undefined,
                     call_count_value: callCountParam,
+                    called_from_local: calledFromIso,
+                    activity_from_local: workedFromIso,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1250,6 +1281,34 @@ const RecentLeadsContent = () => {
             });
         });
     });
+    // Worked-window chips reuse the date-range preset labels ("Last 7 days"), so the
+    // two windows read the same way even though one is rolling and one is calendar-day.
+    const workedWindowLabel = (hours: string): string => {
+        const days = Number(hours) / 24;
+        if (days === 1) return t('dateRangeOptions.last24Hours');
+        if (days === 7) return t('dateRangeOptions.last7Days');
+        if (days === 15) return t('dateRangeOptions.last15Days');
+        if (days === 30) return t('dateRangeOptions.last30Days');
+        return t('chips.dateRangeFallback');
+    };
+    if (calledWindow) {
+        chips.push({
+            label: t('chips.calledWithin', { window: workedWindowLabel(calledWindow) }),
+            onRemove: () => {
+                setCalledWindow('');
+                setPage(0);
+            },
+        });
+    }
+    if (workedWindow) {
+        chips.push({
+            label: t('chips.workedWithin', { window: workedWindowLabel(workedWindow) }),
+            onRemove: () => {
+                setWorkedWindow('');
+                setPage(0);
+            },
+        });
+    }
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {
@@ -1363,6 +1422,32 @@ const RecentLeadsContent = () => {
                         onCountChange={(n) => {
                             setCallCountValue(n);
                             setPage(0);
+                        }}
+                    />
+                    <WorkedWindowFilter
+                        kind="CALLED"
+                        value={calledWindow}
+                        onValueChange={(v) => {
+                            setCalledWindow(v);
+                            setPage(0);
+                        }}
+                        labels={{
+                            anyLabel: t('filters.calledWithin.any'),
+                            placeholder: t('filters.calledWithin.placeholder'),
+                            optionLabel: (hours) => workedWindowLabel(String(hours)),
+                        }}
+                    />
+                    <WorkedWindowFilter
+                        kind="ACTIVITY"
+                        value={workedWindow}
+                        onValueChange={(v) => {
+                            setWorkedWindow(v);
+                            setPage(0);
+                        }}
+                        labels={{
+                            anyLabel: t('filters.workedWithin.any'),
+                            placeholder: t('filters.workedWithin.placeholder'),
+                            optionLabel: (hours) => workedWindowLabel(String(hours)),
                         }}
                     />
                     {filterCustomFields.map((f) =>
@@ -1624,6 +1709,14 @@ const RecentLeadsContent = () => {
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Not admin-gated, unlike delete/move below:
+                                        // changing status is a counsellor's normal daily
+                                        // action and the single-row chip already allows it.
+                                        {
+                                            label: t('bulk.changeStatus'),
+                                            value: 'status',
+                                            icon: <Tag className="size-4" />,
+                                        },
                                         // Delete/restore are admin-only, matching the endpoints'
                                         // own check. In the deleted-leads view the only sensible
                                         // action is putting them back.
@@ -1660,6 +1753,10 @@ const RecentLeadsContent = () => {
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'status') {
+                                            setBulkStatusOpen(true);
+                                            return;
+                                        }
                                         if (value === 'migrate') {
                                             setBulkMigrateOpen(true);
                                             return;
@@ -1734,6 +1831,20 @@ const RecentLeadsContent = () => {
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <BulkLeadStatusDialog
+                    open={bulkStatusOpen}
+                    onOpenChange={setBulkStatusOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    statuses={leadStatusCatalog}
+                    onSuccess={(result) => {
+                        // Keep the selection when nothing moved — the admin probably
+                        // wants to pick a different status rather than reselect.
+                        if (result.updated > 0) setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 <DeleteLeadsDialog

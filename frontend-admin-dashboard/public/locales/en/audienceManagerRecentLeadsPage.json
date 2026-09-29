@@ -48,6 +48,14 @@
             "done": "Done",
             "from": "From",
             "to": "To"
+        },
+        "calledWithin": {
+            "placeholder": "Called within",
+            "any": "Called: any time"
+        },
+        "workedWithin": {
+            "placeholder": "Worked within",
+            "any": "Worked: any time"
         }
     },
     "toolbar": {
@@ -77,7 +85,9 @@
         "statusConverted": "Converted",
         "unassigned": "Unassigned",
         "removeAriaLabel": "Remove {{label}}",
-        "clearAll": "Clear all"
+        "clearAll": "Clear all",
+        "calledWithin": "Called: {{window}}",
+        "workedWithin": "Worked: {{window}}"
     },
     "search": {
         "placeholder": "Search leads",
@@ -98,7 +108,8 @@
         "unassignLeads": "Unassign leads",
         "restoreLeads": "Restore leads",
         "deleteLeads": "Delete leads",
-        "moveLeads": "Move to another list"
+        "moveLeads": "Move to another list",
+        "changeStatus": "Change status"
     },
     "emptyState": {
         "errorTitle": "Couldn't load leads",
@@ -137,6 +148,12 @@
         "leadRestored_one": "{{count}} lead restored",
         "leadRestored_other": "{{count}} leads restored",
         "restoreFailed": "Failed to restore. Please try again.",
-        "selectAllFailed": "Failed to select all leads"
+        "selectAllFailed": "Failed to select all leads",
+        "bulkStatusUpdated_one": "{{count}} lead moved to {{status}}",
+        "bulkStatusUpdated_other": "{{count}} leads moved to {{status}}",
+        "bulkStatusUnchanged_one": "{{count}} lead was already on that status",
+        "bulkStatusUnchanged_other": "{{count}} leads were already on that status",
+        "bulkStatusPartial": "{{failed}} could not be updated",
+        "bulkStatusFailed": "Failed to change status. Please try again."
     }
 }

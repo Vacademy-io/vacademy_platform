@@ -65,6 +65,13 @@ export const RecentLeadsSearchSchema = z.object({
     /** Attempt count N for called=CALLED_N_TIMES / CALLED_N_PLUS_TIMES. Kept as a
      *  string like every other param here; the page clamps it to 1–99 on read. */
     calledCount: z.string().optional(),
+    /** "Called within the last N hours" — preset hour-count ('24' | '168' | '360' |
+     *  '720'). Rolling from now, unlike `range`, which buckets by calendar day.
+     *  Bounds the last CALL on the lead, not its submission. */
+    calledWithin: z.string().optional(),
+    /** "Worked within the last N hours" — same presets as calledWithin, but bounds the
+     *  last timeline activity of any kind (note, status change, logged call). */
+    workedWithin: z.string().optional(),
     /** Campaign (UTM) filters — comma-separated values per dimension. Only
      *  honoured while the institute's UTM setting is on (the controls that
      *  read them render nothing otherwise). The Reports Center's UTM tab

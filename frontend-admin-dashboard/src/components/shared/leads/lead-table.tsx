@@ -52,8 +52,20 @@ export interface LeadNotesSummary {
     count: number;
 }
 
-/** Sort keys the backend's lead-list/recent-leads endpoints understand. */
-export type LeadSortKey = 'SUBMITTED_AT' | 'LEAD_SCORE' | 'LEAD_TIER' | 'STATUS';
+/**
+ * Sort keys the backend's lead-list/recent-leads endpoints understand.
+ *
+ * LAST_ACTIVITY sorts by the newest timeline event on the lead — the very feed the
+ * Activity column renders — and LAST_CALLED by the newest telephony_call_log entry,
+ * so "who have I not touched in a while" is one click on the column header.
+ */
+export type LeadSortKey =
+    | 'SUBMITTED_AT'
+    | 'LEAD_SCORE'
+    | 'LEAD_TIER'
+    | 'STATUS'
+    | 'LAST_ACTIVITY'
+    | 'LAST_CALLED';
 export type LeadSortDirection = 'ASC' | 'DESC';
 
 interface LeadTableProps {
@@ -554,6 +566,11 @@ export function LeadTable({
             header: 'Activity',
             thClass: 'min-w-56',
             show: showOps,
+            // Sortable even though the cell text is hydrated client-side per page:
+            // the ORDER BY runs server-side on the same timeline feed the preview
+            // comes from, so the ordering is over ALL matching leads, not just the
+            // page the notes batch happens to have loaded.
+            sortKey: 'LAST_ACTIVITY',
             interactive: true,
             render: (vm) =>
                 vm.userId ? (

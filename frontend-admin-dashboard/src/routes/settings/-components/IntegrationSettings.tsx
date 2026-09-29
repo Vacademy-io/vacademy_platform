@@ -373,6 +373,7 @@ function ConnectorTable({
                         <th className="px-4 py-2">{t('table.headers.formCampaign')}</th>
                         <th className="px-4 py-2">{t('table.headers.audience')}</th>
                         <th className="px-4 py-2">{t('table.headers.source')}</th>
+                        <th className="px-4 py-2">{t('table.headers.connectedOn')}</th>
                         <th className="px-4 py-2">{t('table.headers.status')}</th>
                         <th className="px-4 py-2">{t('table.headers.webhook')}</th>
                         <th className="px-4 py-2" />
@@ -442,6 +443,22 @@ function ConnectorTable({
                                 </td>
                                 <td className="px-4 py-2.5 text-xs text-neutral-500">
                                     {c.producesSourceType ?? '-'}
+                                </td>
+                                {/* When the link was established. createdAt is the row's own
+                                    creation, so re-authorising an existing connector keeps the
+                                    original date rather than resetting it — which is what
+                                    "when did we connect this form" means. */}
+                                <td
+                                    className="whitespace-nowrap px-4 py-2.5 text-xs text-neutral-500"
+                                    title={c.createdAt ?? undefined}
+                                >
+                                    {c.createdAt
+                                        ? new Date(c.createdAt).toLocaleDateString(undefined, {
+                                              day: 'numeric',
+                                              month: 'short',
+                                              year: 'numeric',
+                                          })
+                                        : t('table.neverConnected')}
                                 </td>
                                 <td className="px-4 py-2.5">
                                     {c.connectionStatus === 'ACTIVE' ? (

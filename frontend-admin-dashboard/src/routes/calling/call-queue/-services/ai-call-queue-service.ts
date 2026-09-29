@@ -4,6 +4,8 @@
  * Backed by the institute-scoped queue endpoints (admin-core-service):
  *   GET    /v1/telephony/ai-queue/summary?instituteId=   — depth, in-flight, ETA
  *   GET    /v1/telephony/ai-queue?instituteId=&status=   — paged rows (Spring Page envelope)
+ *   POST   /v1/telephony/ai-queue/pause?instituteId=     — hold the queue (nothing lost)
+ *   POST   /v1/telephony/ai-queue/resume?instituteId=    — let it dial again
  *   POST   /v1/telephony/ai-queue/cancel?instituteId=    — cancel everything still waiting
  *   DELETE /v1/telephony/ai-queue/{id}?instituteId=      — cancel one waiting call
  *
@@ -141,6 +143,26 @@ export async function fetchQueueItems(args: {
  * manual clicks included. An admin stopping a single bulk run must not silently take
  * the rest down with it.
  */
+/**
+ * Hold this institute's queue, or let it go again.
+ *
+ * Pausing is NOT cancelling: every waiting call keeps its place, its order and its
+ * campaign, and the expiry clock stops for the duration — the dialler simply steps
+ * over this institute until it is resumed. Use it to stop calls going out while you
+ * look at what the last batch did.
+ */
+export async function setQueuePaused(
+    instituteId: string,
+    paused: boolean
+): Promise<{ instituteId: string; paused: boolean; queued: number }> {
+    const { data } = await authenticatedAxiosInstance.post(
+        `${QUEUE_BASE}/${paused ? 'pause' : 'resume'}`,
+        null,
+        { params: { instituteId } }
+    );
+    return data;
+}
+
 export async function cancelAllQueued(
     instituteId: string,
     reason?: string,

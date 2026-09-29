@@ -92,9 +92,10 @@ export const APPROVED_PROPOSAL_STATUSES: ProposalStatus[] = ['META_APPROVED', 'M
 
 /** Which engine statuses the UI lets you move to from a given status. Mirrors backend transition(). */
 export const NEXT_STATUSES: Partial<Record<EngineStatus, EngineStatus[]>> = {
-    DRAFT: ['DRY_RUN', 'ACTIVE'],
-    TEMPLATES_PENDING: ['DRY_RUN', 'ACTIVE'],
-    DRY_RUN: ['ACTIVE', 'PAUSED'],
+    // The backend archives from any state; a draft that will never go live must be archivable.
+    DRAFT: ['DRY_RUN', 'ACTIVE', 'ARCHIVED'],
+    TEMPLATES_PENDING: ['DRY_RUN', 'ACTIVE', 'ARCHIVED'],
+    DRY_RUN: ['ACTIVE', 'PAUSED', 'ARCHIVED'],
     ACTIVE: ['PAUSED'],
     PAUSED: ['ACTIVE', 'ARCHIVED'],
 };

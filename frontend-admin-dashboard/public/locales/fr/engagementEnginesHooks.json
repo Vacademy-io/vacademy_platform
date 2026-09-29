@@ -38,6 +38,7 @@
         "dismiss": "Rejeté",
         "reopen": "Rouvert",
         "send": "Envoyé",
-        "default": "Terminé"
+        "default": "Terminé",
+        "sendNotConfirmed": "Envoi non confirmé. La tâche est maintenant dans Échec. Vérifiez le journal des messages avant de renvoyer."
     }
 }

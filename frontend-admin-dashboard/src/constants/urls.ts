@@ -1503,6 +1503,9 @@ export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1
 export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white-label/v1/setup`;
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
+// The institute's own Google OAuth client, so "Continue with Google" shows the brand's name.
+export const INSTITUTE_OAUTH_CLIENT = (instituteId: string, provider: 'google') =>
+    `${BASE_URL}/auth-service/v1/institutes/${instituteId}/oauth-clients/${provider}`;
 
 // App Registry Status (read-only) — mobile/desktop app registration status for this institute,
 // sourced from the health-check dashboard's App Registration module. Registration itself stays

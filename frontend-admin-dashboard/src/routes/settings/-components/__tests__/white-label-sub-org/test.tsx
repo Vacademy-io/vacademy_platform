@@ -32,6 +32,10 @@ vi.mock('@/constants/helper', async (importOriginal) => {
     return { ...actual, getInstituteId: () => 'inst-1' };
 });
 
+// The page imports signup-services (logo upload), which imports '@/i18n'; its real init
+// needs the real react-i18next, which the mock above replaces.
+vi.mock('@/i18n', () => ({ default: { t: (key: string) => key, language: 'en' } }));
+
 vi.mock('@/lib/auth/axiosInstance', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 
 vi.mock('@/routes/manage-custom-teams/-services/custom-team-services', () => ({

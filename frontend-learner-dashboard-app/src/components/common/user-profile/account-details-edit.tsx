@@ -19,10 +19,37 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { Preferences } from "@capacitor/preferences";
-import { UPDATE_USER_DETAILS } from "@/constants/urls";
+import { LEARNER_LMS_LANDING, UPDATE_USER_DETAILS } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { removeTokensAndLogout } from "@/lib/auth/sessionUtility";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+
+/**
+ * Where to send the learner once the new password is saved, for institutes whose courses
+ * live on a connected WordPress/LearnDash site. The backend mirrors the new password to
+ * that site, so the site — not the Vacademy dashboard, which for these institutes holds
+ * nothing they came for — is the screen they actually want next.
+ *
+ * Must be called BEFORE removeTokensAndLogout(): it is an authenticated request, and it
+ * deliberately takes no userId so it can only ever answer for the caller.
+ *
+ * Best-effort. A learner who has just changed their password must land somewhere, so any
+ * failure here returns null and the caller keeps its ordinary landing route.
+ */
+const fetchLmsLandingUrl = async (): Promise<string | null> => {
+  try {
+    const { data } = await authenticatedAxiosInstance.get(LEARNER_LMS_LANDING);
+    const url: unknown = data?.redirect_url;
+    // Only ever an absolute http(s) URL on the LMS. Anything else is a misconfigured
+    // connection, and handing it to location.assign would be an open redirect.
+    if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+      return url;
+    }
+  } catch (error) {
+    console.warn("LMS landing lookup failed, using the default landing route", error);
+  }
+  return null;
+};
 
 // Validation schemas
 const accountDetailsSchema = z
@@ -145,6 +172,18 @@ export default function AccountDetailsEdit({
       );
 
       if (response.status === 200) {
+        // Resolved while the token is still valid — the logout below invalidates it.
+        const lmsLandingUrl = await fetchLmsLandingUrl();
+        if (lmsLandingUrl) {
+          // Awaited, unlike the in-app path below: the wipe clears storage
+          // asynchronously, and leaving the origin mid-wipe would strand portal
+          // tokens on a device the learner is walking away from.
+          await removeTokensAndLogout();
+          toast.success(t("accountDetails.toast.updateSuccess"));
+          // A real page navigation, not navigate({ to }) — another origin.
+          window.location.assign(lmsLandingUrl);
+          return;
+        }
         removeTokensAndLogout();
         toast.success(t("accountDetails.toast.updateSuccess"));
         handleClose();

@@ -208,7 +208,8 @@ public class SubjectResolver {
         String lower = c.toLowerCase(Locale.ROOT);
         return lower.equals("unknown") || lower.equals("other") || lower.equals("others")
                 || lower.equals("n/a") || lower.equals("na") || lower.equals("general")
-                || lower.equals("misc") || lower.equals("miscellaneous") || lower.equals("-");
+                || lower.equals("misc") || lower.equals("miscellaneous") || lower.equals("-")
+                || lower.equals("default");   // placeholder subject of a course without subjects
     }
 
     private String clean(String s) {

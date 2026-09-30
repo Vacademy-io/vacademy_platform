@@ -111,7 +111,16 @@ public class StudentReportPdfService {
 
     private byte[] renderReportToPdf(StudentAnalysisProcess process) {
         String html = buildReportHtml(process);
-        return generatePdfFromHtml(html);
+        try {
+            return generatePdfFromHtml(html);
+        } catch (Throwable t) {
+            // Chart labels are SVG <text>, which Batik draws via java.awt fonts; a host without
+            // fonts/fontconfig fails the whole render ("Fontconfig head is null"). Retry without the
+            // SVG text so the parent still gets a PDF (charts unlabelled) instead of an error.
+            log.error("[PDF] Render failed for processId={} ({}); retrying without SVG chart text",
+                    process.getId(), t.toString());
+            return generatePdfFromHtml(html.replaceAll("(?s)<text\\b[^>]*>.*?</text>", ""));
+        }
     }
 
     /**
@@ -204,6 +213,7 @@ public class StudentReportPdfService {
              the whole table to the next page and leaving the first one half blank */
           .append("table.dt{-fs-table-paginate:paginate} table.dt tr{page-break-inside:avoid}\n")
           .append(".card.flow{page-break-inside:auto}\n")
+          .append(".keep{page-break-inside:avoid}\n")
           /* chart headers + legends */
           .append(".ch{width:100%;border-collapse:collapse;margin:10px 0 4px}\n")
           .append(".ch td{padding:0;vertical-align:middle;white-space:nowrap}\n")
@@ -430,7 +440,9 @@ public class StudentReportPdfService {
             String[] nameParts = studentName.trim().split("\\s+");
             String firstName = nameParts[0].isEmpty() ? "Student" : nameParts[0];
 
-            sb.append("<div class='card'><h2 class='sec'>Academic Performance</h2>");
+            // flow: the card may break across pages (so a tall card doesn't leave page 1 half empty);
+            // each chart sits in a .keep block so a chart itself is never split.
+            sb.append("<div class='card flow'><h2 class='sec'>Academic Performance</h2>");
             if (ac.getAveragePercentage() != null) {
                 sb.append("<p class='muted' style='margin-top:-4px'>Average <b style='color:#1C2433'>")
                   .append(fmtNum(ac.getAveragePercentage())).append("%</b>");
@@ -444,26 +456,26 @@ public class StudentReportPdfService {
             }
             long plotted = rows.stream().filter(a -> a.getPercentage() != null).count();
             if (plotted >= 2) {
-                sb.append(chartHeader("Score over time", 0,
+                sb.append("<div class='keep'>").append(chartHeader("Score over time", 0,
                         legendDot(accent), firstName,
                         legendLine(CLASS_GRAY), "Class average"));
-                sb.append(svgTrend(rows, accent));
+                sb.append(svgTrend(rows, accent)).append("</div>");
             }
             if (ac.getSubjectPerformance() != null && !ac.getSubjectPerformance().isEmpty()) {
-                sb.append(chartHeader("By subject", 14,
+                sb.append("<div class='keep'>").append(chartHeader("By subject", 14,
                         legendSquare(accent), "At or above class",
                         legendSquare(belowClassColor(accent)), "Below class",
                         legendTick(), "Class average"));
-                sb.append(svgSubjectBars(ac.getSubjectPerformance(), accent));
+                sb.append(svgSubjectBars(ac.getSubjectPerformance(), accent)).append("</div>");
             }
             String gradeMix = svgGradeMix(rows);
             if (!gradeMix.isEmpty()) {
                 int[] gc = gradeCounts(rows);
                 int graded = java.util.Arrays.stream(gc).sum();
                 int bOrAbove = gc[0] + gc[1] + gc[2] + gc[3];
-                sb.append(chartHeader("Grades earned: " + bOrAbove + " of " + graded
+                sb.append("<div class='keep'>").append(chartHeader("Grades earned: " + bOrAbove + " of " + graded
                         + (graded == 1 ? " test" : " tests") + " at grade B or above", 14));
-                sb.append(gradeMix);
+                sb.append(gradeMix).append("</div>");
             }
             sb.append("</div>\n");
 
@@ -667,7 +679,10 @@ public class StudentReportPdfService {
             sb.append("<div class='card'><h2 class='sec'>Course Progress")
               .append(cpPct.isEmpty() ? "" : " — " + cpPct + " complete").append("</h2>");
             if (cp.getSubjects() != null) {
-                cp.getSubjects().forEach(s -> {
+                cp.getSubjects().stream()
+                  // older reports carry the placeholder "DEFAULT" subject of a course without subjects
+                  .filter(s -> StringUtils.hasText(s.getSubject()) && !s.getSubject().trim().equalsIgnoreCase("default"))
+                  .forEach(s -> {
                     double p = s.getCompletionPercentage() != null ? s.getCompletionPercentage() : 0;
                     String barCls = p >= 70 ? "g" : p >= 50 ? "" : "w";
                     sb.append("<table class='brow'><tr>");

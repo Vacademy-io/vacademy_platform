@@ -6588,9 +6588,16 @@ async def test_a_second_acknowledgment_only_reply_gets_the_firm_cue():
     caller["t"] = "कोशिश करता है।"
     await _reply(g, "जी सर।")
     assert [a for _h, _k, a in asked] == [0, 2], asked
-    assert g.owes_line()
+    assert g.owes_line() and g.owed_after_filler()
     caller["t"] = "अच्छा।"
+    # A real reply ends the acknowledgment streak. Being a statement with no
+    # question it still leaves the bot owing the next line (call 963347ab) —
+    # but as a statement, not as a filler.
     await _reply(g, "आमतौर पर parents की तीन-चार expectations होती हैं।")
+    assert not g.owed_after_filler()
+    assert g.owes_line()
+    caller["t"] = "जी।"
+    await _reply(g, "पहली, faculty अच्छे हों। क्या आपकी भी यही expectation है?")
     assert not g.owes_line()
 
 

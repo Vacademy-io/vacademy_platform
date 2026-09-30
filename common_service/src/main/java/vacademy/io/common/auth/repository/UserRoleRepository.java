@@ -74,6 +74,31 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                         @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds);
 
+        /**
+         * Like updateUserRoleStatusByInstituteIdAndUserId, but only moves rows that are
+         * currently in one of {@code fromStatuses}. Enable must not resurrect a role an admin
+         * deleted, and disable must not rewrite rows that are already gone.
+         */
+        @Transactional
+        @Modifying
+        @Query("UPDATE UserRole ur SET ur.status = :newStatus WHERE ur.instituteId = :instituteId "
+                        + "AND ur.user.id IN (:userIds) AND ur.status IN (:fromStatuses)")
+        int updateUserRoleStatusFromStatuses(@Param("newStatus") String newStatus,
+                        @Param("fromStatuses") List<String> fromStatuses,
+                        @Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
+
+        /**
+         * Accepts pending invites on sign-in: INVITED -> ACTIVE for the user in one institute.
+         * Disabled or deleted roles are left exactly as the admin set them.
+         */
+        @Transactional
+        @Modifying
+        @Query("UPDATE UserRole ur SET ur.status = 'ACTIVE' WHERE ur.instituteId = :instituteId "
+                        + "AND ur.user.id IN (:userIds) AND ur.status = 'INVITED'")
+        int activateInvitedRolesByInstituteIdAndUserId(@Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
+
         @Query("SELECT ur FROM UserRole ur WHERE ur.user = :user AND ur.status = :status AND ur.role.name = :roleName")
         List<UserRole> findByUserAndStatusAndRoleName(@Param("user") User user,
                         @Param("status") String status,

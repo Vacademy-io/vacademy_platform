@@ -65,6 +65,9 @@ public class StudentAnalysisProcessorService {
         // Learner notification (best-effort; never affects report generation)
         private final StudentReportNotificationService studentReportNotificationService;
 
+        // Wallet check before the paid AI calls
+        private final vacademy.io.admin_core_service.features.credits.client.CreditClient creditClient;
+
         /**
          * Process student analysis asynchronously.
          *
@@ -154,13 +157,23 @@ public class StudentAnalysisProcessorService {
                 ComprehensiveReportLLMService.ChargeContext charge = new ComprehensiveReportLLMService.ChargeContext(
                                 process.getInstituteId(), process.getUserId(), actorUserId, process.getId());
 
+                // Affordability: an institute whose wallet is known to be empty gets the deterministic
+                // report without AI text — the same outcome as a model failure — instead of being
+                // charged into a negative balance (charges are allow_negative). An unreadable
+                // balance does not block: the report behaves as it always has.
+                boolean aiAffordable = creditClient.readBalance(process.getInstituteId()).map(b -> b > 0).orElse(true);
+                if (!aiAffordable) {
+                        log.warn("[Student-Analysis-Processor] [v2] Institute {} has no AI credits; skipping AI narrative for processId={}",
+                                        process.getInstituteId(), process.getId());
+                }
+
                 // Step 2: Layer-2 AI narrative (best-effort; failure → report without ai_insights)
                 log.info("[Student-Analysis-Processor] [v2] Generating AI narrative");
                 try {
                         // Must exceed the per-request timeout in ComprehensiveReportLLMService
                         // (RESPONSE_TIMEOUT_SECONDS) so a slow free-tier model gets one full attempt
                         // instead of being cut off here at the blocking read. Background @Async job.
-                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, charge)
+                        AiInsightsSection insights = !aiAffordable ? null : comprehensiveLLMService.narrate(report, charge)
                                         .blockOptional(Duration.ofSeconds(180))
                                         .orElse(null);
 
@@ -216,7 +229,7 @@ public class StudentAnalysisProcessorService {
                 // here we try to upgrade it to LLM-clustered subjects and, on ANY failure or empty
                 // result, silently keep the deterministic grouping already in place — this codebase
                 // has learned the LLM can be unreliable, so the fallback is mandatory, not optional.
-                clusterSubjectMarksSafe(report, charge);
+                if (aiAffordable) clusterSubjectMarksSafe(report, charge);
 
                 // Step 3: Persist completed report + mark COMPLETED atomically
                 String reportJson = objectMapper.writeValueAsString(report);

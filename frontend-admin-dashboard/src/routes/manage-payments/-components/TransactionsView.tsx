@@ -516,6 +516,9 @@ export function TransactionsView() {
     // Paging only applies while the balances list is on screen; leaving it at 0 otherwise keeps
     // the count in the segmented switch from refetching every time the records table is paged.
     const balancesPage = view === 'balances' ? currentPage : 0;
+    // Same for the search box: it narrows the balances list only while that list is open, so
+    // searching the payment records neither refetches it nor changes the Due count in the switch.
+    const balancesSearch = view === 'balances' ? debouncedSearch : '';
     // A forecast month only ever narrows the Upcoming list.
     const listMonth = balanceScope === 'upcoming' ? dueMonth : null;
     const {
@@ -531,6 +534,7 @@ export function TransactionsView() {
             balancesPage,
             balanceScope,
             listMonth,
+            balancesSearch,
         ],
         queryFn: () =>
             fetchOutstandingLearners(
@@ -538,6 +542,8 @@ export function TransactionsView() {
                     start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
                     end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
                     package_session_ids: requestFilters.package_session_ids,
+                    // Before, typing a name on Due or Outstanding changed nothing.
+                    search_string: balancesSearch || undefined,
                 },
                 balancesPage,
                 PAGE_SIZE,

@@ -1355,20 +1355,25 @@ public class PaymentLogService {
         boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
 
         List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
+        String search = StringUtils.hasText(request.getSearchString()) ? request.getSearchString().trim() : "";
+        boolean noSearch = search.isEmpty();
+        String phoneDigits = phoneSearchDigits(search);
         Page<? extends OutstandingLearnerProjection> page;
         if (month != null) {
             page = userPlanRepository.findLearnersDueInMonth(
                     request.getInstituteId(), startDate, endDate, noPackageSessions,
                     packageSessionIds, upcomingDays, month.atDay(1), month.plusMonths(1).atDay(1),
-                    PageRequest.of(pageNo, pageSize));
+                    noSearch, search, phoneDigits, PageRequest.of(pageNo, pageSize));
         } else if (includeNotYetDue) {
             page = userPlanRepository.findLearnersWithBalance(
                     request.getInstituteId(), startDate, endDate, noPackageSessions,
-                    packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+                    packageSessionIds, upcomingDays, noSearch, search, phoneDigits,
+                    PageRequest.of(pageNo, pageSize));
         } else {
             page = userPlanRepository.findOutstandingLearners(
                     request.getInstituteId(), startDate, endDate, noPackageSessions,
-                    packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+                    packageSessionIds, upcomingDays, noSearch, search, phoneDigits,
+                    PageRequest.of(pageNo, pageSize));
         }
 
         // Names/emails/phones live in the auth service, so resolve the page's learners in one call
@@ -1497,9 +1502,28 @@ public class PaymentLogService {
             boolean typeEnrollInvite, boolean typeUserInvoice,
             boolean noSearchFilter, boolean noSearchUserIds,
             List<String> searchUserIdsBound, boolean searchNumeric, String searchString,
+            String searchPhoneDigits,
             List<String> paymentPlanNamesBound, boolean noPaymentPlanFilter,
             boolean noBucketFilter, boolean bucketPaid, boolean bucketPending,
             boolean bucketAbandoned, boolean bucketFailed) {
+    }
+
+    /**
+     * The digits of a search that reads as a phone number, for matching {@code student.mobile_number}
+     * whatever way either side is formatted — "+91 95886-97989" and "919588697989" are the same
+     * learner. Longer than ten digits keeps the last ten, so a country code on one side only still
+     * matches. Anything else (a name, an email, a short amount such as "500") returns "" and the
+     * phone match is skipped: a 3-digit fragment would pull in every learner whose number contains it.
+     */
+    static String phoneSearchDigits(String search) {
+        if (search == null || !search.matches("[+0-9()\\s-]+")) {
+            return "";
+        }
+        String digits = search.replaceAll("[^0-9]", "");
+        if (digits.length() < 5) {
+            return "";
+        }
+        return digits.length() > 10 ? digits.substring(digits.length() - 10) : digits;
     }
 
     private ResolvedPaymentFilters resolvePaymentFilters(PaymentLogFilterRequestDTO filterDTO) {
@@ -1549,8 +1573,9 @@ public class PaymentLogService {
         List<String> enrollInviteIdsBound = noEnrollInviteFilter ? SENTINEL : enrollInviteIds;
         List<String> packageSessionIdsBound = noPackageSessionFilter ? SENTINEL : packageSessionIds;
 
-        // Free-text search: resolve name/email/phone to a set of user IDs via the auth service, and
-        // match the amount directly on payment_log. A payment matches if its user OR amount matches.
+        // Free-text search: name/email/phone match the learner's student row inside the query, and
+        // also resolve through the auth service; the amount matches directly on payment_log. A
+        // payment matches if any of them does.
         String statusBucket = StringUtils.hasText(filterDTO.getStatusBucket())
                 ? filterDTO.getStatusBucket().trim().toLowerCase()
                 : "total";
@@ -1566,6 +1591,9 @@ public class PaymentLogService {
         List<String> searchUserIds = Collections.emptyList();
         boolean searchNumeric = false;
         if (!noSearchFilter) {
+            // The auth lookup only finds users holding a role in this institute. Learners loaded
+            // by a migration often hold none (I2CAN: 0 of 4,450 paying learners), so on its own
+            // it matched nobody -- the student-row match in the query is what finds them.
             searchUserIds = authService.searchUserIdsByQuery(searchString, filterDTO.getInstituteId());
             searchNumeric = searchString.matches("[0-9]+(\\.[0-9]+)?");
         }
@@ -1585,6 +1613,7 @@ public class PaymentLogService {
                 typeEnrollInvite, typeUserInvoice,
                 noSearchFilter, noSearchUserIds,
                 searchUserIdsBound, searchNumeric, searchString,
+                phoneSearchDigits(searchString),
                 noPaymentPlanFilter ? List.of("") : paymentPlanNames, noPaymentPlanFilter,
                 noBucketFilter, "paid".equals(statusBucket), "pending".equals(statusBucket),
                 "abandoned".equals(statusBucket), "failed".equals(statusBucket));
@@ -1609,7 +1638,7 @@ public class PaymentLogService {
                 f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
                 f.typeEnrollInvite(), f.typeUserInvoice(),
                 f.noSearchFilter(), f.noSearchUserIds(),
-                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(), f.searchPhoneDigits(),
                 f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours);
 
         List<PaymentLogSummaryResponseDTO.StatusTotal> totals = rows.stream()
@@ -1657,7 +1686,7 @@ public class PaymentLogService {
                 f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
                 f.typeEnrollInvite(), f.typeUserInvoice(),
                 f.noSearchFilter(), f.noSearchUserIds(),
-                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(), f.searchPhoneDigits(),
                 f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours,
                 f.noBucketFilter(), f.bucketPaid(), f.bucketPending(),
                 f.bucketAbandoned(), f.bucketFailed(),

@@ -72,7 +72,8 @@ class PaymentLogBalancesRoutingTest {
     @Test
     @DisplayName("Due list (no month): the same query, the same arguments, nothing else")
     void dueListUnchanged() {
-        when(repo.findOutstandingLearners(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any()))
+        when(repo.findOutstandingLearners(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any()))
                 .thenReturn(empty());
 
         service.getOutstandingLearners(request(), 0, 20);
@@ -81,16 +82,19 @@ class PaymentLogBalancesRoutingTest {
 
         verify(repo, org.mockito.Mockito.times(3)).findOutstandingLearners(
                 eq(INSTITUTE), eq(EPOCH), eq(LocalDateTime.of(2026, 9, 28, 23, 59, 59)), eq(true),
-                eq(List.of("__none__")), eq(30), eq(PageRequest.of(0, 20)));
-        verify(repo, never()).findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any());
+                eq(List.of("__none__")), eq(30), eq(true), eq(""), eq(""), eq(PageRequest.of(0, 20)));
+        verify(repo, never()).findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any());
         verify(repo, never()).findLearnersDueInMonth(
-                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(), any());
+                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(),
+                anyBoolean(), anyString(), anyString(), any());
     }
 
     @Test
     @DisplayName("Outstanding / Upcoming list (no month): the same query as before")
     void outstandingListUnchanged() {
-        when(repo.findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any()))
+        when(repo.findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any()))
                 .thenReturn(empty());
 
         service.getOutstandingLearners(request(), 1, 20, true);
@@ -98,10 +102,12 @@ class PaymentLogBalancesRoutingTest {
 
         verify(repo, org.mockito.Mockito.times(2)).findLearnersWithBalance(
                 eq(INSTITUTE), eq(EPOCH), any(), eq(true), eq(List.of("__none__")), eq(30),
-                eq(PageRequest.of(1, 20)));
-        verify(repo, never()).findOutstandingLearners(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any());
+                eq(true), eq(""), eq(""), eq(PageRequest.of(1, 20)));
+        verify(repo, never()).findOutstandingLearners(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any());
         verify(repo, never()).findLearnersDueInMonth(
-                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(), any());
+                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(),
+                anyBoolean(), anyString(), anyString(), any());
     }
 
     @Test
@@ -113,7 +119,8 @@ class PaymentLogBalancesRoutingTest {
         when(row.getNextDueAmount()).thenReturn(11000d);
         when(row.getNextDueDate()).thenReturn(LocalDate.of(2026, 11, 6));
         Page<BalanceLearnerProjection> page = new PageImpl<>(List.of(row), PageRequest.of(0, 20), 1);
-        when(repo.findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any()))
+        when(repo.findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any()))
                 .thenReturn(page);
         when(authService.getUsersFromAuthServiceByUserIds(anyList())).thenReturn(List.of());
 
@@ -133,7 +140,8 @@ class PaymentLogBalancesRoutingTest {
         when(row.getMonthAmount()).thenReturn(11000d);
         Page<MonthDueLearnerProjection> page = new PageImpl<>(List.of(row), PageRequest.of(0, 20), 1);
         when(repo.findLearnersDueInMonth(
-                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(), any()))
+                anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any(), any(),
+                anyBoolean(), anyString(), anyString(), any()))
                 .thenReturn(page);
         when(authService.getUsersFromAuthServiceByUserIds(anyList())).thenReturn(List.of());
 
@@ -141,9 +149,58 @@ class PaymentLogBalancesRoutingTest {
                 .getContent().get(0);
 
         verify(repo).findLearnersDueInMonth(eq(INSTITUTE), eq(EPOCH), any(), eq(true), eq(List.of("__none__")),
-                eq(30), eq(LocalDate.of(2026, 12, 1)), eq(LocalDate.of(2027, 1, 1)), eq(PageRequest.of(0, 20)));
-        verify(repo, never()).findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(), any());
+                eq(30), eq(LocalDate.of(2026, 12, 1)), eq(LocalDate.of(2027, 1, 1)),
+                eq(true), eq(""), eq(""), eq(PageRequest.of(0, 20)));
+        verify(repo, never()).findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any());
         assertEquals(11000d, dto.getMonthAmount());
+    }
+
+    @Test
+    @DisplayName("Search box: a name narrows the Due list, trimmed, with no phone match")
+    void nameSearchReachesDueList() {
+        when(repo.findOutstandingLearners(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any()))
+                .thenReturn(empty());
+        BillingSummaryRequestDTO r = request();
+        r.setSearchString("  Nikita Patil ");
+
+        service.getOutstandingLearners(r, 0, 20);
+
+        verify(repo).findOutstandingLearners(eq(INSTITUTE), eq(EPOCH), any(), eq(true),
+                eq(List.of("__none__")), eq(30), eq(false), eq("Nikita Patil"), eq(""),
+                eq(PageRequest.of(0, 20)));
+    }
+
+    @Test
+    @DisplayName("Search box: a formatted phone reaches the Outstanding list as its last ten digits")
+    void phoneSearchReachesOutstandingList() {
+        when(repo.findLearnersWithBalance(anyString(), any(), any(), anyBoolean(), anyList(), anyInt(),
+                anyBoolean(), anyString(), anyString(), any()))
+                .thenReturn(empty());
+        BillingSummaryRequestDTO r = request();
+        r.setSearchString("+91 95886-97989");
+
+        service.getOutstandingLearners(r, 0, 20, true);
+
+        verify(repo).findLearnersWithBalance(eq(INSTITUTE), eq(EPOCH), any(), eq(true),
+                eq(List.of("__none__")), eq(30), eq(false), eq("+91 95886-97989"), eq("9588697989"),
+                eq(PageRequest.of(0, 20)));
+    }
+
+    @Test
+    @DisplayName("Phone digits: only phone-shaped searches of 5+ digits, country code dropped")
+    void phoneSearchDigits() {
+        assertEquals("9588697989", PaymentLogService.phoneSearchDigits("919588697989"));
+        assertEquals("9588697989", PaymentLogService.phoneSearchDigits("+91 (95886) 97989"));
+        assertEquals("9588697989", PaymentLogService.phoneSearchDigits("9588697989"));
+        assertEquals("97989", PaymentLogService.phoneSearchDigits("97989"));
+        // Too short to mean a phone: an amount such as 500 must not pull in every number with "500".
+        assertEquals("", PaymentLogService.phoneSearchDigits("500"));
+        assertEquals("", PaymentLogService.phoneSearchDigits("1250.50"));
+        assertEquals("", PaymentLogService.phoneSearchDigits("harshitabalsaraf7@gmail.com"));
+        assertEquals("", PaymentLogService.phoneSearchDigits("Nikita"));
+        assertEquals("", PaymentLogService.phoneSearchDigits(null));
     }
 
     @Test

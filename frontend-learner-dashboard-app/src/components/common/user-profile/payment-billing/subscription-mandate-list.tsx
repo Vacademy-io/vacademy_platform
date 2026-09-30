@@ -16,6 +16,7 @@ import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   fetchSubscriptions,
   cancelScheduledPlanChange,
+  isPlanChangeAwaitingPayment,
   cancelSubscription,
   requestPlanChange,
   type PlanChangeResult,
@@ -34,6 +35,12 @@ import { Preferences } from "@capacitor/preferences";
 interface SubscriptionMandateListProps {
   instituteId: string;
 }
+
+const formatPrice = (amount?: number | null, currency?: string | null): string => {
+  if (amount == null) return "";
+  const symbol = (currency ?? "INR").toUpperCase() === "INR" ? "₹" : `${currency} `;
+  return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+};
 
 const formatDate = (value?: string | null): string | null => {
   if (!value) return null;
@@ -279,10 +286,64 @@ export const SubscriptionMandateList = ({
         );
       })}
 
+      {/* A checkout that was opened and never paid. It blocks a second attempt until it
+          is finished or dropped, so it is shown with both actions rather than hidden. */}
+      {autopaySubs
+        .filter((sub) => isPlanChangeAwaitingPayment(sub.scheduled_plan_change))
+        .map((sub) => (
+          <div
+            key={`awaiting-${sub.user_plan_id}`}
+            className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600"
+          >
+            <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
+            <div className="min-w-0 flex-1">
+              <span>
+                {sub.scheduled_plan_change?.amount_due_now != null
+                  ? t("subscriptionMandate.planChangeAwaitingPayment", {
+                      plan: sub.scheduled_plan_change?.to_plan_name,
+                      amount: formatPrice(
+                        sub.scheduled_plan_change?.amount_due_now,
+                        sub.scheduled_plan_change?.currency ?? sub.currency
+                      ),
+                    })
+                  : t("subscriptionMandate.planChangeAwaitingPaymentNoAmount", {
+                      plan: sub.scheduled_plan_change?.to_plan_name,
+                    })}
+              </span>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="primary"
+                  layoutVariant="default"
+                  onClick={() => setToChange(sub)}
+                  disable={changingPlanId === sub.user_plan_id}
+                >
+                  {t("subscriptionMandate.planChangeCompletePayment")}
+                </MyButton>
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="text"
+                  layoutVariant="default"
+                  disable={cancelPlanChangeMutation.isPending}
+                  onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
+                >
+                  {t("subscriptionMandate.planChangeDiscard")}
+                </MyButton>
+              </div>
+            </div>
+          </div>
+        ))}
+
       {/* A downgrade already booked. Listed after the rows so a member never reads
           "auto-renews on <date>" without also seeing which plan it renews onto. */}
       {autopaySubs
-        .filter((sub) => sub.scheduled_plan_change)
+        .filter(
+          (sub) =>
+            sub.scheduled_plan_change &&
+            !isPlanChangeAwaitingPayment(sub.scheduled_plan_change)
+        )
         .map((sub) => (
           <div
             key={`scheduled-${sub.user_plan_id}`}
@@ -319,6 +380,7 @@ export const SubscriptionMandateList = ({
         }}
         subscription={toChange}
         instituteId={instituteId}
+        preselectPlanId={toChange?.scheduled_plan_change?.to_plan_id ?? null}
         isSubmitting={Boolean(changingPlanId)}
         onConfirm={(target, withAutopay, mandateMethod) =>
           startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)

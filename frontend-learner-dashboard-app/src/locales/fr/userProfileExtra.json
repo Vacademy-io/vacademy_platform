@@ -189,7 +189,11 @@
     },
     "changePlan": "Change plan",
     "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
-    "planChangeCancelScheduled": "Cancel this change"
+    "planChangeCancelScheduled": "Cancel this change",
+    "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
+    "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
+    "planChangeCompletePayment": "Complete payment",
+    "planChangeDiscard": "Discard this change"
   },
   "cardUpdate": {
     "success": "Votre carte a été mise à jour",

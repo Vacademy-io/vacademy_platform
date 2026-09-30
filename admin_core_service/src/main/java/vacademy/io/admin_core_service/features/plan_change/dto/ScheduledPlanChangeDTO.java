@@ -22,4 +22,15 @@ public class ScheduledPlanChangeDTO {
     private String currency;
     /** The end of the paid cycle — when the new plan starts billing. */
     private Date effectiveFrom;
+
+    /**
+     * PENDING_PAYMENT (checkout opened, not paid) or SCHEDULED (booked for the cycle end).
+     * The learner-facing copy differs completely between the two, and a PENDING_PAYMENT
+     * change used to be returned as null -- invisible, while still blocking a second
+     * attempt, so the learner saw no way forward at all.
+     */
+    private String status;
+
+    /** What is still owed on a PENDING_PAYMENT change. Null for a scheduled one. */
+    private Double amountDueNow;
 }

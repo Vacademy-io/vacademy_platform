@@ -133,6 +133,10 @@
         "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
         "planChangeScheduledNoDate": "Moving to {{plan}} at the end of your current period.",
         "planChangeCancelScheduled": "Cancel this change",
+        "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
+        "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
+        "planChangeCompletePayment": "Complete payment",
+        "planChangeDiscard": "Discard this change",
         "planChangeScheduledToast": "Plan change scheduled",
         "planChangeScheduledToastBody": "You'll move to {{plan}} on {{date}}. Nothing changes until then."
     },

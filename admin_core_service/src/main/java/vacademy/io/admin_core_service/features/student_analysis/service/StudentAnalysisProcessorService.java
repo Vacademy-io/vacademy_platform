@@ -385,6 +385,8 @@ public class StudentAnalysisProcessorService {
                         // classified and there is never a "gap band". Only fill what the LLM left blank.
                         if (report.getStrengths() == null || report.getStrengths().isEmpty()) {
                                 java.util.List<TopicConfidence> strengths = topicScores.entrySet().stream()
+                        resolveStrengthAreaOverlap(report, topicScores);
+
                                                 .filter(e -> e.getValue() >= 60)
                                                 .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
                                                 .limit(6)
@@ -633,6 +635,53 @@ public class StudentAnalysisProcessorService {
         }
 
         private static AiInsightsSection.RecommendationItem rec(String priority, String area, String suggestion) {
+        /**
+         * A topic can't be both a strength and an area to improve, but the model sometimes rates
+         * one good test and one bad test of the same subject separately (Accountancy 72 in
+         * strengths, Accountancy 40 in areas). Keep each such topic once, on the side its overall
+         * fact score supports (the average of the two model ratings when there is no fact score),
+         * then order strengths best-first and areas weakest-first.
+         */
+        private void resolveStrengthAreaOverlap(ComprehensiveStudentReport report,
+                        java.util.Map<String, Integer> topicScores) {
+                java.util.List<TopicConfidence> strengths = report.getStrengths();
+                java.util.List<TopicConfidence> areas = report.getAreasToImprove();
+                if (strengths == null || areas == null || strengths.isEmpty() || areas.isEmpty()) return;
+
+                java.util.Map<String, Integer> factByKey = new java.util.HashMap<>();
+                topicScores.forEach((k, v) -> factByKey.putIfAbsent(topicKey(k), v));
+
+                java.util.List<TopicConfidence> keptStrengths = new java.util.ArrayList<>();
+                java.util.List<TopicConfidence> keptAreas = new java.util.ArrayList<>(areas);
+                for (TopicConfidence s : strengths) {
+                        TopicConfidence twin = keptAreas.stream()
+                                        .filter(a -> topicKey(a.getTopic()).equals(topicKey(s.getTopic())))
+                                        .findFirst().orElse(null);
+                        if (twin == null) {
+                                keptStrengths.add(s);
+                                continue;
+                        }
+                        keptAreas.remove(twin);
+                        Integer fact = factByKey.get(topicKey(s.getTopic()));
+                        int score = fact != null ? fact
+                                        : (int) Math.round((nz(s.getConfidence()) + nz(twin.getConfidence())) / 2.0);
+                        if (score >= 60) keptStrengths.add(topic(s.getTopic(), score));
+                        else keptAreas.add(topic(s.getTopic(), score));
+                }
+                keptStrengths.sort((a, b) -> Integer.compare(nz(b.getConfidence()), nz(a.getConfidence())));
+                keptAreas.sort((a, b) -> Integer.compare(nz(a.getConfidence()), nz(b.getConfidence())));
+                report.setStrengths(keptStrengths);
+                report.setAreasToImprove(keptAreas);
+        }
+
+        private static String topicKey(String topic) {
+                return topic == null ? "" : topic.trim().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        private static int nz(Integer v) {
+                return v == null ? 0 : v;
+        }
+
                 return AiInsightsSection.RecommendationItem.builder()
                                 .priority(priority).area(area).suggestion(suggestion).build();
         }

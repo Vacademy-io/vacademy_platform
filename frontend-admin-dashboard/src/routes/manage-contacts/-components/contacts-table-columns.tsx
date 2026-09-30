@@ -169,6 +169,16 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<ContactUser>; columnI
     );
 };
 
+/**
+ * What the "Manage Column" list calls a column: its header text. The Name header is a sort
+ * dropdown rather than text, so it gets its plain name.
+ */
+export const getContactColumnLabel = (column: ColumnDef<ContactUser>): string => {
+    if (typeof column.header === 'string') return column.header;
+    if (column.id === 'user.full_name') return 'Name';
+    return column.id ?? '';
+};
+
 export const getContactColumns = (
     onSort?: (columnId: string, direction: string) => void,
     showLeadScore = false,
@@ -266,6 +276,8 @@ export const getContactColumns = (
         // fallback to last_login_time or remove if strictly needed from root?
         // JSON shows last_login_time.
         // Let's use last_login_time for now as created_at is not in the sample JSON user object.
+        // Explicit id, like its neighbours: Manage Column saves the layout by column id.
+        id: 'user.last_login_time',
         accessorKey: 'user.last_login_time',
         header: 'Last Login',
         size: 150,

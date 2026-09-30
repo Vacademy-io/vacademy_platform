@@ -65,6 +65,162 @@ const toCardDate = (value: string | null | undefined): string => {
     return Number.isNaN(date.getTime()) ? '' : format(date, 'dd MMM yyyy, h:mm a');
 };
 
+/** Start / end for windowed tests, duration for timed ones, then participants and evaluation. */
+function CardMetaRow({ test }: { test: TestContent }) {
+    const { t } = useTranslation('assessmentScheduleTestDetails');
+    const hasWindow = test.play_mode === 'EXAM' || test.play_mode === 'SURVEY';
+    const hasDuration = test.play_mode === 'EXAM' || test.play_mode === 'MOCK';
+    const hours = Math.floor(test.duration / 60);
+    const minutes = test.duration % 60;
+    const durationLabel =
+        hours > 0
+            ? [
+                  t('info.duration.hours', { count: hours }),
+                  minutes > 0 ? t('info.duration.minutes', { count: minutes }) : null,
+              ]
+                  .filter(Boolean)
+                  .join(' ')
+            : t('info.duration.minutes', { count: test.duration });
+    return (
+        <SessionMetaRow>
+            {hasWindow && (
+                <SessionMetaItem
+                    icon={<CalendarBlank size={16} />}
+                    tone="primary"
+                    label={t('meta.starts')}
+                    value={toCardDate(test.bound_start_time)}
+                />
+            )}
+            {hasWindow && (
+                <SessionMetaItem
+                    icon={<CalendarCheck size={16} />}
+                    tone="info"
+                    label={t('meta.ends')}
+                    value={toCardDate(test.bound_end_time)}
+                />
+            )}
+            {hasDuration && (
+                <SessionMetaItem
+                    icon={<Timer size={16} />}
+                    tone="warning"
+                    label={t('meta.duration')}
+                    value={durationLabel}
+                />
+            )}
+            {hasWindow || hasDuration ? <SessionMetaDivider /> : null}
+            <SessionMetaItem
+                icon={<UsersThree size={16} />}
+                tone="success"
+                label={t('meta.participants')}
+                value={
+                    <span className="font-semibold text-neutral-900">
+                        {test.user_registrations}
+                    </span>
+                }
+            />
+            <SessionMetaItem
+                icon={<CheckSquareOffset size={16} />}
+                tone="neutral"
+                label={t('meta.evaluation')}
+                value={
+                    test.evaluation_type === 'MANUAL'
+                        ? t('meta.evaluationManual')
+                        : t('meta.evaluationAuto')
+                }
+            />
+        </SessionMetaRow>
+    );
+}
+
+/**
+ * The join link with copy and a QR popover. The QR svg keeps its old element id,
+ * which handleDownloadQRCode looks up — it exists whenever the popover is open,
+ * and the download button lives inside the popover.
+ */
+function JoinLinkActions({
+    joinLink,
+    qrId,
+    isPrivate,
+}: {
+    joinLink: string;
+    qrId: string;
+    isPrivate: boolean;
+}) {
+    const { t } = useTranslation('assessmentScheduleTestDetails');
+    const copyLink = async () => {
+        await copyToClipboard(joinLink);
+        toast.success(t('joinLink.copied'));
+    };
+    return (
+        <div className="flex min-w-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <LinkSimple size={16} className="shrink-0 text-primary-500" />
+            <div className="min-w-0 leading-tight">
+                <div className="flex items-center gap-1 text-xs text-neutral-500">
+                    {t('meta.joinLink')}
+                    {isPrivate ? (
+                        <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span
+                                        className="inline-flex items-center text-warning-600"
+                                        aria-label={t('joinLink.privateWarning')}
+                                    >
+                                        <WarningCircle size={12} weight="fill" />
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                    {t('joinLink.privateWarning')}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    ) : null}
+                </div>
+                <div className="mt-0.5 max-w-xs truncate text-sm text-neutral-700" title={joinLink}>
+                    {joinLink}
+                </div>
+            </div>
+            <MyButton
+                type="button"
+                scale="medium"
+                buttonType="secondary"
+                layoutVariant="icon"
+                aria-label={t('joinLink.copy')}
+                title={t('joinLink.copy')}
+                onClick={copyLink}
+            >
+                <Copy size={16} />
+            </MyButton>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="secondary"
+                        layoutVariant="icon"
+                        aria-label={t('joinLink.qr')}
+                        title={t('joinLink.qr')}
+                    >
+                        <QrCode size={16} />
+                    </MyButton>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="flex w-56 flex-col items-center gap-3 p-4">
+                    <QRCode value={joinLink} className="size-40" id={qrId} />
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="secondary"
+                        className="w-full gap-1.5"
+                        onClick={() => handleDownloadQRCode(qrId)}
+                    >
+                        <DownloadSimple size={16} />
+                        {t('joinLink.downloadQr')}
+                    </MyButton>
+                </PopoverContent>
+            </Popover>
+        </div>
+    );
+}
+
 /**
  * One assessment in the list, drawn with the same card system as the live
  * session list (shell, metadata row, batches, footer) so the two lists read
@@ -115,14 +271,8 @@ const ScheduleTestDetails = ({
         instituteDetails?.learner_portal_base_url,
         scheduleTestContent.join_link
     );
-    const qrId = `qr-code-svg-assessment-list-${scheduleTestContent.join_link}`;
-
-    const playMode = scheduleTestContent.play_mode;
-    const type = typeMetaFor(playMode);
+    const type = typeMetaFor(scheduleTestContent.play_mode);
     const status = statusForTab(selectedTab);
-    const hasWindow = playMode === 'EXAM' || playMode === 'SURVEY';
-    const hasDuration = playMode === 'EXAM' || playMode === 'MOCK';
-    const isPrivate = scheduleTestContent.assessment_visibility === 'PRIVATE';
     const subjectName = resolveSubjectName(
         instituteDetails?.subjects,
         subjectNamesById,
@@ -130,34 +280,16 @@ const ScheduleTestDetails = ({
     );
     const subtitle = [
         t(`types.${type.key}`),
-        subjectName
-            ? t('info.subject', {
-                  label: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
-                  name: subjectName,
-              })
-            : null,
-        scheduleTestContent.created_at
-            ? t('meta.createdOn', { date: toCardDate(scheduleTestContent.created_at) })
-            : null,
+        subjectName &&
+            t('info.subject', {
+                label: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+                name: subjectName,
+            }),
+        scheduleTestContent.created_at &&
+            t('meta.createdOn', { date: toCardDate(scheduleTestContent.created_at) }),
     ]
         .filter(Boolean)
         .join(' · ');
-
-    const duration = scheduleTestContent.duration;
-    const durationLabel =
-        duration >= 60
-            ? [
-                  t('info.duration.hours', { count: Math.floor(duration / 60) }),
-                  duration % 60 > 0 ? t('info.duration.minutes', { count: duration % 60 }) : null,
-              ]
-                  .filter(Boolean)
-                  .join(' ')
-            : t('info.duration.minutes', { count: duration });
-
-    const copyLink = async () => {
-        await copyToClipboard(joinLink);
-        toast.success(t('joinLink.copied'));
-    };
 
     if (isLoading) return <DashboardLoader />;
     return (
@@ -172,14 +304,9 @@ const ScheduleTestDetails = ({
                         >
                             {scheduleTestContent.name}
                         </h3>
-                        {subtitle ? (
-                            <p
-                                className="mt-0.5 truncate text-sm text-neutral-500"
-                                title={subtitle}
-                            >
-                                {subtitle}
-                            </p>
-                        ) : null}
+                        <p className="mt-0.5 truncate text-sm text-neutral-500" title={subtitle}>
+                            {subtitle}
+                        </p>
                     </div>
                 </div>
                 <div
@@ -200,141 +327,27 @@ const ScheduleTestDetails = ({
                 </div>
             </div>
 
-            <SessionMetaRow>
-                {hasWindow && (
-                    <SessionMetaItem
-                        icon={<CalendarBlank size={16} />}
-                        tone="primary"
-                        label={t('meta.starts')}
-                        value={toCardDate(scheduleTestContent.bound_start_time)}
-                    />
-                )}
-                {hasWindow && (
-                    <SessionMetaItem
-                        icon={<CalendarCheck size={16} />}
-                        tone="info"
-                        label={t('meta.ends')}
-                        value={toCardDate(scheduleTestContent.bound_end_time)}
-                    />
-                )}
-                {hasDuration && (
-                    <SessionMetaItem
-                        icon={<Timer size={16} />}
-                        tone="warning"
-                        label={t('meta.duration')}
-                        value={durationLabel}
-                    />
-                )}
-                {hasWindow || hasDuration ? <SessionMetaDivider /> : null}
-                <SessionMetaItem
-                    icon={<UsersThree size={16} />}
-                    tone="success"
-                    label={t('meta.participants')}
-                    value={
-                        <span className="font-semibold text-neutral-900">
-                            {scheduleTestContent.user_registrations}
-                        </span>
-                    }
-                />
-                <SessionMetaItem
-                    icon={<CheckSquareOffset size={16} />}
-                    tone="neutral"
-                    label={t('meta.evaluation')}
-                    value={
-                        scheduleTestContent.evaluation_type === 'MANUAL'
-                            ? t('meta.evaluationManual')
-                            : t('meta.evaluationAuto')
-                    }
-                />
-            </SessionMetaRow>
+            <CardMetaRow test={scheduleTestContent} />
 
             <SessionCardFooter>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-3">
                     {batchNames.length ? (
-                        <SessionBatches
-                            batches={batchNames}
-                            maxVisible={2}
-                            label={getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}
-                            moreLabel={(count) => t('batchDialog.moreLink', { count })}
-                            lessLabel={t('batches.less')}
-                        />
+                        <>
+                            <SessionBatches
+                                batches={batchNames}
+                                maxVisible={2}
+                                label={getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}
+                                moreLabel={(count) => t('batchDialog.moreLink', { count })}
+                                lessLabel={t('batches.less')}
+                            />
+                            <SessionMetaDivider />
+                        </>
                     ) : null}
-                    {batchNames.length ? <SessionMetaDivider /> : null}
-                    <div
-                        className="flex min-w-0 items-center gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <LinkSimple size={16} className="shrink-0 text-primary-500" />
-                        <div className="min-w-0 leading-tight">
-                            <div className="flex items-center gap-1 text-xs text-neutral-500">
-                                {t('meta.joinLink')}
-                                {isPrivate ? (
-                                    <TooltipProvider delayDuration={150}>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <span
-                                                    className="inline-flex items-center text-warning-600"
-                                                    aria-label={t('joinLink.privateWarning')}
-                                                >
-                                                    <WarningCircle size={12} weight="fill" />
-                                                </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-xs">
-                                                {t('joinLink.privateWarning')}
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                ) : null}
-                            </div>
-                            <div
-                                className="mt-0.5 max-w-xs truncate text-sm text-neutral-700"
-                                title={joinLink}
-                            >
-                                {joinLink}
-                            </div>
-                        </div>
-                        <MyButton
-                            type="button"
-                            scale="medium"
-                            buttonType="secondary"
-                            layoutVariant="icon"
-                            aria-label={t('joinLink.copy')}
-                            title={t('joinLink.copy')}
-                            onClick={copyLink}
-                        >
-                            <Copy size={16} />
-                        </MyButton>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <MyButton
-                                    type="button"
-                                    scale="medium"
-                                    buttonType="secondary"
-                                    layoutVariant="icon"
-                                    aria-label={t('joinLink.qr')}
-                                    title={t('joinLink.qr')}
-                                >
-                                    <QrCode size={16} />
-                                </MyButton>
-                            </PopoverTrigger>
-                            <PopoverContent
-                                align="end"
-                                className="flex w-56 flex-col items-center gap-3 p-4"
-                            >
-                                <QRCode value={joinLink} className="size-40" id={qrId} />
-                                <MyButton
-                                    type="button"
-                                    scale="medium"
-                                    buttonType="secondary"
-                                    className="w-full gap-1.5"
-                                    onClick={() => handleDownloadQRCode(qrId)}
-                                >
-                                    <DownloadSimple size={16} />
-                                    {t('joinLink.downloadQr')}
-                                </MyButton>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
+                    <JoinLinkActions
+                        joinLink={joinLink}
+                        qrId={`qr-code-svg-assessment-list-${scheduleTestContent.join_link}`}
+                        isPrivate={scheduleTestContent.assessment_visibility === 'PRIVATE'}
+                    />
                 </div>
                 <div
                     className="flex shrink-0 items-center gap-2"

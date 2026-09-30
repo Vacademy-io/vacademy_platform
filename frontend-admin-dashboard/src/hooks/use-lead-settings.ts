@@ -95,6 +95,13 @@ export interface LeadSettingsConfig {
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
 
+    /**
+     * When true, the unfiltered "All leads" view (Recent Leads + Lead List) hides
+     * converted leads. They stay reachable through the "Enrolled / Converted" option,
+     * the institute's CONVERTED status and the Lead Board. Off by default.
+     */
+    hideConvertedInAllLeads: boolean;
+
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
@@ -126,6 +133,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    hideConvertedInAllLeads: false,
     tatReminder: {
         enabled: false,
         tatHours: 24,

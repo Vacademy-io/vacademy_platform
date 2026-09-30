@@ -537,15 +537,20 @@ const RecentLeadsContent = () => {
     const specialStatuses = new Set([ALL_STATUSES_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
     const customStatusKeys = leadStatusFilters.filter((v) => !specialStatuses.has(v));
     const leadStatusId = customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
+    // place they can be seen, and the only way to restore one from the UI.
+    const [showDeleted, setShowDeleted] = useState(false);
+    // The unfiltered "All leads" view hides converted leads only when the institute turned on
+    // LEAD_SETTING.hideConvertedInAllLeads. Picking a specific status (including the
+    // institute's CONVERTED one) and the Deleted view always get every lead.
+    const hideConvertedByDefault =
+        leadSettings.hideConvertedInAllLeads && leadStatusFilters.length === 0 && !showDeleted;
     const conversionFilter: 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED' =
-        leadStatusFilters.includes(ALL_ACTIVE_VALUE)
+        leadStatusFilters.includes(ALL_ACTIVE_VALUE) || hideConvertedByDefault
             ? 'EXCLUDE_CONVERTED'
             : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
               ? 'ONLY_CONVERTED'
               : 'ALL';
-    // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
-    // place they can be seen, and the only way to restore one from the UI.
-    const [showDeleted, setShowDeleted] = useState(false);
     // Undefined (not EXCLUDE_DELETED) when off, so the backend's own default applies and the
     // param stays absent from the normal request.
     const audienceStatusFilter: 'ONLY_DELETED' | undefined = showDeleted
@@ -591,7 +596,11 @@ const RecentLeadsContent = () => {
         [audienceFilters]
     );
 
-    const { data, isLoading, error } = useQuery({
+    const {
+        data,
+        isLoading: leadsLoading,
+        error,
+    } = useQuery({
         queryKey: [
             'recent-leads',
             instituteId,
@@ -649,9 +658,12 @@ const RecentLeadsContent = () => {
                 page,
                 size: pageSize,
             }),
-        enabled: !!instituteId,
+        // Wait for lead settings so the first request already carries the right conversion filter.
+        enabled: !!instituteId && !leadSettings.isLoading,
         staleTime: 30 * 1000,
     });
+    // A disabled query is not "loading" in v5, so count the settings wait too.
+    const isLoading = leadsLoading || leadSettings.isLoading;
 
     const totalPages = data?.totalPages ?? 0;
     const totalElements = data?.totalElements ?? 0;

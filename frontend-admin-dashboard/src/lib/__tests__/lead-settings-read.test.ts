@@ -58,4 +58,14 @@ describe('mergeLeadSettings', () => {
     it('falls back to defaults when nothing is saved', () => {
         expect(mergeLeadSettings(undefined)).toEqual(LEAD_SETTINGS_DEFAULTS);
     });
+
+    it('hides converted leads from All leads only when the institute opted in', () => {
+        // Institutes that never saved the flag keep seeing converted leads.
+        expect(mergeLeadSettings(extractLeadSettingData(settingDtoResponse))).toMatchObject({
+            hideConvertedInAllLeads: false,
+        });
+        expect(mergeLeadSettings({ hideConvertedInAllLeads: true }).hideConvertedInAllLeads).toBe(
+            true
+        );
+    });
 });

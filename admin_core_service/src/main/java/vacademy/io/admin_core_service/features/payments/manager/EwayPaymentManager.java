@@ -147,15 +147,23 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
                     + " exceeds mandate max_amount " + mandate.getMaxAmount());
         }
         LOGGER.info("eWay recurring charge: tokenCustomerId={}, amount={}", mandate.getCustomerId(), request.getAmount());
-        return chargeToken(mandate.getCustomerId(), request.getAmount(), null, paymentGatewaySpecificData);
+        return chargeToken(mandate.getCustomerId(), request.getAmount(), null,
+                request.getCurrency(), paymentGatewaySpecificData);
     }
 
-    public PaymentResponseDTO chargeToken(String tokenCustomerId, double amount, String cvn, Map<String, Object> paymentGatewaySpecificData) {
+    /**
+     * Charges a stored TokenCustomerID. {@code currencyCode} must be the plan's currency:
+     * passing null made eWay fall back to the account's default currency AND scaled the
+     * amount with the default 2-decimal exponent, so a GBP plan on an AUD account was
+     * silently charged in AUD (Vet Education has both).
+     */
+    public PaymentResponseDTO chargeToken(String tokenCustomerId, double amount, String cvn,
+                                          String currencyCode, Map<String, Object> paymentGatewaySpecificData) {
         EwayApiResponseDTO.Transaction transaction = createTokenTransactionPayload(
                 tokenCustomerId,
-                (int) CurrencyRegistry.toMinorUnits(amount, null),
+                (int) CurrencyRegistry.toMinorUnits(amount, currencyCode),
                 cvn,
-                null // Assuming default currency or it should be passed in
+                currencyCode
         );
 
         EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);

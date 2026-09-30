@@ -314,6 +314,25 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         List<UserPlan> findDueForRenewal(@Param("now") java.util.Date now);
 
         /**
+         * As {@link #findDueForRenewal} but restricted to institutes that have authorised the
+         * charge sweep (PAYMENT_SETTING.autopayChargeSchedulerEnabled). The sweep is a single
+         * platform-wide cron, so without this scoping every institute with an armed plan is
+         * charged the moment autopay is switched on for anyone.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                LEFT JOIN FETCH up.paymentPlan pp
+                WHERE up.status = 'ACTIVE'
+                  AND up.autoRenewalEnabled = true
+                  AND up.nextChargeAt IS NOT NULL
+                  AND up.nextChargeAt <= :now
+                  AND ei.instituteId IN :instituteIds
+                """)
+        List<UserPlan> findDueForRenewalForInstitutes(@Param("now") java.util.Date now,
+                        @Param("instituteIds") List<String> instituteIds);
+
+        /**
          * Atomically CLAIM a plan for a renewal charge (multi-replica safe). The
          * daily scheduler fires on every replica, so before charging, each replica
          * runs this — only the one whose UPDATE actually flips next_charge_at→null

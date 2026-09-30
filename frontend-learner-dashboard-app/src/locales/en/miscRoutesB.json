@@ -614,7 +614,13 @@
       "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
       "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
       "planChangeCompletePayment": "Complete payment",
-      "planChangeDiscard": "Discard this change"
+      "planChangeDiscard": "Discard this change",
+      "cardDialog": {
+        "title": "Add a card to continue",
+        "description": "We don't have a card saved for this membership yet. Enter one to pay now — we'll save it securely so future renewals are one tap.",
+        "loadingForm": "Loading secure card form..."
+      },
+      "autopayDefaultNotice": "Future renewals will be charged automatically to this card. You can stop auto-pay any time from this page."
     }
   },
   "termsAndConditions": {

@@ -65,7 +65,19 @@ public class RenewalChargeService {
      */
     private static final int MAX_CHARGE_LEAD_DAYS = 3;
 
-    public void processDueRenewals() {
+    /**
+     * Charges every armed plan that is due, for the institutes that have authorised it.
+     *
+     * <p>{@code instituteIds} is required and must be non-empty: the caller resolves who has
+     * opted in. There is deliberately no unscoped overload -- the sweep is one platform-wide
+     * cron, so an unscoped call means "charge every institute at once", which is never what
+     * anyone wants to be one refactor away from.
+     */
+    public void processDueRenewals(List<String> instituteIds) {
+        if (instituteIds == null || instituteIds.isEmpty()) {
+            log.info("[RenewalCharge] No institutes have authorised the autopay charge sweep — nothing to do");
+            return;
+        }
         Date now = new Date();
         // next_charge_at carries the enrollment's time-of-day, so a plan due "today" at
         // 15:00 would be missed by this morning's run and only charge tomorrow. Sweep the
@@ -74,7 +86,8 @@ public class RenewalChargeService {
         // Fetch out to the widest lead any invite may configure, then let each plan's own
         // invite decide whether it is due yet (see isDueWithLead). Invites without
         // CHARGE_LEAD_DAYS keep the exact behaviour they had: due on the date itself.
-        List<UserPlan> due = userPlanRepository.findDueForRenewal(endOfDay(plusDays(now, MAX_CHARGE_LEAD_DAYS)));
+        List<UserPlan> due = userPlanRepository.findDueForRenewalForInstitutes(
+                endOfDay(plusDays(now, MAX_CHARGE_LEAD_DAYS)), instituteIds);
         due = due.stream().filter(plan -> isDueWithLead(plan, now)).toList();
         if (due.isEmpty()) {
             log.info("[RenewalCharge] No autopay plans due");

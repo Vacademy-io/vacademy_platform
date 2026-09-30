@@ -308,11 +308,18 @@ public class RenewalPaymentService {
             // the sweep attempting a charge against a dead mandate. If the renewal
             // checkout ALSO registered a fresh mandate ("enable auto-pay" option),
             // resume autopay: a live mandate for this plan flips the flag back on.
+            //
+            // getMandate, NOT getMandateOrLegacyToken: the legacy fallback SYNTHESISES an
+            // ACTIVE mandate from any saved card-on-file token (eWay), so asking it here read
+            // "this learner has a card" as "this learner authorised recurring billing" and
+            // silently switched autopay back on for anyone paying a single renewal by card.
+            // A stored card is not consent to be charged again — only an explicitly
+            // registered mandate is, and that is exactly what getMandate reports.
             boolean autopayOn = Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled());
             if (!autopayOn) {
                 try {
                     String vendor = userPlan.getEnrollInvite() != null ? userPlan.getEnrollInvite().getVendor() : null;
-                    var mandate = vendor != null ? mandateService.getMandateOrLegacyToken(
+                    var mandate = vendor != null ? mandateService.getMandate(
                             userPlan.getUserId(), instituteId, vendor, userPlan.getId()) : null;
                     if (mandate != null && vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.STATUS_ACTIVE
                             .equalsIgnoreCase(mandate.getStatus())) {

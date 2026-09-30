@@ -585,6 +585,47 @@ def test_shadowed_writing_is_paper() -> None:
         doc.close()
 
 
+def test_marks_grow_with_the_page() -> None:
+    print("\nbuild_annotated_pdf — a big photographed page gets marks to match")
+    # 2026-10-01: on 1500pt pages with 54pt rows of handwriting, the A4-tuned
+    # caps wrote every score at 24pt - a third of the student's writing.
+    def score_size(width: float, height: float, row_h: float) -> float:
+        doc = fitz.open()
+        page = doc.new_page(width=width, height=height)
+        fill = (0.93, 0.93, 0.91)
+        page.draw_rect(fitz.Rect(10, 10, width - 10, height - 10), color=fill, fill=fill)
+        lines = []
+        for i in range(6):
+            y = 60 + i * row_h * 2
+            page.insert_text(fitz.Point(40, y + row_h * 0.8), "ans answer", fontsize=row_h * 0.8)
+            lines.append({"line_id": f"p1_r{i + 1}", "text": "ans", "box": [38, y, width * 0.3, row_h]})
+        pdf = doc.tobytes()
+        doc.close()
+        layout = {"pages": [{"page_id": "p1", "page_index": 0, "width": width, "height": height,
+                             "lines": lines, "vision_ocr": True}]}
+        verdicts = [{"question_number": 1, "marks_awarded": 1.0, "max_marks": 1.0, "annotations": [
+            {"style": "score", "target": "p1_r1", "page_id": "p1", "text": "1/1",
+             "position": "right_margin_same_line"}]}]
+        sizes: list = []
+        real = annotator._pen_text
+
+        def spy(page, origin, text, size, *a, **k):
+            if text == "1/1":
+                sizes.append(size)
+            return real(page, origin, text, size, *a, **k)
+        annotator._pen_text = spy
+        try:
+            annotator.build_annotated_pdf(pdf, layout, verdicts)
+        finally:
+            annotator._pen_text = real
+        return max(sizes) if sizes else 0.0
+
+    a4 = score_size(595, 842, 20)
+    big = score_size(1500, 2000, 54)
+    check("A4 is unchanged: the score stays within the old 24pt cap", 0 < a4 <= 24.0, str(a4))
+    check("a 1500pt page with 54pt rows gets a score well over 24pt", big > 40.0, str(big))
+
+
 def test_annotation_rescued_by_anchor_text() -> None:
     print("\nvalidator — a wrong line_id must not silently bin the mark")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -649,6 +690,7 @@ def test_annotation_rescued_by_anchor_text() -> None:
 
 if __name__ == "__main__":
     test_shadowed_writing_is_paper()
+    test_marks_grow_with_the_page()
     test_bbox_anchors_and_placement_names()
     test_mark_figure_never_hides_in_a_comment()
     test_paper_boundary_finds_the_page()

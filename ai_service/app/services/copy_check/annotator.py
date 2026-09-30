@@ -23,6 +23,7 @@ import hashlib
 import logging
 import math
 import os
+import re
 from functools import lru_cache
 from typing import Any, Optional
 
@@ -219,6 +220,29 @@ def _pen_scale(path: Optional[str]) -> float:
     except Exception:  # a missing numpy or an odd font must not stop marking
         logger.debug("could not measure x-height for %s", path, exc_info=True)
         return 1.0
+
+
+def _page_k(page: Any) -> float:
+    """How much larger than A4 this page is, for scaling the pen's size caps.
+
+    Every cap on a mark's size (a score at most 24pt, a note at most 20, ...)
+    was tuned on A4 scans, 595pt wide. A phone photo converted to PDF is often
+    1500pt wide or more with handwriting to match - 54pt rows on one copy -
+    and there the capped marks came out a third of the student's writing,
+    too small to read. The caps grow with the page; on A4 nothing changes.
+    """
+    try:
+        return max(1.0, min(4.0, float(page.rect.width) / 595.0))
+    except Exception:
+        return 1.0
+
+
+def _note_k(page: Any) -> float:
+    """_page_k for written REMARKS: they grow with the page more slowly than
+    marks. A remark as large as the student's writing needs a gap two ruled
+    lines tall, which a written page does not have - scaled fully, the notes
+    on a 1500pt page found no room and were sent to other pages."""
+    return math.sqrt(_page_k(page))
 
 
 def _pen(page: Any) -> tuple[str, float, Optional[Any]]:
@@ -1607,6 +1631,40 @@ def _ink_map(page: Any, sheet: Any) -> Optional[dict]:
         return None
 
 
+def _words_end(imap: Optional[dict], rect: Any, max_gap: float) -> Optional[float]:
+    """Where the row's WORDS end, in points: the right end of the run of ink
+    that starts at the row and has no blank stretch wider than `max_gap`.
+
+    _row_ink_span reports the right-most ink on the row, which on a phone
+    photo is often not writing at all - the dark sheet edge or a shadow at the
+    far side put one row's "end" at x=1451 when its words stopped at 602, and
+    a remark that had half the page to sit in was refused for want of room.
+    """
+    if not imap:
+        return None
+    try:
+        import numpy as np
+
+        ink, sy, sx, off = imap["ink"], imap["sy"], imap["sx"], imap["x0"]
+        y0 = max(0, min(ink.shape[0] - 1, int(rect.y0 / sy)))
+        y1 = max(y0 + 1, min(ink.shape[0], int(rect.y1 / sy)))
+        cols = np.nonzero(ink[y0:y1].sum(axis=0) > 2)[0]
+        if cols.size == 0:
+            return None
+        first = int(max(0, rect.x0 / sx - off))
+        cols = cols[cols >= first - int(max_gap / sx)]
+        if cols.size == 0:
+            return None
+        end = int(cols[0])
+        for c in cols[1:].tolist():
+            if (c - end) * sx > max_gap:
+                break
+            end = c
+        return (off + end) * sx
+    except Exception:
+        return None
+
+
 def _row_ink_span(imap: Optional[dict], rect: Any) -> Optional[tuple]:
     """(left, right) of the writing on the rows this rect covers, in points."""
     if not imap:
@@ -2172,7 +2230,7 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
     # Calibrated: 11-13 degrees of glyph tilt renders as the +7 to +10 lean
     # measured on the reference teacher's own comments.
     note_tilt = _hand_rng("tilt", note[:24]).uniform(0.0, 4.0)
-    ideal = max(11.0 * scale, min(base_size, 15.0 * scale))
+    ideal = max(11.0 * scale, min(base_size, 15.0 * scale * _note_k(page)))
     floor = 9.0 * scale
     attempt = 0
     # The ladder above keeps a remark whole and keeps it near its answer, and
@@ -2430,7 +2488,8 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
     ink_a = own[0] if own else rect.x0
     ink_b = own[1] if own else min(rect.x1, ink_a + 0.6 * sheet.width)
     is_score = style in ("score", "total")
-    size = max(11.0, min(24.0, h * (1.4 if is_score else 1.1)))
+    k = _page_k(page) if style in ("score", "total") else _note_k(page)
+    size = max(11.0, min(24.0 * k, h * (1.4 if is_score else 1.1)))
     base_y = rect.y0 + rect.height * 0.5 + size * 0.35
     notes = list(_PLACED[0] or [])
 
@@ -2489,7 +2548,7 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
             width = _pen_text_width(note, size)
         lines = [(note, x0, base_y)]
     elif position == "below_line_left":
-        size = max(10.0, min(20.0, h * 1.1))
+        size = max(10.0, min(20.0 * k, h * 1.1))
         # Fit the note to the GAP under the row, not to the row. A 20pt note
         # dropped into a 20pt gap fills it edge to edge and the pen's own
         # wobble lands on the next line - "Wrong option. Correct: (c)" was
@@ -2606,24 +2665,34 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
     return placed
 
 
+# The first words of a new answer or section. A score looking further down
+# for room stops here, or it is written beside the next question - which is
+# how a "3/3" came to sit on the "ans 30" heading of a question worth 0.
+_ANSWER_START = re.compile(
+    r"^\s*(ans(wer)?\s*[.:]?\s*\d+|q(uestion)?\s*[.:]?\s*\d+|section\b|\d+\s*[.)]\s*[A-Z])", re.I)
+
+
 def _place_score_right(page: Any, rect: Any, note: str, sheet: Any,
-                       occupied: Optional[list]) -> Optional[Any]:
+                       occupied: Optional[list], following: Optional[list] = None) -> Optional[Any]:
     """Right-side-only fallback for a question score.
 
     Order: the same row, flush against the paper's measured right edge; the
     row below and the row above (a score beside the next line still reads as
-    this answer's); then the same spots at a smaller pen. Returns the drawn
-    box or None.
+    this answer's); then `following` - the answer's next rows, whose last line
+    is where the answer really ends when the grader named an earlier row as
+    its last; then the same spots at a smaller pen. Returns the drawn box or
+    None.
     """
     import fitz
     if sheet is None:
         return None
     line_h = float(_LINE_H[0] or rect.height or 14.0)
     row_h = _LINE_H[0] if _LINE_H[0] else rect.height
-    base = max(13.0, min(26.0, row_h)) * _pen_scale(_handwriting_fontfile())
+    base = max(13.0, min(26.0 * _page_k(page), row_h)) * _pen_scale(_handwriting_fontfile())
     candidates = [rect,
                   fitz.Rect(rect.x0, rect.y0 + line_h, rect.x1, rect.y1 + line_h),
                   fitz.Rect(rect.x0, rect.y0 - line_h, rect.x1, rect.y1 - line_h)]
+    candidates += list(following or [])
     for size in (base, base * 0.8):
         width = _pen_text_width(note, size)
         for cand in candidates:
@@ -2633,6 +2702,11 @@ def _place_score_right(page: Any, rect: Any, note: str, sheet: Any,
             right = min(right, sheet.x1) - 4.0
             x0 = right - width
             ink = _row_ink_span(_INK_MAP[0], cand)
+            if ink is not None:
+                # Where the words end - not the photo's dark edge beyond them.
+                words_b = _words_end(_INK_MAP[0], cand, max(3.0 * line_h, 60.0))
+                if words_b is not None and words_b < ink[1]:
+                    ink = (ink[0], words_b)
             if ink is not None and x0 < ink[1] + 4.0:
                 logger.debug("SCORE %r: row %s runs under the margin (ink to %.0f)", note, cand, ink[1])
                 continue                      # the writing runs under it
@@ -2723,7 +2797,7 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     # row this note happens to hang on: a merged two-line row made one note
     # twice the size of its neighbours, wrapped over two lines.
     row_h = _LINE_H[0] if _LINE_H[0] else rect.height
-    base_size = max(13.0, min(26.0, row_h * 1.0)) * scale
+    base_size = max(13.0, min(26.0 * _note_k(page), row_h * 1.0)) * scale
     occupied = occupied or []
     # The marked row itself is not an obstacle for a note that sits beside it.
     obstacles = [o for o in occupied if not o.intersects(rect) or o != rect]
@@ -3155,7 +3229,7 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
         # Sized to the writing, not to a constant. Rings measured 62-86px
         # against a ~40px line height, which is what made them read as badges
         # rather than a figure ringed with a pen.
-        line_h = max(10.0, min(26.0, (sheet.height / 34.0) if sheet else 16.0))
+        line_h = max(10.0, min(26.0 * _page_k(page), (sheet.height / 34.0) if sheet else 16.0))
         # A mark is written larger than the prose around it - it is the thing
         # the student looks for first. At 0.62-0.80 of a line it came out at
         # about 11pt against ~20pt handwriting and read as a footnote.
@@ -3399,6 +3473,11 @@ def build_annotated_pdf(
             content[i] = doc[i].rect
 
     targets = _target_index(layout_map)
+    rows_in_order = {
+        lp.get("page_id"): sorted((r for r in (lp.get("lines") or [])
+                                   if r.get("box") and len(r["box"]) == 4),
+                                  key=lambda r: float(r["box"][1]))
+        for lp in (layout_map.get("pages") or [])}
     rows_by_id = {r.get("line_id"): r
                   for lp in (layout_map.get("pages") or [])
                   for r in (lp.get("lines") or []) if r.get("line_id")}
@@ -3566,7 +3645,7 @@ def build_annotated_pdf(
         hs_ = sorted(float(l["box"][3]) * sy_ for l in (lp.get("lines") or [])
                      if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
         if hs_:
-            line_h_by_page[pid_] = max(10.0, min(30.0, hs_[len(hs_) // 2]))
+            line_h_by_page[pid_] = max(10.0, min(30.0 * _page_k(doc[pn_]), hs_[len(hs_) // 2]))
     for verdict in verdicts:
         for ann in verdict.get("annotations") or []:
             ordered.append((verdict, ann))
@@ -3622,7 +3701,7 @@ def build_annotated_pdf(
                 hs = sorted(float(l["box"][3]) * sy0 for l in lp0["lines"]
                             if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
                 if hs:
-                    line_h = max(14.0, min(40.0, hs[len(hs) // 2]))
+                    line_h = max(14.0, min(40.0 * _page_k(first), hs[len(hs) // 2]))
         except Exception:
             logger.debug("could not size the total from the rows", exc_info=True)
         # Keep the whole mark inside the sheet: measure the ring as it will
@@ -3805,7 +3884,17 @@ def build_annotated_pdf(
                     # Obstacles are the notes already written, as in the contract
                     # path - not the layout's row boxes, which run to the edge of
                     # every line and would veto the whole margin.
-                    placed = _place_score_right(page, rect, note, sheet_r, _PLACED[0])
+                    following = []
+                    order_ids = [r.get("line_id") for r in rows_in_order.get(page_id, [])]
+                    if ann.get("target") in order_ids:
+                        nxt = rows_in_order[page_id][order_ids.index(ann["target"]) + 1:]
+                        for r in nxt[:4]:
+                            if _ANSWER_START.match(r.get("text") or ""):
+                                break
+                            bx = [float(v) for v in r["box"]]
+                            following.append(fitz.Rect(bx[0] * sx, bx[1] * sy,
+                                                       (bx[0] + bx[2]) * sx, (bx[1] + bx[3]) * sy))
+                    placed = _place_score_right(page, rect, note, sheet_r, _PLACED[0], following)
                 if placed is None:
                     placed = _place_note(page, rect, style, note, page_boxes, sheet_r)
 

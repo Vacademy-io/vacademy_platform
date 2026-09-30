@@ -769,6 +769,11 @@
         "recommendedNextSteps": "Prochaines étapes recommandées",
         "whatWeNoticed": "Ce que nous avons remarqué"
       },
+      "assessments": {
+        "title": "Évaluations",
+        "caption": "{{count}} sur la période",
+        "rank": "Rang {{rank}}"
+      },
       "assignments": {
         "assigned": "Assignés",
         "avgScore": "Score moyen",
@@ -796,6 +801,21 @@
         "questionsAsked": "Questions posées",
         "resolved": "Résolues",
         "title": "Doutes & engagement"
+      },
+      "gradeMix": {
+        "title": "Notes obtenues",
+        "summary_one": "{{good}} évaluation sur {{total}} avec la note B ou plus",
+        "summary_other": "{{good}} évaluations sur {{total}} avec la note B ou plus",
+        "testCount_one": "{{count}} évaluation",
+        "testCount_other": "{{count}} évaluations",
+        "range": {
+          "ap": "90 % et plus",
+          "a": "80–89 %",
+          "bp": "70–79 %",
+          "b": "60–69 %",
+          "c": "50–59 %",
+          "d": "moins de 50 %"
+        }
       },
       "liveClasses": {
         "attendance": "Présence",
@@ -848,6 +868,11 @@
       "topicMastery": {
         "note": "précision par sujet, toutes les tentatives de cette période",
         "title": "Maîtrise des sujets"
+      },
+      "trend": {
+        "title": "Évolution des notes",
+        "classAverage": "Moyenne de la classe",
+        "ariaLabel": "Note à chaque évaluation comparée à la moyenne de la classe"
       }
     }
   }

@@ -60,6 +60,17 @@ public class AiAgentService {
     }
 
     @Transactional
+    /** Re-warm one agent's speech cache (after a super-admin switches its tier). Fire-and-forget. */
+    public void warmSpeechCache(String agentId) {
+        repo.findById(agentId).ifPresent(a -> {
+            try {
+                speechWarmer.warm(toDto(a));
+            } catch (Exception e) {
+                log.warn("ai agent speech warm dispatch failed agent={}: {}", agentId, e.getMessage());
+            }
+        });
+    }
+
     public AiAgentDTO save(AiAgentDTO dto) {
         if (dto.getInstituteId() == null || dto.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
@@ -91,7 +102,8 @@ public class AiAgentService {
         // V504: the bot clamps to the same range (prosody.clamp_expand); 1.0 = off.
         agent.setVoiceModulation(clamp(dto.getVoiceModulation(), 1.0, 2.5));
         agent.setSpeechCacheMode(normalizeSpeechCacheMode(dto.getSpeechCacheMode(),
-                agent.getSpeechCacheMode()));
+                agent.getSpeechCacheMode() != null ? agent.getSpeechCacheMode()
+                        : defaultSpeechCacheMode(dto)));
         agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
         // Rules are OMITTED, not empty, by an older client that predates them. Writing null
         // on omission would silently wipe an institute's whole send configuration on the next
@@ -268,6 +280,21 @@ public class AiAgentService {
      * than to OFF for the same reason: a typo should not quietly change what a
      * caller hears, and the DB CHECK constraint would reject it anyway.
      */
+    /**
+     * The tier a NEW agent starts on when the client sends none. A scripted agent
+     * (a real authored prompt) on Smallest starts on FULL: its script repeats
+     * across calls — Shreya's last 7 days, 312 calls: 65% of the characters she
+     * spoke were sentences already spoken before — and FULL is the tier that
+     * learns them. Smallest is the only engine FULL's render parity has been
+     * checked on (TTS_SPEECH_CACHE.md §11); everything else starts OFF as before.
+     */
+    static String defaultSpeechCacheMode(AiAgentDTO dto) {
+        String model = dto.getTtsModel() == null ? "" : dto.getTtsModel().trim().toLowerCase();
+        int promptLen = dto.getSystemPrompt() == null ? 0 : dto.getSystemPrompt().length();
+        return (model.startsWith("smallest") || model.startsWith("lightning")) && promptLen >= 2000
+                ? "FULL" : "OFF";
+    }
+
     private String normalizeSpeechCacheMode(String incoming, String stored) {
         if (incoming == null || incoming.isBlank()) {
             return stored == null ? "OFF" : stored;

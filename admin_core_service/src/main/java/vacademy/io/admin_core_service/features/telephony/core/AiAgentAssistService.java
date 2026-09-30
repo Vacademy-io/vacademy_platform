@@ -158,6 +158,12 @@ public class AiAgentAssistService {
                would hear it on the phone and fix the grammar: "बच्चे के बारे में" (about), never
                "बच्चे के बाद में" (after); correct postpositions and verb gender. The agent copies
                sample lines word for word, so one wrong word is spoken on every call.
+            10. CACHE-FRIENDLY LINES. Spoken audio is reused across calls only when a sentence is
+               byte-for-byte the same, so: give each fixed script line ONE exact wording and tell
+               the agent to say it verbatim; do not put the child's or caller's name inside a long
+               sentence (say "बच्चे", or put the name in its own short sentence before it); use the
+               same punctuation every time a line appears; one address form per line, not a
+               variable "सर/मैम" inside it.
 
             SCRIPT STRUCTURE (the #1 cause of repeated lines and stuck calls was a prompt that did not
             say what comes next):

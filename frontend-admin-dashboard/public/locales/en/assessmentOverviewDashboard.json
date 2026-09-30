@@ -1,0 +1,77 @@
+{
+    "title": "Overview",
+    "subtitle": "What is live, who is sitting tests, what is waiting on you, and how each batch is doing.",
+    "filters": {
+        "allBatches": "All batches"
+    },
+    "actions": {
+        "refresh": "Refresh",
+        "download": "Download stats",
+        "retry": "Try again"
+    },
+    "stats": {
+        "live": "Live now",
+        "liveHint_one": "{{count}} attempt in progress",
+        "liveHint_other": "{{count}} attempts in progress",
+        "upcoming": "Upcoming",
+        "upcomingHint": "{{previous}} finished · {{drafts}} drafts",
+        "learners": "Learners registered",
+        "learnersHint_one": "{{count}} has attempted a test",
+        "learnersHint_other": "{{count}} have attempted a test",
+        "attempts7d": "Attempts, last 7 days",
+        "attemptsHint": "{{count}} in total"
+    },
+    "attention": {
+        "title": "Needs your attention",
+        "nothing": "Nothing is waiting on you right now.",
+        "manualEvaluation": "sheets to evaluate",
+        "resultsToRelease": "results to release",
+        "aiRunning": "AI checks running",
+        "aiFailed": "AI checks failed (30 days)",
+        "reattemptRequests": "re-attempt requests"
+    },
+    "batches": {
+        "title": "Average score by {{batch}}",
+        "hint": "Latest attempt per learner, published tests only",
+        "empty": "No {{batches}} have attempted a test yet.",
+        "assessments": "Tests",
+        "learners": "Learners",
+        "attempts": "Attempts",
+        "average": "Average score",
+        "range": "Lowest – best"
+    },
+    "recent": {
+        "title": "Recent assessments",
+        "hint": "Newest first · click a row to open it",
+        "empty": "No published assessments yet.",
+        "assessment": "Assessment",
+        "type": "Type",
+        "manual": "Manual evaluation",
+        "attempted": "Attempted / registered",
+        "average": "Average",
+        "waiting": "Waiting on you",
+        "toEvaluate_one": "{{count}} to evaluate",
+        "toEvaluate_other": "{{count}} to evaluate",
+        "toRelease_one": "{{count}} to release",
+        "toRelease_other": "{{count}} to release"
+    },
+    "csv": {
+        "summary": "Summary",
+        "batches": "Average score by batch",
+        "assessments": "Recent assessments"
+    },
+    "toasts": {
+        "downloaded": "Stats downloaded as CSV."
+    },
+    "errors": {
+        "loadFailed": "The overview could not be loaded."
+    },
+    "generatedAt": "Updated {{time}}",
+    "types": {
+        "EXAM": "Exam",
+        "MOCK": "Mock test",
+        "PRACTICE": "Practice",
+        "SURVEY": "Survey",
+        "MANUAL_UPLOAD_EXAM": "Offline (upload)"
+    }
+}

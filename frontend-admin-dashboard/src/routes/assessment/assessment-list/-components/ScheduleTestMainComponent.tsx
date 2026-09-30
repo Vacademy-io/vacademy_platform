@@ -17,6 +17,7 @@ import ScheduleTestTabList from './ScheduleTestTabList';
 import ScheduleTestFilterButtons from './ScheduleTestFilterButtons';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import ScheduleTestLists from './ScheduleTestLists';
+import { AssessmentOverviewDashboard } from './AssessmentOverviewDashboard';
 import {
     getAssessmentListWithFilters,
     getInitAssessmentDetails,
@@ -533,6 +534,8 @@ export const ScheduleTestMainComponent = ({
     // Handle tab change - fetch data if tab hasn't been loaded yet
     const handleTabChange = useCallback((newTab: string) => {
         setSelectedTab(newTab);
+        // The overview has its own query; there is no list to page through.
+        if (newTab === 'overview') return;
 
         // Only fetch if this tab hasn't been loaded yet
         if (!loadedTabs.has(newTab)) {
@@ -549,8 +552,9 @@ export const ScheduleTestMainComponent = ({
     useEffect(() => {
         setIsLoading(true);
 
-        // Only fetch the currently selected tab (liveTests by default)
-        fetchTabData(selectedTab)
+        // Only fetch the currently selected tab (liveTests by default). Opening on
+        // the overview still primes the Live list so switching to it is instant.
+        fetchTabData(selectedTab === 'overview' ? 'liveTests' : selectedTab)
             .catch((error) => console.error(error))
             .finally(() => setIsLoading(false));
 
@@ -560,7 +564,9 @@ export const ScheduleTestMainComponent = ({
     useEffect(() => {
         if (!isCourseOutline)
             setNavHeading(<h1 className="text-lg">{t('header.navHeading')}</h1>);
-    }, []);
+        // `t` in the deps: on a cold load the namespace can land after this first
+        // run, and a heading set once with [] deps kept showing the raw key.
+    }, [t]);
 
     useEffect(() => {
         const courseList = getCourseFromPackage();
@@ -599,7 +605,12 @@ export const ScheduleTestMainComponent = ({
                         scheduleTestTabsData={scheduleTestTabsData}
                         tabCounts={tabCounts}
                     />
-                    <div className="my-4 sm:my-6">
+                    {selectedTab === 'overview' && (
+                        <div className="my-4 sm:my-6">
+                            <AssessmentOverviewDashboard instituteId={INSTITUTE_ID} />
+                        </div>
+                    )}
+                    <div className={selectedTab === 'overview' ? 'hidden' : 'my-4 sm:my-6'}>
                         {/* One bordered surface so the filters and the search read as a
                             single control strip. Loose on white they looked like five
                             unrelated "add" buttons floating above the results. */}

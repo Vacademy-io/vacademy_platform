@@ -20,7 +20,7 @@ import { Route } from '..';
 // evaluated (annotated) copy of the answer sheet.
 export const EvaluationStatusCell = ({ row }: { row: Row<StudentTable> }) => {
     const { t } = useTranslation('assessmentEvaluationStatusCell');
-    const { assessmentId } = Route.useParams();
+    const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const [isOpening, setIsOpening] = useState(false);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -28,7 +28,7 @@ export const EvaluationStatusCell = ({ row }: { row: Row<StudentTable> }) => {
 
     // Cached — same query the submissions tab and row dropdown already use.
     const { data: assessmentData } = useSuspenseQuery(
-        getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
+        getAssessmentDetails({ assessmentId, instituteId, type: examType || 'EXAM' })
     );
     const isManualEvaluation = assessmentData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
 

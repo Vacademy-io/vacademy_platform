@@ -24,6 +24,9 @@ public class AdminAssessmentGetController {
     @Autowired
     AdminAssessmentGetManager adminAssessmentGetManager;
 
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.dashboard.AssessmentDashboardService assessmentDashboardService;
+
     @GetMapping("/assessment-admin-list-init")
     public ResponseEntity<AssessmentAdminListInitDto> assessmentAdminListInit(@RequestAttribute("user") CustomUserDetails user,
                                                                               @RequestParam(name = "instituteId", required = false) String instituteId) {
@@ -94,5 +97,18 @@ public class AdminAssessmentGetController {
     public ResponseEntity<AssessmentCountResponse> getAssessmentCount(@RequestAttribute("user") CustomUserDetails userDetails,
                                                                       @RequestParam(name = "instituteId") String instituteId) {
         return adminAssessmentGetManager.getAssessmentCount(userDetails, instituteId);
+    }
+
+    /**
+     * The Assessments Overview tab: live/upcoming/previous/draft counts,
+     * participation, what is waiting on a teacher, average score by batch and the
+     * most recent assessments. Optional batchIds scope every block to those batches.
+     */
+    @GetMapping("/dashboard/overview")
+    public ResponseEntity<vacademy.io.assessment_service.features.assessment.dashboard.AssessmentDashboardDto> getDashboardOverview(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam(name = "instituteId") String instituteId,
+            @RequestParam(name = "batchIds", required = false) java.util.List<String> batchIds) {
+        return ResponseEntity.ok(assessmentDashboardService.overview(instituteId, batchIds));
     }
 }

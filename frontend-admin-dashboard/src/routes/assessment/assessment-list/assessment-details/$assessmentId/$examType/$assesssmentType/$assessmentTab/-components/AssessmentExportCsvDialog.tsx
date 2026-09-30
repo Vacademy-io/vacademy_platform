@@ -25,6 +25,8 @@ interface AssessmentExportCsvDialogProps {
     assessmentId: string;
     instituteId: string | undefined;
     assessmentType: string;
+    /** The route's play mode (EXAM, MOCK, PRACTICE…); defaults to EXAM. */
+    examType?: string;
     /** True on the Pending tab: export the learners who never attempted, not the results. */
     notAttempted?: boolean;
     /**
@@ -60,6 +62,7 @@ export const AssessmentExportCsvDialog = ({
     assessmentId,
     instituteId,
     assessmentType,
+    examType,
     notAttempted = false,
     notAttemptedScope,
     registrationSource,
@@ -74,7 +77,7 @@ export const AssessmentExportCsvDialog = ({
 
     const { data: instituteData } = useQuery({ ...useInstituteQuery(), enabled: open });
     const { data: assessmentDetails } = useQuery({
-        ...getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' }),
+        ...getAssessmentDetails({ assessmentId, instituteId, type: examType || 'EXAM' }),
         enabled: open,
     });
     const instituteName = instituteData?.institute_name ?? '';

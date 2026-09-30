@@ -276,8 +276,10 @@ const AssessmentDetailsComponent = () => {
 
     useEffect(() => {
         setNavHeading(buildHeading(t));
+        // `t` in the deps: on a cold load the namespace can arrive after this first
+        // run, and a heading set once with [] deps kept showing "heading.title".
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [t]);
 
     // Underline tabs. The previous folder-tab treatment (rounded top, tinted fill, border
     // on three sides) fought with the card the whole page sits in.

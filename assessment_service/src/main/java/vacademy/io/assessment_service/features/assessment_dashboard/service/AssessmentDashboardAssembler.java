@@ -239,67 +239,22 @@ public final class AssessmentDashboardAssembler {
 
     /** Tests that pass the filters, evaluated. Play modes seen before the mode filter go to {@code modesOut}. */
     static List<TestEval> evaluate(Input in, Set<String> modesOut) {
-        Period period = in.period();
-        Filters filters = in.filters();
-        Map<String, List<AttemptRow>> byTest = new HashMap<>();
-        for (AttemptRow row : in.attempts()) {
-            if (row.userId() == null) continue;
-            byTest.computeIfAbsent(row.assessmentId(), k -> new ArrayList<>()).add(row);
-        }
+        Map<String, List<AttemptRow>> byTest = groupByTest(in.attempts());
         Map<String, Set<String>> userBatches = batchesByUser(in.enrollmentsByBatch());
-
         List<TestEval> out = new ArrayList<>();
         for (TestInfo t : in.tests()) {
-            List<String> assigned = in.batchesByTest().getOrDefault(t.id(), List.of());
-            List<String> batches = filters.batchIds().isEmpty()
-                    ? assigned
-                    : assigned.stream().filter(filters.batchIds()::contains).toList();
-            if (!filters.batchIds().isEmpty() && batches.isEmpty()) continue;
-
-            boolean inRange = t.end() == null
-                    || (t.start().isBefore(period.end()) && !t.end().isBefore(period.start()));
+            List<String> batches = filteredBatches(t, in);
+            if (batches == null) continue;
+            boolean inRange = isInRange(t, in.period());
             if (inRange) modesOut.add(upper(t.playMode()));
-            if (!filters.playModes().isEmpty() && !filters.playModes().contains(upper(t.playMode()))) continue;
-
+            if (!in.filters().playModes().isEmpty() && !in.filters().playModes().contains(upper(t.playMode()))) {
+                continue;
+            }
             TestEval ev = new TestEval(t, statusOf(t, in.now()), inRange, batches);
             List<AttemptRow> regs = byTest.getOrDefault(t.id(), List.of());
-
-            // Learners who joined a batch after the test closed were never set it.
-            LocalDate cutoff = t.end() == null
-                    ? period.endDate()
-                    : LocalDate.ofInstant(t.end().isBefore(in.now()) ? t.end() : in.now(), period.zone());
-            if (in.enrollmentsByBatch() != null) {
-                for (String b : batches) {
-                    for (Enrollment e : in.enrollmentsByBatch().getOrDefault(b, List.of())) {
-                        if (e.userId() == null) continue;
-                        if (e.enrolledDate() != null && e.enrolledDate().isAfter(cutoff)) continue;
-                        ev.audience.computeIfAbsent(e.userId(),
-                                k -> new Person(k, e.name(), e.email(), e.mobile(), b));
-                    }
-                }
-            }
-            for (AttemptRow r : regs) {
-                String batch = batchOf(r, batches, userBatches);
-                if (!filters.batchIds().isEmpty() && batch == null) continue;
-                Person fromReg = new Person(r.userId(), r.participantName(), r.email(), r.phone(), batch);
-                Person existing = ev.audience.putIfAbsent(r.userId(), fromReg);
-                if (existing != null) existing.fillFrom(fromReg);
-            }
-
-            for (AttemptRow r : regs) {
-                if (r.attemptId() == null || !ev.audience.containsKey(r.userId())) continue;
-                if (t.end() == null && !period.contains(r.startTime())) continue;
-                String status = upper(r.status());
-                if ("ENDED".equals(status)) {
-                    ev.submissions.add(r);
-                    AttemptRow prev = ev.latest.get(r.userId());
-                    if (prev == null || isAfter(submittedAt(r), submittedAt(prev))) {
-                        ev.latest.put(r.userId(), r);
-                    }
-                } else if (LIVE.equals(status)) {
-                    ev.inProgress.add(r.userId());
-                }
-            }
+            addBatchAudience(ev, in, enrolmentCutoff(t, in));
+            addRegisteredAudience(ev, regs, userBatches, !in.filters().batchIds().isEmpty());
+            collectAttempts(ev, regs, in.period());
             ev.latest.forEach((userId, a) -> {
                 Double score = scoreOf(a, t.maxMarks());
                 if (score != null) ev.scores.put(userId, score);
@@ -307,6 +262,78 @@ public final class AssessmentDashboardAssembler {
             out.add(ev);
         }
         return out;
+    }
+
+    private static Map<String, List<AttemptRow>> groupByTest(List<AttemptRow> attempts) {
+        Map<String, List<AttemptRow>> byTest = new HashMap<>();
+        for (AttemptRow row : attempts) {
+            if (row.userId() != null) {
+                byTest.computeIfAbsent(row.assessmentId(), k -> new ArrayList<>()).add(row);
+            }
+        }
+        return byTest;
+    }
+
+    /** The test's batches narrowed to the batch filter; null when the filter excludes the test. */
+    private static List<String> filteredBatches(TestInfo t, Input in) {
+        List<String> assigned = in.batchesByTest().getOrDefault(t.id(), List.of());
+        Set<String> picked = in.filters().batchIds();
+        if (picked.isEmpty()) return assigned;
+        List<String> batches = assigned.stream().filter(picked::contains).toList();
+        return batches.isEmpty() ? null : batches;
+    }
+
+    private static boolean isInRange(TestInfo t, Period period) {
+        return t.end() == null || (t.start().isBefore(period.end()) && !t.end().isBefore(period.start()));
+    }
+
+    /** Learners who joined a batch after the test closed were never set it. */
+    private static LocalDate enrolmentCutoff(TestInfo t, Input in) {
+        if (t.end() == null) return in.period().endDate();
+        Instant until = t.end().isBefore(in.now()) ? t.end() : in.now();
+        return LocalDate.ofInstant(until, in.period().zone());
+    }
+
+    private static void addBatchAudience(TestEval ev, Input in, LocalDate cutoff) {
+        if (in.enrollmentsByBatch() == null) return;
+        for (String b : ev.batches) {
+            for (Enrollment e : in.enrollmentsByBatch().getOrDefault(b, List.of())) {
+                boolean lateJoiner = e.enrolledDate() != null && e.enrolledDate().isAfter(cutoff);
+                if (e.userId() != null && !lateJoiner) {
+                    ev.audience.computeIfAbsent(e.userId(), k -> new Person(k, e.name(), e.email(), e.mobile(), b));
+                }
+            }
+        }
+    }
+
+    /** Everyone registered is in the audience — with a batch filter, only those of the picked batches. */
+    private static void addRegisteredAudience(TestEval ev, List<AttemptRow> regs, Map<String, Set<String>> userBatches,
+                                              boolean batchFiltered) {
+        for (AttemptRow r : regs) {
+            String batch = batchOf(r, ev.batches, userBatches);
+            if (batchFiltered && batch == null) continue;
+            Person fromReg = new Person(r.userId(), r.participantName(), r.email(), r.phone(), batch);
+            Person existing = ev.audience.putIfAbsent(r.userId(), fromReg);
+            if (existing != null) existing.fillFrom(fromReg);
+        }
+    }
+
+    /** Submitted attempts (latest per learner) and who is writing now; anytime tests only count the range. */
+    private static void collectAttempts(TestEval ev, List<AttemptRow> regs, Period period) {
+        for (AttemptRow r : regs) {
+            if (r.attemptId() == null || !ev.audience.containsKey(r.userId())) continue;
+            if (ev.test.end() == null && !period.contains(r.startTime())) continue;
+            String status = upper(r.status());
+            if ("ENDED".equals(status)) {
+                ev.submissions.add(r);
+                AttemptRow prev = ev.latest.get(r.userId());
+                if (prev == null || isAfter(submittedAt(r), submittedAt(prev))) {
+                    ev.latest.put(r.userId(), r);
+                }
+            } else if (LIVE.equals(status)) {
+                ev.inProgress.add(r.userId());
+            }
+        }
     }
 
     private static boolean isAfter(Instant a, Instant b) {
@@ -471,25 +498,8 @@ public final class AssessmentDashboardAssembler {
             for (AttemptRow a : ev.submissions) firstReg.putIfAbsent(a.userId(), a);
             for (String b : ev.batches) {
                 BatchStats stats = byBatch.computeIfAbsent(b, k -> BatchStats.builder().packageSessionId(k).build());
-                stats.setAssessments(stats.getAssessments() + 1);
-                if (ev.countsForParticipation()) {
-                    for (Person p : ev.audience.values()) {
-                        if (!b.equals(p.batchId) && !userInBatch(p.userId, b, userBatches, firstReg)) continue;
-                        stats.setExpected(stats.getExpected() + 1);
-                        if (ev.latest.containsKey(p.userId)) stats.setAttempted(stats.getAttempted() + 1);
-                    }
-                }
-                for (AttemptRow a : ev.submissions) {
-                    Person p = ev.audience.get(a.userId());
-                    boolean inBatch = (p != null && b.equals(p.batchId)) || userInBatch(a.userId(), b, userBatches, firstReg);
-                    if (inBatch) stats.setSubmissions(stats.getSubmissions() + 1);
-                }
-                ev.scores.forEach((userId, score) -> {
-                    Person p = ev.audience.get(userId);
-                    if ((p != null && b.equals(p.batchId)) || userInBatch(userId, b, userBatches, firstReg)) {
-                        scores.computeIfAbsent(b, k -> new ArrayList<>()).add(score);
-                    }
-                });
+                List<Double> batchScores = scores.computeIfAbsent(b, k -> new ArrayList<>());
+                addToBatch(stats, batchScores, ev, userId -> belongsTo(ev, userId, b, userBatches, firstReg));
             }
         }
         byBatch.forEach((b, stats) -> {
@@ -497,6 +507,31 @@ public final class AssessmentDashboardAssembler {
             stats.setAvgScore(mean(scores.get(b)));
         });
         return new ArrayList<>(byBatch.values());
+    }
+
+    /** A learner counts under a batch they were counted into, or are enrolled / registered in. */
+    private static boolean belongsTo(TestEval ev, String userId, String batchId, Map<String, Set<String>> userBatches,
+                                     Map<String, AttemptRow> firstReg) {
+        Person p = ev.audience.get(userId);
+        return (p != null && batchId.equals(p.batchId)) || userInBatch(userId, batchId, userBatches, firstReg);
+    }
+
+    private static void addToBatch(BatchStats stats, List<Double> batchScores, TestEval ev,
+                                   java.util.function.Predicate<String> inBatch) {
+        stats.setAssessments(stats.getAssessments() + 1);
+        if (ev.countsForParticipation()) {
+            for (String userId : ev.audience.keySet()) {
+                if (!inBatch.test(userId)) continue;
+                stats.setExpected(stats.getExpected() + 1);
+                if (ev.latest.containsKey(userId)) stats.setAttempted(stats.getAttempted() + 1);
+            }
+        }
+        for (AttemptRow a : ev.submissions) {
+            if (inBatch.test(a.userId())) stats.setSubmissions(stats.getSubmissions() + 1);
+        }
+        ev.scores.forEach((userId, score) -> {
+            if (inBatch.test(userId)) batchScores.add(score);
+        });
     }
 
     static AssessmentRow row(TestEval ev) {

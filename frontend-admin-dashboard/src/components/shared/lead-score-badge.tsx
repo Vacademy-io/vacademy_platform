@@ -32,19 +32,38 @@ export function LeadScoreBadge({
     const resolvedKey = catalog.resolve(tier, score);
     if (resolvedKey == null) return null;
     const isSmall = size === 'sm';
+    const color = catalog.colorFor(resolvedKey);
+    const label = catalog.labelFor(resolvedKey);
+    const withScore = showScore && score != null;
 
+    // One line always: institute tier labels can be long ("May Be Interested (Warm)"), so the
+    // label truncates inside a narrow cell (full text on hover) while the score never wraps.
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1 rounded-full border font-medium',
+                'inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border font-medium',
                 isSmall ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
                 className
             )}
             // Inline style: tier colour is admin-picked hex with no design-token equivalent.
-            style={tierChipStyle(catalog.colorFor(resolvedKey))}
+            style={tierChipStyle(color)}
+            title={withScore ? `${label} · ${score}` : label}
         >
-            {catalog.labelFor(resolvedKey)}
-            {showScore && score != null && <span className="opacity-70">· {score}</span>}
+            {/* Dot + score divider take the same admin-picked tier hex, hence inline styles. */}
+            <span
+                aria-hidden
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: color }}
+            />
+            <span className="min-w-0 truncate">{label}</span>
+            {withScore && (
+                <span
+                    className="shrink-0 border-l pl-1.5 tabular-nums opacity-80"
+                    style={{ borderColor: `${color}55` }}
+                >
+                    {score}
+                </span>
+            )}
         </span>
     );
 }

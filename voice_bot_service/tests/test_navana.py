@@ -246,16 +246,43 @@ async def test_a_sentences_text_follows_half_of_its_audio(monkeypatch):
     _sent(tts, 1, "A")
     await tts.append_to_audio_context("A", _text("फीस तीस हज़ार है।"))
     assert log == [], "the text went out before any audio"
-    tts._get_websocket = lambda: _Sock(_chunks(1, 4, progress=True))
+    tts._get_websocket = lambda: _Sock(_chunks(1, 5, progress=True))
     await tts._receive_messages()
     kinds = [k for _c, k, _t in log]
-    assert kinds == ["TTSAudioRawFrame"] * 2 + ["TTSTextFrame"] + ["TTSAudioRawFrame"] * 2 \
+    # 60 %: after the 3rd of 5 chunks.
+    assert kinds == ["TTSAudioRawFrame"] * 3 + ["TTSTextFrame"] + ["TTSAudioRawFrame"] * 2 \
         + ["TTSStoppedFrame"], log
 
 
 @pytest.mark.asyncio
-async def test_without_progress_headers_text_waits_for_the_last_chunk(monkeypatch):
-    """No chunk_index/chunk_total: never release early — at the last chunk."""
+async def test_a_one_chunk_sentence_is_split_so_its_text_lands_60_percent_in(monkeypatch):
+    """Real Navana sends a sentence as ONE chunk (chunk_total 1): the frame is
+    split sample-aligned at 60 % and the text goes between the halves — else
+    "after 60 % of the chunks" would be "after all of it" in production, and a
+    question answered over its tail would be re-asked (review of 8e809b6af7)."""
+    import json
+    tts, log, _ = _heard_rig(monkeypatch)
+    _sent(tts, 1, "A")
+    await tts.append_to_audio_context("A", _text("मार्क्स कितने आए थे?"))
+    pcm = b"\x01\x00" * 1000                      # 1000 samples
+    tts._get_websocket = lambda: _Sock([json.dumps({"type": "audio", "seq": 1, "chunk_index": 0,
+                                                    "chunk_total": 1, "is_last_chunk": True}), pcm])
+    got = []
+
+    from pipecat.services.tts_service import TTSService
+
+    async def base_append(self, ctx, frame):
+        got.append((type(frame).__name__, len(getattr(frame, "audio", b"") or b"")))
+    monkeypatch.setattr(TTSService, "append_to_audio_context", base_append)
+    await tts._receive_messages()
+    assert [k for k, _n in got] == ["TTSAudioRawFrame", "TTSTextFrame", "TTSAudioRawFrame",
+                                    "TTSStoppedFrame"], got
+    assert got[0][1] == 1200 and got[2][1] == 800 and got[0][1] % 2 == 0, got
+
+
+@pytest.mark.asyncio
+async def test_without_progress_headers_text_goes_inside_the_last_chunk(monkeypatch):
+    """No chunk_index/chunk_total: never release early — 60 % into the last chunk."""
     tts, log, _ = _heard_rig(monkeypatch)
     _sent(tts, 1, "A")
     await tts.append_to_audio_context("A", _text("फीस तीस हज़ार है।"))
@@ -263,7 +290,8 @@ async def test_without_progress_headers_text_waits_for_the_last_chunk(monkeypatc
     tts._get_websocket = lambda: _Sock(_chunks(1, 3))
     await tts._receive_messages()
     kinds = [k for _c, k, _t in log]
-    assert kinds == ["TTSAudioRawFrame"] * 3 + ["TTSTextFrame", "TTSStoppedFrame"], log
+    assert kinds == ["TTSAudioRawFrame"] * 3 + ["TTSTextFrame", "TTSAudioRawFrame",
+                                                 "TTSStoppedFrame"], log
 
 
 @pytest.mark.asyncio
@@ -294,7 +322,8 @@ async def test_a_dropped_replys_late_audio_never_plays_inside_the_next_reply(mon
     await tts.append_to_audio_context("B", _text("जी, बताइए।"))
     tts._get_websocket = lambda: _Sock(_chunks(1, 3) + _chunks(2, 2))
     await tts._receive_messages()
-    assert [c for c, k, _t in log if k == "TTSAudioRawFrame"] == ["B", "B"], log
+    audio_ctx = [c for c, k, _t in log if k == "TTSAudioRawFrame"]
+    assert audio_ctx and set(audio_ctx) == {"B"}, log     # none of the dropped reply's
     assert ("B", "TTSTextFrame", "जी, बताइए।") in log
 
 
@@ -325,17 +354,19 @@ async def test_a_cached_sentences_text_is_not_held(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_an_interruption_with_sentences_in_flight_reconnects(monkeypatch):
-    """pipecat reconnects on an interruption only while the bot is audibly
-    speaking. A reply FloorGate still held is not "speaking": without a
-    reconnect Navana keeps generating it and the next reply queues behind."""
+async def test_an_interruption_does_not_churn_the_socket(monkeypatch):
+    """Navana allows 2 concurrent streams and frees a closed socket's slot late:
+    pipecat's close-and-reopen on every interruption got the new handshake
+    refused ("concurrency_limit") and the sentence lost — 328 refusals on
+    2026-09-30. The dead-seq bookkeeping makes the reconnect unnecessary."""
     pytest.importorskip("bodhi.integrations.pipecat_tts")
-    from pipecat.services.tts_service import TTSService
+    from pipecat.services.tts_service import WebsocketTTSService
     tts, _log, _ = _heard_rig(monkeypatch)
+    seen = []
 
-    async def base_interruption(self, frame, direction):
-        await self.on_audio_context_interrupted("A")
-    monkeypatch.setattr(TTSService, "_handle_interruption", base_interruption)
+    async def ws_interruption(self, frame, direction):
+        seen.append("base")
+    monkeypatch.setattr(WebsocketTTSService, "_handle_interruption", ws_interruption)
     calls = []
 
     async def disc():
@@ -344,12 +375,63 @@ async def test_an_interruption_with_sentences_in_flight_reconnects(monkeypatch):
     async def conn():
         calls.append("connect")
     tts._disconnect, tts._connect = disc, conn
-    tts._bot_speaking = False
+    tts._bot_speaking = True          # where InterruptibleTTSService would reconnect
     _sent(tts, 1, "A")
     await tts._handle_interruption(None, None)
-    assert calls == ["disconnect", "connect"], calls
-    # Nothing in flight (e.g. only cached sentences): no reconnect.
-    calls.clear()
-    tts._nv_reset()
-    await tts._handle_interruption(None, None)
-    assert calls == [], calls
+    assert seen == ["base"] and calls == [], (seen, calls)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_handshake_is_retried_not_reported(monkeypatch):
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    import app.providers as prov
+    tries, errors = [], []
+
+    async def fake_connect(self):
+        tries.append(1)
+        if len(tries) < 3:
+            self._websocket = None
+            await self.push_error(error_msg="unable to connect: handshake refused: "
+                                            "concurrency_limit too many streams")
+            return
+        self._websocket = object()
+
+    async def fake_push_error(self, *a, **k):
+        errors.append(k.get("error_msg"))
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    from pipecat.processors.frame_processor import FrameProcessor
+    monkeypatch.setattr(FrameProcessor, "push_error", fake_push_error)
+
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr(prov._asyncio if hasattr(prov, "_asyncio") else __import__("asyncio"),
+                        "sleep", no_sleep)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="k", voice="ipsita", language="hi")
+    tts._websocket = None
+    await tts._connect_websocket()
+    assert len(tries) == 3 and tts._websocket is not None and errors == [], (tries, errors)
+
+
+@pytest.mark.asyncio
+async def test_a_non_capacity_failure_is_reported_at_once(monkeypatch):
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    tries, errors = [], []
+
+    async def fake_connect(self):
+        tries.append(1)
+        self._websocket = None
+        await self.push_error(error_msg="unable to connect: handshake refused: bad_key")
+
+    async def fake_push_error(self, *a, **k):
+        errors.append(k.get("error_msg"))
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    from pipecat.processors.frame_processor import FrameProcessor
+    monkeypatch.setattr(FrameProcessor, "push_error", fake_push_error)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="k", voice="ipsita", language="hi")
+    tts._websocket = None
+    await tts._connect_websocket()
+    assert len(tries) == 1 and errors and "bad_key" in errors[0], (tries, errors)

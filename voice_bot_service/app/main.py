@@ -1220,7 +1220,7 @@ async def ws_endpoint(websocket: WebSocket):
 
 def _reclaim_after_call(corr: str) -> None:
     try:
-        memory.reclaim(idle=_active_calls == 0, corr=corr or "")
+        memory.reclaim(idle=_active_calls == 0 and _inflight_handshakes == 0, corr=corr or "")
     except Exception:
         logger.exception("memory: reclaim failed corr=%s", corr)
 

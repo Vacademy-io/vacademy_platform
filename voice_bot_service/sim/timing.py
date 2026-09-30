@@ -855,6 +855,43 @@ def chk_navana_held_reply_is_not_heard(res):
     return f
 
 
+NV_Q2 = "Got it, eighth class. And how were her marks last year?"
+NV_Q2_Q = "And how were her marks last year?"
+
+
+def chk_nv_answer_over_tail(res):
+    """Review of 2cfb1cff29: the parent answers ("Ninety percent.") over the
+    last part of a Navana question. Holding the text to the sentence's END made
+    the question count as never heard: it was re-asked and left the model's
+    context. Heard 60 %+ = said: sent to the TTS once, and in the next run's
+    context as the bot's own line."""
+    f = []
+    asked = [t for t in res.get("tts_texts", []) if "marks last year" in t]
+    if len(asked) > 1:
+        f.append(f"the marks question was sent to the TTS {len(asked)}x: {asked}")
+    ctxs = res.get("contexts", [])
+    if len(ctxs) >= 2 and "marks last year" not in json.dumps(ctxs[1], ensure_ascii=False):
+        f.append("the question the parent answered is missing from the model's context")
+    return f
+
+
+def _nv_tail_scenario(key: str, cache: bool) -> "Scenario":
+    return Scenario(
+        key,
+        caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                Say("Ninety percent.", 0.9, after_bot_start=2,
+                    # 2.4 s: the answer lands while the question is ~60-80 % played
+                    # (calibrated: 2.2 and 2.6 fail on the last-chunk rule and pass
+                    # on the 60 % split; at 1.6 the question is barely heard and
+                    # re-asking it is right).
+                    offset=float(os.environ.get("NV_TAIL_OFFSET", "2.4")), stt_latency=0.4)],
+        replies=[NV_Q2, NV_Q2_Q, "Okay, ninety percent, that's good.", "Okay."],
+        checks=chk_nv_answer_over_tail, max_secs=40,
+        cache_warm=([S_CACHED_TAIL] if cache else []), engine="navana",
+        context="navana_agent_context.json",
+        note="review of 2cfb1cff29: the parent answers over the tail of a Navana question")
+
+
 LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
                "and a few students come to my home on weekends")
 _LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
@@ -1216,6 +1253,8 @@ SCENARIOS: List[Scenario] = [
              checks=chk_navana_held_reply_is_not_heard, max_secs=45,
              cache_warm=[S_CACHED_TAIL], engine="navana", context="navana_agent_context.json",
              note="calls 18b63b17/45749163: a held-then-dropped Navana reply counted as said"),
+    _nv_tail_scenario("navana_answer_over_tail_cache_off", False),
+    _nv_tail_scenario("navana_answer_over_tail_cache_on", True),
     Scenario("smallest_live_only",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[" ".join([S_LIVE_1, S_LIVE_2])],

@@ -706,23 +706,34 @@ def _navana_seq_routing(cls):
     parent was still talking, then dropped, still counted as said: the fees
     answer was refused as "already said" twice (the parent asked three times),
     the marks question never played and the line went quiet for 8.7 s. Every
-    sentence's text is now held and released after HALF of its own audio (the
-    `chunk_index`/`chunk_total` in Navana's headers; at its last chunk if they are
-    absent): the output transport writes frames in order, so the text reaches the
-    played transcript only once the parent has heard half the sentence. A reply
+    sentence's text is now held and released once 60 % of its own audio is out
+    (NoRepeatGate's "mostly heard is heard" threshold): by `chunk_index`/
+    `chunk_total` for a multi-chunk sentence, and by SPLITTING the audio frame at
+    60 % when the text is still held at the sentence's last chunk — real Navana
+    sends a sentence as ONE chunk (chunk_total 1). The output transport writes
+    frames in order, so the text reaches the played transcript only once the
+    parent has heard 60 % of the sentence. A reply
     FloorGate holds (from its first audio frame) keeps its text held with it and
     drops it with it; a sentence cut in its first half is re-sayable; one heard
     60-99 % is not repeated in full (an all-or-nothing "after the last chunk"
-    rule re-said a nearly finished opening and lost the answer to it). This
-    applies with the cache off too (one context per turn).
+    rule re-asked a question the parent answered over its tail, and re-said a
+    nearly finished opening). This applies with the cache off too (one context
+    per turn).
 
-    AN INTERRUPTION RECONNECTS. pipecat reconnects on an interruption only while
-    the bot is audibly speaking; for a reply FloorGate was still holding it does
-    not, so Navana kept generating the dropped sentences and the next reply's
-    audio queued behind them — long enough for its context to idle out. Any
-    interruption with Navana sentences in flight now reconnects (the SDK's own
-    way of stopping the server).
+    NO RECONNECT ON AN INTERRUPTION; RETRY A REFUSED HANDSHAKE. The account
+    allows 2 concurrent streams. pipecat's InterruptibleTTSService closes and
+    reopens the socket on every interruption while the bot is speaking, and
+    Navana frees a closed socket's slot a moment late — so the fresh handshake
+    was refused ("concurrency_limit") and that sentence was simply lost: 328
+    refusals on 2026-09-30, in 8 of the 13 real conversations after 10:54 (6-48
+    per call; calls cycled sockets several times a second). The reconnect is not
+    needed for correctness: an interrupted reply's in-flight seqs are marked dead
+    and whatever Navana still streams for them is dropped (it generates ~20x real
+    time, so the next reply waits a few hundred ms at most). And a refused
+    handshake is retried (0.25 / 0.5 / 1 s) instead of failing the sentence.
     """
+    import asyncio as _asyncio
+    from pipecat.services.tts_service import WebsocketTTSService as _WsTTS
     from pipecat.frames.frames import TTSTextFrame as _Text
 
     class _Routed(cls):
@@ -768,10 +779,35 @@ def _navana_seq_routing(cls):
             if self._nv_routing_on() and self.audio_context_available(ctx):
                 await self.remove_audio_context(ctx)
 
+        async def push_error(self, *args, **kwargs):
+            if getattr(self, "_nv_quiet", False):
+                # A handshake attempt we are about to retry: not an error yet.
+                self._nv_last_error = str(kwargs.get("error_msg") or (args[0] if args else ""))
+                return
+            await super().push_error(*args, **kwargs)
+
         async def _connect_websocket(self):
             # A fresh socket restarts seq at 1 (the SDK resets it on ready).
             self._nv_reset()
-            await super()._connect_websocket()
+            delays = (0.25, 0.5, 1.0)
+            for attempt in range(len(delays) + 1):
+                final = attempt == len(delays)
+                self._nv_quiet, self._nv_last_error = not final, ""
+                try:
+                    await super()._connect_websocket()
+                finally:
+                    self._nv_quiet = False
+                if self._websocket is not None:
+                    if attempt:
+                        logger.info("navana: connected after %d refused handshake(s)", attempt)
+                    return
+                if final:
+                    return                          # the SDK already reported it
+                if "concurrency_limit" not in self._nv_last_error:
+                    # Not a capacity refusal: report it now, do not hammer.
+                    await super().push_error(error_msg=self._nv_last_error)
+                    return
+                await _asyncio.sleep(delays[attempt])
 
         async def on_audio_context_interrupted(self, context_id: str):
             # pipecat reconnects the socket on an interruption only while the bot
@@ -789,17 +825,9 @@ def _navana_seq_routing(cls):
             await super().on_audio_context_interrupted(context_id)
 
         async def _handle_interruption(self, frame, direction):
-            in_flight = bool(getattr(self, "_nv_ctx", None))
-            await super()._handle_interruption(frame, direction)
-            # pipecat reconnected only if the bot was audibly speaking. Sentences
-            # still being generated for a held (never played) reply would make
-            # the next reply wait behind them: stop the server the SDK's way.
-            if (in_flight or getattr(self, "_nv_dead", None)) and not getattr(self, "_bot_speaking", False):
-                try:
-                    await self._disconnect()
-                    await self._connect()
-                except Exception:
-                    logger.exception("navana: reconnect after an interruption failed")
+            # Skip InterruptibleTTSService's close-and-reopen (see above): the
+            # dead-seq bookkeeping already discards the interrupted reply.
+            await _WsTTS._handle_interruption(self, frame, direction)
 
         async def run_tts(self, text, context_id, *args, **kwargs):
             recorded = False
@@ -830,24 +858,40 @@ def _navana_seq_routing(cls):
                         continue
                     ctx = self._nv_ctx.get(seq)
                     if ctx is None or not self.audio_context_available(ctx):
-                        # Interrupted, or a seq we never recorded: nowhere safe.
-                        ctx = None if seq in self._nv_ctx else self.get_active_audio_context_id()
+                        if seq in self._nv_ctx:
+                            # Cache off: the turn's context idled out while this
+                            # sentence was still being generated — pipecat
+                            # recreates the turn context on append (the SDK loop
+                            # played it late). Any other closed context: drop.
+                            ctx = ctx if ctx == getattr(self, "_turn_context_id", None) else None
+                        else:
+                            ctx = self.get_active_audio_context_id()
                     if ctx is None:
                         if last:
                             # Never played, so never heard: its text goes too.
                             self._nv_ctx.pop(seq, None)
                             self._nv_text.pop(seq, None)
                         continue
+                    pcm = bytes(message)
+                    if last and seq in self._nv_text and len(pcm) >= 8:
+                        # Still held at the sentence's last chunk — always, for
+                        # Navana's one-chunk sentences: the text goes 60 % into it.
+                        cut = (int(len(pcm) * 0.6) // 2) * 2          # 16-bit aligned
+                        await self.append_to_audio_context(ctx, _Audio(
+                            audio=pcm[:cut], sample_rate=self._output_sample_rate,
+                            num_channels=1, context_id=ctx))
+                        await self._nv_release_text(seq, ctx)
+                        pcm = pcm[cut:]
                     await self.append_to_audio_context(ctx, _Audio(
-                        audio=bytes(message), sample_rate=self._output_sample_rate,
+                        audio=pcm, sample_rate=self._output_sample_rate,
                         num_channels=1, context_id=ctx))
                     if last:
                         await self._nv_finish(seq, ctx)
                     elif seq in self._nv_text:
                         idx, total = self._nv_cur_idx, self._nv_cur_total
                         if isinstance(idx, int) and isinstance(total, int) and total > 0 \
-                                and (idx + 1) * 2 >= total:
-                            await self._nv_release_text(seq, ctx)    # half of it is out
+                                and (idx + 1) * 5 >= total * 3:
+                            await self._nv_release_text(seq, ctx)    # 60 % of it is out
                     continue
                 try:
                     content = _json.loads(message)

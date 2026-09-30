@@ -601,6 +601,12 @@ def could_not_hear_us(text: str) -> bool:
     return any(abs(i - j) <= 3 for i in heard for j in negs)
 
 
+_WHAT_TO_SAY = re.compile(
+    r"(क्या\s*(बोलूं|बोलूँ|बोलू|बताऊं|बताऊँ|बताऊ|बताना\s*है|बोलना\s*है|पूछ\s*रही|पूछा))"
+    r"|(kya\s*(bolu|boloon|bataun|batau|batana\s*hai|bolna\s*hai))"
+    r"|(what\s*(should|do)\s*i\s*(say|tell))|(what\s*did\s*you\s*ask)")
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))
@@ -621,6 +627,12 @@ def caller_asked_to_repeat(text: str) -> bool:
     # "समझ"/"सुनाई" are NOT here any more: bare, they also match "समझ गया सर"
     # (I DID understand), which is the opposite request — could_not_hear_us
     # above reads the negation instead. "phir"/"फिर" ("फिर से बोलिए") stays.
+    # "क्या बोलूं?" / "क्या बताऊँ?" / "what should I say?" — they did not
+    # catch WHAT we asked, so the question again is the reply. Call 3ad7f590
+    # (2026-09-30): read as a question to answer, the model re-introduced
+    # itself instead of re-asking the child's name and class.
+    if len(ws) <= 5 and _WHAT_TO_SAY.search(t):
+        return True
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर"}))
 

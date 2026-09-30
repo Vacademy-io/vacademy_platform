@@ -1080,6 +1080,7 @@ class TranscriptCollector(FrameProcessor):
                 # cannot go missing in the aggregator's interruption handling.
                 # Once per burst of pieces; never while the opening is owed.
                 if (is_question(text) and self._bot_spoke_once()
+                        and not caller_asked_to_repeat(text)
                         and time.time() - self._question_cue_t > 4.0):
                     self._question_cue_t = time.time()
                     logger.info("turn-gate: %r cut in with a question — steering the "
@@ -2067,7 +2068,8 @@ class NoRepeatGate(FrameProcessor):
         # them in a row on 22062aac — and nothing escalated.
         self._filler_streak = 0
         self._escalated_for = None
-        self._asked_this_reply = False    # a question reached the caller in THIS reply     # the caller turn that got the firm filler cue
+        self._killed = False           # an interruption ended the current response
+        self._asked_this_reply = False    # a question reached the caller in THIS reply
         # "Just a second." queued while the model composed, arriving at the TTS
         # AFTER the reply's audio began (the LLM processor holds frames during a
         # generation): call dd5eb5cc heard the question, then "Just a second."
@@ -2498,6 +2500,7 @@ class NoRepeatGate(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMFullResponseStartFrame):
+            self._killed = False
             self._responses_started += 1
             if self._responses_started > self._runs_passed:
                 self._runs_passed = self._responses_started    # a run we did not see
@@ -2593,6 +2596,12 @@ class NoRepeatGate(FrameProcessor):
             self._pending = []
             self._buf, self._held_tail, self._cf_held = "", "", ""
             self._echo_held = ""
+            # Text of the response this interruption killed can still arrive
+            # (the LLM streams until its cancel lands, then ends). Without this
+            # it was flushed as a tail — "जी मैम, Shik" reached the caller after
+            # she cut in, and the filler recovery then asked for a fresh line on
+            # a reply she never heard (call 3ad7f590, 2026-09-30).
+            self._killed = True
             self._cf_this_reply = set()
             self._real_this_reply = False
             self._norms_this_reply = set()
@@ -2605,6 +2614,8 @@ class NoRepeatGate(FrameProcessor):
             return
         if (isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM
                 and not isinstance(frame, TTSTextFrame)):
+            if self._killed:
+                return                  # the interrupted response's late tokens
             self._buf += frame.text or ""
             while True:
                 m = self._SENT_END.search(self._buf)
@@ -2678,6 +2689,16 @@ class NoRepeatGate(FrameProcessor):
                     if self._diag is not None:
                         self._diag.bump("repeats_suppressed")
                     logger.info("no-repeat: dropping already-said %r", sentence.strip()[:56])
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame) and self._killed:
+            # The end of the response an interruption killed: nothing of it is
+            # spoken and nothing is recovered — the caller's new turn drives.
+            if self._buf.strip():
+                logger.info("no-repeat: dropping %r — its response was interrupted",
+                            self._buf.strip()[:40])
+            self._buf = ""
+            await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):

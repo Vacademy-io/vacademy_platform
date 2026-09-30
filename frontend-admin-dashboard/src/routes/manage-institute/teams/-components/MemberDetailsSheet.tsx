@@ -394,11 +394,6 @@ export function MemberDetailsSheet({
                                 <h2 className="truncate text-h3 font-semibold text-neutral-900">
                                     {name || member.full_name}
                                 </h2>
-                                {member.root_user && (
-                                    <span className="rounded bg-neutral-900 px-1.5 text-caption font-semibold uppercase text-white">
-                                        {t('member.owner')}
-                                    </span>
-                                )}
                             </div>
                             <p className="truncate text-caption text-neutral-500">
                                 {member.email}

@@ -988,6 +988,7 @@ export const LIVE_CLASS_DASHBOARD = `${BASE_URL}/admin-core-service/live-session
 export const LIVE_CLASS_DASHBOARD_CLASS_LEARNERS = `${BASE_URL}/admin-core-service/live-session-report/dashboard/class-learners`;
 export const LIVE_CLASS_DASHBOARD_AT_RISK = `${BASE_URL}/admin-core-service/live-session-report/dashboard/at-risk`;
 export const LIVE_CLASS_DASHBOARD_FEEDBACK = `${BASE_URL}/admin-core-service/live-session-report/dashboard/feedback-comments`;
+export const ASSESSMENT_DASHBOARD_INSIGHTS = `${BASE_URL}/assessment-service/assessment/admin/dashboard/insights`;
 export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
 export const CREATE_PROVIDER_MEETINGS_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create-for-session`;

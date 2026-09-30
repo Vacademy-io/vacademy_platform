@@ -407,8 +407,12 @@ public class StudentAnalysisProcessorService {
                                                 .filter(e -> e.getValue() >= 60)
                                                 .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
                                                 .limit(6)
+                        // The fallbacks below must not re-add a topic the other list already holds —
+                        // that would undo resolveStrengthAreaOverlap.
+                        java.util.Set<String> inAreas = topicKeys(report.getAreasToImprove());
                                                 .map(e -> topic(e.getKey(), e.getValue()))
                                                 .collect(Collectors.toList());
+                                                .filter(e -> !inAreas.contains(topicKey(e.getKey())))
                                 // Guarantee at least one relative strength when a decent topic exists.
                                 if (strengths.isEmpty()) {
                                         topicScores.entrySet().stream()
@@ -417,14 +421,17 @@ public class StudentAnalysisProcessorService {
                                                         .ifPresent(e -> strengths.add(topic(e.getKey(), e.getValue())));
                                 }
                                 if (!strengths.isEmpty()) report.setStrengths(strengths);
+                                                        .filter(e -> !inAreas.contains(topicKey(e.getKey())))
                         }
                         if (report.getAreasToImprove() == null || report.getAreasToImprove().isEmpty()) {
                                 java.util.List<TopicConfidence> areas = topicScores.entrySet().stream()
                                                 .filter(e -> e.getValue() < 60)
                                                 .sorted(java.util.Map.Entry.comparingByValue())
                                                 .limit(6)
+                        java.util.Set<String> inStrengths = topicKeys(report.getStrengths());
                                                 .map(e -> topic(e.getKey(), e.getValue()))
                                                 .collect(Collectors.toList());
+                                                .filter(e -> !inStrengths.contains(topicKey(e.getKey())))
                                 // Guarantee at least one improvement target unless everything is already strong.
                                 if (areas.isEmpty()) {
                                         topicScores.entrySet().stream()
@@ -433,6 +440,7 @@ public class StudentAnalysisProcessorService {
                                                         .ifPresent(e -> areas.add(topic(e.getKey(), e.getValue())));
                                 }
                                 if (!areas.isEmpty()) report.setAreasToImprove(areas);
+                                                        .filter(e -> !inStrengths.contains(topicKey(e.getKey())))
                         }
 
                         // ── Improvement path (recommendations) — always produce at least one when any data exists.
@@ -692,6 +700,12 @@ public class StudentAnalysisProcessorService {
         }
 
         private static int nz(Integer v) {
+        private static java.util.Set<String> topicKeys(java.util.List<TopicConfidence> topics) {
+                java.util.Set<String> keys = new java.util.HashSet<>();
+                if (topics != null) topics.forEach(t -> keys.add(topicKey(t.getTopic())));
+                return keys;
+        }
+
                 return v == null ? 0 : v;
         }
 

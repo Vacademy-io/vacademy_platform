@@ -204,7 +204,8 @@
         "meta_two": "{{count}} اختباران · المحاولون {{attempted}}/{{expected}} · المتوسط {{avg}}",
         "meta_few": "{{count}} اختبارات · المحاولون {{attempted}}/{{expected}} · المتوسط {{avg}}",
         "meta_many": "{{count}} اختبارًا · المحاولون {{attempted}}/{{expected}} · المتوسط {{avg}}",
-        "meta_other": "{{count}} اختبار · المحاولون {{attempted}}/{{expected}} · المتوسط {{avg}}"
+        "meta_other": "{{count}} اختبار · المحاولون {{attempted}}/{{expected}} · المتوسط {{avg}}",
+        "checked": "تم تصحيح {{done}}/{{total}} ورقة"
     },
     "top": {
         "title": "أفضل {{term}}",
@@ -230,7 +231,8 @@
         "done": "تم تصحيح {{done}}/{{total}}",
         "toEvaluate": "للتصحيح: {{n}}",
         "toRelease": "للنشر: {{n}}",
-        "open": "فتح الاختبار"
+        "open": "فتح الاختبار",
+        "by": "بواسطة {{names}}"
     },
     "followUp": {
         "title": "{{term}} بحاجة إلى متابعة",
@@ -292,6 +294,29 @@
         "lowestScore": "أدنى درجة %",
         "evaluated": "المصحّحة",
         "awaitingEvaluation": "بانتظار التصحيح",
-        "awaitingRelease": "بانتظار النشر"
+        "awaitingRelease": "بانتظار النشر",
+        "checkedBy": "صحّحها"
+    },
+    "copyCheck": {
+        "title": "تصحيح الأوراق",
+        "subtitle": "تم تصحيح {{checked}} من {{total}} · {{waiting}} بانتظار التصحيح",
+        "segments": {
+            "teacher": "بواسطة المعلمين",
+            "ai": "بواسطة الذكاء الاصطناعي",
+            "auto": "مصححة تلقائيًا",
+            "other": "درجات أُدخلت مباشرة",
+            "waiting": "بانتظار التصحيح"
+        },
+        "teachersTitle": "من صحّح الأوراق",
+        "noTeachers": "لم يصحّح أي معلم أوراقًا في هذه الفترة",
+        "copies": "{{n}} ورقة",
+        "tests_zero": "{{count}} اختبار",
+        "tests_one": "اختبار واحد ({{count}})",
+        "tests_two": "اختباران ({{count}})",
+        "tests_few": "{{count}} اختبارات",
+        "tests_many": "{{count}} اختبارًا",
+        "tests_other": "{{count}} اختبار",
+        "perCopy": "~{{minutes}} دقيقة لكل ورقة",
+        "lastChecked": "آخر تصحيح {{date}}"
     }
 }

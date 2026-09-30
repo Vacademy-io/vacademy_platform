@@ -26,6 +26,12 @@ export interface AssessmentDashboardSummary {
     evaluated: number;
     awaiting_evaluation: number;
     awaiting_release: number;
+    /** How the evaluated submissions were checked; the four add up to `evaluated`. */
+    checked_by_teacher: number;
+    checked_by_ai: number;
+    auto_graded: number;
+    /** Evaluated without the checking tool, e.g. marks entered offline. */
+    evaluated_other: number;
     avg_time_minutes: number | null;
     avg_time_share: number | null;
 }
@@ -66,6 +72,20 @@ export interface AssessmentBatchStats {
     participation_rate: number | null;
     submissions: number;
     avg_score: number | null;
+    /** Submissions by this batch's learners that are checked / still waiting. */
+    evaluated: number;
+    awaiting_evaluation: number;
+}
+
+/** A teacher who checked copies of the range's tests. */
+export interface AssessmentEvaluatorStats {
+    user_id: string;
+    name: string | null;
+    email: string | null;
+    copies_checked: number;
+    tests: number;
+    avg_minutes_per_copy: number | null;
+    last_checked_at: string | null;
 }
 
 export interface AssessmentDashboardRow {
@@ -97,6 +117,10 @@ export interface AssessmentDashboardRow {
     evaluated: number;
     awaiting_evaluation: number;
     awaiting_release: number;
+    checked_by_teacher: number;
+    checked_by_ai: number;
+    /** Teachers who checked this test's copies; names are in `evaluators`. */
+    evaluator_ids: string[];
 }
 
 export interface AssessmentLearnerStats {
@@ -130,6 +154,7 @@ export interface AssessmentDashboardData {
     submission_heatmap: SubmissionHeatCell[];
     types: AssessmentTypeSlice[];
     batches: AssessmentBatchStats[];
+    evaluators: AssessmentEvaluatorStats[];
     assessments: AssessmentDashboardRow[];
     assessments_limit: number;
     assessments_truncated: boolean;

@@ -268,14 +268,31 @@ export function BatchPerformanceCard({
                                     className={cn('h-1.5 !bg-neutral-100', METER_TONE[tone])}
                                     aria-hidden
                                 />
-                                <span className="text-caption text-neutral-500">
-                                    {t('batches.meta', {
-                                        count: b.assessments,
-                                        attempted: formatCount(b.attempted),
-                                        expected: formatCount(b.expected),
-                                        avg: formatRate(b.avg_score),
-                                    })}
-                                </span>
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-neutral-500">
+                                    <span>
+                                        {t('batches.meta', {
+                                            count: b.assessments,
+                                            attempted: formatCount(b.attempted),
+                                            expected: formatCount(b.expected),
+                                            avg: formatRate(b.avg_score),
+                                        })}
+                                    </span>
+                                    {b.submissions > 0 && (
+                                        <span
+                                            className={cn(
+                                                'font-semibold',
+                                                b.awaiting_evaluation > 0
+                                                    ? 'text-warning-700'
+                                                    : 'text-success-700'
+                                            )}
+                                        >
+                                            {t('batches.checked', {
+                                                done: formatCount(b.evaluated),
+                                                total: formatCount(b.submissions),
+                                            })}
+                                        </span>
+                                    )}
+                                </div>
                             </li>
                         );
                     })}
@@ -368,9 +385,12 @@ export function TopLearnersCard({
 export function EvaluationQueueCard({
     rows,
     onOpen,
+    checkedBy,
 }: {
     rows: AssessmentDashboardRow[];
     onOpen: (row: AssessmentDashboardRow) => void;
+    /** Teachers who checked the test's copies so far. */
+    checkedBy: (row: AssessmentDashboardRow) => string[];
 }) {
     const { t } = useTranslation('assessmentDashboard');
     const queue = useMemo(() => evaluationQueue(rows), [rows]);
@@ -432,6 +452,14 @@ export function EvaluationQueueCard({
                                                 {t('queue.toRelease', {
                                                     n: formatCount(r.awaiting_release),
                                                 })}
+                                            </span>
+                                        )}
+                                        {checkedBy(r).length > 0 && (
+                                            <span
+                                                className="truncate text-neutral-500"
+                                                title={checkedBy(r).join(', ')}
+                                            >
+                                                {t('queue.by', { names: checkedBy(r).join(', ') })}
                                             </span>
                                         )}
                                     </div>

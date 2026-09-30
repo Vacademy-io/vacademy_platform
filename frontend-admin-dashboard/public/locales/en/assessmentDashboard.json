@@ -188,7 +188,8 @@
             "score": "By score"
         },
         "meta_one": "{{count}} test · {{attempted}}/{{expected}} attempted · avg {{avg}}",
-        "meta_other": "{{count}} tests · {{attempted}}/{{expected}} attempted · avg {{avg}}"
+        "meta_other": "{{count}} tests · {{attempted}}/{{expected}} attempted · avg {{avg}}",
+        "checked": "{{done}}/{{total}} copies checked"
     },
     "top": {
         "title": "Top {{term}}",
@@ -206,7 +207,8 @@
         "done": "{{done}}/{{total}} evaluated",
         "toEvaluate": "{{n}} to evaluate",
         "toRelease": "{{n}} to release",
-        "open": "Open test"
+        "open": "Open test",
+        "by": "by {{names}}"
     },
     "followUp": {
         "title": "{{term}} to follow up",
@@ -264,6 +266,25 @@
         "lowestScore": "Lowest score %",
         "evaluated": "Evaluated",
         "awaitingEvaluation": "Awaiting evaluation",
-        "awaitingRelease": "Awaiting release"
+        "awaitingRelease": "Awaiting release",
+        "checkedBy": "Checked by"
+    },
+    "copyCheck": {
+        "title": "Copy checking",
+        "subtitle": "{{checked}} of {{total}} submissions checked · {{waiting}} waiting",
+        "segments": {
+            "teacher": "By teachers",
+            "ai": "By AI",
+            "auto": "Auto-graded",
+            "other": "Marks entered directly",
+            "waiting": "Waiting to be checked"
+        },
+        "teachersTitle": "Who checked the copies",
+        "noTeachers": "No copies were checked by a teacher in this range",
+        "copies": "{{n}} copies",
+        "tests_one": "{{count}} test",
+        "tests_other": "{{count}} tests",
+        "perCopy": "~{{minutes}} min per copy",
+        "lastChecked": "last checked {{date}}"
     }
 }

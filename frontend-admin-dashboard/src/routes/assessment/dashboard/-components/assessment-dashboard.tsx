@@ -55,6 +55,7 @@ import {
     TopLearnersCard,
 } from './dashboard-highlights';
 import { FollowUpCard } from './dashboard-followup';
+import { CopyCheckingCard, evaluatorName } from './dashboard-evaluation';
 import { LiveNowPanel } from './live-now-panel';
 import { AssessmentsTable } from './assessments-table';
 
@@ -165,6 +166,17 @@ export default function AssessmentDashboard() {
         [instituteSubjects, subjectNamesById]
     );
 
+    // Teacher names for the "checked by" lists in the queue, the table and the CSV.
+    const evaluatorNameById = useMemo(
+        () => new Map((data?.evaluators ?? []).map((e) => [e.user_id, evaluatorName(e)])),
+        [data?.evaluators]
+    );
+    const checkedBy = useCallback(
+        (row: AssessmentDashboardRow) =>
+            row.evaluator_ids.map((id) => evaluatorNameById.get(id) ?? id),
+        [evaluatorNameById]
+    );
+
     const openTest = useCallback(
         (row: AssessmentDashboardRow) =>
             navigate({
@@ -202,6 +214,7 @@ export default function AssessmentDashboard() {
                 t('csv.evaluated'),
                 t('csv.awaitingEvaluation'),
                 t('csv.awaitingRelease'),
+                t('csv.checkedBy'),
             ],
             data.assessments.map((r) => [
                 r.start_time ? format(new Date(r.start_time), 'yyyy-MM-dd HH:mm') : '',
@@ -223,6 +236,7 @@ export default function AssessmentDashboard() {
                 r.evaluated,
                 r.awaiting_evaluation,
                 r.awaiting_release,
+                checkedBy(r).join(' | '),
             ])
         );
         downloadCsv(exportFileName('assessments', startDate, endDate), csv);
@@ -389,28 +403,34 @@ export default function AssessmentDashboard() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <CopyCheckingCard summary={data.summary} evaluators={data.evaluators ?? []} />
+                <EvaluationQueueCard
+                    rows={data.assessments}
+                    onOpen={openTest}
+                    checkedBy={checkedBy}
+                />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <ScoreDistributionCard buckets={data.score_distribution} summary={data.summary} />
-                <EvaluationQueueCard rows={data.assessments} onOpen={openTest} />
+                <TypeCard types={data.types} />
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <SubmissionHeatmap cells={data.submission_heatmap} />
-                <TypeCard types={data.types} />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <BatchPerformanceCard
-                    batches={data.batches}
-                    batchLabel={batchLabel}
-                    batchTerm={batchTerm}
-                    batchesTerm={batchesTerm}
-                />
                 <TopLearnersCard
                     learners={data.top_learners}
                     batchLabel={batchLabel}
                     learnersTerm={learnersTerm}
                 />
             </div>
+
+            <BatchPerformanceCard
+                batches={data.batches}
+                batchLabel={batchLabel}
+                batchTerm={batchTerm}
+                batchesTerm={batchesTerm}
+            />
 
             <FollowUpCard data={data} batchLabel={batchLabel} learnersTerm={learnersTerm} />
 
@@ -420,6 +440,7 @@ export default function AssessmentDashboard() {
                 limit={data.assessments_limit}
                 batchLabel={batchLabel}
                 subjectLabel={subjectLabel}
+                checkedBy={checkedBy}
                 onOpen={openTest}
             />
 

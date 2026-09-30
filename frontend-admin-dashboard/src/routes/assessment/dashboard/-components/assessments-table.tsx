@@ -63,6 +63,7 @@ export function AssessmentsTable({
     limit,
     batchLabel,
     subjectLabel,
+    checkedBy,
     onOpen,
 }: {
     rows: AssessmentDashboardRow[];
@@ -70,6 +71,8 @@ export function AssessmentsTable({
     limit: number;
     batchLabel: (id: string) => string;
     subjectLabel: (id: string | null) => string | null;
+    /** Teachers who checked the test's copies. */
+    checkedBy: (row: AssessmentDashboardRow) => string[];
     onOpen: (row: AssessmentDashboardRow) => void;
 }) {
     const { t } = useTranslation('assessmentDashboard');
@@ -121,7 +124,7 @@ export function AssessmentsTable({
             },
             {
                 id: 'test',
-                size: 210,
+                size: 180,
                 header: t('table.test'),
                 cell: ({ row }) => (
                     <div className="flex min-w-0 flex-col">
@@ -131,7 +134,10 @@ export function AssessmentsTable({
                         >
                             {row.original.name || t('table.untitled')}
                         </span>
-                        <span className="truncate text-caption text-neutral-500">
+                        <span
+                            className="truncate text-caption text-neutral-500"
+                            title={row.original.batch_ids.map(batchLabel).join('\n')}
+                        >
                             {[
                                 t(`playModes.${playModeKey(row.original.play_mode)}`),
                                 subjectLabel(row.original.subject_id),
@@ -238,7 +244,7 @@ export function AssessmentsTable({
             },
             {
                 id: 'evaluation',
-                size: 110,
+                size: 140,
                 header: t('table.evaluation'),
                 cell: ({ row }) => {
                     const r = row.original;
@@ -247,15 +253,11 @@ export function AssessmentsTable({
                             <span className="block text-right text-neutral-400">{EMPTY_VALUE}</span>
                         );
                     }
-                    if (r.awaiting_evaluation === 0 && r.awaiting_release === 0) {
-                        return (
-                            <span className="block text-right text-caption font-semibold text-success-700">
-                                {t('table.allDone')}
-                            </span>
-                        );
-                    }
+                    const names = checkedBy(r);
+                    const done = r.awaiting_evaluation === 0 && r.awaiting_release === 0;
                     return (
                         <span className="flex flex-col items-end text-caption font-semibold">
+                            {done && <span className="text-success-700">{t('table.allDone')}</span>}
                             {r.awaiting_evaluation > 0 && (
                                 <span className="whitespace-nowrap text-warning-700">
                                     {t('queue.toEvaluate', {
@@ -268,12 +270,20 @@ export function AssessmentsTable({
                                     {t('queue.toRelease', { n: formatCount(r.awaiting_release) })}
                                 </span>
                             )}
+                            {names.length > 0 && (
+                                <span
+                                    className="max-w-full truncate font-regular text-neutral-500"
+                                    title={names.join(', ')}
+                                >
+                                    {t('queue.by', { names: names.join(', ') })}
+                                </span>
+                            )}
                         </span>
                     );
                 },
             },
         ],
-        [t, batchLabel, subjectLabel]
+        [t, batchLabel, subjectLabel, checkedBy]
     );
 
     return (

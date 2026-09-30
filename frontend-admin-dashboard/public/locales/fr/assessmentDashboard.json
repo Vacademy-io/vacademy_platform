@@ -188,7 +188,8 @@
             "score": "Par score"
         },
         "meta_one": "{{count}} test · {{attempted}}/{{expected}} ont tenté · moy. {{avg}}",
-        "meta_other": "{{count}} tests · {{attempted}}/{{expected}} ont tenté · moy. {{avg}}"
+        "meta_other": "{{count}} tests · {{attempted}}/{{expected}} ont tenté · moy. {{avg}}",
+        "checked": "{{done}}/{{total}} copies corrigées"
     },
     "top": {
         "title": "Meilleurs : {{term}}",
@@ -206,7 +207,8 @@
         "done": "{{done}}/{{total}} corrigées",
         "toEvaluate": "{{n}} à corriger",
         "toRelease": "{{n}} à publier",
-        "open": "Ouvrir le test"
+        "open": "Ouvrir le test",
+        "by": "par {{names}}"
     },
     "followUp": {
         "title": "À relancer : {{term}}",
@@ -264,6 +266,26 @@
         "lowestScore": "Score le plus bas %",
         "evaluated": "Corrigés",
         "awaitingEvaluation": "En attente de correction",
-        "awaitingRelease": "En attente de publication"
+        "awaitingRelease": "En attente de publication",
+        "checkedBy": "Corrigé par"
+    },
+    "copyCheck": {
+        "title": "Correction des copies",
+        "subtitle": "{{checked}} copies corrigées sur {{total}} · {{waiting}} en attente",
+        "segments": {
+            "teacher": "Par les enseignants",
+            "ai": "Par l'IA",
+            "auto": "Notées automatiquement",
+            "other": "Notes saisies directement",
+            "waiting": "En attente de correction"
+        },
+        "teachersTitle": "Qui a corrigé les copies",
+        "noTeachers": "Aucune copie n'a été corrigée par un enseignant sur cette période",
+        "copies": "{{n}} copies",
+        "tests_one": "{{count}} test",
+        "tests_many": "{{count}} tests",
+        "tests_other": "{{count}} tests",
+        "perCopy": "~{{minutes}} min par copie",
+        "lastChecked": "dernière correction le {{date}}"
     }
 }

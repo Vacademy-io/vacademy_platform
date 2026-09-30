@@ -188,7 +188,8 @@
             "score": "स्कोर के अनुसार"
         },
         "meta_one": "{{count}} टेस्ट · {{attempted}}/{{expected}} ने प्रयास किया · औसत {{avg}}",
-        "meta_other": "{{count}} टेस्ट · {{attempted}}/{{expected}} ने प्रयास किया · औसत {{avg}}"
+        "meta_other": "{{count}} टेस्ट · {{attempted}}/{{expected}} ने प्रयास किया · औसत {{avg}}",
+        "checked": "{{total}} में से {{done}} कॉपियाँ चेक"
     },
     "top": {
         "title": "शीर्ष {{term}}",
@@ -206,7 +207,8 @@
         "done": "{{done}}/{{total}} मूल्यांकित",
         "toEvaluate": "{{n}} का मूल्यांकन बाकी",
         "toRelease": "{{n}} जारी करने बाकी",
-        "open": "टेस्ट खोलें"
+        "open": "टेस्ट खोलें",
+        "by": "चेक किया: {{names}}"
     },
     "followUp": {
         "title": "फ़ॉलो-अप के लिए {{term}}",
@@ -264,6 +266,25 @@
         "lowestScore": "सबसे कम स्कोर %",
         "evaluated": "मूल्यांकित",
         "awaitingEvaluation": "मूल्यांकन की प्रतीक्षा",
-        "awaitingRelease": "जारी होने की प्रतीक्षा"
+        "awaitingRelease": "जारी होने की प्रतीक्षा",
+        "checkedBy": "किसने चेक किया"
+    },
+    "copyCheck": {
+        "title": "कॉपी चेकिंग",
+        "subtitle": "{{total}} में से {{checked}} सबमिशन चेक हुए · {{waiting}} बाकी",
+        "segments": {
+            "teacher": "टीचर्स ने चेक किए",
+            "ai": "AI ने चेक किए",
+            "auto": "ऑटो-ग्रेडेड",
+            "other": "मार्क्स सीधे दर्ज किए",
+            "waiting": "चेक होना बाकी"
+        },
+        "teachersTitle": "किसने कॉपियाँ चेक कीं",
+        "noTeachers": "इस अवधि में किसी टीचर ने कॉपी चेक नहीं की",
+        "copies": "{{n}} कॉपियाँ",
+        "tests_one": "{{count}} टेस्ट",
+        "tests_other": "{{count}} टेस्ट",
+        "perCopy": "~{{minutes}} मिनट प्रति कॉपी",
+        "lastChecked": "आख़िरी बार {{date}} को चेक किया"
     }
 }

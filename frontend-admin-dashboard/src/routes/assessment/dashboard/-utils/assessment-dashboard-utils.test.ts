@@ -40,6 +40,9 @@ const row = (over: Partial<AssessmentDashboardRow>): AssessmentDashboardRow => (
     evaluated: 8,
     awaiting_evaluation: 0,
     awaiting_release: 0,
+    checked_by_teacher: 0,
+    checked_by_ai: 0,
+    evaluator_ids: [],
     ...over,
 });
 
@@ -51,6 +54,8 @@ const batch = (over: Partial<AssessmentBatchStats>): AssessmentBatchStats => ({
     participation_rate: 0.75,
     submissions: 15,
     avg_score: 0.5,
+    evaluated: 15,
+    awaiting_evaluation: 0,
     ...over,
 });
 

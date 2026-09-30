@@ -110,7 +110,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
                         />
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         {filterConfig.map((filter, index) => (
                             <div
                                 key={filter.id}
@@ -164,6 +164,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
                                         )
                                     }
                                     fetchValues={fetchContactCustomFieldValues}
+                                    variant="pill"
                                     cacheScope="contacts"
                                 />
                             )
@@ -171,6 +172,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
                         <UtmFilterControls
                             surface="CONTACTS"
                             instituteId={instituteId}
+                            variant="pill"
                             selection={utmSelection}
                             onChange={(dimension, values) =>
                                 handleFilterChange(

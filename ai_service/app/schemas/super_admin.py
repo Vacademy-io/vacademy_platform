@@ -128,6 +128,13 @@ class AiSettingEntry(BaseModel):
     description: str
     type: str
     nullable: bool = False
+    # Which slice of ai_models a "model" setting offers: "llm" or "image".
+    # Undeclared, it was dropped from the response and the portal offered chat
+    # models for the image model setting.
+    catalog: str = "llm"
+    blank_label: Optional[str] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
     options: List[str] = []
     value: Optional[Any] = None
     default: Optional[Any] = None

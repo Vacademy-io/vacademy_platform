@@ -2066,7 +2066,8 @@ class NoRepeatGate(FrameProcessor):
         # filler, not a handback, so _consecutive_handbacks never saw three of
         # them in a row on 22062aac — and nothing escalated.
         self._filler_streak = 0
-        self._escalated_for = None     # the caller turn that got the firm filler cue
+        self._escalated_for = None
+        self._asked_this_reply = False    # a question reached the caller in THIS reply     # the caller turn that got the firm filler cue
         # "Just a second." queued while the model composed, arriving at the TTS
         # AFTER the reply's audio began (the LLM processor holds frames during a
         # generation): call dd5eb5cc heard the question, then "Just a second."
@@ -2483,6 +2484,8 @@ class NoRepeatGate(FrameProcessor):
         self._pending.append((norm, topic, prev_exemplar, text.strip()))
         self._emitted += 1
         self._body_chars += len(text.strip())
+        if "?" in text or "？" in text:
+            self._asked_this_reply = True
         if not self._is_content_free(text):
             self._said_real = True          # the bot said something answerable
         if self._is_filler(text):
@@ -2499,6 +2502,7 @@ class NoRepeatGate(FrameProcessor):
             if self._responses_started > self._runs_passed:
                 self._runs_passed = self._responses_started    # a run we did not see
             self._held_question = ""
+            self._asked_this_reply = False
             self._buf, self._emitted, self._held_tail = "", 0, ""
             self._body_chars = 0
             self._next_step_this_reply = False
@@ -2717,6 +2721,16 @@ class NoRepeatGate(FrameProcessor):
             # (a next-step request, a handback, speaking a held line) would be
             # a SECOND reply to the same moment — call 22062aac (2026-09-29).
             superseded = self._newer_run_queued() and not self._end_forced()
+            # A short line with no question is all that survived the
+            # already-said drops: nothing new reached the caller. Call f6764346
+            # (2026-09-30): "समझ सकती हूँ सर। + the Shiksha Nation line (already
+            # said)" left "समझ सकती हूँ सर।", 8.2 s of silence and "are you
+            # there?". No word list can name every acknowledgment; the shape can.
+            if (self._real_this_reply and (self._held_tail or self._held_question)
+                    and not self._asked_this_reply and self._body_chars <= 40):
+                logger.info("no-repeat: only a short line survived the already-said drops "
+                            "— treating the reply as saying nothing new")
+                self._real_this_reply = False
             if superseded and (not self._real_this_reply or self._echo_held or self._cf_held):
                 logger.info("no-repeat: a newer caller turn is already queued — "
                             "no recovery for this reply")

@@ -103,7 +103,7 @@ _TRAILING = "\"'’”)]》」»"
 #
 # rumik is listed here for now although we own its sender loop and could inject
 # in-order there; vendor_inflight is correct for it too, just more conservative.
-_ASYNC_ARRIVAL_ENGINES = frozenset({"sarvam", "smallest", "rumik"})
+_ASYNC_ARRIVAL_ENGINES = frozenset({"sarvam", "smallest", "rumik", "navana"})
 
 
 def per_sentence_contexts(tts) -> bool:
@@ -322,6 +322,11 @@ def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
     parts = (salt, (engine or "").lower(), model or "", voice or "",
              _num(pace), _num(temperature), str(sample_rate),
              term_map_version or "", text)
+    if (engine or "").lower() == "navana":
+        # One Navana voice id speaks ten languages: the same text in Hindi and
+        # in Marathi is different audio, so the language is part of identity.
+        from .providers import navana_language
+        parts += ("language-v1", navana_language(language))
     if (engine or "").lower() == "smallest":
         from .speech_language import smallest_language_code
         # A new namespace: pre-language blobs may contain the wrong speech.
@@ -1206,6 +1211,9 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     engine_l = (engine or "").strip().lower()
     from .speech_language import smallest_language_code
     render_language = smallest_language_code(language) if engine_l == "smallest" else ""
+    if engine_l == "navana":
+        from .providers import navana_language
+        render_language = navana_language(language)
     async_arrival = is_async_arrival(engine_l)
     original = tts.run_tts
     # Resolved ONCE per call, not per sentence: the allowlist cannot change

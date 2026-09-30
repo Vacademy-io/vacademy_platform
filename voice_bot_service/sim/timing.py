@@ -396,6 +396,23 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             async for f in _o(text, context_id):
                 yield f
         tts.run_tts = _logged_run_tts
+    elif scenario.engine == "navana":
+        from sim.navana_fake import patch_navana_service
+        from app.config import get_settings as _gs
+        if not _gs().navana_api_key:
+            object.__setattr__(_gs(), "navana_api_key", "sim-not-a-key")
+        line.navana_sockets = []
+        patch_navana_service(line.navana_sockets)
+        from app.providers import build_tts
+        tts = build_tts(24000, voice="ipsita", tts_model="navana", language="english")
+        _orig_nv = tts.run_tts
+
+        async def _logged_nv(text, context_id=None, _o=_orig_nv):
+            log(f"TTS run_tts {text[:40]!r}")
+            line.tts_texts.append(text)
+            async for f in _o(text, context_id):
+                yield f
+        tts.run_tts = _logged_nv
     else:
         tts = SimTTS()
     pending: List[Say] = list(scenario.caller)
@@ -486,6 +503,9 @@ def _warm_cache(tts, agent: Dict[str, Any], lines: List[str]) -> None:
     from app.speech_language import smallest_language_code
     render_language = (smallest_language_code(agent.get("language"))
                        if engine.lower() == "smallest" else "")
+    if engine.lower() == "navana":
+        from app.providers import navana_language
+        render_language = navana_language(agent.get("language"))
     cache = ttscache.get_cache()
     cache.open()
     for text in lines:
@@ -1165,6 +1185,24 @@ SCENARIOS: List[Scenario] = [
              checks=chk_reply_plays_whole([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL]), max_secs=30,
              cache_warm=[S_CACHED_HEAD, S_CACHED_TAIL], engine="smallest",
              note="cached, live, cached in one reply"),
+    Scenario("navana_live_then_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL]), max_secs=30,
+             cache_warm=[S_CACHED_TAIL], engine="navana", context="navana_agent_context.json",
+             note="Navana + FULL cache: the Smallest 5aa10e10 shape on Navana's own service"),
+    Scenario("navana_cached_then_live",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([LONG_CACHED, S_LIVE_Q])],
+             checks=chk_reply_plays_whole([LONG_CACHED, S_LIVE_Q]), max_secs=35,
+             cache_warm=[LONG_CACHED], engine="navana", context="navana_agent_context.json",
+             note="Navana + FULL cache: live words must not land inside a cached sentence"),
+    Scenario("navana_cached_live_cached",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[" ".join([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL])],
+             checks=chk_reply_plays_whole([S_CACHED_HEAD, S_LIVE_1, S_CACHED_TAIL]), max_secs=30,
+             cache_warm=[S_CACHED_HEAD, S_CACHED_TAIL], engine="navana", context="navana_agent_context.json",
+             note="Navana + FULL cache: cached, live, cached in one reply"),
     Scenario("smallest_filler_then_live_and_cached",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[" ".join([S_LIVE_1, S_LIVE_2, S_CACHED_TAIL])],

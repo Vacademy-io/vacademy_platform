@@ -10,6 +10,7 @@ vi.mock('@/utils/roleUtils', () => ({
 import {
     buildRoleOptions,
     formatPhoneForDisplay,
+    memberStatusOf,
     sortRoleNames,
     toPhoneInputValue,
 } from './team-helpers';
@@ -93,5 +94,43 @@ describe('phone helpers', () => {
         // A bare national number must not be read as +98 (Iran) by the widget.
         expect(toPhoneInputValue('9876543210', 'in')).toBe('919876543210');
         expect(toPhoneInputValue('', 'in')).toBe('');
+    });
+});
+
+describe('memberStatusOf', () => {
+    // Shaped like users-of-status: no `status`, and only ACTIVE/INVITED roles are listed.
+    const member = (roles: { role_name: string; institute_id: string }[]) => ({
+        id: 'u1',
+        username: 'u1',
+        email: 'u1@x.com',
+        full_name: 'U One',
+        mobile_number: null,
+        profile_pic_file_id: null,
+        status: null,
+        root_user: false,
+        roles: roles.map((role, index) => ({
+            id: `ur${index}`,
+            role_id: `r${index}`,
+            status: 'ACTIVE',
+            ...role,
+        })),
+    });
+
+    it('is active while any staff role here is listed', () => {
+        expect(
+            memberStatusOf(member([{ role_name: 'TEACHER', institute_id: INSTITUTE }]), INSTITUTE)
+        ).toBe('ACTIVE');
+    });
+
+    it('is disabled when no staff role here comes back (disabled rows are never listed)', () => {
+        expect(memberStatusOf(member([]), INSTITUTE)).toBe('DISABLED');
+        // A learner enrolment in the same institute does not make them active staff.
+        expect(
+            memberStatusOf(member([{ role_name: 'STUDENT', institute_id: INSTITUTE }]), INSTITUTE)
+        ).toBe('DISABLED');
+        // Staff elsewhere does not count here.
+        expect(
+            memberStatusOf(member([{ role_name: 'ADMIN', institute_id: 'other' }]), INSTITUTE)
+        ).toBe('DISABLED');
     });
 });

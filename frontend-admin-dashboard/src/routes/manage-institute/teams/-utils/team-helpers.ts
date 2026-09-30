@@ -141,6 +141,23 @@ export const sortRoleNames = (names: string[], options: TeamRoleOption[]): strin
 export const instituteRolesOf = (member: TeamMember, instituteId: string | undefined) =>
     member.roles.filter((role) => role.institute_id === instituteId);
 
+/**
+ * A member's status in this institute, for the Members tab.
+ *
+ * The users-of-status API never fills `status`, and `User.roles` is mapped with
+ * `@Where(status IN ('ACTIVE','INVITED'))`, so a member whose staff roles here are all
+ * disabled arrives with no staff role for this institute at all. That absence is what
+ * "disabled" looks like in the response — reading `member.status` showed everyone Active
+ * and offered "Disable" to people who were already disabled.
+ */
+export const memberStatusOf = (
+    member: TeamMember,
+    instituteId: string | undefined
+): 'ACTIVE' | 'DISABLED' =>
+    instituteRolesOf(member, instituteId).some((role) => role.role_name !== 'STUDENT')
+        ? 'ACTIVE'
+        : 'DISABLED';
+
 export const initialsOf = (name: string | null | undefined): string =>
     (name || '?')
         .trim()

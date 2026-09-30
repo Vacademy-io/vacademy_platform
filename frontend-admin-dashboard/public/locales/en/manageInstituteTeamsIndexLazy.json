@@ -3,7 +3,9 @@
     "header": {
         "title": "Team members",
         "subtitle": "Everyone who can sign in to your admin dashboard — their roles, login details and pending invites.",
-        "invite": "Invite member"
+        "invite": "Invite member",
+        "import": "Import",
+        "export": "Export"
     },
     "stats": {
         "members": "Team members",
@@ -298,5 +300,64 @@
     },
     "table": {
         "openRow": "Open {{name}}"
+    },
+    "export": {
+        "done_one": "Exported {{count}} person",
+        "done_other": "Exported {{count}} people",
+        "truncated": "Exported the first {{count}} people — narrow the filters to export the rest.",
+        "empty": "Nothing to export with the current search and filters.",
+        "failed": "Couldn't export the list. Please try again."
+    },
+    "import": {
+        "heading": "Import team members",
+        "intro": "Invite many people at once from a CSV file. Nothing is sent until you have reviewed the file.",
+        "formatTitle": "File format",
+        "rules": {
+            "required": "full_name, email and roles are required; mobile_number is optional.",
+            "roles": "Write role names as they appear in the app (see the role list). Separate several roles with |",
+            "phone": "Mobile numbers can include the country code (+44 …); without one, your institute’s default country is used.",
+            "teacher": "Teachers invited here get their batches and subjects assigned later."
+        },
+        "template": "Download template",
+        "roleReference": "Role list",
+        "dropHere": "Drag a .csv here, or click to choose a file",
+        "checkingTeam": "Checking your current team…",
+        "teamLoadFailed": "Couldn't load your current team, so duplicates can't be checked. Close and try again.",
+        "limit": "Up to {{max}} people per file.",
+        "ready": "Ready to invite",
+        "skipped": "Will be skipped",
+        "totalRows": "Rows in file",
+        "skippedTitle": "Skipped rows",
+        "readyTitle": "Will be invited",
+        "fileLevel": "File",
+        "rowLabel": "Row {{row}}",
+        "emailNote_one": "{{count}} person will get an invite email with their login details.",
+        "emailNote_other": "{{count}} people will each get an invite email with their login details.",
+        "chooseAnother": "Choose another file",
+        "send_one": "Send {{count}} invite",
+        "send_other": "Send {{count}} invites",
+        "stop": "Stop after this one",
+        "progress": "Inviting {{done}} of {{total}}…",
+        "keepOpen": "Keep this window open until it finishes.",
+        "doneTitle_one": "{{count}} person invited",
+        "doneTitle_other": "{{count}} people invited",
+        "doneBody": "They now show under Invites until they sign in for the first time.",
+        "failedBody_one": "{{count}} row could not be invited — see below or download the results.",
+        "failedBody_other": "{{count}} rows could not be invited — see below or download the results.",
+        "stoppedBody": "Stopped after {{done}} of {{total}}. Download the results to see who was invited.",
+        "downloadResults": "Download results",
+        "done": "Done",
+        "errors": {
+            "missingColumns": "Missing column(s): {{columns}}. Start from the template.",
+            "tooManyRows": "This file has more than {{max}} rows. Split it into smaller files.",
+            "nameRequired": "full_name is empty",
+            "emailRequired": "email is empty",
+            "emailInvalid": "email doesn't look valid",
+            "alreadyOnTeam": "Already on the team (member or pending invite)",
+            "duplicateInFile": "Same email appears earlier in the file",
+            "phoneInvalid": "mobile_number \"{{value}}\" is not a valid number",
+            "unknownRoles": "Unknown role(s): {{roles}}",
+            "roleRequired": "roles is empty"
+        }
     }
 }

@@ -14,6 +14,9 @@ import {
     PaperPlaneTilt,
     Prohibit,
     UserPlus,
+    UploadSimple,
+    DownloadSimple,
+    CircleNotch,
     Users,
     WarningCircle,
     X,
@@ -62,11 +65,18 @@ import {
     buildRoleOptions,
     formatPhoneForDisplay,
     instituteRolesOf,
+    memberStatusOf,
     type RoleTone,
     type TeamMember,
     type TeamRoleOption,
 } from './-utils/team-helpers';
-import { fetchTeamCounts, fetchTeamPage } from './-services/team-member-services';
+import {
+    fetchAllTeamMembers,
+    fetchTeamCounts,
+    fetchTeamPage,
+} from './-services/team-member-services';
+import { buildTeamExportCsv, teamExportFileName, triggerCsvDownload } from './-utils/team-csv';
+import { TeamImportDialog } from './-components/TeamImportDialog';
 
 type TabKey = 'members' | 'invites' | 'orgChart';
 
@@ -111,6 +121,8 @@ function RouteComponent() {
         mode: 'new' | 'edit';
         invite?: TeamMember;
     } | null>(null);
+    const [importOpen, setImportOpen] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [confirm, setConfirm] = useState<{ kind: TeamConfirmKind; member: TeamMember } | null>(
         null
     );
@@ -449,6 +461,54 @@ function RouteComponent() {
         </div>
     );
 
+    // Sub-org names a member reaches: individual links first, then role grants.
+    const subOrgNamesOf = (member: TeamMember): string[] => {
+        const direct = (linksMap.get(member.id) ?? []).map((so) => so.name);
+        const directIds = new Set((linksMap.get(member.id) ?? []).map((so) => so.id));
+        const viaRole = new Set<string>();
+        instituteRolesOf(member, instituteId).forEach((role) =>
+            (roleGrantMap.get(role.role_id ?? '') ?? []).forEach((id) => {
+                if (!directIds.has(id)) viaRole.add(subOrgNameById.get(id) ?? id);
+            })
+        );
+        return [...direct, ...[...viaRole].map((name) => `${name} (via role)`)];
+    };
+
+    /** Everything matching the current tab, search and filters — not just the visible page. */
+    const exportCurrentList = async () => {
+        const exportTab = tab === 'invites' ? 'invites' : 'members';
+        const query =
+            tab === 'orgChart'
+                ? { roles: allRoleNames, statuses: [...MEMBER_STATUSES], name: '' }
+                : listQueryInput;
+        setExporting(true);
+        try {
+            const { members, truncated } = await fetchAllTeamMembers(instituteId, query);
+            if (members.length === 0) {
+                toast.info(t('export.empty'));
+                return;
+            }
+            const csv = buildTeamExportCsv(members, {
+                instituteId,
+                tab: exportTab,
+                roleOptions,
+                includePasswords: allowViewPassword,
+                defaultCountry,
+                subOrgsOf: hasSubOrgs ? subOrgNamesOf : undefined,
+            });
+            triggerCsvDownload(csv, teamExportFileName(exportTab));
+            toast.success(
+                truncated
+                    ? t('export.truncated', { count: members.length })
+                    : t('export.done', { count: members.length })
+            );
+        } catch {
+            toast.error(t('export.failed'));
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const subOrgCell = (member: TeamMember) => {
         // Individual links (FSPSSM) and role grants — the same union the backend applies.
         const direct = linksMap.get(member.id) ?? [];
@@ -587,6 +647,17 @@ function RouteComponent() {
 
     // ---- Render -----------------------------------------------------------------------
     const data = listQuery.data;
+    // Members carry no status from the API; derive it from their roles here (see memberStatusOf)
+    // so the pill, the row menu and the drawer all agree.
+    const rows = useMemo(
+        () =>
+            (data?.content ?? []).map((member) =>
+                tab === 'members'
+                    ? { ...member, status: memberStatusOf(member, instituteId) }
+                    : member
+            ),
+        [data, tab, instituteId]
+    );
     const memberTotal = counts ? counts.active + counts.disabled : undefined;
     const statCards: {
         key: 'all' | 'ACTIVE' | 'DISABLED' | 'invites';
@@ -693,20 +764,44 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
+                <div className="min-w-0">
                     <h2 className="text-h2 font-semibold text-neutral-900">{t('header.title')}</h2>
                     <p className="mt-1 max-w-3xl text-body text-neutral-500">
                         {t('header.subtitle')}
                     </p>
                 </div>
-                <MyButton
-                    buttonType="primary"
-                    scale="large"
-                    onClick={() => setInviteDialog({ mode: 'new' })}
-                >
-                    <UserPlus size={18} />
-                    {t('header.invite')}
-                </MyButton>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        disable={allRoleNames.length === 0}
+                        onClick={() => setImportOpen(true)}
+                    >
+                        <UploadSimple size={16} />
+                        {t('header.import')}
+                    </MyButton>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        disable={exporting || allRoleNames.length === 0}
+                        onClick={() => void exportCurrentList()}
+                    >
+                        {exporting ? (
+                            <CircleNotch size={16} className="animate-spin" />
+                        ) : (
+                            <DownloadSimple size={16} />
+                        )}
+                        {t('header.export')}
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={() => setInviteDialog({ mode: 'new' })}
+                    >
+                        <UserPlus size={16} />
+                        {t('header.invite')}
+                    </MyButton>
+                </div>
             </div>
 
             <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
@@ -867,7 +962,7 @@ function RouteComponent() {
                             <>
                                 <div className="border-t border-neutral-200">
                                     <TeamTable<TeamMember>
-                                        rows={data?.content ?? []}
+                                        rows={rows}
                                         columns={tab === 'invites' ? inviteColumns : memberColumns}
                                         loading={listLoading || !data}
                                         onRowClick={openRow}
@@ -898,6 +993,16 @@ function RouteComponent() {
                 )}
             </div>
 
+            {instituteId && importOpen && (
+                <TeamImportDialog
+                    open
+                    onOpenChange={(open) => !open && setImportOpen(false)}
+                    instituteId={instituteId}
+                    roleOptions={roleOptions}
+                    allRoleNames={allRoleNames}
+                />
+            )}
+
             {instituteId && inviteDialog && (
                 <InviteMemberDialog
                     open
@@ -912,7 +1017,9 @@ function RouteComponent() {
 
             {instituteId && drawer && (
                 <MemberDetailsSheet
-                    member={drawer.member}
+                    // Prefer the refetched row: after Enable/Disable it carries the fresh roles
+                    // and status that the snapshot taken on open does not.
+                    member={rows.find((row) => row.id === drawer.member.id) ?? drawer.member}
                     initialSection={drawer.section}
                     onClose={() => setDrawer(null)}
                     instituteId={instituteId}

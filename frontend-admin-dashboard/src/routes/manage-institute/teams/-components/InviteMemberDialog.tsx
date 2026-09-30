@@ -37,6 +37,7 @@ import {
     updateTeamMemberDetails,
 } from '../-services/team-member-services';
 import { RolePicker } from './RolePicker';
+import { isShareablePassword } from '../-utils/team-csv';
 import { FormStep, RoleChip } from './team-ui';
 
 const LazyBatchSubjectForm = lazy(() =>
@@ -223,7 +224,9 @@ export function InviteMemberDialog({
                 phone: isBlankPhone(values.mobile) ? null : values.mobile ?? null,
                 roles: values.roleType,
                 username: response?.username,
-                password: response?.password,
+                // An email that already had an account comes back with the stored hash, not a
+                // new password — never show that as login details.
+                password: isShareablePassword(response?.password) ? response?.password : undefined,
             });
         },
         onError: (error) => {

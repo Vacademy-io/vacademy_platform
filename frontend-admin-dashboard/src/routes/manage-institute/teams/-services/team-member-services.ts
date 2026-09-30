@@ -145,6 +145,26 @@ export const fetchTeamPage = (
         query.userIds
     );
 
+/**
+ * Every row matching a list query, fetched in large pages — for export and for the bulk
+ * import's "already on the team" check. Capped so a runaway institute can't hang the tab.
+ */
+export async function fetchAllTeamMembers(
+    instituteId: string | undefined,
+    query: TeamListQuery,
+    { pageSize = 500, maxPages = 20 }: { pageSize?: number; maxPages?: number } = {}
+): Promise<{ members: TeamMember[]; truncated: boolean }> {
+    const members: TeamMember[] = [];
+    for (let page = 0; page < maxPages; page += 1) {
+        const result = await fetchTeamPage(instituteId, query, page, pageSize);
+        members.push(...(result?.content ?? []));
+        if (!result || result.last || (result.content ?? []).length < pageSize) {
+            return { members, truncated: false };
+        }
+    }
+    return { members, truncated: true };
+}
+
 export interface TeamCounts {
     active: number;
     disabled: number;

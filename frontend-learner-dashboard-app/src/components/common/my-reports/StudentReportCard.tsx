@@ -26,7 +26,8 @@ import themeData from '@/constants/themes/theme.json';
 import './report-card.css';
 
 const PLACEHOLDER_SUBJECTS = new Set([
-    'unknown', 'other', 'others', 'n/a', 'na', 'general', 'misc', 'miscellaneous', '-',
+    'unknown',
+    'default', 'other', 'others', 'n/a', 'na', 'general', 'misc', 'miscellaneous', '-',
 ]);
 const isRealSubject = (s?: string | null) => {
     const v = s?.trim().toLowerCase();
@@ -777,7 +778,7 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                                 <div className="bar lg"><i style={{ width: `${round(courseProgress.overall_completion_percentage) ?? 0}%`, background: 'var(--accent)' }} /></div>
                                 <span className="bar-val tnum">{round(courseProgress.overall_completion_percentage) ?? 0}%</span>
                             </div>
-                            {(courseProgress.subjects ?? []).map((s, i) => (
+                            {(courseProgress.subjects ?? []).filter((s) => isRealSubject(s.subject)).map((s, i) => (
                                 <div className="subj-vs" key={i} style={{ gridTemplateColumns: '132px 1fr auto' }}>
                                     <span style={{ fontWeight: 500 }}>{s.subject}</span>
                                     <div className="bar"><i style={{ width: `${round(s.completion_percentage) ?? 0}%`, background: pctVar(s.completion_percentage) }} /></div>

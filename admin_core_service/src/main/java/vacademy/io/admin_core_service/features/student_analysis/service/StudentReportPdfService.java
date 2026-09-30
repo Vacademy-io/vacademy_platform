@@ -679,7 +679,10 @@ public class StudentReportPdfService {
             sb.append("<div class='card'><h2 class='sec'>Course Progress")
               .append(cpPct.isEmpty() ? "" : " — " + cpPct + " complete").append("</h2>");
             if (cp.getSubjects() != null) {
-                cp.getSubjects().forEach(s -> {
+                cp.getSubjects().stream()
+                  // older reports carry the placeholder "DEFAULT" subject of a course without subjects
+                  .filter(s -> StringUtils.hasText(s.getSubject()) && !s.getSubject().trim().equalsIgnoreCase("default"))
+                  .forEach(s -> {
                     double p = s.getCompletionPercentage() != null ? s.getCompletionPercentage() : 0;
                     String barCls = p >= 70 ? "g" : p >= 50 ? "" : "w";
                     sb.append("<table class='brow'><tr>");

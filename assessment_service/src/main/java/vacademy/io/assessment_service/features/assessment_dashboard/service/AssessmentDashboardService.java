@@ -6,16 +6,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardRequest;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse;
+import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.EvaluatorStats;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.BatchEnrollmentRow;
 import vacademy.io.assessment_service.features.assessment_dashboard.repository.AssessmentDashboardQueries;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.AttemptRow;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Enrollment;
+import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.EvalLog;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Filters;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Input;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Period;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Result;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.TestInfo;
+import vacademy.io.assessment_service.features.auth_service.service.AuthService;
 import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Instant;
@@ -55,6 +59,7 @@ public class AssessmentDashboardService {
 
     private final AssessmentDashboardQueries queries;
     private final AdminCoreServiceClient adminCoreServiceClient;
+    private final AuthService authService;
 
     public AssessmentDashboardResponse getDashboard(AssessmentDashboardRequest request) {
         if (request == null || !StringUtils.hasText(request.getInstituteId())) {
@@ -89,7 +94,9 @@ public class AssessmentDashboardService {
         Map<String, List<Enrollment>> enrollments = loadEnrollments(instituteId, new ArrayList<>(batchIds));
 
         Result result = AssessmentDashboardAssembler.assemble(new Input(
-                period, now, current.tests(), current.batchesByTest(), current.attempts(), enrollments, filters));
+                period, now, current.tests(), current.batchesByTest(), current.attempts(), enrollments, filters,
+                current.evaluationLogs(), current.aiCheckedAttempts()));
+        fillEvaluatorNames(result.evaluators());
 
         AssessmentDashboardResponse.AssessmentDashboardResponseBuilder out = AssessmentDashboardResponse.builder()
                 .startDate(start.toString())
@@ -102,6 +109,7 @@ public class AssessmentDashboardService {
                 .submissionHeatmap(result.heatmap())
                 .types(result.types())
                 .batches(result.batches())
+                .evaluators(result.evaluators())
                 .assessments(result.assessments())
                 .assessmentsLimit(AssessmentDashboardAssembler.ASSESSMENTS_LIMIT)
                 .assessmentsTruncated(result.assessmentsTruncated() || current.truncated())
@@ -126,9 +134,9 @@ public class AssessmentDashboardService {
         return out.build();
     }
 
-    /** One period's rows. */
+    /** One period's rows. Checking records are loaded for the current period only. */
     record Loaded(List<TestInfo> tests, Map<String, List<String>> batchesByTest, List<AttemptRow> attempts,
-                  boolean truncated) {
+                  boolean truncated, Map<String, EvalLog> evaluationLogs, Set<String> aiCheckedAttempts) {
         Set<String> batchIds() {
             Set<String> ids = new LinkedHashSet<>();
             batchesByTest.values().forEach(ids::addAll);
@@ -136,16 +144,35 @@ public class AssessmentDashboardService {
         }
     }
 
-    private Loaded load(String instituteId, Period period, Instant now, boolean includeLiveNow) {
+    private Loaded load(String instituteId, Period period, Instant now, boolean current) {
         // One over the cap, so the response can say the list was cut short.
         int limit = AssessmentDashboardAssembler.ASSESSMENTS_LIMIT + 1;
-        List<TestInfo> tests = queries.findTests(instituteId, period.start(), period.end(), now, includeLiveNow, limit);
+        List<TestInfo> tests = queries.findTests(instituteId, period.start(), period.end(), now, current, limit);
         boolean truncated = tests.size() >= limit;
         List<String> ids = tests.stream().map(TestInfo::id).toList();
         return new Loaded(tests,
                 queries.findBatchesByTest(instituteId, ids),
                 queries.findRegistrationsAndAttempts(instituteId, ids),
-                truncated);
+                truncated,
+                current ? queries.findLatestEvaluationLogs(instituteId, ids) : Map.of(),
+                current ? queries.findAiCheckedAttempts(instituteId, ids) : Set.of());
+    }
+
+    /** Teacher names from auth_service; a failed lookup leaves the name empty (the UI falls back to email / id). */
+    private void fillEvaluatorNames(List<EvaluatorStats> evaluators) {
+        if (evaluators.isEmpty()) return;
+        List<String> ids = evaluators.stream().map(EvaluatorStats::getUserId).toList();
+        Map<String, UserDTO> byId = new HashMap<>();
+        for (UserDTO user : authService.getUsersByIds(ids)) {
+            if (user != null && user.getId() != null) byId.put(user.getId(), user);
+        }
+        for (EvaluatorStats e : evaluators) {
+            UserDTO user = byId.get(e.getUserId());
+            if (user != null) {
+                e.setName(user.getFullName());
+                e.setEmail(user.getEmail());
+            }
+        }
     }
 
     /** Null when admin_core could not be reached — the dashboard then says so. */

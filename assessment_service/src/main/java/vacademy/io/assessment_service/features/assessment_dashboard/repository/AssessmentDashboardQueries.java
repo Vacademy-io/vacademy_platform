@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.AttemptRow;
+import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.EvalLog;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.TestInfo;
 
 import java.sql.ResultSet;
@@ -17,8 +18,12 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Read-only queries behind the Assessment Dashboard: three small reads per period, all
@@ -168,6 +173,76 @@ public class AssessmentDashboardQueries {
                         tzInstant(rs, "start_time"),
                         tzInstant(rs, "submit_time"),
                         rs.getObject("total_time_in_seconds") == null ? null : rs.getLong("total_time_in_seconds")));
+    }
+
+    private static final String EVALUATION_LOGS_SQL = """
+            SELECT l.source_id, l.author_id, l.data_json, l.created_at
+            FROM evaluation_logs l
+            JOIN student_attempt sa ON sa.id = l.source_id
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            WHERE l.source = 'STUDENT_ATTEMPT'
+              AND l.type = 'MANUAL_EVALUATION'
+              AND aur.assessment_id IN (:ids)
+              AND aur.institute_id = :instituteId
+            """;
+
+    private static final Pattern TIME_TAKEN = Pattern.compile("\"timeTakenInSeconds\"\\s*:\\s*(\\d+)");
+
+    /**
+     * Who checked each copy: the latest manual-evaluation log per attempt, written by the
+     * checking tool with the teacher as author and the seconds spent in its JSON. Copies
+     * whose marks were entered some other way (offline entry) have no log.
+     */
+    public Map<String, EvalLog> findLatestEvaluationLogs(String instituteId, Collection<String> testIds) {
+        Map<String, EvalLog> latest = new HashMap<>();
+        if (testIds.isEmpty()) {
+            return latest;
+        }
+        jdbc.query(EVALUATION_LOGS_SQL,
+                new MapSqlParameterSource().addValue("ids", testIds).addValue("instituteId", instituteId),
+                rs -> {
+                    String attemptId = rs.getString("source_id");
+                    String author = rs.getString("author_id");
+                    if (attemptId == null || author == null) return;
+                    EvalLog log = new EvalLog(author, timeTakenSeconds(rs.getString("data_json")),
+                            tzInstant(rs, "created_at"));
+                    EvalLog prev = latest.get(attemptId);
+                    if (prev == null || (log.at() != null && (prev.at() == null || log.at().isAfter(prev.at())))) {
+                        latest.put(attemptId, log);
+                    }
+                });
+        return latest;
+    }
+
+    static Long timeTakenSeconds(String json) {
+        if (json == null) return null;
+        Matcher m = TIME_TAKEN.matcher(json);
+        return m.find() ? Long.valueOf(m.group(1)) : null;
+    }
+
+    private static final String AI_CHECKED_SQL = """
+            SELECT DISTINCT p.attempt_id
+            FROM ai_evaluation_process p
+            JOIN student_attempt sa ON sa.id = p.attempt_id
+            JOIN assessment_user_registration aur ON aur.id = sa.registration_id
+            WHERE p.status = 'COMPLETED'
+              AND aur.assessment_id IN (:ids)
+              AND aur.institute_id = :instituteId
+            """;
+
+    /** Attempts an AI evaluation run finished for. */
+    public Set<String> findAiCheckedAttempts(String instituteId, Collection<String> testIds) {
+        Set<String> out = new HashSet<>();
+        if (testIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query(AI_CHECKED_SQL,
+                new MapSqlParameterSource().addValue("ids", testIds).addValue("instituteId", instituteId),
+                rs -> {
+                    String id = rs.getString("attempt_id");
+                    if (id != null) out.add(id);
+                });
+        return out;
     }
 
     private static LocalDateTime utc(Instant instant) {

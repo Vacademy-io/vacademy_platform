@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.assessment_dashboard.service;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.AssessmentRow;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.BatchStats;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.DailyPoint;
+import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.EvaluatorStats;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.HeatCell;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.LearnerStats;
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.ScoreBucket;
@@ -46,6 +47,10 @@ import java.util.TreeMap;
  *       maximum the learner did not exceed — same rule as the scheduled institute report.
  *       Negative scores are real (negative marking) and are kept.</li>
  *   <li><b>Anytime tests</b> count only attempts started inside the range.</li>
+ *   <li><b>Who checked a copy</b> (evaluated submissions only): the teacher on its latest
+ *       manual-evaluation log; else AI when an AI evaluation run completed; else
+ *       auto-graded when the test is not manually evaluated; else "other" (marks entered
+ *       without the checking tool, e.g. offline entry).</li>
  * </ul>
  */
 public final class AssessmentDashboardAssembler {
@@ -86,6 +91,10 @@ public final class AssessmentDashboardAssembler {
                              String name, String email, String mobile) {
     }
 
+    /** The latest manual-evaluation log of an attempt: who checked it and how long it took. */
+    public record EvalLog(String authorId, Long timeSeconds, Instant at) {
+    }
+
     /** Inclusive calendar days in {@code zone}. */
     public record Period(LocalDate startDate, LocalDate endDate, ZoneId zone) {
         public Instant start() {
@@ -116,7 +125,17 @@ public final class AssessmentDashboardAssembler {
      */
     public record Input(Period period, Instant now, List<TestInfo> tests, Map<String, List<String>> batchesByTest,
                         List<AttemptRow> attempts, Map<String, List<Enrollment>> enrollmentsByBatch,
-                        Filters filters) {
+                        Filters filters, Map<String, EvalLog> evaluationLogs, Set<String> aiCheckedAttempts) {
+        public Input {
+            evaluationLogs = evaluationLogs == null ? Map.of() : evaluationLogs;
+            aiCheckedAttempts = aiCheckedAttempts == null ? Set.of() : aiCheckedAttempts;
+        }
+
+        /** Without checking records — who checked what is then unknown. */
+        public Input(Period period, Instant now, List<TestInfo> tests, Map<String, List<String>> batchesByTest,
+                     List<AttemptRow> attempts, Map<String, List<Enrollment>> enrollmentsByBatch, Filters filters) {
+            this(period, now, tests, batchesByTest, attempts, enrollmentsByBatch, filters, Map.of(), Set.of());
+        }
     }
 
     // ─── Per-test evaluation ───────────────────────────────────────────────
@@ -158,6 +177,11 @@ public final class AssessmentDashboardAssembler {
         final Set<String> inProgress = new HashSet<>();
         /** Score per learner (latest attempt), only where it is usable. */
         final Map<String, Double> scores = new LinkedHashMap<>();
+        /** Evaluated submissions checked by a teacher: attempt id → that teacher's log. */
+        final Map<String, EvalLog> teacherChecks = new LinkedHashMap<>();
+        int aiChecked;
+        int autoGraded;
+        int otherEvaluated;
 
         TestEval(TestInfo test, String status, boolean inRange, List<String> batches) {
             this.test = test;
@@ -255,6 +279,7 @@ public final class AssessmentDashboardAssembler {
             addBatchAudience(ev, in, enrolmentCutoff(t, in));
             addRegisteredAudience(ev, regs, userBatches, !in.filters().batchIds().isEmpty());
             collectAttempts(ev, regs, in.period());
+            classifyChecks(ev, in);
             ev.latest.forEach((userId, a) -> {
                 Double score = scoreOf(a, t.maxMarks());
                 if (score != null) ev.scores.put(userId, score);
@@ -318,6 +343,23 @@ public final class AssessmentDashboardAssembler {
         }
     }
 
+    static boolean isEvaluated(AttemptRow a) {
+        return EVALUATED.contains(upper(a.resultStatus()));
+    }
+
+    /** Who checked each evaluated submission — see the class comment for the order. */
+    private static void classifyChecks(TestEval ev, Input in) {
+        boolean manualTest = "MANUAL".equals(upper(ev.test.evaluationType()));
+        for (AttemptRow a : ev.submissions) {
+            if (!isEvaluated(a)) continue;
+            EvalLog log = in.evaluationLogs().get(a.attemptId());
+            if (log != null) ev.teacherChecks.put(a.attemptId(), log);
+            else if (in.aiCheckedAttempts().contains(a.attemptId())) ev.aiChecked++;
+            else if (!manualTest) ev.autoGraded++;
+            else ev.otherEvaluated++;
+        }
+    }
+
     /** Submitted attempts (latest per learner) and who is writing now; anytime tests only count the range. */
     private static void collectAttempts(TestEval ev, List<AttemptRow> regs, Period period) {
         for (AttemptRow r : regs) {
@@ -367,6 +409,10 @@ public final class AssessmentDashboardAssembler {
             }
             s.setSubmissions(s.getSubmissions() + ev.submissions.size());
             s.setInProgress(s.getInProgress() + ev.inProgress.size());
+            s.setCheckedByTeacher(s.getCheckedByTeacher() + ev.teacherChecks.size());
+            s.setCheckedByAi(s.getCheckedByAi() + ev.aiChecked);
+            s.setAutoGraded(s.getAutoGraded() + ev.autoGraded);
+            s.setEvaluatedOther(s.getEvaluatedOther() + ev.otherEvaluated);
             learners.addAll(ev.latest.keySet());
             scores.addAll(ev.scores.values());
             for (AttemptRow a : ev.submissions) {
@@ -527,7 +573,10 @@ public final class AssessmentDashboardAssembler {
             }
         }
         for (AttemptRow a : ev.submissions) {
-            if (inBatch.test(a.userId())) stats.setSubmissions(stats.getSubmissions() + 1);
+            if (!inBatch.test(a.userId())) continue;
+            stats.setSubmissions(stats.getSubmissions() + 1);
+            if (isEvaluated(a)) stats.setEvaluated(stats.getEvaluated() + 1);
+            else stats.setAwaitingEvaluation(stats.getAwaitingEvaluation() + 1);
         }
         ev.scores.forEach((userId, score) -> {
             if (inBatch.test(userId)) batchScores.add(score);
@@ -586,7 +635,48 @@ public final class AssessmentDashboardAssembler {
                 .evaluated(evaluated)
                 .awaitingEvaluation(awaitingEvaluation)
                 .awaitingRelease(awaitingRelease)
+                .checkedByTeacher(ev.teacherChecks.size())
+                .checkedByAi(ev.aiChecked)
+                .evaluatorIds(ev.teacherChecks.values().stream().map(EvalLog::authorId).distinct().toList())
                 .build();
+    }
+
+    // ─── Evaluators ────────────────────────────────────────────────────────
+
+    static final class EvaluatorAcc {
+        int copies;
+        final Set<String> tests = new HashSet<>();
+        long seconds;
+        int timed;
+        Instant last;
+    }
+
+    /** Copies each teacher checked across the range's tests, most copies first. Names are filled in later. */
+    static List<EvaluatorStats> evaluators(List<TestEval> evals) {
+        Map<String, EvaluatorAcc> byTeacher = new LinkedHashMap<>();
+        for (TestEval ev : evals) {
+            if (!ev.inRange) continue;
+            for (EvalLog log : ev.teacherChecks.values()) {
+                EvaluatorAcc acc = byTeacher.computeIfAbsent(log.authorId(), k -> new EvaluatorAcc());
+                acc.copies++;
+                acc.tests.add(ev.test.id());
+                if (log.timeSeconds() != null && log.timeSeconds() > 0) {
+                    acc.seconds += log.timeSeconds();
+                    acc.timed++;
+                }
+                if (isAfter(log.at(), acc.last)) acc.last = log.at();
+            }
+        }
+        List<EvaluatorStats> out = new ArrayList<>();
+        byTeacher.forEach((userId, acc) -> out.add(EvaluatorStats.builder()
+                .userId(userId)
+                .copiesChecked(acc.copies)
+                .tests(acc.tests.size())
+                .avgMinutesPerCopy(acc.timed == 0 ? null : round4(acc.seconds / 60.0 / acc.timed))
+                .lastCheckedAt(acc.last == null ? null : acc.last.toString())
+                .build()));
+        out.sort(Comparator.comparingInt(EvaluatorStats::getCopiesChecked).reversed());
+        return out;
     }
 
     // ─── Learners ──────────────────────────────────────────────────────────
@@ -691,6 +781,7 @@ public final class AssessmentDashboardAssembler {
     /** Everything the response carries for the current period. */
     public record Result(Summary summary, List<DailyPoint> daily, List<ScoreBucket> scoreDistribution,
                          List<HeatCell> heatmap, List<TypeSlice> types, List<BatchStats> batches,
+                         List<EvaluatorStats> evaluators,
                          List<AssessmentRow> assessments, boolean assessmentsTruncated,
                          List<AssessmentRow> liveNow, List<LearnerStats> missedLearners,
                          Map<Integer, Integer> missedCounts, List<LearnerStats> topLearners,
@@ -726,6 +817,7 @@ public final class AssessmentDashboardAssembler {
                 heatmap(evals, in.period().zone()),
                 types(evals),
                 batches(evals, in.enrollmentsByBatch()),
+                evaluators(evals),
                 rows,
                 truncated,
                 liveNow,

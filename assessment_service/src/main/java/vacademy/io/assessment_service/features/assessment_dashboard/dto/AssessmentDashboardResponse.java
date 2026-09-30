@@ -42,6 +42,8 @@ public class AssessmentDashboardResponse {
     private List<HeatCell> submissionHeatmap;
     private List<TypeSlice> types;
     private List<BatchStats> batches;
+    /** Teachers who checked copies of the range's tests, most copies first. */
+    private List<EvaluatorStats> evaluators;
 
     /** Assessments in the range, newest first, capped at {@code assessmentsLimit}. */
     private List<AssessmentRow> assessments;
@@ -101,6 +103,12 @@ public class AssessmentDashboardResponse {
         private int evaluated;
         private int awaitingEvaluation;
         private int awaitingRelease;
+        /** How the evaluated submissions were checked; the four add up to {@code evaluated}. */
+        private int checkedByTeacher;
+        private int checkedByAi;
+        private int autoGraded;
+        /** Evaluated with no checking-tool record, e.g. marks entered offline. */
+        private int evaluatedOther;
 
         private Double avgTimeMinutes;
         /** Average share of the allowed duration a learner used (timed tests only). */
@@ -170,6 +178,9 @@ public class AssessmentDashboardResponse {
         private Double participationRate;
         private int submissions;
         private Double avgScore;
+        /** Submissions by this batch's learners that are evaluated / still waiting. */
+        private int evaluated;
+        private int awaitingEvaluation;
     }
 
     @Data
@@ -209,6 +220,25 @@ public class AssessmentDashboardResponse {
         private int evaluated;
         private int awaitingEvaluation;
         private int awaitingRelease;
+        private int checkedByTeacher;
+        private int checkedByAi;
+        /** Teachers who checked this test's copies (user ids; names are in {@code evaluators}). */
+        private List<String> evaluatorIds;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class EvaluatorStats {
+        private String userId;
+        private String name;
+        private String email;
+        private int copiesChecked;
+        private int tests;
+        private Double avgMinutesPerCopy;
+        private String lastCheckedAt;
     }
 
     @Data

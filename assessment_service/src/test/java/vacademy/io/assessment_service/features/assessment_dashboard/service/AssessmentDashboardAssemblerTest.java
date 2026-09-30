@@ -8,6 +8,8 @@ import vacademy.io.assessment_service.features.assessment_dashboard.dto.Assessme
 import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.Summary;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.AttemptRow;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Enrollment;
+import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.EvalLog;
+import vacademy.io.assessment_service.features.assessment_dashboard.dto.AssessmentDashboardResponse.EvaluatorStats;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Filters;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Input;
 import vacademy.io.assessment_service.features.assessment_dashboard.service.AssessmentDashboardAssembler.Period;
@@ -288,5 +290,53 @@ class AssessmentDashboardAssemblerTest {
         assertEquals("MOCK", r.assessments().get(0).getPlayMode());
         assertEquals(List.of("EXAM", "MOCK"), r.modeOptions());
         assertFalse(r.assessmentsTruncated());
+    }
+
+    @Test
+    void eachCheckedCopyIsCreditedToTeacherAiAutoOrOther() {
+        TestInfo manual = new TestInfo("t1", "Paper", "EXAM", "MANUAL", "PRIVATE",
+                Instant.parse("2026-09-22T04:30:00Z"), Instant.parse("2026-09-22T06:30:00Z"), 60, null, 100.0);
+        TestInfo auto = exam("t2", "2026-09-23T04:30:00Z", "2026-09-23T06:30:00Z");
+        List<AttemptRow> attempts = List.of(
+                ended("t1", "u1", 60, "2026-09-22T05:00:00Z"),            // teacher A
+                ended("t1", "u2", 70, "2026-09-22T05:00:00Z"),            // teacher A
+                ended("t1", "u3", 80, "2026-09-22T05:00:00Z"),            // AI
+                ended("t1", "u4", 50, "2026-09-22T05:00:00Z"),            // marks entered offline
+                withStatus(ended("t1", "u5", 0, "2026-09-22T05:00:00Z"), "PENDING", null),
+                ended("t2", "u1", 90, "2026-09-23T05:00:00Z"));           // auto-graded
+        Map<String, EvalLog> logs = Map.of(
+                "t1-u1-2026-09-22T05:00:00Z", new EvalLog("teacherA", 120L, Instant.parse("2026-09-24T10:00:00Z")),
+                "t1-u2-2026-09-22T05:00:00Z", new EvalLog("teacherA", 240L, Instant.parse("2026-09-25T10:00:00Z")));
+        Map<String, List<Enrollment>> enrollments = Map.of("b1", List.of(
+                enrolled("u1", "b1", null), enrolled("u2", "b1", null), enrolled("u5", "b1", null)));
+
+        Result r = AssessmentDashboardAssembler.assemble(new Input(RANGE, NOW, List.of(manual, auto),
+                Map.of("t1", List.of("b1"), "t2", List.of("b1")), attempts, enrollments, noFilters(),
+                logs, Set.of("t1-u3-2026-09-22T05:00:00Z")));
+
+        Summary s = r.summary();
+        assertEquals(5, s.getEvaluated());
+        assertEquals(2, s.getCheckedByTeacher());
+        assertEquals(1, s.getCheckedByAi());
+        assertEquals(1, s.getAutoGraded());
+        assertEquals(1, s.getEvaluatedOther());
+        assertEquals(1, s.getAwaitingEvaluation());
+
+        AssessmentRow paper = r.assessments().stream().filter(a -> a.getAssessmentId().equals("t1")).findFirst().orElseThrow();
+        assertEquals(List.of("teacherA"), paper.getEvaluatorIds());
+        assertEquals(2, paper.getCheckedByTeacher());
+        assertEquals(1, paper.getCheckedByAi());
+
+        assertEquals(1, r.evaluators().size());
+        EvaluatorStats a = r.evaluators().get(0);
+        assertEquals("teacherA", a.getUserId());
+        assertEquals(2, a.getCopiesChecked());
+        assertEquals(1, a.getTests());
+        assertEquals(3.0, a.getAvgMinutesPerCopy());
+        assertEquals("2026-09-25T10:00:00Z", a.getLastCheckedAt());
+
+        BatchStats b1 = r.batches().get(0);
+        assertEquals(3, b1.getEvaluated());          // u1 (twice: t1 + t2), u2
+        assertEquals(1, b1.getAwaitingEvaluation()); // u5
     }
 }

@@ -51,7 +51,9 @@ import { CheckMark, MemberAvatar, MemberStatusPill, RoleChip } from './team-ui';
 export type MemberSection = 'profile' | 'access' | 'login' | 'account';
 const SECTIONS: MemberSection[] = ['profile', 'access', 'login', 'account'];
 
-const buildSchema = (t: TFunction) =>
+// A disabled member arrives with no visible roles (see memberStatusOf), so "keep at least
+// one role" only applies while access is on — otherwise their profile could never be saved.
+const buildSchema = (t: TFunction, requireRole: boolean) =>
     z.object({
         name: z.string().trim().min(1, t('member.validation.nameRequired')),
         email: z
@@ -68,7 +70,9 @@ const buildSchema = (t: TFunction) =>
         designation: z.string().max(255),
         bio: z.string(),
         photoId: z.string().nullable(),
-        roles: z.array(z.string()).min(1, t('member.validation.roleRequired')),
+        roles: requireRole
+            ? z.array(z.string()).min(1, t('member.validation.roleRequired'))
+            : z.array(z.string()),
         subOrgs: z.array(z.string()),
     });
 type MemberFormValues = z.infer<ReturnType<typeof buildSchema>>;
@@ -146,7 +150,7 @@ export function MemberDetailsSheet({
     );
 
     const form = useForm<MemberFormValues>({
-        resolver: zodResolver(buildSchema(t)),
+        resolver: zodResolver(buildSchema(t, !isDisabled)),
         defaultValues: defaults,
         mode: 'onChange',
     });
@@ -154,9 +158,10 @@ export function MemberDetailsSheet({
     useEffect(() => {
         form.reset(defaults);
         setConfirmDiscard(false);
-        // Only when a different member opens; refetches must not wipe an in-progress edit.
+        // When a different member opens, or access is switched on/off from here (their roles
+        // reappear or vanish). Ordinary refetches must not wipe an in-progress edit.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [member?.id]);
+    }, [member?.id, member?.status, memberRoles.length]);
 
     const [name, photoId, roles, selectedSubOrgs, bio] = useWatch({
         control: form.control,

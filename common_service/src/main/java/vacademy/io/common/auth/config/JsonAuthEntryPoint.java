@@ -8,6 +8,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
+import vacademy.io.common.exceptions.AccessRevokedException;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
 
 import java.io.IOException;
@@ -52,7 +53,11 @@ public class JsonAuthEntryPoint implements AuthenticationEntryPoint, AccessDenie
 
         String message;
         String code;
-        if (reason instanceof String r) {
+        if (AccessRevokedException.CODE.equals(reason)) {
+            // Clients end the session on this code — and only on this one.
+            code = "ACCESS_REVOKED";
+            message = "Your access to this institute has been disabled. Please contact your institute admin.";
+        } else if (reason instanceof String r) {
             code = "USER_NOT_RESOLVED";
             message = r;
         } else if (!hadBearer) {

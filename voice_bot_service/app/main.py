@@ -621,19 +621,38 @@ async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float | None) 
             "output_format": "24000:pcm16"}
     if pace is not None:          # the audition's slider; the cache renders at the live default
         body["speed"] = max(0.5, min(2.0, pace))
-    try:
-        async with app.state.http_session.post(
-                "https://tts.navana.ai/tts/bytes", json=body,
-                headers={"X-API-Key": s.navana_api_key},
-                timeout=aiohttp.ClientTimeout(total=60)) as r:
-            if r.status != 200:
-                logger.warning("preview: navana %s %s", r.status, (await r.text())[:200])
-                return b""
-            rate = int(r.headers.get("X-Sample-Rate") or 24000)
-            pcm = await r.read()
-    except Exception:
-        logger.exception("preview: navana tts failed voice=%s", voice)
-        return b""
+    # One key per request from the same pool as the live sockets (a render
+    # holds a Navana stream too); a capacity refusal moves on to the next key.
+    from .providers import NAVANA_KEYS, _Lease
+    lease, tried = _Lease(), set()
+    while True:
+        key = NAVANA_KEYS.acquire(lease, exclude=tried)
+        if key is None:
+            logger.warning("preview: navana — every key refused (%d tried)", len(tried))
+            return b""
+        try:
+            async with app.state.http_session.post(
+                    "https://tts.navana.ai/tts/bytes", json=body,
+                    headers={"X-API-Key": key},
+                    timeout=aiohttp.ClientTimeout(total=60)) as r:
+                if r.status != 200:
+                    detail = (await r.text())[:200]
+                    if r.status == 429 or "concurrency" in detail.lower():
+                        NAVANA_KEYS.refused(key)
+                        tried.add(key)
+                        continue
+                    logger.warning("preview: navana %s %s (key #%d)", r.status, detail,
+                                   NAVANA_KEYS.index(key))
+                    return b""
+                rate = int(r.headers.get("X-Sample-Rate") or 24000)
+                pcm = await r.read()
+        except Exception:
+            logger.exception("preview: navana tts failed voice=%s (key #%d)", voice,
+                             NAVANA_KEYS.index(key))
+            return b""
+        finally:
+            NAVANA_KEYS.release(lease, key)
+        break
     if not pcm:
         return b""
     buf = io.BytesIO()
@@ -731,7 +750,8 @@ async def preview(
     if engine.startswith("navana") or engine.startswith("bodhi"):
         # Navana audition through its non-streaming endpoint (the live call
         # streams; same voices, same language rule). Raw PCM → WAV, as Smallest.
-        if not s.navana_api_key:
+        from .providers import navana_keys
+        if not navana_keys(s.navana_api_key):
             logger.warning("preview: navana requested but NAVANA_API_KEY unset")
             return Response(status_code=503)
         from .providers import navana_language

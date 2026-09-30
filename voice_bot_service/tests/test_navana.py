@@ -24,6 +24,20 @@ def test_engine_and_voice_gender():
     assert "bhavana" in b.NAVANA_VOICES and len(b.NAVANA_VOICES) == 55
 
 
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def _keys(value):
+    s = get_settings()
+    old = s.navana_api_key
+    object.__setattr__(s, "navana_api_key", value)
+    try:
+        yield
+    finally:
+        object.__setattr__(s, "navana_api_key", old)
+
+
 def _with_key(value):
     s = get_settings()
     old = s.navana_api_key
@@ -410,7 +424,8 @@ async def test_a_refused_handshake_is_retried_not_reported(monkeypatch):
     cls = p._navana_seq_routing(BodhiTTSService)
     tts = cls(api_key="k", voice="ipsita", language="hi")
     tts._websocket = None
-    await tts._connect_websocket()
+    with _keys("k-one"):
+        await tts._connect_websocket()
     assert len(tries) == 3 and tts._websocket is not None and errors == [], (tries, errors)
 
 
@@ -433,5 +448,137 @@ async def test_a_non_capacity_failure_is_reported_at_once(monkeypatch):
     cls = p._navana_seq_routing(BodhiTTSService)
     tts = cls(api_key="k", voice="ipsita", language="hi")
     tts._websocket = None
-    await tts._connect_websocket()
+    with _keys("k-one,k-two"):
+        await tts._connect_websocket()
     assert len(tries) == 1 and errors and "bad_key" in errors[0], (tries, errors)
+
+
+
+# ── Several Navana keys (2 streams per account) ─────────────────────────────
+
+
+
+def test_keys_are_parsed_from_a_comma_list():
+    assert p.navana_keys(" k1, k2,,k3 ,k1 ") == ["k1", "k2", "k3"]
+    assert p.navana_keys("") == [] and p.navana_keys(None) == p.navana_keys()
+
+
+def test_the_least_loaded_key_wins_and_ties_rotate():
+    class H:
+        pass
+    pool = p.NavanaKeyPool()
+    with _keys("a,b,c"):
+        hs = [H() for _ in range(6)]
+        got = [pool.acquire(h) for h in hs[:3]]
+        assert sorted(got) == ["a", "b", "c"], got          # one each first
+        pool.release(hs[0], got[0])                          # that key frees up
+        assert pool.acquire(hs[3]) == got[0]
+        assert pool.loads() == [1, 1, 1]
+
+
+def test_a_refused_key_cools_off_and_is_tried_last():
+    class H:
+        pass
+    pool = p.NavanaKeyPool()
+    with _keys("a,b"):
+        pool.refused("a")
+        assert pool.acquire(H()) == "b"
+        assert pool.acquire(H(), exclude={"b"}) == "a"       # still usable if nothing else is
+
+
+def test_a_call_that_vanishes_does_not_keep_its_key_busy():
+    import gc
+
+    class H:
+        pass
+    pool = p.NavanaKeyPool()
+    with _keys("a"):
+        h = H()
+        pool.acquire(h)
+        assert pool.load("a") == 1
+        del h
+        gc.collect()
+        assert pool.load("a") == 0
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_moves_to_the_next_key_at_once(monkeypatch):
+    """Key a is full (concurrency_limit): the call must connect on key b with
+    no back-off sleep, and a must be cooled."""
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    used, slept = [], []
+
+    async def fake_connect(self):
+        used.append(self._api_key)
+        if self._api_key == "a":
+            self._websocket = None
+            await self.push_error(error_msg="handshake refused: concurrency_limit")
+            return
+        self._websocket = object()
+
+    async def fake_sleep(s):
+        slept.append(s)
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
+    monkeypatch.setattr(__import__("asyncio"), "sleep", fake_sleep)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="x", voice="ipsita", language="hi")
+    tts._websocket = None
+    with _keys("a,b"):
+        p.NAVANA_KEYS._rr = 0                      # a first on a tie
+        await tts._connect_websocket()
+        assert used == ["a", "b"] and not slept and tts._nv_key == "b", (used, slept)
+        assert p.NAVANA_KEYS.load("b") == 1 and p.NAVANA_KEYS.load("a") == 0
+        assert p.NAVANA_KEYS._cool.get("a", 0) > 0
+
+
+@pytest.mark.asyncio
+async def test_closing_the_socket_releases_its_key(monkeypatch):
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+
+    async def fake_connect(self):
+        self._websocket = object()
+
+    async def fake_disconnect(self):
+        self._websocket = None
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    monkeypatch.setattr(BodhiTTSService, "_disconnect_websocket", fake_disconnect)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="x", voice="ipsita", language="hi")
+    tts._websocket = None
+    with _keys("a,b"):
+        await tts._connect_websocket()
+        k = tts._nv_key
+        assert p.NAVANA_KEYS.load(k) == 1
+        await tts._disconnect_websocket()
+        assert p.NAVANA_KEYS.load(k) == 0 and tts._nv_key is None
+
+
+@pytest.mark.asyncio
+async def test_when_every_key_refuses_it_backs_off_then_goes_round_again(monkeypatch):
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    used, slept = [], []
+
+    async def fake_connect(self):
+        used.append(self._api_key)
+        if len(used) <= 2:                          # a and b both full on round 1
+            self._websocket = None
+            await self.push_error(error_msg="handshake refused: concurrency_limit")
+            return
+        self._websocket = object()
+
+    async def fake_sleep(s):
+        slept.append(s)
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
+    monkeypatch.setattr(__import__("asyncio"), "sleep", fake_sleep)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="x", voice="ipsita", language="hi")
+    tts._websocket = None
+    with _keys("a,b"):
+        await tts._connect_websocket()
+    assert sorted(used[:2]) == ["a", "b"] and slept == [0.25] and tts._websocket is not None, (used, slept)

@@ -19,6 +19,8 @@ import asyncio
 import json
 import logging
 import re
+import time
+from typing import Optional
 
 logger = logging.getLogger("voice_bot")
 
@@ -682,6 +684,85 @@ def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str
     return switcher, primary, fallback
 
 
+def navana_keys(raw: Optional[str] = None) -> list:
+    """NAVANA_API_KEY may hold several keys, comma-separated ("k1,k2,k3") —
+    each Navana account allows only 2 concurrent streams, so capacity grows 2 per
+    key. Whitespace and duplicates are ignored; order is kept."""
+    if raw is None:
+        raw = get_settings().navana_api_key
+    out = []
+    for k in (raw or "").split(","):
+        k = k.strip()
+        if k and k not in out:
+            out.append(k)
+    return out
+
+
+class NavanaKeyPool:
+    """Which Navana key a new connection should use. Single event loop, so no
+    locks. A key's load is the number of LIVE holders (connected TTS sockets and
+    in-flight one-shot renders) — tracked in a WeakSet, so a call that vanishes
+    without closing cleanly cannot leave a key looking busy forever. Least-loaded
+    wins; ties rotate (round-robin). A key that refused a handshake with
+    concurrency_limit cools off for a few seconds and is tried last."""
+
+    COOL_SECS = 5.0
+
+    def __init__(self):
+        import weakref
+        self._weakref = weakref
+        self._holders: dict = {}      # key -> WeakSet of holders
+        self._cool: dict = {}         # key -> monotonic time the cool-off ends
+        self._rr = 0
+
+    def keys(self) -> list:
+        return navana_keys()
+
+    def load(self, key: str) -> int:
+        hs = self._holders.get(key)
+        return len(hs) if hs is not None else 0
+
+    def index(self, key: Optional[str]) -> int:
+        try:
+            return self.keys().index(key)
+        except ValueError:
+            return -1
+
+    def acquire(self, holder, exclude=()) -> Optional[str]:
+        keys = self.keys()
+        cands = [k for k in keys if k not in exclude]
+        if not cands:
+            return None
+        now = time.monotonic()
+        n = len(keys)
+        rr = self._rr % n
+        best = min(cands, key=lambda k: (self._cool.get(k, 0.0) > now,        # cooled keys last
+                                         self.load(k),                        # least loaded
+                                         (keys.index(k) - rr) % n))           # then round-robin
+        self._rr = (keys.index(best) + 1) % n
+        self._holders.setdefault(best, self._weakref.WeakSet()).add(holder)
+        return best
+
+    def release(self, holder, key: Optional[str]) -> None:
+        hs = self._holders.get(key) if key else None
+        if hs is not None:
+            hs.discard(holder)
+
+    def refused(self, key: Optional[str]) -> None:
+        if key:
+            self._cool[key] = time.monotonic() + self.COOL_SECS
+
+    def loads(self) -> list:
+        return [self.load(k) for k in self.keys()]
+
+
+NAVANA_KEYS = NavanaKeyPool()
+
+
+class _Lease:
+    """A holder object for one-shot (REST) renders: weakref-able, per request."""
+
+
 def _navana_seq_routing(cls):
     """Subclass Navana's BodhiTTSService so that, with ONE AUDIO CONTEXT PER
     SENTENCE (what the speech cache switches on), every chunk lands in the
@@ -787,27 +868,56 @@ def _navana_seq_routing(cls):
             await super().push_error(*args, **kwargs)
 
         async def _connect_websocket(self):
+            from websockets.protocol import State as _State
+            if self._websocket is not None and getattr(self._websocket, "state", None) is _State.OPEN:
+                return                                  # already connected: keep the seq state
             # A fresh socket restarts seq at 1 (the SDK resets it on ready).
             self._nv_reset()
+            # KEYS: the least-loaded of NAVANA_API_KEY's comma-separated keys; a
+            # key that refuses (concurrency_limit) cools off and the NEXT key is
+            # tried at once; only when every key refused, back off and go round
+            # again (0.25 / 0.5 / 1 s).
             delays = (0.25, 0.5, 1.0)
-            for attempt in range(len(delays) + 1):
-                final = attempt == len(delays)
-                self._nv_quiet, self._nv_last_error = not final, ""
+            refusals, tried, rounds = 0, set(), 0
+            while True:
+                key = NAVANA_KEYS.acquire(self, exclude=tried)
+                if key is None:                         # every key refused this round
+                    if rounds >= len(delays):
+                        await super().push_error(error_msg=self._nv_last_error or
+                                                 f"{self} navana: every key refused")
+                        return
+                    await _asyncio.sleep(delays[rounds])
+                    rounds += 1
+                    tried = set()
+                    continue
+                self._nv_key, self._api_key = key, key
+                self._nv_quiet, self._nv_last_error = True, ""
                 try:
                     await super()._connect_websocket()
                 finally:
                     self._nv_quiet = False
                 if self._websocket is not None:
-                    if attempt:
-                        logger.info("navana: connected after %d refused handshake(s)", attempt)
+                    logger.info("navana: connected on key #%d of %d (load %s)%s",
+                                NAVANA_KEYS.index(key), len(NAVANA_KEYS.keys()),
+                                NAVANA_KEYS.loads(),
+                                f" after {refusals} refusal(s)" if refusals else "")
                     return
-                if final:
-                    return                          # the SDK already reported it
+                NAVANA_KEYS.release(self, key)
+                self._nv_key = None
                 if "concurrency_limit" not in self._nv_last_error:
-                    # Not a capacity refusal: report it now, do not hammer.
+                    # Not a capacity refusal (bad key, network): report it now.
                     await super().push_error(error_msg=self._nv_last_error)
                     return
-                await _asyncio.sleep(delays[attempt])
+                refusals += 1
+                NAVANA_KEYS.refused(key)
+                tried.add(key)
+
+        async def _disconnect_websocket(self):
+            try:
+                await super()._disconnect_websocket()
+            finally:
+                NAVANA_KEYS.release(self, getattr(self, "_nv_key", None))
+                self._nv_key = None
 
         async def on_audio_context_interrupted(self, context_id: str):
             # pipecat reconnects the socket on an interruption only while the bot
@@ -1154,14 +1264,16 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         # letterless guard so vendor characters are METERED (diagnostics.tts.chars)
         # — the call card then prices the real count, as it does for Smallest.
         # No pace knob: the streaming hello rejects `speed` (Navana docs).
-        if not s.navana_api_key:
+        if not navana_keys(s.navana_api_key):
             logger.error("tts: NAVANA_API_KEY unset — falling back to Sarvam bulbul")
         else:
             try:
                 from bodhi.integrations.pipecat_tts import BodhiTTSService
                 nv_voice = (voice or s.navana_tts_voice).strip() or s.navana_tts_voice
                 cls = _letterless_guard(_navana_seq_routing(BodhiTTSService))
-                return _tag_engine(cls(api_key=s.navana_api_key, voice=nv_voice,
+                # The key here is a placeholder: each connection picks the
+                # least-loaded key from NAVANA_KEYS (comma-separated env).
+                return _tag_engine(cls(api_key=navana_keys(s.navana_api_key)[0], voice=nv_voice,
                                        language=navana_language(language)),
                                    "navana", nv_voice)
             except Exception:

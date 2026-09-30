@@ -6713,6 +6713,55 @@ async def test_an_empty_reply_asks_for_the_next_line():
 
 
 @pytest.mark.asyncio
+async def test_a_reply_the_parent_cut_off_is_not_an_empty_reply():
+    """Call 24e13868 (2026-09-30): the parent's barge-in killed the response
+    before its first word; "continuing" it was a second reply to the same
+    moment, and the parent heard a stray "जी, बोलिए।"."""
+    from pipecat.frames.frames import (InterruptionFrame, LLMFullResponseEndFrame,
+                                       LLMFullResponseStartFrame)
+    caller = {"t": "मेरा बेटा आठवीं में है।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(InterruptionFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not [k for _h, k, _a in asked if k == "continue"], asked
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_while_the_parent_says_something_new_is_left_to_their_turn():
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    caller = {"t": "ये apply."}
+    g, _rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    caller["t"] = "और fees कितनी है?"
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not [k for _h, k, _a in asked if k == "continue"], asked
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_after_a_refusal_does_not_push_on():
+    """Call 899c6888: after "नहीं" the 'say your next line' cue pushed past the parent."""
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    for refusal in ("नहीं।", "अभी नहीं, बाद में call करना।", "No, I am busy.", "not interested"):
+        caller = {"t": refusal}
+        g, _rec, asked = _nr_with_steps(caller)
+        d = b.FrameDirection.DOWNSTREAM
+        await g.process_frame(LLMFullResponseStartFrame(), d)
+        await g.process_frame(LLMFullResponseEndFrame(), d)
+        assert not [k for _h, k, _a in asked if k == "continue"], (refusal, asked)
+
+
+def test_refusal_words_do_not_match_ordinary_answers():
+    for t in ("नहीं", "नहीं जी।", "No.", "busy हूँ", "अभी नहीं", "not interested", "बाद में बात करते हैं"):
+        assert b._is_refusal(t), t
+    for t in ("जी, नहीं पता।", "पता नहीं", "ये apply.", "आठवीं में है।", "nineteen", "Nitya",
+              "अभी आठवीं में है।", "knowledge", "नहीं, वो आठवीं में है।"):
+        assert not b._is_refusal(t), t
+
+
+@pytest.mark.asyncio
 async def test_an_empty_reply_while_ending_does_nothing():
     from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
     rec, asked = _NRRec(), []

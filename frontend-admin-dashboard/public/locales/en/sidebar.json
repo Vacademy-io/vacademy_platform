@@ -118,6 +118,7 @@
     "scheduleAnnouncement": "Schedule Announcement",
     "liveSessionDashboard": "{{term}} Dashboard",
     "scheduledLiveSessions": "Scheduled {{term}}",
+    "assessmentDashboard": "Assessment Dashboard",
     "scheduledTests": "Scheduled Tests",
     "sessions": "Sessions",
     "settings": "Settings",

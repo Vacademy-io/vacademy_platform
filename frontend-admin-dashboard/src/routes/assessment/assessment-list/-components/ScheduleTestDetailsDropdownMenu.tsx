@@ -4,6 +4,7 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
     // DropdownMenuSub,
     // DropdownMenuSubTrigger,
@@ -30,18 +31,22 @@ import { UtmLinkMenuItem } from '@/components/common/utm/utm-link-menu-item';
 import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { getAssessmentJoinLink } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { assessmentQrId, JoinLinkMenuItems, JoinLinkQrDialog } from './assessment-share';
 
 export function ScheduleTestDetailsDropdownLive({
     scheduleTestContent,
     handleRefetchData,
     selectedTab,
     onGenerateUtmLink,
+    shareItems,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
     /** Undefined when this assessment has no public join link to tag. */
     onGenerateUtmLink?: () => void;
+    /** Copy join link / QR code items; undefined when there is no join link. */
+    shareItems?: React.ReactNode;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isRemiderAlertDialogOpen, setIsRemiderAlertDialogOpen] = useState(false);
@@ -113,6 +118,12 @@ export function ScheduleTestDetailsDropdownLive({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    {shareItems ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            {shareItems}
+                        </>
+                    ) : null}
                     <UtmLinkMenuItem
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
@@ -224,12 +235,15 @@ export function ScheduleTestDetailsDropdownUpcoming({
     handleRefetchData,
     selectedTab,
     onGenerateUtmLink,
+    shareItems,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
     /** Undefined when this assessment has no public join link to tag. */
     onGenerateUtmLink?: () => void;
+    /** Copy join link / QR code items; undefined when there is no join link. */
+    shareItems?: React.ReactNode;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isDeleteAssessmentDialog, setIsDeleteAssessmentDialog] = useState(false);
@@ -280,6 +294,12 @@ export function ScheduleTestDetailsDropdownUpcoming({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    {shareItems ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            {shareItems}
+                        </>
+                    ) : null}
                     <UtmLinkMenuItem
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
@@ -327,12 +347,15 @@ export function ScheduleTestDetailsDropdownPrevious({
     handleRefetchData,
     selectedTab,
     onGenerateUtmLink,
+    shareItems,
 }: {
     scheduleTestContent: TestContent;
     handleRefetchData: () => void;
     selectedTab: string;
     /** Undefined when this assessment has no public join link to tag. */
     onGenerateUtmLink?: () => void;
+    /** Copy join link / QR code items; undefined when there is no join link. */
+    shareItems?: React.ReactNode;
 }) {
     const { t } = useTranslation('assessmentScheduleTestDetailsDropdownMenu');
     const [isDeleteAssessmentDialog, setIsDeleteAssessmentDialog] = useState(false);
@@ -389,6 +412,12 @@ export function ScheduleTestDetailsDropdownPrevious({
                     >
                         {t('menu.viewDetails')}
                     </DropdownMenuItem>
+                    {shareItems ? (
+                        <>
+                            <DropdownMenuSeparator />
+                            {shareItems}
+                        </>
+                    ) : null}
                     <UtmLinkMenuItem
                         hidden={!onGenerateUtmLink}
                         onSelect={() => onGenerateUtmLink?.()}
@@ -523,6 +552,25 @@ export function ScheduleTestMainDropdownComponent({
 }) {
     const { instituteDetails } = useInstituteDetailsStore();
     const [openUtmDialog, setOpenUtmDialog] = useState(false);
+    const [openQrDialog, setOpenQrDialog] = useState(false);
+
+    // Copy link / QR are offered for any published test with a join code — a
+    // Closed Test too, with a warning, because admins still look the link up
+    // before switching the test to Open. The UTM builder below stays PUBLIC-only.
+    const isPrivate = scheduleTestContent.assessment_visibility === 'PRIVATE';
+    const shareLink = scheduleTestContent.join_link
+        ? getAssessmentJoinLink(
+              instituteDetails?.learner_portal_base_url,
+              scheduleTestContent.join_link
+          )
+        : '';
+    const shareItems = shareLink ? (
+        <JoinLinkMenuItems
+            joinLink={shareLink}
+            isPrivate={isPrivate}
+            onShowQr={() => setOpenQrDialog(true)}
+        />
+    ) : undefined;
 
     // A PRIVATE assessment is reachable only by an already-enrolled learner, so
     // there is no campaign traffic to attribute; and without a join code the
@@ -545,6 +593,7 @@ export function ScheduleTestMainDropdownComponent({
                         handleRefetchData={handleRefetchData}
                         selectedTab={selectedTab}
                         onGenerateUtmLink={onGenerateUtmLink}
+                        shareItems={shareItems}
                     />
                 );
             case 'upcomingTests':
@@ -554,6 +603,7 @@ export function ScheduleTestMainDropdownComponent({
                         handleRefetchData={handleRefetchData}
                         selectedTab={selectedTab}
                         onGenerateUtmLink={onGenerateUtmLink}
+                        shareItems={shareItems}
                     />
                 );
             case 'previousTests':
@@ -563,6 +613,7 @@ export function ScheduleTestMainDropdownComponent({
                         handleRefetchData={handleRefetchData}
                         selectedTab={selectedTab}
                         onGenerateUtmLink={onGenerateUtmLink}
+                        shareItems={shareItems}
                     />
                 );
             case 'draftTests':
@@ -593,6 +644,16 @@ export function ScheduleTestMainDropdownComponent({
                 sourceType="ASSESSMENT"
                 entityName={scheduleTestContent.name}
             />
+            {shareLink ? (
+                <JoinLinkQrDialog
+                    open={openQrDialog}
+                    onOpenChange={setOpenQrDialog}
+                    joinLink={shareLink}
+                    qrId={assessmentQrId(scheduleTestContent.join_link)}
+                    isPrivate={isPrivate}
+                    assessmentName={scheduleTestContent.name}
+                />
+            ) : null}
         </>
     );
 }

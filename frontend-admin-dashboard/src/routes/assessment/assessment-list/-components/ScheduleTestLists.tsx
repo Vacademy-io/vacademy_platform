@@ -32,7 +32,7 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
                     <span className="text-neutral-600">{tab.message}</span>
                 </div>
             ) : (
-                <>
+                <div className="flex flex-col gap-4 pt-2">
                     {tab.data.content.map((item, index) => (
                         <ScheduleTestDetails
                             key={index}
@@ -47,7 +47,7 @@ const ScheduleTestLists: React.FC<ScheduleTestListsProps> = ({
                         totalPages={Math.ceil(tab.data.total_pages)}
                         onPageChange={handlePageChange}
                     />
-                </>
+                </div>
             )}
         </TabsContent>
     );

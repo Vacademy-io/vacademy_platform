@@ -1123,6 +1123,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'LMS',
         subItems: [
             {
+                subItem: sidebarT('sidebar:assessmentDashboard'),
+                subItemLink: '/assessment/dashboard',
+                subItemId: 'assessment-dashboard',
+            },
+            {
                 subItem: sidebarT('sidebar:scheduledTests'),
                 subItemLink: '/assessment/assessment-list?selectedTab=liveTests',
                 subItemId: 'scheduled-tests',

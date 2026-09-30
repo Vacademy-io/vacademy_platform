@@ -1,4 +1,6 @@
+import { CalendarCheck, ClockCounterClockwise, NotePencil } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScheduleTestTab } from '@/types/assessments/assessment-list';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +25,24 @@ const ScheduleTestTabList = ({
         return tabData?.data?.content?.length ? tabData?.data?.total_elements ?? 0 : 0;
     };
 
+    // Same tab icons as the live session list. The Live dot is red and pulsing
+    // while any test is live, and also while you are on the Live tab.
+    const liveDotActive =
+        countFor('liveTests', scheduleTestTabsData[0]) > 0 || selectedTab === 'liveTests';
+    const liveDot = (
+        <span className="relative flex size-2 self-center">
+            {liveDotActive ? (
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-danger-400 opacity-75" />
+            ) : null}
+            <span
+                className={cn(
+                    'relative inline-flex size-2 rounded-full',
+                    liveDotActive ? 'bg-danger-500' : 'bg-neutral-300'
+                )}
+            />
+        </span>
+    );
+
     // The tab strip scrolls instead of overflowing: four tabs at the desktop px-12 are far
     // wider than a phone, which cut "Previous" and "Drafts" off the screen entirely.
     return (
@@ -35,6 +55,7 @@ const ScheduleTestTabList = ({
                         : 'border-none bg-transparent'
                 }`}
             >
+                {liveDot}
                 <span className={`${selectedTab === 'liveTests' ? 'text-primary-500' : ''}`}>
                     {t('tabs.live')}
                 </span>
@@ -53,6 +74,7 @@ const ScheduleTestTabList = ({
                         : 'border-none bg-transparent'
                 }`}
             >
+                <CalendarCheck size={16} weight="duotone" className="self-center" />
                 <span className={`${selectedTab === 'upcomingTests' ? 'text-primary-500' : ''}`}>
                     {t('tabs.upcoming')}
                 </span>
@@ -71,6 +93,7 @@ const ScheduleTestTabList = ({
                         : 'border-none bg-transparent'
                 }`}
             >
+                <ClockCounterClockwise size={16} weight="duotone" className="self-center" />
                 <span className={`${selectedTab === 'previousTests' ? 'text-primary-500' : ''}`}>
                     {t('tabs.previous')}
                 </span>
@@ -89,6 +112,7 @@ const ScheduleTestTabList = ({
                         : 'border-none bg-transparent'
                 }`}
             >
+                <NotePencil size={16} weight="duotone" className="self-center" />
                 <span className={`${selectedTab === 'draftTests' ? 'text-primary-500' : ''}`}>
                     {t('tabs.drafts')}
                 </span>

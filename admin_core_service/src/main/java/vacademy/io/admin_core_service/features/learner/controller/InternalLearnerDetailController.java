@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.learner.service.LearnerCredential
 import vacademy.io.admin_core_service.features.learner.service.LearnerLmsUserSyncService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrolledLearnerDto;
+import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrollmentRowDto;
 import vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.EnrolledLearnersRequest;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -86,6 +87,29 @@ public class InternalLearnerDetailController {
                 ? DEFAULT_ENROLLED_STATUSES
                 : request.getStatuses();
         return ResponseEntity.ok(studentSessionRepository.findEnrolledLearnersByPackageSessions(
+                request.getPackageSessionIds(), request.getInstituteId(), statuses));
+    }
+
+    /**
+     * Every (learner, batch) enrolment in the given batches, one row per pair, with the
+     * enrolment date. For assessment_service's Assessment Dashboard, which needs each
+     * batch's full membership to count who was set a test and never attempted it.
+     * Same request shape, status default and batch ceiling as the endpoint above.
+     */
+    @PostMapping("/enrollments-by-package-sessions")
+    public ResponseEntity<List<BatchEnrollmentRowDto>> getEnrollmentRows(
+            @RequestBody EnrolledLearnersRequest request) {
+        if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()
+                || request.getPackageSessionIds() == null || request.getPackageSessionIds().isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (request.getPackageSessionIds().size() > MAX_PACKAGE_SESSIONS) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<String> statuses = (request.getStatuses() == null || request.getStatuses().isEmpty())
+                ? DEFAULT_ENROLLED_STATUSES
+                : request.getStatuses();
+        return ResponseEntity.ok(studentSessionRepository.findEnrollmentRowsByPackageSessions(
                 request.getPackageSessionIds(), request.getInstituteId(), statuses));
     }
 

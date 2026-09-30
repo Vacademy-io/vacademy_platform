@@ -117,6 +117,7 @@
     "scheduleAnnouncement": "جدولة إعلان",
     "liveSessionDashboard": "لوحة معلومات {{term}}",
     "scheduledLiveSessions": "{{term}} المجدولة",
+    "assessmentDashboard": "لوحة معلومات التقييمات",
     "scheduledTests": "الاختبارات المجدولة",
     "sessions": "الجلسات",
     "settings": "الإعدادات",

@@ -58,6 +58,34 @@ public interface StudentSessionInstituteGroupMappingRepository
                                             @Param("instituteId") String instituteId,
                                             @Param("statuses") List<String> statuses);
 
+  /**
+   * Every (learner, batch) enrolment in the given batches: one row per pair, so a
+   * learner in two of the batches comes back twice. Used by assessment_service's
+   * Assessment Dashboard to build each assessment's audience from its assigned batches.
+   *
+   * <p>Same access path as {@link #findEnrolledLearnersByPackageSessions}; the DISTINCT ON
+   * only removes duplicate mapping rows for the same pair (and duplicate student rows).
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id, ssigm.package_session_id)
+             ssigm.user_id AS userId,
+             ssigm.package_session_id AS packageSessionId,
+             CAST(ssigm.enrolled_date AS varchar) AS enrolledDate,
+             s.full_name AS fullName,
+             s.email AS email,
+             s.mobile_number AS mobileNumber
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id, ssigm.enrolled_date
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrollmentRowDto>
+      findEnrollmentRowsByPackageSessions(@Param("psIds") List<String> psIds,
+                                          @Param("instituteId") String instituteId,
+                                          @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,                 -- Index 0

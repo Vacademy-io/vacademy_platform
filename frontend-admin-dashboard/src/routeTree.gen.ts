@@ -143,6 +143,7 @@ import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audien
 import { Route as AudienceManagerAiIntelligenceIndexRouteImport } from "./routes/audience-manager/ai-intelligence/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
 import { Route as AssessmentEvaluationAiIndexRouteImport } from "./routes/assessment/evaluation-ai/index"
+import { Route as AssessmentDashboardIndexRouteImport } from "./routes/assessment/dashboard/index"
 import { Route as AssessmentAssessmentListIndexRouteImport } from "./routes/assessment/assessment-list/index"
 import { Route as AnnouncementScheduleIndexRouteImport } from "./routes/announcement/schedule/index"
 import { Route as AnnouncementHistoryIndexRouteImport } from "./routes/announcement/history/index"
@@ -1266,6 +1267,12 @@ const AssessmentEvaluationAiIndexRoute =
     path: "/assessment/evaluation-ai/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const AssessmentDashboardIndexRoute =
+  AssessmentDashboardIndexRouteImport.update({
+    id: "/assessment/dashboard/",
+    path: "/assessment/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssessmentAssessmentListIndexRoute =
   AssessmentAssessmentListIndexRouteImport.update({
     id: "/assessment/assessment-list/",
@@ -2189,6 +2196,7 @@ export interface FileRoutesByFullPath {
   "/announcement/history/": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule/": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard/": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2430,6 +2438,7 @@ export interface FileRoutesByTo {
   "/announcement/history": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2673,6 +2682,7 @@ export interface FileRoutesById {
   "/announcement/history/": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule/": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard/": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2917,6 +2927,7 @@ export interface FileRouteTypes {
     | "/announcement/history/"
     | "/announcement/schedule/"
     | "/assessment/assessment-list/"
+    | "/assessment/dashboard/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/ai-intelligence/"
@@ -3158,6 +3169,7 @@ export interface FileRouteTypes {
     | "/announcement/history"
     | "/announcement/schedule"
     | "/assessment/assessment-list"
+    | "/assessment/dashboard"
     | "/assessment/evaluation-ai"
     | "/assessment/question-papers"
     | "/audience-manager/ai-intelligence"
@@ -3400,6 +3412,7 @@ export interface FileRouteTypes {
     | "/announcement/history/"
     | "/announcement/schedule/"
     | "/assessment/assessment-list/"
+    | "/assessment/dashboard/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/ai-intelligence/"
@@ -3642,6 +3655,7 @@ export interface RootRouteChildren {
   AnnouncementHistoryIndexRoute: typeof AnnouncementHistoryIndexRoute
   AnnouncementScheduleIndexRoute: typeof AnnouncementScheduleIndexRoute
   AssessmentAssessmentListIndexRoute: typeof AssessmentAssessmentListIndexRoute
+  AssessmentDashboardIndexRoute: typeof AssessmentDashboardIndexRoute
   AssessmentEvaluationAiIndexRoute: typeof AssessmentEvaluationAiIndexRoute
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
   AudienceManagerAiIntelligenceIndexRoute: typeof AudienceManagerAiIntelligenceIndexRoute
@@ -4752,6 +4766,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AssessmentEvaluationAiIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/assessment/dashboard/": {
+      id: "/assessment/dashboard/"
+      path: "/assessment/dashboard"
+      fullPath: "/assessment/dashboard/"
+      preLoaderRoute: typeof AssessmentDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/assessment/assessment-list/": {
       id: "/assessment/assessment-list/"
       path: "/assessment/assessment-list"
@@ -5584,6 +5605,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnnouncementHistoryIndexRoute: AnnouncementHistoryIndexRoute,
   AnnouncementScheduleIndexRoute: AnnouncementScheduleIndexRoute,
   AssessmentAssessmentListIndexRoute: AssessmentAssessmentListIndexRoute,
+  AssessmentDashboardIndexRoute: AssessmentDashboardIndexRoute,
   AssessmentEvaluationAiIndexRoute: AssessmentEvaluationAiIndexRoute,
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
   AudienceManagerAiIntelligenceIndexRoute:

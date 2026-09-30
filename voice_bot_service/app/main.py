@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from . import admin_core
 from .ambience import build_ambience_mixer
 from .bot import CallOutcome, run_bot
-from . import ttscache, ttswarm
+from . import memory, ttscache, ttswarm
 from .config import get_settings
 from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
@@ -78,6 +78,13 @@ async def lifespan(app: FastAPI):
             logger.info("lifespan: LLM provider pre-warmed")
         except Exception:
             logger.exception("lifespan: LLM pre-warm failed (non-fatal)")
+        # The heavy imports are in: freeze them out of every future collection
+        # (see app/memory.py) — but only while no call is live.
+        if _active_calls == 0:
+            try:
+                memory.freeze_startup()
+            except Exception:
+                logger.exception("lifespan: gc freeze failed (non-fatal)")
 
     # Background on purpose: pre-warm and the spool sweeper must not delay
     # startup (the probe window) or block /answer for live traffic.
@@ -1200,6 +1207,20 @@ async def ws_endpoint(websocket: WebSocket):
             _inflight_handshakes -= 1
         if _active_slot:
             _active_calls -= 1
+            # Free this call now rather than at the interpreter's next full
+            # collection (app/memory.py). Scheduled, not inline: until this
+            # handler returns, its own locals still reference the pipeline.
+            try:
+                asyncio.get_running_loop().call_later(1.0, _reclaim_after_call, corr)
+            except Exception:
+                logger.exception("ws: could not schedule memory reclaim corr=%s", corr)
+
+
+def _reclaim_after_call(corr: str) -> None:
+    try:
+        memory.reclaim(idle=_active_calls == 0, corr=corr or "")
+    except Exception:
+        logger.exception("memory: reclaim failed corr=%s", corr)
 
 
 app.include_router(router)

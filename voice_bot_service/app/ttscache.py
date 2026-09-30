@@ -1447,7 +1447,32 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                             text_frame.will_be_spoken = True
                             yield text_frame
 
-                    if own_stop:
+                    if own_stop and engine_l == "navana" and per_sentence_contexts(tts):
+                        # Navana's shape: push_text_frames on (pipecat appends
+                        # the TTSTextFrame AFTER run_tts returns) and
+                        # push_stop_frames off (the SDK's receive loop brackets
+                        # and our seq routing closes each live sentence). A stop
+                        # yielded here landed BEFORE the text frame — the
+                        # sentence vanished from the played transcript — and
+                        # nothing closed the context, so the next sentence
+                        # waited out pipecat's 3 s idle timeout (sim
+                        # navana_cached_live_cached: a 2.74 s hole). Mirror the
+                        # live path instead: after the blob's playout, stop,
+                        # then close — by then the base class's text frame is
+                        # already in the queue ahead of the stop.
+                        hold = max(0.0, entry.duration_ms / 1000.0 - 0.05)
+
+                        async def _finish_after_playout(cid=context_id, secs=hold):
+                            await asyncio.sleep(secs)
+                            try:
+                                if tts.audio_context_available(cid):
+                                    await tts.append_to_audio_context(
+                                        cid, TTSStoppedFrame(context_id=cid))
+                                    await tts.remove_audio_context(cid)
+                            except Exception:
+                                logger.exception("tts-cache: navana context close failed")
+                        asyncio.get_running_loop().create_task(_finish_after_playout())
+                    elif own_stop:
                         yield TTSStoppedFrame(context_id=context_id)
                     elif per_sentence_contexts(tts) and own_text:
                         # CLOSE OUR OWN CONTEXT. With one context per sentence the

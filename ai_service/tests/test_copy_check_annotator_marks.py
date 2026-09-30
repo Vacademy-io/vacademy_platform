@@ -626,6 +626,88 @@ def test_marks_grow_with_the_page() -> None:
     check("a 1500pt page with 54pt rows gets a score well over 24pt", big > 40.0, str(big))
 
 
+def _written_text(pages: list) -> dict:
+    """Spy on the pen: {page number: [text written there]}."""
+    written: dict = {}
+    real = annotator._pen_text
+
+    def spy(page, origin, text, *a, **k):
+        written.setdefault(page.number, []).append(text)
+        return real(page, origin, text, *a, **k)
+    annotator._pen_text = spy
+    return written, real
+
+
+def test_deduction_reason_is_written_whole() -> None:
+    print("\nbuild_annotated_pdf — a deduction reason reaches the copy, whole")
+    # 2026-09-30: on a densely written page every placement refused the
+    # reason, so a 1/3 and a 2.5/5 went back with no word of why; others came
+    # out cut to "Wrong answer." or "Q21". The reason now goes, whole, to the
+    # nearest blank paper - here the next page.
+    doc = fitz.open()
+    lines1, lines2 = [], []
+    # Off-white scanned sheets on the white PDF canvas, as a scanner produces.
+    sheet_fill = (0.93, 0.93, 0.91)
+    p1 = doc.new_page(width=400, height=600)
+    p1.draw_rect(fitz.Rect(20, 15, 380, 585), color=sheet_fill, fill=sheet_fill)
+    for i in range(34):                                    # edge to edge, no gaps
+        y = 30 + i * 16
+        p1.insert_text(fitz.Point(40, y + 11), "dense handwriting " * 5, fontsize=11)
+        lines1.append({"line_id": f"p1_r{i + 1}", "text": "dense", "box": [38, y, 330, 14]})
+    p2 = doc.new_page(width=400, height=600)
+    p2.draw_rect(fitz.Rect(20, 15, 380, 585), color=sheet_fill, fill=sheet_fill)
+    for i in range(2):
+        y = 40 + i * 30
+        p2.insert_text(fitz.Point(40, y + 11), "the next answer starts here", fontsize=11)
+        lines2.append({"line_id": f"p2_r{i + 1}", "text": "next", "box": [38, y, 200, 14]})
+    pdf = doc.tobytes()
+    doc.close()
+    layout = {"pages": [
+        {"page_id": "p1", "page_index": 0, "width": 400, "height": 600, "lines": lines1,
+         "ink_boxes": [ln["box"] for ln in lines1], "vision_ocr": True},
+        {"page_id": "p2", "page_index": 1, "width": 400, "height": 600, "lines": lines2,
+         "ink_boxes": [ln["box"] for ln in lines2], "vision_ocr": True},
+    ]}
+    reason = "Second feature missing; only one feature given."
+    verdicts = [{"question_number": 5, "marks_awarded": 1.0, "max_marks": 3.0, "annotations": [
+        {"style": "score", "target": "p1_r34", "page_id": "p1", "text": "1/3",
+         "position": "right_margin_same_line"},
+        {"style": "margin_note", "target": "p1_r34", "page_id": "p1", "text": reason,
+         "position": "below_line_left"},
+    ]}]
+    written, real = _written_text([])
+    try:
+        annotator.build_annotated_pdf(pdf, layout, verdicts)
+    finally:
+        annotator._pen_text = real
+    everything = " ".join(t for ts in written.values() for t in ts)
+    check("the reason is on the copy, labelled with its question",
+          f"Q5: {reason}" in " ".join(written.get(1, [])) or f"Q5: {reason}" in everything,
+          str(written))
+    check("it is not cut short anywhere",
+          not any(t.strip() and t.strip() != reason and reason.startswith(t.strip())
+                  for ts in written.values() for t in ts), str(written))
+
+
+def test_free_band_can_refuse_to_cut() -> None:
+    print("\n_write_in_free_band(allow_cut=False) — None rather than half a remark")
+    from ai_service.app.services.copy_check.annotator import _write_in_free_band, _pen
+
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    # Written lines every 30pt: gaps a single short line fits, nothing more.
+    rows = [fitz.Rect(40, 20 + i * 30, 360, 38 + i * 30) for i in range(19)]
+    note = ("Structure of the atmosphere explained but the thermosphere and exosphere "
+            "layers are missing entirely")
+    fontname, size, font = _pen(page)
+    try:
+        got = _write_in_free_band(page, rows[5], note, rows, page.rect, fontname, 14.0, font,
+                                  allow_cut=False)
+        check("refuses instead of shortening", got is None, str(got))
+    finally:
+        doc.close()
+
+
 def test_annotation_rescued_by_anchor_text() -> None:
     print("\nvalidator — a wrong line_id must not silently bin the mark")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -691,6 +773,8 @@ def test_annotation_rescued_by_anchor_text() -> None:
 if __name__ == "__main__":
     test_shadowed_writing_is_paper()
     test_marks_grow_with_the_page()
+    test_deduction_reason_is_written_whole()
+    test_free_band_can_refuse_to_cut()
     test_bbox_anchors_and_placement_names()
     test_mark_figure_never_hides_in_a_comment()
     test_paper_boundary_finds_the_page()

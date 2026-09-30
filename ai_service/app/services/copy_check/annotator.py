@@ -1826,7 +1826,23 @@ def _paper_quad(rgb: Any) -> Any:
     return out
 
 
-def _paper_rows(page: Any) -> Optional[dict]:
+def _writing_hull(writing: list, sx: float, sy: float, H: int, W: int) -> Any:
+    """Raster mask (H x W) of the convex hull around the student's rows."""
+    import numpy as np
+    import cv2
+
+    pts = []
+    for r in writing:
+        for x, y in ((r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)):
+            pts.append([min(W - 1, max(0, int(x / sx))), min(H - 1, max(0, int(y / sy)))])
+    out = np.zeros((H, W), np.uint8)
+    if len(pts) >= 3:
+        hull = cv2.convexHull(np.array(pts, np.int32).reshape(-1, 1, 2))
+        cv2.fillConvexPoly(out, hull, 1)
+    return out.astype(bool)
+
+
+def _paper_rows(page: Any, writing: Optional[list] = None) -> Optional[dict]:
     """The notebook page's own boundary for this page.
 
     Returns the paper MASK plus, for callers that still want them, the
@@ -1834,6 +1850,13 @@ def _paper_rows(page: Any) -> Optional[dict]:
     horizontal interval per row, which cannot describe a page photographed at
     an angle - at the top and bottom of a tilted sheet the interval reaches
     past the corners and over the bedsheet beside them.
+
+    `writing` - the student's rows in points, as confirmed by the vision read -
+    is paper by definition, and so is everything between them. The photo rule
+    alone reads a strong shadow's edge as the sheet's edge: on 2026-09-30 it
+    called 40% of a lit, fully written page "off paper", and every deduction
+    note aimed there (Q23, Q27, Q37 and four "Correct: ..." notes on one copy)
+    was dropped.
     """
     try:
         import numpy as np
@@ -1843,10 +1866,12 @@ def _paper_rows(page: Any) -> Optional[dict]:
             pix.height, pix.width, pix.n)[:, :, :3].astype(int)
         H, W = a.shape[:2]
         mask = _paper_quad(a)
+        sx, sy = page.rect.width / W, page.rect.height / H
+        if writing:
+            mask = mask | _writing_hull(writing, sx, sy, H, W)
         if not mask.any():
             return None
 
-        sx, sy = page.rect.width / W, page.rect.height / H
         lo = np.full(H, -1.0); hi = np.full(H, -1.0)
         for r in range(H):
             cols = np.nonzero(mask[r])[0]
@@ -3413,6 +3438,7 @@ def build_annotated_pdf(
     # the image border. Everything is now kept inside the written area.
     paper: dict[str, Any] = {}
     occupied: dict[str, list[Any]] = {}
+    writing: dict[str, list[Any]] = {}
     for lpage in layout_map.get("pages") or []:
         pid = lpage.get("page_id")
         page_no = order.get(pid)
@@ -3444,6 +3470,16 @@ def build_annotated_pdf(
                 continue        # a ruled line, not writing
             boxes.append(r)
         occupied[pid] = boxes
+        # The rows the vision read confirmed hold writing - only those: an
+        # OCR box it blanked may be a pattern on the bedsheet, and a page it
+        # never read keeps raw detections that are just as unverified.
+        if lpage.get("vision_ocr"):
+            writing[pid] = [
+                fitz.Rect(float(b[0]) * psx, float(b[1]) * psy,
+                          (float(b[0]) + float(b[2])) * psx, (float(b[1]) + float(b[3])) * psy)
+                for b in (ln.get("box") for ln in (lpage.get("lines") or []))
+                if b and len(b) == 4
+            ]
         # A detected sheet is far better than the ink's bounding box: the box
         # excludes the paper's own margins, which is where a teacher writes,
         # while the sheet excludes the desk and the scanner's white padding,
@@ -3493,7 +3529,7 @@ def build_annotated_pdf(
     for pid, page_no in (order or {}).items():
         if 0 <= page_no < doc.page_count:
             ink_maps[pid] = _ink_map(doc[page_no], paper.get(pid))
-            paper_rows[pid] = _paper_rows(doc[page_no])
+            paper_rows[pid] = _paper_rows(doc[page_no], writing.get(pid))
 
     drawn = 0
     # question_number -> (page_no, y) of its lowest annotation, so the circled

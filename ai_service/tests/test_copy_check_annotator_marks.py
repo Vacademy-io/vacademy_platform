@@ -547,6 +547,44 @@ def test_paper_boundary_finds_the_page() -> None:
     doc.close()
 
 
+def test_shadowed_writing_is_paper() -> None:
+    print("\n_paper_rows — a shadow across the page is not the edge of the page")
+    from ai_service.app.services.copy_check.annotator import _paper_rows, _on_paper
+
+    # 2026-09-30: a phone photo with a hand's shadow across it. The photo rule
+    # read the shadow's edge as the sheet's edge, called 40% of a fully written
+    # page "off paper", and every deduction note aimed there was dropped.
+    # A dull, near-grey cloth like the real one - the case where lightness and
+    # chroma cannot tell shadowed paper from background.
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    cloth = (0.38, 0.36, 0.37)
+    page.draw_rect(page.rect, color=cloth, fill=cloth)
+    sheet = [fitz.Point(62, 84), fitz.Point(338, 62), fitz.Point(348, 520), fitz.Point(72, 542)]
+    page.draw_polyline(sheet + [sheet[0]], color=(1, 1, 1), fill=(0.80, 0.80, 0.80))
+    shadow = [fitz.Point(62, 84), fitz.Point(190, 74), fitz.Point(140, 537), fitz.Point(72, 542)]
+    page.draw_polyline(shadow + [shadow[0]], color=(0.52, 0.52, 0.52), fill=(0.52, 0.52, 0.52))
+    rows = []
+    for i in range(8):
+        y = 120 + i * 45
+        page.insert_text(fitz.Point(95, y - 6), "the student wrote this line", fontsize=11)
+        rows.append(fitz.Rect(92, y - 17, 318, y - 2))
+    gap_in_shadow = fitz.Rect(100, 280, 180, 300)      # blank paper between two rows
+    try:
+        check("the photo rule alone loses the shadowed paper (the bug)",
+              not _on_paper(_paper_rows(page), gap_in_shadow), "fixture no longer reproduces it")
+        paper = _paper_rows(page, rows)
+        check("with the student's rows, the shadowed paper is paper",
+              _on_paper(paper, gap_in_shadow), "still refused")
+        check("the lit paper is still paper", _on_paper(paper, fitz.Rect(250, 280, 300, 300)))
+        check("the cloth beside the sheet is still not paper",
+              not _on_paper(paper, fitz.Rect(10, 290, 40, 310)), "accepted the cloth")
+        check("the cloth below the sheet is still not paper",
+              not _on_paper(paper, fitz.Rect(180, 560, 220, 590)), "accepted the cloth")
+    finally:
+        doc.close()
+
+
 def test_annotation_rescued_by_anchor_text() -> None:
     print("\nvalidator — a wrong line_id must not silently bin the mark")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -610,6 +648,7 @@ def test_annotation_rescued_by_anchor_text() -> None:
 
 
 if __name__ == "__main__":
+    test_shadowed_writing_is_paper()
     test_bbox_anchors_and_placement_names()
     test_mark_figure_never_hides_in_a_comment()
     test_paper_boundary_finds_the_page()

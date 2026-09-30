@@ -206,10 +206,20 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
           AND (:noSourceFilter = true OR up.source IN (:sources))
           AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
-          AND (:noPackageSessionFilter = true OR EXISTS (
-                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
-                WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
-                  AND psli.package_session_id IN (:packageSessionIds)))
+          AND (:noPackageSessionFilter = true
+                OR EXISTS (
+                      SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
+                      WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
+                        AND psli.package_session_id IN (:packageSessionIds))
+                -- An invite reaches a batch through the payment-option mapping, but a learner
+                -- reaches it by being enrolled, and the two do not always agree: bulk-loaded
+                -- institutes carry the enrolment without ever writing the mapping, which left
+                -- this filter matching nothing at all for them. Reading the enrolment as well
+                -- costs a normal institute nothing -- it already matches on the line above.
+                OR EXISTS (
+                      SELECT 1 FROM student_session_institute_group_mapping psg
+                      WHERE psg.user_plan_id = up.id
+                        AND psg.package_session_id IN (:packageSessionIds)))
           AND (:userId IS NULL OR up.user_id = :userId)
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
@@ -278,6 +288,18 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         JOIN invoice i ON iplm.invoice_id = i.id
         WHERE :includeInvoiceLogs = true
           AND :noPaymentPlanFilter = true
+          -- Same batch rule as the arm above. Without it a payment that happens to carry an
+          -- invoice walked straight past the batch filter, so filtering by batch quietly showed
+          -- rows from every other batch as well.
+          AND (:noPackageSessionFilter = true
+                OR EXISTS (
+                      SELECT 1 FROM package_session_learner_invitation_to_payment_option psli2
+                      WHERE psli2.enroll_invite_id = iei.id AND psli2.status = 'ACTIVE'
+                        AND psli2.package_session_id IN (:packageSessionIds))
+                OR EXISTS (
+                      SELECT 1 FROM student_session_institute_group_mapping psg2
+                      WHERE psg2.user_plan_id = iup.id
+                        AND psg2.package_session_id IN (:packageSessionIds)))
           AND i.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
@@ -303,6 +325,9 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         FROM invoice i
         WHERE :includeUnpaidInvoices = true
           AND :noPaymentPlanFilter = true
+          -- An invoice raised on its own belongs to no batch, so a batch filter cannot vouch
+          -- for it; it drops out, exactly as it does under the plan filter.
+          AND :noPackageSessionFilter = true
           AND i.institute_id = :instituteId
           AND i.created_at >= :startDate
           AND i.created_at <= :endDate

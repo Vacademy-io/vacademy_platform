@@ -76,6 +76,7 @@ const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
             { value: 'GUARDIAN_LINK', label: 'Guardian link' },
             { value: 'INSTITUTE_SETTING', label: 'Settings' },
             { value: 'LEARNER_BADGE', label: 'Learner badge' },
+            { value: 'STUDENT_REPORT', label: 'Progress report' },
             // Reported by assessment_service through the internal audit endpoint,
             // not by an @Auditable annotation, so the contract test does not see it.
             { value: 'ASSESSMENT', label: 'Assessment' },

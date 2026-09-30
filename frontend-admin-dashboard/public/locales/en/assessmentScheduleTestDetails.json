@@ -21,6 +21,41 @@
     },
     "joinLink": {
         "label": "Join Link:",
-        "privateWarning": "This link only works while the assessment is Public. Set it to Public in Step 3 before sharing."
+        "privateWarning": "This link only works while the assessment is Public. Set it to Public in Step 3 before sharing.",
+        "copy": "Copy link",
+        "copied": "Link copied",
+        "qr": "QR code",
+        "downloadQr": "Download QR"
+    },
+    "types": {
+        "examination": "Exam",
+        "mock": "Mock test",
+        "practice": "Practice",
+        "survey": "Survey",
+        "offline": "Offline exam",
+        "assignment": "Assignment"
+    },
+    "status": {
+        "live": "Live",
+        "upcoming": "Upcoming",
+        "closed": "Closed",
+        "draft": "Draft"
+    },
+    "meta": {
+        "starts": "Starts",
+        "ends": "Ends",
+        "duration": "Duration",
+        "participants": "Participants",
+        "evaluation": "Evaluation",
+        "evaluationAuto": "Automatic",
+        "evaluationManual": "Manual",
+        "joinLink": "Join link",
+        "createdOn": "Created {{date}}"
+    },
+    "batches": {
+        "less": "Show less"
+    },
+    "actions": {
+        "viewDetails": "View details"
     }
 }

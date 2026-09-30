@@ -37,6 +37,41 @@
     },
     "joinLink": {
         "label": "رابط الانضمام:",
-        "privateWarning": "لا يعمل هذا الرابط إلا عندما يكون التقييم Public. اضبطه على Public في الخطوة 3 قبل المشاركة."
+        "privateWarning": "لا يعمل هذا الرابط إلا عندما يكون التقييم Public. اضبطه على Public في الخطوة 3 قبل المشاركة.",
+        "copy": "نسخ الرابط",
+        "copied": "تم نسخ الرابط",
+        "qr": "رمز QR",
+        "downloadQr": "تنزيل رمز QR"
+    },
+    "types": {
+        "examination": "اختبار",
+        "mock": "اختبار تجريبي",
+        "practice": "تدريب",
+        "survey": "استبيان",
+        "offline": "اختبار ورقي",
+        "assignment": "واجب"
+    },
+    "status": {
+        "live": "مباشر",
+        "upcoming": "قادم",
+        "closed": "مغلق",
+        "draft": "مسودة"
+    },
+    "meta": {
+        "starts": "يبدأ",
+        "ends": "ينتهي",
+        "duration": "المدة",
+        "participants": "المشاركون",
+        "evaluation": "التقييم",
+        "evaluationAuto": "تلقائي",
+        "evaluationManual": "يدوي",
+        "joinLink": "رابط الانضمام",
+        "createdOn": "أُنشئ في {{date}}"
+    },
+    "batches": {
+        "less": "عرض أقل"
+    },
+    "actions": {
+        "viewDetails": "عرض التفاصيل"
     }
 }

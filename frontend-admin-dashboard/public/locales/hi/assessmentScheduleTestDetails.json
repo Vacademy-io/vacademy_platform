@@ -21,6 +21,41 @@
     },
     "joinLink": {
         "label": "जॉइन लिंक:",
-        "privateWarning": "यह लिंक तभी काम करता है जब असेसमेंट Public हो। शेयर करने से पहले Step 3 में इसे Public करें।"
+        "privateWarning": "यह लिंक तभी काम करता है जब असेसमेंट Public हो। शेयर करने से पहले Step 3 में इसे Public करें।",
+        "copy": "लिंक कॉपी करें",
+        "copied": "लिंक कॉपी हो गया",
+        "qr": "QR कोड",
+        "downloadQr": "QR डाउनलोड करें"
+    },
+    "types": {
+        "examination": "परीक्षा",
+        "mock": "मॉक टेस्ट",
+        "practice": "अभ्यास",
+        "survey": "सर्वे",
+        "offline": "ऑफ़लाइन परीक्षा",
+        "assignment": "असाइनमेंट"
+    },
+    "status": {
+        "live": "लाइव",
+        "upcoming": "आगामी",
+        "closed": "बंद",
+        "draft": "ड्राफ़्ट"
+    },
+    "meta": {
+        "starts": "शुरू",
+        "ends": "समाप्त",
+        "duration": "अवधि",
+        "participants": "प्रतिभागी",
+        "evaluation": "मूल्यांकन",
+        "evaluationAuto": "स्वचालित",
+        "evaluationManual": "मैनुअल",
+        "joinLink": "जॉइन लिंक",
+        "createdOn": "बनाया गया {{date}}"
+    },
+    "batches": {
+        "less": "कम दिखाएँ"
+    },
+    "actions": {
+        "viewDetails": "विवरण देखें"
     }
 }

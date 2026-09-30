@@ -111,7 +111,16 @@ public class StudentReportPdfService {
 
     private byte[] renderReportToPdf(StudentAnalysisProcess process) {
         String html = buildReportHtml(process);
-        return generatePdfFromHtml(html);
+        try {
+            return generatePdfFromHtml(html);
+        } catch (Throwable t) {
+            // Chart labels are SVG <text>, which Batik draws via java.awt fonts; a host without
+            // fonts/fontconfig fails the whole render ("Fontconfig head is null"). Retry without the
+            // SVG text so the parent still gets a PDF (charts unlabelled) instead of an error.
+            log.error("[PDF] Render failed for processId={} ({}); retrying without SVG chart text",
+                    process.getId(), t.toString());
+            return generatePdfFromHtml(html.replaceAll("(?s)<text\\b[^>]*>.*?</text>", ""));
+        }
     }
 
     /**

@@ -20,6 +20,7 @@ import type {
     V2Misconception,
     V2Assessment,
 } from '@/types/student-analysis';
+import themeData from '@/constants/themes/theme.json';
 import './report-card.css';
 
 const PLACEHOLDER_SUBJECTS = new Set([
@@ -33,6 +34,17 @@ const isRealSubject = (s?: string | null) => {
 const BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const round = (n?: number | null) => (n == null ? null : Math.round(n));
+
+// institute_theme_code is a hex (sometimes without '#') or a preset code ("primary" = default
+// orange) — CSS/SVG can't paint a preset code, so the accent resolved to nothing and the charts lost
+// their marks. Map it through the app's own theme table.
+const resolveThemeColor = (code?: string | null): string | undefined => {
+    const c = code?.trim();
+    if (!c) return undefined;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return c;
+    if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return `#${c}`;
+    return themeData.themes.find((t) => t.code === c.toLowerCase())?.colors['primary-500'];
+};
 
 // "default 12th Commerce (default)" → "12th Commerce": "default" is the placeholder level/session.
 const cleanBatchLabel = (s?: string | null) =>
@@ -353,7 +365,7 @@ function GradeMix({ items }: { items: V2Assessment[] }) {
 export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportData; fallbackLogoUrl?: string }) {
     const { t } = useTranslation('manageStudentsReportCard');
     const { meta, student, institute, period, overview } = data;
-    const accent = institute?.theme_color || '#2E7D6B'; // design-lint-ignore: institute-supplied theme colour
+    const accent = resolveThemeColor(institute?.theme_color) || '#2E7D6B'; // design-lint-ignore: institute-supplied theme colour
     // Prefer the logo baked into the report; fall back to the app's institute-settings logo.
     const logoUrl = institute?.logo_url || fallbackLogoUrl || '';
     const status = statusPalette(overview?.overall_status);

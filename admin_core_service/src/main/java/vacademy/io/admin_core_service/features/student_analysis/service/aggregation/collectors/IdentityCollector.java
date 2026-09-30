@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.ThemeColorResolver;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.InstituteSection;
@@ -141,8 +142,9 @@ public class IdentityCollector {
                         }
                     }
                 }
-                // instituteThemeCode used as brand color (may be a hex value)
-                builder.themeColor(inst.getInstituteThemeCode());
+                // instituteThemeCode is a hex value or a preset code ("primary", "blue", …) — resolve
+                // it to a paintable colour; null lets the renderers use their default accent.
+                builder.themeColor(ThemeColorResolver.resolve(inst.getInstituteThemeCode()));
             }
         } catch (Exception e) {
             log.warn("[IdentityCollector] Could not fetch institute metadata for id={}: {}", instituteId, e.getMessage());

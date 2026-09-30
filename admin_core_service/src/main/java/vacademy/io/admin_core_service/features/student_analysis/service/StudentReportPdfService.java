@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAn
 import java.util.List;
 import java.util.Locale;
 import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.ThemeColorResolver;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.media.dto.InMemoryMultipartFile;
 
@@ -138,11 +139,11 @@ public class StudentReportPdfService {
     // -----------------------------------------------------------------------
 
     String buildV2Html(ComprehensiveStudentReport r, StudentAnalysisProcess process) {
-        // Resolve institute accent colour (falls back to Vacademy blue)
-        // theme_color is often "" rather than null — an empty accent emits `background:;`, which
-        // openhtmltopdf drops, leaving neutral progress bars and the section rules invisible.
-        String accent = (r.getInstitute() != null && StringUtils.hasText(r.getInstitute().getThemeColor()))
-                ? r.getInstitute().getThemeColor() : "#2E7D6B"; // same default as the web report card
+        // Institute accent. Older reports stored the raw theme code — "" (emitted `background:;`,
+        // which openhtmltopdf drops) or a preset like "primary" (invalid in CSS/SVG, so charts lost
+        // their marks) — so resolve it here too, falling back to the web card's default.
+        String resolvedAccent = r.getInstitute() != null ? ThemeColorResolver.resolve(r.getInstitute().getThemeColor()) : null;
+        String accent = resolvedAccent != null ? resolvedAccent : "#2E7D6B"; // same default as the web report card
 
         StringBuilder sb = new StringBuilder();
 
@@ -450,7 +451,7 @@ public class StudentReportPdfService {
             if (ac.getSubjectPerformance() != null && !ac.getSubjectPerformance().isEmpty()) {
                 sb.append(chartHeader("By subject", 14,
                         legendSquare(accent), "At or above class",
-                        legendSquare("#C6803A"), "Below class",
+                        legendSquare(belowClassColor(accent)), "Below class",
                         legendTick(), "Class average"));
                 sb.append(svgSubjectBars(ac.getSubjectPerformance(), accent));
             }
@@ -877,7 +878,7 @@ public class StudentReportPdfService {
             s.append(svgText(0, top + 9, subject, "start", 10.5, INK, false));
             s.append(barPath(labelW, top, barW, 10, TRACK));
             boolean below = cls != null && pct < cls;
-            s.append(barPath(labelW, top, barW * Math.min(100, pct) / 100.0, 10, below ? "#C6803A" : accent));
+            s.append(barPath(labelW, top, barW * Math.min(100, pct) / 100.0, 10, below ? belowClassColor(accent) : accent));
             if (cls != null) {
                 double cx = labelW + barW * Math.min(100, cls) / 100.0;
                 s.append(svgLine(cx, top - 3, cx, top + 13, INK, 2));
@@ -957,6 +958,23 @@ public class StudentReportPdfService {
     }
 
     /** Chart title on the left, legend (swatch, label, swatch, label, …) right-aligned on the same row. */
+    /**
+     * Colour for a below-class subject bar. The warm "attention" amber is indistinguishable from a
+     * warm institute accent (the default "primary" theme is orange), so warm accents get slate.
+     */
+    private static String belowClassColor(String accent) {
+        try {
+            java.awt.Color c = java.awt.Color.decode(accent.length() == 4
+                    ? "#" + accent.charAt(1) + accent.charAt(1) + accent.charAt(2) + accent.charAt(2) + accent.charAt(3) + accent.charAt(3)
+                    : accent.substring(0, 7));
+            float[] hsb = java.awt.Color.RGBtoHSB(c.getRed(), c.getGreen(), c.getBlue(), null);
+            boolean warm = hsb[1] > 0.25f && (hsb[0] < 0.17f || hsb[0] > 0.9f);
+            return warm ? "#546E7A" : "#C6803A";
+        } catch (Exception e) {
+            return "#C6803A";
+        }
+    }
+
     private String chartHeader(String title, int marginTop, String... legend) {
         StringBuilder h = new StringBuilder("<table class='ch'")
                 .append(marginTop > 0 ? " style='margin-top:" + marginTop + "px'" : "")

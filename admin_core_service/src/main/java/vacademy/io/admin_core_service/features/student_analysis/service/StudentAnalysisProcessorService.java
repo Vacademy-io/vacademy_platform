@@ -72,7 +72,7 @@ public class StudentAnalysisProcessorService {
          * Each DB write is handled by {@link StudentAnalysisPersistenceService}.
          */
         @Async
-        public void processStudentAnalysis(String processId) {
+        public void processStudentAnalysis(String processId, String actorUserId) {
                 log.info("[Student-Analysis-Processor] Starting async processing for process ID: {}", processId);
 
                 // Commit PROCESSING immediately so pollers see it before the long work starts.
@@ -82,7 +82,7 @@ public class StudentAnalysisProcessorService {
                         boolean isV2 = "v2".equalsIgnoreCase(process.getReportVersion());
 
                         if (isV2) {
-                                processV2(process);
+                                processV2(process, actorUserId);
                         } else {
                                 processV1(process);
                         }
@@ -127,7 +127,7 @@ public class StudentAnalysisProcessorService {
         }
 
         // ── v2 path (new comprehensive report) ───────────────────────────────────
-        private void processV2(StudentAnalysisProcess process) throws Exception {
+        private void processV2(StudentAnalysisProcess process, String actorUserId) throws Exception {
                 log.info("[Student-Analysis-Processor] [v2] Collecting comprehensive data");
 
                 // Step 1: Layer-1 deterministic aggregation — only the admin-selected modules are queried
@@ -150,13 +150,17 @@ public class StudentAnalysisProcessorService {
                 // Done before narration so the LLM also sees the trend context.
                 enrichTrends(report, process);
 
+                // Every AI charge below is attributed to this report, its learner and the admin who ran it.
+                ComprehensiveReportLLMService.ChargeContext charge = new ComprehensiveReportLLMService.ChargeContext(
+                                process.getInstituteId(), process.getUserId(), actorUserId, process.getId());
+
                 // Step 2: Layer-2 AI narrative (best-effort; failure → report without ai_insights)
                 log.info("[Student-Analysis-Processor] [v2] Generating AI narrative");
                 try {
                         // Must exceed the per-request timeout in ComprehensiveReportLLMService
                         // (RESPONSE_TIMEOUT_SECONDS) so a slow free-tier model gets one full attempt
                         // instead of being cut off here at the blocking read. Background @Async job.
-                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, process.getUserId(), process.getInstituteId())
+                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, charge)
                                         .blockOptional(Duration.ofSeconds(180))
                                         .orElse(null);
 
@@ -212,7 +216,7 @@ public class StudentAnalysisProcessorService {
                 // here we try to upgrade it to LLM-clustered subjects and, on ANY failure or empty
                 // result, silently keep the deterministic grouping already in place — this codebase
                 // has learned the LLM can be unreliable, so the fallback is mandatory, not optional.
-                clusterSubjectMarksSafe(report, process.getUserId(), process.getInstituteId());
+                clusterSubjectMarksSafe(report, charge);
 
                 // Step 3: Persist completed report + mark COMPLETED atomically
                 String reportJson = objectMapper.writeValueAsString(report);
@@ -381,12 +385,12 @@ public class StudentAnalysisProcessorService {
                                                 (int) Math.round(report.getCourseProgress().getOverallCompletionPercentage()));
                         }
 
+                        resolveStrengthAreaOverlap(report, topicScores);
+
                         // ── Strengths (>=60) / areas-to-improve (<60): single split, so every topic is
                         // classified and there is never a "gap band". Only fill what the LLM left blank.
                         if (report.getStrengths() == null || report.getStrengths().isEmpty()) {
                                 java.util.List<TopicConfidence> strengths = topicScores.entrySet().stream()
-                        resolveStrengthAreaOverlap(report, topicScores);
-
                                                 .filter(e -> e.getValue() >= 60)
                                                 .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
                                                 .limit(6)
@@ -527,7 +531,8 @@ public class StudentAnalysisProcessorService {
          * subject domains. On any exception, timeout, or empty LLM result, the deterministic
          * grouping already on the report is left untouched — never fails report generation.
          */
-        private void clusterSubjectMarksSafe(ComprehensiveStudentReport report, String userId, String instituteId) {
+        private void clusterSubjectMarksSafe(ComprehensiveStudentReport report,
+                        ComprehensiveReportLLMService.ChargeContext charge) {
                 try {
                         var subjectMarks = report.getSubjectMarks();
                         if (subjectMarks == null || !subjectMarks.isAvailable()
@@ -535,7 +540,7 @@ public class StudentAnalysisProcessorService {
                                 return;
                         }
 
-                        var clustered = comprehensiveLLMService.clusterSubjectMarks(subjectMarks.getItems(), userId, instituteId)
+                        var clustered = comprehensiveLLMService.clusterSubjectMarks(subjectMarks.getItems(), charge)
                                         .blockOptional(Duration.ofSeconds(60))
                                         .orElse(null);
 
@@ -630,11 +635,6 @@ public class StudentAnalysisProcessorService {
                 return out.size() > 4 ? out.subList(0, 4) : out;
         }
 
-        private static TopicConfidence topic(String name, int confidence) {
-                return TopicConfidence.builder().topic(name).confidence(confidence).build();
-        }
-
-        private static AiInsightsSection.RecommendationItem rec(String priority, String area, String suggestion) {
         /**
          * A topic can't be both a strength and an area to improve, but the model sometimes rates
          * one good test and one bad test of the same subject separately (Accountancy 72 in
@@ -682,6 +682,11 @@ public class StudentAnalysisProcessorService {
                 return v == null ? 0 : v;
         }
 
+        private static TopicConfidence topic(String name, int confidence) {
+                return TopicConfidence.builder().topic(name).confidence(confidence).build();
+        }
+
+        private static AiInsightsSection.RecommendationItem rec(String priority, String area, String suggestion) {
                 return AiInsightsSection.RecommendationItem.builder()
                                 .priority(priority).area(area).suggestion(suggestion).build();
         }

@@ -106,8 +106,9 @@ public class StudentAnalysisController {
 
                         process = processRepository.save(process);
 
-                        // Start async processing
-                        processorService.processStudentAnalysis(process.getId());
+                        // Start async processing; the admin's id rides along so every AI credit charge
+                        // for this report is attributed to them.
+                        processorService.processStudentAnalysis(process.getId(), userDetails.getUserId());
 
                         return ResponseEntity.ok(StudentAnalysisInitiateResponse.builder()
                                         .processId(process.getId())

@@ -82,8 +82,8 @@ public class ComprehensiveReportLLMService {
      * Returns {@code null} on complete failure so the processor can still persist
      * the deterministic section without blocking.
      */
-    public Mono<AiInsightsSection> narrate(ComprehensiveStudentReport facts, String userId, String instituteId) {
-        log.info("[ComprehensiveReportLLM] Generating ai_insights for userId={}", userId);
+    public Mono<AiInsightsSection> narrate(ComprehensiveStudentReport facts, ChargeContext ctx) {
+        log.info("[ComprehensiveReportLLM] Generating ai_insights for userId={}", ctx.studentUserId());
 
         // §13.2 rule: try dedicated key first, fall back to "analytics" read-only
         List<String> modelPriority = aiModelRegistryService.getModelPriority("student_report");
@@ -97,7 +97,7 @@ public class ComprehensiveReportLLMService {
         }
 
         String prompt = buildPrompt(facts);
-        return tryModelsWithFallback(prompt, modelPriority, 0, userId, instituteId);
+        return tryModelsWithFallback(prompt, modelPriority, 0, ctx);
     }
 
     /**
@@ -111,11 +111,11 @@ public class ComprehensiveReportLLMService {
      * Percentage is always recomputed in Java from the returned marks, never trusted from the LLM.
      */
     public Mono<List<SubjectMarksSection.SubjectMarks>> clusterSubjectMarks(
-            List<SubjectMarksSection.GradedItem> items, String userId, String instituteId) {
+            List<SubjectMarksSection.GradedItem> items, ChargeContext ctx) {
         if (items == null || items.isEmpty()) {
             return Mono.just(List.of());
         }
-        log.info("[ComprehensiveReportLLM] Clustering {} graded items into subjects for userId={}", items.size(), userId);
+        log.info("[ComprehensiveReportLLM] Clustering {} graded items into subjects for userId={}", items.size(), ctx.studentUserId());
 
         List<String> modelPriority = aiModelRegistryService.getModelPriority("student_report");
         if (modelPriority == null || modelPriority.isEmpty()) {
@@ -127,28 +127,28 @@ public class ComprehensiveReportLLMService {
         }
 
         String prompt = buildSubjectMarksPrompt(items);
-        return trySubjectMarksModelsWithFallback(prompt, modelPriority, 0, userId, instituteId);
+        return trySubjectMarksModelsWithFallback(prompt, modelPriority, 0, ctx);
     }
 
     private Mono<List<SubjectMarksSection.SubjectMarks>> trySubjectMarksModelsWithFallback(
-            String prompt, List<String> models, int idx, String userId, String instituteId) {
+            String prompt, List<String> models, int idx, ChargeContext ctx) {
         if (idx >= models.size()) {
             return Mono.error(new RuntimeException("All LLM models failed for subject-marks clustering. Tried: " + models));
         }
         String model = models.get(idx);
-        return generateSubjectMarksWithModel(prompt, model, userId, instituteId)
+        return generateSubjectMarksWithModel(prompt, model, ctx)
                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                         .doBeforeRetry(s -> log.warn("[ComprehensiveReportLLM] Subject-marks retry {}/{} for model={}",
                                 s.totalRetries() + 1, MAX_RETRIES_PER_MODEL, model))
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                 .onErrorResume(err -> {
                     log.error("[ComprehensiveReportLLM] Subject-marks model {} failed: {}. Trying next.", model, err.getMessage());
-                    return trySubjectMarksModelsWithFallback(prompt, models, idx + 1, userId, instituteId);
+                    return trySubjectMarksModelsWithFallback(prompt, models, idx + 1, ctx);
                 });
     }
 
     private Mono<List<SubjectMarksSection.SubjectMarks>> generateSubjectMarksWithModel(
-            String prompt, String model, String userId, String instituteId) {
+            String prompt, String model, ChargeContext ctx) {
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "messages", List.of(
@@ -166,7 +166,7 @@ public class ComprehensiveReportLLMService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                .doOnNext(response -> logTokenUsage(response, model, userId, instituteId))
+                .doOnNext(response -> logTokenUsage(response, model, ctx, "subject clustering"))
                 .flatMap(response -> parseSubjectMarks(response, model));
     }
 
@@ -257,26 +257,33 @@ public class ComprehensiveReportLLMService {
         }
     }
 
+    /**
+     * Who a report's AI spend is charged to — carried to every model call so each
+     * credit_transactions row names the institute, the learner the report is about, the admin
+     * who generated it (null for a system-run report) and the report itself (process id).
+     */
+    public record ChargeContext(String instituteId, String studentUserId, String actorUserId, String processId) {}
+
     // ── model retry / fallback ────────────────────────────────────────────────
 
     private Mono<AiInsightsSection> tryModelsWithFallback(
-            String prompt, List<String> models, int idx, String userId, String instituteId) {
+            String prompt, List<String> models, int idx, ChargeContext ctx) {
         if (idx >= models.size()) {
             return Mono.error(new RuntimeException("All LLM models failed for student_report. Tried: " + models));
         }
         String model = models.get(idx);
-        return generateWithModel(prompt, model, userId, instituteId)
+        return generateWithModel(prompt, model, ctx)
                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                         .doBeforeRetry(s -> log.warn("[ComprehensiveReportLLM] Retry {}/{} for model={}",
                                 s.totalRetries() + 1, MAX_RETRIES_PER_MODEL, model))
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                 .onErrorResume(err -> {
                     log.error("[ComprehensiveReportLLM] Model {} failed: {}. Trying next.", model, err.getMessage());
-                    return tryModelsWithFallback(prompt, models, idx + 1, userId, instituteId);
+                    return tryModelsWithFallback(prompt, models, idx + 1, ctx);
                 });
     }
 
-    private Mono<AiInsightsSection> generateWithModel(String prompt, String model, String userId, String instituteId) {
+    private Mono<AiInsightsSection> generateWithModel(String prompt, String model, ChargeContext ctx) {
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "messages", List.of(
@@ -294,11 +301,11 @@ public class ComprehensiveReportLLMService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                .doOnNext(response -> logTokenUsage(response, model, userId, instituteId))
+                .doOnNext(response -> logTokenUsage(response, model, ctx, "narrative"))
                 .flatMap(response -> parseInsights(response, model));
     }
 
-    private void logTokenUsage(String body, String model, String userId, String instituteId) {
+    private void logTokenUsage(String body, String model, ChargeContext ctx, String purpose) {
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode usage = root.get("usage");
@@ -306,12 +313,19 @@ public class ComprehensiveReportLLMService {
                 int prompt = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
                 int completion = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : 0;
                 UUID userUuid = null;
-                try { if (userId != null) userUuid = UUID.fromString(userId); } catch (IllegalArgumentException ignored) {}
+                try { if (ctx.studentUserId() != null) userUuid = UUID.fromString(ctx.studentUserId()); } catch (IllegalArgumentException ignored) {}
                 UUID instituteUuid = null;
-                try { if (instituteId != null) instituteUuid = UUID.fromString(instituteId); } catch (IllegalArgumentException ignored) {}
+                try { if (ctx.instituteId() != null) instituteUuid = UUID.fromString(ctx.instituteId()); } catch (IllegalArgumentException ignored) {}
                 aiTokenUsageService.recordUsageAsync(ApiProvider.OPENAI, RequestType.ANALYTICS, model, prompt, completion, instituteUuid, userUuid);
-                if (instituteId != null && !instituteId.isBlank()) {
-                    creditClient.deductCreditsAsync(instituteId, "analytics", model, prompt, completion, null);
+                if (ctx.instituteId() != null && !ctx.instituteId().isBlank()) {
+                    // Attributed charge: the ledger row names the admin who ran the report (user_id),
+                    // the learner it is about (subject_user_id) and the report (batch_id = process id),
+                    // so one report's cost is SUM(amount) WHERE batch_id = <process id>. The plain
+                    // deduct carried none of that and, without allow_negative, a low balance could
+                    // silently drop the charge for tokens already spent at the provider.
+                    creditClient.deductAttributedTokenUsageAsync(ctx.instituteId(), "analytics", model, prompt, completion,
+                            null, ctx.actorUserId(), ctx.actorUserId() != null ? "ADMIN" : "SYSTEM",
+                            ctx.studentUserId(), "Student progress report (" + purpose + ")", ctx.processId());
                 }
             }
         } catch (Exception e) {
@@ -405,6 +419,9 @@ public class ComprehensiveReportLLMService {
                        The map value is a 0-100 confidence: use the topic's own accuracy / completion_percentage / score_percentage
                        when available, otherwise your best qualitative rating consistent with the facts.
                        Classification: strength if the value is >= 60, weakness/area-to-improve if < 60.
+                       Each subject/topic goes in EXACTLY ONE of the two maps, never both — rate it on its overall
+                       score (e.g. academics.subject_performance / subject_marks percentage), not on one good or bad test.
+                       Keys are subject/topic names, never individual assessment titles.
                        Aim for 3-6 strengths and 2-6 areas to improve whenever the data supports it, and ALWAYS return at
                        least one of each when any subject/topic data exists. Use the real subject/topic names from the facts
                        (never invent topics that aren't present).
@@ -416,12 +433,12 @@ public class ComprehensiveReportLLMService {
                        Each must name the specific area it addresses (a weak topic/subject, a misconception, low attendance, pending assignments, etc.)
                        and a clear action the student/parent can take. Always produce at least 3 when any weakness or gap exists.
                     9. "section_commentary" is optional; include only for sections where you have a genuine observation.
+                    PLAIN TEXT: "summary", "parent_summary", "overview_one_line", "cross_domain_insights" and every
+                       "recommendations" field are rendered as plain text — NO Markdown in them (no **, no #, no backticks).
                     10. "narrative" is a deep written analysis in RICH MARKDOWN (the parent-facing detail view). Each field:
                         - Use `###` sub-headers and put a blank line (\\n\\n) before every header, table, and list so it renders cleanly.
                         - Use Markdown tables to compare data and **bold** for key metrics; keep it readable, not a wall of text.
-                       Each subject/topic goes in EXACTLY ONE of the two maps, never both — rate it on its overall
-                       score (e.g. academics.subject_performance / subject_marks percentage), not on one good or bad test.
-                       Keys are subject/topic names, never individual assessment titles.
+                        - Never put a `#` header inside a list item — write "- **Mathematics:** ..." instead of "- ## Mathematics: ...".
                         - Ground every claim in the facts above; do NOT invent numbers.
                         Fields:
                         - "learning_frequency": consistency & gaps in engagement (use study_habits / login facts).
@@ -433,12 +450,9 @@ public class ComprehensiveReportLLMService {
 
                     Return ONLY a valid JSON object with this exact structure (no extra keys):
                     {
-                    PLAIN TEXT: "summary", "parent_summary", "overview_one_line", "cross_domain_insights" and every
-                       "recommendations" field are rendered as plain text — NO Markdown in them (no **, no #, no backticks).
                       "summary": "...",
                       "parent_summary": "...",
                       "overview_one_line": "...",
-                        - Never put a `#` header inside a list item — write "- **Mathematics:** ..." instead of "- ## Mathematics: ...".
                       "cross_domain_insights": ["...", "..."],
                       "strengths": { "Subject/Topic": 85 },
                       "weaknesses": { "Subject/Topic": 40 },

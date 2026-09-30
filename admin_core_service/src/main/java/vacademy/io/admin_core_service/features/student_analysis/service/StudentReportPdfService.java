@@ -427,7 +427,8 @@ public class StudentReportPdfService {
             var rows = new java.util.ArrayList<AcademicsSection.AssessmentItem>(
                     ac.getAssessments() != null ? ac.getAssessments() : List.of());
             rows.sort(java.util.Comparator.comparing(a -> nvl(a.getDate(), "~")));
-            String firstName = studentName.split("\\s+")[0];
+            String[] nameParts = studentName.trim().split("\\s+");
+            String firstName = nameParts[0].isEmpty() ? "Student" : nameParts[0];
 
             sb.append("<div class='card'><h2 class='sec'>Academic Performance</h2>");
             if (ac.getAveragePercentage() != null) {
@@ -957,7 +958,6 @@ public class StudentReportPdfService {
                 + " font-family='Helvetica, Arial, sans-serif'>" + escHtml(text) + "</text>";
     }
 
-    /** Chart title on the left, legend (swatch, label, swatch, label, …) right-aligned on the same row. */
     /**
      * Colour for a below-class subject bar. The warm "attention" amber is indistinguishable from a
      * warm institute accent (the default "primary" theme is orange), so warm accents get slate.
@@ -975,6 +975,7 @@ public class StudentReportPdfService {
         }
     }
 
+    /** Chart title on the left, legend (swatch, label, swatch, label, …) right-aligned on the same row. */
     private String chartHeader(String title, int marginTop, String... legend) {
         StringBuilder h = new StringBuilder("<table class='ch'")
                 .append(marginTop > 0 ? " style='margin-top:" + marginTop + "px'" : "")
@@ -1015,8 +1016,10 @@ public class StudentReportPdfService {
      */
     static String cleanBatchLabel(String label) {
         if (label == null) return "";
+        // Only the placeholder positions — a leading level and a "(default)" session — so a
+        // "default" elsewhere in the name ("Weekend (Default Timing)") is left alone.
         return label.replaceAll("(?i)\\(\\s*default\\s*\\)", "")
-                .replaceAll("(?i)\\bdefault\\b", "")
+                .replaceAll("(?i)^\\s*default\\s+", "")
                 .replaceAll("\\s{2,}", " ")
                 .trim();
     }

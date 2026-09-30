@@ -50,7 +50,7 @@ const resolveThemeColor = (code?: string | null): string | undefined => {
 const cleanBatchLabel = (s?: string | null) =>
     (s ?? '')
         .replace(/\(\s*default\s*\)/gi, '')
-        .replace(/\bdefault\b/gi, '')
+        .replace(/^\s*default\s+/i, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
 

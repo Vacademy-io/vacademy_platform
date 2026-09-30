@@ -74,6 +74,13 @@ async def synthesize(*, engine: str, model: str, voice: str, pace, temperature,
                 normalize_for_rumik(text), voice or s.rumik_voice,
                 s.rumik_api_key, model=model or "mulberry",
                 description=rumik_pace_description(p))
+        elif eng == "navana":
+            # No speed: the live stream cannot send one (Navana's streaming hello
+            # rejects it), so the render must not either or the cached audio
+            # would not match what the live call speaks.
+            from .providers import navana_language
+            raw = await _main._navana_tts_wav(text, voice or s.navana_tts_voice,
+                                              navana_language(language), None)
         elif eng == "sarvam":
             raw = await _main._synth_audio(text, voice or s.sarvam_tts_voice,
                                            model or s.sarvam_tts_model, "hi-IN")
@@ -143,7 +150,11 @@ async def warm(*, engine: str, model: str, voice: str, pace, temperature,
         engine = "smallest"
 
     from .speech_language import smallest_language_code
-    language = smallest_language_code(language) if engine == "smallest" else ""
+    if engine == "navana":
+        from .providers import navana_language
+        language = navana_language(language)
+    else:
+        language = smallest_language_code(language) if engine == "smallest" else ""
     done = skipped = failed = 0
     for text in texts:
         t = (text or "").strip()

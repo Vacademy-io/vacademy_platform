@@ -682,6 +682,99 @@ def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str
     return switcher, primary, fallback
 
 
+def _navana_seq_routing(cls):
+    """Subclass Navana's BodhiTTSService so that, with ONE AUDIO CONTEXT PER
+    SENTENCE (what the speech cache switches on), every chunk lands in the
+    context of the sentence that asked for it.
+
+    The SDK appends each chunk to get_active_audio_context_id() — the context
+    PLAYING — which is right with one context per turn and wrong with one per
+    sentence: the next sentence's audio would be filed under the previous one
+    and a cached sentence queued behind it would stall until pipecat's idle
+    timeout (the exact Smallest failure, call 5aa10e10). Navana makes the fix
+    exact rather than inferred: every binary chunk is preceded by an `audio`
+    header carrying the `seq` of the text frame it answers, and `is_last_chunk`
+    marks that sentence's end. So seq -> context is recorded when run_tts sends,
+    and the sentence's context is closed at its last chunk.
+
+    With one context per turn (cache off) the SDK's own loop runs untouched.
+    """
+    class _Routed(cls):
+        def _nv_routing_on(self) -> bool:
+            return not getattr(self, "_reuse_context_id_within_turn", True)
+
+        def _nv_reset(self):
+            self._nv_ctx = {}          # seq -> context_id
+            self._nv_cur_seq = None    # seq of the chunk header just received
+            self._nv_cur_last = False
+
+        async def _connect_websocket(self):
+            # A fresh socket restarts seq at 1 (the SDK resets it on ready).
+            self._nv_reset()
+            await super()._connect_websocket()
+
+        async def on_audio_context_interrupted(self, context_id: str):
+            self._nv_reset()
+            await super().on_audio_context_interrupted(context_id)
+
+        async def run_tts(self, text, context_id, *args, **kwargs):
+            recorded = False
+            async for frame in super().run_tts(text, context_id, *args, **kwargs):
+                # The SDK increments _seq and sends BEFORE its first yield, so the
+                # seq is known here — long before its first chunk (hundreds of ms).
+                if not recorded and self._nv_routing_on():
+                    if not hasattr(self, "_nv_ctx"):
+                        self._nv_reset()
+                    self._nv_ctx[self._seq] = context_id
+                    recorded = True
+                yield frame
+
+        async def _receive_messages(self):
+            if not self._nv_routing_on():
+                await super()._receive_messages()
+                return
+            import json as _json
+            from pipecat.frames.frames import TTSAudioRawFrame as _Audio, TTSStoppedFrame as _Stopped
+            if not hasattr(self, "_nv_ctx"):
+                self._nv_reset()
+            async for message in self._get_websocket():
+                if isinstance(message, (bytes, bytearray)):
+                    await self.stop_ttfb_metrics()
+                    ctx = self._nv_ctx.get(self._nv_cur_seq)
+                    if ctx is None or not self.audio_context_available(ctx):
+                        # Interrupted, or a seq we never recorded: nowhere safe.
+                        ctx = None if self._nv_cur_seq in self._nv_ctx else \
+                            self.get_active_audio_context_id()
+                    if ctx is None:
+                        continue
+                    await self.append_to_audio_context(ctx, _Audio(
+                        audio=bytes(message), sample_rate=self._output_sample_rate,
+                        num_channels=1, context_id=ctx))
+                    if self._nv_cur_last:
+                        self._nv_cur_last = False
+                        self._nv_ctx.pop(self._nv_cur_seq, None)
+                        await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
+                        # Close this sentence's queue so the next context plays at
+                        # once (closing ends the queue, not the playout).
+                        if self.audio_context_available(ctx):
+                            await self.remove_audio_context(ctx)
+                    continue
+                try:
+                    content = _json.loads(message)
+                except Exception:
+                    continue
+                kind = content.get("type")
+                if kind == "audio":
+                    self._nv_cur_seq = content.get("seq")
+                    self._nv_cur_last = bool(content.get("is_last_chunk"))
+                elif kind == "error":
+                    await self.push_error(
+                        error_msg=f"{self} Bodhi TTS error {content.get('code')}: {content.get('message')}")
+    _Routed.__name__ = cls.__name__
+    _Routed.__qualname__ = cls.__qualname__
+    return _Routed
+
+
 _NAVANA_LANGS = {
     "hinglish": "hi", "hindi": "hi", "hi": "hi", "english": "en", "en": "en",
     "marathi": "mr", "mr": "mr", "bengali": "bn", "bn": "bn", "gujarati": "gu", "gu": "gu",
@@ -931,7 +1024,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
             try:
                 from bodhi.integrations.pipecat_tts import BodhiTTSService
                 nv_voice = (voice or s.navana_tts_voice).strip() or s.navana_tts_voice
-                cls = _letterless_guard(BodhiTTSService)
+                cls = _letterless_guard(_navana_seq_routing(BodhiTTSService))
                 return _tag_engine(cls(api_key=s.navana_api_key, voice=nv_voice,
                                        language=navana_language(language)),
                                    "navana", nv_voice)

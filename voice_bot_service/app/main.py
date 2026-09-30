@@ -604,14 +604,16 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float,
     return buf.getvalue()
 
 
-async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float) -> bytes:
+async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float | None) -> bytes:
     """One-shot Navana synthesis (POST /tts/bytes) -> WAV bytes. The response is
     headerless PCM; X-Sample-Rate says its rate."""
     import io
     import wave
     s = get_settings()
     body = {"text": text, "lang": lang, "voice": (voice or s.navana_tts_voice).strip(),
-            "output_format": "24000:pcm16", "speed": max(0.5, min(2.0, pace))}
+            "output_format": "24000:pcm16"}
+    if pace is not None:          # the audition's slider; the cache renders at the live default
+        body["speed"] = max(0.5, min(2.0, pace))
     try:
         async with app.state.http_session.post(
                 "https://tts.navana.ai/tts/bytes", json=body,
@@ -730,7 +732,9 @@ async def preview(
         key = hashlib.sha1(f"pv|navana|{voice}|{pace}|{nv_lang}|{text}".encode("utf-8")).hexdigest()
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
-            raw = await _navana_tts_wav(text, voice, nv_lang, pace)
+            # No speed: the live call's stream cannot send one, so an audition
+            # at another speed would lie about what ships.
+            raw = await _navana_tts_wav(text, voice, nv_lang, None)
             if not raw:
                 return Response(status_code=502)
             if not _cache_write(path, raw):

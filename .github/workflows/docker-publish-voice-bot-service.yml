@@ -244,6 +244,11 @@ jobs:
       # repo variable VOICE_BOT_MUMBAI_HOST (the box's IP/hostname) + the secret
       # VOICE_BOT_MUMBAI_SSH_KEY (private key for root@host). Rolls the SAME
       # immutable :<sha> image by rewriting VOICE_BOT_IMAGE in /opt/voice-bot/.env.
+      # `up -d` recreates the container, which ends every live call on it:
+      # call a6849d85 (2026-09-30) started during the image build and was cut
+      # 40 s in. So the new image is pulled first, then the roll WAITS for
+      # /health's activeCalls to reach 0 (up to 30 min — a campaign has gaps
+      # between calls) and restarts in the first idle moment.
       - name: Deploy to Mumbai anchor (Linode) over SSH
         if: vars.VOICE_BOT_MUMBAI_HOST != ''
         env:
@@ -276,6 +281,12 @@ jobs:
                sed -i '/^NAVANA_API_KEY=/d' .env; \
                echo 'NAVANA_API_KEY=$NAVANA_API_KEY' >> .env; \
              fi; \
-             docker compose pull -q voice-bot; docker compose up -d; \
+             docker compose pull -q voice-bot; \
+             for i in \$(seq 1 120); do \
+               n=\$(docker compose exec -T voice-bot python3 -c 'import json,urllib.request;print(json.load(urllib.request.urlopen(\"http://127.0.0.1:8090/voice-bot-service/health\",timeout=5))[\"activeCalls\"])' 2>/dev/null || echo 0); \
+               [ \"\$n\" = 0 ] && break; \
+               echo \"\$n live call(s) - waiting before the restart (\$i/120)\"; sleep 15; \
+             done; \
+             docker compose up -d; \
              docker image prune -af >/dev/null 2>&1 || true; \
              sleep 5; docker compose ps"

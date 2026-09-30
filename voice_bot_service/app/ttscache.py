@@ -1460,10 +1460,30 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                         # live path instead: after the blob's playout, stop,
                         # then close — by then the base class's text frame is
                         # already in the queue ahead of the stop.
-                        hold = max(0.0, entry.duration_ms / 1000.0 - 0.05)
+                        # Until the blob has PLAYED (measured from the first
+                        # chunk, not from the end of the paced emission), and
+                        # with keep-alives: pipecat closes a context after 3 s
+                        # with no new frame, and with push_stop_frames off it
+                        # then pushes no stop at all — so a long cached sentence
+                        # (all queued in ~half its length) timed out, its stop
+                        # never went out and its text was never committed (sim
+                        # navana_cached_then_live: a 9.2 s sentence missing from
+                        # the played transcript).
+                        hold = max(0.0, entry.duration_ms / 1000.0
+                                   - (time.monotonic() - emit_t0) - 0.05)
 
                         async def _finish_after_playout(cid=context_id, secs=hold):
-                            await asyncio.sleep(secs)
+                            refresh = getattr(tts, "_refresh_audio_context", None)
+                            left = secs
+                            while left > 0:
+                                step = min(1.0, left)
+                                await asyncio.sleep(step)
+                                left -= step
+                                if refresh is not None and left > 0:
+                                    try:
+                                        refresh(cid)
+                                    except Exception:
+                                        pass
                             try:
                                 if tts.audio_context_available(cid):
                                     await tts.append_to_audio_context(

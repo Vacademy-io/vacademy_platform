@@ -5315,8 +5315,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         ],
         stop=[
             TurnAnalyzerUserTurnStopStrategy(
-                turn_analyzer=LocalSmartTurnAnalyzerV3(
-                    params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs))),
+                turn_analyzer=(smart_turn := LocalSmartTurnAnalyzerV3(
+                    params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs)))),
         ],
     )
     aggregators = LLMContextAggregatorPair(
@@ -6202,6 +6202,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 pass
             except Exception:
                 logger.exception("teardown: background task died corr=%s", corr)
+        # Release this call's two ONNX models and their executor threads NOW,
+        # by reference count. The pipeline itself is cyclic garbage that only a
+        # full collection frees (app/memory.py does that ~3 s later); if any
+        # transient holder still pins it then, these ~35 MB and 2 threads must
+        # not ride along (pipecat never shuts these executors down).
+        for _an, _attr in ((vad, "_model"), (smart_turn, "_session")):
+            try:
+                _ex = getattr(_an, "_executor", None)
+                if _ex is not None:
+                    _ex.shutdown(wait=False, cancel_futures=True)
+                setattr(_an, _attr, None)
+            except Exception:
+                logger.exception("teardown: releasing %s failed corr=%s", type(_an).__name__, corr)
         # Best-effort SDK teardown (defensive getattr chain — harmless if the
         # 1.4 services shape differs; they own their sockets natively now).
         for _svc in (stt, tts):

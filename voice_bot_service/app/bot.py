@@ -3701,11 +3701,18 @@ _DEEPGRAM_FEMALE_VOICES = {
 }
 DEEPGRAM_VOICES = _DEEPGRAM_MALE_VOICES | _DEEPGRAM_FEMALE_VOICES
 
+# Navana (Bodhi): 55 voice ids, each speaking all ten languages. Navana publishes
+# no genders; these are read from the names (achu, temjen, vetri are the least
+# certain — audition before relying on the verb gender they imply).
+_NAVANA_MALE = {"achu", "anirban", "basava", "basheer", "bijay", "chhotu", "elango", "faizal", "gurdeep", "imran", "kannan", "kishan", "murugan", "savio", "shivanna", "srinu", "sulaiman", "tanaji", "temjen", "vetri", "xavier"}
+_NAVANA_FEMALE = {"ammu", "ann", "arasi", "ayesha", "bhavana", "bimla", "champa", "falguni", "flavia", "harleen", "ipsita", "jayita", "jessy", "kayal", "mahadevi", "malar", "maria", "merin", "mukta", "nasrin", "nayeema", "netra", "nila", "ponni", "porkavi", "rukhiya", "rukhsana", "selvi", "shabnam", "sharon", "shikha", "vanaja", "yasmin", "zoya"}
+NAVANA_VOICES = _NAVANA_MALE | _NAVANA_FEMALE
+
 # One place where every engine's male voices land, so _voice_gender works for
 # all four. Missing a name here means a male voice speaking feminine Hindi —
 # the #1 immersion complaint from live calls.
 _MALE_VOICES |= (_GOOGLE_MALE_VOICES | _SMALLEST_V31_MALE | _SMALLEST_PRO_MALE
-                 | _DEEPGRAM_MALE_VOICES)
+                 | _DEEPGRAM_MALE_VOICES | _NAVANA_MALE)
 
 
 def _engine_of(model: str) -> str:
@@ -3721,6 +3728,8 @@ def _engine_of(model: str) -> str:
         return "smallest"
     if m.startswith(("deepgram", "aura")):
         return "deepgram"
+    if m.startswith(("navana", "bodhi")):
+        return "navana"
     return "sarvam"
 
 
@@ -3735,6 +3744,7 @@ _ENGINE_DEFAULT_VOICE = {
     "smallest_pro": "mandar",
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
+    "navana": "bhavana",
 }
 
 
@@ -3742,7 +3752,8 @@ def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
             "smallest": SMALLEST_VOICES,
             "smallest_pro": SMALLEST_PRO_VOICES,
-            "deepgram": DEEPGRAM_VOICES}.get(engine)
+            "deepgram": DEEPGRAM_VOICES,
+            "navana": NAVANA_VOICES}.get(engine)
 
 
 def _default_voice_for(agent) -> str:

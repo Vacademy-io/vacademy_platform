@@ -218,6 +218,7 @@ public class AiAgentSpeechWarmer {
         if (m.startsWith("smallest") || m.startsWith("lightning")) return m; // retain pro/model selection
         if (m.startsWith("rumik") || m.startsWith("silk")) return "rumik";
         if (m.startsWith("deepgram") || m.startsWith("aura")) return "deepgram";
+        if (m.startsWith("navana") || m.startsWith("bodhi")) return "navana";
         return "sarvam";
     }
 }

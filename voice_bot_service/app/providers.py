@@ -682,6 +682,22 @@ def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str
     return switcher, primary, fallback
 
 
+_NAVANA_LANGS = {
+    "hinglish": "hi", "hindi": "hi", "hi": "hi", "english": "en", "en": "en",
+    "marathi": "mr", "mr": "mr", "bengali": "bn", "bn": "bn", "gujarati": "gu", "gu": "gu",
+    "tamil": "ta", "ta": "ta", "telugu": "te", "te": "te", "kannada": "kn", "kn": "kn",
+    "malayalam": "ml", "ml": "ml", "odia": "or", "oriya": "or", "or": "or", "od": "or",
+}
+
+
+def navana_language(language: str | None) -> str:
+    """Agent language ("hinglish", "marathi", "hi-IN", "od-IN"…) → Navana's bare
+    code. Navana serves ten languages; anything else speaks Hindi, the same
+    fallback every other engine here uses."""
+    l = (language or "").strip().lower()
+    return _NAVANA_LANGS.get(l) or _NAVANA_LANGS.get(l.split("-")[0]) or "hi"
+
+
 def _tag_engine(svc, slug: str, model: str):
     """Stamp the engine ACTUALLY constructed onto the service.
 
@@ -903,6 +919,24 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 ), "deepgram", dg_voice)
             except Exception:
                 logger.exception("tts: deepgram unavailable — falling back to Sarvam")
+    if model.startswith("navana") or model.startswith("bodhi"):
+        # Navana (Bodhi). Their SDK's service: InterruptibleTTSService, one
+        # websocket per session, cancels mid-utterance on barge-in. Wrapped in the
+        # letterless guard so vendor characters are METERED (diagnostics.tts.chars)
+        # — the call card then prices the real count, as it does for Smallest.
+        # No pace knob: the streaming hello rejects `speed` (Navana docs).
+        if not s.navana_api_key:
+            logger.error("tts: NAVANA_API_KEY unset — falling back to Sarvam bulbul")
+        else:
+            try:
+                from bodhi.integrations.pipecat_tts import BodhiTTSService
+                nv_voice = (voice or s.navana_tts_voice).strip() or s.navana_tts_voice
+                cls = _letterless_guard(BodhiTTSService)
+                return _tag_engine(cls(api_key=s.navana_api_key, voice=nv_voice,
+                                       language=navana_language(language)),
+                                   "navana", nv_voice)
+            except Exception:
+                logger.exception("tts: navana unavailable — falling back to Sarvam")
     if model.startswith("rumik") or model.startswith("silk"):
         if not s.rumik_api_key:
             logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul")

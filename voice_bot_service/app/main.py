@@ -604,6 +604,38 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float,
     return buf.getvalue()
 
 
+async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float) -> bytes:
+    """One-shot Navana synthesis (POST /tts/bytes) -> WAV bytes. The response is
+    headerless PCM; X-Sample-Rate says its rate."""
+    import io
+    import wave
+    s = get_settings()
+    body = {"text": text, "lang": lang, "voice": (voice or s.navana_tts_voice).strip(),
+            "output_format": "24000:pcm16", "speed": max(0.5, min(2.0, pace))}
+    try:
+        async with app.state.http_session.post(
+                "https://tts.navana.ai/tts/bytes", json=body,
+                headers={"X-API-Key": s.navana_api_key},
+                timeout=aiohttp.ClientTimeout(total=60)) as r:
+            if r.status != 200:
+                logger.warning("preview: navana %s %s", r.status, (await r.text())[:200])
+                return b""
+            rate = int(r.headers.get("X-Sample-Rate") or 24000)
+            pcm = await r.read()
+    except Exception:
+        logger.exception("preview: navana tts failed voice=%s", voice)
+        return b""
+    if not pcm:
+        return b""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 @router.get("/preview.mp3")
 async def preview(
     text: str = Query(..., max_length=300),
@@ -680,6 +712,25 @@ async def preview(
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
             raw = await _smallest_tts_wav(text, voice, sm_model, pace, language)
+            if not raw:
+                return Response(status_code=502)
+            if not _cache_write(path, raw):
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
+
+    if engine.startswith("navana") or engine.startswith("bodhi"):
+        # Navana audition through its non-streaming endpoint (the live call
+        # streams; same voices, same language rule). Raw PCM → WAV, as Smallest.
+        if not s.navana_api_key:
+            logger.warning("preview: navana requested but NAVANA_API_KEY unset")
+            return Response(status_code=503)
+        from .providers import navana_language
+        nv_lang = navana_language(lang)
+        key = hashlib.sha1(f"pv|navana|{voice}|{pace}|{nv_lang}|{text}".encode("utf-8")).hexdigest()
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            raw = await _navana_tts_wav(text, voice, nv_lang, pace)
             if not raw:
                 return Response(status_code=502)
             if not _cache_write(path, raw):

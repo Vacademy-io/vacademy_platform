@@ -27,3 +27,5 @@ scipy>=1.11
 # Voice modulation (app/prosody.py): Praat's PSOLA pitch resynthesis via
 # parselmouth. Binary wheels for py3.12 manylinux; no Praat install needed.
 praat-parselmouth>=0.4.7
+# Navana (Bodhi) TTS — ships its own Pipecat service (verified on pipecat 1.4.0).
+bodhi-api-sdk[tts]==1.2.0

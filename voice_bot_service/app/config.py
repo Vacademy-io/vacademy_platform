@@ -294,6 +294,13 @@ class Settings:
     # Key is env-only (NEVER in code) — the one pasted in chat on 2026-08-13
     # must be treated as compromised and rotated, same as the Smallest key above.
     deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY"))
+    # Navana (Bodhi) TTS — Indian-language voices, one voice id across ten
+    # languages. Streams over wss://tts.navana.ai/v1 through their own Pipecat
+    # service (bodhi-api-sdk). NOTE the account default of TWO concurrent
+    # connections, and a live call holds one for its whole duration: ask Navana
+    # to raise it before putting more than two concurrent calls on this engine.
+    navana_api_key: str = field(default_factory=lambda: _env("NAVANA_API_KEY") or _env("BODHI_API_KEY"))
+    navana_tts_voice: str = field(default_factory=lambda: _env("NAVANA_TTS_VOICE", "bhavana"))
     deepgram_tts_voice: str = field(
         default_factory=lambda: _env("DEEPGRAM_TTS_VOICE", "aura-2-asteria-en"))
     # Aura-2 emits 24 kHz linear16; the transport resamples to 8 kHz for Plivo.

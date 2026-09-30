@@ -413,6 +413,26 @@ export const QuestionPapersTabs = ({
             .finally(() => setIsLoading(false));
     }, []);
 
+    // Page: deleting the last paper on a later page leaves that page empty — go back one.
+    const currentList = (
+        selectedTab === 'FAVOURITE' ? questionPaperFavouriteList : questionPaperList
+    ) as {
+        content?: unknown[];
+        total_elements?: number;
+    } | null;
+    useEffect(() => {
+        if (
+            isPage &&
+            pageNo > 0 &&
+            currentList &&
+            (currentList.content?.length ?? 0) === 0 &&
+            (currentList.total_elements ?? 0) > 0
+        ) {
+            handlePageChange(pageNo - 1);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentList]);
+
     if (isLoading) return <DashboardLoader />;
 
     const hasFilters = Object.keys(selectedQuestionPaperFilters).length > 0 || !!activeSearch;
@@ -468,8 +488,9 @@ export const QuestionPapersTabs = ({
     };
 
     const listFor = (list: typeof questionPaperList, tab: 'ACTIVE' | 'FAVOURITE') => {
-        const content = (list as { content?: unknown[] } | null)?.content;
-        if (isPage && list && (!content || content.length === 0)) return renderPageEmpty(tab);
+        const total = (list as { total_elements?: number } | null)?.total_elements;
+        // Only a truly empty result gets the empty state; an emptied later page steps back (below).
+        if (isPage && list && !total) return renderPageEmpty(tab);
         return list ? (
             <QuestionPapersList
                 questionPaperList={list}

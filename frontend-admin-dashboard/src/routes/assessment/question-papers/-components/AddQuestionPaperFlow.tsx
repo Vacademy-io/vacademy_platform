@@ -1,4 +1,4 @@
-import { Dispatch, ReactNode, SetStateAction } from 'react';
+import { Dispatch, ReactNode, SetStateAction, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretRight, Info, PencilSimpleLine, Sparkle, UploadSimple } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -130,6 +130,15 @@ export const AddQuestionPaperFlow = ({
     const ways = useAddPaperWays();
     const { chooserOpen, way, setChooserOpen, pickWay, closeWay, backToChooser } =
         useAddPaperFlowStore();
+    // The store outlives the page: close everything when leaving it, so nothing
+    // re-opens on the next visit.
+    useEffect(
+        () => () => {
+            setChooserOpen(false);
+            closeWay();
+        },
+        [setChooserOpen, closeWay]
+    );
     const onWayOpenChange = (open: boolean) => {
         if (!open) closeWay();
     };

@@ -98,6 +98,9 @@ export const UploadQuestionPaperDialog = ({
     const [reviewFilter, setReviewFilter] = useState<'all' | 'flagged'>('all');
     const [openSections, setOpenSections] = useState<string[]>([]);
     const [editorOpen, setEditorOpen] = useState(false);
+    // Once the questions have been opened in the editor, the form holds the edited set;
+    // saving from the review step must use that, not the parsed originals.
+    const [editedInEditor, setEditedInEditor] = useState(false);
 
     const title = form.watch('title');
     const file = form.watch('fileUpload') as File | null | undefined;
@@ -111,6 +114,7 @@ export const UploadQuestionPaperDialog = ({
         setParsed([]);
         setIssues([]);
         setSkip(new Set());
+        setEditedInEditor(false);
     };
 
     useEffect(() => {
@@ -184,7 +188,8 @@ export const UploadQuestionPaperDialog = ({
 
     const errorCount = [...grouped.values()].filter((g) => g.hasError).length;
     const warningCount = grouped.size - errorCount;
-    const keptCount = parsed.length - skip.size;
+    const editorQuestions = (form.watch('questions') || []) as unknown as MyQuestion[];
+    const keptCount = editedInEditor ? editorQuestions.length : parsed.length - skip.size;
     const canReview = phase === 'done' && parsed.length > 0 && !!title?.trim();
 
     const submit = (questions: MyQuestion[]) => {
@@ -197,7 +202,7 @@ export const UploadQuestionPaperDialog = ({
                         onOpenChange(false);
                         setCurrentQuestionIndex(0);
                         toast.success(
-                            skip.size && !editorOpen
+                            skip.size && !editedInEditor
                                 ? t('toasts.addedWithSkipped', {
                                       title: values.title,
                                       skipped: skip.size,
@@ -211,16 +216,19 @@ export const UploadQuestionPaperDialog = ({
                 toast.error(tUpload('toasts.incompleteQuestions'));
                 form.trigger('questions');
                 setCurrentQuestionIndex(0);
+                setEditedInEditor(true);
                 setEditorOpen(true);
             }
         )();
     };
 
     const keepAllAndFix = () => {
-        form.setValue('questions', parsed);
+        // A second click reopens the editor on what was already edited.
+        if (!editedInEditor) form.setValue('questions', parsed);
         form.trigger('questions');
         const firstFlagged = [...grouped.keys()].sort((a, b) => a - b)[0];
         setCurrentQuestionIndex(firstFlagged ?? 0);
+        setEditedInEditor(true);
         setEditorOpen(true);
     };
 
@@ -799,7 +807,13 @@ export const UploadQuestionPaperDialog = ({
                     layoutVariant="default"
                     className="gap-1"
                     disable={keptCount === 0 || isSaving}
-                    onClick={() => submit(filterQuestionsBySkipSet(parsed, skip))}
+                    onClick={() =>
+                        submit(
+                            editedInEditor
+                                ? editorQuestions
+                                : filterQuestionsBySkipSet(parsed, skip)
+                        )
+                    }
                 >
                     <Check size={16} />
                     {t('upload.review.save', { count: keptCount })}

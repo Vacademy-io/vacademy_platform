@@ -2,6 +2,8 @@
     "placeholder": "Select campaign type",
     "optionWebsite": "Website",
     "optionGoogleAds": "Google Ads",
+    "optionFacebook": "Facebook",
+    "optionInstagram": "Instagram",
     "optionSocialMedia": "Social Media",
     "addCustomType": "Add custom Enquiry type",
     "customInputPlaceholder": "Enter campaign type",

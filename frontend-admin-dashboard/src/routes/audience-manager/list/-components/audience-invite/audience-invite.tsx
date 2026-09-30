@@ -50,6 +50,10 @@ import {
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    buildCampaignTypeFilterOptions,
+    buildDefaultCampaignTypeOptions,
+} from '../../-utils/campaign-types';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DRAFT';
 const VALID_STATUS: readonly string[] = ['ALL', 'ACTIVE', 'INACTIVE', 'DRAFT'];
@@ -85,11 +89,13 @@ const buildStatusDropdownOptions = (t: TFunction): { label: string; value: Statu
 
 export const AudienceInvite = () => {
     const { t, i18n } = useTranslation('audienceManagerAudienceInvite');
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const statusDropdownOptions = useMemo(() => buildStatusDropdownOptions(t), [t]);
     const [searchQuery, setSearchQuery] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
     const [subOrgFilter, setSubOrgFilter] = useState<string>('ALL');
+    const [typeFilter, setTypeFilter] = useState<string>('ALL');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [campaignBeingEdited, setCampaignBeingEdited] = useState<CampaignItem | null>(null);
     const [apiDialogCampaign, setApiDialogCampaign] = useState<CampaignItem | null>(null);
@@ -135,6 +141,8 @@ export const AudienceInvite = () => {
         if (s && VALID_STATUS.includes(s)) setStatusFilter(s as StatusFilter);
         const so = params.get('subOrg');
         if (so) setSubOrgFilter(so);
+        const ty = params.get('type');
+        if (ty) setTypeFilter(ty);
         if (p) {
             const n = parseInt(p, 10);
             if (!Number.isNaN(n) && n > 0) handlePageChange(n);
@@ -163,12 +171,14 @@ export const AudienceInvite = () => {
         else params.delete('status');
         if (subOrgFilter !== 'ALL') params.set('subOrg', subOrgFilter);
         else params.delete('subOrg');
+        if (typeFilter !== 'ALL') params.set('type', typeFilter);
+        else params.delete('type');
         if (page > 0) params.set('page', String(page));
         else params.delete('page');
         const qs = params.toString();
         const newUrl = `${window.location.pathname}${qs ? '?' + qs : ''}`;
         window.history.replaceState(null, '', newUrl);
-    }, [appliedSearch, statusFilter, subOrgFilter, page]);
+    }, [appliedSearch, statusFilter, subOrgFilter, typeFilter, page]);
 
     const handleStatusChange = (value: StatusFilter) => {
         handlePageChange(0);
@@ -180,11 +190,17 @@ export const AudienceInvite = () => {
         setSubOrgFilter(value);
     };
 
+    const handleTypeChange = (value: string) => {
+        handlePageChange(0);
+        setTypeFilter(value);
+    };
+
     const handleClearFilters = () => {
         setSearchQuery('');
         setAppliedSearch('');
         setStatusFilter('ALL');
         setSubOrgFilter('ALL');
+        setTypeFilter('ALL');
         handlePageChange(0);
     };
 
@@ -196,13 +212,35 @@ export const AudienceInvite = () => {
             campaign_name: appliedSearch || undefined,
             status: statusFilter !== 'ALL' ? statusFilter : undefined,
             sub_org_id: subOrgFilter !== 'ALL' ? subOrgFilter : undefined,
+            // Backend matches case-insensitively as a substring, so "Facebook"
+            // also finds lists saved as FACEBOOK.
+            campaign_type: typeFilter !== 'ALL' ? typeFilter : undefined,
             sort_by: 'created_at',
             sort_direction: 'DESC',
         }),
-        [instituteDetails?.id, appliedSearch, statusFilter, subOrgFilter]
+        [instituteDetails?.id, appliedSearch, statusFilter, subOrgFilter, typeFilter]
     );
 
     const { data: campaignsList, isLoading, isError } = useCampaignsList(campaignsPayload);
+
+    // Type-filter options come from the unfiltered list so they don't vanish
+    // once a filter narrows the page. Same query key as the page's default
+    // load, so this is served from cache rather than a second request.
+    const { data: allCampaignsList } = useCampaignsList({
+        institute_id: instituteDetails?.id || '',
+        page: 0,
+        size: SERVER_FETCH_SIZE,
+        sort_by: 'created_at',
+        sort_direction: 'DESC',
+    });
+    const typeFilterOptions = useMemo(
+        () =>
+            buildCampaignTypeFilterOptions(buildDefaultCampaignTypeOptions(tCampaignType), [
+                ...(allCampaignsList?.content ?? []).map((c) => c.campaign_type),
+                typeFilter !== 'ALL' ? typeFilter : undefined,
+            ]),
+        [tCampaignType, allCampaignsList?.content, typeFilter]
+    );
 
     const filteredCampaigns = useMemo(() => {
         if (!campaignsList?.content) return [];
@@ -240,7 +278,8 @@ export const AudienceInvite = () => {
     }, [filteredCampaigns]);
 
     const hasResults = paginatedCampaigns.length > 0;
-    const hasActiveFilter = !!appliedSearch || statusFilter !== 'ALL' || subOrgFilter !== 'ALL';
+    const hasActiveFilter =
+        !!appliedSearch || statusFilter !== 'ALL' || subOrgFilter !== 'ALL' || typeFilter !== 'ALL';
 
     const kpis: {
         label: string;
@@ -371,6 +410,19 @@ export const AudienceInvite = () => {
                     </SelectTrigger>
                     <SelectContent>
                         {statusDropdownOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Select value={typeFilter} onValueChange={handleTypeChange}>
+                    <SelectTrigger className="h-10 w-full sm:w-48">
+                        <SelectValue placeholder={t('typeFilter.placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="ALL">{t('typeFilter.allTypes')}</SelectItem>
+                        {typeFilterOptions.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                             </SelectItem>

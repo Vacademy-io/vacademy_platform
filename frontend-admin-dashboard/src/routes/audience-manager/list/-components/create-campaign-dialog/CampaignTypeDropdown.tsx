@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CaretDown, CaretUp, Check, Plus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
-
-interface CampaignTypeOption {
-    value: string;
-    label: string;
-}
+import {
+    buildDefaultCampaignTypeOptions,
+    type CampaignTypeOption,
+} from '../../-utils/campaign-types';
 
 interface CampaignTypeDropdownProps {
     value?: string;
@@ -15,15 +13,6 @@ interface CampaignTypeDropdownProps {
     placeholder?: string;
     initialOptions?: CampaignTypeOption[];
 }
-
-// NOTE: `value` is the stable, internal campaign-type key that gets sent to
-// the backend / stored in form state — it must never change with locale.
-// Only `label` (the displayed text) is translated.
-const buildDefaultOptions = (t: TFunction): CampaignTypeOption[] => [
-    { value: 'Website', label: t('optionWebsite') },
-    { value: 'Google Ads', label: t('optionGoogleAds') },
-    { value: 'Social Media', label: t('optionSocialMedia') },
-];
 
 const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
     value = '',
@@ -36,7 +25,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
     const resolvedPlaceholder = placeholder ?? t('placeholder');
     const [isOpen, setIsOpen] = useState(false);
     const [options, setOptions] = useState<CampaignTypeOption[]>(
-        () => initialOptions ?? buildDefaultOptions(t)
+        () => initialOptions ?? buildDefaultCampaignTypeOptions(t)
     );
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [customValue, setCustomValue] = useState('');

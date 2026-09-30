@@ -593,6 +593,8 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
+        "floor_holds": getattr(d, "floor_holds", 0) or 0,
+        "floor_holds_dropped": getattr(d, "floor_holds_dropped", 0) or 0,
     }
     # turn latency: caller stop → next bot audio start
     lat = []
@@ -824,6 +826,70 @@ def chk_pieces_with_gaps(res):
     if "Three girls" not in " ".join(_assistant_texts(res)):
         f.append("the answer to both pieces never played")
     return f
+
+
+NV_HELD = "Got it, eighth class. And how were her marks last year?"
+
+
+def chk_navana_held_reply_is_not_heard(res):
+    """Calls 18b63b17 / 45749163 (2026-09-30), Navana: a reply that FloorGate
+    held (the parent was still talking) and then dropped was already in the
+    played transcript and the model's context — its text reached them before
+    its audio. The bot then refused to say it again as "already said". Same
+    shape as pieces_with_gaps, on Navana's real service with the cache on."""
+    f = chk_pieces_with_gaps(res)
+    if res.get("floor_holds_dropped", 0) < 1:
+        # The runner's timing never produced the hold+drop this is about; the
+        # unit tests in tests/test_navana.py cover the ordering deterministically.
+        print(f"NOTE navana_held_reply_is_not_heard: no floor drop this run "
+              f"(holds={res.get('floor_holds')}) — ordering covered by unit tests")
+        return f
+    said = " ".join(_assistant_texts(res))
+    if "eighth class" in said:
+        f.append("the dropped reply counts as said: " + said[:160])
+    for ctx in res.get("contexts", [])[1:]:
+        blob = json.dumps(ctx, ensure_ascii=False)
+        if "Got it, eighth class" in blob:
+            f.append("the dropped reply is in the model's context as said")
+            break
+    return f
+
+
+NV_Q2 = "Got it, eighth class. And how were her marks last year?"
+NV_Q2_Q = "And how were her marks last year?"
+
+
+def chk_nv_answer_over_tail(res):
+    """Review of 2cfb1cff29: the parent answers ("Ninety percent.") over the
+    last part of a Navana question. Holding the text to the sentence's END made
+    the question count as never heard: it was re-asked and left the model's
+    context. Heard 60 %+ = said: sent to the TTS once, and in the next run's
+    context as the bot's own line."""
+    f = []
+    asked = [t for t in res.get("tts_texts", []) if "marks last year" in t]
+    if len(asked) > 1:
+        f.append(f"the marks question was sent to the TTS {len(asked)}x: {asked}")
+    ctxs = res.get("contexts", [])
+    if len(ctxs) >= 2 and "marks last year" not in json.dumps(ctxs[1], ensure_ascii=False):
+        f.append("the question the parent answered is missing from the model's context")
+    return f
+
+
+def _nv_tail_scenario(key: str, cache: bool) -> "Scenario":
+    return Scenario(
+        key,
+        caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                Say("Ninety percent.", 0.9, after_bot_start=2,
+                    # 2.4 s: the answer lands while the question is ~60-80 % played
+                    # (calibrated: 2.2 and 2.6 fail on the last-chunk rule and pass
+                    # on the 60 % split; at 1.6 the question is barely heard and
+                    # re-asking it is right).
+                    offset=float(os.environ.get("NV_TAIL_OFFSET", "2.4")), stt_latency=0.4)],
+        replies=[NV_Q2, NV_Q2_Q, "Okay, ninety percent, that's good.", "Okay."],
+        checks=chk_nv_answer_over_tail, max_secs=40,
+        cache_warm=([S_CACHED_TAIL] if cache else []), engine="navana",
+        context="navana_agent_context.json",
+        note="review of 2cfb1cff29: the parent answers over the tail of a Navana question")
 
 
 LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
@@ -1175,6 +1241,20 @@ SCENARIOS: List[Scenario] = [
                       "Okay."],
              checks=chk_pieces_with_gaps, max_secs=45,
              note="call 358e5026: a reply started over every next piece and was cut to a stub"),
+    Scenario("navana_held_reply_is_not_heard",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4),
+                     Say("and there are three girls at home studying", 1.4, after_bot_stop=2,
+                         offset=2.7, stt_latency=0.4)],
+             replies=[PITCH_Q, NV_HELD,
+                      "Three girls, that's lovely. And how were the eldest one's marks last year?",
+                      "Okay."],
+             checks=chk_navana_held_reply_is_not_heard, max_secs=45,
+             cache_warm=[S_CACHED_TAIL], engine="navana", context="navana_agent_context.json",
+             note="calls 18b63b17/45749163: a held-then-dropped Navana reply counted as said"),
+    _nv_tail_scenario("navana_answer_over_tail_cache_off", False),
+    _nv_tail_scenario("navana_answer_over_tail_cache_on", True),
     Scenario("smallest_live_only",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[" ".join([S_LIVE_1, S_LIVE_2])],
@@ -1313,6 +1393,55 @@ SCENARIOS: List[Scenario] = [
 BY_KEY = {s.key: s for s in SCENARIOS}
 
 
+def _holders(target, depth: int = 8, limit: int = 12, ignore=()) -> List[str]:
+    """Reference chains from `target` up to something that is not part of the
+    call's own object web (a module, a timer, a function, a class, a closure
+    cell held by one) — i.e. what keeps a finished call alive."""
+    import gc
+    import types
+    def d(o):
+        n = type(o).__name__
+        if isinstance(o, dict):
+            ks = [k for k in list(o.keys())[:5]]
+            return f"dict{ks}"
+        if isinstance(o, (list, tuple, set)):
+            return f"{n}[{len(o)}]"
+        if isinstance(o, (types.FunctionType, types.MethodType)):
+            f = getattr(o, "__func__", o)
+            return f"{n}:{f.__qualname__}"
+        if isinstance(o, type):
+            return f"class {o.__qualname__}"
+        if n == "coroutine":
+            st = "suspended" if getattr(o, "cr_frame", None) is not None else "finished"
+            return f"coroutine {getattr(o, '__qualname__', '?')} ({st})"
+        if n in ("Task", "Future"):
+            return f"{n} {getattr(o, 'get_name', lambda: '')()} done={o.done()}"
+        return n
+    out, seen = [], {id(target), *ignore}
+    frontier = [(target, [type(target).__name__])]
+    for _ in range(depth):
+        nxt = []
+        for obj, path in frontier:
+            for r in gc.get_referrers(obj):
+                if id(r) in seen or isinstance(r, types.FrameType) or r is frontier or r is nxt:
+                    continue
+                seen.add(id(r))
+                p = path + [d(r)]
+                root = (isinstance(r, (types.ModuleType, type))
+                        or type(r).__name__ in ("TimerHandle", "Handle")
+                        or (isinstance(r, dict) and "__name__" in r and "__loader__" in r)
+                        # a pending task is a root (the loop holds it)
+                        or (type(r).__name__ == "Task" and not r.done()))
+                if root:
+                    out.append(" <- ".join(p))
+                    if len(out) >= limit:
+                        return out
+                else:
+                    nxt.append((r, p))
+        frontier = nxt[:600]
+    return out or ["(no module/timer/task root found within depth)"]
+
+
 async def main():
     import os, tempfile
     # A private speech cache per run: warm lines must never land in the box's
@@ -1375,13 +1504,21 @@ async def main():
     # A finished call must leave nothing behind. From 2026-09-11 to 09-30 every
     # call's pipeline (VAD + Smart Turn ONNX sessions, ~35 MB) stayed alive via a
     # never-cancelled task, and the Mumbai box was OOM-killed 20 times.
-    await asyncio.sleep(2.0)                  # let cancelled tasks unwind
+    # Let cancelled tasks unwind — and pipecat's TurnTrackingObserver turn-end
+    # timer fire: it holds a FramePushed (so the whole pipeline) for 2.5 s after
+    # the bot's last audio. A call that ends right after the bot spoke is still
+    # reachable until then; that is a delay, not a leak.
+    await asyncio.sleep(3.0)
     import gc
     gc.collect()
-    alive = sum(1 for o in gc.get_objects() if type(o).__name__ == "PipelineTask")
+    alive_objs = [o for o in gc.get_objects() if type(o).__name__ == "PipelineTask"]
+    alive = len(alive_objs)
     leftover = sorted({t.get_name() for t in asyncio.all_tasks() if t is not asyncio.current_task()})
     print(f"{'FAIL' if alive else 'ok  '} no_pipeline_outlives_its_call   "
           f"pipelines alive {alive} of {len(results)} runs; tasks left {leftover[:6]}")
+    if alive_objs:
+        for line in _holders(alive_objs[0], ignore={id(alive_objs)}):
+            print(f"       ✗ held by: {line}")
     if args.ci and (alive or any(r["fails"] for r in results)):
         sys.exit(1)
 

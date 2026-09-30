@@ -35,12 +35,18 @@ except Exception:  # pragma: no cover
 
 class FakeNavanaSocket:
     def __init__(self, *, sample_rate: int = 24000, ttfb: float = 0.30,
-                 chunk_secs: float = 0.25, chunk_gap: float = 0.05,
+                 chunk_secs: float = 60.0, chunk_gap: float = 0.05,
                  secs_per_word: float = 0.33):
         self.state = State.OPEN
         self.sample_rate = sample_rate
         self.ttfb = ttfb
-        self.chunk_secs = chunk_secs
+        # ONE chunk per sentence by default: production Navana sends each
+        # sentence as a single chunk (chunk_total 1; the service logs
+        # user_requests 7 -> internal_chunks 7). The old 0.25 s chunks hid that
+        # "release the text after 60 % of the chunks" meant "after all of it" in
+        # production. NV_FAKE_CHUNK_SECS=0.25 runs the multi-chunk shape.
+        import os as _os
+        self.chunk_secs = float(_os.environ.get("NV_FAKE_CHUNK_SECS", chunk_secs))
         self.chunk_gap = chunk_gap
         self.secs_per_word = secs_per_word
         self.requests: List[Dict[str, Any]] = []

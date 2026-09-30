@@ -8,6 +8,8 @@ import {
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
+  isRenewalAlreadyPaid,
+  renewalResponseData,
   requestPlanChange,
   type PlanChangeResult,
   type PlanChangeTarget,
@@ -116,11 +118,22 @@ export function useSubscriptionManager({
       const response = await initiateRenewalPayment(
         instituteId,
         sub,
-        withAutopay,
-        mandateMethod
+        // A stored-token gateway has no mandate to register, so neither flag applies.
+        withAutopay && !sub.instant_renewal,
+        sub.instant_renewal ? undefined : mandateMethod
       );
-      const orderDetails =
-        response?.payment_response?.response_data || response?.response_data;
+      // Stored-token gateway (eWay): the saved card was charged server-side and the
+      // membership is already reactivating, so there is no checkout to hand over. Must be
+      // checked before the razorpayKeyId test, or a completed payment would surface to the
+      // learner as a failure to create the order.
+      if (isRenewalAlreadyPaid(response)) {
+        toast.success("Payment received!", {
+          description: "Your membership is being reactivated — this takes a few seconds.",
+        });
+        refetchSoon();
+        return;
+      }
+      const orderDetails = renewalResponseData(response);
       if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
         throw new Error("Could not create the payment order");
       }

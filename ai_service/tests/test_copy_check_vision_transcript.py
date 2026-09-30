@@ -29,6 +29,9 @@ from ai_service.app.services.copy_check.validator import validate_and_cap
 from ai_service.app.services.copy_check.grader import _breakdown_contradicts_total
 from ai_service.app.services.copy_check.prompt_builder import _transcript_for_prompt
 from ai_service.app.services.copy_check.vision_transcript import (
+    MAX_UNLISTED_PER_PAGE,
+    _build_page_prompt,
+    add_unlisted_rows,
     assess_quality,
     merge_words_into_rows,
 )
@@ -305,7 +308,118 @@ def test_reasoning_shape_seeded() -> None:
     check("grading cap leaves room to think", bumped["max_tokens"] >= 8000, str(bumped["max_tokens"]))
 
 
+def _row(n: int, y: int, text: str, h: int = 150, x: int = 300, w: int = 1200) -> dict:
+    return {"line_id": f"p1_r{n}", "text": text, "box": [x, y, w, h], "conf": 0.9}
+
+
+def test_unlisted_line_gets_a_row() -> None:
+    print("\nadd_unlisted_rows — a line the OCR missed gets a row in its gap")
+    # 2026-09-30: the detector's box for "ans3. We, the People of India" was
+    # dropped, and the vision prompt forbade inventing rows - so the answer
+    # never reached the grader and was marked "not attempted".
+    rows = [_row(1, 1268, "ans2. Rule by the people"), _row(2, 1867, "ans4. Temperature.")]
+    out, orphans = add_unlisted_rows(
+        rows, [{"after": "p1_r1", "text": "ans3. We, the People of India."}], "p1", 5556)
+    new = [r for r in out if r.get("unlisted")]
+    check("one row added", len(new) == 1, str(new))
+    check("no orphans", orphans == [], str(orphans))
+    if new:
+        r = new[0]
+        top, bottom = 1268 + 150, 1867
+        check("it sits in the gap between its neighbours",
+              top <= r["box"][1] and r["box"][1] + r["box"][3] <= bottom, str(r["box"]))
+        check("it keeps the model's text", r["text"] == "ans3. We, the People of India.")
+        check("its id cannot collide with an OCR row", r["line_id"] == "p1_u1", r["line_id"])
+        check("rows stay in reading order",
+              [x["line_id"] for x in out] == ["p1_r1", "p1_u1", "p1_r2"],
+              str([x["line_id"] for x in out]))
+        check("it is not sent to Mathpix", r["needs_math_fallback"] is False)
+
+
+def test_unlisted_rows_never_forced_in() -> None:
+    print("\nadd_unlisted_rows — no box on top of another line, no duplicates")
+    rows = [_row(1, 1000, "ans1. Economics."), _row(2, 1160, "ans2. Rule by the people"),
+            _row(3, 1700, "ans4. Temperature.")]
+    out, orphans = add_unlisted_rows(rows, [
+        {"after": "p1_r1", "text": "squeezed line"},           # 10px gap
+        {"after": "p1_r9", "text": "unknown anchor"},
+        {"after": "p1_r2", "text": "ANS2.  rule by the people"},  # already a row
+        {"after": "p1_r2", "text": "ans3. first"},
+        {"after": "p1_r2", "text": "ans3. second"},
+        {"after": None, "text": "a heading above everything"},
+        {"after": "p1_r2", "text": "[illegible]"},
+        "not a dict",
+    ], "p1", 5556)
+    new = [r for r in out if r.get("unlisted")]
+    texts = [r["text"] for r in new]
+    check("a gap too thin for a line gets no row", "squeezed line" not in texts, str(texts))
+    check("...but its text is handed back for the prose", "squeezed line" in orphans, str(orphans))
+    check("an unknown anchor is handed back, not guessed", "unknown anchor" in orphans, str(orphans))
+    check("a re-listed existing row is ignored",
+          not any("rule by the people" in t.lower() for t in texts + orphans), str(texts + orphans))
+    check("illegible adds nothing", "[illegible]" not in texts + orphans)
+    two = [r for r in new if r["text"].startswith("ans3.")]
+    check("two lines after one row both get rows", len(two) == 2, str(texts))
+    if len(two) == 2:
+        a, b = sorted(two, key=lambda r: r["box"][1])
+        check("...that do not overlap", a["box"][1] + a["box"][3] <= b["box"][1], f"{a['box']} {b['box']}")
+        check("...and stay inside the gap",
+              a["box"][1] >= 1160 + 150 and b["box"][1] + b["box"][3] <= 1700, f"{a['box']} {b['box']}")
+    head = next((r for r in new if r["text"].startswith("a heading")), None)
+    check("after=None goes above the first row", head is not None and head["box"][1] + head["box"][3] <= 1000,
+          str(head))
+    check("ids stay unique", len({r["line_id"] for r in out}) == len(out))
+
+    flood = [{"after": "p1_r2", "text": f"line {i}"} for i in range(MAX_UNLISTED_PER_PAGE + 5)]
+    out, orphans = add_unlisted_rows(rows, flood, "p1", 5556)
+    check("a model re-transcribing the page is capped",
+          len(out) - len(rows) + len(orphans) <= MAX_UNLISTED_PER_PAGE, f"{len(out) - len(rows)} + {len(orphans)}")
+
+    same, none = add_unlisted_rows(rows, None, "p1", 5556)
+    check("no unlisted lines leaves the rows alone", same is rows and none == [])
+
+
+def test_unlisted_line_fills_the_blank_row() -> None:
+    print("\nadd_unlisted_rows — a line the model left blank goes back in ITS box")
+    # 2026-10-01 run: the model returned the unread ans3/ans7 rows blank and
+    # listed their text as unlisted. A new box squeezed into the gap above
+    # put ans7's tick half a line high; ans3, with no gap, got no row and its
+    # tick went on ans2.
+    rows = [_row(1, 1268, "ans2. Rule by the people"), _row(2, 1571, "", h=229),
+            _row(3, 1867, "ans4. Temperature.")]
+    out, orphans = add_unlisted_rows(
+        rows, [{"after": "p1_r1", "text": "ans3. We, the People of India."}], "p1", 5556)
+    check("no new row is invented", not any(r.get("unlisted") for r in out), str(out))
+    check("nothing orphaned", orphans == [], str(orphans))
+    filled = next(r for r in out if r["line_id"] == "p1_r2")
+    check("the blank OCR row now holds the line",
+          filled["text"] == "ans3. We, the People of India." and filled.get("recovered"), str(filled))
+    check("it keeps the OCR's own box", filled["box"] == [300, 1571, 1200, 229], str(filled["box"]))
+
+    rows = [_row(1, 1268, "ans2"), _row(2, 1500, "", h=60), _row(3, 1867, "ans4")]
+    out, _ = add_unlisted_rows(rows, [{"after": "p1_r1", "text": "one"},
+                                      {"after": "p1_r1", "text": "two"}], "p1", 5556)
+    new = [r for r in out if r.get("unlisted")]
+    check("a second line takes the gap after the filled row",
+          len(new) == 1 and new[0]["box"][1] >= 1560 and new[0]["box"][1] + new[0]["box"][3] <= 1867,
+          str([r["box"] for r in new]))
+
+
+def test_prompt_admits_missed_lines() -> None:
+    print("\n_build_page_prompt — the model may add a line the OCR missed")
+    prompt = _build_page_prompt([_row(1, 100, "")], "p1", 5556)
+    check("asks for unlisted_lines", '"unlisted_lines"' in prompt)
+    check("no longer claims the OCR found every line", "located every line" not in prompt)
+    check("page prose must include unlisted lines", "unlisted lines included" in prompt)
+    check("an unread row is announced as writing, not as empty",
+          "(writing the OCR could not read)" in prompt and "(no OCR text)" not in prompt)
+
+
 if __name__ == "__main__":
+    test_unlisted_line_gets_a_row()
+    test_unlisted_rows_never_forced_in()
+    test_unlisted_line_fills_the_blank_row()
+    test_prompt_admits_missed_lines()
     test_rows_from_words()
     test_artefact_does_not_swallow_lines()
     test_sloping_line_stays_one_row()

@@ -153,7 +153,10 @@ public class AuthService {
                 path.append("&instituteId=").append(java.net.URLEncoder.encode(instituteId,
                         java.nio.charset.StandardCharsets.UTF_8));
             }
-            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+            // The query is already percent-encoded above; the plain makeHmacRequest would encode it
+            // again, so an email ("@" -> %40 -> %2540) or "+91" reached auth_service mangled and
+            // matched nobody.
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequestWithEncodedRoute(
                     clientName,
                     HttpMethod.GET.name(),
                     authServerBaseUrl,

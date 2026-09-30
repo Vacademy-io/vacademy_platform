@@ -58,7 +58,7 @@ interface QuestionPaperUploadProps {
 }
 
 // Helper hook for form management
-const useQuestionPaperForm = (examType: string) => {
+export const useQuestionPaperForm = (examType: string) => {
     return useForm<UploadQuestionPaperFormType>({
         resolver: zodResolver(uploadQuestionPaperFormSchema(examType)),
         mode: 'onChange',
@@ -276,7 +276,7 @@ const FileUploadSection = ({
 };
 
 // Helper component for basic form fields
-const BasicFormFields = ({ form, YearClassFilterData, SubjectFilterData, defaultSubject }: {
+export const BasicFormFields = ({ form, YearClassFilterData, SubjectFilterData, defaultSubject }: {
     form: any;
     YearClassFilterData: any[];
     SubjectFilterData: any[];

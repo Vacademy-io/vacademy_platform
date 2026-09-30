@@ -76,6 +76,31 @@
         "vsClassCaption": "Subject performance vs. class average",
         "vsClassSuffix": "cls {{value}}%"
     },
+    "assessments": {
+        "title": "Assessments",
+        "caption": "{{count}} in this period",
+        "rank": "Rank {{rank}}"
+    },
+    "trend": {
+        "title": "Score over time",
+        "classAverage": "Class average",
+        "ariaLabel": "Score in each assessment compared with the class average"
+    },
+    "gradeMix": {
+        "title": "Grades earned",
+        "summary_one": "{{good}} of {{total}} test at grade B or above",
+        "summary_other": "{{good}} of {{total}} tests at grade B or above",
+        "testCount_one": "{{count}} test",
+        "testCount_other": "{{count}} tests",
+        "range": {
+            "ap": "90% and above",
+            "a": "80–89%",
+            "bp": "70–79%",
+            "b": "60–69%",
+            "c": "50–59%",
+            "d": "below 50%"
+        }
+    },
     "misconceptions": {
         "title": "What to Work On Next",
         "caption": "specific misconceptions + how to fix them"

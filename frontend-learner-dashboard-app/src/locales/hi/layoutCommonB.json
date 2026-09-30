@@ -763,6 +763,11 @@
         "recommendedNextSteps": "अनुशंसित अगले कदम",
         "whatWeNoticed": "हमने क्या देखा"
       },
+      "assessments": {
+        "title": "मूल्यांकन",
+        "caption": "इस अवधि में {{count}}",
+        "rank": "रैंक {{rank}}"
+      },
       "assignments": {
         "assigned": "सौंपे गए",
         "avgScore": "औसत स्कोर",
@@ -790,6 +795,19 @@
         "questionsAsked": "पूछे गए प्रश्न",
         "resolved": "हल किए गए",
         "title": "शंकाएं और सहभागिता"
+      },
+      "gradeMix": {
+        "title": "प्राप्त ग्रेड",
+        "summary": "{{total}} में से {{good}} टेस्ट में ग्रेड B या उससे ऊपर",
+        "testCount": "{{count}} टेस्ट",
+        "range": {
+          "ap": "90% और अधिक",
+          "a": "80–89%",
+          "bp": "70–79%",
+          "b": "60–69%",
+          "c": "50–59%",
+          "d": "50% से कम"
+        }
       },
       "liveClasses": {
         "attendance": "उपस्थिति",
@@ -842,6 +860,11 @@
       "topicMastery": {
         "note": "इस अवधि के सभी प्रयासों में विषयवार सटीकता",
         "title": "विषय निपुणता"
+      },
+      "trend": {
+        "title": "समय के साथ अंक",
+        "classAverage": "कक्षा औसत",
+        "ariaLabel": "हर मूल्यांकन में अंक, कक्षा औसत के साथ"
       }
     }
   }

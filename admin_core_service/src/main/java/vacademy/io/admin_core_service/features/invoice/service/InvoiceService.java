@@ -4015,7 +4015,8 @@ public class InvoiceService {
                                         ? mediaService.getFilePublicUrlById(pdfFileId)
                                         : null;
                                 sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency()});
+                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
+                                                inv.getInvoiceNumber()});
                             });
                 }
             }
@@ -4086,9 +4087,17 @@ public class InvoiceService {
             // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
             // the synthetic "sfp:..." marker so the row remains uniquely-keyed.
             String dtoId = StringUtils.hasText(realInvoiceId) ? realInvoiceId : ("sfp:" + sfp.getId());
+            // A settled installment already has a receipt the learner was given; show that
+            // number rather than a fabricated one. Bulk-loaded institutes made this obvious —
+            // every migrated receipt read as "PAID-<uuid>", so an admin matching the screen
+            // against the paper receipt had nothing to match on. Only an installment with no
+            // invoice behind it (anything still due) keeps the status-prefixed placeholder.
+            String realInvoiceNumber = pdfInfo != null && pdfInfo.length > 4 ? pdfInfo[4] : null;
             dtos.add(InvoiceDTO.builder()
                     .id(dtoId)
-                    .invoiceNumber(prefix + "-" + sfp.getId())
+                    .invoiceNumber(StringUtils.hasText(realInvoiceNumber)
+                            ? realInvoiceNumber
+                            : (prefix + "-" + sfp.getId()))
                     .userId(sfp.getUserId())
                     .userPlanId(sfp.getUserPlanId())
                     .instituteId(sfp.getInstituteId())

@@ -57,6 +57,7 @@ public class CallAiNodeHandler implements NodeHandler {
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     private final AiCallNodeDispatcher aiCallDispatcher;
+    private final vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService aiCallQueueService;
     private final AiCallingSettingsService settingsService;
     private final UserLeadProfileRepository userLeadProfileRepository;
     private final WorkflowExecutionStateRepository executionStateRepository;
@@ -177,6 +178,24 @@ public class CallAiNodeHandler implements NodeHandler {
         context.remove("callAnswers");
         context.put("aiCallDone", false);
         out.put("aiCallDone", false);
+
+        // The previous attempt may not have become a call yet: the queue can be paused,
+        // out of credits, outside calling hours, or simply deep. Counting those as
+        // attempts is how a lead gets declared unreachable while its call is still
+        // sitting in the queue — and how pausing the queue silently burns a campaign's
+        // retries. Wait for the call to actually happen before spending the attempt.
+        String waitingSubject = firstNonBlank(userId, subjectId, responseId, phone);
+        if (waitingSubject != null
+                && aiCallQueueService.hasCallWaiting(instituteId, provider, waitingSubject)) {
+            Instant recheck = Instant.now().plus(
+                    Math.max(1, settingsService.get(instituteId).getRecheckMinutes()), ChronoUnit.MINUTES);
+            pauseWorkflow(context, recheck, "AI_CALL_AWAITING_DIAL", out);
+            log.info("CALL_AI node: lead {} still has a call waiting in the queue — deferring to {} "
+                    + "without spending attempt {} of {}", userId, recheck, attempts + 1,
+                    settingsService.get(instituteId).getMaxRetries());
+            out.put("aiCallAwaitingDial", true);
+            return out;
+        }
 
         Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider, ignoreAssignedGuard);
 

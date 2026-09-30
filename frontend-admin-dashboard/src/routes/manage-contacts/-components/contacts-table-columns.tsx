@@ -169,6 +169,16 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<ContactUser>; columnI
     );
 };
 
+/**
+ * What the "Manage Column" list calls a column: its header text. The Name header is a sort
+ * dropdown rather than text, so it gets its plain name.
+ */
+export const getContactColumnLabel = (column: ColumnDef<ContactUser>): string => {
+    if (typeof column.header === 'string') return column.header;
+    if (column.id === 'user.full_name') return 'Name';
+    return column.id ?? '';
+};
+
 export const getContactColumns = (
     onSort?: (columnId: string, direction: string) => void,
     showLeadScore = false,
@@ -201,23 +211,13 @@ export const getContactColumns = (
                 </button>
             </MyDropdown>
         ),
-        cell: ({ row }) => {
-            const score = showLeadScore ? row.original.lead_score : undefined;
-            const tier = showLeadScore ? row.original.lead_tier : undefined;
-            const isConverted = row.original.lead_conversion_status === 'CONVERTED';
-            const hasLeadSignal = score != null || (tier != null && tier !== '');
-            return (
-                <div className="flex flex-col gap-0.5">
-                    <CreateClickableCell row={row} columnId="user.full_name" />
-                    <div className="flex flex-wrap gap-1">
-                        {hasLeadSignal && !isConverted && (
-                            <LeadScoreBadge score={score} tier={tier} size="sm" />
-                        )}
-                        <DuplicateBadge isDuplicate={row.original.is_duplicate} />
-                    </div>
-                </div>
-            );
-        },
+        // Tier and score have their own Lead Status / Lead Points columns, so none here.
+        cell: ({ row }) => (
+            <div className="flex flex-col gap-0.5">
+                <CreateClickableCell row={row} columnId="user.full_name" />
+                <DuplicateBadge isDuplicate={row.original.is_duplicate} />
+            </div>
+        ),
     },
     {
         id: 'user.username',
@@ -266,6 +266,8 @@ export const getContactColumns = (
         // fallback to last_login_time or remove if strictly needed from root?
         // JSON shows last_login_time.
         // Let's use last_login_time for now as created_at is not in the sample JSON user object.
+        // Explicit id, like its neighbours: Manage Column saves the layout by column id.
+        id: 'user.last_login_time',
         accessorKey: 'user.last_login_time',
         header: 'Last Login',
         size: 150,
@@ -292,7 +294,7 @@ export const getContactColumns = (
               {
                   id: 'lead_status',
                   header: 'Lead Status',
-                  size: 140,
+                  size: 200,
                   cell: ({ row }: { row: Row<ContactUser> }) => {
                       const score = row.original.lead_score;
                       const status = row.original.lead_conversion_status;
@@ -313,7 +315,15 @@ export const getContactColumns = (
                       }
                       const tier = row.original.lead_tier;
                       if (score != null || (tier != null && tier !== '')) {
-                          return <LeadScoreBadge score={score} tier={tier} size="sm" />;
+                          // Score lives in the Lead Points column right next to this one.
+                          return (
+                              <LeadScoreBadge
+                                  score={score}
+                                  tier={tier}
+                                  showScore={false}
+                                  size="sm"
+                              />
+                          );
                       }
                       return <span className="text-xs text-neutral-400">—</span>;
                   },

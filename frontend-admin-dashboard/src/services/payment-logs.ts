@@ -140,6 +140,8 @@ export interface BillingSummaryRequest {
     start_date_in_utc?: string;
     end_date_in_utc?: string;
     package_session_ids?: string[];
+    /** Name, email or phone. Only the learner lists (fetchOutstandingLearners) read it. */
+    search_string?: string;
 }
 
 /**

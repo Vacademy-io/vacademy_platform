@@ -60,6 +60,12 @@ describe('splitDescriptionParts', () => {
         expect(splitDescriptionParts('deleted 3 payment plan(s)')).toBeNull();
     });
 
+    it('bolds the learner name on progress report generation', () => {
+        expect(
+            nameParts('generated progress report for Anmol Agarwal (2026-04-01 to 2026-09-29)')
+        ).toEqual(['Anmol Agarwal']);
+    });
+
     it('bolds the invite name on invite link actions', () => {
         expect(nameParts('created invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);
         expect(nameParts('updated invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);

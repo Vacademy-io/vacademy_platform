@@ -314,6 +314,25 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         List<UserPlan> findDueForRenewal(@Param("now") java.util.Date now);
 
         /**
+         * As {@link #findDueForRenewal} but restricted to institutes that have authorised the
+         * charge sweep (PAYMENT_SETTING.autopayChargeSchedulerEnabled). The sweep is a single
+         * platform-wide cron, so without this scoping every institute with an armed plan is
+         * charged the moment autopay is switched on for anyone.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                LEFT JOIN FETCH up.paymentPlan pp
+                WHERE up.status = 'ACTIVE'
+                  AND up.autoRenewalEnabled = true
+                  AND up.nextChargeAt IS NOT NULL
+                  AND up.nextChargeAt <= :now
+                  AND ei.instituteId IN :instituteIds
+                """)
+        List<UserPlan> findDueForRenewalForInstitutes(@Param("now") java.util.Date now,
+                        @Param("instituteIds") List<String> instituteIds);
+
+        /**
          * Atomically CLAIM a plan for a renewal charge (multi-replica safe). The
          * daily scheduler fires on every replica, so before charging, each replica
          * runs this — only the one whose UPDATE actually flips next_charge_at→null
@@ -575,6 +594,22 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                 """;
 
         /**
+         * Narrows a balances list (Due / Outstanding / one forecast month) to the learners the
+         * search box matches, by the same student-row rule the payment records use
+         * ({@link PaymentLogRepository#STUDENT_SEARCH_MATCH}). Correlates on {@code o.user_id}.
+         *
+         * Only ever added to a list and its count, never inside {@link #DUE_OBLIGATION_CTES}: the
+         * cards above the list keep describing every learner while the list narrows.
+         */
+        String LEARNER_SEARCH_PREDICATE = """
+                (:noSearchFilter = true OR EXISTS (
+                      SELECT 1 FROM student sst
+                       WHERE sst.user_id = o.user_id
+                         AND """ + PaymentLogRepository.STUDENT_SEARCH_MATCH + """
+                      ))
+                """;
+
+        /**
          * Every enrolment one learner holds at an institute, priced individually — the Due side
          * view.
          *
@@ -732,6 +767,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        MAX(o.currency) AS currency
                   FROM obligations o
                  WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
                  GROUP BY o.user_id
                 HAVING SUM(o.overdue) > 0
                  ORDER BY due DESC
@@ -740,6 +776,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   FROM (SELECT o.user_id
                           FROM obligations o
                          WHERE o.is_live
+                           AND """ + LEARNER_SEARCH_PREDICATE + """
                          GROUP BY o.user_id
                         HAVING SUM(o.overdue) > 0) owing
                 """, nativeQuery = true)
@@ -750,6 +787,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds,
                         @Param("upcomingDays") int upcomingDays,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
                         Pageable pageable);
 
         /**
@@ -780,6 +820,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        MAX(o.currency) AS currency
                   FROM obligations o
                  WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
                  GROUP BY o.user_id
                 HAVING SUM(o.outstanding) > 0
                  ORDER BY MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) NULLS LAST,
@@ -789,6 +830,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   FROM (SELECT o.user_id
                           FROM obligations o
                          WHERE o.is_live
+                           AND """ + LEARNER_SEARCH_PREDICATE + """
                          GROUP BY o.user_id
                         HAVING SUM(o.outstanding) > 0) owing
                 """, nativeQuery = true)
@@ -799,6 +841,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds,
                         @Param("upcomingDays") int upcomingDays,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
                         Pageable pageable);
 
         /**
@@ -875,11 +920,12 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   FROM obligations o
                   JOIN in_month m ON m.user_id = o.user_id
                  WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
                  GROUP BY o.user_id
                  ORDER BY MIN(m.first_due_on), MAX(m.amount) DESC, o.user_id
                 """, countQuery = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + IN_MONTH_CTE + """
-                SELECT COUNT(*) FROM in_month
-                """, nativeQuery = true)
+                SELECT COUNT(*) FROM in_month o
+                 WHERE """ + LEARNER_SEARCH_PREDICATE, nativeQuery = true)
         Page<MonthDueLearnerProjection> findLearnersDueInMonth(
                         @Param("instituteId") String instituteId,
                         @Param("startDate") LocalDateTime startDate,
@@ -889,6 +935,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("upcomingDays") int upcomingDays,
                         @Param("monthStart") LocalDate monthStart,
                         @Param("monthEnd") LocalDate monthEnd,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
                         Pageable pageable);
 
         /**

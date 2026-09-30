@@ -19,6 +19,8 @@ import asyncio
 import json
 import logging
 import re
+import time
+from typing import Optional
 
 logger = logging.getLogger("voice_bot")
 
@@ -682,6 +684,89 @@ def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str
     return switcher, primary, fallback
 
 
+def navana_keys(raw: Optional[str] = None) -> list:
+    """NAVANA_API_KEY may hold several keys, comma-separated ("k1,k2,k3") —
+    each Navana account allows only 2 concurrent streams, so capacity grows 2 per
+    key. Whitespace and duplicates are ignored; order is kept."""
+    if raw is None:
+        raw = get_settings().navana_api_key
+    out = []
+    for k in (raw or "").split(","):
+        k = k.strip().strip("\"'").strip()       # a secret pasted with quotes
+        if k and k not in out:
+            out.append(k)
+    return out
+
+
+class NavanaKeyPool:
+    """Which Navana key a new connection should use. Single event loop, so no
+    locks. A key's load is the number of LIVE holders (connected TTS sockets and
+    in-flight one-shot renders) — tracked in a WeakSet, so a call that vanishes
+    without closing cleanly cannot leave a key looking busy forever. Least-loaded
+    wins; ties rotate (round-robin). A key that refused a handshake with
+    concurrency_limit cools off for a few seconds and is tried last."""
+
+    COOL_SECS = 5.0
+    BAD_KEY_SECS = 60.0
+
+    def __init__(self):
+        import weakref
+        self._weakref = weakref
+        self._holders: dict = {}      # key -> WeakSet of holders
+        self._cool: dict = {}         # key -> monotonic time the cool-off ends
+        self._rr = 0
+
+    def keys(self) -> list:
+        return navana_keys()
+
+    def load(self, key: str) -> int:
+        hs = self._holders.get(key)
+        return len(hs) if hs is not None else 0
+
+    def index(self, key: Optional[str]) -> int:
+        try:
+            return self.keys().index(key)
+        except ValueError:
+            return -1
+
+    def acquire(self, holder, exclude=()) -> Optional[str]:
+        keys = self.keys()
+        cands = [k for k in keys if k not in exclude]
+        if not cands:
+            return None
+        now = time.monotonic()
+        n = len(keys)
+        rr = self._rr % n
+        best = min(cands, key=lambda k: (self._cool.get(k, 0.0) > now,        # cooled keys last
+                                         self.load(k),                        # least loaded
+                                         (keys.index(k) - rr) % n))           # then round-robin
+        self._rr = (keys.index(best) + 1) % n
+        self._holders.setdefault(best, self._weakref.WeakSet()).add(holder)
+        return best
+
+    def release(self, holder, key: Optional[str]) -> None:
+        hs = self._holders.get(key) if key else None
+        if hs is not None:
+            hs.discard(holder)
+
+    def refused(self, key: Optional[str], secs: Optional[float] = None) -> None:
+        """Rest a key: COOL_SECS after a capacity refusal; longer (BAD_KEY_SECS)
+        after any other failure — a typo'd, revoked or out-of-credit key would
+        otherwise look idle (load 0) and be picked FIRST for every call."""
+        if key:
+            self._cool[key] = time.monotonic() + (self.COOL_SECS if secs is None else secs)
+
+    def loads(self) -> list:
+        return [self.load(k) for k in self.keys()]
+
+
+NAVANA_KEYS = NavanaKeyPool()
+
+
+class _Lease:
+    """A holder object for one-shot (REST) renders: weakref-able, per request."""
+
+
 def _navana_seq_routing(cls):
     """Subclass Navana's BodhiTTSService so that, with ONE AUDIO CONTEXT PER
     SENTENCE (what the speech cache switches on), every chunk lands in the
@@ -697,67 +782,238 @@ def _navana_seq_routing(cls):
     marks that sentence's end. So seq -> context is recorded when run_tts sends,
     and the sentence's context is closed at its last chunk.
 
-    With one context per turn (cache off) the SDK's own loop runs untouched.
+    SAID MUST MEAN HEARD (calls 18b63b17 / 45749163, 2026-09-30). pipecat
+    appends a push_text_frames service's TTSTextFrame the moment run_tts
+    returns — and Navana's run_tts only SENDS the text; the audio comes later on
+    the receive loop. So each sentence's text went down the pipeline BEFORE its
+    audio, past FloorGate (which starts holding at the first audio frame) and
+    into the played transcript and the LLM context. A reply held because the
+    parent was still talking, then dropped, still counted as said: the fees
+    answer was refused as "already said" twice (the parent asked three times),
+    the marks question never played and the line went quiet for 8.7 s. Every
+    sentence's text is now held and released once 60 % of its own audio is out
+    (NoRepeatGate's "mostly heard is heard" threshold): by `chunk_index`/
+    `chunk_total` for a multi-chunk sentence, and by SPLITTING the audio frame at
+    60 % when the text is still held at the sentence's last chunk — real Navana
+    sends a sentence as ONE chunk (chunk_total 1). The output transport writes
+    frames in order, so the text reaches the played transcript only once the
+    parent has heard 60 % of the sentence. A reply
+    FloorGate holds (from its first audio frame) keeps its text held with it and
+    drops it with it; a sentence cut in its first half is re-sayable; one heard
+    60-99 % is not repeated in full (an all-or-nothing "after the last chunk"
+    rule re-asked a question the parent answered over its tail, and re-said a
+    nearly finished opening). This applies with the cache off too (one context
+    per turn).
+
+    NO RECONNECT ON AN INTERRUPTION; RETRY A REFUSED HANDSHAKE. The account
+    allows 2 concurrent streams. pipecat's InterruptibleTTSService closes and
+    reopens the socket on every interruption while the bot is speaking, and
+    Navana frees a closed socket's slot a moment late — so the fresh handshake
+    was refused ("concurrency_limit") and that sentence was simply lost: 328
+    refusals on 2026-09-30, in 8 of the 13 real conversations after 10:54 (6-48
+    per call; calls cycled sockets several times a second). The reconnect is not
+    needed for correctness: an interrupted reply's in-flight seqs are marked dead
+    and whatever Navana still streams for them is dropped (it generates ~20x real
+    time, so the next reply waits a few hundred ms at most). And a refused
+    handshake is retried (0.25 / 0.5 / 1 s) instead of failing the sentence.
     """
+    import asyncio as _asyncio
+    from pipecat.services.tts_service import WebsocketTTSService as _WsTTS
+    from pipecat.frames.frames import TTSTextFrame as _Text
+
     class _Routed(cls):
         def _nv_routing_on(self) -> bool:
             return not getattr(self, "_reuse_context_id_within_turn", True)
 
         def _nv_reset(self):
-            self._nv_ctx = {}          # seq -> context_id
+            self._nv_ctx = {}          # seq -> context_id, while its audio is still to come
             self._nv_cur_seq = None    # seq of the chunk header just received
             self._nv_cur_last = False
+            self._nv_text = {}         # seq -> [TTSTextFrame] held until its last chunk
+            self._nv_ctx_seq = {}      # context_id -> latest seq sent for it
+            self._nv_dead = set()      # seqs of interrupted sentences: drop what still streams
+            self._nv_cur_idx = None    # chunk_index / chunk_total of the header just received
+            self._nv_cur_total = None
+
+        async def append_to_audio_context(self, context_id, frame):
+            if isinstance(frame, _Text) and not getattr(frame, "_nv_released", False):
+                if not hasattr(self, "_nv_ctx"):
+                    self._nv_reset()
+                seq = self._nv_ctx_seq.get(context_id)
+                if seq is not None and seq in self._nv_ctx:
+                    self._nv_text.setdefault(seq, []).append(frame)
+                    return
+            await super().append_to_audio_context(context_id, frame)
+
+        async def _nv_release_text(self, seq, ctx):
+            for tf in self._nv_text.pop(seq, []):
+                tf._nv_released = True
+                await self.append_to_audio_context(ctx, tf)
+
+        async def _nv_finish(self, seq, ctx):
+            """The sentence's audio is complete: its text (if half-way did not
+            already release it), then its stop."""
+            self._nv_ctx.pop(seq, None)
+            if self._nv_ctx_seq.get(ctx) == seq:
+                self._nv_ctx_seq.pop(ctx, None)
+            await self._nv_release_text(seq, ctx)
+            from pipecat.frames.frames import TTSStoppedFrame as _Stopped
+            await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
+            # One context per sentence: close it so the next plays at once
+            # (closing ends the queue, not the playout).
+            if self._nv_routing_on() and self.audio_context_available(ctx):
+                await self.remove_audio_context(ctx)
+
+        async def push_error(self, *args, **kwargs):
+            if getattr(self, "_nv_quiet", False):
+                # A handshake attempt we are about to retry: not an error yet.
+                self._nv_last_error = str(kwargs.get("error_msg") or (args[0] if args else ""))
+                return
+            await super().push_error(*args, **kwargs)
 
         async def _connect_websocket(self):
+            from websockets.protocol import State as _State
+            if self._websocket is not None and getattr(self._websocket, "state", None) is _State.OPEN:
+                return                                  # already connected: keep the seq state
             # A fresh socket restarts seq at 1 (the SDK resets it on ready).
             self._nv_reset()
-            await super()._connect_websocket()
+            # A lazy reconnect over a closed socket (the SDK's run_tts) may come
+            # here still holding the old key: give it back first.
+            NAVANA_KEYS.release(self, getattr(self, "_nv_key", None))
+            self._nv_key = None
+            # KEYS: the least-loaded of NAVANA_API_KEY's comma-separated keys. A
+            # key that fails the handshake is rested (5 s for concurrency_limit,
+            # 60 s for anything else — bad/revoked key, no credit) and the NEXT
+            # key is tried at once; only when every key failed, back off and go
+            # round again (0.25 / 0.5 / 1 s), then report.
+            delays = (0.25, 0.5, 1.0)
+            refusals, tried, rounds = 0, set(), 0
+            while True:
+                key = NAVANA_KEYS.acquire(self, exclude=tried)
+                if key is None:                         # every key refused this round
+                    if rounds >= len(delays):
+                        await super().push_error(error_msg=self._nv_last_error or
+                                                 f"{self} navana: every key refused")
+                        return
+                    await _asyncio.sleep(delays[rounds])
+                    rounds += 1
+                    tried = set()
+                    continue
+                self._nv_key, self._api_key = key, key
+                self._nv_quiet, self._nv_last_error = True, ""
+                try:
+                    await super()._connect_websocket()
+                finally:
+                    self._nv_quiet = False
+                if self._websocket is not None:
+                    logger.info("navana: connected on key #%d of %d (load %s)%s",
+                                NAVANA_KEYS.index(key), len(NAVANA_KEYS.keys()),
+                                NAVANA_KEYS.loads(),
+                                f" after {refusals} refusal(s)" if refusals else "")
+                    return
+                NAVANA_KEYS.release(self, key)
+                self._nv_key = None
+                refusals += 1
+                tried.add(key)
+                if "concurrency_limit" in self._nv_last_error:
+                    NAVANA_KEYS.refused(key)
+                else:
+                    NAVANA_KEYS.refused(key, NAVANA_KEYS.BAD_KEY_SECS)
+                    logger.warning("navana: key #%d of %d failed (not capacity) — resting it "
+                                   "%.0f s, trying the next key: %s", NAVANA_KEYS.index(key),
+                                   len(NAVANA_KEYS.keys()), NAVANA_KEYS.BAD_KEY_SECS,
+                                   (self._nv_last_error or "")[-160:])
+
+        async def _disconnect_websocket(self):
+            try:
+                await super()._disconnect_websocket()
+            finally:
+                NAVANA_KEYS.release(self, getattr(self, "_nv_key", None))
+                self._nv_key = None
 
         async def on_audio_context_interrupted(self, context_id: str):
-            self._nv_reset()
+            # pipecat reconnects the socket on an interruption only while the bot
+            # is audibly speaking — NOT for a reply FloorGate was still holding.
+            # Navana then keeps streaming the dropped sentences, and forgetting
+            # their seqs sent those chunks to whichever context played next. So
+            # every sentence in flight is marked dead: its audio and its text
+            # are discarded as they arrive (it was never heard).
+            if not hasattr(self, "_nv_ctx"):
+                self._nv_reset()
+            self._nv_dead.update(self._nv_ctx.keys())
+            self._nv_ctx.clear()
+            self._nv_text.clear()
+            self._nv_ctx_seq.clear()
             await super().on_audio_context_interrupted(context_id)
+
+        async def _handle_interruption(self, frame, direction):
+            # Skip InterruptibleTTSService's close-and-reopen (see above): the
+            # dead-seq bookkeeping already discards the interrupted reply.
+            await _WsTTS._handle_interruption(self, frame, direction)
 
         async def run_tts(self, text, context_id, *args, **kwargs):
             recorded = False
             async for frame in super().run_tts(text, context_id, *args, **kwargs):
                 # The SDK increments _seq and sends BEFORE its first yield, so the
                 # seq is known here — long before its first chunk (hundreds of ms).
-                if not recorded and self._nv_routing_on():
+                if not recorded:
                     if not hasattr(self, "_nv_ctx"):
                         self._nv_reset()
                     self._nv_ctx[self._seq] = context_id
+                    self._nv_ctx_seq[context_id] = self._seq
                     recorded = True
                 yield frame
 
         async def _receive_messages(self):
-            if not self._nv_routing_on():
-                await super()._receive_messages()
-                return
             import json as _json
-            from pipecat.frames.frames import TTSAudioRawFrame as _Audio, TTSStoppedFrame as _Stopped
+            from pipecat.frames.frames import TTSAudioRawFrame as _Audio
             if not hasattr(self, "_nv_ctx"):
                 self._nv_reset()
             async for message in self._get_websocket():
                 if isinstance(message, (bytes, bytearray)):
                     await self.stop_ttfb_metrics()
-                    ctx = self._nv_ctx.get(self._nv_cur_seq)
-                    if ctx is None or not self.audio_context_available(ctx):
-                        # Interrupted, or a seq we never recorded: nowhere safe.
-                        ctx = None if self._nv_cur_seq in self._nv_ctx else \
-                            self.get_active_audio_context_id()
-                    if ctx is None:
+                    seq = self._nv_cur_seq
+                    last, self._nv_cur_last = self._nv_cur_last, False
+                    if seq in self._nv_dead:
+                        if last:
+                            self._nv_dead.discard(seq)
                         continue
+                    ctx = self._nv_ctx.get(seq)
+                    if ctx is None or not self.audio_context_available(ctx):
+                        if seq in self._nv_ctx:
+                            # Cache off: the turn's context idled out while this
+                            # sentence was still being generated — pipecat
+                            # recreates the turn context on append (the SDK loop
+                            # played it late). Any other closed context: drop.
+                            ctx = ctx if ctx == getattr(self, "_turn_context_id", None) else None
+                        else:
+                            ctx = self.get_active_audio_context_id()
+                    if ctx is None:
+                        if last:
+                            # Never played, so never heard: its text goes too.
+                            self._nv_ctx.pop(seq, None)
+                            self._nv_text.pop(seq, None)
+                        continue
+                    pcm = bytes(message)
+                    if last and seq in self._nv_text and len(pcm) >= 8:
+                        # Still held at the sentence's last chunk — always, for
+                        # Navana's one-chunk sentences: the text goes 60 % into it.
+                        cut = (int(len(pcm) * 0.6) // 2) * 2          # 16-bit aligned
+                        await self.append_to_audio_context(ctx, _Audio(
+                            audio=pcm[:cut], sample_rate=self._output_sample_rate,
+                            num_channels=1, context_id=ctx))
+                        await self._nv_release_text(seq, ctx)
+                        pcm = pcm[cut:]
                     await self.append_to_audio_context(ctx, _Audio(
-                        audio=bytes(message), sample_rate=self._output_sample_rate,
+                        audio=pcm, sample_rate=self._output_sample_rate,
                         num_channels=1, context_id=ctx))
-                    if self._nv_cur_last:
-                        self._nv_cur_last = False
-                        self._nv_ctx.pop(self._nv_cur_seq, None)
-                        await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
-                        # Close this sentence's queue so the next context plays at
-                        # once (closing ends the queue, not the playout).
-                        if self.audio_context_available(ctx):
-                            await self.remove_audio_context(ctx)
+                    if last:
+                        await self._nv_finish(seq, ctx)
+                    elif seq in self._nv_text:
+                        idx, total = self._nv_cur_idx, self._nv_cur_total
+                        if isinstance(idx, int) and isinstance(total, int) and total > 0 \
+                                and (idx + 1) * 5 >= total * 3:
+                            await self._nv_release_text(seq, ctx)    # 60 % of it is out
                     continue
                 try:
                     content = _json.loads(message)
@@ -767,6 +1023,8 @@ def _navana_seq_routing(cls):
                 if kind == "audio":
                     self._nv_cur_seq = content.get("seq")
                     self._nv_cur_last = bool(content.get("is_last_chunk"))
+                    self._nv_cur_idx = content.get("chunk_index")
+                    self._nv_cur_total = content.get("chunk_total")
                 elif kind == "error":
                     await self.push_error(
                         error_msg=f"{self} Bodhi TTS error {content.get('code')}: {content.get('message')}")
@@ -1018,14 +1276,16 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         # letterless guard so vendor characters are METERED (diagnostics.tts.chars)
         # — the call card then prices the real count, as it does for Smallest.
         # No pace knob: the streaming hello rejects `speed` (Navana docs).
-        if not s.navana_api_key:
+        if not navana_keys(s.navana_api_key):
             logger.error("tts: NAVANA_API_KEY unset — falling back to Sarvam bulbul")
         else:
             try:
                 from bodhi.integrations.pipecat_tts import BodhiTTSService
                 nv_voice = (voice or s.navana_tts_voice).strip() or s.navana_tts_voice
                 cls = _letterless_guard(_navana_seq_routing(BodhiTTSService))
-                return _tag_engine(cls(api_key=s.navana_api_key, voice=nv_voice,
+                # The key here is a placeholder: each connection picks the
+                # least-loaded key from NAVANA_KEYS (comma-separated env).
+                return _tag_engine(cls(api_key=navana_keys(s.navana_api_key)[0], voice=nv_voice,
                                        language=navana_language(language)),
                                    "navana", nv_voice)
             except Exception:

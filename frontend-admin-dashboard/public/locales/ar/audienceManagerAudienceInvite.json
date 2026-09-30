@@ -15,6 +15,10 @@
         "allStatus": "كل الحالات",
         "placeholder": "تصفية حسب الحالة"
     },
+    "typeFilter": {
+        "allTypes": "جميع أنواع الحملات",
+        "placeholder": "التصفية حسب نوع الحملة"
+    },
     "toolbar": {
         "searchPlaceholder": "البحث في {{term}}",
         "searchAriaLabel": "البحث في {{term}}",

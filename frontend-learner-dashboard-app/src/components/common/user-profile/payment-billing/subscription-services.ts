@@ -33,6 +33,25 @@ export interface Subscription {
   /** Invite has autopay configured — gates the "enable auto-pay" option. */
   autopay_available?: boolean;
   /**
+   * The gateway charges a card already stored against the learner (eWay), so a manual
+   * renewal completes in the one request: no checkout opens, and there is no mandate to
+   * register — hence no autopay method picker. False means the renewal returns checkout
+   * coordinates to open (Razorpay).
+   */
+  instant_renewal?: boolean;
+  /**
+   * The gateway a renewal will actually go through — NOT always `vendor`, which names the
+   * gateway the plan was sold on. Use this for gateway-specific assets (eWay eCrypt keys):
+   * the institute may no longer have the plan's original gateway configured.
+   */
+  renewal_vendor?: string | null;
+  /**
+   * The institute wants a manual renewal to arm autopay by default
+   * (PAYMENT_SETTING.autopayDefaultOnManualRenewal). Pre-select the autopay choice from
+   * this rather than assuming off — the learner can still clear it where a checkbox shows.
+   */
+  autopay_default?: boolean;
+  /**
    * At least one other plan is flagged switchable for this membership. Gates the
    * "Change plan" entry point so we never open an empty picker.
    */
@@ -167,12 +186,33 @@ export const cancelSubscription = async (
 };
 
 /**
+ * The eWay eCrypt card payload, as EwayCardForm produces it. Sent only on the second
+ * call, after the backend answered REQUIRES_CARD. card_number / cvn are already
+ * encrypted client-side; no customer id is ever sent (the backend ignores one anyway,
+ * because honouring it would let a caller charge someone else's stored card).
+ */
+export interface RenewalCardPayload {
+  card_name: string;
+  card_number: string;
+  cvn: string;
+  expiry_month: string;
+  expiry_year: string;
+}
+
+/**
  * Start a MANUAL RENEWAL payment for an existing plan ("pay to continue").
  * The backend derives amount/vendor from the plan itself and creates a
  * plan-linked RENEWAL order — on gateway confirmation the SAME membership
  * reactivates (no new records). With withAutopay the checkout opens in
  * mandate mode: one approval pays AND re-registers auto-pay.
- * Returns the gateway checkout payload (response_data.razorpayKeyId etc.).
+ *
+ * Two response shapes, distinguished by response_data — always check
+ * isRenewalAlreadyPaid() FIRST:
+ *  - stored-token gateway (eWay) with a card on file: already charged,
+ *    paymentStatus === "PAID", nothing to open;
+ *  - stored-token gateway with NO card on file: paymentStatus === "REQUIRES_CARD"
+ *    and nothing charged — collect a card and call again passing `card`;
+ *  - checkout gateway (Razorpay): razorpayKeyId / razorpayOrderId to open.
  */
 export const initiateRenewalPayment = async (
   instituteId: string,
@@ -180,12 +220,14 @@ export const initiateRenewalPayment = async (
   withAutopay: boolean,
   // Only meaningful with withAutopay: how the fresh mandate is authorised (UPI Autopay
   // or card e-mandate), the same choice the enrol form offers.
-  mandateMethod?: MandateMethod
+  mandateMethod?: MandateMethod,
+  // Only on the retry after REQUIRES_CARD.
+  card?: RenewalCardPayload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
   const response = await authenticatedAxiosInstance.post(
     `${LEARNER_SUBSCRIPTION_LIST}/${sub.user_plan_id}/renew-payment`,
-    null,
+    card ?? null,
     {
       params: {
         instituteId,
@@ -196,6 +238,31 @@ export const initiateRenewalPayment = async (
   );
   return response.data;
 };
+
+/** The checkout/confirmation block of a renewal or plan-change response, wherever it sits. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const renewalResponseData = (response: any) =>
+  response?.payment_response?.response_data || response?.response_data;
+
+/**
+ * True when the backend already took the payment and there is no checkout to open — a
+ * stored-token gateway like eWay charges the saved card server-side and confirms inline.
+ * Callers must test this BEFORE looking for razorpayKeyId, or a completed payment reads
+ * as "could not create the order".
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const isRenewalAlreadyPaid = (response: any): boolean =>
+  String(renewalResponseData(response)?.paymentStatus ?? "").toUpperCase() === "PAID";
+
+/**
+ * True when the learner has no card on file for a stored-token gateway, so nothing was
+ * charged and no order exists. Collect a card and call initiateRenewalPayment again with
+ * it — this is not an error state and must not be shown as a failed payment.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const isRenewalCardRequired = (response: any): boolean =>
+  String(renewalResponseData(response)?.paymentStatus ?? "").toUpperCase() ===
+  "REQUIRES_CARD";
 
 export const PLAN_CHANGE_OPTIONS_QUERY_KEY = "LEARNER_PLAN_CHANGE_OPTIONS";
 

@@ -80,6 +80,7 @@ const RESOURCE_LABELS: Record<string, string> = {
     GUARDIAN_LINK: 'Guardian link',
     INSTITUTE_SETTING: 'Settings',
     LEARNER_BADGE: 'Learner badge',
+    STUDENT_REPORT: 'Progress report',
     ASSESSMENT: 'Assessment',
 };
 
@@ -130,6 +131,8 @@ const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
     /^(edited \d+ questions? of assessment )(.+)$/i,
     /^(created booking )(.+)$/i,
     /^(scheduled live session )(.+)$/i,
+    // "generated progress report for Anmol Agarwal (2026-04-01 to 2026-09-29)"
+    /^(generated progress report for )(.+?)( \(.+\))$/i,
 
     // Enrollment — with and without a resolved course.
     /^((?:re-)?enrolled learner )(.+?)( in )(.+)$/i,

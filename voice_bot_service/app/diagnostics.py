@@ -204,6 +204,7 @@ class CallDiagnostics:
     # could not tell that story: it counts sentences, and what matters is TURNS
     # the caller could not answer.
     handbacks: int = 0
+    empty_replies: int = 0        # genuinely empty model answers re-asked for the next line
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0

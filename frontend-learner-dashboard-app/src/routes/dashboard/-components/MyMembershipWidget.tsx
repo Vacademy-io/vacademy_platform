@@ -397,11 +397,11 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                               ? t("membership.renewPrompt", { date: accessUntil })
                                               : t("membership.renewPromptNoDate")}
                                     </p>
-                                    {sub.autopay_available && (
+                                    {sub.autopay_available && !sub.instant_renewal && (
                                         <label className="flex cursor-pointer items-start gap-2 text-caption text-foreground">
                                             <Checkbox
                                                 className="mt-0.5"
-                                                checked={Boolean(autopayChoice[sub.user_plan_id])}
+                                                checked={autopayChoice[sub.user_plan_id] ?? Boolean(sub.autopay_default)}
                                                 onCheckedChange={(checked) =>
                                                     setAutopayChoice((prev) => ({
                                                         ...prev,
@@ -412,7 +412,8 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                             <span>{t("membership.alsoEnableAutopay")}</span>
                                         </label>
                                     )}
-                                    {sub.autopay_available && autopayChoice[sub.user_plan_id] && (
+                                    {sub.autopay_available && !sub.instant_renewal
+                                        && (autopayChoice[sub.user_plan_id] ?? Boolean(sub.autopay_default)) && (
                                         <MandateMethodPicker
                                             value={mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD}
                                             onChange={(method) =>
@@ -431,7 +432,9 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                                 sub,
                                                 Boolean(
                                                     sub.autopay_available &&
-                                                        autopayChoice[sub.user_plan_id]
+                                                        !sub.instant_renewal &&
+                                                        (autopayChoice[sub.user_plan_id] ??
+                                                            sub.autopay_default)
                                                 ),
                                                 mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
                                             )

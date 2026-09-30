@@ -299,6 +299,8 @@ class Settings:
     # service (bodhi-api-sdk). NOTE the account default of TWO concurrent
     # connections, and a live call holds one for its whole duration: ask Navana
     # to raise it before putting more than two concurrent calls on this engine.
+    # Several keys (separate accounts) comma-separated — "k1,k2" — add 2 streams
+    # each: providers.NAVANA_KEYS gives every connection the least-loaded key.
     navana_api_key: str = field(default_factory=lambda: _env("NAVANA_API_KEY") or _env("BODHI_API_KEY"))
     navana_tts_voice: str = field(default_factory=lambda: _env("NAVANA_TTS_VOICE", "bhavana"))
     deepgram_tts_voice: str = field(

@@ -100,12 +100,13 @@ public class IdentityCollector {
         String pkg = ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null;
         String session = ps.getSession() != null ? ps.getSession().getSessionName() : null;
         StringBuilder sb = new StringBuilder();
-        if (level != null && !level.isBlank()) sb.append(level.trim());
+        // "default" is the placeholder level of a course without levels — never show it to a parent.
+        if (level != null && !level.isBlank() && !level.trim().equalsIgnoreCase("default")) sb.append(level.trim());
         if (pkg != null && !pkg.isBlank()) {
             if (sb.length() > 0) sb.append(" ");
             sb.append(pkg.trim());
         }
-        if (session != null && !session.isBlank()) {
+        if (session != null && !session.isBlank() && !session.trim().equalsIgnoreCase("default")) {
             if (sb.length() > 0) sb.append(" ");
             sb.append("(").append(session.trim()).append(")");
         }

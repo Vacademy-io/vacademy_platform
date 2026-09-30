@@ -18,6 +18,14 @@ export interface QuestionPaperTemplateProps {
     // View-mode trigger style: 'plain' is the borderless label used inside menus,
     // 'secondary' is a bordered action button for card rows.
     triggerVariant?: 'plain' | 'secondary';
+    // Optional controlled mode. When `open` is passed the parent owns the dialog
+    // state, and `hideTrigger` drops the built-in trigger button.
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    hideTrigger?: boolean;
+    // Create flow only: called instead of closing when Save passes the quick
+    // validation check, so the parent can save the paper straight away.
+    onValidSave?: () => void;
 }
 
 export interface QuestionData {

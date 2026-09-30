@@ -58,9 +58,19 @@ export function QuestionPaperTemplate({
     setCurrentQuestionIndex,
     examType,
     triggerVariant = 'plain',
+    open,
+    onOpenChange,
+    hideTrigger = false,
+    onValidSave,
 }: QuestionPaperTemplateProps) {
     const { t } = useTranslation('assessmentQuestionPaperTemplate');
-    const [isQuestionPaperTemplateDialog, setIsQuestionPaperTemplateDialog] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+    // Controlled when the parent passes `open`; otherwise the built-in trigger owns it.
+    const isQuestionPaperTemplateDialog = open ?? internalOpen;
+    const setIsQuestionPaperTemplateDialog = (value: boolean) => {
+        if (open === undefined) setInternalOpen(value);
+        onOpenChange?.(value);
+    };
     const { instituteLogo } = useInstituteLogoStore();
     const { handleRefetchData } = useRefetchStore();
     const queryClient = useQueryClient();
@@ -329,6 +339,11 @@ export function QuestionPaperTemplate({
             return;
         }
 
+        if (onValidSave) {
+            onValidSave();
+            return;
+        }
+
         setIsQuestionPaperTemplateDialog(false);
     };
 
@@ -337,7 +352,11 @@ export function QuestionPaperTemplate({
             open={isQuestionPaperTemplateDialog}
             onOpenChange={setIsQuestionPaperTemplateDialog}
         >
-            <DialogTrigger asChild={isViewMode && triggerVariant === 'secondary'}>
+            <DialogTrigger
+                asChild={isViewMode && triggerVariant === 'secondary'}
+                // Controlled callers open the dialog themselves.
+                className={hideTrigger ? 'hidden' : undefined}
+            >
                 {isViewMode ? (
                     triggerVariant === 'secondary' ? (
                         <MyButton

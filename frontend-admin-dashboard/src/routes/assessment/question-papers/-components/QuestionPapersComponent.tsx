@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet';
-import { QuestionPapersHeading } from './QuestionPapersHeading';
+import { QuestionPapersPageHeader } from './QuestionPapersPageHeader';
+import { AddQuestionPaperFlow } from './AddQuestionPaperFlow';
 import { QuestionPapersTabs } from './QuestionPapersTabs';
 import { useEffect, useState } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -20,17 +21,18 @@ export function QuestionPapersComponent() {
                 <title>{t('pageTitle')}</title>
                 <meta name="description" content={t('pageDescription')} />
             </Helmet>
-            <div className="flex flex-col gap-4">
-                <QuestionPapersHeading
-                    currentQuestionIndex={currentQuestionIndex}
-                    setCurrentQuestionIndex={setCurrentQuestionIndex}
-                />
+            <div className="flex flex-col gap-6">
+                <QuestionPapersPageHeader />
                 <QuestionPapersTabs
                     isAssessment={false}
                     currentQuestionIndex={currentQuestionIndex}
                     setCurrentQuestionIndex={setCurrentQuestionIndex}
                 />
             </div>
+            <AddQuestionPaperFlow
+                currentQuestionIndex={currentQuestionIndex}
+                setCurrentQuestionIndex={setCurrentQuestionIndex}
+            />
         </>
     );
 }

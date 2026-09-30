@@ -53,23 +53,37 @@ def _task_names() -> list:
     return sorted(out)
 
 
-def _referrer_chain(obj, depth=4) -> list:
-    """Who keeps the first surviving PipelineTask alive — one referrer per hop."""
-    chain, cur, seen = [], obj, {id(obj)}
+def _describe(o) -> str:
+    n = type(o).__name__
+    if isinstance(o, dict):
+        return f"dict{list(o.keys())[:4]}"
+    if isinstance(o, (list, tuple, set)):
+        return f"{n}[{len(o)}]"
+    for attr in ("__qualname__", "__name__"):
+        if hasattr(o, attr):
+            return f"{n}:{getattr(o, attr)}"
+    return n
+
+
+def _referrer_chain(obj, depth=8) -> list:
+    """Walk up referrers from one surviving PipelineTask, skipping the probe's
+    own frames/lists, to name what pins it."""
+    import types
+    chain, cur = [], obj
+    ignore = {id(obj)}
     for _ in range(depth):
+        gc.collect()
         refs = [r for r in gc.get_referrers(cur)
-                if id(r) not in seen and not isinstance(r, list) or
-                (isinstance(r, list) and len(r) < 50 and id(r) not in seen)]
-        refs = [r for r in refs if r is not chain and type(r).__name__ != "frame"]
+                if id(r) not in ignore and not isinstance(r, types.FrameType)
+                and not (isinstance(r, list) and len(r) > 1000)]
         if not refs:
+            chain.append("<no referrers>")
             break
-        r = refs[0]
-        seen.add(id(r))
-        desc = type(r).__name__
-        if isinstance(r, dict):
-            keys = [k for k, v in r.items() if v is cur][:3]
-            desc += f" keys={keys}"
-        chain.append(desc)
+        # Prefer something that is not just the object's own __dict__.
+        r = next((x for x in refs if not (isinstance(x, dict) and "_name" in x)), refs[0])
+        chain.append(_describe(r))
+        ignore.add(id(r))
+        ignore.add(id(refs))
         cur = r
     return chain
 

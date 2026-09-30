@@ -6668,3 +6668,66 @@ async def test_a_killed_responses_late_fragment_is_never_spoken():
     await _reply(g, "जी मैम, Shiksha Nation में हमारा focus concept clarity पर है। ",
                  "बच्चा किस class में है?")
     assert any("class" in t for t in rec.text), rec.text
+
+
+# ── Call 963347ab (2026-09-30): three silences, three causes ───────────────
+PITCH_963 = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+             "बच्चों की concept clarity मजबूत करने पर काम करते हैं, ताकि वो school exams में "
+             "बेहतर perform करें और पूरे confidence के साथ अच्छे marks ला सकें। ")
+
+
+@pytest.mark.asyncio
+async def test_the_cap_keeps_the_question_even_when_a_line_follows_it():
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "मैं उसकी बड़ी बहन बोल रही हूँ।",
+                       request_next_step=_next_step, max_sentences=lambda: 2,
+                       max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "जी, नमस्ते। ", PITCH_963,
+                 "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ, नाम क्या है और किस class में है? ",
+                 "जी।")
+    said = " ".join(rec.text)
+    assert "किस class में है?" in said, said
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_asks_for_the_next_line():
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    caller = {"t": "ये apply."}
+    g, rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert asked and asked[-1][1] == "continue", asked
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_while_ending_does_nothing():
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "ठीक है।",
+                       request_next_step=_next_step, ending=lambda: True)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not asked
+
+
+@pytest.mark.asyncio
+async def test_a_statement_with_no_question_leaves_the_bot_owing_the_line():
+    caller = {"t": "जी।"}
+    g, _rec, _asked = _nr_with_steps(caller)
+    await _reply(g, "पहली, faculty अच्छे हों और बच्चे के concepts properly clear करें।")
+    assert g.owes_line() and not g.owed_after_filler()
+    caller["t"] = "जी जी।"
+    await _reply(g, "क्या इसके अलावा आपकी कोई specific expectation है?")
+    assert not g.owes_line()

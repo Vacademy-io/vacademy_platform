@@ -60,8 +60,10 @@ public class CallBillingService {
     private static final Logger log = LoggerFactory.getLogger(CallBillingService.class);
 
     /**
-     * Platform-wide billing granularity in seconds. 60 keeps the historical per-minute
-     * rounding for every institute that has not negotiated a finer pulse.
+     * Platform-wide billing granularity in seconds. 30 = half-minute pulses for every
+     * institute that has not negotiated its own. Rates stay credits-per-MINUTE, so this
+     * does not change anybody's price per minute — it only stops a 5-second call being
+     * rounded up to a full one.
      */
     @org.springframework.beans.factory.annotation.Value("${telephony.billing.pulse-seconds:60}")
     private int defaultPulseSeconds;
@@ -331,7 +333,7 @@ public class CallBillingService {
             log.debug("call-billing: pulse lookup failed for {} — using default {}s",
                     instituteId, defaultPulseSeconds);
         }
-        return defaultPulseSeconds > 0 ? defaultPulseSeconds : 60;
+        return defaultPulseSeconds > 0 ? defaultPulseSeconds : 30;
     }
 
     private Rate resolveRate(String instituteId, String requestType) {

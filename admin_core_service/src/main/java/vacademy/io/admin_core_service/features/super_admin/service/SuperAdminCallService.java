@@ -156,6 +156,36 @@ public class SuperAdminCallService {
      */
     private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
                                           double minutes, int seconds, Integer ttsChars) {
+        return breakdown(card, ttsModel, minutes, seconds, ttsChars, null);
+    }
+
+    /** LLM rupees from the call's own tokens, or null when it reported none or the card lacks the rates. */
+    static Double llmFromTokens(Map<String, Double> card, long[] usage) {
+        if (usage == null) return null;
+        Double in = card.get("llm_in_per_mtok"), cached = card.get("llm_cached_per_mtok"),
+                out = card.get("llm_out_per_mtok");
+        if (in == null || cached == null || out == null) return null;
+        long prompt = usage[0], hit = Math.min(usage[1], usage[0]), completion = usage[2];
+        return ((prompt - hit) * in + hit * cached + completion * out) / 1_000_000d;
+    }
+
+    /** diagnostics.infra.llmUsage → {promptTokens, cachedTokens, completionTokens}, or null. */
+    private long[] llmUsage(String diagnosticsJson) {
+        if (diagnosticsJson == null || diagnosticsJson.isBlank()) return null;
+        try {
+            com.fasterxml.jackson.databind.JsonNode u =
+                    DIAG_MAPPER.readTree(diagnosticsJson).path("infra").path("llmUsage");
+            if (!u.path("promptTokens").isNumber()) return null;
+            return new long[]{u.path("promptTokens").asLong(), u.path("cachedTokens").asLong(0),
+                    u.path("completionTokens").asLong(0)};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
+                                          double minutes, int seconds, Integer ttsChars,
+                                          long[] llmUsage) {
         String engine = (ttsModel == null || ttsModel.isBlank()) ? "sarvam" : ttsModel.trim().toLowerCase();
         double billedMinutes = seconds <= 0 ? 0 : ((seconds + 29) / 30) / 2.0;
         Map<String, Double> b = new LinkedHashMap<>();
@@ -173,7 +203,10 @@ public class SuperAdminCallService {
         b.put("tts", round(ttsChars != null && ttsChars > 0
                 ? ttsChars / CHARS_PER_CALL_MINUTE * ttsPerMin
                 : ttsPerMin * minutes));
-        b.put("llm", round(card.getOrDefault("llm", 0d) * minutes));
+        // The call's own tokens when it reported them (V542); the per-minute
+        // average only for calls that did not.
+        Double llm = llmFromTokens(card, llmUsage);
+        b.put("llm", round(llm != null ? llm : card.getOrDefault("llm", 0d) * minutes));
         return b;
     }
 
@@ -384,7 +417,8 @@ public class SuperAdminCallService {
             double minutes = secs / 60.0;
             String tts = (String) r[6];
             Integer ttsChars = diagInt((String) r[18], "chars");
-            Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars);
+            Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars,
+                    llmUsage((String) r[18]));
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
             double billed = round(billedInr(card, surcharge, pricing, tts,
                     (String) r[10], (String) r[19], secs));
@@ -493,7 +527,19 @@ public class SuperAdminCallService {
                                          THEN CAST(r.diagnostics->'tts'->>'chars' AS bigint) END), 0),
                        COALESCE(sum(r.duration_seconds) FILTER (
                            WHERE r.diagnostics->'tts'->>'chars' IS NULL
-                              OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$')), 0)
+                              OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$')), 0),
+                       -- [16] Plivo's 30-second pulses, as each row prices them
+                       COALESCE(sum(CASE WHEN r.duration_seconds > 0
+                                         THEN (r.duration_seconds + 29) / 30 ELSE 0 END), 0),
+                       -- [17..19] LLM tokens of calls that reported usage, [20] seconds of those that did not
+                       COALESCE(sum(CASE WHEN r.diagnostics->'infra'->'llmUsage'->>'promptTokens' ~ '^[0-9]+$'
+                                         THEN CAST(r.diagnostics->'infra'->'llmUsage'->>'promptTokens' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'infra'->'llmUsage'->>'cachedTokens' ~ '^[0-9]+$'
+                                         THEN CAST(r.diagnostics->'infra'->'llmUsage'->>'cachedTokens' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'infra'->'llmUsage'->>'completionTokens' ~ '^[0-9]+$'
+                                         THEN CAST(r.diagnostics->'infra'->'llmUsage'->>'completionTokens' AS bigint) END), 0),
+                       COALESCE(sum(r.duration_seconds) FILTER (
+                           WHERE NOT COALESCE(r.diagnostics->'infra'->'llmUsage'->>'promptTokens' ~ '^[0-9]+$', false)), 0)
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
 
@@ -524,7 +570,11 @@ public class SuperAdminCallService {
             long inboundMins = ((Number) r[9]).longValue();
 
             Map<String, Double> b = new LinkedHashMap<>();
-            b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMins));
+            // 30-second pulses, exactly as breakdown() prices each row. This used
+            // ceil-MINUTES, so the totals overstated Plivo by up to half a minute
+            // a call and disagreed with the rows they summed.
+            double pulseMins = ((Number) r[16]).longValue() / 2.0;
+            b.put("plivo", round(card.getOrDefault("plivo", 0d) * pulseMins));
             b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * mins));
             // Mirror of breakdown(): metered characters where the bot reported them,
             // the 779 chars/call-min average only for the calls it did not. Computed
@@ -539,7 +589,12 @@ public class SuperAdminCallService {
             double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
             b.put("tts", round(measuredChars / CHARS_PER_CALL_MINUTE * ttsPerMin
                                + unmeasuredMins * ttsPerMin));
-            b.put("llm", round(card.getOrDefault("llm", 0d) * mins));
+            Double tokenLlm = llmFromTokens(card, new long[]{((Number) r[17]).longValue(),
+                    ((Number) r[18]).longValue(), ((Number) r[19]).longValue()});
+            double untokenedMins = ((Number) r[20]).longValue() / 60.0;
+            b.put("llm", round(tokenLlm != null
+                    ? tokenLlm + card.getOrDefault("llm", 0d) * untokenedMins
+                    : card.getOrDefault("llm", 0d) * mins));
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();
 

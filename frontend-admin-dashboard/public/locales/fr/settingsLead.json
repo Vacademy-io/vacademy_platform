@@ -26,6 +26,11 @@
             "studentsTable": "Tableau des étudiants (Gérer les étudiants)"
         }
     },
+    "allLeadsCard": {
+        "title": "Vue « Tous les prospects »",
+        "description": "Choisissez si les prospects convertis apparaissent dans la vue non filtrée « Tous les prospects » des prospects récents et des listes. Vous pouvez toujours les voir en choisissant « Inscrits / Convertis » ou votre statut converti dans le filtre de statut, ou sur le tableau des prospects.",
+        "hideConverted": "Masquer les prospects convertis de « Tous les prospects »"
+    },
     "weightsCard": {
         "title": "Pondérations de notation",
         "description": "Chaque facteur contribue à hauteur de son pourcentage de pondération dans le score final (0–100). Les pondérations doivent totaliser exactement 100.",

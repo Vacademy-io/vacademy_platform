@@ -46,6 +46,8 @@ export interface LeadSettingsData {
     showScoreInEnquiryTable: boolean;
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
+    /** Hide converted leads from the unfiltered "All leads" view (Recent Leads + Lead List). */
+    hideConvertedInAllLeads: boolean;
     /**
      * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
@@ -66,6 +68,7 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    hideConvertedInAllLeads: false,
     labels: {},
 };
 
@@ -298,6 +301,26 @@ function ConfigSection({
                                     </Label>
                                 </div>
                             ))}
+                        </CardContent>
+                    </Card>
+
+                    {/* ── All leads view: hide converted leads from the unfiltered list ── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('allLeadsCard.title')}</CardTitle>
+                            <CardDescription>{t('allLeadsCard.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="hideConvertedInAllLeads"
+                                    checked={settings.hideConvertedInAllLeads}
+                                    onCheckedChange={(v) => update({ hideConvertedInAllLeads: v })}
+                                />
+                                <Label htmlFor="hideConvertedInAllLeads" className="cursor-pointer">
+                                    {t('allLeadsCard.hideConverted')}
+                                </Label>
+                            </div>
                         </CardContent>
                     </Card>
 

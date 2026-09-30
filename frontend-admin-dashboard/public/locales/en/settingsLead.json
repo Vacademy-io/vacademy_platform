@@ -26,6 +26,11 @@
             "studentsTable": "Students table (Manage Students)"
         }
     },
+    "allLeadsCard": {
+        "title": "All Leads View",
+        "description": "Choose whether converted leads appear in the unfiltered \"All leads\" view of Recent Leads and lead lists. You can still see them by picking \"Enrolled / Converted\" or your converted status in the Lead Status filter, or on the Lead Board.",
+        "hideConverted": "Hide converted leads from All leads"
+    },
     "weightsCard": {
         "title": "Scoring Weights",
         "description": "Each factor contributes its weight percentage to the final score (0–100). Weights must sum to exactly 100.",

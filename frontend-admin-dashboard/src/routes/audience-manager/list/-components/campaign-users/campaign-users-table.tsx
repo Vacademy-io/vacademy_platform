@@ -459,7 +459,10 @@ const CampaignUsersContent = ({
             search_query: appliedSearch || undefined,
             lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
             lead_status_id: customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined,
-            conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE)
+            // Unfiltered view hides converted leads only when the institute turned on
+            // LEAD_SETTING.hideConvertedInAllLeads; a picked status always gets every lead.
+            conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE) ||
+            (leadSettings.hideConvertedInAllLeads && leadStatusFilters.length === 0)
                 ? 'EXCLUDE_CONVERTED'
                 : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
                   ? 'ONLY_CONVERTED'
@@ -490,13 +493,21 @@ const CampaignUsersContent = ({
         customFieldFiltersPayload,
         utmFiltersPayload,
         callHistoryFilter,
+        leadSettings.hideConvertedInAllLeads,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
         ALL_CONVERTED_VALUE,
         UNASSIGNED_COUNSELLOR_VALUE,
     ]);
 
-    const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
+    // Wait for lead settings so the first request already carries the right conversion filter;
+    // a disabled query is not "loading" in v5, so count the settings wait too.
+    const {
+        data: usersResponse,
+        isLoading: usersLoading,
+        error,
+    } = useCampaignUsers(leadsPayload, { enabled: !leadSettings.isLoading });
+    const isLoading = usersLoading || leadSettings.isLoading;
 
     // ── Settings + per-row data ──────────────────────────────
     const showScore = showOps && leadSettings.showScoreInEnquiryTable;

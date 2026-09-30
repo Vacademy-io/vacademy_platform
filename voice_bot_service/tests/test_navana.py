@@ -430,27 +430,94 @@ async def test_a_refused_handshake_is_retried_not_reported(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_non_capacity_failure_is_reported_at_once(monkeypatch):
+async def test_a_bad_key_is_skipped_for_a_good_one(monkeypatch):
+    """Review of 422351d428: a typo'd / revoked / out-of-credit key failed with a
+    non-capacity error, was never skipped, and — always at load 0 — became the
+    PREFERRED key: every call after the first went mute."""
     pytest.importorskip("bodhi.integrations.pipecat_tts")
     from bodhi.integrations.pipecat_tts import BodhiTTSService
-    tries, errors = [], []
+    used, errors = [], []
 
     async def fake_connect(self):
-        tries.append(1)
-        self._websocket = None
-        await self.push_error(error_msg="unable to connect: handshake refused: bad_key")
+        used.append(self._api_key)
+        if self._api_key == "bad":
+            self._websocket = None
+            await self.push_error(error_msg="unable to connect: handshake refused: bad_key")
+            return
+        self._websocket = object()
 
     async def fake_push_error(self, *a, **k):
         errors.append(k.get("error_msg"))
     monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
     from pipecat.processors.frame_processor import FrameProcessor
     monkeypatch.setattr(FrameProcessor, "push_error", fake_push_error)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
     cls = p._navana_seq_routing(BodhiTTSService)
-    tts = cls(api_key="k", voice="ipsita", language="hi")
-    tts._websocket = None
-    with _keys("k-one,k-two"):
+    with _keys("bad,good"):
+        p.NAVANA_KEYS._rr = 0
+        tts = cls(api_key="x", voice="ipsita", language="hi")
+        tts._websocket = None
         await tts._connect_websocket()
-    assert len(tries) == 1 and errors and "bad_key" in errors[0], (tries, errors)
+        assert used == ["bad", "good"] and not errors and tts._nv_key == "good", (used, errors)
+        # The bad key is rested long: the NEXT call goes straight to "good".
+        tts2 = cls(api_key="x", voice="ipsita", language="hi")
+        tts2._websocket = None
+        await tts2._connect_websocket()
+        assert used[-1] == "good" and tts2._nv_key == "good", used
+
+
+@pytest.mark.asyncio
+async def test_a_lone_bad_key_is_reported_after_the_rounds(monkeypatch):
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    errors = []
+
+    async def fake_connect(self):
+        self._websocket = None
+        await self.push_error(error_msg="unable to connect: handshake refused: bad_key")
+
+    async def fake_push_error(self, *a, **k):
+        errors.append(k.get("error_msg"))
+
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    from pipecat.processors.frame_processor import FrameProcessor
+    monkeypatch.setattr(FrameProcessor, "push_error", fake_push_error)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
+    monkeypatch.setattr(__import__("asyncio"), "sleep", no_sleep)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="x", voice="ipsita", language="hi")
+    tts._websocket = None
+    with _keys("only"):
+        await tts._connect_websocket()
+    assert len(errors) == 1 and "bad_key" in errors[0] and p.NAVANA_KEYS.load("only") == 0, errors
+
+
+@pytest.mark.asyncio
+async def test_a_reconnect_gives_back_the_key_it_held(monkeypatch):
+    """Review of 422351d428: the SDK's lazy reconnect over a CLOSED socket came
+    back into _connect_websocket still holding its key — phantom load."""
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+
+    async def fake_connect(self):
+        self._websocket = object()
+    monkeypatch.setattr(BodhiTTSService, "_connect_websocket", fake_connect)
+    monkeypatch.setattr(p, "NAVANA_KEYS", p.NavanaKeyPool())
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="x", voice="ipsita", language="hi")
+    with _keys("a,b"):
+        tts._websocket = None
+        await tts._connect_websocket()
+        tts._websocket = None                  # the socket closed under it
+        await tts._connect_websocket()
+        assert sum(p.NAVANA_KEYS.loads()) == 1, p.NAVANA_KEYS.loads()
+
+
+def test_quotes_around_the_secret_are_ignored():
+    assert p.navana_keys('"k1,k2"') == ["k1", "k2"]
+    assert p.navana_keys("'k1', k2") == ["k1", "k2"]
 
 
 

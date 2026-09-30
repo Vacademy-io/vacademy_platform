@@ -692,7 +692,7 @@ def navana_keys(raw: Optional[str] = None) -> list:
         raw = get_settings().navana_api_key
     out = []
     for k in (raw or "").split(","):
-        k = k.strip()
+        k = k.strip().strip("\"'").strip()       # a secret pasted with quotes
         if k and k not in out:
             out.append(k)
     return out
@@ -707,6 +707,7 @@ class NavanaKeyPool:
     concurrency_limit cools off for a few seconds and is tried last."""
 
     COOL_SECS = 5.0
+    BAD_KEY_SECS = 60.0
 
     def __init__(self):
         import weakref
@@ -748,9 +749,12 @@ class NavanaKeyPool:
         if hs is not None:
             hs.discard(holder)
 
-    def refused(self, key: Optional[str]) -> None:
+    def refused(self, key: Optional[str], secs: Optional[float] = None) -> None:
+        """Rest a key: COOL_SECS after a capacity refusal; longer (BAD_KEY_SECS)
+        after any other failure — a typo'd, revoked or out-of-credit key would
+        otherwise look idle (load 0) and be picked FIRST for every call."""
         if key:
-            self._cool[key] = time.monotonic() + self.COOL_SECS
+            self._cool[key] = time.monotonic() + (self.COOL_SECS if secs is None else secs)
 
     def loads(self) -> list:
         return [self.load(k) for k in self.keys()]
@@ -873,10 +877,15 @@ def _navana_seq_routing(cls):
                 return                                  # already connected: keep the seq state
             # A fresh socket restarts seq at 1 (the SDK resets it on ready).
             self._nv_reset()
-            # KEYS: the least-loaded of NAVANA_API_KEY's comma-separated keys; a
-            # key that refuses (concurrency_limit) cools off and the NEXT key is
-            # tried at once; only when every key refused, back off and go round
-            # again (0.25 / 0.5 / 1 s).
+            # A lazy reconnect over a closed socket (the SDK's run_tts) may come
+            # here still holding the old key: give it back first.
+            NAVANA_KEYS.release(self, getattr(self, "_nv_key", None))
+            self._nv_key = None
+            # KEYS: the least-loaded of NAVANA_API_KEY's comma-separated keys. A
+            # key that fails the handshake is rested (5 s for concurrency_limit,
+            # 60 s for anything else — bad/revoked key, no credit) and the NEXT
+            # key is tried at once; only when every key failed, back off and go
+            # round again (0.25 / 0.5 / 1 s), then report.
             delays = (0.25, 0.5, 1.0)
             refusals, tried, rounds = 0, set(), 0
             while True:
@@ -904,13 +913,16 @@ def _navana_seq_routing(cls):
                     return
                 NAVANA_KEYS.release(self, key)
                 self._nv_key = None
-                if "concurrency_limit" not in self._nv_last_error:
-                    # Not a capacity refusal (bad key, network): report it now.
-                    await super().push_error(error_msg=self._nv_last_error)
-                    return
                 refusals += 1
-                NAVANA_KEYS.refused(key)
                 tried.add(key)
+                if "concurrency_limit" in self._nv_last_error:
+                    NAVANA_KEYS.refused(key)
+                else:
+                    NAVANA_KEYS.refused(key, NAVANA_KEYS.BAD_KEY_SECS)
+                    logger.warning("navana: key #%d of %d failed (not capacity) — resting it "
+                                   "%.0f s, trying the next key: %s", NAVANA_KEYS.index(key),
+                                   len(NAVANA_KEYS.keys()), NAVANA_KEYS.BAD_KEY_SECS,
+                                   (self._nv_last_error or "")[-160:])
 
         async def _disconnect_websocket(self):
             try:

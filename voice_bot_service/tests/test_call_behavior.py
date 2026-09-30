@@ -6604,3 +6604,33 @@ def test_a_hindi_final_ending_in_a_connective_is_unfinished():
     assert unfinished("वो class में और।")
     assert not unfinished("कोशिश करता है।")
     assert not unfinished("और?")
+
+
+@pytest.mark.asyncio
+async def test_a_short_line_left_by_the_repeat_filter_still_recovers():
+    """Call f6764346 (2026-09-30): the reply was "समझ सकती हूँ सर।" + the
+    Shiksha Nation line, which had already been said. Only the empathy line
+    reached the caller, it counted as real content, and nothing recovered —
+    8.2 s of silence, then "are you there?"."""
+    WHY = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+           "बच्चों की concept clarity मजबूत करने पर काम करते हैं।")
+    caller = {"t": "हाँ जी बताइए।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, WHY)
+    caller["t"] = "हां जी बिल्कुल ऐसा ही है Ma'am।"
+    rec.text.clear()
+    await _reply(g, "समझ सकती हूँ सर। ", WHY)
+    assert asked, "no recovery after only a short line survived: %r" % rec.text
+    assert g.owes_line()
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_with_a_question_is_not_treated_as_empty():
+    WHY = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+           "बच्चों की concept clarity मजबूत करने पर काम करते हैं।")
+    caller = {"t": "हाँ जी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, WHY)
+    caller["t"] = "जी।"
+    await _reply(g, "बच्चा किस class में है? ", WHY)
+    assert not asked, asked

@@ -69,8 +69,11 @@ public class OverviewBuilder {
         // batch mismatch, modules excluded) was labelled at risk on the strength of nothing at all.
         if (attendancePct == null && avgScore == null) return "Insufficient Data";
 
-        boolean attendanceOk = attendancePct != null && attendancePct >= 75;
-        boolean scoreOk = avgScore != null && avgScore >= 60;
+        // Judge only the signals that exist. A missing one (module not selected, no sessions)
+        // used to count as a failure, so a 67%-average learner on an academics-only report was
+        // capped at "Needs Attention" for having no attendance data.
+        boolean attendanceOk = attendancePct == null || attendancePct >= 75;
+        boolean scoreOk = avgScore == null || avgScore >= 60;
         boolean attendanceLow = attendancePct != null && attendancePct >= 60;
         boolean scoreLow = avgScore != null && avgScore >= 40;
 

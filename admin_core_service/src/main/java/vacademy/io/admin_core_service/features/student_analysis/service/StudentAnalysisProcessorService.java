@@ -502,9 +502,15 @@ public class StudentAnalysisProcessorService {
                                 StringBuilder sb = new StringBuilder();
                                 String name = (report.getStudent() != null && report.getStudent().getName() != null)
                                                 ? report.getStudent().getName() : "The student";
-                                sb.append(name).append(" is ");
-                                sb.append(status != null ? "currently " + status.toLowerCase() : "progressing")
-                                                .append(grade != null ? " with an overall grade of " + grade + "." : ".");
+                                // "<name>'s overall status is Needs Attention, with an overall grade of B." — the
+                                // old template read "<name> is currently needs attention with …".
+                                if (status != null) {
+                                        sb.append(name).append("'s overall status is ").append(status)
+                                                        .append(grade != null ? ", with an overall grade of " + grade + "." : ".");
+                                } else {
+                                        sb.append(name).append(" is progressing")
+                                                        .append(grade != null ? ", with an overall grade of " + grade + "." : ".");
+                                }
                                 if (topStrength != null) sb.append(" Strongest area: ").append(topStrength).append(".");
                                 if (topArea != null) sb.append(" Main focus area: ").append(topArea)
                                                 .append(" — see the recommended next steps below.");
@@ -774,7 +780,7 @@ public class StudentAnalysisProcessorService {
                 if (ov != null || (ac != null && ac.isAvailable()) || (cp != null && cp.isAvailable())) {
                         StringBuilder md = new StringBuilder("### Progress\n\n");
                         if (ov != null && ov.getOverallStatus() != null) {
-                                md.append(name).append(" is currently **").append(ov.getOverallStatus()).append("**");
+                                md.append(name).append("'s overall status is **").append(ov.getOverallStatus()).append("**");
                                 if (ov.getOverallGrade() != null)
                                         md.append(" with an overall grade of **").append(ov.getOverallGrade()).append("**");
                                 md.append(".");

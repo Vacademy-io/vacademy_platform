@@ -754,6 +754,16 @@ _ECHO_STOPWORDS = frozenset({
     "and", "so", "has", "have", "had", "you", "your", "i", "it", "its", "that",
     "this", "he", "she", "his", "her", "their", "got", "get", "with", "on",
 })
+# A tag that only asks the caller to CONFIRM what came before it ("सही है?",
+# "right?"). Once the read-back in front of it is trimmed, it confirms nothing:
+# call a6849d85 (2026-09-30) took an order — "quantity पांच।" — and the bot's
+# "पांच pieces, सही है?" reached the caller as a bare "सही है?", who said
+# "Hello." after 3.6 s of silence. Reading an order back IS the next step.
+_CONFIRM_TAGS = frozenset({
+    "सही", "ठीक", "ना", "न", "नहीं", "पक्का", "correct", "right", "ok", "okay",
+    "ओके", "confirm", "sure", "yes", "na", "sahi", "theek", "thik", "haina", "hai",
+    "hain", "है", "हैं", "ये", "यह", "yeh", "ye", "that",
+})
 # Leading connectives left dangling once the parroting in front of them is gone.
 _LEADING_CONNECTORS = frozenset({"तो", "और", "अब", "so", "and", "then", "now", "ok",
                                  "okay", "ओके"})
@@ -857,6 +867,9 @@ def strip_echo_opener(sentence: str, caller_text: str, bot_question: str = "",
     out = ", ".join(t.strip() for t in tail if t.strip()).strip()
     # A tail that cannot stand on its own is worse than the parroting.
     if len(_words(out)) < 3 and "?" not in out:
+        return sentence
+    # A bare confirmation tag asks about the words just trimmed: keep the read-back.
+    if all(w in _CONFIRM_TAGS or w in _ECHO_STOPWORDS for w in _words(out)):
         return sentence
     if out[:1].islower() and text[:1].isupper():
         out = out[0].upper() + out[1:]

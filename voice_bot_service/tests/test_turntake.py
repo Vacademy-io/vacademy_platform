@@ -310,6 +310,19 @@ def test_the_trim_never_leaves_a_stub_behind():
     assert _trim(s, "सुबोध आठवीं में है।", "") == s
 
 
+def test_an_order_read_back_before_a_confirmation_tag_is_kept():
+    """Call a6849d85: "quantity पांच।" → "पांच pieces, सही है?" was cut to a bare
+    "सही है?" — a question about nothing. The caller said "Hello." 3.6 s later."""
+    s = "पांच pieces, सही है?"
+    assert _trim(s, "quantity पांच।", "उसकी quantity कितनी रखनी है?") == s
+    s = "Five mm, right?"
+    assert _trim(s, "five mm.", "which size do you need?") == s
+    # A real question after the parroting still loses the parroting.
+    out = _trim("पांच pieces, pattern कौन सा रहेगा?", "quantity पांच।",
+                "उसकी quantity कितनी रखनी है?")
+    assert out == "pattern कौन सा रहेगा?", out
+
+
 def test_no_caller_turn_means_nothing_to_parrot():
     s = "ओके, तो main aapko details bhej deti hoon."
     assert _trim(s, "") == s

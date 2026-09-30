@@ -627,7 +627,9 @@ public class AiCallOutcomeProcessor {
     private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r, boolean connected) {
         switch (decision.action()) {
             case ASSIGN -> {
-                assignCounsellor(lead);
+                // A qualification (not the exhausted-retries hand-off) may move an owned lead
+                // to the pool, when the institute has opted in. See assignCounsellor.
+                assignCounsellor(lead, !decision.isExhausted());
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
                 // Resume the paused CALL_AI state PAST the node (instead of cancelling it,
                 // which killed the graph at CALL_AI) — inject the terminal disposition + the
@@ -734,6 +736,16 @@ public class AiCallOutcomeProcessor {
     }
 
     private void assignCounsellor(Lead lead) {
+        assignCounsellor(lead, false);
+    }
+
+    /**
+     * @param qualified true when this is a real qualification (a disposition the institute
+     *                  maps to "assign"), false for the exhausted-retries hand-off. Only a
+     *                  qualification may move a lead that already has an owner, and only when
+     *                  {@code reassignQualifiedToPool} is on for the institute.
+     */
+    private void assignCounsellor(Lead lead, boolean qualified) {
         if (lead.audienceId() == null || lead.userId() == null) {
             log.info("ai-call assign: skipped (no audience/user) for lead {}", lead.userId());
             return;
@@ -755,17 +767,35 @@ public class AiCallOutcomeProcessor {
                 .filter(id -> id != null && !id.isBlank())
                 .orElse(null);
         if (currentOwner != null) {
-            log.info("ai-call assign: lead {} already owned by counsellor {} — keeping them (no rotation)",
+            // The opt-in escape: a lead the bot actually QUALIFIED goes to the pool the list is
+            // attached to, even though it already has an owner. Only a qualification, never the
+            // exhausted-retries hand-off — see AiCallingSettingsPojo#reassignQualifiedToPool.
+            AiCallingSettingsPojo settings = settingsService.get(lead.instituteId());
+            boolean mayReassign = qualified && settings != null && settings.isReassignQualifiedToPool();
+            if (!mayReassign) {
+                log.info("ai-call assign: lead {} already owned by counsellor {} — keeping them (no rotation)",
+                        lead.userId(), currentOwner);
+                return;
+            }
+            log.info("ai-call assign: lead {} is owned by {} but the AI qualified it and "
+                            + "reassignQualifiedToPool is on — routing to the pool",
                     lead.userId(), currentOwner);
-            return;
         }
         Optional<String> counselorId = counselorAssignmentService.assignCounselorForLead(lead.audienceId());
         if (counselorId.isEmpty()) {
             log.info("ai-call assign: no counsellor returned (manual/empty pool) for audience {}", lead.audienceId());
             return;
         }
+        if (counselorId.get().equals(currentOwner)) {
+            // The rotation landed on the person who already holds it. Nothing to write, and no
+            // assignment bell for a change that is not a change.
+            log.info("ai-call assign: rotation picked the current owner {} for lead {} — no change",
+                    currentOwner, lead.userId());
+            return;
+        }
         userLeadProfileService.assignCounselor(lead.userId(), lead.instituteId(), counselorId.get(), null);
-        log.info("ai-call assign: lead {} -> counsellor {}", lead.userId(), counselorId.get());
+        log.info("ai-call assign: lead {} -> counsellor {}{}", lead.userId(), counselorId.get(),
+                currentOwner != null ? " (reassigned from " + currentOwner + ")" : "");
     }
 
     private void setStatus(Lead lead, String statusKey) {

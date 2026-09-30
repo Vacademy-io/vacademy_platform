@@ -106,6 +106,27 @@ public class AiCallingSettingsPojo {
     private boolean assignExhaustedToHuman = true;
 
     /**
+     * Hand a lead the AI has QUALIFIED to the audience's counsellor pool even when the lead
+     * already has an owner.
+     *
+     * <p>Off by default, because the owner-keeps-the-lead rule exists for a real flow: a
+     * counsellor rings a lead, marks it DNP, the bot re-calls it, and rotating that lead away
+     * would take it off the person actively working it.
+     *
+     * <p>On, for the opposite flow: a bulk list of previously-worked leads is moved into an
+     * AI-calling list. Every one of them arrives already owned, so the pool is never consulted
+     * and a booked counselling session lands silently on whoever last held the lead — often
+     * someone who has already given up on it. Turning this on makes a genuine qualification
+     * route to the pool that the list is attached to.
+     *
+     * <p>Scope is deliberately narrow: only a REAL qualification (a disposition in
+     * {@link #assignOnDispositions}) can move an owned lead. The exhausted-retries hand-off
+     * ({@link #assignExhaustedToHuman}) never does — "nobody picked up" is not a reason to
+     * take a lead off its counsellor.
+     */
+    private boolean reassignQualifiedToPool = false;
+
+    /**
      * Auto-capture unknown INBOUND callers as leads. When the AI helpline answers a
      * caller whose number isn't already a lead, create (or match) a lead so the call
      * is followable in Recent Leads + the Call Log. OFF by default — auto-creating

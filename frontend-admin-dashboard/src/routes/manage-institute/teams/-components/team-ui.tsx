@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Clock } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { mapRoleToCustomName } from '@/utils/roleUtils';
 import {
     avatarToneOf,
     initialsOf,
@@ -35,7 +36,8 @@ export const TONE_TILE: Record<RoleTone, string> = {
  */
 export function RoleChip({ name, option }: { name: string; option?: TeamRoleOption }) {
     const tone = option ? roleTone(option) : 'neutral';
-    const label = option?.label ?? name;
+    // Roles outside the picker (STUDENT, legacy rows) still follow the naming settings.
+    const label = option?.label ?? mapRoleToCustomName(name);
     return (
         <span
             className={`text-caption ${cn(

@@ -199,7 +199,6 @@
         "breadcrumb": "Team members",
         "title": "Member details",
         "srDescription": "Profile, roles and access for {{name}}",
-        "owner": "Owner",
         "sections": {
             "profile": "Profile",
             "access": "Role & access",
@@ -296,5 +295,8 @@
             "action": "Discard changes",
             "keep": "Keep editing"
         }
+    },
+    "table": {
+        "openRow": "Open {{name}}"
     }
 }

@@ -2,7 +2,6 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import {
     ArrowCounterClockwise,
@@ -29,7 +28,6 @@ import {
 } from '@/routes/dashboard/-services/dashboard-services';
 import { getInstituteId } from '@/constants/helper';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
@@ -58,6 +56,7 @@ import { InviteMemberDialog } from './-components/InviteMemberDialog';
 import { MemberDetailsSheet, type MemberSection } from './-components/MemberDetailsSheet';
 import { TeamConfirmDialog, type TeamConfirmKind } from './-components/TeamConfirmDialog';
 import { InviteRowActions, MemberRowActions } from './-components/TeamRowActions';
+import { TeamTable, type TeamColumn } from './-components/TeamTable';
 import { MemberAvatar, MemberStatusPill, RoleChip, TONE_TILE } from './-components/team-ui';
 import {
     buildRoleOptions,
@@ -382,21 +381,14 @@ function RouteComponent() {
                 dashed={invite}
                 muted={member.status === 'DISABLED'}
             />
-            <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                    <span
-                        className={`text-body ${cn(
-                            'truncate font-semibold',
-                            member.status === 'DISABLED' ? 'text-neutral-500' : 'text-neutral-900'
-                        )}`}
-                    >
-                        {member.full_name || '—'}
-                    </span>
-                    {member.root_user && (
-                        <span className="shrink-0 rounded bg-neutral-900 px-1.5 text-caption font-semibold uppercase text-white">
-                            {t('member.owner')}
-                        </span>
-                    )}
+            <div className="min-w-0 max-w-64">
+                <div
+                    className={`text-body ${cn(
+                        'truncate font-semibold',
+                        member.status === 'DISABLED' ? 'text-neutral-500' : 'text-neutral-900'
+                    )}`}
+                >
+                    {member.full_name || '—'}
                 </div>
                 <div className="truncate text-caption text-neutral-500" title={member.email}>
                     {member.email || '—'}
@@ -512,54 +504,26 @@ function RouteComponent() {
         );
     };
 
-    const memberColumns: ColumnDef<TeamMember>[] = [
-        {
-            id: 'member',
-            header: t('columns.member'),
-            size: 230,
-            cell: ({ row }) => memberCell(row.original, false),
-        },
-        {
-            id: 'login',
-            header: t('columns.login'),
-            size: 135,
-            cell: ({ row }) => loginCell(row.original),
-        },
-        {
-            id: 'phone',
-            header: t('columns.phone'),
-            size: 140,
-            cell: ({ row }) => phoneCell(row.original),
-        },
-        {
-            id: 'roles',
-            header: t('columns.roles'),
-            size: 185,
-            cell: ({ row }) => rolesCell(row.original),
-        },
-        ...(hasSubOrgs
-            ? [
-                  {
-                      id: 'subOrgs',
-                      header: t('columns.subOrgs'),
-                      size: 165,
-                      cell: ({ row }) => subOrgCell(row.original),
-                  } as ColumnDef<TeamMember>,
-              ]
-            : []),
+    const memberColumns: TeamColumn<TeamMember>[] = [
+        { id: 'member', header: t('columns.member'), cell: (row) => memberCell(row, false) },
+        { id: 'login', header: t('columns.login'), interactive: true, cell: loginCell },
+        { id: 'phone', header: t('columns.phone'), cell: phoneCell },
+        { id: 'roles', header: t('columns.roles'), cell: rolesCell },
+        ...(hasSubOrgs ? [{ id: 'subOrgs', header: t('columns.subOrgs'), cell: subOrgCell }] : []),
         {
             id: 'status',
             header: t('columns.status'),
-            size: 100,
-            cell: ({ row }) => <MemberStatusPill status={row.original.status} />,
+            className: 'w-28',
+            cell: (row) => <MemberStatusPill status={row.status} />,
         },
         {
             id: 'actions',
             header: '',
-            size: 88,
-            cell: ({ row }) => (
+            className: 'w-24',
+            interactive: true,
+            cell: (row) => (
                 <MemberRowActions
-                    member={row.original}
+                    member={row}
                     canAssignSubOrgs={canAssignSubOrgs}
                     subOrgLabel={t('assignSubOrgs', { term: subOrgTermPlural.toLowerCase() })}
                     canCopyLogin={allowViewPassword}
@@ -571,44 +535,25 @@ function RouteComponent() {
         },
     ];
 
-    const inviteColumns: ColumnDef<TeamMember>[] = [
-        {
-            id: 'member',
-            header: t('columns.invitee'),
-            size: 240,
-            cell: ({ row }) => memberCell(row.original, true),
-        },
-        {
-            id: 'roles',
-            header: t('columns.invitedAs'),
-            size: 200,
-            cell: ({ row }) => rolesCell(row.original),
-        },
-        {
-            id: 'phone',
-            header: t('columns.phone'),
-            size: 140,
-            cell: ({ row }) => phoneCell(row.original),
-        },
-        {
-            id: 'login',
-            header: t('columns.login'),
-            size: 135,
-            cell: ({ row }) => loginCell(row.original),
-        },
+    const inviteColumns: TeamColumn<TeamMember>[] = [
+        { id: 'member', header: t('columns.invitee'), cell: (row) => memberCell(row, true) },
+        { id: 'roles', header: t('columns.invitedAs'), cell: rolesCell },
+        { id: 'phone', header: t('columns.phone'), cell: phoneCell },
+        { id: 'login', header: t('columns.login'), interactive: true, cell: loginCell },
         {
             id: 'status',
             header: t('columns.status'),
-            size: 130,
+            className: 'w-36',
             cell: () => <MemberStatusPill status="INVITED" />,
         },
         {
             id: 'actions',
             header: '',
-            size: 150,
-            cell: ({ row }) => (
+            className: 'w-40',
+            interactive: true,
+            cell: (row) => (
                 <InviteRowActions
-                    invite={row.original}
+                    invite={row}
                     canCopyLogin={allowViewPassword}
                     onEdit={(invite) => setInviteDialog({ mode: 'edit', invite })}
                     onResend={(invite) => setConfirm({ kind: 'resend', member: invite })}
@@ -619,8 +564,7 @@ function RouteComponent() {
         },
     ];
 
-    const onCellClick = (row: TeamMember, column: ColumnDef<TeamMember>) => {
-        if (column.id === 'login' || column.id === 'actions') return;
+    const openRow = (row: TeamMember) => {
         if (tab === 'invites') setInviteDialog({ mode: 'edit', invite: row });
         else setDrawer({ member: row });
     };
@@ -921,30 +865,19 @@ function RouteComponent() {
                             </div>
                         ) : (
                             <>
-                                <div className="px-4">
-                                    <MyTable<TeamMember>
-                                        data={
-                                            data
-                                                ? {
-                                                      content: data.content,
-                                                      total_pages: data.total_pages,
-                                                      page_no: data.page_number,
-                                                      page_size: data.page_size,
-                                                      total_elements: data.total_elements,
-                                                      last: data.last,
-                                                  }
-                                                : undefined
-                                        }
+                                <div className="border-t border-neutral-200">
+                                    <TeamTable<TeamMember>
+                                        rows={data?.content ?? []}
                                         columns={tab === 'invites' ? inviteColumns : memberColumns}
-                                        isLoading={listLoading}
-                                        error={null}
-                                        currentPage={page}
-                                        onCellClick={onCellClick}
-                                        enableColumnPinning={false}
+                                        loading={listLoading || !data}
+                                        onRowClick={openRow}
+                                        rowLabel={(row) =>
+                                            t('table.openRow', { name: row.full_name || row.email })
+                                        }
                                     />
                                 </div>
                                 {data && data.total_elements > 0 && (
-                                    <div className="px-4 py-3">
+                                    <div className="border-t border-neutral-200 px-4 py-3">
                                         <MyPagination
                                             currentPage={page}
                                             totalPages={data.total_pages}

@@ -821,6 +821,26 @@ public class AiCallOutcomeProcessor {
                 || disposition == null || disposition.isBlank()) return;
         String norm = normalizeKey(disposition);
         if (norm.isEmpty()) return;
+
+        // The institute's configured mapping wins over the name match. This is what lets
+        // an agent vocabulary the catalog does not contain ("Quiz_Link_Sent") still land
+        // the lead on a real status ("FOLLOWUP") — and it works on EVERY webhook, with no
+        // workflow involved, so an outcome that arrives after its workflow closed is still
+        // recorded instead of being silently dropped.
+        String mapped = resolveConfiguredStatusKey(lead.instituteId(), norm);
+        if (mapped != null) {
+            LeadStatus target = leadStatusRepo
+                    .findByInstituteIdAndStatusKey(lead.instituteId(), mapped).orElse(null);
+            if (target != null) {
+                leadStatusService.changeLeadStatus(lead.responseId(), target.getId(), null, "AI_CALLING");
+                log.info("ai-call status: lead {} -> {} (configured mapping for disposition '{}')",
+                        lead.userId(), target.getStatusKey(), disposition);
+                return;
+            }
+            log.warn("ai-call status: disposition '{}' maps to status '{}' which institute {} does not have "
+                            + "— falling back to a name match", disposition, mapped, lead.instituteId());
+        }
+
         LeadStatus match = leadStatusRepo
                 .findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(lead.instituteId())
                 .stream()
@@ -835,6 +855,25 @@ public class AiCallOutcomeProcessor {
         leadStatusService.changeLeadStatus(lead.responseId(), match.getId(), null, "AI_CALLING");
         log.info("ai-call status: lead {} -> {} (matched disposition '{}')",
                 lead.userId(), match.getStatusKey(), disposition);
+    }
+
+    /**
+     * The status key this institute has configured for a disposition, or null when it has
+     * not mapped one. Keys are compared normalised, so the admin can type the disposition
+     * however they like.
+     */
+    private String resolveConfiguredStatusKey(String instituteId, String normalisedDisposition) {
+        try {
+            AiCallingSettingsPojo s = settingsService.get(instituteId);
+            if (s == null || s.getDispositionStatusMap() == null) return null;
+            for (var e : s.getDispositionStatusMap().entrySet()) {
+                if (e.getKey() == null || e.getValue() == null || e.getValue().isBlank()) continue;
+                if (normalisedDisposition.equals(normalizeKey(e.getKey()))) return e.getValue().trim();
+            }
+        } catch (Exception e) {
+            log.debug("ai-call status: disposition map lookup failed for {}: {}", instituteId, e.getMessage());
+        }
+        return null;
     }
 
     /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */

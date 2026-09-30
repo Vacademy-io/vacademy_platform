@@ -102,6 +102,23 @@ public class AiCallingSettingsPojo {
      */
     private List<String> customDispositions = new ArrayList<>();
 
+    /**
+     * Disposition -> lead-status-key map, e.g. {@code {"Quiz_Link_Sent": "FOLLOWUP"}}.
+     *
+     * <p>Without this the only workflow-independent status writer matches a disposition
+     * to a status whose NAME equals it, so an agent vocabulary like {@code Quiz_Link_Sent}
+     * or {@code Counselling_Scheduled} matches nothing and the lead keeps whatever it had.
+     * That is survivable while a workflow is alive to route the outcome, and silently
+     * wrong the moment one is not — a booked counselling session sitting at Not Reachable
+     * because the call landed after the workflow closed.
+     *
+     * <p>Consulted BEFORE the name match, which stays as the fallback. Keys are matched
+     * case- and separator-insensitively, so "quiz link sent" finds "Quiz_Link_Sent".
+     * An unmapped disposition, or one pointing at a status the institute does not have,
+     * leaves the lead untouched exactly as before.
+     */
+    private java.util.Map<String, String> dispositionStatusMap = new java.util.LinkedHashMap<>();
+
     private String assignmentMode = "ROUND_ROBIN";
     private boolean assignExhaustedToHuman = true;
 

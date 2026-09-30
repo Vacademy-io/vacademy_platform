@@ -255,6 +255,24 @@ public class AiCallQueueService {
      * provider. Matches {@code AiCallService}'s own 30-second duplicate window, which
      * keys on institute + user + provider.
      */
+    /**
+     * Is a call for this subject still waiting to dial (QUEUED or DISPATCHING)?
+     *
+     * <p>Asked by the CALL_AI workflow node before it counts a retry. The node enqueues
+     * and then sleeps on a timer, but the dial is asynchronous and can lag arbitrarily —
+     * the queue may be paused, out of credits, outside calling hours, or simply deep. If
+     * the node counted those as attempts it would exhaust its retries against calls that
+     * never happened and declare a lead unreachable while its call was still queued.
+     */
+    public boolean hasCallWaiting(String instituteId, String provider, String subjectKey) {
+        if (isBlank(instituteId) || isBlank(subjectKey)) return false;
+        String effectiveProvider = isBlank(provider)
+                ? settingsService.get(instituteId).getProvider() : provider;
+        if (isBlank(effectiveProvider)) effectiveProvider = ProviderType.AAVTAAR;
+        return repository.findPendingByDedupeKey(
+                dedupeKey(instituteId, effectiveProvider, subjectKey)).isPresent();
+    }
+
     private String subjectKey(AiCallRequestDTO req) {
         String key = firstNonBlank(req.getUserId(), req.getSubjectId(), req.getResponseId(),
                 req.getPhoneNumber());

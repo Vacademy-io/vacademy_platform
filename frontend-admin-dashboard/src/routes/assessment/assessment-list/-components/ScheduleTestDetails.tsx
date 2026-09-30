@@ -5,29 +5,16 @@ import {
     CalendarBlank,
     CalendarCheck,
     CheckSquareOffset,
-    Copy,
-    DownloadSimple,
-    LinkSimple,
-    QrCode,
     Timer,
     UsersThree,
-    WarningCircle,
 } from '@phosphor-icons/react';
-import QRCode from 'react-qr-code';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
 import { resolveSubjectName } from '@/services/subject-names';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-    copyToClipboard,
-    getAssessmentJoinLink,
-    handleDownloadQRCode,
-} from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
 import { ScheduleTestMainDropdownComponent } from './ScheduleTestDetailsDropdownMenu';
+import { PrivateLinkInfo } from './assessment-share';
 import { useNavigate } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { getBatchNamesByIds } from '../assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
@@ -46,12 +33,7 @@ import {
     SessionMetaItem,
     SessionMetaRow,
 } from '@/routes/study-library/live-session/-components/session-card-shell';
-import {
-    AssessmentIconBox,
-    AssessmentTag,
-    statusForTab,
-    typeMetaFor,
-} from './assessment-presentation';
+import { AssessmentTag, statusForTab, typeMetaFor } from './assessment-presentation';
 
 /**
  * "26 Sep 2026, 6:15 PM" in the viewer's zone. Same UTC handling as
@@ -133,99 +115,10 @@ function CardMetaRow({ test }: { test: TestContent }) {
 }
 
 /**
- * The join link with copy and a QR popover. The QR svg keeps its old element id,
- * which handleDownloadQRCode looks up — it exists whenever the popover is open,
- * and the download button lives inside the popover.
- */
-function JoinLinkActions({
-    joinLink,
-    qrId,
-    isPrivate,
-}: {
-    joinLink: string;
-    qrId: string;
-    isPrivate: boolean;
-}) {
-    const { t } = useTranslation('assessmentScheduleTestDetails');
-    const copyLink = async () => {
-        await copyToClipboard(joinLink);
-        toast.success(t('joinLink.copied'));
-    };
-    return (
-        <div className="flex min-w-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <LinkSimple size={16} className="shrink-0 text-primary-500" />
-            <div className="min-w-0 leading-tight">
-                <div className="flex items-center gap-1 text-xs text-neutral-500">
-                    {t('meta.joinLink')}
-                    {isPrivate ? (
-                        <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span
-                                        className="inline-flex items-center text-warning-600"
-                                        aria-label={t('joinLink.privateWarning')}
-                                    >
-                                        <WarningCircle size={12} weight="fill" />
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                    {t('joinLink.privateWarning')}
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    ) : null}
-                </div>
-                <div className="mt-0.5 max-w-xs truncate text-sm text-neutral-700" title={joinLink}>
-                    {joinLink}
-                </div>
-            </div>
-            <MyButton
-                type="button"
-                scale="medium"
-                buttonType="secondary"
-                layoutVariant="icon"
-                aria-label={t('joinLink.copy')}
-                title={t('joinLink.copy')}
-                onClick={copyLink}
-            >
-                <Copy size={16} />
-            </MyButton>
-            <Popover>
-                <PopoverTrigger asChild>
-                    <MyButton
-                        type="button"
-                        scale="medium"
-                        buttonType="secondary"
-                        layoutVariant="icon"
-                        aria-label={t('joinLink.qr')}
-                        title={t('joinLink.qr')}
-                    >
-                        <QrCode size={16} />
-                    </MyButton>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="flex w-56 flex-col items-center gap-3 p-4">
-                    <QRCode value={joinLink} className="size-40" id={qrId} />
-                    <MyButton
-                        type="button"
-                        scale="medium"
-                        buttonType="secondary"
-                        className="w-full gap-1.5"
-                        onClick={() => handleDownloadQRCode(qrId)}
-                    >
-                        <DownloadSimple size={16} />
-                        {t('joinLink.downloadQr')}
-                    </MyButton>
-                </PopoverContent>
-            </Popover>
-        </div>
-    );
-}
-
-/**
  * One assessment in the list, drawn with the same card system as the live
  * session list (shell, metadata row, batches, footer) so the two lists read
- * alike. Presentation only: navigation, copy, QR download and the ⋮ menu do
- * exactly what they did before.
+ * alike. The join link, its QR code and the UTM builder live in the ⋮ menu;
+ * the type (exam, mock, practice …) is a badge so it reads at a glance.
  */
 const ScheduleTestDetails = ({
     scheduleTestContent,
@@ -267,10 +160,6 @@ const ScheduleTestDetails = ({
         handleNavigateAssessment(scheduleTestContent.assessment_id);
     };
 
-    const joinLink = getAssessmentJoinLink(
-        instituteDetails?.learner_portal_base_url,
-        scheduleTestContent.join_link
-    );
     const type = typeMetaFor(scheduleTestContent.play_mode);
     const status = statusForTab(selectedTab);
     const subjectName = resolveSubjectName(
@@ -278,8 +167,8 @@ const ScheduleTestDetails = ({
         subjectNamesById,
         scheduleTestContent.subject_id
     );
+    const isPrivate = scheduleTestContent.assessment_visibility === 'PRIVATE';
     const subtitle = [
-        t(`types.${type.key}`),
         subjectName &&
             t('info.subject', {
                 label: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
@@ -296,7 +185,6 @@ const ScheduleTestDetails = ({
         <SessionCardShell cardRef={cardRef} onClick={handleCardClick}>
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <AssessmentIconBox Icon={type.Icon} tone={type.tone} />
                     <div className="min-w-0">
                         <h3
                             className="truncate text-base font-semibold text-neutral-900 sm:text-lg"
@@ -304,21 +192,32 @@ const ScheduleTestDetails = ({
                         >
                             {scheduleTestContent.name}
                         </h3>
-                        <p className="mt-0.5 truncate text-sm text-neutral-500" title={subtitle}>
-                            {subtitle}
-                        </p>
+                        {subtitle ? (
+                            <p
+                                className="mt-0.5 truncate text-sm text-neutral-500"
+                                title={subtitle}
+                            >
+                                {subtitle}
+                            </p>
+                        ) : null}
                     </div>
                 </div>
                 <div
                     className="flex shrink-0 flex-wrap items-center justify-end gap-2"
                     onClick={(e) => e.stopPropagation()}
                 >
+                    <AssessmentTag tone={type.tone} icon={<type.Icon size={14} weight="bold" />}>
+                        {t(`types.${type.key}`)}
+                    </AssessmentTag>
                     <AssessmentTag tone={status.tone} dot>
                         {t(`status.${status.key}`)}
                     </AssessmentTag>
-                    <AccessBadge
-                        accessLevel={scheduleTestContent.assessment_visibility?.toLowerCase()}
-                    />
+                    <span className="inline-flex items-center gap-0.5">
+                        <AccessBadge
+                            accessLevel={scheduleTestContent.assessment_visibility?.toLowerCase()}
+                        />
+                        {isPrivate ? <PrivateLinkInfo /> : null}
+                    </span>
                     <ScheduleTestMainDropdownComponent
                         scheduleTestContent={scheduleTestContent}
                         selectedTab={selectedTab}
@@ -332,22 +231,14 @@ const ScheduleTestDetails = ({
             <SessionCardFooter>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-3">
                     {batchNames.length ? (
-                        <>
-                            <SessionBatches
-                                batches={batchNames}
-                                maxVisible={2}
-                                label={getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}
-                                moreLabel={(count) => t('batchDialog.moreLink', { count })}
-                                lessLabel={t('batches.less')}
-                            />
-                            <SessionMetaDivider />
-                        </>
+                        <SessionBatches
+                            batches={batchNames}
+                            maxVisible={2}
+                            label={getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}
+                            moreLabel={(count) => t('batchDialog.moreLink', { count })}
+                            lessLabel={t('batches.less')}
+                        />
                     ) : null}
-                    <JoinLinkActions
-                        joinLink={joinLink}
-                        qrId={`qr-code-svg-assessment-list-${scheduleTestContent.join_link}`}
-                        isPrivate={scheduleTestContent.assessment_visibility === 'PRIVATE'}
-                    />
                 </div>
                 <div
                     className="flex shrink-0 items-center gap-2"

@@ -25,11 +25,7 @@
     },
     "joinLink": {
         "label": "Lien de participation :",
-        "privateWarning": "Ce lien ne fonctionne que si l'évaluation est Public. Passez-la en Public à l'étape 3 avant de la partager.",
-        "copy": "Copier le lien",
-        "copied": "Lien copié",
-        "qr": "Code QR",
-        "downloadQr": "Télécharger le QR"
+        "privateWarning": "Ce lien ne fonctionne que si l'évaluation est Public. Passez-la en Public à l'étape 3 avant de la partager."
     },
     "types": {
         "examination": "Examen",
@@ -53,7 +49,6 @@
         "evaluation": "Évaluation",
         "evaluationAuto": "Automatique",
         "evaluationManual": "Manuelle",
-        "joinLink": "Lien de participation",
         "createdOn": "Créé le {{date}}"
     },
     "batches": {
@@ -61,5 +56,22 @@
     },
     "actions": {
         "viewDetails": "Voir les détails"
+    },
+    "privateLink": {
+        "title": "Le lien de participation ne fonctionne que pour un test ouvert",
+        "body": "Cette évaluation est privée (test fermé). Les apprenants que vous avez affectés la passent depuis leur application : ils n'ont pas besoin de lien. Le lien et le code QR ne fonctionnent que si c'est un test ouvert : modifiez l'évaluation, allez à l'étape 3 « Ajouter des participants » et choisissez « Test ouvert ».",
+        "ariaLabel": "Pourquoi le lien de participation ne fonctionne pas"
+    },
+    "share": {
+        "copyLink": "Copier le lien de participation",
+        "qrCode": "Afficher le code QR",
+        "copied": "Lien de participation copié",
+        "copiedPrivate": "Lien copié, mais il ne fonctionnera qu'une fois l'évaluation passée en « Test ouvert » (étape 3, « Ajouter des participants »)."
+    },
+    "qrDialog": {
+        "title": "Lien de participation et code QR",
+        "description": "Les apprenants scannent le code ou ouvrent le lien pour s'inscrire et passer l'évaluation.",
+        "copy": "Copier",
+        "download": "Télécharger le code QR"
     }
 }

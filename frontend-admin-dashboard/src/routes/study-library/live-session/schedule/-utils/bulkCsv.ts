@@ -29,8 +29,23 @@ export const SCHEDULE_CSV_HEADERS = [
     'platform',
     'link',
     'package_session_ids',
-    'instructors',
+    'teacher_emails',
     'description',
+] as const;
+
+/**
+ * Headers accepted for the teacher column. `instructors` is what the template
+ * shipped with first, so files downloaded before the rename keep importing.
+ */
+const TEACHER_HEADERS = [
+    'teacher_emails',
+    'teacher_email',
+    'teachers',
+    'teacher',
+    'instructors',
+    'instructor_emails',
+    'instructor_email',
+    'instructor',
 ] as const;
 
 const REQUIRED_HEADERS = ['title', 'start_date', 'start_time'] as const;
@@ -72,7 +87,7 @@ export const downloadScheduleTemplate = (batches: BatchForSessionLite[]) => {
             platform: 'zoom',
             link: 'https://zoom.us/j/123456789',
             package_session_ids: idCell,
-            instructors: 'teacher@example.com|another.teacher@example.com',
+            teacher_emails: 'teacher@example.com|another.teacher@example.com',
             description: 'Quick revision before the test',
         },
         {
@@ -85,7 +100,7 @@ export const downloadScheduleTemplate = (batches: BatchForSessionLite[]) => {
             platform: 'bbb',
             link: '',
             package_session_ids: exampleIds[0] ?? 'PASTE_PACKAGE_SESSION_ID',
-            instructors: '',
+            teacher_emails: '',
             description: '',
         },
     ];
@@ -106,6 +121,25 @@ export const downloadBatchReference = (batches: BatchForSessionLite[]) => {
         data,
     });
     triggerDownload(csv, 'live-session-batch-reference.csv');
+};
+
+/**
+ * Build + download the teacher reference: every staff member the teacher
+ * column can name, with the email (recommended) and username that match them.
+ */
+export const downloadTeacherReference = (
+    users: Array<{ full_name: string; email: string | null; username?: string | null; roles?: string[] }>
+) => {
+    const data = [...users]
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+        .map((u) => ({
+            name: u.full_name ?? '',
+            email: u.email ?? '',
+            username: u.username ?? '',
+            roles: (u.roles ?? []).join('|'),
+        }));
+    const csv = Papa.unparse({ fields: ['name', 'email', 'username', 'roles'], data });
+    triggerDownload(csv, 'live-session-teacher-reference.csv');
 };
 
 /** One row's creation outcome, used to build the downloadable results report. */
@@ -164,6 +198,15 @@ export interface ScheduleCsvParseResult {
 
 const cell = (row: Record<string, unknown>, key: string): string =>
     String(row[key] ?? '').trim();
+
+/** The first non-empty cell among several accepted spellings of one column. */
+const firstCell = (row: Record<string, unknown>, keys: readonly string[]): string => {
+    for (const key of keys) {
+        const value = cell(row, key);
+        if (value) return value;
+    }
+    return '';
+};
 
 /**
  * Parse a schedule CSV into grid rows, validating each row and reverse-mapping
@@ -274,18 +317,23 @@ export const parseScheduleCsv = (
                         }
                     }
 
-                    // Instructors: user id, email or username, pipe/semicolon
-                    // separated. Deliberately NOT validated here — the client
-                    // has no directory to check them against, and the backend
-                    // reports what it couldn't match as a per-row warning on an
-                    // otherwise successful import. Failing a whole row over one
-                    // mistyped email would cost the admin the import.
-                    const instructorsCell = cell(raw, 'instructors');
+                    // Teachers: email (recommended), username or user id,
+                    // separated by | ; or , (none of which can appear in an
+                    // email or username). Deliberately NOT validated here:
+                    // the grid matches them against the staff directory and
+                    // flags what matched nobody on the row itself. Failing a
+                    // whole row over one mistyped email would cost the admin
+                    // the import.
+                    const instructorsCell = firstCell(raw, TEACHER_HEADERS);
                     const instructorIdentifiers = instructorsCell
-                        ? instructorsCell
-                              .split(/[|;\n]+/)
-                              .map((v) => v.trim())
-                              .filter(Boolean)
+                        ? Array.from(
+                              new Set(
+                                  instructorsCell
+                                      .split(/[|;,\n]+/)
+                                      .map((v) => v.trim())
+                                      .filter(Boolean)
+                              )
+                          )
                         : [];
 
                     if (messages.length) {

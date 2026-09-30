@@ -83,10 +83,12 @@ export function BulkCsvImportDialog({
                     <DialogDescription>
                         Upload a filled template. Batches are matched by their{' '}
                         <span className="font-medium">package_session_id</span> — use the
-                        &ldquo;Download batch reference&rdquo; button to get the IDs. Instructors go
-                        in the <span className="font-medium">instructors</span> column as user IDs
-                        or emails, separated by <span className="font-medium">|</span>. Leave it
-                        blank and whoever runs the import becomes the instructor.
+                        &ldquo;Batch reference&rdquo; download to get the IDs. Teachers go in the{' '}
+                        <span className="font-medium">teacher_emails</span> column by email
+                        (recommended) or username, several separated by{' '}
+                        <span className="font-medium">|</span> &mdash; the &ldquo;Teacher
+                        reference&rdquo; download lists them. Leave it blank and whoever runs the
+                        import becomes the teacher.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -111,7 +113,7 @@ export function BulkCsvImportDialog({
                     </p>
                     <p className="text-xs text-neutral-500">
                         Expected columns: title, subject, start_date, start_time, duration_hours,
-                        duration_minutes, platform, link, package_session_ids, instructors,
+                        duration_minutes, platform, link, package_session_ids, teacher_emails,
                         description
                     </p>
                 </div>

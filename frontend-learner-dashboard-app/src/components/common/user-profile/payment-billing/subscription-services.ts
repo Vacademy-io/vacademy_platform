@@ -225,15 +225,21 @@ export const initiateRenewalPayment = async (
   card?: RenewalCardPayload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
+  // Send a body ONLY when there is a card, and say it is JSON. Posting `null` made axios
+  // leave the content type to the browser, which sent an empty
+  // application/x-www-form-urlencoded body — and the endpoint takes an optional
+  // @RequestBody, so an unparseable media type fails the request before the controller is
+  // ever reached. `undefined` makes axios omit the body and the header together.
   const response = await authenticatedAxiosInstance.post(
     `${LEARNER_SUBSCRIPTION_LIST}/${sub.user_plan_id}/renew-payment`,
-    card ?? null,
+    card ?? undefined,
     {
       params: {
         instituteId,
         withAutopay,
         ...(withAutopay && mandateMethod ? { mandateMethod } : {}),
       },
+      ...(card ? { headers: { "Content-Type": "application/json" } } : {}),
     }
   );
   return response.data;

@@ -297,7 +297,13 @@ public class SubscriptionService {
 
         var request = new vacademy.io.common.payment.dto.PaymentInitiationRequestDTO();
         request.setAmount(payablePlan.getActualPrice());
-        request.setCurrency(StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency() : "INR");
+        // Invite currency first, then the PLAN's own currency, and only then INR. Vet
+        // Education has invites with a blank currency (e.g. "Individual Membership",
+        // 82725a60) whose plan is priced in AUD -- falling straight back to INR there would
+        // charge an Australian member in rupees, and scale the minor units by the wrong
+        // exponent on the way. It is also why that plan's button reads "Pay 192" with no
+        // currency at all.
+        request.setCurrency(resolveCurrency(invite, payablePlan));
         request.setDescription("Membership renewal — "
                 + (payablePlan.getName() != null ? payablePlan.getName() : "subscription"));
         request.setInstituteId(instituteId);
@@ -484,6 +490,18 @@ public class SubscriptionService {
                     + "treating as off: {}", instituteId, e.getMessage());
             return false;
         }
+    }
+
+    /** Currency for a renewal: the invite's, else the plan's own, else INR. */
+    private String resolveCurrency(vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite invite,
+            vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan plan) {
+        if (invite != null && StringUtils.hasText(invite.getCurrency())) {
+            return invite.getCurrency();
+        }
+        if (plan != null && StringUtils.hasText(plan.getCurrency())) {
+            return plan.getCurrency();
+        }
+        return "INR";
     }
 
     /** Nothing charged, no order raised: the client must collect a card and call again. */

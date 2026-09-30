@@ -218,36 +218,39 @@ function ViewLiveSession() {
         || sessionData?.schedule?.link_type === 'google meet'
         || sessionData?.schedule?.link_type === 'GOOGLE_MEET';
 
-    // Zoom provisioning status — surfaces the otherwise-silent async provisioning
-    // failures so the admin can re-create the meeting in one click.
+    // Zoom / Google Meet provisioning status — surfaces the otherwise-silent async
+    // provisioning failures so the admin can re-create the meeting in one click.
     const { instituteDetails } = useInstituteDetailsStore();
     const [showAttendanceDetail, setShowAttendanceDetail] = useState(false);
-    const [zoomProvision, setZoomProvision] = useState<ZoomProvisionStatus | null>(null);
-    const [provisioningZoom, setProvisioningZoom] = useState(false);
+    const [provision, setProvision] = useState<ZoomProvisionStatus | null>(null);
+    const [provisioning, setProvisioning] = useState(false);
+    const provisionedPlatform = isZoomSession ? 'Zoom' : 'Google Meet';
+    const provisionedItem = isZoomSession ? 'Zoom meeting' : 'Google Meet link';
+    const providerAccount = isZoomSession ? 'Zoom account' : 'Google account';
 
-    const loadZoomProvision = useCallback(async () => {
-        if (!isZoomSession || !sessionId) return;
+    const loadProvision = useCallback(async () => {
+        if (!(isZoomSession || isMeetSession) || !sessionId) return;
         try {
-            setZoomProvision(await getZoomProvisionStatus(sessionId));
+            setProvision(await getZoomProvisionStatus(sessionId));
         } catch {
             /* status is advisory — ignore fetch errors */
         }
-    }, [isZoomSession, sessionId]);
+    }, [isZoomSession, isMeetSession, sessionId]);
 
     useEffect(() => {
-        loadZoomProvision();
-    }, [loadZoomProvision]);
+        loadProvision();
+    }, [loadProvision]);
 
-    const handleProvisionZoomNow = async () => {
-        setProvisioningZoom(true);
+    const handleProvisionNow = async () => {
+        setProvisioning(true);
         try {
             const res = await provisionZoomNow(sessionId);
-            setZoomProvision(res);
+            setProvision(res);
             if (res.pending === 0) {
-                toast.success('Zoom meeting provisioned.');
+                toast.success(`${provisionedItem} provisioned.`);
             } else {
                 toast.error(
-                    `Still ${res.pending} not set up — check the Zoom account is connected (Settings → Live Session → Test Connection).`
+                    `Still ${res.pending} not set up — check the ${providerAccount} is connected (Settings → Live Session → Test Connection).`
                 );
             }
             try {
@@ -256,36 +259,44 @@ function ViewLiveSession() {
                 /* refresh is best-effort */
             }
         } catch {
-            toast.error('Could not provision the Zoom meeting. Check the Zoom account credentials.');
+            toast.error(
+                `Could not provision the ${provisionedPlatform} meeting. Check the ${providerAccount} credentials.`
+            );
         } finally {
-            setProvisioningZoom(false);
+            setProvisioning(false);
         }
     };
 
-    // Reusable Zoom provisioning badge — rendered in both the one-time and recurring views.
-    const zoomProvisionBadge =
-        isZoomSession && zoomProvision && zoomProvision.total > 0 ? (
-            zoomProvision.pending > 0 ? (
+    // Reusable provisioning badge — rendered in both the one-time and recurring views.
+    // Google Meet only when we create its links (a stored account); a pasted Meet link has
+    // no provider meeting on any row and would otherwise read as "N of N not set up".
+    const showProvisionBadge =
+        (isZoomSession || (isMeetSession && provision?.managed === true)) &&
+        !!provision &&
+        provision.total > 0;
+    const provisionBadge =
+        showProvisionBadge && provision ? (
+            provision.pending > 0 ? (
                 <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
                     <div className="flex items-center gap-2 text-xs text-warning-700">
                         <WarningCircle className="size-4 shrink-0" weight="fill" />
                         <span>
-                            {zoomProvision.pending} of {zoomProvision.total} Zoom meeting
-                            {zoomProvision.total === 1 ? '' : 's'} not set up yet.
+                            {provision.pending} of {provision.total} {provisionedItem}
+                            {provision.total === 1 ? '' : 's'} not set up yet.
                         </span>
                     </div>
                     <button
-                        onClick={handleProvisionZoomNow}
-                        disabled={provisioningZoom}
+                        onClick={handleProvisionNow}
+                        disabled={provisioning}
                         className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50"
                     >
-                        {provisioningZoom ? 'Provisioning…' : 'Provision now'}
+                        {provisioning ? 'Provisioning…' : 'Provision now'}
                     </button>
                 </div>
             ) : (
                 <div className="flex items-center gap-2 text-xs text-success-600">
                     <CheckCircle2 className="size-4 shrink-0" weight="fill" />
-                    Zoom meeting ready
+                    {provisionedItem} ready
                 </div>
             )
         ) : null;
@@ -1105,7 +1116,7 @@ function ViewLiveSession() {
                                     )}
 
                                     <div className="flex flex-col gap-4">
-                                        {zoomProvisionBadge}
+                                        {provisionBadge}
 
                                         {/*
                                           * Recurring sessions get a host entry point here too. Burying it in
@@ -1733,8 +1744,8 @@ function ViewLiveSession() {
                         )}
 
                         {/* Calendar View for Recurring Sessions */}
-                        {isRecurring && zoomProvisionBadge && (
-                            <div className="mb-4">{zoomProvisionBadge}</div>
+                        {isRecurring && provisionBadge && (
+                            <div className="mb-4">{provisionBadge}</div>
                         )}
 
                         {isRecurring && groupedSchedules.length > 0 && (

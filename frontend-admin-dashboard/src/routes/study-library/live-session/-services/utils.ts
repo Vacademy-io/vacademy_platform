@@ -736,9 +736,11 @@ export interface ZoomProvisionStatus {
     pending: number;
     provisioned: number;
     created?: number;
+    /** False when no provider account is stored (pasted link) — nothing to provision. */
+    managed?: boolean;
 }
 
-/** How many of a Zoom session's occurrences have a meeting provisioned yet. */
+/** How many of a Zoom / Google Meet session's occurrences have a meeting provisioned yet. */
 export const getZoomProvisionStatus = async (
     sessionId: string
 ): Promise<ZoomProvisionStatus> => {

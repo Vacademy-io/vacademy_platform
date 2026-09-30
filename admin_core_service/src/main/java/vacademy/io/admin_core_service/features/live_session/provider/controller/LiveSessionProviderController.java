@@ -187,8 +187,9 @@ public class LiveSessionProviderController {
      * GET /admin-core-service/live-sessions/provider/meeting/provision-status?sessionId=xxx
      *
      * Reports how many of a session's occurrences have a provider meeting yet. The admin
-     * session view uses this to show a "Zoom: ready / N not set up" badge — surfacing the
-     * otherwise-silent async provisioning failures.
+     * session view uses this to show a "Zoom / Google Meet: ready / N not set up" badge —
+     * surfacing the otherwise-silent async provisioning failures. {@code managed} is false
+     * when no provider account is stored (e.g. a pasted link), so there is nothing to set up.
      */
     @GetMapping("/meeting/provision-status")
     public ResponseEntity<Map<String, Object>> provisionStatus(
@@ -201,16 +202,17 @@ public class LiveSessionProviderController {
                 "sessionId", sessionId,
                 "total", total,
                 "pending", pending,
-                "provisioned", total - pending));
+                "provisioned", total - pending,
+                "managed", providerMeetingBatchService.isManaged(sessionId)));
     }
 
     /**
      * POST /admin-core-service/live-sessions/provider/meeting/provision-now?sessionId=xxx
      *
      * Admin "Provision now": synchronously (re)creates meetings for any still-pending
-     * occurrence from the session's stored Zoom config, so a failed/lagging provision can be
-     * fixed in one click instead of waiting on the 5-minute retry job. Returns the updated
-     * counts.
+     * occurrence from the session's stored Zoom / Google Meet config, so a failed/lagging
+     * provision can be fixed in one click instead of waiting on the 5-minute retry job.
+     * Returns the updated counts.
      */
     @PostMapping("/meeting/provision-now")
     public ResponseEntity<Map<String, Object>> provisionNow(
@@ -225,7 +227,8 @@ public class LiveSessionProviderController {
                 "created", created,
                 "total", total,
                 "pending", pending,
-                "provisioned", total - pending));
+                "provisioned", total - pending,
+                "managed", providerMeetingBatchService.isManaged(sessionId)));
     }
 
     /**

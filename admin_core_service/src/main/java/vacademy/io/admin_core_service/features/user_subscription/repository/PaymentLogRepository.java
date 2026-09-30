@@ -122,6 +122,28 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   List<PaymentLog> findPaymentLogsWithRelationshipsByIds(@Param("ids") List<String> ids);
 
   /**
+   * Whether the learner row {@code sst} (a {@code student}) matches the free-text search: a name
+   * or email containing it, or, when the search reads as a phone number, a mobile number
+   * containing its digits. Phones compare digits-only, so spaces, dashes and a country code on
+   * one side do not matter (see {@code PaymentLogService#phoneSearchDigits}).
+   *
+   * <p>Matched on admin_core's own student row rather than through the auth service, because the
+   * auth lookup only returns users holding a role in the institute. Learners loaded by a
+   * migration often hold none, so for them name, email and phone search found nobody at all.
+   *
+   * <p>The caller correlates it: {@code EXISTS (SELECT 1 FROM student sst WHERE sst.user_id = x
+   * AND <this>)}. Binds {@code :searchString} and {@code :searchPhoneDigits}. Declared before its
+   * users because an interface constant cannot refer forward.
+   */
+  String STUDENT_SEARCH_MATCH = """
+        (sst.full_name ILIKE CONCAT('%', :searchString, '%')
+          OR sst.email ILIKE CONCAT('%', :searchString, '%')
+          OR (:searchPhoneDigits <> ''
+              AND REGEXP_REPLACE(COALESCE(sst.mobile_number, ''), '[^0-9]', '', 'g')
+                  LIKE CONCAT('%', :searchPhoneDigits, '%')))
+        """;
+
+  /**
    * Combined paginated query: returns payment log IDs from both regular (via user_plan/enroll_invite)
    * and admin-created invoice paths (via invoice_payment_log_mapping).
    *
@@ -133,14 +155,15 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * honored inside the invoice arm against invoice.source (LIVE_SESSION, ADMIN_INVOICE, ...), so
    * live-session payments stay visible/filterable.
    *
-   * <p>Free-text search matches a payment when ANY of these hit: the payer (name/email/phone,
-   * pre-resolved to :searchUserIds by the caller), the amount, the number of an invoice covering
-   * the payment, or the name of the plan being paid for. Each of the two subquery predicates is
-   * guarded by {@code :noSearchFilter = false}, so they are constant-folded away entirely when
-   * nobody is searching — an unsearched listing costs exactly what it did before. When searching,
-   * both are index-driven lookups (idx_invoice_payment_log_mapping_payment_log_id and the
-   * payment_plan primary key) evaluated only over rows that already passed the institute, date and
-   * status filters.
+   * <p>Free-text search matches a payment when ANY of these hit: the payer (name/email/phone, on
+   * their student row via {@link #STUDENT_SEARCH_MATCH}, or pre-resolved to :searchUserIds by the
+   * caller through the auth service), the amount, the number of an invoice covering the payment,
+   * or the name of the plan being paid for. Each subquery predicate is guarded by
+   * {@code :noSearchFilter = false}, so they are constant-folded away entirely when nobody is
+   * searching — an unsearched listing costs exactly what it did before. When searching, the
+   * invoice and plan lookups are index-driven (idx_invoice_payment_log_mapping_payment_log_id and
+   * the payment_plan primary key) and all of them run only over rows that already passed the
+   * institute, date and status filters.
    */
   /**
    * Currency is picked the way the cards pick it: the first value that is actually a currency
@@ -223,6 +246,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:userId IS NULL OR up.user_id = :userId)
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM student sst
+                      WHERE sst.user_id = pl.user_id
+                        AND """ + STUDENT_SEARCH_MATCH + """
+                      ))
                 OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
                 OR (:noSearchFilter = false AND EXISTS (
                       SELECT 1 FROM invoice_payment_log_mapping sm
@@ -309,6 +337,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM student sst
+                      WHERE sst.user_id = i.user_id
+                        AND """ + STUDENT_SEARCH_MATCH + """
+                      ))
                 OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
                 OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
         UNION
@@ -337,6 +370,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
           AND (:noSearchFilter = true
                 OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:noSearchFilter = false AND EXISTS (
+                      SELECT 1 FROM student sst
+                      WHERE sst.user_id = i.user_id
+                        AND """ + STUDENT_SEARCH_MATCH + """
+                      ))
                 OR (:searchNumeric = true AND CAST(i.total_amount AS TEXT) LIKE CONCAT('%', :searchString, '%'))
                 OR (:noSearchFilter = false AND i.invoice_number ILIKE CONCAT('%', :searchString, '%')))
       """;
@@ -396,6 +434,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("searchUserIds") List<String> searchUserIds,
       @Param("searchNumeric") boolean searchNumeric,
       @Param("searchString") String searchString,
+      @Param("searchPhoneDigits") String searchPhoneDigits,
       @Param("paymentPlanNames") List<String> paymentPlanNames,
       @Param("noPaymentPlanFilter") boolean noPaymentPlanFilter,
       @Param("abandonedAfterHours") long abandonedAfterHours,
@@ -449,6 +488,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("searchUserIds") List<String> searchUserIds,
       @Param("searchNumeric") boolean searchNumeric,
       @Param("searchString") String searchString,
+      @Param("searchPhoneDigits") String searchPhoneDigits,
       @Param("paymentPlanNames") List<String> paymentPlanNames,
       @Param("noPaymentPlanFilter") boolean noPaymentPlanFilter,
       @Param("abandonedAfterHours") long abandonedAfterHours);

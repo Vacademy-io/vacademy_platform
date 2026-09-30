@@ -247,16 +247,22 @@ public class PlanChangeService {
             return PlanChangeSummary.NONE;
         }
         UserPlanChangeRequest open = openRequest(userPlan.getId());
-        if (open != null) {
-            return new PlanChangeSummary(false, toScheduledDto(open));
+        // An abandoned checkout is reported but does not stop a fresh attempt -- the same
+        // rule blockedReason applies. This method is the one the membership card reads, and
+        // having its own copy of the rule is exactly why the card kept hiding "Change plan"
+        // after the endpoint had already been fixed.
+        ScheduledPlanChangeDTO openDto = toScheduledDto(open);
+        if (open != null && !isAbandonedCheckout(open)) {
+            return new PlanChangeSummary(false, openDto);
         }
         if (!CHANGEABLE_STATUSES.contains(userPlan.getStatus())) {
-            return PlanChangeSummary.NONE;
+            // Still reported, so a learner on a dead plan can at least discard it.
+            return new PlanChangeSummary(false, openDto);
         }
         List<PlanChangeTargetResolver.Candidate> targets = packageSessionIds != null
                 ? targetResolver.resolve(userPlan, instituteId, packageSessionIds)
                 : targetResolver.resolve(userPlan, instituteId);
-        return new PlanChangeSummary(!targets.isEmpty(), null);
+        return new PlanChangeSummary(!targets.isEmpty(), openDto);
     }
 
     /**

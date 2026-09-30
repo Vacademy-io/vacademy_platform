@@ -333,14 +333,14 @@ public class ComprehensiveReportLLMService {
             JsonNode parsed = objectMapper.readTree(content);
 
             AiInsightsSection insights = AiInsightsSection.builder()
-                    .summary(parsed.path("summary").asText(null))
+                    .summary(plainText(parsed.path("summary").asText(null)))
                     .crossDomainInsights(parseStringList(parsed.path("cross_domain_insights")))
                     .strengthsMap(parseTopicMap(parsed.path("strengths")))
                     .weaknessesMap(parseTopicMap(parsed.path("weaknesses")))
                     .recommendations(parseRecommendations(parsed.path("recommendations")))
                     .sectionCommentary(parseSectionCommentary(parsed.path("section_commentary")))
-                    .parentSummary(parsed.path("parent_summary").asText(null))
-                    .overviewOneLine(parsed.path("overview_one_line").asText(null))
+                    .parentSummary(plainText(parsed.path("parent_summary").asText(null)))
+                    .overviewOneLine(plainText(parsed.path("overview_one_line").asText(null)))
                     .narrative(parseNarrative(parsed.path("narrative")))
                     .build();
 
@@ -419,6 +419,9 @@ public class ComprehensiveReportLLMService {
                     10. "narrative" is a deep written analysis in RICH MARKDOWN (the parent-facing detail view). Each field:
                         - Use `###` sub-headers and put a blank line (\\n\\n) before every header, table, and list so it renders cleanly.
                         - Use Markdown tables to compare data and **bold** for key metrics; keep it readable, not a wall of text.
+                       Each subject/topic goes in EXACTLY ONE of the two maps, never both — rate it on its overall
+                       score (e.g. academics.subject_performance / subject_marks percentage), not on one good or bad test.
+                       Keys are subject/topic names, never individual assessment titles.
                         - Ground every claim in the facts above; do NOT invent numbers.
                         Fields:
                         - "learning_frequency": consistency & gaps in engagement (use study_habits / login facts).
@@ -430,9 +433,12 @@ public class ComprehensiveReportLLMService {
 
                     Return ONLY a valid JSON object with this exact structure (no extra keys):
                     {
+                    PLAIN TEXT: "summary", "parent_summary", "overview_one_line", "cross_domain_insights" and every
+                       "recommendations" field are rendered as plain text — NO Markdown in them (no **, no #, no backticks).
                       "summary": "...",
                       "parent_summary": "...",
                       "overview_one_line": "...",
+                        - Never put a `#` header inside a list item — write "- **Mathematics:** ..." instead of "- ## Mathematics: ...".
                       "cross_domain_insights": ["...", "..."],
                       "strengths": { "Subject/Topic": 85 },
                       "weaknesses": { "Subject/Topic": 40 },
@@ -462,7 +468,7 @@ public class ComprehensiveReportLLMService {
     private List<String> parseStringList(JsonNode node) {
         List<String> list = new ArrayList<>();
         if (node.isArray()) {
-            node.forEach(n -> list.add(n.asText()));
+            node.forEach(n -> list.add(plainText(n.asText())));
         }
         return list;
     }
@@ -481,8 +487,8 @@ public class ComprehensiveReportLLMService {
             for (JsonNode r : node) {
                 recs.add(AiInsightsSection.RecommendationItem.builder()
                         .priority(r.path("priority").asText("MEDIUM"))
-                        .area(r.path("area").asText(null))
-                        .suggestion(r.path("suggestion").asText(null))
+                        .area(plainText(r.path("area").asText(null)))
+                        .suggestion(plainText(r.path("suggestion").asText(null)))
                         .build());
             }
         }
@@ -521,6 +527,23 @@ public class ComprehensiveReportLLMService {
         JsonNode v = node.path(field);
         if (v.isMissingNode() || v.isNull()) return null;
         String s = v.asText();
-        return (s == null || s.isBlank()) ? null : s;
+        if (s == null || s.isBlank()) return null;
+        // "- ## Mathematics: ..." renders as a raw "##" in the PDF and a heading inside a bullet on
+        // the web — demote a header that opens a list item to bold.
+        return s.replaceAll("(?m)^(\\s*[-*]\\s+)#{1,6}\\s*([^:\\n]+:)", "$1**$2**")
+                .replaceAll("(?m)^(\\s*[-*]\\s+)#{1,6}\\s*", "$1");
+    }
+
+    /**
+     * Strips Markdown the model sometimes emits into plain-text fields despite the prompt
+     * ("**70.5%**", "## Title") — these fields are rendered verbatim, so the markers would show.
+     */
+    static String plainText(String s) {
+        if (s == null) return null;
+        return s.replaceAll("\\*\\*(.+?)\\*\\*", "$1")
+                .replaceAll("__(.+?)__", "$1")
+                .replaceAll("`([^`]*)`", "$1")
+                .replaceAll("(?m)^\\s*#{1,6}\\s+", "")
+                .trim();
     }
 }

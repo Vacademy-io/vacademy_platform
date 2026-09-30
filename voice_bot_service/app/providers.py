@@ -697,16 +697,59 @@ def _navana_seq_routing(cls):
     marks that sentence's end. So seq -> context is recorded when run_tts sends,
     and the sentence's context is closed at its last chunk.
 
-    With one context per turn (cache off) the SDK's own loop runs untouched.
+    SAID MUST MEAN HEARD (calls 18b63b17 / 45749163, 2026-09-30). pipecat
+    appends a push_text_frames service's TTSTextFrame the moment run_tts
+    returns — and Navana's run_tts only SENDS the text; the audio comes later on
+    the receive loop. So each sentence's text went down the pipeline BEFORE its
+    audio, past FloorGate (which starts holding at the first audio frame) and
+    into the played transcript and the LLM context. A reply held because the
+    parent was still talking, then dropped, still counted as said: the fees
+    answer was refused as "already said" twice (the parent asked three times),
+    the marks question never played and the line went quiet for 8.7 s. Every
+    sentence's text is now held and released right after its OWN last chunk —
+    the order pipecat intends ("if we are interrupted, the text is not added to
+    the assistant context") — and dropped with the sentence on an interruption.
+    This applies with the cache off too (one context per turn, the SDK's
+    playing-context rule for the audio).
     """
+    from pipecat.frames.frames import TTSTextFrame as _Text
+
     class _Routed(cls):
         def _nv_routing_on(self) -> bool:
             return not getattr(self, "_reuse_context_id_within_turn", True)
 
         def _nv_reset(self):
-            self._nv_ctx = {}          # seq -> context_id
+            self._nv_ctx = {}          # seq -> context_id, while its audio is still to come
             self._nv_cur_seq = None    # seq of the chunk header just received
             self._nv_cur_last = False
+            self._nv_text = {}         # seq -> [TTSTextFrame] held until its last chunk
+            self._nv_ctx_seq = {}      # context_id -> latest seq sent for it
+            self._nv_dead = set()      # seqs of interrupted sentences: drop what still streams
+
+        async def append_to_audio_context(self, context_id, frame):
+            if isinstance(frame, _Text) and not getattr(frame, "_nv_released", False):
+                if not hasattr(self, "_nv_ctx"):
+                    self._nv_reset()
+                seq = self._nv_ctx_seq.get(context_id)
+                if seq is not None and seq in self._nv_ctx:
+                    self._nv_text.setdefault(seq, []).append(frame)
+                    return
+            await super().append_to_audio_context(context_id, frame)
+
+        async def _nv_finish(self, seq, ctx):
+            """The sentence's audio is complete: its text, then its stop."""
+            self._nv_ctx.pop(seq, None)
+            if self._nv_ctx_seq.get(ctx) == seq:
+                self._nv_ctx_seq.pop(ctx, None)
+            for tf in self._nv_text.pop(seq, []):
+                tf._nv_released = True
+                await self.append_to_audio_context(ctx, tf)
+            from pipecat.frames.frames import TTSStoppedFrame as _Stopped
+            await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
+            # One context per sentence: close it so the next plays at once
+            # (closing ends the queue, not the playout).
+            if self._nv_routing_on() and self.audio_context_available(ctx):
+                await self.remove_audio_context(ctx)
 
         async def _connect_websocket(self):
             # A fresh socket restarts seq at 1 (the SDK resets it on ready).
@@ -714,7 +757,18 @@ def _navana_seq_routing(cls):
             await super()._connect_websocket()
 
         async def on_audio_context_interrupted(self, context_id: str):
-            self._nv_reset()
+            # pipecat reconnects the socket on an interruption only while the bot
+            # is audibly speaking — NOT for a reply FloorGate was still holding.
+            # Navana then keeps streaming the dropped sentences, and forgetting
+            # their seqs sent those chunks to whichever context played next. So
+            # every sentence in flight is marked dead: its audio and its text
+            # are discarded as they arrive (it was never heard).
+            if not hasattr(self, "_nv_ctx"):
+                self._nv_reset()
+            self._nv_dead.update(self._nv_ctx.keys())
+            self._nv_ctx.clear()
+            self._nv_text.clear()
+            self._nv_ctx_seq.clear()
             await super().on_audio_context_interrupted(context_id)
 
         async def run_tts(self, text, context_id, *args, **kwargs):
@@ -722,42 +776,43 @@ def _navana_seq_routing(cls):
             async for frame in super().run_tts(text, context_id, *args, **kwargs):
                 # The SDK increments _seq and sends BEFORE its first yield, so the
                 # seq is known here — long before its first chunk (hundreds of ms).
-                if not recorded and self._nv_routing_on():
+                if not recorded:
                     if not hasattr(self, "_nv_ctx"):
                         self._nv_reset()
                     self._nv_ctx[self._seq] = context_id
+                    self._nv_ctx_seq[context_id] = self._seq
                     recorded = True
                 yield frame
 
         async def _receive_messages(self):
-            if not self._nv_routing_on():
-                await super()._receive_messages()
-                return
             import json as _json
-            from pipecat.frames.frames import TTSAudioRawFrame as _Audio, TTSStoppedFrame as _Stopped
+            from pipecat.frames.frames import TTSAudioRawFrame as _Audio
             if not hasattr(self, "_nv_ctx"):
                 self._nv_reset()
             async for message in self._get_websocket():
                 if isinstance(message, (bytes, bytearray)):
                     await self.stop_ttfb_metrics()
-                    ctx = self._nv_ctx.get(self._nv_cur_seq)
+                    seq = self._nv_cur_seq
+                    last, self._nv_cur_last = self._nv_cur_last, False
+                    if seq in self._nv_dead:
+                        if last:
+                            self._nv_dead.discard(seq)
+                        continue
+                    ctx = self._nv_ctx.get(seq)
                     if ctx is None or not self.audio_context_available(ctx):
                         # Interrupted, or a seq we never recorded: nowhere safe.
-                        ctx = None if self._nv_cur_seq in self._nv_ctx else \
-                            self.get_active_audio_context_id()
+                        ctx = None if seq in self._nv_ctx else self.get_active_audio_context_id()
                     if ctx is None:
+                        if last:
+                            # Never played, so never heard: its text goes too.
+                            self._nv_ctx.pop(seq, None)
+                            self._nv_text.pop(seq, None)
                         continue
                     await self.append_to_audio_context(ctx, _Audio(
                         audio=bytes(message), sample_rate=self._output_sample_rate,
                         num_channels=1, context_id=ctx))
-                    if self._nv_cur_last:
-                        self._nv_cur_last = False
-                        self._nv_ctx.pop(self._nv_cur_seq, None)
-                        await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
-                        # Close this sentence's queue so the next context plays at
-                        # once (closing ends the queue, not the playout).
-                        if self.audio_context_available(ctx):
-                            await self.remove_audio_context(ctx)
+                    if last:
+                        await self._nv_finish(seq, ctx)
                     continue
                 try:
                     content = _json.loads(message)

@@ -165,10 +165,44 @@ public class PlanChangeService {
         if (!CHANGEABLE_STATUSES.contains(userPlan.getStatus())) {
             return "PLAN_NOT_ACTIVE";
         }
-        if (openRequest(userPlan.getId()) != null) {
+        // One change in flight at a time -- two pending upgrades could both clear and the
+        // second would apply on top of a plan the first already moved. But a checkout the
+        // learner simply closed is not "in flight": nothing clears it, so it blocked plan
+        // change on that membership for good. An unpaid one is superseded on the next
+        // request instead (see supersedeIfAbandoned).
+        UserPlanChangeRequest open = openRequest(userPlan.getId());
+        if (open != null && !isAbandonedCheckout(open)) {
             return "CHANGE_ALREADY_IN_PROGRESS";
         }
         return null;
+    }
+
+    /**
+     * A PENDING_PAYMENT request whose payment never landed. Deliberately narrow: a
+     * SCHEDULED downgrade is a real booking, and a request whose log reads PAID is waiting
+     * on a webhook, not abandoned -- cancelling either would lose something the learner has.
+     */
+    private boolean isAbandonedCheckout(UserPlanChangeRequest request) {
+        if (!PlanChangeStatus.PENDING_PAYMENT.name().equals(request.getStatus())) {
+            return false;
+        }
+        if (!StringUtils.hasText(request.getPaymentLogId())) {
+            return true;
+        }
+        return paymentLogRepository.findById(request.getPaymentLogId())
+                .map(log -> !PaymentStatusEnum.PAID.name().equalsIgnoreCase(log.getPaymentStatus()))
+                .orElse(true);
+    }
+
+    /** Drops an abandoned checkout so the learner can start a new one. */
+    private void supersedeIfAbandoned(UserPlan userPlan) {
+        UserPlanChangeRequest open = openRequest(userPlan.getId());
+        if (open != null && isAbandonedCheckout(open)) {
+            open.setStatus(PlanChangeStatus.CANCELLED.name());
+            changeRequestRepository.save(open);
+            log.info("Plan change {} CANCELLED (abandoned checkout superseded by a new request) "
+                    + "for user plan {}", open.getId(), userPlan.getId());
+        }
     }
 
     /**
@@ -270,6 +304,10 @@ public class PlanChangeService {
             throw new VacademyException(
                     "Plan " + request.getTargetPlanId() + " is not available to switch to on this membership");
         }
+
+        // blockedReason let this through because the previous checkout was never paid.
+        // Close it now so only one request is ever open.
+        supersedeIfAbandoned(userPlan);
 
         // Upgrades only for learners. resolveOne already filters these out, so reaching
         // here means a stale client or a hand-built request; refuse it rather than book a
@@ -393,7 +431,10 @@ public class PlanChangeService {
         if (open == null) {
             throw new VacademyException("No plan change is scheduled for this membership");
         }
-        if (!PlanChangeStatus.SCHEDULED.name().equals(open.getStatus())) {
+        // A scheduled booking can always be dropped, and so can a checkout that was never
+        // paid. Only a request whose money has actually landed is refused -- that one is
+        // waiting on a webhook and will apply by itself.
+        if (!PlanChangeStatus.SCHEDULED.name().equals(open.getStatus()) && !isAbandonedCheckout(open)) {
             throw new VacademyException("A payment for this plan change is already in progress");
         }
         open.setStatus(PlanChangeStatus.CANCELLED.name());
@@ -897,9 +938,13 @@ public class PlanChangeService {
     }
 
     private ScheduledPlanChangeDTO toScheduledDto(UserPlanChangeRequest request) {
-        if (request == null || !PlanChangeStatus.SCHEDULED.name().equals(request.getStatus())) {
+        // Both open states are reported. Returning null for PENDING_PAYMENT made an
+        // abandoned checkout invisible while it still blocked a second attempt: no button,
+        // no notice, no way for the learner to finish or drop it.
+        if (request == null || !PlanChangeStatus.openStatuses().contains(request.getStatus())) {
             return null;
         }
+        boolean awaitingPayment = PlanChangeStatus.PENDING_PAYMENT.name().equals(request.getStatus());
         PaymentPlan target = targetPlan(request);
         return ScheduledPlanChangeDTO.builder()
                 .changeRequestId(request.getId())
@@ -908,6 +953,10 @@ public class PlanChangeService {
                 .toPlanPrice(target != null ? target.getActualPrice() : null)
                 .currency(request.getCurrency())
                 .effectiveFrom(request.getScheduledFor())
+                .status(request.getStatus())
+                .amountDueNow(awaitingPayment && request.getChargeAmount() != null
+                        ? request.getChargeAmount().doubleValue()
+                        : null)
                 .build();
     }
 

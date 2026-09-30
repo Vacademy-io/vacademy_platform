@@ -240,3 +240,6 @@ export function useSubscriptionManager({
 }
 
 export type { PlanChangeResult, PlanChangeTarget, Subscription };
+// Re-exported so the hosts of this hook can tell an abandoned checkout from a booking
+// without reaching past it into the services module.
+export { isPlanChangeAwaitingPayment } from "@/components/common/user-profile/payment-billing/subscription-services";

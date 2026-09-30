@@ -37,6 +37,7 @@ import { SessionLoginForm } from "@/routes/study-library/live-class/$username/co
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   cancelScheduledPlanChange,
+  isPlanChangeAwaitingPayment,
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
@@ -578,8 +579,55 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               </div>
             )}
 
+            {/* A checkout opened and never paid. It blocks a second attempt until it is
+                finished or dropped, so both ways out are offered here. */}
+            {isPlanChangeAwaitingPayment(sub.scheduled_plan_change) && (
+              <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
+                <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
+                <div className="min-w-0 flex-1">
+                  <span>
+                    {sub.scheduled_plan_change?.amount_due_now != null
+                      ? t("subscriptions.manage.planChangeAwaitingPayment", {
+                          plan: sub.scheduled_plan_change?.to_plan_name,
+                          amount: formatPrice(
+                            sub.scheduled_plan_change?.amount_due_now,
+                            sub.scheduled_plan_change?.currency ?? sub.currency
+                          ),
+                        })
+                      : t("subscriptions.manage.planChangeAwaitingPaymentNoAmount", {
+                          plan: sub.scheduled_plan_change?.to_plan_name,
+                        })}
+                  </span>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <MyButton
+                      type="button"
+                      scale="small"
+                      buttonType="primary"
+                      layoutVariant="default"
+                      onClick={() => setToChange(sub)}
+                      disable={changingPlanId === sub.user_plan_id}
+                    >
+                      <CreditCard className="me-1.5 size-4" />
+                      {t("subscriptions.manage.planChangeCompletePayment")}
+                    </MyButton>
+                    <MyButton
+                      type="button"
+                      scale="small"
+                      buttonType="text"
+                      layoutVariant="default"
+                      disable={cancelPlanChangeMutation.isPending}
+                      onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
+                    >
+                      {t("subscriptions.manage.planChangeDiscard")}
+                    </MyButton>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* A downgrade already booked for the end of the cycle. */}
-            {sub.scheduled_plan_change && (
+            {sub.scheduled_plan_change &&
+              !isPlanChangeAwaitingPayment(sub.scheduled_plan_change) && (
               <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-sm text-info-600">
                 <ArrowsClockwise className="mt-0.5 size-4 shrink-0" />
                 <div className="min-w-0 flex-1">
@@ -633,6 +681,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         subscription={toChange}
         instituteId={instituteId}
         isSubmitting={Boolean(changingPlanId)}
+        preselectPlanId={toChange?.scheduled_plan_change?.to_plan_id ?? null}
         onConfirm={(target, withAutopay, mandateMethod) =>
           startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
         }

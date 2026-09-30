@@ -46,6 +46,12 @@ interface ChangePlanDialogProps {
     mandateMethod: MandateMethod
   ) => Promise<unknown>;
   isSubmitting?: boolean;
+  /**
+   * Opens with this plan already chosen. Used when the learner is resuming a change they
+   * abandoned at checkout: the request is re-made from scratch (the old gateway order is
+   * long gone), so the least they should have to do is not pick the plan again.
+   */
+  preselectPlanId?: string | null;
 }
 
 const formatPrice = (amount?: number | null, currency?: string | null): string => {
@@ -99,6 +105,7 @@ export function ChangePlanDialog({
   instituteId,
   onConfirm,
   isSubmitting = false,
+  preselectPlanId = null,
 }: ChangePlanDialogProps) {
   const { t } = useTranslation("dashboard");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -123,6 +130,15 @@ export function ChangePlanDialog({
   }, [open, userPlanId]);
 
   const targets = useMemo(() => data?.targets ?? [], [data]);
+
+  // Applied after the targets land, not in the reset effect above: the preselected plan
+  // has to actually be on offer, and it may have stopped being so since the abandoned
+  // attempt. Only fills an empty selection, so it never fights a later choice.
+  useEffect(() => {
+    if (!open || !preselectPlanId) return;
+    if (!targets.some((target) => target.plan_id === preselectPlanId)) return;
+    setSelectedPlanId((current) => current ?? preselectPlanId);
+  }, [open, preselectPlanId, targets]);
 
   /** Grouped by option, preserving the server's ordering (shortest cycle first). */
   const grouped = useMemo(() => {

@@ -36,6 +36,7 @@ import {
     type RazorpayCheckoutFormRef,
 } from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
 import {
+    isPlanChangeAwaitingPayment,
     useSubscriptionManager,
     type Subscription,
 } from "@/hooks/use-subscription-manager";
@@ -174,6 +175,13 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                     const lapsed = sub.status === "EXPIRED" || paymentFailed;
                     const canRenew = sub.can_renew_manually && sub.plan_price != null;
                     const price = formatPrice(sub.plan_price, sub.currency);
+                    // An open change is either a booking that will apply by itself or an
+                    // abandoned checkout that needs a decision. They read nothing alike.
+                    const openChange = sub.scheduled_plan_change;
+                    const awaitingPaymentChange = isPlanChangeAwaitingPayment(openChange)
+                        ? openChange
+                        : null;
+                    const bookedChange = awaitingPaymentChange ? null : openChange;
 
                     return (
                         <div
@@ -274,9 +282,59 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                 </div>
                             )}
 
+                            {/* A checkout the learner opened and never paid. Shown in warning
+                                colours with both ways out, because it blocks a second attempt
+                                until it is finished or dropped. */}
+                            {awaitingPaymentChange && (
+                                <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-caption text-warning-600">
+                                    <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
+                                    <div className="min-w-0 flex-1">
+                                        <span>
+                                            {awaitingPaymentChange.amount_due_now != null
+                                                ? t("membership.planChangeAwaitingPayment", {
+                                                      plan: awaitingPaymentChange.to_plan_name,
+                                                      amount: formatPrice(
+                                                          awaitingPaymentChange.amount_due_now,
+                                                          awaitingPaymentChange.currency ??
+                                                              sub.currency
+                                                      ),
+                                                  })
+                                                : t(
+                                                      "membership.planChangeAwaitingPaymentNoAmount",
+                                                      {
+                                                          plan: awaitingPaymentChange.to_plan_name,
+                                                      }
+                                                  )}
+                                        </span>
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                            <Button
+                                                size="sm"
+                                                onClick={() => setToChange(sub)}
+                                                disabled={changingPlanId === sub.user_plan_id}
+                                                className="gap-1.5"
+                                            >
+                                                <CreditCard size={14} weight="duotone" />
+                                                {t("membership.planChangeCompletePayment")}
+                                            </Button>
+                                            <Button
+                                                variant="link"
+                                                size="sm"
+                                                className="h-auto p-0 text-caption"
+                                                disabled={isCancellingPlanChange}
+                                                onClick={() =>
+                                                    cancelPlanChange(sub.user_plan_id)
+                                                }
+                                            >
+                                                {t("membership.planChangeDiscard")}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* A downgrade already booked. Without this the card would keep
                                 claiming the old plan right up until the renewal swaps it. */}
-                            {sub.scheduled_plan_change && (
+                            {bookedChange && (
                                 <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-caption text-info-600">
                                     <ArrowsClockwise
                                         className="mt-0.5 size-4 shrink-0"
@@ -285,19 +343,16 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                     <div className="min-w-0 flex-1">
                                         <span>
                                             {formatDate(
-                                                sub.scheduled_plan_change.effective_from
+                                                bookedChange?.effective_from
                                             )
                                                 ? t("membership.planChangeScheduled", {
-                                                      plan: sub.scheduled_plan_change
-                                                          .to_plan_name,
+                                                      plan: bookedChange?.to_plan_name,
                                                       date: formatDate(
-                                                          sub.scheduled_plan_change
-                                                              .effective_from
+                                                          bookedChange?.effective_from
                                                       ),
                                                   })
                                                 : t("membership.planChangeScheduledNoDate", {
-                                                      plan: sub.scheduled_plan_change
-                                                          .to_plan_name,
+                                                      plan: bookedChange?.to_plan_name,
                                                   })}
                                         </span>
                                         <Button
@@ -317,7 +372,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
                             {/* Switch plan. Hidden unless the institute has flagged at least
                                 one other plan as switchable for this membership. */}
-                            {sub.can_change_plan && !sub.scheduled_plan_change && (
+                            {sub.can_change_plan && !openChange && (
                                 <div className="flex justify-end">
                                     <Button
                                         variant="outline"
@@ -427,6 +482,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                 subscription={toChange}
                 instituteId={instituteId}
                 isSubmitting={Boolean(changingPlanId)}
+                preselectPlanId={toChange?.scheduled_plan_change?.to_plan_id ?? null}
                 onConfirm={(target, withAutopay, mandateMethod) =>
                     startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
                 }

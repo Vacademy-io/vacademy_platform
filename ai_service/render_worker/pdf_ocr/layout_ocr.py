@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 RECHECK_THRESHOLD = 0.75
 MATH_FALLBACK_THRESHOLD = 0.60
+# RapidOCR's own default recognition cutoff. Below it the READ is not
+# trusted - but on the full-page pass the box is still kept (see
+# _rapid_page_lines): the detector found a line of writing, and whether the
+# printed-text recogniser could spell it says nothing about whether it exists.
+RAPID_TEXT_SCORE = 0.5
 
 _paddle_lock = threading.Lock()
 _paddle_singleton: Any = None
@@ -56,7 +61,16 @@ def _get_rapid():
             if _rapid_singleton is None:
                 from rapidocr_onnxruntime import RapidOCR
 
-                _rapid_singleton = RapidOCR()
+                # text_score=0 so RapidOCR hands back EVERY detected box; the
+                # callers below apply RAPID_TEXT_SCORE themselves. With the
+                # library default (0.5) a line whose handwriting the recogniser
+                # scored 0.44 was dropped box and all - on 2026-09-30 that
+                # silently removed "ans3. We, the People of India" and
+                # "ans7. Tigris and Euphrates" from a copy, and the grader
+                # marked both correct answers "not attempted". Set here, once,
+                # rather than per call: RapidOCR stores call kwargs on the
+                # instance, and PDF-OCR jobs share it across executor threads.
+                _rapid_singleton = RapidOCR(text_score=0.0)
     return _rapid_singleton
 
 
@@ -94,6 +108,8 @@ def _rapid_text_conf(img_crop: np.ndarray) -> tuple[str, float] | None:
             _pts, text, conf = entry
         except Exception:
             continue
+        if conf is None or float(conf) < RAPID_TEXT_SCORE:
+            continue
         if text and text.strip():
             texts.append(text.strip())
             confs.append(float(conf) if conf is not None else 0.0)
@@ -128,6 +144,13 @@ def _rapid_page_lines(img: np.ndarray, page_index: int) -> list[dict]:
     on handwriting it returns one box per written line, where PaddleOCR's
     detector returned a handful of page-sized blobs. Same output shape as the
     Paddle path so nothing downstream changes.
+
+    Lines the recogniser could not read (score below RAPID_TEXT_SCORE, or no
+    text at all) are KEPT with empty text and `weak_read` set. Only the box
+    matters downstream: ai_service re-reads every row with a vision model, and
+    a row that does not exist is a line that model is never asked about. They
+    are not flagged for the Mathpix fallback - that budget (4 crops a copy)
+    goes to the same lines it went to before these boxes were kept.
     """
     rapid = _get_rapid()
     result, _ = rapid(img)
@@ -138,18 +161,21 @@ def _rapid_page_lines(img: np.ndarray, page_index: int) -> list[dict]:
         except Exception as e:  # pragma: no cover - defensive against shape drift
             logger.debug("RapidOCR line unpack failed on page %d: %s", page_index, e)
             continue
-        if not text or not str(text).strip():
-            continue
         box = _xywh_from_quad(quad)
         if box[2] < 3 or box[3] < 3:
             continue
-        lines.append({
+        text = str(text or "").strip()
+        weak = conf < RAPID_TEXT_SCORE or not text
+        line = {
             "line_id": f"L{page_index + 1}_{n}",
-            "text": str(text).strip(),
+            "text": "" if weak else text,
             "box": [box[0], box[1], box[2], box[3]],
             "conf": round(conf, 3),
-            "needs_math_fallback": conf < MATH_FALLBACK_THRESHOLD,
-        })
+            "needs_math_fallback": (not weak) and conf < MATH_FALLBACK_THRESHOLD,
+        }
+        if weak:
+            line["weak_read"] = True
+        lines.append(line)
     return lines
 
 
@@ -160,7 +186,8 @@ def ocr_page(img: np.ndarray, page_index: int) -> list[dict]:
     the fallback when that finds fewer than MIN_PLAUSIBLE_LINES lines, with
     RapidOCR re-reading its weak lines as before.
 
-    Returns: list of {line_id, text, box[x,y,w,h], conf, needs_math_fallback}.
+    Returns: list of {line_id, text, box[x,y,w,h], conf, needs_math_fallback},
+    plus `weak_read: True` (and empty text) on a RapidOCR box it could not read.
     """
     page_height = int(img.shape[0])
     try:
@@ -168,14 +195,19 @@ def ocr_page(img: np.ndarray, page_index: int) -> list[dict]:
     except Exception:
         logger.exception("RapidOCR full-page pass failed on page %d; using PaddleOCR", page_index)
         rapid_lines = []
-    if len(rapid_lines) >= MIN_PLAUSIBLE_LINES:
-        logger.info("page %d: %d lines (rapidocr)", page_index, len(rapid_lines))
+    # The fallback decision counts only lines RapidOCR could READ, exactly as
+    # before weak boxes were kept - a page of unreadable detections is still
+    # a page the other engine should try.
+    read = sum(1 for ln in rapid_lines if not ln.get("weak_read"))
+    if read >= MIN_PLAUSIBLE_LINES:
+        logger.info("page %d: %d lines (rapidocr, %d unread kept for position)",
+                    page_index, len(rapid_lines), len(rapid_lines) - read)
         return rapid_lines
 
     paddle_lines = _sane(_paddle_page_lines(img, page_index), page_height)
-    logger.info("page %d: %d lines (paddleocr fallback; rapidocr found %d)",
-                page_index, len(paddle_lines), len(rapid_lines))
-    return paddle_lines if len(paddle_lines) >= len(rapid_lines) else rapid_lines
+    logger.info("page %d: %d lines (paddleocr fallback; rapidocr read %d of %d)",
+                page_index, len(paddle_lines), read, len(rapid_lines))
+    return paddle_lines if len(paddle_lines) >= read else rapid_lines
 
 
 def _paddle_page_lines(img: np.ndarray, page_index: int) -> list[dict]:

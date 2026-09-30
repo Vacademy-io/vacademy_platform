@@ -278,8 +278,21 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             await self.set_transport_ready(frame)
             self._feed_task = self.create_task(self._feeder(self))
 
+        async def _end_feed(self):
+            # The feeder outlived the call and pinned its whole pipeline, which
+            # hid the production leak (an un-awaited cancel_task in ambience)
+            # from the sim's own end-of-run leak check.
+            task, self._feed_task = getattr(self, "_feed_task", None), None
+            if task is not None:
+                await self.cancel_task(task)
+
         async def stop(self, frame):
             await super().stop(frame)
+            await self._end_feed()
+
+        async def cancel(self, frame):
+            await super().cancel(frame)
+            await self._end_feed()
 
     class SimOutput(BaseOutputTransport):
         interruptions = 0
@@ -1359,7 +1372,17 @@ async def main():
             print(f"       ✗ {f}")
     Path(args.out).write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"report → {args.out}")
-    if args.ci and any(r["fails"] for r in results):
+    # A finished call must leave nothing behind. From 2026-09-11 to 09-30 every
+    # call's pipeline (VAD + Smart Turn ONNX sessions, ~35 MB) stayed alive via a
+    # never-cancelled task, and the Mumbai box was OOM-killed 20 times.
+    await asyncio.sleep(2.0)                  # let cancelled tasks unwind
+    import gc
+    gc.collect()
+    alive = sum(1 for o in gc.get_objects() if type(o).__name__ == "PipelineTask")
+    leftover = sorted({t.get_name() for t in asyncio.all_tasks() if t is not asyncio.current_task()})
+    print(f"{'FAIL' if alive else 'ok  '} no_pipeline_outlives_its_call   "
+          f"pipelines alive {alive} of {len(results)} runs; tasks left {leftover[:6]}")
+    if args.ci and (alive or any(r["fails"] for r in results)):
         sys.exit(1)
 
 

@@ -125,6 +125,38 @@ public class OverviewBuilder {
                     .build());
         }
 
+        // Academic context tiles — on an academics-only report a lone "Avg. Score" tile read as empty.
+        AcademicsSection academics = report.getAcademics();
+        if (academics != null && academics.isAvailable() && academics.getAssessments() != null
+                && !academics.getAssessments().isEmpty()) {
+            List<AcademicsSection.AssessmentItem> items = academics.getAssessments();
+            metrics.add(OverviewSection.HeadlineMetric.builder()
+                    .key("assessments_taken")
+                    .label("Assessments")
+                    .value(items.size())
+                    .sentiment("neutral")
+                    .build());
+            long compared = items.stream().filter(a -> a.getPercentage() != null && classPct(a) != null).count();
+            long above = items.stream().filter(a -> a.getPercentage() != null && classPct(a) != null
+                    && a.getPercentage() >= classPct(a)).count();
+            if (compared > 0) {
+                metrics.add(OverviewSection.HeadlineMetric.builder()
+                        .key("above_class_average")
+                        .label("Above Class Avg")
+                        .value(above + " / " + compared)
+                        .sentiment(above * 2 >= compared ? "good" : "attention")
+                        .build());
+            }
+            if (academics.getBestSubject() != null) {
+                metrics.add(OverviewSection.HeadlineMetric.builder()
+                        .key("best_subject")
+                        .label("Best Subject")
+                        .value(academics.getBestSubject())
+                        .sentiment("good")
+                        .build());
+            }
+        }
+
         if (completionPct != null) {
             metrics.add(OverviewSection.HeadlineMetric.builder()
                     .key("course_completion")
@@ -176,6 +208,12 @@ public class OverviewBuilder {
     }
 
     // ── Extractors ────────────────────────────────────────────────────────────
+
+    /** Class average as a percentage of the paper's total, or null when unknown. */
+    private static Double classPct(AcademicsSection.AssessmentItem a) {
+        if (a.getClassAverage() == null || a.getTotalMarks() == null || a.getTotalMarks() <= 0) return null;
+        return a.getClassAverage() / a.getTotalMarks() * 100.0;
+    }
 
     private Double extractAvgScore(AcademicsSection academics) {
         if (academics == null || !academics.isAvailable()) return null;

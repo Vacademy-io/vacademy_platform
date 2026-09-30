@@ -593,6 +593,8 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
+        "floor_holds": getattr(d, "floor_holds", 0) or 0,
+        "floor_holds_dropped": getattr(d, "floor_holds_dropped", 0) or 0,
     }
     # turn latency: caller stop → next bot audio start
     lat = []
@@ -823,6 +825,33 @@ def chk_pieces_with_gaps(res):
         f.append("the answer to the pieces was cut short")
     if "Three girls" not in " ".join(_assistant_texts(res)):
         f.append("the answer to both pieces never played")
+    return f
+
+
+NV_HELD = "Got it, eighth class. And how were her marks last year?"
+
+
+def chk_navana_held_reply_is_not_heard(res):
+    """Calls 18b63b17 / 45749163 (2026-09-30), Navana: a reply that FloorGate
+    held (the parent was still talking) and then dropped was already in the
+    played transcript and the model's context — its text reached them before
+    its audio. The bot then refused to say it again as "already said". Same
+    shape as pieces_with_gaps, on Navana's real service with the cache on."""
+    f = chk_pieces_with_gaps(res)
+    if res.get("floor_holds_dropped", 0) < 1:
+        # The runner's timing never produced the hold+drop this is about; the
+        # unit tests in tests/test_navana.py cover the ordering deterministically.
+        print(f"NOTE navana_held_reply_is_not_heard: no floor drop this run "
+              f"(holds={res.get('floor_holds')}) — ordering covered by unit tests")
+        return f
+    said = " ".join(_assistant_texts(res))
+    if "eighth class" in said:
+        f.append("the dropped reply counts as said: " + said[:160])
+    for ctx in res.get("contexts", [])[1:]:
+        blob = json.dumps(ctx, ensure_ascii=False)
+        if "Got it, eighth class" in blob:
+            f.append("the dropped reply is in the model's context as said")
+            break
     return f
 
 
@@ -1175,6 +1204,18 @@ SCENARIOS: List[Scenario] = [
                       "Okay."],
              checks=chk_pieces_with_gaps, max_secs=45,
              note="call 358e5026: a reply started over every next piece and was cut to a stub"),
+    Scenario("navana_held_reply_is_not_heard",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,
+                         offset=0.8, stt_latency=0.4),
+                     Say("and there are three girls at home studying", 1.4, after_bot_stop=2,
+                         offset=2.7, stt_latency=0.4)],
+             replies=[PITCH_Q, NV_HELD,
+                      "Three girls, that's lovely. And how were the eldest one's marks last year?",
+                      "Okay."],
+             checks=chk_navana_held_reply_is_not_heard, max_secs=45,
+             cache_warm=[S_CACHED_TAIL], engine="navana", context="navana_agent_context.json",
+             note="calls 18b63b17/45749163: a held-then-dropped Navana reply counted as said"),
     Scenario("smallest_live_only",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
              replies=[" ".join([S_LIVE_1, S_LIVE_2])],

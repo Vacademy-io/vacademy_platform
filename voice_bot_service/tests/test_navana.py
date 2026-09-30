@@ -174,3 +174,131 @@ async def test_run_tts_records_the_seq_it_sent():
     async for _ in tts.run_tts("दूसरा।", "ctx-2"):
         pass
     assert tts._nv_ctx == {1: "ctx-1", 2: "ctx-2"}
+
+
+# ── Said must mean heard (calls 18b63b17 / 45749163, 2026-09-30) ─────────────
+def _heard_rig(monkeypatch, *, per_sentence=True, open_ctx=None):
+    """The routed service with pipecat's audio-context queue replaced by a log:
+    `log` is every frame that reached a context, in order."""
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from bodhi.integrations.pipecat_tts import BodhiTTSService
+    from pipecat.services.tts_service import TTSService
+    log = []
+    ctxs = set(open_ctx or {"A", "B", "C"})
+
+    async def base_append(self, ctx, frame):
+        log.append((ctx, type(frame).__name__, getattr(frame, "text", None)))
+
+    async def base_interrupted(self, ctx):
+        return None
+    monkeypatch.setattr(TTSService, "append_to_audio_context", base_append)
+    monkeypatch.setattr(TTSService, "on_audio_context_interrupted", base_interrupted)
+    cls = p._navana_seq_routing(BodhiTTSService)
+    tts = cls(api_key="k", voice="ipsita", language="hi")
+    tts._reuse_context_id_within_turn = not per_sentence
+    tts._output_sample_rate = 8000
+    tts._nv_reset()
+
+    async def remove(ctx):
+        ctxs.discard(ctx)
+
+    async def noop(*a, **k):
+        return None
+    tts.remove_audio_context = remove
+    tts.audio_context_available = lambda c: c in ctxs
+    tts.get_active_audio_context_id = lambda: next(iter(sorted(ctxs)), None)
+    tts.stop_ttfb_metrics = noop
+    return tts, log, ctxs
+
+
+def _sent(tts, seq, ctx):
+    """What run_tts records the moment it has sent sentence `seq`."""
+    tts._nv_ctx[seq] = ctx
+    tts._nv_ctx_seq[ctx] = seq
+
+
+def _text(t):
+    from pipecat.frames.frames import TTSTextFrame
+    return TTSTextFrame(t, aggregated_by="sentence")
+
+
+def _chunks(seq, n, last=True):
+    import json
+    out = []
+    for i in range(n):
+        out += [json.dumps({"type": "audio", "seq": seq, "is_last_chunk": last and i == n - 1}),
+                b"\x00" * 320]
+    return out
+
+
+@pytest.mark.asyncio
+async def test_a_sentences_text_is_released_only_after_its_last_chunk(monkeypatch):
+    """pipecat appends a push_text_frames service's text right after run_tts —
+    for Navana that is BEFORE any audio. It must reach the context after the
+    sentence's last chunk, so a held or cut sentence is never counted as said."""
+    tts, log, _ = _heard_rig(monkeypatch)
+    _sent(tts, 1, "A")
+    await tts.append_to_audio_context("A", _text("फीस तीस हज़ार है।"))
+    assert log == [], "the text went out before any audio"
+    tts._get_websocket = lambda: _Sock(_chunks(1, 3))
+    await tts._receive_messages()
+    kinds = [k for _c, k, _t in log]
+    assert kinds == ["TTSAudioRawFrame"] * 3 + ["TTSTextFrame", "TTSStoppedFrame"], log
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_sentence_never_counts_as_said(monkeypatch):
+    """FloorGate held the reply (the parent was still talking) and the parent's
+    words dropped it: the interruption reaches the TTS, and NOTHING of that
+    sentence — neither its late chunks nor its text — may reach any context."""
+    tts, log, ctxs = _heard_rig(monkeypatch)
+    _sent(tts, 1, "A")
+    await tts.append_to_audio_context("A", _text("मार्क्स कितने आए थे?"))
+    await tts.on_audio_context_interrupted("A")
+    ctxs.discard("A")
+    tts._get_websocket = lambda: _Sock(_chunks(1, 2))
+    await tts._receive_messages()
+    assert all(t != "मार्क्स कितने आए थे?" for _c, _k, t in log), log
+    assert not [x for x in log if x[1] == "TTSAudioRawFrame"], log
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_replys_late_audio_never_plays_inside_the_next_reply(monkeypatch):
+    """No socket reconnect happens for a reply that never started playing, so
+    Navana keeps streaming it. Its chunks used to fall back to the PLAYING
+    context — the next reply's."""
+    tts, log, ctxs = _heard_rig(monkeypatch, open_ctx={"B"})
+    _sent(tts, 1, "A")
+    await tts.on_audio_context_interrupted("A")
+    _sent(tts, 2, "B")                                # the next reply
+    await tts.append_to_audio_context("B", _text("जी, बताइए।"))
+    tts._get_websocket = lambda: _Sock(_chunks(1, 3) + _chunks(2, 2))
+    await tts._receive_messages()
+    assert [c for c, k, _t in log if k == "TTSAudioRawFrame"] == ["B", "B"], log
+    assert ("B", "TTSTextFrame", "जी, बताइए।") in log
+
+
+@pytest.mark.asyncio
+async def test_with_the_cache_off_text_still_follows_audio_and_the_turn_context_stays_open(monkeypatch):
+    """One context per turn (cache off, e.g. the Mediquity agent): each sentence's
+    text after its own audio; the turn's context is not closed per sentence."""
+    tts, log, ctxs = _heard_rig(monkeypatch, per_sentence=False, open_ctx={"T"})
+    _sent(tts, 1, "T")
+    await tts.append_to_audio_context("T", _text("पहला।"))
+    _sent(tts, 2, "T")
+    await tts.append_to_audio_context("T", _text("दूसरा?"))
+    tts._get_websocket = lambda: _Sock(_chunks(1, 2) + _chunks(2, 2))
+    await tts._receive_messages()
+    seq = [(k, t) for _c, k, t in log if k != "TTSAudioRawFrame"]
+    assert seq == [("TTSTextFrame", "पहला।"), ("TTSStoppedFrame", None),
+                   ("TTSTextFrame", "दूसरा?"), ("TTSStoppedFrame", None)], log
+    assert "T" in ctxs, "the turn's context was closed after one sentence"
+
+
+@pytest.mark.asyncio
+async def test_a_cached_sentences_text_is_not_held(monkeypatch):
+    """A cache hit never went to Navana: its text (appended after its audio by
+    the base class) passes straight through."""
+    tts, log, _ = _heard_rig(monkeypatch)
+    await tts.append_to_audio_context("C", _text("नमस्ते जी।"))
+    assert log == [("C", "TTSTextFrame", "नमस्ते जी।")]

@@ -1923,20 +1923,6 @@ class TtfbObserver:
             self._diag.bump("llm_completion_tokens", out)
 
 
-_BARE_NO_RE = re.compile(
-    r"^(जी\s*,?\s*)?(नहीं|नही|nahi|nahin|no|nope)(\s*(जी|सर|मैम|sir|ma'?am))?[\s।.!,?]*$", re.I)
-_PUT_OFF_RE = re.compile(
-    r"not interested|interest(ed)? नहीं|बाद में|baad mein|busy|व्यस्त|call later|"
-    r"अभी नहीं|abhi nahi|मत करो|call मत|फ़?फोन मत|don'?t call", re.I)
-
-
-def _is_refusal(text: str) -> bool:
-    """The caller's last words decline or put off the call — never 'continue'
-    over them. A bare "नहीं" or an explicit put-off; "नहीं पता" is an answer."""
-    t = (text or "").strip()
-    return bool(_BARE_NO_RE.match(t) or _PUT_OFF_RE.search(t))
-
-
 class NoRepeatGate(FrameProcessor):
     """Between the LLM and the TTS: never say the same sentence twice in a call.
 
@@ -2525,7 +2511,6 @@ class NoRepeatGate(FrameProcessor):
         if isinstance(frame, LLMFullResponseStartFrame):
             self._killed = False
             self._text_seen = False
-            self._caller_at_start = (self._last_caller_text() or "").strip()
             self._responses_started += 1
             if self._responses_started > self._runs_passed:
                 self._runs_passed = self._responses_started    # a run we did not see
@@ -2780,18 +2765,12 @@ class NoRepeatGate(FrameProcessor):
             # 963347ab: out=0 after the parent's "ये apply."), and nothing at all
             # followed — the bridge line, then 8.2 s, then "are you there?". Ask
             # for the next line at once, as for a bare acknowledgment.
-            #
-            # Only a GENUINELY empty answer (calls 24e13868 / 899c6888, the same
-            # day): a response the parent's barge-in killed also ends with no
-            # text — "continuing" it gave a second reply to the same moment and a
-            # stray "जी, बोलिए।"; a response during which the parent said
-            # something new is answered by that turn's run; and after a refusal
-            # ("नहीं") "say your next line" pushes past the parent.
+            # Not for a response the parent's barge-in killed (its End carries no
+            # text either). After a put-off (call 899c6888) the cue itself says
+            # to offer a call back or close, rather than push on or go silent.
             _caller_now = (self._last_caller_text() or "").strip()
             if (not getattr(self, "_text_seen", True) and not self._buf.strip()
                     and not self._killed
-                    and _caller_now == getattr(self, "_caller_at_start", _caller_now)
-                    and not _is_refusal(_caller_now)
                     and not superseded and not self._end_forced() and not self._ending()
                     and self._request_next_step is not None and self._may_ask_next_step()
                     and _caller_now and not _caller_now.startswith("[")):
@@ -3294,7 +3273,10 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
         return "continue", (
             "[You have not moved the call forward yet and the caller is waiting. "
             "Say your NEXT line now — the next point or the next question in your "
-            "script, in one or two short sentences. Do not acknowledge or apologise.]")
+            "script, in one or two short sentences. Do not acknowledge or apologise. "
+            "If the caller has just said they are busy, not interested or want a "
+            "call later, do not push on: offer to call back at a time that suits "
+            "them, or close politely.]")
     if kind == "restatement":
         why = ("[Your last reply only said their answer back to them and asked "
                "nothing. Do not restate it again. ")

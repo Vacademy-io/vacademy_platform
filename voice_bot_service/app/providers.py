@@ -706,11 +706,22 @@ def _navana_seq_routing(cls):
     parent was still talking, then dropped, still counted as said: the fees
     answer was refused as "already said" twice (the parent asked three times),
     the marks question never played and the line went quiet for 8.7 s. Every
-    sentence's text is now held and released right after its OWN last chunk —
-    the order pipecat intends ("if we are interrupted, the text is not added to
-    the assistant context") — and dropped with the sentence on an interruption.
-    This applies with the cache off too (one context per turn, the SDK's
-    playing-context rule for the audio).
+    sentence's text is now held and released after HALF of its own audio (the
+    `chunk_index`/`chunk_total` in Navana's headers; at its last chunk if they are
+    absent): the output transport writes frames in order, so the text reaches the
+    played transcript only once the parent has heard half the sentence. A reply
+    FloorGate holds (from its first audio frame) keeps its text held with it and
+    drops it with it; a sentence cut in its first half is re-sayable; one heard
+    60-99 % is not repeated in full (an all-or-nothing "after the last chunk"
+    rule re-said a nearly finished opening and lost the answer to it). This
+    applies with the cache off too (one context per turn).
+
+    AN INTERRUPTION RECONNECTS. pipecat reconnects on an interruption only while
+    the bot is audibly speaking; for a reply FloorGate was still holding it does
+    not, so Navana kept generating the dropped sentences and the next reply's
+    audio queued behind them — long enough for its context to idle out. Any
+    interruption with Navana sentences in flight now reconnects (the SDK's own
+    way of stopping the server).
     """
     from pipecat.frames.frames import TTSTextFrame as _Text
 
@@ -725,6 +736,8 @@ def _navana_seq_routing(cls):
             self._nv_text = {}         # seq -> [TTSTextFrame] held until its last chunk
             self._nv_ctx_seq = {}      # context_id -> latest seq sent for it
             self._nv_dead = set()      # seqs of interrupted sentences: drop what still streams
+            self._nv_cur_idx = None    # chunk_index / chunk_total of the header just received
+            self._nv_cur_total = None
 
         async def append_to_audio_context(self, context_id, frame):
             if isinstance(frame, _Text) and not getattr(frame, "_nv_released", False):
@@ -736,14 +749,18 @@ def _navana_seq_routing(cls):
                     return
             await super().append_to_audio_context(context_id, frame)
 
-        async def _nv_finish(self, seq, ctx):
-            """The sentence's audio is complete: its text, then its stop."""
-            self._nv_ctx.pop(seq, None)
-            if self._nv_ctx_seq.get(ctx) == seq:
-                self._nv_ctx_seq.pop(ctx, None)
+        async def _nv_release_text(self, seq, ctx):
             for tf in self._nv_text.pop(seq, []):
                 tf._nv_released = True
                 await self.append_to_audio_context(ctx, tf)
+
+        async def _nv_finish(self, seq, ctx):
+            """The sentence's audio is complete: its text (if half-way did not
+            already release it), then its stop."""
+            self._nv_ctx.pop(seq, None)
+            if self._nv_ctx_seq.get(ctx) == seq:
+                self._nv_ctx_seq.pop(ctx, None)
+            await self._nv_release_text(seq, ctx)
             from pipecat.frames.frames import TTSStoppedFrame as _Stopped
             await self.append_to_audio_context(ctx, _Stopped(context_id=ctx))
             # One context per sentence: close it so the next plays at once
@@ -770,6 +787,19 @@ def _navana_seq_routing(cls):
             self._nv_text.clear()
             self._nv_ctx_seq.clear()
             await super().on_audio_context_interrupted(context_id)
+
+        async def _handle_interruption(self, frame, direction):
+            in_flight = bool(getattr(self, "_nv_ctx", None))
+            await super()._handle_interruption(frame, direction)
+            # pipecat reconnected only if the bot was audibly speaking. Sentences
+            # still being generated for a held (never played) reply would make
+            # the next reply wait behind them: stop the server the SDK's way.
+            if (in_flight or getattr(self, "_nv_dead", None)) and not getattr(self, "_bot_speaking", False):
+                try:
+                    await self._disconnect()
+                    await self._connect()
+                except Exception:
+                    logger.exception("navana: reconnect after an interruption failed")
 
         async def run_tts(self, text, context_id, *args, **kwargs):
             recorded = False
@@ -813,6 +843,11 @@ def _navana_seq_routing(cls):
                         num_channels=1, context_id=ctx))
                     if last:
                         await self._nv_finish(seq, ctx)
+                    elif seq in self._nv_text:
+                        idx, total = self._nv_cur_idx, self._nv_cur_total
+                        if isinstance(idx, int) and isinstance(total, int) and total > 0 \
+                                and (idx + 1) * 2 >= total:
+                            await self._nv_release_text(seq, ctx)    # half of it is out
                     continue
                 try:
                     content = _json.loads(message)
@@ -822,6 +857,8 @@ def _navana_seq_routing(cls):
                 if kind == "audio":
                     self._nv_cur_seq = content.get("seq")
                     self._nv_cur_last = bool(content.get("is_last_chunk"))
+                    self._nv_cur_idx = content.get("chunk_index")
+                    self._nv_cur_total = content.get("chunk_total")
                 elif kind == "error":
                     await self.push_error(
                         error_msg=f"{self} Bodhi TTS error {content.get('code')}: {content.get('message')}")

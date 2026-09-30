@@ -567,7 +567,13 @@
       "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
       "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
       "planChangeCompletePayment": "Complete payment",
-      "planChangeDiscard": "Discard this change"
+      "planChangeDiscard": "Discard this change",
+      "cardDialog": {
+        "title": "Ajoutez une carte pour continuer",
+        "description": "Aucune carte n'est enregistrée pour cet abonnement. Saisissez-en une pour payer maintenant — nous l'enregistrerons en toute sécurité afin que les renouvellements suivants se fassent en un seul geste.",
+        "loadingForm": "Chargement du formulaire de carte sécurisé..."
+      },
+      "autopayDefaultNotice": "Les renouvellements suivants seront prélevés automatiquement sur cette carte. Vous pouvez désactiver le paiement automatique à tout moment depuis cette page."
     }
   },
   "termsAndConditions": {

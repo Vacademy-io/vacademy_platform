@@ -214,9 +214,19 @@ public class PackageSessionScheduler {
     @Scheduled(cron = "0 0 15 * * ?", zone = "Asia/Kolkata")
     @SchedulerLock(name = "RenewalChargeSweep", lockAtMostFor = "PT50M", lockAtLeastFor = "PT2M")
     public void emitRenewalCharges() {
-        log.info("[RenewalCharge] Starting autopay charge scan...");
+        // Institute-gated, like the 04:00 policy scan -- but on its OWN flag
+        // (PAYMENT_SETTING.autopayChargeSchedulerEnabled), because this job presents money to
+        // the gateway rather than sending notifications. Until an institute is explicitly
+        // opted in, nothing here is charged for it, whatever its plans have armed.
+        List<String> instituteIds = paymentSettingService.getInstituteIdsWithAutopayChargeEnabled();
+        if (instituteIds.isEmpty()) {
+            log.info("[RenewalCharge] No institutes have authorised the autopay charge sweep — skipping");
+            return;
+        }
+        log.info("[RenewalCharge] Starting autopay charge scan for {} opted-in institute(s)...",
+                instituteIds.size());
         try {
-            renewalChargeService.processDueRenewals();
+            renewalChargeService.processDueRenewals(instituteIds);
         } catch (Exception e) {
             log.error("[RenewalCharge] Autopay charge scan failed", e);
         }

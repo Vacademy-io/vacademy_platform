@@ -704,4 +704,21 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       ORDER BY pp.name
       """, nativeQuery = true)
   List<String> findDistinctPaymentPlanNames(@Param("instituteId") String instituteId);
+
+  /**
+   * Counts this plan's payment logs created at/after {@code since} that have not failed.
+   *
+   * <p>Double-submit guard for the learner-initiated "pay to continue" renewal. The
+   * webhook-level dedupe ({@link #markPaidIfNotAlready}) cannot help here: every click
+   * mints its OWN payment_log id, so two clicks are two distinct orders. That is harmless
+   * for a checkout gateway (the learner simply abandons the second modal) but not for a
+   * stored-token gateway like eWay, where the charge is submitted server-side and
+   * synchronously -- a second click seconds later takes a second real payment.
+   */
+  @Query("SELECT COUNT(pl) FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId "
+      + "AND pl.createdAt >= :since "
+      + "AND (pl.paymentStatus IS NULL OR pl.paymentStatus <> :failedStatus)")
+  long countRecentUnfailedForPlan(@Param("userPlanId") String userPlanId,
+      @Param("since") LocalDateTime since,
+      @Param("failedStatus") String failedStatus);
 }

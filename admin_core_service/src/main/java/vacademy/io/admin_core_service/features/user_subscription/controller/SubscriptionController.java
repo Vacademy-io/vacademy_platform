@@ -40,6 +40,24 @@ public class SubscriptionController {
      * mandateMethod (upi | card) picks how that mandate is authorised, exactly
      * like the enrol form; when omitted the learner's existing mandate method is
      * reused, defaulting to UPI.
+     *
+     * <p>Three response shapes, and the client branches on response_data rather
+     * than assuming:
+     * <ul>
+     *   <li>CHECKOUT gateway (Razorpay): order coordinates to open;</li>
+     *   <li>STORED-TOKEN gateway (eWay) with a card on file: already charged,
+     *       {@code paymentStatus: PAID}, nothing to open;</li>
+     *   <li>STORED-TOKEN gateway with NO card on file:
+     *       {@code paymentStatus: REQUIRES_CARD} and nothing charged -- the client
+     *       collects a card and calls again with it in the body.</li>
+     * </ul>
+     * The withAutopay/mandateMethod pair is meaningless for a stored-token gateway --
+     * there is no mandate to register, so the token on file is what future cycles
+     * charge ({@code instant_renewal} on the list response flags this).
+     *
+     * <p>{@code card} is the eWay eCrypt payload, sent only on the second call. Its
+     * card fields are the ONLY thing read: a customerId in the body is ignored, since
+     * honouring one would let a caller charge somebody else's stored card.
      */
     @PostMapping("/{userPlanId}/renew-payment")
     public ResponseEntity<vacademy.io.common.payment.dto.PaymentResponseDTO> renewPayment(
@@ -47,9 +65,10 @@ public class SubscriptionController {
             @RequestParam String instituteId,
             @PathVariable String userPlanId,
             @RequestParam(defaultValue = "false") boolean withAutopay,
-            @RequestParam(required = false) String mandateMethod) {
+            @RequestParam(required = false) String mandateMethod,
+            @RequestBody(required = false) vacademy.io.common.payment.dto.EwayRequestDTO card) {
         return ResponseEntity.ok(subscriptionService.initiateRenewalPayment(
-                user, instituteId, userPlanId, withAutopay, mandateMethod));
+                user, instituteId, userPlanId, withAutopay, mandateMethod, card));
     }
 
     /**

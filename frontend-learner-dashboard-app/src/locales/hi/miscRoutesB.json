@@ -567,7 +567,13 @@
       "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
       "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
       "planChangeCompletePayment": "Complete payment",
-      "planChangeDiscard": "Discard this change"
+      "planChangeDiscard": "Discard this change",
+      "cardDialog": {
+        "title": "जारी रखने के लिए कार्ड जोड़ें",
+        "description": "इस सदस्यता के लिए हमारे पास कोई कार्ड सहेजा नहीं है। अभी भुगतान करने के लिए कार्ड दर्ज करें — हम इसे सुरक्षित रूप से सहेज लेंगे ताकि आगे का नवीनीकरण एक टैप में हो जाए।",
+        "loadingForm": "सुरक्षित कार्ड फ़ॉर्म लोड हो रहा है..."
+      },
+      "autopayDefaultNotice": "आगे के नवीनीकरण इसी कार्ड से स्वतः लिए जाएंगे। आप इस पेज से कभी भी ऑटो-पे बंद कर सकते हैं।"
     }
   },
   "termsAndConditions": {

@@ -359,7 +359,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         WHERE :includeUnpaidInvoices = true
           AND :noPaymentPlanFilter = true
           -- An invoice raised on its own belongs to no batch, so a batch filter cannot vouch
-          -- for it; it drops out, exactly as it does under the plan filter.
+          -- for it and it drops out, exactly as it does under the plan filter.
           AND :noPackageSessionFilter = true
           AND i.institute_id = :instituteId
           AND i.created_at >= :startDate

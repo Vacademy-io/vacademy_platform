@@ -23,6 +23,7 @@ import hashlib
 import logging
 import math
 import os
+import re
 from functools import lru_cache
 from typing import Any, Optional
 
@@ -219,6 +220,29 @@ def _pen_scale(path: Optional[str]) -> float:
     except Exception:  # a missing numpy or an odd font must not stop marking
         logger.debug("could not measure x-height for %s", path, exc_info=True)
         return 1.0
+
+
+def _page_k(page: Any) -> float:
+    """How much larger than A4 this page is, for scaling the pen's size caps.
+
+    Every cap on a mark's size (a score at most 24pt, a note at most 20, ...)
+    was tuned on A4 scans, 595pt wide. A phone photo converted to PDF is often
+    1500pt wide or more with handwriting to match - 54pt rows on one copy -
+    and there the capped marks came out a third of the student's writing,
+    too small to read. The caps grow with the page; on A4 nothing changes.
+    """
+    try:
+        return max(1.0, min(4.0, float(page.rect.width) / 595.0))
+    except Exception:
+        return 1.0
+
+
+def _note_k(page: Any) -> float:
+    """_page_k for written REMARKS: they grow with the page more slowly than
+    marks. A remark as large as the student's writing needs a gap two ruled
+    lines tall, which a written page does not have - scaled fully, the notes
+    on a 1500pt page found no room and were sent to other pages."""
+    return math.sqrt(_page_k(page))
 
 
 def _pen(page: Any) -> tuple[str, float, Optional[Any]]:
@@ -1607,6 +1631,40 @@ def _ink_map(page: Any, sheet: Any) -> Optional[dict]:
         return None
 
 
+def _words_end(imap: Optional[dict], rect: Any, max_gap: float) -> Optional[float]:
+    """Where the row's WORDS end, in points: the right end of the run of ink
+    that starts at the row and has no blank stretch wider than `max_gap`.
+
+    _row_ink_span reports the right-most ink on the row, which on a phone
+    photo is often not writing at all - the dark sheet edge or a shadow at the
+    far side put one row's "end" at x=1451 when its words stopped at 602, and
+    a remark that had half the page to sit in was refused for want of room.
+    """
+    if not imap:
+        return None
+    try:
+        import numpy as np
+
+        ink, sy, sx, off = imap["ink"], imap["sy"], imap["sx"], imap["x0"]
+        y0 = max(0, min(ink.shape[0] - 1, int(rect.y0 / sy)))
+        y1 = max(y0 + 1, min(ink.shape[0], int(rect.y1 / sy)))
+        cols = np.nonzero(ink[y0:y1].sum(axis=0) > 2)[0]
+        if cols.size == 0:
+            return None
+        first = int(max(0, rect.x0 / sx - off))
+        cols = cols[cols >= first - int(max_gap / sx)]
+        if cols.size == 0:
+            return None
+        end = int(cols[0])
+        for c in cols[1:].tolist():
+            if (c - end) * sx > max_gap:
+                break
+            end = c
+        return (off + end) * sx
+    except Exception:
+        return None
+
+
 def _row_ink_span(imap: Optional[dict], rect: Any) -> Optional[tuple]:
     """(left, right) of the writing on the rows this rect covers, in points."""
     if not imap:
@@ -1826,7 +1884,23 @@ def _paper_quad(rgb: Any) -> Any:
     return out
 
 
-def _paper_rows(page: Any) -> Optional[dict]:
+def _writing_hull(writing: list, sx: float, sy: float, H: int, W: int) -> Any:
+    """Raster mask (H x W) of the convex hull around the student's rows."""
+    import numpy as np
+    import cv2
+
+    pts = []
+    for r in writing:
+        for x, y in ((r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)):
+            pts.append([min(W - 1, max(0, int(x / sx))), min(H - 1, max(0, int(y / sy)))])
+    out = np.zeros((H, W), np.uint8)
+    if len(pts) >= 3:
+        hull = cv2.convexHull(np.array(pts, np.int32).reshape(-1, 1, 2))
+        cv2.fillConvexPoly(out, hull, 1)
+    return out.astype(bool)
+
+
+def _paper_rows(page: Any, writing: Optional[list] = None) -> Optional[dict]:
     """The notebook page's own boundary for this page.
 
     Returns the paper MASK plus, for callers that still want them, the
@@ -1834,6 +1908,13 @@ def _paper_rows(page: Any) -> Optional[dict]:
     horizontal interval per row, which cannot describe a page photographed at
     an angle - at the top and bottom of a tilted sheet the interval reaches
     past the corners and over the bedsheet beside them.
+
+    `writing` - the student's rows in points, as confirmed by the vision read -
+    is paper by definition, and so is everything between them. The photo rule
+    alone reads a strong shadow's edge as the sheet's edge: on 2026-09-30 it
+    called 40% of a lit, fully written page "off paper", and every deduction
+    note aimed there (Q23, Q27, Q37 and four "Correct: ..." notes on one copy)
+    was dropped.
     """
     try:
         import numpy as np
@@ -1843,10 +1924,12 @@ def _paper_rows(page: Any) -> Optional[dict]:
             pix.height, pix.width, pix.n)[:, :, :3].astype(int)
         H, W = a.shape[:2]
         mask = _paper_quad(a)
+        sx, sy = page.rect.width / W, page.rect.height / H
+        if writing:
+            mask = mask | _writing_hull(writing, sx, sy, H, W)
         if not mask.any():
             return None
 
-        sx, sy = page.rect.width / W, page.rect.height / H
         lo = np.full(H, -1.0); hi = np.full(H, -1.0)
         for r in range(H):
             cols = np.nonzero(mask[r])[0]
@@ -2117,8 +2200,14 @@ def _free_band(sheet: Any, obstacles: list, need_h: float,
 
 def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list],
                         sheet: Any, fontname: str, base_size: float,
-                        measure_font: Optional[Any]):
-    """Write the note in blank paper near the line it belongs to."""
+                        measure_font: Optional[Any], allow_cut: bool = True,
+                        anywhere: bool = False):
+    """Write the note in blank paper near the line it belongs to.
+
+    `anywhere` searches the whole sheet from the start instead of only near
+    `rect`. `allow_cut=False` returns None rather than shortening the remark -
+    for a caller that still has other pages to try it on whole.
+    """
     import fitz
 
     sheet = sheet or page.rect
@@ -2147,7 +2236,7 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
     # Calibrated: 11-13 degrees of glyph tilt renders as the +7 to +10 lean
     # measured on the reference teacher's own comments.
     note_tilt = _hand_rng("tilt", note[:24]).uniform(0.0, 4.0)
-    ideal = max(11.0 * scale, min(base_size, 15.0 * scale))
+    ideal = max(11.0 * scale, min(base_size, 15.0 * scale * _note_k(page)))
     floor = 9.0 * scale
     attempt = 0
     # The ladder above keeps a remark whole and keeps it near its answer, and
@@ -2190,6 +2279,14 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         # reason a mark was cut. A marker short of space writes a SHORTER
         # remark, not half a sentence, so keep a cut only when most of the
         # remark survives it and it does not end on a dangling connective.
+        if len(wrapped_all) > cap and not allow_cut:
+            # Not even the mostly-whole cut below: "Wrong answer." survived
+            # as the 55% of "Wrong answer. Correct: Mohenjo-daro" and landed
+            # under the NEXT answer, which it then called wrong.
+            attempt += 1
+            if attempt > 8:
+                return None
+            continue
         if len(wrapped_all) > cap:
             kept = " ".join(wrapped_all[:cap]).rstrip(" ,;:-")
             while " " in kept and kept.rsplit(" ", 1)[-1].lower() in _DANGLING:
@@ -2197,6 +2294,8 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
             if len(kept) < len(note) * 0.55 and not desperate:
                 attempt += 1
                 if attempt > 8:
+                    if not allow_cut:
+                        return None
                     logger.debug("nowhere to write a whole remark near %s"
                                  " - shortening it instead of dropping it", rect)
                     desperate, attempt = True, 0
@@ -2210,7 +2309,7 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         if not lines:
             attempt += 1
             if attempt > 8:
-                if desperate:
+                if desperate or not allow_cut:
                     return None
                 desperate, attempt = True, 0
             continue
@@ -2251,11 +2350,13 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
         # ended up with "Riskraiehddes fadmerobbilipbeitySPBskeasivpedge".
         blockers = list(measured_bands or obstacles) + list(_PLACED[0] or [])
         band = _free_band(sheet, blockers, height, rect.y1, floor_y=floor_y,
-                          max_dist=None if desperate else sheet.height * 0.30)
+                          max_dist=None if (desperate or anywhere) else sheet.height * 0.30)
         if band is not None:
             break
         attempt += 1
         if size <= floor and attempt > 6:
+            if not desperate and not allow_cut:
+                return None
             if not desperate:
                 # Near the answer is a preference. On the page at all is not.
                 logger.debug("no free band near %s - searching the whole sheet", rect)
@@ -2279,6 +2380,14 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
     # whole lift again refused placements that fit perfectly well.
     y0 = max(band[0] + band_lift, min(rect.y1, band[1] - height + band_lift)) + 2.0
     y0 = max(y0, sheet.y0 + band_lift + 4.0)
+    # Recorded exactly as reserved: anchor minus the lift, for the full height.
+    # Tested BEFORE the pen moves: checked after drawing, a note off the paper
+    # was reported as not placed while its ink stayed on the page - so no
+    # later remark treated it as taken, and the next one could print over it.
+    placed_box = _note_rect((x0, y0 - band_lift), width, height)
+    if not _on_paper(_PAPER[0], placed_box):
+        logger.debug("free band lies off the paper; leaving the note out")
+        return None
     rng = _hand_rng("band", note[:24], round(x0, 1), round(y0, 1))
     slant = rng.uniform(8.0, 12.0)
     for i, line in enumerate(lines):
@@ -2288,11 +2397,6 @@ def _write_in_free_band(page: Any, rect: Any, note: str, occupied: Optional[list
                   max_x=(sheet.x1 - 3.0),
                   rise=math.degrees(math.atan(band_lift / max(widest, 1.0))),
                   tilt=note_tilt)
-    # Recorded exactly as reserved: anchor minus the lift, for the full height.
-    placed_box = _note_rect((x0, y0 - band_lift), width, height)
-    if not _on_paper(_PAPER[0], placed_box):
-        logger.debug("free band lies off the paper; leaving the note out")
-        return None
     return placed_box
 
 
@@ -2405,7 +2509,8 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
     ink_a = own[0] if own else rect.x0
     ink_b = own[1] if own else min(rect.x1, ink_a + 0.6 * sheet.width)
     is_score = style in ("score", "total")
-    size = max(11.0, min(24.0, h * (1.4 if is_score else 1.1)))
+    k = _page_k(page) if style in ("score", "total") else _note_k(page)
+    size = max(11.0, min(24.0 * k, h * (1.4 if is_score else 1.1)))
     base_y = rect.y0 + rect.height * 0.5 + size * 0.35
     notes = list(_PLACED[0] or [])
 
@@ -2435,27 +2540,82 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
         pe = _paper_right_edge(_PAPER[0], rect.y0, rect.y1)
         if pe is not None:
             edge = min(edge, pe)
+        if not is_score and own:
+            # Where the words end, not the right-most ink on the row - that
+            # is often the photo's dark edge, which left no room at all.
+            words_b = _words_end(_INK_MAP[0], rect, max(3.0 * h, 60.0))
+            if words_b is not None and words_b < ink_b:
+                ink_b = words_b
+        start = ink_b + 6.0
+        if not is_score:
+            # Write between what is already on this row: after the cross or
+            # tick that hugs the last word, and stop short of the row's score.
+            # Measured to the paper's edge instead, the remark ran through
+            # both and was refused for colliding - on the one row with half a
+            # page of blank paper beside the answer.
+            on_row = sorted((n for n in notes if n.y1 > rect.y0 - 2.0 and n.y0 < rect.y1 + 2.0
+                             and n.x1 > ink_b), key=lambda n: n.x0)
+            for n in on_row:
+                if n.x0 <= start + 60.0:
+                    start = max(start, n.x1 + 6.0)
+            ahead = [n.x0 for n in on_row if n.x0 > start]
+            if ahead:
+                edge = min(edge, min(ahead) - 6.0)
         if position == "right_margin_same_line":
             x0 = edge - page_w * 0.07 - width
         else:
-            x0 = ink_b + 6.0
+            x0 = start
         # Keep clear of the row's writing - but only when that writing was
         # actually measured. The layout's row box is pinned to the sheet edge
         # on merged rows, and trusting it pushed scores off the paper.
         if own:
-            x0 = max(x0, ink_b + 6.0)
+            x0 = max(x0, start)
+        lines = [(note, x0, base_y)]
         if x0 + width > edge - 3.0:
-            fitted = max(10.0, size * (edge - 3.0 - x0) / max(width, 1.0))
-            if fitted < size * 0.75:
+            avail = edge - 3.0 - x0
+            fitted = max(10.0, size * avail / max(width, 1.0))
+            # A remark may be written smaller to stay on its answer's line -
+            # refused here it went to another page. Not below 11pt.
+            floor_sz = size * 0.75 if is_score else max(11.0, size * 0.45)
+            if fitted >= floor_sz:
+                size = fitted
+                width = _pen_text_width(note, size)
+                lines = [(note, x0, base_y)]
+            elif not is_score and position == "right_of_line" and avail > 0:
+                # Two short lines beside the answer, as a hand does when the
+                # remark is longer than the room after the words. Each line
+                # is still tested against the writing and the notes below.
+                two = None
+                sz = size
+                while sz >= floor_sz and two is None:
+                    words, cur, out = note.split(), "", []
+                    for w in words:
+                        trial = (cur + " " + w).strip()
+                        if _pen_text_width(trial, sz) <= avail or not cur:
+                            cur = trial
+                        else:
+                            out.append(cur)
+                            cur = w
+                    if cur:
+                        out.append(cur)
+                    if len(out) <= 2 and all(_pen_text_width(t, sz) <= avail for t in out):
+                        two = (out, sz)
+                    sz -= 0.5
+                if two is None:
+                    logger.debug("CONTRACT %s %r refused: only %.0fpt of room at the edge",
+                                 position, note[:20], avail)
+                    return None
+                size = two[1]
+                mid = rect.y0 + rect.height * 0.5 + size * 0.35
+                off = size * 0.75 if len(two[0]) == 2 else 0.0
+                lines = [(t, x0, mid - off + i * size * 1.5) for i, t in enumerate(two[0])]
+            else:
                 # Squeezing the figure into what is left of the row wrote
                 # one score at half the size of every other on the page.
                 # The row below has the room; let the fallback use it.
                 logger.debug("CONTRACT %s %r refused: only %.0fpt of room at the edge",
-                             position, note[:20], edge - 3.0 - x0)
+                             position, note[:20], avail)
                 return None
-            size = fitted
-            width = _pen_text_width(note, size)
-        lines = [(note, x0, base_y)]
     elif position == "left_margin_same_line":
         width = _pen_text_width(note, size)
         x0 = max(sheet.x0 + 3.0, ink_a - 6.0 - width)
@@ -2464,7 +2624,7 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
             width = _pen_text_width(note, size)
         lines = [(note, x0, base_y)]
     elif position == "below_line_left":
-        size = max(10.0, min(20.0, h * 1.1))
+        size = max(10.0, min(20.0 * k, h * 1.1))
         # Fit the note to the GAP under the row, not to the row. A 20pt note
         # dropped into a 20pt gap fills it edge to edge and the pen's own
         # wobble lands on the next line - "Wrong option. Correct: (c)" was
@@ -2488,10 +2648,14 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
         # baseline and up to ~0.95 below (deep descenders plus the pen's own
         # jitter) - a footprint 1.9x the nominal size, not the 1.5x of a
         # print face.
+        # The smallest hand that still reads beside this page's writing: 9pt
+        # on A4, larger on a big photographed page, where a 9pt remark beside
+        # 54pt rows was a smudge. Below it the remark goes where it fits whole.
+        legible = max(9.0, h * 0.3)
         if gap is not None:
             if gap < 14.0:
                 return None
-            size = max(9.0, min(size, (gap - 3.0) / 1.9))
+            size = max(legible, min(size, (gap - 3.0) / 1.9))
         x0 = max(sheet.x0 + 6.0, ink_a)
         max_w = (sheet.x1 - page_w * 0.05) - x0
         # Stop short of anything already written in this band - typically the
@@ -2531,14 +2695,14 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
             # so refuse and let the caller find another spot.
             fitted = None
             sz = size - 0.5
-            while sz >= max(9.0, size * 0.65):
+            while sz >= max(legible, size * 0.65):
                 if _pen_text_width(note, sz) <= max_w:
                     fitted = ([note], sz)
                     break
                 sz -= 0.5
             if fitted is None:
                 sz = size - 0.5
-                while sz >= 9.0:
+                while sz >= legible:
                     two = wrap(sz)
                     if len(two) <= 2 and two_lines_fit(sz):
                         fitted = (two, sz)
@@ -2581,24 +2745,34 @@ def _place_by_contract(page: Any, rect: Any, style: str, note: str, position: Op
     return placed
 
 
+# The first words of a new answer or section. A score looking further down
+# for room stops here, or it is written beside the next question - which is
+# how a "3/3" came to sit on the "ans 30" heading of a question worth 0.
+_ANSWER_START = re.compile(
+    r"^\s*(ans(wer)?\s*[.:]?\s*\d+|q(uestion)?\s*[.:]?\s*\d+|section\b|\d+\s*[.)]\s*[A-Z])", re.I)
+
+
 def _place_score_right(page: Any, rect: Any, note: str, sheet: Any,
-                       occupied: Optional[list]) -> Optional[Any]:
+                       occupied: Optional[list], following: Optional[list] = None) -> Optional[Any]:
     """Right-side-only fallback for a question score.
 
     Order: the same row, flush against the paper's measured right edge; the
     row below and the row above (a score beside the next line still reads as
-    this answer's); then the same spots at a smaller pen. Returns the drawn
-    box or None.
+    this answer's); then `following` - the answer's next rows, whose last line
+    is where the answer really ends when the grader named an earlier row as
+    its last; then the same spots at a smaller pen. Returns the drawn box or
+    None.
     """
     import fitz
     if sheet is None:
         return None
     line_h = float(_LINE_H[0] or rect.height or 14.0)
     row_h = _LINE_H[0] if _LINE_H[0] else rect.height
-    base = max(13.0, min(26.0, row_h)) * _pen_scale(_handwriting_fontfile())
+    base = max(13.0, min(26.0 * _page_k(page), row_h)) * _pen_scale(_handwriting_fontfile())
     candidates = [rect,
                   fitz.Rect(rect.x0, rect.y0 + line_h, rect.x1, rect.y1 + line_h),
                   fitz.Rect(rect.x0, rect.y0 - line_h, rect.x1, rect.y1 - line_h)]
+    candidates += list(following or [])
     for size in (base, base * 0.8):
         width = _pen_text_width(note, size)
         for cand in candidates:
@@ -2608,6 +2782,11 @@ def _place_score_right(page: Any, rect: Any, note: str, sheet: Any,
             right = min(right, sheet.x1) - 4.0
             x0 = right - width
             ink = _row_ink_span(_INK_MAP[0], cand)
+            if ink is not None:
+                # Where the words end - not the photo's dark edge beyond them.
+                words_b = _words_end(_INK_MAP[0], cand, max(3.0 * line_h, 60.0))
+                if words_b is not None and words_b < ink[1]:
+                    ink = (ink[0], words_b)
             if ink is not None and x0 < ink[1] + 4.0:
                 logger.debug("SCORE %r: row %s runs under the margin (ink to %.0f)", note, cand, ink[1])
                 continue                      # the writing runs under it
@@ -2634,7 +2813,8 @@ def _place_score_right(page: Any, rect: Any, note: str, sheet: Any,
 
 
 def _place_note(page: Any, rect: Any, style: str, note: str,
-                occupied: Optional[list] = None, sheet: Any = None) -> None:
+                occupied: Optional[list] = None, sheet: Any = None,
+                allow_cut: bool = True) -> None:
     """Write the pen note somewhere it can actually be read.
 
     The note is the part the student has to act on, so the one thing it must
@@ -2698,7 +2878,7 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     # row this note happens to hang on: a merged two-line row made one note
     # twice the size of its neighbours, wrapped over two lines.
     row_h = _LINE_H[0] if _LINE_H[0] else rect.height
-    base_size = max(13.0, min(26.0, row_h * 1.0)) * scale
+    base_size = max(13.0, min(26.0 * _note_k(page), row_h * 1.0)) * scale
     occupied = occupied or []
     # The marked row itself is not an obstacle for a note that sits beside it.
     obstacles = [o for o in occupied if not o.intersects(rect) or o != rect]
@@ -2876,7 +3056,8 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
         # dropping the note discarded ALL 36 comments on a 13-page copy, and
         # the marks were left with no stated reason anywhere on the page.
         return _write_in_free_band(page, rect, note, occupied, sheet,
-                                   fontname, base_size, measure_font)
+                                   fontname, base_size, measure_font,
+                                   allow_cut=allow_cut)
 
     # The last-resort note is the one the student most needs to read - it is
     # the reason a mark was cut. Never let it fall below legibility.
@@ -2899,7 +3080,8 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     if len(lines) > 3:
         logger.debug("margin column too narrow for %d lines; using blank paper", len(lines))
         return _write_in_free_band(page, rect, note, occupied, sheet,
-                                   fontname, base_size, measure_font)
+                                   fontname, base_size, measure_font,
+                                   allow_cut=allow_cut)
     tw = max(_text_width(l, fontname, small, measure_font) for l in lines) * _ADVANCE_SLACK
     # The recorded height must match what write() actually draws. It spaces
     # lines by size*1.25 PLUS the climb's rise, so a box measured at 1.22 alone
@@ -2929,7 +3111,8 @@ def _place_note(page: Any, rect: Any, style: str, note: str,
     if _ink_under(_INK_MAP[0], box) > 0.02 or not _on_paper(_PAPER[0], box):
         logger.debug("column slot is on the writing or off the paper; using blank paper")
         return _write_in_free_band(page, rect, note, occupied, sheet,
-                                   fontname, base_size, measure_font)
+                                   fontname, base_size, measure_font,
+                                   allow_cut=allow_cut)
     for other in (_PLACED[0] or []):
         if box.intersects(other):
             shifted = other.y1 + 4.0
@@ -3130,7 +3313,7 @@ def _place_question_scores(doc: Any, placements: dict[int, tuple],
         # Sized to the writing, not to a constant. Rings measured 62-86px
         # against a ~40px line height, which is what made them read as badges
         # rather than a figure ringed with a pen.
-        line_h = max(10.0, min(26.0, (sheet.height / 34.0) if sheet else 16.0))
+        line_h = max(10.0, min(26.0 * _page_k(page), (sheet.height / 34.0) if sheet else 16.0))
         # A mark is written larger than the prose around it - it is the thing
         # the student looks for first. At 0.62-0.80 of a line it came out at
         # about 11pt against ~20pt handwriting and read as a footnote.
@@ -3306,6 +3489,173 @@ def _extend_paper(page: Any, scan: Any, strip: Any) -> None:
         logger.debug("could not extend the paper into the margin", exc_info=True)
 
 
+# The styles that carry the reason a mark was cut.
+_REASON_STYLES = frozenset(("margin_note", "region_note", "deduction_reason", "feedback"))
+
+
+def _mask_rect(paper: Optional[dict]) -> Optional[Any]:
+    """Bounding rect, in points, of a _paper_rows mask; None if there is none."""
+    if not paper or paper.get("mask") is None:
+        return None
+    import fitz
+    import numpy as np
+
+    mask = paper["mask"]
+    rows = np.nonzero(mask.any(axis=1))[0]
+    cols = np.nonzero(mask.any(axis=0))[0]
+    if not rows.size or not cols.size:
+        return None
+    sx, sy = paper["sx"], paper["sy"]
+    return fitz.Rect(cols[0] * sx, rows[0] * sy, (cols[-1] + 1) * sx, (rows[-1] + 1) * sy)
+
+
+def _write_reason_whole(page: Any, sheet: Any, text: str, near_y: float,
+                        max_dist: Optional[float]) -> Optional[Any]:
+    """Write a deduction reason WHOLE in the nearest blank band that holds it.
+
+    Not _write_in_free_band: that one writes three or four words to a line to
+    match the reference hand's climb, so a ten-word reason needs a gap three
+    lines tall - rarer than hen's teeth on ruled paper written edge to edge -
+    and when there is none it shortens the remark until it fits. A reason cut
+    to "Wrong answer." or "Q21" tells the student nothing. Here the remark
+    runs wide and nearly flat, one or two lines at a legible size, and is
+    written whole or not at all. Uses the current page's module state
+    (_INK_MAP, _PAPER, _PLACED, _LINE_H), as every placer here does.
+    """
+    import fitz
+
+    line_h = float(_LINE_H[0] or 14.0)
+    ideal = max(11.0, min(16.0 * _note_k(page), line_h * 0.9))
+    # Never so small beside the student's writing that it reads as a footnote.
+    floor = max(10.0, line_h * 0.30)
+    max_w = sheet.width * 0.80
+
+    def wrap(size: float) -> list:
+        words, out, cur = text.split(), [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if _pen_text_width(trial, size) <= max_w or not cur:
+                cur = trial
+            else:
+                out.append(cur)
+                cur = w
+        if cur:
+            out.append(cur)
+        return out
+
+    size = ideal
+    lines = wrap(size)
+    while len(lines) > 2 and size > floor:
+        size = max(floor, size - 0.5)
+        lines = wrap(size)
+    if not lines or len(lines) > 2:
+        return None
+    widest = max(_pen_text_width(l, size) for l in lines)
+    # A long remark is written flatter than a short one, as a hand does.
+    lift = min(widest * math.tan(math.radians(3.0)), size * 0.35)
+    step = size * 1.9
+    height = step * len(lines) + lift + 4.0
+
+    bands = _ink_bands(_INK_MAP[0], sheet) or []
+    wide = [b for b in bands if b.width > sheet.width * 0.30]
+    # Never above the first written line - that is the page header.
+    floor_y = min(b.y0 for b in (wide or bands)) if bands else None
+    blockers = list(bands) + list(_PLACED[0] or [])
+    x0 = max(sheet.x0 + 6.0, min(sheet.x0 + sheet.width * 0.09, sheet.x1 - widest - 6.0))
+    for _ in range(8):
+        band = _free_band(sheet, blockers, height, near_y, floor_y=floor_y, max_dist=max_dist)
+        if band is None:
+            return None
+        y0 = max(band[0] + lift, min(near_y, band[1] - height + lift)) + 2.0
+        box = _note_rect((x0 - 1.0, y0 - lift), widest + 2.0, height)
+        if (_on_paper(_PAPER[0], box) and _ink_under(_INK_MAP[0], box) <= 0.03
+                and not any(box.intersects(n) for n in (_PLACED[0] or []))):
+            rng = _hand_rng("reason", text[:24], round(x0, 1), round(y0, 1))
+            slant = rng.uniform(8.0, 12.0)
+            tilt = _hand_rng("tilt", text[:24]).uniform(0.0, 4.0)
+            rise = math.degrees(math.atan(lift / max(widest, 1.0)))
+            for i, line in enumerate(lines):
+                _pen_text(page, fitz.Point(x0 + rng.uniform(-0.6, 0.6), y0 + size * 0.95 + step * i),
+                          line, size, _NOTE_TEXT, rng, slant=slant,
+                          max_x=sheet.x1 - 3.0, rise=rise, tilt=tilt)
+            return box
+        # That gap is not usable here (off the paper, or ink the bands
+        # missed); rule it out and take the next nearest.
+        blockers.append(fitz.Rect(sheet.x0, band[0], sheet.x1, band[1]))
+    return None
+
+
+def _write_unwritten_reasons(doc: Any, unwritten: list, order: dict, paper: dict,
+                             content: dict, occupied: dict, use_page: Any) -> int:
+    """Write every deduction reason that found no room beside its answer.
+
+    The score says a mark was cut; only the note says why. Every placement in
+    build_annotated_pdf keeps a remark beside its answer and refuses anything
+    else, so on a densely written page the reason was simply never written -
+    7 of 16 on one 2026-09-30 copy, among them a 1/3 and a 2.5/5 with nothing
+    beside them. Here it goes, WHOLE (_write_reason_whole), to the nearest
+    blank paper that holds it: near its answer, anywhere on its own page, then
+    the nearest other page - labelled with its question so it reads from
+    wherever it lands.
+
+    Returns how many were written.
+    """
+    import fitz
+
+    by_no = {n: p for p, n in order.items() if 0 <= n < doc.page_count}
+    written = 0
+
+    def sheet_for(pid: str, pno: int) -> Any:
+        # The whole sheet the paper mask found, not only `paper`, which is
+        # the box around the writing when the layout has no paper_box: on a
+        # page whose answer ends a quarter of the way down, that box leaves
+        # out the blank paper below - the one place with room. Each spot is
+        # still tested against the mask itself before anything is written.
+        base = paper.get(pid) or content.get(pno, doc[pno].rect)
+        found = _mask_rect(_PAPER[0])
+        if found is None:
+            return base
+        whole = (base | found) & content.get(pno, doc[pno].rect)
+        return base if whole.is_empty else whole
+
+    for verdict, note, page_no, rect in unwritten:
+        text = _teacher_voice(_latin1(note).strip())
+        q_no = verdict.get("question_number")
+        if q_no is not None:
+            text = f"Q{q_no}: {text}"
+        # (page, where to look from, how far from there it may land)
+        plan = [(page_no, "answer", 0.30), (page_no, "answer", None)]
+        # Nearest page first, the next one before the previous at equal
+        # distance: an answer that ran on from the page before has its start
+        # there, which is a better home for its remark than three pages on.
+        others = sorted((n for n in by_no if n != page_no),
+                        key=lambda n: (abs(n - page_no), n < page_no))
+        plan += [(n, "top" if n > page_no else "bottom", None) for n in others]
+        placed = None
+        for pno, anchor, reach in plan:
+            pid = by_no.get(pno)
+            if pid is None:
+                continue
+            page = doc[pno]
+            use_page(pid, pno)
+            sheet = sheet_for(pid, pno)
+            _CLIP[0] = sheet
+            near_y = {"answer": rect.y1, "top": sheet.y0, "bottom": sheet.y1}[anchor]
+            placed = _write_reason_whole(page, sheet, text, near_y,
+                                         None if reach is None else sheet.height * reach)
+            if placed is not None:
+                occupied.setdefault(pid, []).append(placed)
+                occupied.setdefault(pid + ":notes", []).append(placed)
+                written += 1
+                logger.debug("deduction reason %r written on page %d (%s)", text[:30], pno + 1,
+                             "beside its answer" if reach else anchor)
+                break
+        if placed is None:
+            logger.warning("copy-check annotator: no blank paper anywhere for the reason of Q%s: %r",
+                           q_no, text[:60])
+    return written
+
+
 def build_annotated_pdf(
     pdf_bytes: bytes,
     layout_map: dict[str, Any],
@@ -3374,6 +3724,11 @@ def build_annotated_pdf(
             content[i] = doc[i].rect
 
     targets = _target_index(layout_map)
+    rows_in_order = {
+        lp.get("page_id"): sorted((r for r in (lp.get("lines") or [])
+                                   if r.get("box") and len(r["box"]) == 4),
+                                  key=lambda r: float(r["box"][1]))
+        for lp in (layout_map.get("pages") or [])}
     rows_by_id = {r.get("line_id"): r
                   for lp in (layout_map.get("pages") or [])
                   for r in (lp.get("lines") or []) if r.get("line_id")}
@@ -3413,6 +3768,7 @@ def build_annotated_pdf(
     # the image border. Everything is now kept inside the written area.
     paper: dict[str, Any] = {}
     occupied: dict[str, list[Any]] = {}
+    writing: dict[str, list[Any]] = {}
     for lpage in layout_map.get("pages") or []:
         pid = lpage.get("page_id")
         page_no = order.get(pid)
@@ -3444,6 +3800,16 @@ def build_annotated_pdf(
                 continue        # a ruled line, not writing
             boxes.append(r)
         occupied[pid] = boxes
+        # The rows the vision read confirmed hold writing - only those: an
+        # OCR box it blanked may be a pattern on the bedsheet, and a page it
+        # never read keeps raw detections that are just as unverified.
+        if lpage.get("vision_ocr"):
+            writing[pid] = [
+                fitz.Rect(float(b[0]) * psx, float(b[1]) * psy,
+                          (float(b[0]) + float(b[2])) * psx, (float(b[1]) + float(b[3])) * psy)
+                for b in (ln.get("box") for ln in (lpage.get("lines") or []))
+                if b and len(b) == 4
+            ]
         # A detected sheet is far better than the ink's bounding box: the box
         # excludes the paper's own margins, which is where a teacher writes,
         # while the sheet excludes the desk and the scanner's white padding,
@@ -3493,12 +3859,15 @@ def build_annotated_pdf(
     for pid, page_no in (order or {}).items():
         if 0 <= page_no < doc.page_count:
             ink_maps[pid] = _ink_map(doc[page_no], paper.get(pid))
-            paper_rows[pid] = _paper_rows(doc[page_no])
+            paper_rows[pid] = _paper_rows(doc[page_no], writing.get(pid))
 
     drawn = 0
     # question_number -> (page_no, y) of its lowest annotation, so the circled
     # mark lands beside the end of that answer.
     placements: dict[int, tuple[int, float, float]] = {}
+    # Deduction reasons no spot near their answer could hold - written after
+    # every mark is down, see _write_unwritten_reasons.
+    unwritten: list = []
     # One line, one stroke. Two questions whose answers meet mid-page both
     # marked the shared line, producing a green rule and a red rule 16px apart
     # under the same words - a critic flagged the pair directly. A marker rules
@@ -3530,7 +3899,7 @@ def build_annotated_pdf(
         hs_ = sorted(float(l["box"][3]) * sy_ for l in (lp.get("lines") or [])
                      if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
         if hs_:
-            line_h_by_page[pid_] = max(10.0, min(30.0, hs_[len(hs_) // 2]))
+            line_h_by_page[pid_] = max(10.0, min(30.0 * _page_k(doc[pn_]), hs_[len(hs_) // 2]))
     for verdict in verdicts:
         for ann in verdict.get("annotations") or []:
             ordered.append((verdict, ann))
@@ -3586,7 +3955,7 @@ def build_annotated_pdf(
                 hs = sorted(float(l["box"][3]) * sy0 for l in lp0["lines"]
                             if l.get("box") and len(l["box"]) == 4 and float(l["box"][3]) > 0)
                 if hs:
-                    line_h = max(14.0, min(40.0, hs[len(hs) // 2]))
+                    line_h = max(14.0, min(40.0 * _page_k(first), hs[len(hs) // 2]))
         except Exception:
             logger.debug("could not size the total from the rows", exc_info=True)
         # Keep the whole mark inside the sheet: measure the ring as it will
@@ -3713,6 +4082,9 @@ def build_annotated_pdf(
             # pointing at nothing - which is exactly what a critic found, eight
             # times, "none with a word beside it".
             note = (ann.get("text") or "").strip()
+            is_reason = (style in _REASON_STYLES
+                         and float(verdict.get("marks_awarded") or 0)
+                         < float(verdict.get("max_marks") or 0))
             # A brace bracket spans a BLOCK of the answer, so it needs the row
             # its closing target sits on, not just its opening one.
             if style == "brace":
@@ -3746,16 +4118,27 @@ def build_annotated_pdf(
                     # split "Mechanisms and examples" across a table rule.
                     line_h = float(_LINE_H[0] or rect.height or 14.0)
                     tries = []
-                    for shift in (0, 1, 2):
-                        if shift == 0 and ann.get("position") == "below_line_left":
-                            continue          # already refused above
+                    if ann.get("position") != "below_line_left":
+                        tries.append(("below_line_left", rect, note))
+                    # Just past the student's last word, on the same line - where
+                    # a teacher writes "Correct: Indus" after a one-word answer.
+                    # Tried before the lines further down: on a page of one-line
+                    # answers those are the NEXT answers, and "Wrong answer.
+                    # Correct: Mohenjo-daro" written under Q16 read as Q16's.
+                    if ann.get("position") != "right_of_line":
+                        tries.append(("right_of_line", rect, note))
+                    # A remark one or two lines down may sit under another
+                    # answer, so it says which question it is about.
+                    far_note = f"Q{q_no}: {note}" if q_no is not None else note
+                    for shift in (1, 2):
                         tries.append(("below_line_left",
                                       fitz.Rect(rect.x0, rect.y0 + line_h * shift,
-                                                rect.x1, rect.y1 + line_h * shift)))
+                                                rect.x1, rect.y1 + line_h * shift),
+                                      far_note))
                     if ann.get("position") != "right_margin_same_line":
-                        tries.append(("right_margin_same_line", rect))
-                    for pos, where in tries:
-                        placed = _place_by_contract(page, where, style, note, pos,
+                        tries.append(("right_margin_same_line", rect, note))
+                    for pos, where, text in tries:
+                        placed = _place_by_contract(page, where, style, text, pos,
                                                     sheet_r, page_boxes)
                         if placed is not None:
                             break
@@ -3769,12 +4152,28 @@ def build_annotated_pdf(
                     # Obstacles are the notes already written, as in the contract
                     # path - not the layout's row boxes, which run to the edge of
                     # every line and would veto the whole margin.
-                    placed = _place_score_right(page, rect, note, sheet_r, _PLACED[0])
+                    following = []
+                    order_ids = [r.get("line_id") for r in rows_in_order.get(page_id, [])]
+                    if ann.get("target") in order_ids:
+                        nxt = rows_in_order[page_id][order_ids.index(ann["target"]) + 1:]
+                        for r in nxt[:4]:
+                            if _ANSWER_START.match(r.get("text") or ""):
+                                break
+                            bx = [float(v) for v in r["box"]]
+                            following.append(fitz.Rect(bx[0] * sx, bx[1] * sy,
+                                                       (bx[0] + bx[2]) * sx, (bx[1] + bx[3]) * sy))
+                    placed = _place_score_right(page, rect, note, sheet_r, _PLACED[0], following)
                 if placed is None:
-                    placed = _place_note(page, rect, style, note, page_boxes, sheet_r)
+                    # A deduction's reason is never shortened here: one that
+                    # cannot be written whole beside its answer goes to
+                    # _write_unwritten_reasons, which finds room for all of it.
+                    placed = _place_note(page, rect, style, note, page_boxes, sheet_r,
+                                         allow_cut=not is_reason)
 
             _draw_mark(page, rect, style, paper.get(page_id),
                        has_note=placed is not None)
+            if note and placed is None and is_reason:
+                unwritten.append((verdict, note, page_no, rect))
             if style in ("underline", "strike", "strikethrough", "circle", "tick", "cross"):
                 drawn_rules.setdefault(page_id, []).append(
                     fitz.Rect(rect.x0 - 4, rect.y0 - 6, rect.x1 + 4, rect.y1 + 8))
@@ -3797,6 +4196,21 @@ def build_annotated_pdf(
                     placements[q_no] = (page_no, rect.y1, rect.x1)
 
     _place_question_scores(doc, placements, verdicts, paper, order, occupied, drawn_rules)
+
+    if unwritten:
+        def use_page(pid: str, pno: int) -> None:
+            _CLIP[0] = paper.get(pid)
+            _SHADE[0] = shade_by_page.get(pid)
+            _INK_MAP[0] = ink_maps.get(pid)
+            _PAPER[0] = paper_rows.get(pid)
+            _PLACED[0] = occupied.setdefault(pid + ":notes", [])
+            _LINE_H[0] = line_h_by_page.get(pid)
+            _INK_SPAN[0] = None
+            _ROW_SLOPE[0] = 0.0
+            _MARGIN_X[0] = (content.get(pno, doc[pno].rect).x1
+                            if margin_ratio > 0.0 else None)
+        drawn += _write_unwritten_reasons(doc, unwritten, order, paper, content,
+                                          occupied, use_page)
 
     _CLIP[0] = None
     if append_summary:

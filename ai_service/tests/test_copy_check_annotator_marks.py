@@ -547,6 +547,167 @@ def test_paper_boundary_finds_the_page() -> None:
     doc.close()
 
 
+def test_shadowed_writing_is_paper() -> None:
+    print("\n_paper_rows — a shadow across the page is not the edge of the page")
+    from ai_service.app.services.copy_check.annotator import _paper_rows, _on_paper
+
+    # 2026-09-30: a phone photo with a hand's shadow across it. The photo rule
+    # read the shadow's edge as the sheet's edge, called 40% of a fully written
+    # page "off paper", and every deduction note aimed there was dropped.
+    # A dull, near-grey cloth like the real one - the case where lightness and
+    # chroma cannot tell shadowed paper from background.
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    cloth = (0.38, 0.36, 0.37)
+    page.draw_rect(page.rect, color=cloth, fill=cloth)
+    sheet = [fitz.Point(62, 84), fitz.Point(338, 62), fitz.Point(348, 520), fitz.Point(72, 542)]
+    page.draw_polyline(sheet + [sheet[0]], color=(1, 1, 1), fill=(0.80, 0.80, 0.80))
+    shadow = [fitz.Point(62, 84), fitz.Point(190, 74), fitz.Point(140, 537), fitz.Point(72, 542)]
+    page.draw_polyline(shadow + [shadow[0]], color=(0.52, 0.52, 0.52), fill=(0.52, 0.52, 0.52))
+    rows = []
+    for i in range(8):
+        y = 120 + i * 45
+        page.insert_text(fitz.Point(95, y - 6), "the student wrote this line", fontsize=11)
+        rows.append(fitz.Rect(92, y - 17, 318, y - 2))
+    gap_in_shadow = fitz.Rect(100, 280, 180, 300)      # blank paper between two rows
+    try:
+        check("the photo rule alone loses the shadowed paper (the bug)",
+              not _on_paper(_paper_rows(page), gap_in_shadow), "fixture no longer reproduces it")
+        paper = _paper_rows(page, rows)
+        check("with the student's rows, the shadowed paper is paper",
+              _on_paper(paper, gap_in_shadow), "still refused")
+        check("the lit paper is still paper", _on_paper(paper, fitz.Rect(250, 280, 300, 300)))
+        check("the cloth beside the sheet is still not paper",
+              not _on_paper(paper, fitz.Rect(10, 290, 40, 310)), "accepted the cloth")
+        check("the cloth below the sheet is still not paper",
+              not _on_paper(paper, fitz.Rect(180, 560, 220, 590)), "accepted the cloth")
+    finally:
+        doc.close()
+
+
+def test_marks_grow_with_the_page() -> None:
+    print("\nbuild_annotated_pdf — a big photographed page gets marks to match")
+    # 2026-10-01: on 1500pt pages with 54pt rows of handwriting, the A4-tuned
+    # caps wrote every score at 24pt - a third of the student's writing.
+    def score_size(width: float, height: float, row_h: float) -> float:
+        doc = fitz.open()
+        page = doc.new_page(width=width, height=height)
+        fill = (0.93, 0.93, 0.91)
+        page.draw_rect(fitz.Rect(10, 10, width - 10, height - 10), color=fill, fill=fill)
+        lines = []
+        for i in range(6):
+            y = 60 + i * row_h * 2
+            page.insert_text(fitz.Point(40, y + row_h * 0.8), "ans answer", fontsize=row_h * 0.8)
+            lines.append({"line_id": f"p1_r{i + 1}", "text": "ans", "box": [38, y, width * 0.3, row_h]})
+        pdf = doc.tobytes()
+        doc.close()
+        layout = {"pages": [{"page_id": "p1", "page_index": 0, "width": width, "height": height,
+                             "lines": lines, "vision_ocr": True}]}
+        verdicts = [{"question_number": 1, "marks_awarded": 1.0, "max_marks": 1.0, "annotations": [
+            {"style": "score", "target": "p1_r1", "page_id": "p1", "text": "1/1",
+             "position": "right_margin_same_line"}]}]
+        sizes: list = []
+        real = annotator._pen_text
+
+        def spy(page, origin, text, size, *a, **k):
+            if text == "1/1":
+                sizes.append(size)
+            return real(page, origin, text, size, *a, **k)
+        annotator._pen_text = spy
+        try:
+            annotator.build_annotated_pdf(pdf, layout, verdicts)
+        finally:
+            annotator._pen_text = real
+        return max(sizes) if sizes else 0.0
+
+    a4 = score_size(595, 842, 20)
+    big = score_size(1500, 2000, 54)
+    check("A4 is unchanged: the score stays within the old 24pt cap", 0 < a4 <= 24.0, str(a4))
+    check("a 1500pt page with 54pt rows gets a score well over 24pt", big > 40.0, str(big))
+
+
+def _written_text(pages: list) -> dict:
+    """Spy on the pen: {page number: [text written there]}."""
+    written: dict = {}
+    real = annotator._pen_text
+
+    def spy(page, origin, text, *a, **k):
+        written.setdefault(page.number, []).append(text)
+        return real(page, origin, text, *a, **k)
+    annotator._pen_text = spy
+    return written, real
+
+
+def test_deduction_reason_is_written_whole() -> None:
+    print("\nbuild_annotated_pdf — a deduction reason reaches the copy, whole")
+    # 2026-09-30: on a densely written page every placement refused the
+    # reason, so a 1/3 and a 2.5/5 went back with no word of why; others came
+    # out cut to "Wrong answer." or "Q21". The reason now goes, whole, to the
+    # nearest blank paper - here the next page.
+    doc = fitz.open()
+    lines1, lines2 = [], []
+    # Off-white scanned sheets on the white PDF canvas, as a scanner produces.
+    sheet_fill = (0.93, 0.93, 0.91)
+    p1 = doc.new_page(width=400, height=600)
+    p1.draw_rect(fitz.Rect(20, 15, 380, 585), color=sheet_fill, fill=sheet_fill)
+    for i in range(34):                                    # edge to edge, no gaps
+        y = 30 + i * 16
+        p1.insert_text(fitz.Point(40, y + 11), "dense handwriting " * 5, fontsize=11)
+        lines1.append({"line_id": f"p1_r{i + 1}", "text": "dense", "box": [38, y, 330, 14]})
+    p2 = doc.new_page(width=400, height=600)
+    p2.draw_rect(fitz.Rect(20, 15, 380, 585), color=sheet_fill, fill=sheet_fill)
+    for i in range(2):
+        y = 40 + i * 30
+        p2.insert_text(fitz.Point(40, y + 11), "the next answer starts here", fontsize=11)
+        lines2.append({"line_id": f"p2_r{i + 1}", "text": "next", "box": [38, y, 200, 14]})
+    pdf = doc.tobytes()
+    doc.close()
+    layout = {"pages": [
+        {"page_id": "p1", "page_index": 0, "width": 400, "height": 600, "lines": lines1,
+         "ink_boxes": [ln["box"] for ln in lines1], "vision_ocr": True},
+        {"page_id": "p2", "page_index": 1, "width": 400, "height": 600, "lines": lines2,
+         "ink_boxes": [ln["box"] for ln in lines2], "vision_ocr": True},
+    ]}
+    reason = "Second feature missing; only one feature given."
+    verdicts = [{"question_number": 5, "marks_awarded": 1.0, "max_marks": 3.0, "annotations": [
+        {"style": "score", "target": "p1_r34", "page_id": "p1", "text": "1/3",
+         "position": "right_margin_same_line"},
+        {"style": "margin_note", "target": "p1_r34", "page_id": "p1", "text": reason,
+         "position": "below_line_left"},
+    ]}]
+    written, real = _written_text([])
+    try:
+        annotator.build_annotated_pdf(pdf, layout, verdicts)
+    finally:
+        annotator._pen_text = real
+    everything = " ".join(t for ts in written.values() for t in ts)
+    check("the reason is on the copy, labelled with its question",
+          f"Q5: {reason}" in " ".join(written.get(1, [])) or f"Q5: {reason}" in everything,
+          str(written))
+    check("it is not cut short anywhere",
+          not any(t.strip() and t.strip() != reason and reason.startswith(t.strip())
+                  for ts in written.values() for t in ts), str(written))
+
+
+def test_free_band_can_refuse_to_cut() -> None:
+    print("\n_write_in_free_band(allow_cut=False) — None rather than half a remark")
+    from ai_service.app.services.copy_check.annotator import _write_in_free_band, _pen
+
+    doc = fitz.open()
+    page = doc.new_page(width=400, height=600)
+    # Written lines every 30pt: gaps a single short line fits, nothing more.
+    rows = [fitz.Rect(40, 20 + i * 30, 360, 38 + i * 30) for i in range(19)]
+    note = ("Structure of the atmosphere explained but the thermosphere and exosphere "
+            "layers are missing entirely")
+    fontname, size, font = _pen(page)
+    try:
+        got = _write_in_free_band(page, rows[5], note, rows, page.rect, fontname, 14.0, font,
+                                  allow_cut=False)
+        check("refuses instead of shortening", got is None, str(got))
+    finally:
+        doc.close()
+
+
 def test_annotation_rescued_by_anchor_text() -> None:
     print("\nvalidator — a wrong line_id must not silently bin the mark")
     from ai_service.app.services.copy_check.validator import validate_and_cap
@@ -610,6 +771,10 @@ def test_annotation_rescued_by_anchor_text() -> None:
 
 
 if __name__ == "__main__":
+    test_shadowed_writing_is_paper()
+    test_marks_grow_with_the_page()
+    test_deduction_reason_is_written_whole()
+    test_free_band_can_refuse_to_cut()
     test_bbox_anchors_and_placement_names()
     test_mark_figure_never_hides_in_a_comment()
     test_paper_boundary_finds_the_page()

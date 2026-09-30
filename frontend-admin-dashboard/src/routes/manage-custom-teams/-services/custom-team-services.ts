@@ -64,6 +64,13 @@ export interface CustomRole {
     id: string;
     name: string;
     permissions: string[]; // IDs of permissions
+    /**
+     * Owning institute: null for platform roles, this institute's id for roles it
+     * created. CustomRoleDTO has no naming strategy, so the wire name is camelCase;
+     * the snake_case spelling is accepted too in case that ever changes.
+     */
+    instituteId?: string | null;
+    institute_id?: string | null;
 }
 
 /** Request body for POST /institute/{instituteId}/roles (Create) and PUT .../roles/{roleId} (Update) */

@@ -6729,36 +6729,24 @@ async def test_a_reply_the_parent_cut_off_is_not_an_empty_reply():
 
 
 @pytest.mark.asyncio
-async def test_an_empty_reply_while_the_parent_says_something_new_is_left_to_their_turn():
+async def test_an_empty_reply_after_a_bare_no_still_moves_on():
+    """A bare "नहीं" answers a yes/no question — the next line must follow
+    (review of 0ea2d31037: treating it as a refusal left silence)."""
     from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
-    caller = {"t": "ये apply."}
+    caller = {"t": "नहीं।"}
     g, _rec, asked = _nr_with_steps(caller)
     d = b.FrameDirection.DOWNSTREAM
     await g.process_frame(LLMFullResponseStartFrame(), d)
-    caller["t"] = "और fees कितनी है?"
     await g.process_frame(LLMFullResponseEndFrame(), d)
-    assert not [k for _h, k, _a in asked if k == "continue"], asked
+    assert [k for _h, k, _a in asked if k == "continue"], asked
 
 
-@pytest.mark.asyncio
-async def test_an_empty_reply_after_a_refusal_does_not_push_on():
-    """Call 899c6888: after "नहीं" the 'say your next line' cue pushed past the parent."""
-    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
-    for refusal in ("नहीं।", "अभी नहीं, बाद में call करना।", "No, I am busy.", "not interested"):
-        caller = {"t": refusal}
-        g, _rec, asked = _nr_with_steps(caller)
-        d = b.FrameDirection.DOWNSTREAM
-        await g.process_frame(LLMFullResponseStartFrame(), d)
-        await g.process_frame(LLMFullResponseEndFrame(), d)
-        assert not [k for _h, k, _a in asked if k == "continue"], (refusal, asked)
-
-
-def test_refusal_words_do_not_match_ordinary_answers():
-    for t in ("नहीं", "नहीं जी।", "No.", "busy हूँ", "अभी नहीं", "not interested", "बाद में बात करते हैं"):
-        assert b._is_refusal(t), t
-    for t in ("जी, नहीं पता।", "पता नहीं", "ये apply.", "आठवीं में है।", "nineteen", "Nitya",
-              "अभी आठवीं में है।", "knowledge", "नहीं, वो आठवीं में है।"):
-        assert not b._is_refusal(t), t
+def test_the_continue_cue_offers_a_call_back_after_a_put_off():
+    """Call 899c6888: after the parent put the call off, 'say your next line'
+    pushed past them. The cue itself now says to offer a call back or close."""
+    _kind, cue = b.next_step_cue("", kind="continue")
+    assert _kind == "continue"
+    assert "call back" in cue and "close politely" in cue, cue
 
 
 @pytest.mark.asyncio
@@ -6787,3 +6775,23 @@ async def test_a_statement_with_no_question_leaves_the_bot_owing_the_line():
     caller["t"] = "जी जी।"
     await _reply(g, "क्या इसके अलावा आपकी कोई specific expectation है?")
     assert not g.owes_line()
+
+
+
+def test_memory_reclaim_never_freezes_a_finished_call(monkeypatch):
+    """A PipelineTask still reachable at the first idle reclaim must not be
+    frozen (review of 42e5d333ab): the freeze waits for a clean idle moment."""
+    import gc
+    from app import memory
+
+    class PipelineTask:          # same type name the guard looks for
+        pass
+    pinned = PipelineTask()
+    frozen = []
+    monkeypatch.setattr(memory, "_frozen_after_call", False)
+    monkeypatch.setattr(gc, "freeze", lambda: frozen.append(1))
+    st = memory.reclaim(idle=True, corr="t")
+    assert not st["froze"] and not frozen
+    del pinned
+    st = memory.reclaim(idle=True, corr="t")
+    assert st["froze"] and frozen == [1]

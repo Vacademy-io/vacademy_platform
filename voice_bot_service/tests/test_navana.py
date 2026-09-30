@@ -222,20 +222,40 @@ def _text(t):
     return TTSTextFrame(t, aggregated_by="sentence")
 
 
-def _chunks(seq, n, last=True):
+def _chunks(seq, n, last=True, progress=False):
+    """Navana's per-chunk header + binary frame. `progress` adds the documented
+    chunk_index (0-based) / chunk_total fields."""
     import json
     out = []
     for i in range(n):
-        out += [json.dumps({"type": "audio", "seq": seq, "is_last_chunk": last and i == n - 1}),
-                b"\x00" * 320]
+        h = {"type": "audio", "seq": seq, "is_last_chunk": last and i == n - 1}
+        if progress:
+            h.update(chunk_index=i, chunk_total=n)
+        out += [json.dumps(h), b"\x00" * 320]
     return out
 
 
 @pytest.mark.asyncio
-async def test_a_sentences_text_is_released_only_after_its_last_chunk(monkeypatch):
+async def test_a_sentences_text_follows_half_of_its_audio(monkeypatch):
     """pipecat appends a push_text_frames service's text right after run_tts —
-    for Navana that is BEFORE any audio. It must reach the context after the
-    sentence's last chunk, so a held or cut sentence is never counted as said."""
+    for Navana BEFORE any audio. It now goes after half the sentence's audio:
+    a sentence cut in its first half is re-sayable, one heard mostly is not
+    repeated in full (the review of 2cfb1cff29: all-or-nothing re-said a nearly
+    finished opening and lost the answer to it)."""
+    tts, log, _ = _heard_rig(monkeypatch)
+    _sent(tts, 1, "A")
+    await tts.append_to_audio_context("A", _text("फीस तीस हज़ार है।"))
+    assert log == [], "the text went out before any audio"
+    tts._get_websocket = lambda: _Sock(_chunks(1, 4, progress=True))
+    await tts._receive_messages()
+    kinds = [k for _c, k, _t in log]
+    assert kinds == ["TTSAudioRawFrame"] * 2 + ["TTSTextFrame"] + ["TTSAudioRawFrame"] * 2 \
+        + ["TTSStoppedFrame"], log
+
+
+@pytest.mark.asyncio
+async def test_without_progress_headers_text_waits_for_the_last_chunk(monkeypatch):
+    """No chunk_index/chunk_total: never release early — at the last chunk."""
     tts, log, _ = _heard_rig(monkeypatch)
     _sent(tts, 1, "A")
     await tts.append_to_audio_context("A", _text("फीस तीस हज़ार है।"))
@@ -302,3 +322,34 @@ async def test_a_cached_sentences_text_is_not_held(monkeypatch):
     tts, log, _ = _heard_rig(monkeypatch)
     await tts.append_to_audio_context("C", _text("नमस्ते जी।"))
     assert log == [("C", "TTSTextFrame", "नमस्ते जी।")]
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_with_sentences_in_flight_reconnects(monkeypatch):
+    """pipecat reconnects on an interruption only while the bot is audibly
+    speaking. A reply FloorGate still held is not "speaking": without a
+    reconnect Navana keeps generating it and the next reply queues behind."""
+    pytest.importorskip("bodhi.integrations.pipecat_tts")
+    from pipecat.services.tts_service import TTSService
+    tts, _log, _ = _heard_rig(monkeypatch)
+
+    async def base_interruption(self, frame, direction):
+        await self.on_audio_context_interrupted("A")
+    monkeypatch.setattr(TTSService, "_handle_interruption", base_interruption)
+    calls = []
+
+    async def disc():
+        calls.append("disconnect")
+
+    async def conn():
+        calls.append("connect")
+    tts._disconnect, tts._connect = disc, conn
+    tts._bot_speaking = False
+    _sent(tts, 1, "A")
+    await tts._handle_interruption(None, None)
+    assert calls == ["disconnect", "connect"], calls
+    # Nothing in flight (e.g. only cached sentences): no reconnect.
+    calls.clear()
+    tts._nv_reset()
+    await tts._handle_interruption(None, None)
+    assert calls == [], calls

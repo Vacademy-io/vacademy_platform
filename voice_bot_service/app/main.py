@@ -1209,9 +1209,11 @@ async def ws_endpoint(websocket: WebSocket):
             _active_calls -= 1
             # Free this call now rather than at the interpreter's next full
             # collection (app/memory.py). Scheduled, not inline: until this
-            # handler returns, its own locals still reference the pipeline.
+            # handler returns, its own locals still reference the pipeline — and
+            # pipecat's TurnTrackingObserver keeps a turn-end timer (2.5 s after
+            # the bot's last audio) that holds it too. 3 s clears both.
             try:
-                asyncio.get_running_loop().call_later(1.0, _reclaim_after_call, corr)
+                asyncio.get_running_loop().call_later(3.0, _reclaim_after_call, corr)
             except Exception:
                 logger.exception("ws: could not schedule memory reclaim corr=%s", corr)
 

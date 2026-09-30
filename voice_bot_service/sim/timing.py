@@ -1354,6 +1354,55 @@ SCENARIOS: List[Scenario] = [
 BY_KEY = {s.key: s for s in SCENARIOS}
 
 
+def _holders(target, depth: int = 8, limit: int = 12, ignore=()) -> List[str]:
+    """Reference chains from `target` up to something that is not part of the
+    call's own object web (a module, a timer, a function, a class, a closure
+    cell held by one) — i.e. what keeps a finished call alive."""
+    import gc
+    import types
+    def d(o):
+        n = type(o).__name__
+        if isinstance(o, dict):
+            ks = [k for k in list(o.keys())[:5]]
+            return f"dict{ks}"
+        if isinstance(o, (list, tuple, set)):
+            return f"{n}[{len(o)}]"
+        if isinstance(o, (types.FunctionType, types.MethodType)):
+            f = getattr(o, "__func__", o)
+            return f"{n}:{f.__qualname__}"
+        if isinstance(o, type):
+            return f"class {o.__qualname__}"
+        if n == "coroutine":
+            st = "suspended" if getattr(o, "cr_frame", None) is not None else "finished"
+            return f"coroutine {getattr(o, '__qualname__', '?')} ({st})"
+        if n in ("Task", "Future"):
+            return f"{n} {getattr(o, 'get_name', lambda: '')()} done={o.done()}"
+        return n
+    out, seen = [], {id(target), *ignore}
+    frontier = [(target, [type(target).__name__])]
+    for _ in range(depth):
+        nxt = []
+        for obj, path in frontier:
+            for r in gc.get_referrers(obj):
+                if id(r) in seen or isinstance(r, types.FrameType) or r is frontier or r is nxt:
+                    continue
+                seen.add(id(r))
+                p = path + [d(r)]
+                root = (isinstance(r, (types.ModuleType, type))
+                        or type(r).__name__ in ("TimerHandle", "Handle")
+                        or (isinstance(r, dict) and "__name__" in r and "__loader__" in r)
+                        # a pending task is a root (the loop holds it)
+                        or (type(r).__name__ == "Task" and not r.done()))
+                if root:
+                    out.append(" <- ".join(p))
+                    if len(out) >= limit:
+                        return out
+                else:
+                    nxt.append((r, p))
+        frontier = nxt[:600]
+    return out or ["(no module/timer/task root found within depth)"]
+
+
 async def main():
     import os, tempfile
     # A private speech cache per run: warm lines must never land in the box's
@@ -1416,13 +1465,21 @@ async def main():
     # A finished call must leave nothing behind. From 2026-09-11 to 09-30 every
     # call's pipeline (VAD + Smart Turn ONNX sessions, ~35 MB) stayed alive via a
     # never-cancelled task, and the Mumbai box was OOM-killed 20 times.
-    await asyncio.sleep(2.0)                  # let cancelled tasks unwind
+    # Let cancelled tasks unwind — and pipecat's TurnTrackingObserver turn-end
+    # timer fire: it holds a FramePushed (so the whole pipeline) for 2.5 s after
+    # the bot's last audio. A call that ends right after the bot spoke is still
+    # reachable until then; that is a delay, not a leak.
+    await asyncio.sleep(3.0)
     import gc
     gc.collect()
-    alive = sum(1 for o in gc.get_objects() if type(o).__name__ == "PipelineTask")
+    alive_objs = [o for o in gc.get_objects() if type(o).__name__ == "PipelineTask"]
+    alive = len(alive_objs)
     leftover = sorted({t.get_name() for t in asyncio.all_tasks() if t is not asyncio.current_task()})
     print(f"{'FAIL' if alive else 'ok  '} no_pipeline_outlives_its_call   "
           f"pipelines alive {alive} of {len(results)} runs; tasks left {leftover[:6]}")
+    if alive_objs:
+        for line in _holders(alive_objs[0], ignore={id(alive_objs)}):
+            print(f"       ✗ held by: {line}")
     if args.ci and (alive or any(r["fails"] for r in results)):
         sys.exit(1)
 

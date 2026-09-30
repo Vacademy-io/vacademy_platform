@@ -13,7 +13,9 @@ memory still climbed 206 MB → 1.12 GB over ~60 calls, with threads creeping
 16 → 41, before a full pass knocked it back. probes/leak_probe.py --never-gc
 reproduces it: 1, 2, 3 … 6 finished pipelines still in memory after 10 calls.
 
-WHAT. After every call: one full collection, which frees that call. Cheap
+WHAT. ~3 s after every call (past pipecat's 2.5 s TurnTrackingObserver turn-end
+timer, which holds the pipeline until it fires): one full collection, which
+frees that call. Cheap
 because the long-lived heap (modules, pipecat, google-auth — ~220 k objects) is
 FROZEN into the permanent generation, which collections skip: measured 25-32 ms
 per collection unfrozen vs 1.4-2.3 ms frozen (Mac; the 1-vCPU box is slower, so
@@ -71,7 +73,11 @@ def reclaim(idle: bool, corr: str = "") -> dict:
     gc_ms = (time.perf_counter() - t0) * 1000.0
     froze = trimmed = False
     if idle:
-        if not _frozen_after_call:
+        # Freeze the survivors once — but never with a finished call among them:
+        # something transient (a speech-cache task finishing, a pipecat timer)
+        # can still hold one for a moment, and a frozen call is never freed.
+        if not _frozen_after_call and not any(
+                type(o).__name__ == "PipelineTask" for o in gc.get_objects()):
             gc.freeze()
             _frozen_after_call = froze = True
         trimmed = _malloc_trim()

@@ -18,9 +18,11 @@ import type {
     V2SubjectMarksItem,
     V2SubjectPerformance,
     V2Misconception,
+    V2Assessment,
 } from '@/services/student-reports-api';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/types/naming-settings';
+import themeData from '@/constants/themes/theme.json';
 import './report-card.css';
 
 const PLACEHOLDER_SUBJECTS = new Set([
@@ -34,6 +36,44 @@ const isRealSubject = (s?: string | null) => {
 const BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const round = (n?: number | null) => (n == null ? null : Math.round(n));
+
+// institute_theme_code is a hex (sometimes without '#') or a preset code ("primary" = default
+// orange) — CSS/SVG can't paint a preset code, so the accent resolved to nothing and the charts lost
+// their marks. Map it through the app's own theme table.
+const resolveThemeColor = (code?: string | null): string | undefined => {
+    const c = code?.trim();
+    if (!c) return undefined;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return c;
+    if (/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) return `#${c}`;
+    return themeData.themes.find((t) => t.code === c.toLowerCase())?.colors.primary?.['500'];
+};
+
+// "default 12th Commerce (default)" → "12th Commerce": "default" is the placeholder level/session.
+const cleanBatchLabel = (s?: string | null) =>
+    (s ?? '')
+        .replace(/\(\s*default\s*\)/gi, '')
+        .replace(/^\s*default\s+/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+// 32 → "32", 4.5 → "4.5", 66.67 → "66.7" — half marks are real, don't round them away.
+const fmtNum = (n?: number | null) => (n == null ? '' : String(Math.round(n * 10) / 10));
+
+const gradeTone = (grade?: string) =>
+    ['A+', 'A', 'B+', 'B'].includes(grade ?? '')
+        ? 'good'
+        : grade === 'C'
+          ? 'attn'
+          : grade === 'D'
+            ? 'risk'
+            : '';
+
+// AI text fields are plain text, but older reports carry stray **bold** markers — render them.
+function InlineMd({ text }: { text?: string | null }) {
+    if (!text) return null;
+    const parts = text.replace(/^#{1,6}\s+/gm, '').split(/\*\*(.+?)\*\*/g);
+    return <>{parts.map((p, i) => (i % 2 === 1 ? <strong key={i}>{p}</strong> : p))}</>;
+}
 
 const fmtDate = (iso?: string) => {
     if (!iso) return '';
@@ -149,6 +189,185 @@ const StarIcon = () => (
     </svg>
 );
 
+const GRADES = ['A+', 'A', 'B+', 'B', 'C', 'D'];
+const GRADE_KEY: Record<string, string> = {
+    'A+': 'ap',
+    A: 'a',
+    'B+': 'bp',
+    B: 'b',
+    C: 'c',
+    D: 'd',
+};
+const GRADE_CLASS: Record<string, string> = {
+    'A+': 'g-ap',
+    A: 'g-a',
+    'B+': 'g-bp',
+    B: 'g-b',
+    C: 'g-c',
+    D: 'g-d',
+};
+const classPct = (a: V2Assessment) =>
+    a.class_average != null && a.total_marks > 0 ? (a.class_average / a.total_marks) * 100 : null;
+
+// Score over time: the learner (accent line, faint wash, ringed dots) against the class average (grey).
+// Only the best and weakest points are labelled; hover a dot for the test, the list below has every value.
+function ScoreTrend({ items }: { items: V2Assessment[] }) {
+    const { t } = useTranslation('layoutCommonB');
+    const pts = items.filter((a) => a.percentage != null);
+    const n = pts.length;
+    if (n < 2) return null;
+    const W = 660;
+    const H = 190;
+    const L = 34;
+    const R = 18;
+    const T = 18;
+    const B = 24;
+    const x = (i: number) => L + ((W - L - R) * i) / (n - 1);
+    const y = (v: number) => T + (H - T - B) * (1 - Math.max(0, Math.min(100, v)) / 100);
+    const line = pts.map((a, i) => `${x(i).toFixed(1)},${y(a.percentage).toFixed(1)}`).join(' ');
+    const classLine = pts
+        .map((a, i) => {
+            const c = classPct(a);
+            return c == null ? null : `${x(i).toFixed(1)},${y(c).toFixed(1)}`;
+        })
+        .filter(Boolean)
+        .join(' ');
+    let hi = 0;
+    let lo = 0;
+    pts.forEach((a, i) => {
+        if (a.percentage > pts[hi]!.percentage) hi = i;
+        if (a.percentage < pts[lo]!.percentage) lo = i;
+    });
+    const months: { i: number; m: string }[] = [];
+    pts.forEach((a, i) => {
+        const m = a.date ? new Date(a.date).toLocaleDateString('en-IN', { month: 'short' }) : '';
+        if (m && m !== months[months.length - 1]?.m) months.push({ i, m });
+    });
+    const anchor = (px: number) => (px < L + 16 ? 'start' : px > W - R - 16 ? 'end' : 'middle');
+    return (
+        <svg
+            viewBox={`0 0 ${W} ${H}`}
+            width="100%"
+            role="img"
+            aria-label={t('studentReportCard.sections.trend.ariaLabel')}
+        >
+            {[0, 25, 50, 75, 100].map((g) => (
+                <g key={g}>
+                    <line
+                        x1={L}
+                        x2={W - R}
+                        y1={y(g)}
+                        y2={y(g)}
+                        stroke="var(--line)"
+                        strokeWidth="1"
+                    />
+                    <text x={L - 6} y={y(g) + 3} textAnchor="end" fontSize="9" fill="var(--ink-3)">
+                        {g}%
+                    </text>
+                </g>
+            ))}
+            {months.map(({ i, m }) => (
+                <text
+                    key={i}
+                    x={x(i)}
+                    y={H - 6}
+                    textAnchor={i === 0 ? 'start' : 'middle'}
+                    fontSize="9"
+                    fill="var(--ink-3)"
+                >
+                    {m}
+                </text>
+            ))}
+            {classLine && (
+                <polyline
+                    points={classLine}
+                    fill="none"
+                    stroke="var(--class-gray)"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                />
+            )}
+            <polygon
+                points={`${line} ${x(n - 1).toFixed(1)},${y(0).toFixed(1)} ${x(0).toFixed(1)},${y(0).toFixed(1)}`}
+                fill="var(--accent)"
+                fillOpacity="0.08"
+            />
+            <polyline
+                points={line}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                strokeLinejoin="round"
+            />
+            {pts.map((a, i) => (
+                <circle
+                    key={i}
+                    cx={x(i)}
+                    cy={y(a.percentage)}
+                    r="4"
+                    fill="var(--accent)"
+                    stroke="var(--surface)"
+                    strokeWidth="2"
+                >
+                    <title>{`${a.name} — ${fmtNum(a.percentage)}%`}</title>
+                </circle>
+            ))}
+            {(hi === lo ? [hi] : [hi, lo]).map((i) => (
+                <text
+                    key={`x${i}`}
+                    x={x(i)}
+                    y={i === hi ? y(pts[i]!.percentage) - 9 : y(pts[i]!.percentage) + 16}
+                    textAnchor={anchor(x(i))}
+                    fontSize="10"
+                    fontWeight="700"
+                    fill="var(--ink)"
+                >
+                    {fmtNum(pts[i]!.percentage)}%
+                </text>
+            ))}
+        </svg>
+    );
+}
+
+// One row per grade — the band it covers, a bar, and how many tests landed in it. A stacked bar
+// with an "A ×6" legend was unreadable to a parent; every row now says it in words.
+function GradeMix({ items }: { items: V2Assessment[] }) {
+    const { t } = useTranslation('layoutCommonB');
+    const counts = GRADES.map((g) => ({ g, n: items.filter((a) => a.grade === g).length }));
+    const max = Math.max(...counts.map((c) => c.n));
+    if (!max) return null;
+    const total = counts.reduce((sum, c) => sum + c.n, 0);
+    const bOrAbove = counts.slice(0, 4).reduce((sum, c) => sum + c.n, 0);
+    return (
+        <div className="gmix-wrap">
+            <div className="mini-title">
+                {t('studentReportCard.sections.gradeMix.title')}:{' '}
+                <span className="gmix-sum">
+                    {t('studentReportCard.sections.gradeMix.summary', { good: bOrAbove, total, count: total })}
+                </span>
+            </div>
+            {counts.map((c) => (
+                <div className="gm-row" key={c.g}>
+                    <span className="gm-label">
+                        <b>{c.g}</b>{' '}
+                        {t(`studentReportCard.sections.gradeMix.range.${GRADE_KEY[c.g]}`)}
+                    </span>
+                    <div className="bar">
+                        {/* design-lint-ignore: bar width is the data value */}
+                        <i
+                            className={GRADE_CLASS[c.g]}
+                            style={{ width: `${(c.n / max) * 100}%` }}
+                        />
+                    </div>
+                    <span className={c.n ? 'gm-n' : 'gm-n zero'}>
+                        {t('studentReportCard.sections.gradeMix.testCount', { count: c.n })}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ── main component ─────────────────────────────────────────────────────────
 export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportData; fallbackLogoUrl?: string }) {
     const { t } = useTranslation('layoutCommonB');
@@ -156,7 +375,7 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
     const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const liveClassesTerm = getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession);
     const { meta, student, institute, period, overview } = data;
-    const accent = institute?.theme_color || '#2E7D6B'; // design-lint-ignore: institute-supplied theme colour
+    const accent = resolveThemeColor(institute?.theme_color) || '#2E7D6B'; // design-lint-ignore: institute-supplied theme colour
     // Prefer the logo baked into the report; fall back to the app's institute-settings logo.
     const logoUrl = institute?.logo_url || fallbackLogoUrl || '';
     const status = statusPalette(overview?.overall_status);
@@ -170,6 +389,9 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
 
     const subjectMarks = (data.subject_marks?.subjects ?? []).filter((s) => isRealSubject(s.subject));
     const subjectPerf = (data.academics?.subject_performance ?? []).filter((s) => isRealSubject(s.subject));
+    const assessments = [...(data.academics?.available ? data.academics.assessments ?? [] : [])].sort((a, b) =>
+        (a.date ?? '~').localeCompare(b.date ?? '~'),
+    );
     const habits = data.study_habits;
     const achievements = data.achievements ?? [];
     const narrative = data.narrative;
@@ -209,7 +431,8 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                         <div>
                             <div className="brand-name">{institute?.name ?? t('studentReportCard.fallbacks.institute')}</div>
                             <div className="brand-sub">
-                                {[student?.class, student?.batch].filter(Boolean).join(' · ') || t('studentReportCard.fallbacks.progressReport')}
+                                {/* class and batch hold the same string today — show it once */}
+                                {[...new Set([student?.class, student?.batch].map(cleanBatchLabel).filter(Boolean))].join(' · ') || t('studentReportCard.fallbacks.progressReport')}
                             </div>
                         </div>
                     </div>
@@ -223,7 +446,7 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                         <div>
                             <h1 className="student-name">{student?.name ?? t('studentReportCard.fallbacks.student')}</h1>
                             <div className="student-meta">
-                                {[student?.roll_no && t('studentReportCard.masthead.roll', { roll: student.roll_no }),
+                                {[student?.roll_no && student.roll_no !== student.enrollment_no && t('studentReportCard.masthead.roll', { roll: student.roll_no }),
                                 student?.enrollment_no && t('studentReportCard.masthead.enrolment', { enrollment: student.enrollment_no }),
                                 meta?.generated_at && t('studentReportCard.masthead.generated', { date: fmtDate(meta.generated_at) })].filter(Boolean).join(' · ')}
                             </div>
@@ -235,8 +458,16 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                             {overview?.overall_grade && <span className="grade-chip">{overview.overall_grade}</span>}
                         </div>
                     </div>
-                    {overview?.one_line && <p className="oneliner">{overview.one_line}</p>}
-                    {data.parent_summary && <p className="parent-summary">{data.parent_summary}</p>}
+                    {overview?.one_line && (
+                        <p className="oneliner">
+                            <InlineMd text={overview.one_line} />
+                        </p>
+                    )}
+                    {data.parent_summary && (
+                        <p className="parent-summary">
+                            <InlineMd text={data.parent_summary} />
+                        </p>
+                    )}
                 </section>
 
                 {/* KPI row */}
@@ -245,7 +476,10 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                         {metrics.map((m) => (
                             <div className="kpi" key={m.key}>
                                 <div className="kpi-label">{m.label}</div>
-                                <div className="kpi-val tnum">
+                                {/* a word value ("Business Studies") at the numeric size wraps onto two lines */}
+                                <div
+                                    className={`kpi-val tnum${typeof m.value === 'string' && m.value.length > 9 ? ' word' : ''}`}
+                                >
                                     {String(m.value)}{m.unit && <span className="u">{m.unit}</span>}
                                 </div>
                                 {(m.change || m.trend) && (
@@ -255,6 +489,31 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                                 )}
                             </div>
                         ))}
+                    </section>
+                )}
+
+                {/* Score over time + grade mix */}
+                {assessments.length >= 2 && (
+                    <section className="section">
+                        <div className="section-head">
+                            <h2 className="section-title">
+                                {t('studentReportCard.sections.trend.title')}
+                            </h2>
+                            <span className="section-note trend-legend">
+                                <span>
+                                    <i className="lk-me" />
+                                    {firstName}
+                                </span>
+                                <span>
+                                    <i className="lk-class" />
+                                    {t('studentReportCard.sections.trend.classAverage')}
+                                </span>
+                            </span>
+                        </div>
+                        <div className="card">
+                            <ScoreTrend items={assessments} />
+                            <GradeMix items={assessments} />
+                        </div>
                     </section>
                 )}
 
@@ -373,6 +632,46 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    </section>
+                )}
+
+                {/* Assessments — every graded test in the period, oldest first */}
+                {assessments.length > 0 && (
+                    <section className="section">
+                        <div className="section-head">
+                            <h2 className="section-title">{t('studentReportCard.sections.assessments.title')}</h2>
+                            <span className="section-note">
+                                {t('studentReportCard.sections.assessments.caption', { count: assessments.length })}
+                            </span>
+                        </div>
+                        <div className="card">
+                            {assessments.map((a: V2Assessment, i) => (
+                                <div className="asmt" key={i}>
+                                    <div>
+                                        <div className="asmt-name">{a.name}</div>
+                                        <div className="asmt-meta">
+                                            {[fmtDate(a.date), isRealSubject(a.subject) ? a.subject : null]
+                                                .filter(Boolean)
+                                                .join(' · ')}
+                                        </div>
+                                    </div>
+                                    <div className="asmt-score tnum">
+                                        {a.marks != null && a.total_marks != null
+                                            ? `${fmtNum(a.marks)}/${fmtNum(a.total_marks)}`
+                                            : '—'}
+                                        {a.percentage != null && (
+                                            <span className="pct"> · {fmtNum(a.percentage)}%</span>
+                                        )}
+                                    </div>
+                                    <div className="asmt-rank tnum">
+                                        {a.rank != null ? t('studentReportCard.sections.assessments.rank', { rank: a.rank }) : ''}
+                                    </div>
+                                    <div className={`grade ${gradeTone(a.grade)}`}>
+                                        {a.grade ?? '—'}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </section>
                 )}
@@ -543,7 +842,7 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                             <div className="card" style={{ marginBottom: 16 }}>
                                 <div className="mini-title">{t('studentReportCard.sections.aiInsights.whatWeNoticed')}</div>
                                 <ul className="insights">
-                                    {ai.cross_domain_insights.map((c, i) => <li key={i}>{c}</li>)}
+                                    {ai.cross_domain_insights.map((c, i) => <li key={i}><InlineMd text={c} /></li>)}
                                 </ul>
                             </div>
                         )}
@@ -557,8 +856,8 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                                         <div className="rec" key={i}>
                                             <span className={`pri ${pc}`}>{rec.priority || t('studentReportCard.sections.aiInsights.mediumPriority')}</span>
                                             <div>
-                                                {rec.area && <div className="rec-area">{rec.area}</div>}
-                                                <div className="rec-sug">{rec.suggestion}</div>
+                                                {rec.area && <div className="rec-area">{rec.area.replace(/\*\*/g, '')}</div>}
+                                                <div className="rec-sug"><InlineMd text={rec.suggestion} /></div>
                                             </div>
                                         </div>
                                     );
@@ -568,7 +867,7 @@ export function StudentReportCard({ data, fallbackLogoUrl }: { data: V2ReportDat
                         {ai.summary && (
                             <div className="card">
                                 <div className="mini-title">{t('studentReportCard.sections.aiInsights.aiSummary')}</div>
-                                <p className="ai-summary">{ai.summary}</p>
+                                <p className="ai-summary"><InlineMd text={ai.summary} /></p>
                             </div>
                         )}
                     </section>
@@ -615,7 +914,10 @@ function NarrativeBlock({ title, md }: { title: string; md?: string }) {
     return (
         <>
             <h3>{title}</h3>
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{md}</ReactMarkdown>
+            {/* "- ## Mathematics:" — a header opening a bullet renders as a heading inside the list */}
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                {md.replace(/^(\s*[-*]\s+)#{1,6}\s*/gm, '$1')}
+            </ReactMarkdown>
         </>
     );
 }

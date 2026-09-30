@@ -6634,3 +6634,37 @@ async def test_a_short_answer_with_a_question_is_not_treated_as_empty():
     caller["t"] = "जी।"
     await _reply(g, "बच्चा किस class में है? ", WHY)
     assert not asked, asked
+
+
+# ── Call 3ad7f590 (2026-09-30): "क्या बोलूं?" and a killed reply's late fragment ──
+def test_what_should_i_say_is_a_request_to_hear_the_question_again():
+    from app.turntake import caller_asked_to_repeat
+    assert caller_asked_to_repeat("क्या बोलूं?")
+    assert caller_asked_to_repeat("मैं क्या बताऊँ?")
+    assert caller_asked_to_repeat("What should I say?")
+    assert not caller_asked_to_repeat("क्या बोलूं मैं आपको, मेरा बेटा आठवीं क्लास में पढ़ता है?")
+
+
+@pytest.mark.asyncio
+async def test_a_killed_responses_late_fragment_is_never_spoken():
+    """The mother cut in with "Mother."; the response it killed still streamed
+    "जी मैम, Shik" and ended — which was flushed to the caller as a tail, and a
+    filler recovery was requested for a reply she never heard."""
+    from pipecat.frames.frames import (InterruptionFrame, LLMFullResponseEndFrame,
+                                       LLMFullResponseStartFrame, LLMTextFrame)
+    caller = {"t": "मम्मी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMTextFrame("जी मैम, "), d)
+    await g.process_frame(InterruptionFrame(), d)
+    await g.process_frame(LLMTextFrame("Shik"), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not any("Shik" in t for t in rec.text), rec.text
+    assert not asked, asked
+    # The next response is handled normally.
+    caller["t"] = "Mother."
+    rec.text.clear()
+    await _reply(g, "जी मैम, Shiksha Nation में हमारा focus concept clarity पर है। ",
+                 "बच्चा किस class में है?")
+    assert any("class" in t for t in rec.text), rec.text

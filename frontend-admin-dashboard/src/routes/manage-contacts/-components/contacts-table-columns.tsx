@@ -211,23 +211,13 @@ export const getContactColumns = (
                 </button>
             </MyDropdown>
         ),
-        cell: ({ row }) => {
-            const score = showLeadScore ? row.original.lead_score : undefined;
-            const tier = showLeadScore ? row.original.lead_tier : undefined;
-            const isConverted = row.original.lead_conversion_status === 'CONVERTED';
-            const hasLeadSignal = score != null || (tier != null && tier !== '');
-            return (
-                <div className="flex flex-col gap-0.5">
-                    <CreateClickableCell row={row} columnId="user.full_name" />
-                    <div className="flex flex-wrap gap-1">
-                        {hasLeadSignal && !isConverted && (
-                            <LeadScoreBadge score={score} tier={tier} size="sm" />
-                        )}
-                        <DuplicateBadge isDuplicate={row.original.is_duplicate} />
-                    </div>
-                </div>
-            );
-        },
+        // Tier and score have their own Lead Status / Lead Points columns, so none here.
+        cell: ({ row }) => (
+            <div className="flex flex-col gap-0.5">
+                <CreateClickableCell row={row} columnId="user.full_name" />
+                <DuplicateBadge isDuplicate={row.original.is_duplicate} />
+            </div>
+        ),
     },
     {
         id: 'user.username',
@@ -304,7 +294,7 @@ export const getContactColumns = (
               {
                   id: 'lead_status',
                   header: 'Lead Status',
-                  size: 140,
+                  size: 200,
                   cell: ({ row }: { row: Row<ContactUser> }) => {
                       const score = row.original.lead_score;
                       const status = row.original.lead_conversion_status;
@@ -325,7 +315,15 @@ export const getContactColumns = (
                       }
                       const tier = row.original.lead_tier;
                       if (score != null || (tier != null && tier !== '')) {
-                          return <LeadScoreBadge score={score} tier={tier} size="sm" />;
+                          // Score lives in the Lead Points column right next to this one.
+                          return (
+                              <LeadScoreBadge
+                                  score={score}
+                                  tier={tier}
+                                  showScore={false}
+                                  size="sm"
+                              />
+                          );
                       }
                       return <span className="text-xs text-neutral-400">—</span>;
                   },

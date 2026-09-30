@@ -649,3 +649,61 @@ async def test_when_every_key_refuses_it_backs_off_then_goes_round_again(monkeyp
     with _keys("a,b"):
         await tts._connect_websocket()
     assert sorted(used[:2]) == ["a", "b"] and slept == [0.25] and tts._websocket is not None, (used, slept)
+
+
+# ── One-shot renders (cache renderer, preview) with several keys ────────────
+class _FakeResp:
+    def __init__(self, status, body=b"", text=""):
+        self.status, self._body, self._text = status, body, text
+        self.headers = {"X-Sample-Rate": "24000"}
+
+    async def text(self):
+        return self._text
+
+    async def read(self):
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakeSession:
+    def __init__(self, by_key):
+        self.by_key, self.calls = by_key, []
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        k = headers["X-API-Key"]
+        self.calls.append(k)
+        return _FakeResp(*self.by_key[k])
+
+
+@pytest.mark.asyncio
+async def test_rest_render_skips_a_dead_key_and_rests_it(monkeypatch):
+    """A 401/402/403 key must not soak up renders: it is rested and the next key
+    serves the request; later renders go straight to the good key."""
+    from app import main as m
+    p.NAVANA_KEYS._cool.clear()
+    sess = _FakeSession({"k-good": (200, b"\x00\x01" * 100), "k-dead": (402, b"", "insufficient credit")})
+    monkeypatch.setattr(m.app.state, "http_session", sess, raising=False)
+    with _keys("k-dead,k-good"):
+        p.NAVANA_KEYS._rr = 0                     # round-robin points at the dead key
+        outs = [await m._navana_tts_wav("नमस्ते", "ipsita", "hi", None) for _ in range(6)]
+    assert all(outs)
+    assert sess.calls[:2] == ["k-dead", "k-good"]
+    assert sess.calls[2:] == ["k-good"] * 5          # rested: not tried again within 60 s
+    p.NAVANA_KEYS._cool.clear()
+
+
+@pytest.mark.asyncio
+async def test_rest_render_with_every_key_dead_returns_empty(monkeypatch):
+    from app import main as m
+    p.NAVANA_KEYS._cool.clear()
+    sess = _FakeSession({"k-a": (401, b"", "unauthorized"), "k-b": (403, b"", "forbidden")})
+    monkeypatch.setattr(m.app.state, "http_session", sess, raising=False)
+    with _keys("k-a,k-b"):
+        out = await m._navana_tts_wav("x", "ipsita", "hi", None)
+    assert out == b"" and sorted(sess.calls) == ["k-a", "k-b"]
+    p.NAVANA_KEYS._cool.clear()

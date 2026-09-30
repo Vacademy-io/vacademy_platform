@@ -641,6 +641,17 @@ async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float | None) 
                         NAVANA_KEYS.refused(key)
                         tried.add(key)
                         continue
+                    if r.status in (401, 402, 403):
+                        # A bad / revoked / out-of-credit key: rest it as the live
+                        # sockets do and try the next — at load 0 it would
+                        # otherwise be picked first for every render.
+                        logger.warning("preview: navana key #%d of %d refused %s — resting it "
+                                       "%.0f s: %s", NAVANA_KEYS.index(key),
+                                       len(NAVANA_KEYS.keys()), r.status,
+                                       NAVANA_KEYS.BAD_KEY_SECS, detail)
+                        NAVANA_KEYS.refused(key, NAVANA_KEYS.BAD_KEY_SECS)
+                        tried.add(key)
+                        continue
                     logger.warning("preview: navana %s %s (key #%d)", r.status, detail,
                                    NAVANA_KEYS.index(key))
                     return b""

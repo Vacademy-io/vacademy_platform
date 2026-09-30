@@ -206,9 +206,7 @@ const ScheduleTestDetails = ({
                     className="flex shrink-0 flex-wrap items-center justify-end gap-2"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <AssessmentTag tone={type.tone} icon={<type.Icon size={14} weight="bold" />}>
-                        {t(`types.${type.key}`)}
-                    </AssessmentTag>
+                    <AssessmentTag tone={type.tone}>{t(`types.${type.key}`)}</AssessmentTag>
                     <AssessmentTag tone={status.tone} dot>
                         {t(`status.${status.key}`)}
                     </AssessmentTag>

@@ -54,6 +54,7 @@ public class SubscriptionService {
     private final vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository paymentLogRepository;
     private final InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
     private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
+    private final vacademy.io.admin_core_service.features.learner_payment_method.service.LearnerPaymentMethodService learnerPaymentMethodService;
 
     /**
      * Reported back instead of a charge when a stored-token gateway has no card on file for
@@ -259,10 +260,10 @@ public class SubscriptionService {
      *
      * <p>Three shapes come back, and the caller branches on {@code response_data}:
      * a CHECKOUT gateway (Razorpay) returns order coordinates for the client to
-     * open; a STORED-TOKEN gateway (eWay) with a card on file has already taken the
-     * payment and returns {@code paymentStatus: PAID}; and one with no card on file
-     * returns {@code paymentStatus: REQUIRES_CARD} having charged nothing, so the
-     * client can collect a card and call again passing it as {@code card}.
+     * open; a CARD-ON-FILE gateway (eWay) returns {@code paymentStatus: REQUIRES_CARD}
+     * having charged nothing, ALWAYS, so the client can collect a card and call again
+     * passing it as {@code card}; and that second call returns
+     * {@code paymentStatus: PAID}, charged and confirmed inline.
      */
     public vacademy.io.common.payment.dto.PaymentResponseDTO initiateRenewalPayment(
             vacademy.io.common.auth.model.CustomUserDetails userDetails,
@@ -374,7 +375,8 @@ public class SubscriptionService {
      * manually has no armed next_charge_at to claim).
      *
      * <p>The mandate's {@code max_amount} is deliberately NOT applied: that cap bounds
-     * UNATTENDED charges, whereas here the learner is looking at the amount and pressing pay.
+     * UNATTENDED charges, whereas here the learner has just entered the card and is looking
+     * at the amount.
      */
     private vacademy.io.common.payment.dto.PaymentResponseDTO chargeStoredTokenRenewal(
             UserPlan plan, String instituteId,
@@ -398,21 +400,15 @@ public class SubscriptionService {
                     + "Please refresh the page before trying again.");
         }
 
-        String token = resolveChargeableToken(plan, instituteId, vendor);
-        if (!StringUtils.hasText(token)) {
-            // No card on file. Rather than dead-ending the learner, tell the client to collect
-            // one -- a member whose plan lapsed before tokens existed, or who enrolled on a
-            // gateway this institute no longer uses, has no token through no fault of theirs.
-            if (card == null || !StringUtils.hasText(card.getCardNumber())) {
-                return requiresCardResponse(vendor);
-            }
-            // Tokenise the entered card FIRST, then charge the token, rather than charging the
-            // card directly. Two reasons: the learner ends up with a card on file so every
-            // later renewal is one tap, and the direct-card path pre-marks its payment_log
-            // PAID from the gateway intent, which would make the renewal confirmation's
-            // claimPaidIfNotAlready lose and silently skip extending the membership.
-            token = tokeniseCard(plan, instituteId, vendor, request, user, card);
+        // ALWAYS collect a card, even when one is already on file. A renewal that charges a
+        // saved card the instant the button is pressed gives the learner no moment to confirm
+        // and no sight of which card is being billed -- it reads as money vanishing by magic,
+        // and the first thing they do is ask whether they were charged twice. Entering the
+        // card IS the confirmation step, so it is not skipped as an optimisation.
+        if (card == null || !StringUtils.hasText(card.getCardNumber())) {
+            return requiresCardResponse(vendor);
         }
+        String token = registerCardForCharge(plan, instituteId, vendor, request, user, card);
 
         MandateInfo storedCard = MandateInfo.builder()
                 .vendor(vendor)
@@ -497,16 +493,42 @@ public class SubscriptionService {
     }
 
     /**
-     * Registers the card the learner just entered as a gateway customer token and returns it.
+     * Makes the card the learner just entered the one that will be charged, and returns the
+     * token to charge.
+     *
+     * <p>Two cases, and getting this wrong bills the wrong card. When the learner already has
+     * a gateway customer, {@code createOrGetCustomer} would hand back the EXISTING token and
+     * quietly charge the OLD card -- so the stored card is REPLACED first (same
+     * TokenCustomerID, new PAN), reusing the card-update path the billing page already uses.
+     * Only a learner with no customer at all gets a fresh token created.
      *
      * <p>Only the card fields of {@code card} are used. A customerId arriving in the request
      * body is dropped on purpose: honouring one would let a caller charge a card belonging to
      * somebody else, since the token is all eWay needs.
      */
-    private String tokeniseCard(UserPlan plan, String instituteId, String vendor,
+    private String registerCardForCharge(UserPlan plan, String instituteId, String vendor,
             PaymentInitiationRequestDTO request,
             vacademy.io.common.auth.dto.UserDTO user,
             EwayRequestDTO card) {
+        String existingToken = resolveChargeableToken(plan, instituteId, vendor);
+
+        if (StringUtils.hasText(existingToken)) {
+            var update = new vacademy.io.admin_core_service.features.learner_payment_method.dto.LearnerCardUpdateRequestDTO();
+            update.setVendor(vendor);
+            var ewayCard = new vacademy.io.admin_core_service.features.learner_payment_method.dto.LearnerCardUpdateRequestDTO.EwayCardUpdate();
+            ewayCard.setCardName(card.getCardName());
+            ewayCard.setExpiryMonth(card.getExpiryMonth());
+            ewayCard.setExpiryYear(card.getExpiryYear());
+            ewayCard.setEncryptedCardNumber(card.getCardNumber());
+            ewayCard.setEncryptedCvn(card.getCvn());
+            ewayCard.setCountryCode(card.getCountryCode());
+            update.setEway(ewayCard);
+            learnerPaymentMethodService.confirmCardUpdate(plan.getUserId(), instituteId, update);
+            log.info("Replaced the stored {} card for plan {} with the one entered at renewal",
+                    vendor, plan.getId());
+            return existingToken;
+        }
+
         EwayRequestDTO safeCard = new EwayRequestDTO();
         safeCard.setCardName(card.getCardName());
         safeCard.setCardNumber(card.getCardNumber());

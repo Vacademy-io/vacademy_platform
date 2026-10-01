@@ -208,10 +208,10 @@ export interface RenewalCardPayload {
  *
  * Two response shapes, distinguished by response_data — always check
  * isRenewalAlreadyPaid() FIRST:
- *  - stored-token gateway (eWay) with a card on file: already charged,
- *    paymentStatus === "PAID", nothing to open;
- *  - stored-token gateway with NO card on file: paymentStatus === "REQUIRES_CARD"
- *    and nothing charged — collect a card and call again passing `card`;
+ *  - card-on-file gateway (eWay), first call: paymentStatus === "REQUIRES_CARD"
+ *    and nothing charged — collect a card and call again passing `card`. This comes
+ *    back every time, including when a card is already saved;
+ *  - card-on-file gateway, second call with `card`: paymentStatus === "PAID";
  *  - checkout gateway (Razorpay): razorpayKeyId / razorpayOrderId to open.
  */
 export const initiateRenewalPayment = async (
@@ -221,7 +221,7 @@ export const initiateRenewalPayment = async (
   // Only meaningful with withAutopay: how the fresh mandate is authorised (UPI Autopay
   // or card e-mandate), the same choice the enrol form offers.
   mandateMethod?: MandateMethod,
-  // Only on the retry after REQUIRES_CARD.
+  // Sent on the retry after REQUIRES_CARD. Required to actually take the payment.
   card?: RenewalCardPayload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> => {
@@ -255,9 +255,11 @@ export const isRenewalAlreadyPaid = (response: any): boolean =>
   String(renewalResponseData(response)?.paymentStatus ?? "").toUpperCase() === "PAID";
 
 /**
- * True when the learner has no card on file for a stored-token gateway, so nothing was
- * charged and no order exists. Collect a card and call initiateRenewalPayment again with
- * it — this is not an error state and must not be shown as a failed payment.
+ * True when the backend wants card details before charging: nothing was charged and no
+ * order exists. Collect a card and call initiateRenewalPayment again with it — this is not
+ * an error state and must not be shown as a failed payment. It is returned even when the
+ * learner already has a card saved, because a renewal must never bill a stored card without
+ * them confirming it.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const isRenewalCardRequired = (response: any): boolean =>

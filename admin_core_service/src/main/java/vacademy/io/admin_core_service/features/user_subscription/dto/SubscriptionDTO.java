@@ -49,11 +49,11 @@ public class SubscriptionDTO {
     private boolean canRenewManually;
 
     /**
-     * True when this plan's gateway charges a card already stored against the learner
-     * (eWay), so a manual renewal completes in the one request: there is no checkout for
-     * the client to open and no mandate to register, which is why the client must not offer
-     * an autopay method picker for it. False means the renewal returns checkout coordinates
-     * instead (Razorpay).
+     * True when this plan's gateway takes card details inline (eWay) rather than handing off
+     * to a hosted checkout. The renewal then runs in two calls -- REQUIRES_CARD, then the
+     * charge -- and settles synchronously, with no mandate to register, which is why the
+     * client must not offer an autopay method picker for it. False means the renewal returns
+     * checkout coordinates to open instead (Razorpay).
      */
     private boolean instantRenewal;
 

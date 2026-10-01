@@ -439,3 +439,57 @@ def test_the_next_step_of_the_script_is_neither():
     for s in L62_NEW:
         assert not restates_previous(s, L62_PREV), s
         assert not reasks_previous_question(s, L62_PREV), s
+
+
+
+import pytest  # noqa: E402
+
+# Real next steps after a bare agreement from the 130-call sweep (2026-09-24..29):
+# the first version of the guard dropped all of these. (caller, previous reply, new reply)
+SWEEP_LEGIT = [
+    ("Namaste.", "Namaste ji. I am Aarushi from Vacademy. We came to know that you take yoga "
+     "classes. Do you have two minutes?",
+     "Thank you. Actually, we help yoga teachers with the daily work of online classes, like the "
+     "link, reminders and fees. Your classes are online right now, or offline?"),
+    ("Yes.", "Namaste. I am Aarushi from Vacademy. We came to know that you take yoga classes. Do "
+     "you have two minutes?",
+     "Thank you. Actually, we help yoga teachers with the daily work of online classes, like the "
+     "link, reminders and fees. Your classes are online right now, or offline?"),
+    ("Yeah.", "Okay. So you mostly do offline classes. And you take one online class a week.",
+     "Okay. So for that one online class, you send the link yourself every time?"),
+    ("जी।", "Theek hai. Toh kya main aapko hamare preschool program ke baare mein thoda bata sakti "
+     "hoon?",
+     "Hamare preschool program mein hum bachchon ko khel-khel mein padhate hain, jisse unki neev "
+     "mazboot hoti hai aur unka overall development hota hai. Kya aapko hamare teaching "
+     "methodology ke baare mein aur jaanna hai?"),
+    ("हम्म।", "जी सर, क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है और अभी किस class "
+     "में पढ़ रहा है?", "सर, क्या मैं बच्चे का नाम और क्लास जान सकती हूँ?"),
+    ("हाँ जी। हाँ।", "जी, क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ — नाम क्या है और अभी किस "
+     "class में पढ़ रहा है?", "ठीक है। तो बच्चे का नाम और क्लास क्या है सर?"),
+]
+
+
+@pytest.mark.parametrize("caller,prev,new", SWEEP_LEGIT)
+def test_real_next_steps_after_agreement_are_not_loops(caller, prev, new):
+    import re
+    sents = lambda t: [x for x in re.split(r"(?<=[।.?!])\s+", t) if x.strip()]
+    if not is_bare_agreement(caller):
+        return                                           # a greeting: the guard is off
+    for s in sents(new):
+        assert not restates_previous(s, sents(prev)), s
+        assert not reasks_previous_question(s, sents(prev)), s
+
+
+def test_yes_no_questions_vs_information_questions():
+    from app.turntake import is_yes_no_question
+    for q in ("क्या ऋषभ के साथ भी ऐसा ही है सर?", "क्या आपको लगता है कि ऋषभ के साथ भी ऐसा हो रहा है?",
+              "Do you have two minutes?", "पांच pieces, सही है?"):
+        assert is_yes_no_question(q), q
+    for q in ("तो बच्चे का नाम और क्लास क्या है सर?", "कितने marks आए थे?", "Which class is she in?",
+              "क्या मैं जान सकती हूँ — नाम क्या है और किस class में है?", "ठीक है।"):
+        assert not is_yes_no_question(q), q
+
+
+def test_a_greeting_is_not_agreement():
+    for t in ("Namaste.", "नमस्ते जी।", "Hello?", "हाँ जी नमस्ते"):
+        assert not is_bare_agreement(t), t

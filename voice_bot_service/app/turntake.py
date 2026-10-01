@@ -787,18 +787,68 @@ _QUESTION_CUES = frozenset({
 _AGREE_EXTRA = frozenset({"yes", "yeah", "yep", "yup", "right", "sure", "correct",
                           "exactly", "ok", "okay", "haanji"})
 _ADDRESS_WORDS = frozenset({"सर", "मैम", "मैडम", "जी", "sir", "maam", "madam", "ji"})
+# A greeting is someone ARRIVING on the line, not agreeing: re-saying is right
+# then (130-call sweep, 2026-10-01: four "Namaste."/"Yes." after the opening).
+_GREETING_WORDS = frozenset({"नमस्ते", "नमस्कार", "namaste", "namaskar", "namaskaar",
+                             "hello", "hi", "हेलो", "हैलो"})
+# Function words the Devanagari/English stoplist misses — English pronouns and
+# modals, Romanized Hindi particles. On the sweep "we … yoga classes" and
+# "ke liye enquiry ki thi" made unrelated next steps look like restatements.
+_LOOP_STOPWORDS = frozenset({
+    "we", "our", "us", "they", "them", "their", "there", "these", "those", "what",
+    "do", "does", "did", "will", "would", "can", "could", "may", "might", "be", "been",
+    "am", "my", "me", "from", "by", "about", "as", "if", "or", "but", "not", "no",
+    "also", "just", "very", "all", "any", "some", "more", "other", "one", "like",
+    "ke", "ki", "ka", "ko", "se", "me", "mein", "mai", "main", "hai", "hain", "tha", "thi",
+    "the", "aur", "ya", "to", "toh", "bhi", "hi", "aap", "aapke", "aapka", "aapki", "aapne",
+    "aapko", "hum", "hamare", "hamara", "hamari", "humare", "liye", "baare", "ne", "par", "pe",
+    "tak", "wo", "woh", "ye", "yeh", "iske", "uske", "unke", "kuch", "thoda", "bahut", "kar",
+    "karna", "karte", "kiya", "hota", "hoti", "hote", "ho", "raha", "rahi", "rahe", "sakti",
+    "sakta", "sakte", "abhi", "bas", "jo", "ki", "kya", "nahi", "nahin",
+    "कि", "आपको", "आपने", "हमारे", "हमारा", "हमारी", "लिए", "बारे", "रहा", "रही", "रहे",
+    "सकती", "सकता", "सकते", "थोड़ा", "कुछ", "बहुत", "अभी", "जो", "कर", "करना", "करते",
+    "किया", "होता", "होती", "हो", "ने", "तक", "भी", "ही", "इसके", "उसके", "उनके",
+})
 
 
 def is_bare_agreement(text: str) -> bool:
-    """1-4 words, all acknowledgement: "हाँ जी।", "जी सर", "Yes.", "ठीक है"."""
+    """1-4 words, all acknowledgement: "हाँ जी।", "जी सर", "Yes.", "ठीक है" —
+    and no greeting among them."""
     ws = _words(text)
-    return 0 < len(ws) <= 4 and all(w in _BACKCHANNEL_WORDS or w in _AGREE_EXTRA for w in ws)
+    return (0 < len(ws) <= 4 and not any(w in _GREETING_WORDS for w in ws)
+            and all(w in _BACKCHANNEL_WORDS or w in _AGREE_EXTRA for w in ws))
 
 
 def _content_words(text: str) -> set:
     return {w for w in _words(text)
             if len(w) > 1 and w not in _ECHO_STOPWORDS and w not in _BACKCHANNEL_WORDS
-            and w not in _ADDRESS_WORDS and w not in _QUESTION_CUES}
+            and w not in _ADDRESS_WORDS and w not in _QUESTION_CUES
+            and w not in _LOOP_STOPWORDS}
+
+
+_WH_WORDS = frozenset({
+    "कौन", "कौनसा", "कौनसी", "कौनसे", "कितना", "कितनी", "कितने", "कब", "कहाँ", "कहां",
+    "कैसे", "कैसा", "कैसी", "क्यों", "किस", "किसी", "kaun", "kaunsa", "kitna", "kitni",
+    "kitne", "kab", "kahan", "kaise", "kaisa", "kyun", "kyon", "kis", "what", "which", "how",
+    "when", "where", "who", "whom", "why",
+})
+_YES_NO_OPENERS = frozenset({"क्या", "kya", "do", "does", "did", "is", "are", "was", "were",
+                             "can", "could", "would", "will", "shall", "should", "have", "has"})
+
+
+def is_yes_no_question(text: str) -> bool:
+    """A question "हाँ"/"yes" ANSWERS — not one asking for information: no wh-word
+    anywhere, and "क्या" (or an auxiliary) only as the opener. "नाम क्या है?" is
+    information; "क्या ऋषभ के साथ भी ऐसा है?" is yes/no."""
+    if "?" not in (text or "") and "？" not in (text or ""):
+        return False
+    ws = _words(text)
+    ws = [w for w in ws if w not in _ADDRESS_WORDS and w not in ("तो", "toh", "so", "and", "और")]
+    if not ws or any(w in _WH_WORDS for w in ws):
+        return False
+    if ws[0] in _YES_NO_OPENERS:
+        return not any(w in ("क्या", "kya", "what") for w in ws[1:])
+    return not any(w in ("क्या", "kya") for w in ws)
 
 
 def restates_previous(sentence: str, previous, min_words: int = 4,
@@ -809,10 +859,14 @@ def restates_previous(sentence: str, previous, min_words: int = 4,
     sides >= min_words, and >= min_shared words in common: the child's name and
     "क्या" alone made "क्या आप ऋषभ का free demo करवाना चाहेंगे?" a restatement
     of "क्या ऋषभ के साथ भी ऐसा ही है?"."""
+    if "?" in sentence or "？" in sentence:
+        return False                   # questions: reasks_previous_question decides
     a = _content_words(sentence)
     if len(a) < min_words:
         return False
     for p in previous or ():
+        if "?" in p or "？" in p:
+            continue
         b = _content_words(p)
         shared = len(a & b)
         if len(b) >= min_words and shared >= min_shared \
@@ -822,14 +876,17 @@ def restates_previous(sentence: str, previous, min_words: int = 4,
 
 
 def reasks_previous_question(sentence: str, previous, ratio: float = 0.6) -> bool:
-    """PURE. Is `sentence` the same QUESTION as one in `previous`, reworded?"""
-    if "?" not in sentence and "？" not in sentence:
+    """PURE. Is `sentence` the same yes/no QUESTION as one in `previous`,
+    reworded? Both must be yes/no questions — after "हाँ जी" to "क्या मैं बच्चे के
+    बारे में जान सकती हूँ — नाम क्या है?", asking "नाम क्या है?" is the next step,
+    not a loop (130-call sweep)."""
+    if not is_yes_no_question(sentence):
         return False
     a = _content_words(sentence)
     if len(a) < 2:
         return False
     for p in previous or ():
-        if "?" not in p and "？" not in p:
+        if not is_yes_no_question(p):
             continue
         b = _content_words(p)
         shared = len(a & b)

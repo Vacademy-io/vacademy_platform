@@ -65,7 +65,9 @@ public class LiveSessionController {
     @Auditable(
             entityType = "LIVE_SESSION",
             action = "DELETE",
-            descriptionExpr = "'deleted ' + (#request?.ids?.size() ?: 0) + ' live session(s)'")
+            captureBefore = "@getLiveSessionService.deleteAuditSnapshot(#request?.ids, #request?.type)",
+            entityIdExpr = "#before?.sessionId",
+            descriptionExpr = "'deleted ' + (#before?.label ?: ((#request?.ids?.size() ?: 0) + ' live session(s)'))")
     public ResponseEntity<?> deleteLiveSessions(
             @RequestBody DeleteLiveSessionRequest request,
             @RequestAttribute("user") CustomUserDetails user) {

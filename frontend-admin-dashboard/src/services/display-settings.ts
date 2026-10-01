@@ -931,6 +931,16 @@ export function mergeDisplayWithDefaults(
             true,
     };
 
+    // Live class list actions. Role-dependent default (admin ON, teacher and
+    // custom roles OFF) comes from `defaults`; the final `?? false` only covers
+    // a defaults object without the section, and fails closed.
+    merged.liveClassActions = {
+        allowDeletePastSessions:
+            incoming?.liveClassActions?.allowDeletePastSessions ??
+            defaults.liveClassActions?.allowDeletePastSessions ??
+            false,
+    };
+
     // Team-tab role visibility + Org Chart tab visibility. Preserve any
     // explicitly-set keys; consumers treat missing visibleRoles keys as
     // visible (true). orgChartTabVisible defaults to undefined → treated as

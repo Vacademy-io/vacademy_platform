@@ -250,6 +250,11 @@ const TEACHER_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         showEnrolledStudentCount: false,
     },
     assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
+    // Off for teachers and custom roles (which share these defaults) — an admin
+    // grants it per role from Display Settings.
+    liveClassActions: {
+        allowDeletePastSessions: false,
+    },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

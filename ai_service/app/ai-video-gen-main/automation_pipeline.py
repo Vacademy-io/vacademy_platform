@@ -230,6 +230,12 @@ class PipelineCancelled(Exception):
 
 
 try:
+    from video_llm_reasoning import reasoning_for as _reasoning_for
+except ImportError:  # pragma: no cover - module sits next to this file
+    def _reasoning_for(model):  # type: ignore[misc]
+        return None
+
+try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
 except ImportError:
@@ -1656,6 +1662,51 @@ class OpenRouterClient:
             print(f"Warning: Failed to load model chain from registry: {e}")
         return models
 
+    def _open_chat(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        wire: Dict[str, Any],
+        openrouter_payload: Dict[str, Any],
+        route: Optional[Any],
+        model: str,
+        timeout: float,
+    ):
+        """Open one chat completion, failing over from a routed gateway.
+
+        `route` is the llm_router ChatRoute when the model is routed off
+        OpenRouter (e.g. GLM to Isoquant), else None. A gateway that is down,
+        refuses the key, rate-limits or times out is retried ONCE on OpenRouter
+        with the SAME model and marked failed for its cooldown.
+
+        Without this, a gateway outage raised straight into chat()'s model
+        loop, which moved on to the NEXT model in the chain - so an Isoquant
+        blip silently turned a GLM video into a Gemini one, at Gemini prices.
+        A 400 is the request's own fault and is not retried: OpenRouter would
+        reject it too.
+        """
+        def _req(u: str, h: Dict[str, str], w: Dict[str, Any]) -> urllib.request.Request:
+            return urllib.request.Request(u, data=json.dumps(w).encode("utf-8"), headers=h, method="POST")
+
+        try:
+            return urllib.request.urlopen(_req(url, headers, wire), timeout=timeout)
+        except Exception as exc:
+            if route is None:
+                raise
+            try:
+                from app.services.llm_router import mark_router_failed, should_fail_over
+            except ImportError:
+                raise exc
+            status = getattr(exc, "code", None)
+            if not should_fail_over(route, status):
+                raise
+            mark_router_failed(route.router)
+            print(
+                f"   ↪ {route.label} failed for {model} at stage '{_llm_stage.get()}' "
+                f"({status or type(exc).__name__}) — retrying the same model on OpenRouter"
+            )
+            return urllib.request.urlopen(_req(self.base_url, self.headers, openrouter_payload), timeout=timeout)
+
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))
     def chat(
         self,
@@ -1744,20 +1795,21 @@ class OpenRouterClient:
                     }
                     if response_format is not None:
                         payload["response_format"] = response_format
-                    _url, _headers, _wire = self.base_url, self.headers, payload
+                    # A reasoning-mandatory model (GLM 5.x) sent no reasoning
+                    # setting thinks at its own heavy default — 8x the reasoning
+                    # tokens of an explicit "high" for the same complete plan.
+                    # See video_llm_reasoning.py for the measurement.
+                    _reasoning = _reasoning_for(model_to_use)
+                    if _reasoning:
+                        payload["reasoning"] = _reasoning
+                    _url, _headers, _wire, _route = self.base_url, self.headers, payload, None
                     try:
                         from app.services.llm_router import route_chat as _route_chat
                         _routed = _route_chat(payload, self.api_key)
                         if not _routed[3].is_default:
-                            _url, _headers, _wire = _routed[0], _routed[1], _routed[2]
+                            _url, _headers, _wire, _route = _routed[0], _routed[1], _routed[2], _routed[3]
                     except ImportError:
                         pass  # outside the ai_service app (render worker): OpenRouter
-                    request = urllib.request.Request(
-                        _url,
-                        data=json.dumps(_wire).encode("utf-8"),
-                        headers=_headers,
-                        method="POST",
-                    )
                     _t_start = time.perf_counter()
                     # A flat 180s was sized for a fast non-reasoning model. A
                     # thinking model planning a 20-shot video spends minutes in
@@ -1769,7 +1821,8 @@ class OpenRouterClient:
                     # small utility prompt keeps a tight timeout, a big
                     # generation gets room to finish.
                     _req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))
-                    with urllib.request.urlopen(request, timeout=_req_timeout) as response:
+                    with self._open_chat(_url, _headers, _wire, payload, _route,
+                                         model_to_use, _req_timeout) as response:
                         raw = response.read().decode("utf-8")
                         # Parse JSON response and return content
                         data = json.loads(raw)
@@ -14639,6 +14692,12 @@ class VideoGenerationPipeline:
             # (premium+ set concept_model); free/standard skip it to avoid the ~2x
             # ShotPlanner cost of a corrective re-plan on the cheapest tiers.
             enforce_concept=bool(tier_config.get("concept_model")),
+            # The plan is the largest single response in a run, and the prompt
+            # behind it can run to hundreds of thousands of tokens. Starting at
+            # the 16k default meant a length cut-off re-sent that whole prompt
+            # to buy a bigger budget. max_tokens is a ceiling, not a charge, so
+            # starting higher costs nothing unless the room is actually used.
+            max_tokens=32000,
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],

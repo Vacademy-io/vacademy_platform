@@ -5,6 +5,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { GetFilterData } from '@/routes/manage-students/students-list/-constants/all-filters';
 import { MyTable } from '@/components/design-system/table';
+import { counsellorDisplayName } from '@/components/shared/leads/counsellor-display';
 import { MyPagination } from '@/components/design-system/pagination';
 import { StudentListHeader } from './student-list-header';
 import { StudentFilters } from './student-filters';
@@ -563,7 +564,7 @@ export const StudentsListSection = () => {
                                                             .full_name as string;
                                                         const profile = leadProfiles[userId];
                                                         const counselorName =
-                                                            profile?.assigned_counselor_name;
+                                                            counsellorDisplayName(profile);
                                                         if (counselorName) {
                                                             return (
                                                                 <button

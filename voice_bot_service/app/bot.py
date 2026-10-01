@@ -316,7 +316,7 @@ class TranscriptCollector(FrameProcessor):
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  end_pending=None,
-                 diag=None, in_machine_window=None, reply_in_flight=None,
+                 diag=None, in_machine_window=None, reply_in_flight=None, reply_pending=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
@@ -388,6 +388,9 @@ class TranscriptCollector(FrameProcessor):
         # cannot be flipped by a single bad transcript.
         self._in_machine_window = in_machine_window or (lambda: False)
         self._reply_in_flight = reply_in_flight or (lambda: False)
+        # In flight OR a held caller turn — for the bot's OWN runs (cues,
+        # re-asks, resumes); see run_bot._reply_pending.
+        self._reply_pending_fn = reply_pending
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -445,6 +448,10 @@ class TranscriptCollector(FrameProcessor):
                                     else s.filler_phrases)
         self._filler_probability = max(0.0, min(1.0, s.filler_probability))
 
+
+    def _reply_pending(self) -> bool:
+        f = self._reply_pending_fn
+        return f() if f is not None else self._reply_in_flight()
     def _played_tail_is_question(self) -> bool:
         """Did the LAST thing the caller actually heard end in a question?
         Unlike _played_ended_with_question this does not need their final to
@@ -894,7 +901,7 @@ class TranscriptCollector(FrameProcessor):
                                     "no cue for %r", text[:20])
                         self._resumed_t = 0.0
                         return
-                    if self._reply_in_flight():
+                    if self._reply_pending():
                         # The answer to this turn is already being composed and
                         # nothing of it has played. Call 8e2041c8 (2026-09-22):
                         # "मैं बच्चे का पिता बोल रहा हूँ" started run #1; "बोलिए"
@@ -1274,7 +1281,7 @@ class TranscriptCollector(FrameProcessor):
             await asyncio.sleep(0.4)
             if self._acked_mid_reply is None or self._acked_mid_reply[0] != text:
                 return                          # a newer final took over
-            if (self._is_bot_speaking() or self._reply_in_flight() or self._voice_live()
+            if (self._is_bot_speaking() or self._reply_pending() or self._voice_live()
                     or self._recently_cut() or self._end_pending()):
                 return                          # more of the reply, or they are talking
             self._acked_mid_reply = None
@@ -1344,7 +1351,7 @@ class TranscriptCollector(FrameProcessor):
                 await asyncio.sleep(self._noise_reask_wait_secs)
                 if self._last_text_t > stop_t:
                     return                      # it was words, and they were handled
-                if self._is_bot_speaking() or self._reply_in_flight():
+                if self._is_bot_speaking() or self._reply_pending():
                     return
                 await self._answer_never_arrived(direction, voice)
             except asyncio.CancelledError:
@@ -1434,7 +1441,7 @@ class TranscriptCollector(FrameProcessor):
                     return
                 if self._is_bot_speaking():
                     return                      # it is on the line right now
-                if self._reply_in_flight():
+                if self._reply_pending():
                     break                       # the model is writing; never two voices
                 if attempt == 1:
                     logger.warning("turn-gate: the resumed words never reached the line "
@@ -1451,7 +1458,7 @@ class TranscriptCollector(FrameProcessor):
                 # Handing the words back is inert unless the model is actually
                 # asked to speak — call 42106148: un-recorded at 13.1 s, then
                 # 12 s of nothing until the caller asked "are you using AI?".
-                if (not self._reply_in_flight() and not self._is_bot_speaking()
+                if (not self._reply_pending() and not self._is_bot_speaking()
                         and self._rerun_for_resume != text):
                     self._rerun_for_resume = text
                     heard = self._heard_tail()
@@ -2054,7 +2061,9 @@ class NoRepeatGate(FrameProcessor):
         # क्या है सर?" (the name asked right after it was used).
         self._runs_passed = 0
         self._responses_started = 0
+        self._responses_ended = 0
         self._last_run_t = 0.0
+        self._last_start_t = 0.0
         # The last QUESTION the gate dropped as already-said in this reply —
         # the line a recovery should be about. _held_tail is the last dropped
         # sentence of any kind; on 22062aac that was the explanation after the
@@ -2173,6 +2182,13 @@ class NoRepeatGate(FrameProcessor):
         a run that died without a response must not disable recovery for good."""
         return (self._runs_passed > self._responses_started
                 and time.time() - self._last_run_t < 4.0)
+
+    def generating(self) -> bool:
+        """A run passed and its reply has not finished composing (no End yet).
+        Capped at 8 s so a run that died without a response cannot hold the
+        call in "a reply is on its way" for good."""
+        return (self._runs_passed > self._responses_ended
+                and time.time() - max(self._last_run_t, self._last_start_t) < 8.0)
 
     def owed_line_requested(self) -> None:
         """The idle handler asked for the owed line; the next idle, if the model
@@ -2509,10 +2525,15 @@ class NoRepeatGate(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
+        if isinstance(frame, LLMFullResponseEndFrame):
+            # FIRST, before any branch returns: every reply that ends counts.
+            self._responses_ended = min(self._responses_ended + 1, self._responses_started)
+
         if isinstance(frame, LLMFullResponseStartFrame):
             self._killed = False
             self._text_seen = False
             self._responses_started += 1
+            self._last_start_t = time.time()
             if self._responses_started > self._runs_passed:
                 self._runs_passed = self._responses_started    # a run we did not see
             self._held_question = ""
@@ -2539,6 +2560,7 @@ class NoRepeatGate(FrameProcessor):
         if isinstance(frame, InterruptionFrame):
             # An interruption flushes the LLM's queued runs: nothing is queued now.
             self._responses_started = max(self._responses_started, self._runs_passed)
+            self._responses_ended = self._responses_started
             # Whatever the previous interruption left unsaid is history: only
             # THIS cut's words may be resumed (else a stale tail could surface
             # minutes later, mid-topic).
@@ -3091,6 +3113,10 @@ class RunGuard(FrameProcessor):
             text = re.sub(r"\[[^\]]*\]", " ", str(content or ""))
             n += len([w for w in re.split(r"[\s,.!?।]+", text) if w])
         return n
+
+    def held(self) -> bool:
+        """A caller turn is held for its short-answer grace (it will run)."""
+        return self._held is not None and not self._held.done()
 
     def _drop_held(self, why: str):
         if self._held is not None and not self._held.done():
@@ -5519,11 +5545,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         """
         if floor.is_holding():
             return True         # composed, held off the line while the caller talks
+        if settings.reply_ledger and no_repeat.generating():
+            return True         # a run passed and its reply is still composing
         st = flags["reply_started_t"]
         if not st or flags["bot_speaking"]:
             return False        # is_bot_speaking() already covers the audible case
+        if settings.reply_ledger:
+            # From the reply's own audio START, not the last stop: a run that
+            # began while the previous reply was still playing stays in flight
+            # until ITS audio starts — the previous reply's stop (or the bridge
+            # line's) no longer reads as "nothing on its way" (single-flight
+            # design 2026-10-01: calls c05f6c83, 1d28af3a).
+            return (flags["bot_started_t"] < st and flags["reply_cancelled_t"] < st
+                    and (time.time() - st) < settings.reply_inflight_grace_secs)
         return (flags["bot_stopped_t"] < st
                 and (time.time() - st) < settings.reply_inflight_grace_secs)
+
+    def _reply_pending() -> bool:
+        """A reply is on its way: in flight, or a caller turn RunGuard is holding
+        for its short-answer grace. Every place the bot would start a run of its
+        own (a cue, a re-ask, a resume, the idle fallback) asks THIS — a held
+        caller turn is a reply on its way too."""
+        return _reply_in_flight() or (settings.reply_ledger and run_guard.held())
 
     def _in_machine_window() -> bool:
         return (time.time() - _run_bot_t0) < settings.machine_greeting_window_secs
@@ -5552,6 +5595,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                                           or outcome.end_requested),
                                      in_machine_window=_in_machine_window,
                                      reply_in_flight=_reply_in_flight,
+                                     reply_pending=lambda: _reply_pending(),
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),
@@ -6106,7 +6150,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 if (flags["user_stopped_t"] > flags["bot_stopped_t"] > 0
                         and not flags["bot_speaking"] and not flags["user_speaking"]
                         and flags["stopping_since"] is None and flags["ducked_since"] == 0
-                        and not _reply_in_flight()
+                        and not _reply_pending()
                         and now - _last >= settings.idle_timeout_secs):
                     logger.info("idle: caller spoke last and got no reply for %.1fs — "
                                 "nudging from the watchdog corr=%s", now - _last, corr)

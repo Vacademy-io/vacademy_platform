@@ -735,6 +735,10 @@ class Settings:
         default_factory=lambda: _env("EDGE_TTS_VOICE", "hi-IN-SwaraNeural"))
     vertex_thinking_budget: int = field(
         default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
+    # Single-flight replies, step 3 (2026-10-01): "is a reply in progress?" also
+    # counts a run that passed and is still composing (NoRepeatGate's run ledger)
+    # and is measured from the reply's own audio START. 0 = the old test.
+    reply_ledger: bool = field(default_factory=lambda: _env("REPLY_LEDGER", "1") == "1")
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     # FloorGate: a reply whose first audio is ready while the caller is talking

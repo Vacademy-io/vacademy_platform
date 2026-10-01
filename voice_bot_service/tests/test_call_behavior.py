@@ -6901,3 +6901,41 @@ def test_memory_reclaim_waits_for_idle_before_the_first_freeze(monkeypatch):
 def test_call_modules_preload():
     from app import memory
     assert memory.preload_call_modules() >= 1
+
+
+# ── single-flight replies, step 3 (2026-10-01): one ledger answers "is a reply
+#    on its way?" — calls c05f6c83 / 1d28af3a ran the model twice for one moment
+#    when a run started while the previous reply was still playing ───────────
+@pytest.mark.asyncio
+async def test_the_run_ledger_counts_a_composing_reply_until_its_end():
+    from pipecat.frames.frames import (LLMFullResponseStartFrame, LLMFullResponseEndFrame,
+                                       InterruptionFrame)
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    D = b.FrameDirection.DOWNSTREAM
+    assert not g.generating()
+    g.note_run()                                   # RunGuard let a run through
+    assert g.generating(), "passed, not started yet: a reply is on its way"
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    assert g.generating()
+    await g.process_frame(LLMFullResponseEndFrame(), D)
+    assert not g.generating(), "composed: the audio side takes over"
+    g.note_run()
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    await g.process_frame(InterruptionFrame(), D)  # a barge-in kills it
+    assert not g.generating()
+    g.note_run()
+    g._last_run_t -= 9.0                           # a run that never started…
+    g._last_start_t -= 9.0                         # …long after the last reply began
+    assert not g.generating(), "bounded: a lost run cannot hold the call for good"
+
+
+def test_reply_in_flight_is_measured_from_the_replys_own_start():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    body = src[src.index("def _reply_in_flight() -> bool:"):src.index("def _reply_pending() -> bool:")]
+    assert "no_repeat.generating()" in body
+    assert 'flags["bot_started_t"] < st and flags["reply_cancelled_t"] < st' in body
+    pending = src[src.index("def _reply_pending() -> bool:"):]
+    pending = pending[:pending.index("\n    def ")]
+    assert "run_guard.held()" in pending

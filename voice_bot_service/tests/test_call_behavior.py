@@ -6994,3 +6994,47 @@ def test_an_errored_primary_reply_is_not_read_as_empty():
     run = inspect.getsource(b.run_bot)
     assert "llm_primary.retire_on_error = True" in run
     assert "no_repeat.note_dropped_run()" in run
+
+
+@pytest.mark.asyncio
+async def test_a_retired_primary_serves_again_when_the_switcher_returns_to_it():
+    """Design review 2026-10-01: after the fallback fails too, failover goes back
+    to the primary; a primary that stayed retired dropped every later request —
+    a mute bot for the rest of the call."""
+    from pipecat.frames.frames import (ErrorFrame, LLMContextFrame,
+                                       ServiceSwitcherRequestMetadataFrame)
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from app.providers import with_retire
+    seen = []
+
+    class _Base:
+        async def process_frame(self, frame, direction):
+            seen.append(type(frame).__name__)
+
+        async def push_error_frame(self, error):
+            pass
+
+    p = with_retire(_Base)()
+    p.retire_on_error = True
+    p.retired = True                                    # failed earlier in the call
+    D = b.FrameDirection.DOWNSTREAM
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert "LLMContextFrame" not in seen, "queued behind the failure: dropped"
+    await p.process_frame(ServiceSwitcherRequestMetadataFrame(service=p), D)
+    assert not p.retired
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert seen.count("LLMContextFrame") == 1, "active again: it serves"
+
+
+def test_errored_primary_skip_only_while_its_failover_rerun_is_coming():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    i = src.index("primary_errored_since=lambda t:")
+    expr = src[i:i + 600]
+    assert "settings.llm_retire_primary" in expr, "LLM_RETIRE_PRIMARY=0 must restore the old EMPTY path"
+    assert 'flags["llm_failed_over_t"] >= t' in expr, "a later error (no re-run coming) gets ordinary recovery"
+    reason = src[src.index("def _bot_run_drop_reason("):]
+    reason = reason[:reason.index("\n    def ")]
+    assert 'flags["stopping_since"] is not None' in reason
+    assert "end_pending_since" not in reason, "a goodbye a noise killed must still be re-asked"
+    assert 'flags["reply_started_t"] == for_reply' in reason

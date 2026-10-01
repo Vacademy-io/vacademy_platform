@@ -239,12 +239,19 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                 self.retired = True
             await super().push_error_frame(error)
 
+        def _maybe_unretire(self, frame):
+            from pipecat.frames.frames import ServiceSwitcherRequestMetadataFrame
+            if (isinstance(frame, ServiceSwitcherRequestMetadataFrame)
+                    and getattr(frame, "service", None) is self):
+                self.retired = False
+
         @property
         def runs(self) -> int:
             return self._book["runs"]
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             await super().process_frame(frame, direction)
+            self._maybe_unretire(frame)
             if isinstance(frame, InterruptionFrame) and self._gen and not self._gen.done():
                 # Like pipecat's own LLM services: an interruption kills the
                 # running generation AND any request queued behind it.
@@ -313,7 +320,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             log(f"LLM run {self.runs} ({self.sim_service}) for {last_user[:40]!r} → {text[:60]!r}")
             await self.push_frame(LLMFullResponseStartFrame())
             await asyncio.sleep(first_token)
-            for w in text.split(" "):
+            for w in (text.split(" ") if text else []):     # "" = an EMPTY reply (Gemini out=0)
                 await self.push_frame(LLMTextFrame(w + " "))
                 await asyncio.sleep(0.025)
             await self.push_frame(LLMFullResponseEndFrame())
@@ -956,6 +963,26 @@ def chk_backchannel(res):
     # never broadcasts an interruption. The cut-and-resume path (call
     # 1e374b99) is covered by the unit tests and by sim.replay's
     # "resumed after a backchannel" invariant, which runs on real calls.
+    return f
+
+
+# ── single-flight review (2026-10-01): an EMPTY model reply (Gemini out=0, call
+#    963347ab) must get the next line at once — the one-door cue gate first
+#    dropped that recovery as "a reply is already on its way" (the empty reply
+#    itself) and the caller sat through ~8 s of silence and "are you there?" ──
+def chk_empty_reply_gets_the_next_line(res):
+    f = []
+    if not res["caller"]:
+        return ["caller turn missing"]
+    cend = res["caller"][0][1]
+    nxt = [bs for bs, _ in res["bot"] if bs > cend]
+    if not nxt or nxt[0] - cend > 4.5:
+        f.append(f"after an empty reply the next line came {round(nxt[0] - cend, 1) if nxt else 'never'}s "
+                 "after the caller stopped (bar 4.5 s)")
+    if not any(PITCH_Q[:30] in t for t in _assistant_texts(res)):
+        f.append("the next line never played")
+    if res["nudges"] and nxt and nxt[0] - cend > 4.5:
+        f.append("the caller got 'are you there?' instead of the next line")
     return f
 
 
@@ -1639,6 +1666,11 @@ SCENARIOS: List[Scenario] = [
              replies=[],
              checks=chk_silent, max_secs=45,
              note="the callee's pickup 'Hello' lands before the opening, then nothing: the nudge must still come"),
+    Scenario("empty_reply_gets_the_next_line",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=["", PITCH_Q],
+             checks=chk_empty_reply_gets_the_next_line, max_secs=30,
+             note="call 963347ab: Gemini answered out=0; the next line must come at once"),
     Scenario("hello_cuts_opening",
              caller=[Say("Hello.", 0.6, after_bot_start=1, offset=0.8),
                      Say(OPEN_ANSWER, 1.2, after_bot_stop=2, offset=0.8)],

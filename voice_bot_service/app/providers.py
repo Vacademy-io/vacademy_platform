@@ -552,7 +552,7 @@ def with_retire(cls):
     a request is dropped: its words are in the shared context, and the re-run
     answers them. `retire_on_error` is set per call by run_bot only when a
     fallback exists; a fatal error or one outside a request never retires."""
-    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.frames.frames import LLMContextFrame, ServiceSwitcherRequestMetadataFrame
 
     class _Retiring(cls):
         retire_on_error = False
@@ -562,6 +562,15 @@ def with_retire(cls):
         _in_ctx = False
 
         async def process_frame(self, frame, direction):
+            if (isinstance(frame, ServiceSwitcherRequestMetadataFrame)
+                    and getattr(frame, "service", None) is self and self.retired):
+                # The switcher made this service ACTIVE again (the fallback
+                # failed too and failover went back round). The frame is queued
+                # here in order, behind whatever was waiting at the failure —
+                # those were dropped; what follows is new work (design review
+                # 2026-10-01: never un-retired = a mute bot for the rest of the call).
+                self.retired = False
+                logger.info("llm: the switcher went back to the primary — it serves again")
             if isinstance(frame, LLMContextFrame):
                 if self.retired:
                     logger.info("llm: the primary has retired — dropping a request queued "

@@ -3965,12 +3965,7 @@ public class InvoiceService {
      * <p>Status-prefixed invoice numbers ("PAID-*", "PARTIAL-*", "DUE-*",
      * "WAIVED-*", "OVERDUE-*") let the frontend distinguish the synthetic
      * entries from real Invoice rows. Skips DELETED rows.
-     */
-    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
-        return buildSfpInvoiceDTOs(userId, new java.util.HashSet<>());
-    }
-
-    /**
+     *
      * @param coveredInvoiceIds filled with every Invoice reachable from this user's installment
      *                          ledger. An installment paid in parts has a ledger row per payment,
      *                          and each of those payments has its own Invoice; the listing must
@@ -4010,36 +4005,42 @@ public class InvoiceService {
                 for (var ledger : ledgers) {
                     // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
                     // putIfAbsent keeps the most-recent PaymentLog per SFP — that is the one
-                    // the row gets labelled with. Every *other* payment against the same
-                    // installment still has an Invoice of its own, and the loop below walks
-                    // all of them so none is left to be listed twice.
+                    // the row gets labelled with.
                     sfpIdToPaymentLogId.putIfAbsent(
                             ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
-                    if (ledger.getPaymentLogId() != null) {
-                        invoicePaymentLogMappingRepository
-                                .findFirstByPaymentLogId(ledger.getPaymentLogId())
-                                .ifPresent(extra -> {
-                                    Invoice other = extra.getInvoice();
-                                    if (other != null) coveredInvoiceIds.add(other.getId());
-                                });
+                }
+                // Every payment in the ledger in one lookup, not one query per row.
+                Map<String, Invoice> paymentLogIdToInvoice = new HashMap<>();
+                List<String> ledgerPaymentLogIds = ledgers.stream()
+                        .map(l -> l.getPaymentLogId())
+                        .filter(id -> id != null && !id.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+                if (!ledgerPaymentLogIds.isEmpty()) {
+                    for (var mapping : invoicePaymentLogMappingRepository
+                            .findAllByPaymentLogIdIn(ledgerPaymentLogIds)) {
+                        Invoice inv = mapping.getInvoice();
+                        if (inv == null || mapping.getPaymentLog() == null) continue;
+                        paymentLogIdToInvoice.putIfAbsent(mapping.getPaymentLog().getId(), inv);
+                        // An installment paid in parts has a ledger row per payment, and each of
+                        // those payments has an Invoice of its own. The listing has to drop all of
+                        // them, not only the one this installment ends up labelled with, or the
+                        // rest are shown a second time beside the row that already covers them.
+                        coveredInvoiceIds.add(inv.getId());
                     }
                 }
                 for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
-                    invoicePaymentLogMappingRepository
-                            .findFirstByPaymentLogId(e.getValue())
-                            .ifPresent(mapping -> {
-                                Invoice inv = mapping.getInvoice();
-                                if (inv == null) return;
-                                String realInvoiceId = inv.getId();
-                                String pdfFileId = inv.getPdfFileId();
-                                String url = StringUtils.hasText(pdfFileId)
-                                        ? mediaService.getFilePublicUrlById(pdfFileId)
-                                        : null;
-                                coveredInvoiceIds.add(realInvoiceId);
-                                sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
-                                                inv.getInvoiceNumber()});
-                            });
+                    Invoice inv = paymentLogIdToInvoice.get(e.getValue());
+                    if (inv != null) {
+                        String realInvoiceId = inv.getId();
+                        String pdfFileId = inv.getPdfFileId();
+                        String url = StringUtils.hasText(pdfFileId)
+                                ? mediaService.getFilePublicUrlById(pdfFileId)
+                                : null;
+                        sfpIdToPdfInfo.put(e.getKey(),
+                                new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
+                                        inv.getInvoiceNumber()});
+                    }
                 }
             }
         } catch (Exception e) {

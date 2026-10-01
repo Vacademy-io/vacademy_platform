@@ -1664,6 +1664,9 @@ class OpenRouterClient:
         # fails over to the configured fallback instead of burning the whole
         # retry budget on one model.
         self.use_case_fallback_chain: list[str] = []
+        # The admin's default model for video (`ai_model_defaults.default_model_id`).
+        # A call that names no model uses this before the recommended list.
+        self.use_case_default_model: Optional[str] = None
         try:
             # These modules live in the `ai_service.app` package, but this file is
             # loaded flat via sys.path (the dir name is hyphenated), so a bare
@@ -1686,6 +1689,8 @@ class OpenRouterClient:
                 _free_mid = getattr(_free, "model_id", None) if _free else None
                 if _free_mid:
                     models.append(_free_mid)
+            _dm = getattr(getattr(resp, "default_model", None), "model_id", None)
+            self.use_case_default_model = _dm or None
             # Build the always-on fallback chain (deduped; order fallback → default → free).
             for _m in (
                 getattr(resp, "fallback_model", None),
@@ -1698,6 +1703,71 @@ class OpenRouterClient:
         except Exception as e:
             print(f"Warning: Failed to load model chain from registry: {e}")
         return models
+
+    def _user_default_model(self) -> Optional[str]:
+        """The video-wide model the user chose, or None.
+
+        `model_overrides.default` (or the legacy `model=` field) is stamped by the
+        stage resolver on every user-overridable stage with source "user_default",
+        so any such entry carries it.
+        """
+        for entry in (self.stage_model_map or {}).values():
+            if isinstance(entry, tuple) and len(entry) > 1 and entry[1] == "user_default" and entry[0]:
+                return entry[0]
+        return None
+
+    def _select_models(self, model: Optional[str]) -> Tuple[List[str], str]:
+        """Models to try for one call, in order, and the provenance of the first.
+
+        explicit `model=`  >  the stage's routed model  >  the model the user
+        chose  >  the registry's default for video  >  the registry's
+        recommended list  >  this client's default — then the use-case
+        fallback chain, so a dead model fails over instead of failing the run.
+
+        The user's choice and the registry default used to sit BELOW the
+        recommended list. That list is a catalogue ordering, not a routing
+        preference, and it starts with x-ai/grok-4.6 — so every call that named
+        no model and ran outside a mapped stage went to Grok, on a run whose
+        user had picked z-ai/glm-5.3-flash and whose registry default for
+        video is also z-ai/glm-5.3-flash. Nothing in the video pipeline sets
+        the stage for its main calls, so that was most unnamed calls.
+        """
+        source = ""
+        if model:
+            models_to_try = [model]
+        else:
+            stage_routed: Optional[str] = None
+            if self.stage_model_map:
+                _canonical = _normalize_stage_to_taxonomy(_llm_stage.get())
+                if _canonical:
+                    _entry = self.stage_model_map.get(_canonical)
+                    if isinstance(_entry, tuple) and len(_entry) == 2:
+                        stage_routed, source = _entry[0], (_entry[1] or "matrix")
+                    elif isinstance(_entry, str) and _entry:
+                        # Legacy flat-string callers — source unknown.
+                        stage_routed, source = _entry, "matrix"
+            user_default = self._user_default_model()
+            registry_default = getattr(self, "use_case_default_model", None)
+            if stage_routed:
+                models_to_try = [stage_routed]
+            elif user_default:
+                models_to_try, source = [user_default], "user_default"
+            elif registry_default:
+                models_to_try, source = [registry_default], "use_case_default"
+            elif self.model_chain:
+                models_to_try = list(self.model_chain)
+            else:
+                models_to_try = [self.default_model]
+
+        # Always allow failing over to the use-case fallback chain (from
+        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
+        # A single dead/empty model (explicit OR stage-routed) then fails over to
+        # the configured fallback instead of the retry decorator re-hitting the
+        # same broken model 4× and failing the whole run.
+        for _fb in getattr(self, "use_case_fallback_chain", []):
+            if _fb and _fb not in models_to_try:
+                models_to_try = models_to_try + [_fb]
+        return models_to_try, source
 
     def _open_chat(
         self,
@@ -1755,36 +1825,7 @@ class OpenRouterClient:
         # caller's `_llm_stage` ContextVar maps to a taxonomy entry that has a
         # row in `self.stage_model_map`, use that model. Stamps `_source` on
         # the cost event so forensics can attribute the choice.
-        _stage_routed_source = ""
-        if model:
-            models_to_try = [model]
-        else:
-            stage_routed: Optional[str] = None
-            if self.stage_model_map:
-                _runtime_stage = _llm_stage.get()
-                _canonical = _normalize_stage_to_taxonomy(_runtime_stage)
-                if _canonical:
-                    _entry = self.stage_model_map.get(_canonical)
-                    if isinstance(_entry, tuple) and len(_entry) == 2:
-                        stage_routed, _stage_routed_source = _entry[0], (_entry[1] or "matrix")
-                    elif isinstance(_entry, str) and _entry:
-                        # Legacy flat-string callers — source unknown.
-                        stage_routed, _stage_routed_source = _entry, "matrix"
-            if stage_routed:
-                models_to_try = [stage_routed]
-            elif self.model_chain:
-                models_to_try = self.model_chain
-            else:
-                models_to_try = [self.default_model]
-
-        # Always allow failing over to the use-case fallback chain (from
-        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
-        # A single dead/empty model (explicit OR stage-routed) then fails over to
-        # the configured fallback instead of the retry decorator re-hitting the
-        # same broken model 4× and failing the whole run.
-        for _fb in getattr(self, "use_case_fallback_chain", []):
-            if _fb and _fb not in models_to_try:
-                models_to_try = models_to_try + [_fb]
+        models_to_try, _stage_routed_source = self._select_models(model)
 
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
@@ -14813,7 +14854,15 @@ class VideoGenerationPipeline:
         if tier_config.get("edit_choreographer_enabled"):
             try:
                 from edit_choreographer import choreograph_transitions
-                _ec_model = tier_config.get("concept_model") or shot_planner_model
+                # An explicit user model choice beats the tier's frontier pick —
+                # the rule hero-shot escalation already follows ("escalate over
+                # neither"). Reading concept_model directly sent a run whose user
+                # chose z-ai/glm-5.3-flash to anthropic/claude-opus-4-8 here.
+                _ec_model = (
+                    self.script_client._user_default_model()
+                    or tier_config.get("concept_model")
+                    or shot_planner_model
+                )
                 _ec_map, _ec_usage = choreograph_transitions(
                     shot_plan_dict["shots"],
                     llm_chat=self.script_client.chat,
@@ -14877,6 +14926,9 @@ class VideoGenerationPipeline:
                 )
                 _di_model = (
                     self._resolve_stage_model("design_identity")
+                    # same rule as the edit choreographer: the user's choice
+                    # beats the tier's frontier concept model
+                    or self.script_client._user_default_model()
                     or tier_config.get("concept_model")
                     or shot_planner_model
                 )

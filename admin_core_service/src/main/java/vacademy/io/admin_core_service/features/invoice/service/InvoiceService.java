@@ -3924,16 +3924,15 @@ public class InvoiceService {
         for (InvoiceDTO existing : result) {
             if (existing.getId() != null) realInvoiceIds.add(existing.getId());
         }
-        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId);
-        java.util.Set<String> sfpRowsTakingOverRealId = new java.util.HashSet<>();
+        java.util.Set<String> coveredInvoiceIds = new java.util.HashSet<>();
+        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId, coveredInvoiceIds);
         for (InvoiceDTO sfpRow : sfpRows) {
             String id = sfpRow.getId();
-            if (id != null && !id.startsWith("sfp:") && realInvoiceIds.contains(id)) {
-                sfpRowsTakingOverRealId.add(id);
-            }
+            if (id != null && !id.startsWith("sfp:")) coveredInvoiceIds.add(id);
         }
-        if (!sfpRowsTakingOverRealId.isEmpty()) {
-            result.removeIf(r -> r.getId() != null && sfpRowsTakingOverRealId.contains(r.getId()));
+        coveredInvoiceIds.retainAll(realInvoiceIds);
+        if (!coveredInvoiceIds.isEmpty()) {
+            result.removeIf(r -> r.getId() != null && coveredInvoiceIds.contains(r.getId()));
         }
         result.addAll(sfpRows);
 
@@ -3966,8 +3965,14 @@ public class InvoiceService {
      * <p>Status-prefixed invoice numbers ("PAID-*", "PARTIAL-*", "DUE-*",
      * "WAIVED-*", "OVERDUE-*") let the frontend distinguish the synthetic
      * entries from real Invoice rows. Skips DELETED rows.
+     *
+     * @param coveredInvoiceIds filled with every Invoice reachable from this user's installment
+     *                          ledger. An installment paid in parts has a ledger row per payment,
+     *                          and each of those payments has its own Invoice; the listing must
+     *                          drop all of them, not just the one the installment row ends up
+     *                          labelled with, or the rest are counted a second time.
      */
-    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
+    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId, java.util.Set<String> coveredInvoiceIds) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserId(userId);
 
         // Pre-build a sfpId → (realInvoiceId, pdfFileId, pdfUrl) lookup so each
@@ -3999,25 +4004,43 @@ public class InvoiceService {
                 Map<String, String> sfpIdToPaymentLogId = new HashMap<>();
                 for (var ledger : ledgers) {
                     // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
-                    // putIfAbsent keeps the most-recent PaymentLog per SFP.
+                    // putIfAbsent keeps the most-recent PaymentLog per SFP — that is the one
+                    // the row gets labelled with.
                     sfpIdToPaymentLogId.putIfAbsent(
                             ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
                 }
+                // Every payment in the ledger in one lookup, not one query per row.
+                Map<String, Invoice> paymentLogIdToInvoice = new HashMap<>();
+                List<String> ledgerPaymentLogIds = ledgers.stream()
+                        .map(l -> l.getPaymentLogId())
+                        .filter(id -> id != null && !id.isBlank())
+                        .distinct()
+                        .collect(Collectors.toList());
+                if (!ledgerPaymentLogIds.isEmpty()) {
+                    for (var mapping : invoicePaymentLogMappingRepository
+                            .findAllByPaymentLogIdIn(ledgerPaymentLogIds)) {
+                        Invoice inv = mapping.getInvoice();
+                        if (inv == null || mapping.getPaymentLog() == null) continue;
+                        paymentLogIdToInvoice.putIfAbsent(mapping.getPaymentLog().getId(), inv);
+                        // An installment paid in parts has a ledger row per payment, and each of
+                        // those payments has an Invoice of its own. The listing has to drop all of
+                        // them, not only the one this installment ends up labelled with, or the
+                        // rest are shown a second time beside the row that already covers them.
+                        coveredInvoiceIds.add(inv.getId());
+                    }
+                }
                 for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
-                    invoicePaymentLogMappingRepository
-                            .findFirstByPaymentLogId(e.getValue())
-                            .ifPresent(mapping -> {
-                                Invoice inv = mapping.getInvoice();
-                                if (inv == null) return;
-                                String realInvoiceId = inv.getId();
-                                String pdfFileId = inv.getPdfFileId();
-                                String url = StringUtils.hasText(pdfFileId)
-                                        ? mediaService.getFilePublicUrlById(pdfFileId)
-                                        : null;
-                                sfpIdToPdfInfo.put(e.getKey(),
-                                        new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
-                                                inv.getInvoiceNumber()});
-                            });
+                    Invoice inv = paymentLogIdToInvoice.get(e.getValue());
+                    if (inv != null) {
+                        String realInvoiceId = inv.getId();
+                        String pdfFileId = inv.getPdfFileId();
+                        String url = StringUtils.hasText(pdfFileId)
+                                ? mediaService.getFilePublicUrlById(pdfFileId)
+                                : null;
+                        sfpIdToPdfInfo.put(e.getKey(),
+                                new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
+                                        inv.getInvoiceNumber()});
+                    }
                 }
             }
         } catch (Exception e) {

@@ -1976,9 +1976,13 @@ class NoRepeatGate(FrameProcessor):
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
                  request_next_step=None, drop_stale_bridge=None, max_sentences=None,
-                 max_chars=None, ending=None):
+                 max_chars=None, ending=None, primary_errored_since=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
+        # (t) -> did the waterfall's primary LLM error at or after t, with a
+        # fallback to take the turn? Then an empty reply is the failure, not the
+        # model saying nothing — the fallback's re-run answers it.
+        self._primary_errored_since = primary_errored_since or (lambda t: False)
         # The most body sentences one reply may put on the line (0 = no cap).
         # Call bd9e6a0d: a five-sentence pitch became a 30 s monologue
         # (quiz → programme → fees → "identify हों…"), and the parent came back
@@ -2196,6 +2200,12 @@ class NoRepeatGate(FrameProcessor):
         a run that died without a response must not disable recovery for good."""
         return (self._runs_passed > self._responses_started
                 and time.time() - self._last_run_t < 4.0)
+
+    def note_dropped_run(self) -> None:
+        """A run RunGuard passed was dropped by a retired LLM primary: it will
+        never start or end — balance the ledger so it is not "on its way"."""
+        self._responses_started = min(self._responses_started + 1, self._runs_passed)
+        self._responses_ended = min(self._responses_ended + 1, self._responses_started)
 
     def generating(self) -> bool:
         """A run passed and its reply has not finished composing (no End yet).
@@ -2809,6 +2819,12 @@ class NoRepeatGate(FrameProcessor):
             if (not getattr(self, "_text_seen", True) and not self._buf.strip()
                     and not self._killed
                     and not superseded and not self._end_forced() and not self._ending()
+                    # A FAILED primary request ends with no text too. The failover
+                    # re-runs the turn on the fallback; a "continue" cue here
+                    # answered it under the wrong steering, used a next-step slot
+                    # and could add a second reply (timing sim
+                    # vertex_stall_failover_slow_tts, 2026-10-01).
+                    and not self._primary_errored_since(self._last_start_t)
                     and self._request_next_step is not None and self._may_ask_next_step()
                     and _caller_now and not _caller_now.startswith("[")):
                 self._next_steps += 1
@@ -5293,6 +5309,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     else:
         llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
     flags["llm_failed_over"] = False
+    if (llm_fallback is not None and settings.llm_retire_primary
+            and hasattr(llm_primary, "retire_on_error")):
+        llm_primary.retire_on_error = True
+        llm_primary.on_retired_drop = lambda: (no_repeat.note_dropped_run(),
+                                               diag.bump("retired_runs_dropped"))
     _eff_provider = _llm_provider or settings.llm_provider
     diag.llm_vendor = "%s/%s" % (
         _eff_provider,
@@ -5717,6 +5738,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          if _bridge_is_stale(text) else None)
 
     no_repeat = NoRepeatGate(
+        primary_errored_since=lambda t: (llm_fallback is not None and t > 0
+                                         and getattr(llm_primary, "errored_t", 0.0) >= t),
         enabled=lambda: settings.no_repeat_enabled,
         end_forced=lambda: outcome.end_forced,
         last_caller_text=lambda: (outcome.transcript[-1].get("text", "")

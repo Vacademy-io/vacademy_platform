@@ -493,3 +493,17 @@ def test_yes_no_questions_vs_information_questions():
 def test_a_greeting_is_not_agreement():
     for t in ("Namaste.", "नमस्ते जी।", "Hello?", "हाँ जी नमस्ते"):
         assert not is_bare_agreement(t), t
+
+
+
+def test_hindi_hang_up_requests_end_the_call():
+    """Call f1368e22 (2026-10-01): the parent said "काट कर रख दो" and "cut करो";
+    neither matched, and the bot talked for another 4.5 minutes."""
+    from app.turntake import caller_wants_to_end
+    for t in ("वो सब छोड़ो आप वो सब छोड़ो छोड़ो छोड़ो आप मुझे। काट कर रख दो", "cut करो।",
+              "काट दो", "phone रख दो", "फोन रख दीजिए", "call cut कर दो", "फोन बंद करो",
+              "मत call करो", "गलत नंबर है", "मुझे नहीं चाहिए", "ज़रूरत नहीं है", "Cut the call."):
+        assert caller_wants_to_end(t), t
+    for t in ("रहने दो।", "अरे वो सब बताने को रहने दो।", "उसके मार्क्स कट गए थे", "कृष्णा दसवीं class में है।",
+              "call back कर लेना", "फोन पर बात कर लेते हैं", "हाँ जी।"):
+        assert not caller_wants_to_end(t), t

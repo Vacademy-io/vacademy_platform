@@ -592,6 +592,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "stt_failovers": getattr(d, "stt_failovers", 0) or 0,
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
+        "carry_ons": getattr(d, "carry_ons", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
         "floor_holds": getattr(d, "floor_holds", 0) or 0,
         "floor_holds_dropped": getattr(d, "floor_holds_dropped", 0) or 0,
@@ -773,6 +774,54 @@ def chk_backchannel(res):
     # never broadcasts an interruption. The cut-and-resume path (call
     # 1e374b99) is covered by the unit tests and by sim.replay's
     # "resumed after a backchannel" invariant, which runs on real calls.
+    return f
+
+
+# ── call 3812a074 (2026-10-01): a reply that ENDS ON A STATEMENT left the line
+#    silent until the parent said "ठीक है" — ten times, 2-6.5 s each ─────────
+STATEMENT = ("Got it. We help yoga teachers with the daily work around online classes, "
+             "like the link, the reminders and the fees.")
+NEXT_Q = "Right now, who sends the daily class link to your members?"
+
+
+def _longest_bot_gap(res, after: float, until: float) -> float:
+    """Longest silence between consecutive bot utterances that start in
+    [after, until] — the caller is silent there, so every gap is the bot's."""
+    ivs = [iv for iv in res["bot"] if after <= iv[0] <= until]
+    return max((b2[0] - b1[1] for b1, b2 in zip(ivs, ivs[1:])), default=0.0)
+
+
+def chk_statement_carries_on(res):
+    f = []
+    if res["carry_ons"] != 1:
+        f.append(f"carry-ons {res['carry_ons']} (expected 1 after the statement)")
+    said = " ".join(_assistant_texts(res))
+    i, j = said.find(STATEMENT[:30]), said.find(NEXT_Q[:30])
+    if i < 0 or j < i:
+        f.append("the next point never followed the statement")
+    if not res["caller"]:
+        return f + ["caller turn missing"]
+    gap = _longest_bot_gap(res, res["caller"][0][1], res["caller"][0][1] + 25)
+    if gap > 3.2:
+        f.append(f"{gap:.1f}s of silence after the statement (bar 3.2 s)")
+    return f
+
+
+def chk_question_waits(res):
+    f = []
+    if res["carry_ons"]:
+        f.append(f"carried on {res['carry_ons']}x after a QUESTION — the caller's turn")
+    if res["llm_runs"] != 1:
+        f.append(f"{res['llm_runs']} LLM runs after one caller turn and a question")
+    return f
+
+
+def chk_statement_then_ack(res):
+    f = []
+    if res["carry_ons"]:
+        f.append(f"carried on {res['carry_ons']}x although the caller answered at once")
+    if res["llm_runs"] != 2:
+        f.append(f"expected 2 LLM runs (answer + reply to 'Okay.'), got {res['llm_runs']}")
     return f
 
 
@@ -1405,6 +1454,22 @@ SCENARIOS: List[Scenario] = [
              replies=[],
              checks=chk_silent, max_secs=45,
              note="the callee's pickup 'Hello' lands before the opening, then nothing: the nudge must still come"),
+    Scenario("statement_then_silence_carries_on",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[STATEMENT, NEXT_Q],
+             checks=chk_statement_carries_on, max_secs=30,
+             note="call 3812a074: a reply ending on a statement must not wait for 'ठीक है'"),
+    Scenario("question_then_silence_waits",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[PITCH_Q],
+             checks=chk_question_waits, max_secs=30,
+             note="a question hands the turn over: no carry-on, the ordinary idle path"),
+    Scenario("statement_then_ack",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+                     Say("Okay.", 0.5, after_bot_stop=2, offset=0.5)],
+             replies=[STATEMENT, NEXT_Q],
+             checks=chk_statement_then_ack, max_secs=30,
+             note="the caller answers a statement within 0.5 s: their turn, no second reply"),
     Scenario("hello_cuts_opening",
              caller=[Say("Hello.", 0.6, after_bot_start=1, offset=0.8),
                      Say(OPEN_ANSWER, 1.2, after_bot_stop=2, offset=0.8)],

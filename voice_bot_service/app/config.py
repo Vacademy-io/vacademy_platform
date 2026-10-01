@@ -812,6 +812,18 @@ class Settings:
     orphan_transcript_lookback_secs: float = field(
         default_factory=lambda: float(_env("ORPHAN_TRANSCRIPT_LOOKBACK_SECS", "1.5")))
     max_nudges: int = field(default_factory=lambda: int(_env("MAX_NUDGES", "2")))
+    # A reply that ENDS ON A STATEMENT hands nothing over: the caller does not
+    # know it is their turn, and before this the line sat silent until they
+    # filled it with "ठीक है" (call 3812a074, 2026-10-01: ten times, 2-6.5 s
+    # each; 61% of bot turns 28 Sep-1 Oct ended on a statement). After this
+    # much silence the bot carries on with its next point. 0 = off (the 8 s
+    # idle path still asks for the owed line).
+    carry_on_after_statement_secs: float = field(
+        default_factory=lambda: float(_env("CARRY_ON_AFTER_STATEMENT_SECS", "1.5")))
+    # In a row with no word from the caller — then the ordinary idle path
+    # ("are you there?") takes over, so a caller who walked away is not
+    # lectured for a minute.
+    max_carry_ons: int = field(default_factory=lambda: int(_env("MAX_CARRY_ONS", "3")))
     no_words_timeout_secs: float = field(
         default_factory=lambda: float(_env("NO_WORDS_TIMEOUT_SECS", "30.0")))
 

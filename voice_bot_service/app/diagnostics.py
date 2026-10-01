@@ -205,6 +205,7 @@ class CallDiagnostics:
     # the caller could not answer.
     handbacks: int = 0
     empty_replies: int = 0        # genuinely empty model answers re-asked for the next line
+    carry_ons: int = 0            # next point after a statement the caller let sit (call 3812a074)
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
@@ -976,6 +977,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
                 "callerGender": d.caller_gender or None,
+                "carryOns": d.carry_ons,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,

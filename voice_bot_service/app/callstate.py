@@ -30,6 +30,9 @@ class CallState:
     # (VAD blips re-arming it made the hangup escalation unreachable — A10).
     nudged: bool = False
     nudge_count: int = 0
+    # Carry-ons after a statement since the caller last said a word (reset with
+    # nudge_count; capped by settings.max_carry_ons).
+    carry_ons: int = 0
     # True while bot audio is playing / caller is audibly speaking (VAD).
     bot_speaking: bool = False
     user_speaking: bool = False

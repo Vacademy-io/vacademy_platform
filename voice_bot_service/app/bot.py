@@ -3268,6 +3268,13 @@ def next_step_cue(held: str, kind: str = "", attempt: int = 0):
             "[They just asked you: \"" + q + "\". Your last reply ignored it and repeated "
             "your script line. Answer their question directly, in one or two short "
             "sentences, then stop. Do not repeat the expectations line.]")
+    if kind == "carry-on":
+        # The last reply ended on a statement and the caller let it sit: they are
+        # listening, waiting for us (call 3812a074).
+        return "carry-on", (
+            "[They are listening and waiting for you. Carry on with your NEXT point "
+            "now, in one or two short sentences, and END WITH A QUESTION. Do not "
+            "acknowledge, apologise or repeat what you just said.]")
     if kind == "continue":
         # The bot's own turn went nowhere: an EMPTY reply from the model, or a
         # statement the caller has had nothing to answer (call 963347ab).
@@ -5357,6 +5364,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if not backchannel:
             flags["nudged"] = False
             flags["nudge_count"] = 0
+            flags["carry_ons"] = 0
 
     def _on_duck():
         flags["ducked_since"] = time.time()
@@ -5782,6 +5790,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # NOTE for 1.4: TTSSpeakFrame text IS captured into the assistant context by
     # the aggregator (verified in the POC — manual context appends double-add).
     @aggregators.user().event_handler("on_user_turn_idle")
+    def _carry_on_due(now: float) -> bool:
+        """The last reply ENDED ON A STATEMENT, it has finished playing, and the
+        caller has not made a sound since: carry on rather than wait for them to
+        say "ठीक है" (call 3812a074). Never after a question, a bare
+        acknowledgment (the next-step path owns that), a goodbye, or any caller
+        voice since the bot stopped — they may be about to speak."""
+        if settings.carry_on_after_statement_secs <= 0:
+            return False
+        if flags["carry_ons"] >= settings.max_carry_ons:
+            return False
+        if not no_repeat.owes_line() or no_repeat.owed_after_filler():
+            return False
+        stopped = flags["bot_stopped_t"]
+        if (not stopped or flags["bot_speaking"] or flags["user_speaking"]
+                or flags["voice_tick_t"] >= stopped or flags["user_started_t"] >= stopped):
+            return False
+        if (flags["stopping_since"] is not None or flags["ducked_since"] > 0
+                or flags["end_pending_since"] > 0 or outcome.end_requested
+                or _reply_in_flight()):
+            return False
+        return now - stopped >= settings.carry_on_after_statement_secs
+
     async def _on_idle(_agg, *_args):
         if flags["stopping_since"] is not None or flags["ducked_since"] > 0:
             return
@@ -6078,6 +6108,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                             now - flags["user_stopped_t"] if flags["user_stopped_t"] else -1.0,
                             now - flags["voice_tick_t"] if flags["voice_tick_t"] else -1.0,
                             now - flags["bot_stopped_t"], flags["orphan_asks"])
+            if d.kind == NONE and _carry_on_due(now):
+                flags["carry_ons"] += 1
+                diag.bump("carry_ons")
+                no_repeat.owed_line_requested()
+                logger.info("carry-on: the reply ended on a statement and the caller let "
+                            "it sit %.1fs — the next point (%d in a row) corr=%s",
+                            now - flags["bot_stopped_t"], flags["carry_ons"], corr)
+                flags["bot_stopped_t"] = now        # one per silence
+                await _ask_for_next_step("", kind="carry-on")
+                continue
             if d.kind == NONE:
                 # Idle fallback for the turn pipecat's idle controller cannot see:
                 # its timer starts on BotStoppedSpeaking while the caller is quiet,

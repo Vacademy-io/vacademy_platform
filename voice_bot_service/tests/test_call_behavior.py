@@ -6877,3 +6877,40 @@ def test_memory_reclaim_waits_for_idle_before_the_first_freeze(monkeypatch):
 def test_call_modules_preload():
     from app import memory
     assert memory.preload_call_modules() >= 1
+
+
+# ── call 3812a074 (2026-10-01): a reply ending on a STATEMENT left the line
+#    silent until the parent said "ठीक है" — ten times, 2-6.5 s each ────────
+def test_carry_on_cue_asks_for_the_next_point_and_a_question():
+    what, cue = b.next_step_cue("", "carry-on")
+    assert what == "carry-on"
+    assert "END WITH A QUESTION" in cue and "Do not" in cue and "repeat" in cue
+
+
+def test_carry_on_only_after_a_statement_and_caller_silence():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    due = src[src.index("def _carry_on_due(now"):src.index("async def _on_idle(")]
+    # never after a question or a bare acknowledgment (the next-step path owns that)
+    assert "no_repeat.owes_line()" in due and "no_repeat.owed_after_filler()" in due
+    # never when the caller has made ANY sound since the bot stopped
+    assert 'flags["voice_tick_t"] >= stopped' in due and 'flags["user_started_t"] >= stopped' in due
+    # never over a reply in flight, a goodbye, a duck or a stop
+    for guard in ("_reply_in_flight()", 'flags["end_pending_since"]', "outcome.end_requested",
+                  'flags["ducked_since"]', 'flags["stopping_since"]'):
+        assert guard in due, guard
+    assert "settings.max_carry_ons" in due
+    loop = src[src.index("if d.kind == NONE and _carry_on_due(now):"):]
+    loop = loop[:loop.index("continue")]
+    assert 'flags["bot_stopped_t"] = now' in loop, "one carry-on per silence"
+    assert "owed_line_requested()" in loop
+
+
+def test_carry_ons_reset_when_the_caller_speaks_and_have_their_own_budget():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    i = src.index('flags["nudge_count"] = 0\n            flags["carry_ons"] = 0')
+    assert i > 0
+    from app.config import get_settings
+    s = get_settings()
+    assert s.carry_on_after_statement_secs == 1.5 and s.max_carry_ons == 3

@@ -99,6 +99,8 @@ export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-se
 
 // Learner self-service subscriptions + autopay mandate (list + cancel)
 export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner/subscription/v1`;
+export const LEARNER_SUBSCRIPTION_RENEW_COMPLETE = (userPlanId: string) =>
+  `${LEARNER_SUBSCRIPTION_LIST}/${userPlanId}/renew-complete`;
 export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
   `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
 

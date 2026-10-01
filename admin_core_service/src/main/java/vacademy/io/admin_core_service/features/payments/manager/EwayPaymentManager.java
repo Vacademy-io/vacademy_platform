@@ -180,6 +180,122 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         return paymentResponse;
     }
 
+    // ===================================================================================
+    // Responsive Shared Page (hosted checkout)
+    // ===================================================================================
+
+    /**
+     * Reserves an eWay Responsive Shared Page session and returns the hosted URL to send the
+     * learner to.
+     *
+     * <p>Different endpoint, same account: the Direct calls above post a card we collected to
+     * {@code /Transaction}, whereas this posts only the ORDER to
+     * {@code /CreateAccessCodeShared} and lets eWay collect the card on its own page. Nothing
+     * is charged here -- eWay charges when the learner submits, and the outcome is read back
+     * with {@link #getSharedAccessCodeResult(String, Map)} after the redirect.
+     *
+     * @param redirectUrl where eWay returns the browser; eWay appends {@code ?AccessCode=...}
+     * @param cancelUrl   where "cancel" on the hosted page returns the browser
+     */
+    public EwaySharedPageResponseDTO createSharedAccessCode(PaymentInitiationRequestDTO request,
+                                                            UserDTO user,
+                                                            String redirectUrl,
+                                                            String cancelUrl,
+                                                            Map<String, Object> paymentGatewaySpecificData) {
+        EwayApiResponseDTO.Customer customer = new EwayApiResponseDTO.Customer();
+        if (user != null) {
+            customer.FirstName = firstName(user.getFullName());
+            customer.LastName = lastName(user.getFullName());
+            customer.Email = user.getEmail();
+        }
+        if (!StringUtils.hasText(customer.Email)) {
+            customer.Email = request.getEmail();
+        }
+
+        EwayApiResponseDTO.PaymentDetails payment = new EwayApiResponseDTO.PaymentDetails();
+        payment.TotalAmount = (int) CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency());
+        payment.CurrencyCode = request.getCurrency();
+        payment.InvoiceDescription = request.getDescription();
+        // Our payment_log id, so an eWay-side transaction can always be traced back to the
+        // order it belongs to even if the learner never returns to the redirect URL.
+        payment.InvoiceReference = request.getOrderId();
+
+        EwayApiResponseDTO.Transaction transaction = new EwayApiResponseDTO.Transaction();
+        transaction.Customer = customer;
+        transaction.Payment = payment;
+        transaction.Method = "ProcessPayment";
+        transaction.TransactionType = "Purchase";
+        transaction.RedirectUrl = redirectUrl;
+        transaction.CancelUrl = cancelUrl;
+
+        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
+        String password = (String) paymentGatewaySpecificData.get("password");
+        String baseUrl = (String) paymentGatewaySpecificData.get("baseUrl");
+        if (!StringUtils.hasText(apiKey) || !StringUtils.hasText(password) || !StringUtils.hasText(baseUrl)) {
+            throw new VacademyException("Eway API credentials (apiKey, password, baseUrl) are missing.");
+        }
+        String authHeader = "Basic " + Base64.getEncoder()
+                .encodeToString((apiKey + ":" + password).getBytes());
+
+        EwaySharedPageResponseDTO response = webClient.post()
+                .uri(baseUrl + "/CreateAccessCodeShared")
+                .header("Authorization", authHeader)
+                .header("Content-Type", "application/json")
+                .bodyValue(transaction)
+                .retrieve()
+                .onStatus(status -> status.isError(),
+                        resp -> Mono.error(new VacademyException("Eway shared-page error: " + resp.statusCode())))
+                .bodyToMono(EwaySharedPageResponseDTO.class)
+                .block();
+
+        if (response == null || StringUtils.hasText(response.Errors)
+                || !StringUtils.hasText(response.SharedPaymentUrl)) {
+            throw new VacademyException("eWay could not open a hosted checkout: "
+                    + (response == null ? "no response" : response.Errors));
+        }
+        LOGGER.info("eWay shared page opened for order {} (accessCode {})",
+                request.getOrderId(), response.AccessCode);
+        return response;
+    }
+
+    /**
+     * Reads back what happened on the hosted page. Called after eWay redirects the learner to
+     * our RedirectUrl, and safe to call again later for an order whose learner never came back.
+     */
+    public EwayApiResponseDTO getSharedAccessCodeResult(String accessCode,
+                                                        Map<String, Object> paymentGatewaySpecificData) {
+        String apiKey = (String) paymentGatewaySpecificData.get("apiKey");
+        String password = (String) paymentGatewaySpecificData.get("password");
+        String baseUrl = (String) paymentGatewaySpecificData.get("baseUrl");
+        String authHeader = "Basic " + Base64.getEncoder()
+                .encodeToString((apiKey + ":" + password).getBytes());
+
+        return webClient.get()
+                .uri(baseUrl + "/AccessCode/" + accessCode)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .onStatus(status -> status.isError(),
+                        resp -> Mono.error(new VacademyException("Eway access-code lookup error: " + resp.statusCode())))
+                .bodyToMono(EwayApiResponseDTO.class)
+                .block();
+    }
+
+    private String firstName(String fullName) {
+        if (!StringUtils.hasText(fullName)) {
+            return "Member";
+        }
+        String[] parts = fullName.trim().split("\\s+");
+        return parts[0];
+    }
+
+    private String lastName(String fullName) {
+        if (!StringUtils.hasText(fullName)) {
+            return "";
+        }
+        String[] parts = fullName.trim().split("\\s+");
+        return parts.length > 1 ? parts[parts.length - 1] : "";
+    }
+
     /**
      * Replaces the card stored against an existing eWay Token Customer
      * (Method="UpdateTokenCustomer" on the same Transaction endpoint). The

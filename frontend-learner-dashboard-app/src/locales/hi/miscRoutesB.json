@@ -564,16 +564,23 @@
       "changePlan": "Change plan",
       "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
       "planChangeCancelScheduled": "Cancel this change",
-      "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
-      "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
-      "planChangeCompletePayment": "Complete payment",
-      "planChangeDiscard": "Discard this change",
       "cardDialog": {
         "title": "जारी रखने के लिए कार्ड जोड़ें",
         "description": "इस सदस्यता के लिए हमारे पास कोई कार्ड सहेजा नहीं है। अभी भुगतान करने के लिए कार्ड दर्ज करें — हम इसे सुरक्षित रूप से सहेज लेंगे ताकि आगे का नवीनीकरण एक टैप में हो जाए।",
         "loadingForm": "सुरक्षित कार्ड फ़ॉर्म लोड हो रहा है..."
       },
       "autopayDefaultNotice": "आगे के नवीनीकरण इसी कार्ड से स्वतः लिए जाएंगे। आप इस पेज से कभी भी ऑटो-पे बंद कर सकते हैं।"
+    },
+    "paymentReturn": {
+      "confirmingTitle": "आपका भुगतान सत्यापित किया जा रहा है…",
+      "confirmingBody": "कृपया यह पेज बंद न करें — हम भुगतान प्रदाता से पुष्टि कर रहे हैं।",
+      "paidTitle": "भुगतान प्राप्त हुआ!",
+      "paidBody": "आपकी सदस्यता नवीनीकृत हो गई है। हर जगह दिखने में कुछ सेकंड लग सकते हैं।",
+      "failedTitle": "भुगतान पूरा नहीं हुआ",
+      "failedBody": "कोई राशि नहीं ली गई है। आप अपने सदस्यता पेज से दोबारा कोशिश कर सकते हैं।",
+      "cancelled": "आपने भुगतान रद्द कर दिया। कोई राशि नहीं ली गई है।",
+      "missingReference": "हम यह नहीं बता सके कि यह कौन-सा भुगतान था। कृपया सदस्यता पेज से दोबारा कोशिश करें।",
+      "backToMembership": "मेरी सदस्यता पर वापस जाएँ"
     }
   },
   "termsAndConditions": {

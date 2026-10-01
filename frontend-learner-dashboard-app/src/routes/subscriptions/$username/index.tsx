@@ -17,9 +17,6 @@ import {
   RazorpayCheckoutForm,
   type RazorpayCheckoutFormRef,
 } from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
-import { EwayCardForm } from "@/components/common/enroll-by-invite/-components/eway-card-form";
-import { EwayProvider } from "@/components/common/enroll-by-invite/-contexts/eway-context";
-import { fetchPaymentGatewayDetails } from "@/routes/study-library/courses/course-details/-services/enrollment-api";
 
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -40,15 +37,14 @@ import { SessionLoginForm } from "@/routes/study-library/live-class/$username/co
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   cancelScheduledPlanChange,
-  isPlanChangeAwaitingPayment,
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
   isRenewalAlreadyPaid,
-  isRenewalCardRequired,
+  isRenewalRedirect,
+  renewalRedirectUrl,
   renewalResponseData,
   requestPlanChange,
-  type RenewalCardPayload,
   type PlanChangeResult,
   type PlanChangeTarget,
   type Subscription,
@@ -231,51 +227,6 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
   const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
-  // Set when the backend answers REQUIRES_CARD: the learner has no card on file for a
-  // stored-token gateway, so we collect one and retry the same renewal.
-  const [cardPromptFor, setCardPromptFor] = useState<Subscription | null>(null);
-  const [ewayKeys, setEwayKeys] = useState<{
-    encryptionKey: string;
-    publicKey: string;
-  } | null>(null);
-  // The eCrypt payload EwayCardForm hands us once every field is valid.
-  const [ewayCard, setEwayCard] = useState<{
-    encryptedNumber: string;
-    encryptedCVN: string;
-    cardData: { name: string; expiryMonth: string; expiryYear: string };
-  } | null>(null);
-
-  // EwayCardForm needs the institute's eCrypt keys (via EwayProvider) to encrypt the card
-  // in the browser — the raw number never reaches us.
-  useEffect(() => {
-    if (!cardPromptFor || ewayKeys) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await getTokenFromStorage(TokenKey.accessToken);
-        const keys = (await fetchPaymentGatewayDetails(
-          instituteId,
-          // renewal_vendor, not vendor: the plan may have been sold on a gateway the
-          // institute no longer has, and the card form must encrypt for the gateway we
-          // are about to charge.
-          cardPromptFor.renewal_vendor || cardPromptFor.vendor || "EWAY",
-          token ?? ""
-        )) as unknown as { encryptionKey?: string; publicKey?: string };
-        if (!cancelled) {
-          setEwayKeys({
-            encryptionKey: keys?.encryptionKey || "",
-            publicKey: keys?.publicKey || "",
-          });
-        }
-      } catch {
-        // Leave keys null → the form renders unconfigured and Pay stays disabled.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cardPromptFor, ewayKeys, instituteId]);
-
   /**
    * Whether this renewal should arm autopay: the learner's explicit choice if they made
    * one, otherwise the institute's default. `??` not `||` — an explicit false must survive.
@@ -283,10 +234,6 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   const autopayWanted = (sub: Subscription) =>
     autopayChoice[sub.user_plan_id] ?? Boolean(sub.autopay_default);
 
-  const closeCardPrompt = () => {
-    setCardPromptFor(null);
-    setEwayCard(null);
-  };
 
   const refetchSoon = () => {
     // The gateway webhook reactivates the plan asynchronously — refetch a few
@@ -302,7 +249,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
     );
   };
 
-  const startRenewal = async (sub: Subscription, card?: RenewalCardPayload) => {
+  const startRenewal = async (sub: Subscription) => {
     try {
       setRenewingPlanId(sub.user_plan_id);
       let email = "";
@@ -328,13 +275,18 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         withAutopay,
         sub.instant_renewal
           ? undefined
-          : mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD,
-        card
+          : mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
       );
-      // No card on file yet: nothing was charged. Collect one and come back through here
-      // with it — this is a prompt, not a failure, so no error toast.
-      if (isRenewalCardRequired(response)) {
-        setCardPromptFor(sub);
+      // Hosted gateway: nothing charged yet. The learner finishes on the gateway's own card
+      // page and comes back to /subscriptions/payment-return, which confirms the order.
+      // Leave renewingPlanId set — the page is navigating away, and clearing it would flash
+      // the button back to its idle label first.
+      if (isRenewalRedirect(response)) {
+        const url = renewalRedirectUrl(response);
+        if (!url) {
+          throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
+        }
+        window.location.href = url;
         return;
       }
       // Stored-token gateway (eWay): the backend already charged the saved card and
@@ -345,7 +297,6 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         toast.success(t("subscriptions.manage.toast.paymentReceivedTitle"), {
           description: t("subscriptions.manage.toast.paymentReceivedDescription"),
         });
-        closeCardPrompt();
         refetchSoon();
         return;
       }
@@ -672,55 +623,8 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               </div>
             )}
 
-            {/* A checkout opened and never paid. It blocks a second attempt until it is
-                finished or dropped, so both ways out are offered here. */}
-            {isPlanChangeAwaitingPayment(sub.scheduled_plan_change) && (
-              <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-600">
-                <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
-                <div className="min-w-0 flex-1">
-                  <span>
-                    {sub.scheduled_plan_change?.amount_due_now != null
-                      ? t("subscriptions.manage.planChangeAwaitingPayment", {
-                          plan: sub.scheduled_plan_change?.to_plan_name,
-                          amount: formatPrice(
-                            sub.scheduled_plan_change?.amount_due_now,
-                            sub.scheduled_plan_change?.currency ?? sub.currency
-                          ),
-                        })
-                      : t("subscriptions.manage.planChangeAwaitingPaymentNoAmount", {
-                          plan: sub.scheduled_plan_change?.to_plan_name,
-                        })}
-                  </span>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <MyButton
-                      type="button"
-                      scale="small"
-                      buttonType="primary"
-                      layoutVariant="default"
-                      onClick={() => setToChange(sub)}
-                      disable={changingPlanId === sub.user_plan_id}
-                    >
-                      <CreditCard className="me-1.5 size-4" />
-                      {t("subscriptions.manage.planChangeCompletePayment")}
-                    </MyButton>
-                    <MyButton
-                      type="button"
-                      scale="small"
-                      buttonType="text"
-                      layoutVariant="default"
-                      disable={cancelPlanChangeMutation.isPending}
-                      onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
-                    >
-                      {t("subscriptions.manage.planChangeDiscard")}
-                    </MyButton>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* A downgrade already booked for the end of the cycle. */}
-            {sub.scheduled_plan_change &&
-              !isPlanChangeAwaitingPayment(sub.scheduled_plan_change) && (
+            {sub.scheduled_plan_change && (
               <div className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-sm text-info-600">
                 <ArrowsClockwise className="mt-0.5 size-4 shrink-0" />
                 <div className="min-w-0 flex-1">
@@ -774,87 +678,10 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
         subscription={toChange}
         instituteId={instituteId}
         isSubmitting={Boolean(changingPlanId)}
-        preselectPlanId={toChange?.scheduled_plan_change?.to_plan_id ?? null}
         onConfirm={(target, withAutopay, mandateMethod) =>
           startPlanChange(toChange as Subscription, target, withAutopay, mandateMethod)
         }
       />
-
-      {/* Card capture for a stored-token gateway with nothing on file. The card is
-          encrypted in the browser by EwayCardForm (eCrypt) and the encrypted values are
-          what we post; the backend saves it as a reusable token, so the next renewal is
-          one tap. */}
-      <Dialog
-        open={Boolean(cardPromptFor)}
-        onOpenChange={(open) => {
-          if (!open) closeCardPrompt();
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("subscriptions.manage.cardDialog.title")}</DialogTitle>
-            <DialogDescription>
-              {t("subscriptions.manage.cardDialog.description")}
-            </DialogDescription>
-          </DialogHeader>
-          {ewayKeys ? (
-            <EwayProvider
-              encryptionKey={ewayKeys.encryptionKey}
-              publicKey={ewayKeys.publicKey}
-            >
-              <EwayCardForm
-                isProcessing={Boolean(
-                  cardPromptFor && renewingPlanId === cardPromptFor.user_plan_id
-                )}
-                onPaymentReady={setEwayCard}
-                onError={(msg) =>
-                  toast.error(t("subscriptions.manage.toast.startFailedTitle"), {
-                    description: msg,
-                  })
-                }
-              />
-            </EwayProvider>
-          ) : (
-            <div className="flex items-center justify-center py-6 text-gray-500">
-              <SpinnerGap className="me-2 size-4 animate-spin" />
-              {t("subscriptions.manage.cardDialog.loadingForm")}
-            </div>
-          )}
-          <DialogFooter>
-            <MyButton
-              type="button"
-              scale="small"
-              buttonType="primary"
-              layoutVariant="default"
-              disable={
-                !ewayCard ||
-                !cardPromptFor ||
-                renewingPlanId === cardPromptFor.user_plan_id
-              }
-              onClick={() => {
-                if (!cardPromptFor || !ewayCard) return;
-                startRenewal(cardPromptFor, {
-                  card_name: ewayCard.cardData.name,
-                  card_number: ewayCard.encryptedNumber,
-                  cvn: ewayCard.encryptedCVN,
-                  expiry_month: ewayCard.cardData.expiryMonth,
-                  expiry_year: ewayCard.cardData.expiryYear,
-                });
-              }}
-            >
-              <CreditCard className="me-1.5 size-4" />
-              {cardPromptFor && renewingPlanId === cardPromptFor.user_plan_id
-                ? t("subscriptions.manage.startingPayment")
-                : t("subscriptions.manage.payToContinue", {
-                    amount: formatPrice(
-                      cardPromptFor?.plan_price,
-                      cardPromptFor?.currency
-                    ),
-                  })}
-            </MyButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Gateway checkout host — visually hidden (its built-in card UI shows a
           placeholder amount); the SDK's payment modal attaches to document.body,

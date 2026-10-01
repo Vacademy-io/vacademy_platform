@@ -104,6 +104,7 @@ import {
 import {
     WorkedWindowFilter,
     workedWindowFromIso,
+    WORKED_WINDOW_CUSTOM,
 } from '@/components/shared/leads/worked-window-filter';
 import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 import { MyDropdown } from '@/components/design-system/dropdown';
@@ -310,11 +311,30 @@ const RecentLeadsContent = () => {
     // "called in the last 24h", and the submitted filter can never say so.
     const [calledWindow, setCalledWindow] = useState(urlSearch.calledWithin ?? '');
     const [workedWindow, setWorkedWindow] = useState(urlSearch.workedWithin ?? '');
+    // Explicit from–to, only read while the matching window holds WORKED_WINDOW_CUSTOM.
+    const [calledRange, setCalledRange] = useState({
+        from: urlSearch.calledFrom ?? '',
+        to: urlSearch.calledTo ?? '',
+    });
+    const [workedRange, setWorkedRange] = useState({
+        from: urlSearch.workedFrom ?? '',
+        to: urlSearch.workedTo ?? '',
+    });
     // Recomputed per render on purpose — an absolute instant frozen in state would
     // silently go stale as the page sits open, so "last 24 hours" would keep meaning
     // 24 hours before the page loaded rather than 24 hours before now.
-    const calledFromIso = workedWindowFromIso(calledWindow);
-    const workedFromIso = workedWindowFromIso(workedWindow);
+    // A preset is rolling and open-ended at the top; a custom range bounds both ends
+    // by calendar day, exactly like the submitted-date filter beside it.
+    const calledIsCustom = calledWindow === WORKED_WINDOW_CUSTOM;
+    const workedIsCustom = workedWindow === WORKED_WINDOW_CUSTOM;
+    const calledFromIso = calledIsCustom
+        ? startOfDayIso(calledRange.from)
+        : workedWindowFromIso(calledWindow);
+    const calledToIso = calledIsCustom ? endOfDayIso(calledRange.to) : undefined;
+    const workedFromIso = workedIsCustom
+        ? startOfDayIso(workedRange.from)
+        : workedWindowFromIso(workedWindow);
+    const workedToIso = workedIsCustom ? endOfDayIso(workedRange.to) : undefined;
     const appliedRange = useMemo(
         () =>
             rangeDays === CUSTOM_DATE_VALUE
@@ -456,7 +476,11 @@ const RecentLeadsContent = () => {
                 called: callHistoryFilter || undefined,
                 calledCount: callCountParam ? String(callCountParam) : undefined,
                 calledWithin: calledWindow || undefined,
+                calledFrom: calledIsCustom && calledRange.from ? calledRange.from : undefined,
+                calledTo: calledIsCustom && calledRange.to ? calledRange.to : undefined,
                 workedWithin: workedWindow || undefined,
+                workedFrom: workedIsCustom && workedRange.from ? workedRange.from : undefined,
+                workedTo: workedIsCustom && workedRange.to ? workedRange.to : undefined,
                 utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
                 utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
                 utmCampaign: utmFilters.campaign?.length
@@ -487,6 +511,10 @@ const RecentLeadsContent = () => {
         callCountParam,
         calledWindow,
         workedWindow,
+        calledIsCustom,
+        workedIsCustom,
+        calledRange,
+        workedRange,
         utmFilters,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
@@ -677,6 +705,12 @@ const RecentLeadsContent = () => {
             callCountParam,
             calledWindow,
             workedWindow,
+            // The raw yyyy-mm-dd, NOT the derived instants: a preset's instant is
+            // Date.now()-based and would change the key on every single render.
+            calledRange.from,
+            calledRange.to,
+            workedRange.from,
+            workedRange.to,
             customFieldFiltersKey,
             utmFiltersKey,
             page,
@@ -705,7 +739,9 @@ const RecentLeadsContent = () => {
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
                 called_from_local: calledFromIso,
+                called_to_local: calledToIso,
                 activity_from_local: workedFromIso,
+                activity_to_local: workedToIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -887,7 +923,9 @@ const RecentLeadsContent = () => {
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
                 called_from_local: calledFromIso,
+                called_to_local: calledToIso,
                 activity_from_local: workedFromIso,
+                activity_to_local: workedToIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -1256,7 +1294,9 @@ const RecentLeadsContent = () => {
                     call_history_filter: callHistoryFilter || undefined,
                     call_count_value: callCountParam,
                     called_from_local: calledFromIso,
+                    called_to_local: calledToIso,
                     activity_from_local: workedFromIso,
+                    activity_to_local: workedToIso,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1394,20 +1434,40 @@ const RecentLeadsContent = () => {
         if (days === 30) return t('dateRangeOptions.last30Days');
         return t('chips.dateRangeFallback');
     };
+    // A custom window reads out its own dates; without both it is not applied yet,
+    // so the chip says so rather than claiming a filter that is doing nothing.
+    const windowChipLabel = (window: string, range: { from: string; to: string }): string => {
+        if (window !== WORKED_WINDOW_CUSTOM) return workedWindowLabel(window);
+        return range.from && range.to
+            ? t('chips.dateRangeCustomWithDates', { from: range.from, to: range.to })
+            : t('chips.dateRangeCustomFallback');
+    };
+    const customRangeLabels = {
+        setDates: t('filters.customDate.setDates'),
+        from: t('filters.customDate.from'),
+        to: t('filters.customDate.to'),
+        done: t('filters.customDate.done'),
+    };
     if (calledWindow) {
         chips.push({
-            label: t('chips.calledWithin', { window: workedWindowLabel(calledWindow) }),
+            label: t('chips.calledWithin', {
+                window: windowChipLabel(calledWindow, calledRange),
+            }),
             onRemove: () => {
                 setCalledWindow('');
+                setCalledRange({ from: '', to: '' });
                 setPage(0);
             },
         });
     }
     if (workedWindow) {
         chips.push({
-            label: t('chips.workedWithin', { window: workedWindowLabel(workedWindow) }),
+            label: t('chips.workedWithin', {
+                window: windowChipLabel(workedWindow, workedRange),
+            }),
             onRemove: () => {
                 setWorkedWindow('');
+                setWorkedRange({ from: '', to: '' });
                 setPage(0);
             },
         });
@@ -1546,6 +1606,16 @@ const RecentLeadsContent = () => {
                             anyLabel: t('filters.calledWithin.any'),
                             placeholder: t('filters.calledWithin.placeholder'),
                             optionLabel: (hours) => workedWindowLabel(String(hours)),
+                            customLabel: t('dateRangeOptions.customRange'),
+                        }}
+                        custom={{
+                            from: calledRange.from,
+                            to: calledRange.to,
+                            onChange: (from, to) => {
+                                setCalledRange({ from, to });
+                                setPage(0);
+                            },
+                            labels: customRangeLabels,
                         }}
                     />
                     <WorkedWindowFilter
@@ -1559,6 +1629,16 @@ const RecentLeadsContent = () => {
                             anyLabel: t('filters.workedWithin.any'),
                             placeholder: t('filters.workedWithin.placeholder'),
                             optionLabel: (hours) => workedWindowLabel(String(hours)),
+                            customLabel: t('dateRangeOptions.customRange'),
+                        }}
+                        custom={{
+                            from: workedRange.from,
+                            to: workedRange.to,
+                            onChange: (from, to) => {
+                                setWorkedRange({ from, to });
+                                setPage(0);
+                            },
+                            labels: customRangeLabels,
                         }}
                     />
                     {filterCustomFields.map((f) =>

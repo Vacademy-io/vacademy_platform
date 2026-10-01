@@ -2,7 +2,8 @@
 import numpy as np
 import pytest
 
-from app.caller_gender import PitchTracker, gender_from_words, summarize, yin_f0
+from app.caller_gender import (PitchTracker, gender_from_transcript, gender_from_words, summarize,
+                               yin_f0)
 
 SR = 8000
 
@@ -71,14 +72,74 @@ def test_words_mark_the_speakers_gender():
     assert gender_from_words(["मैं उसका पिता बोल रहा हूँ", "मैं बता रही हूँ"])[0] is None
 
 
+def test_latin_role_words_count_in_a_self_reference():
+    assert gender_from_words(["मैं उसका father हूँ"])[0] == "m"
+    assert gender_from_words(["मैं उसकी mummy बोल रही हूँ"])[0] == "f"
+    assert gender_from_words(["हाँ मैं papa ji"])[0] == "m"
+
+
+_ASK = "नमस्ते, मैं शिक्षा नेशन से श्रेया बोल रही हूँ। आरव के माता-पिता में से किससे बात कर रही हूँ?"
+
+
+def _call(*turns):
+    return [{"role": r, "text": t} for r, t in turns]
+
+
+@pytest.mark.parametrize("answer,want", [
+    ("पापा।", "m"), ("पापा जी", "m"), ("हाँ जी, पापा बोल रहा हूँ।", "m"), ("Father.", "m"),
+    ("मैं उसका पिता हूँ", "m"), ("papa", "m"),
+    ("मम्मी।", "f"), ("मम्मी जी।", "f"), ("मैं मम्मी बोल रही हूँ", "f"), ("Mother", "f"),
+    ("जी माँ हूँ", "f"),
+])
+def test_a_bare_role_answer_to_the_role_question_labels_the_caller(answer, want):
+    g, ev = gender_from_transcript(_call(("assistant", _ASK), ("user", answer)))
+    assert g == want and ev, (answer, g, ev)
+
+
+@pytest.mark.parametrize("answer", [
+    "पापा अभी घर पर नहीं हैं",          # someone ELSE
+    "मम्मी से बात करो",
+    "हाँ जी बोलिए",
+    "आप कौन बोल रहे हो?",
+    "पापा मम्मी दोनों",
+])
+def test_a_role_word_that_is_not_an_answer_about_the_caller_does_not_label(answer):
+    assert gender_from_transcript(_call(("assistant", _ASK), ("user", answer)))[0] is None, answer
+
+
+def test_a_role_word_only_counts_right_after_the_role_question():
+    t = _call(("assistant", _ASK), ("user", "हाँ जी"),
+              ("assistant", "आरव के मार्क्स कम आए हैं।"), ("user", "पापा।"))
+    assert gender_from_transcript(t)[0] is None
+    t = _call(("assistant", "क्या आप बच्चे के बारे में बात कर सकते हैं?"), ("user", "पापा"))
+    assert gender_from_transcript(t)[0] is None
+
+
+def test_the_role_can_come_as_a_second_final_before_the_agent_speaks_again():
+    t = _call(("assistant", _ASK), ("user", "हाँ जी।"), ("user", "पापा बोल रहा हूँ।"))
+    assert gender_from_transcript(t)[0] == "m"
+    t = _call(("assistant", "मी मुलाच्या आई-वडिलांपैकी कोणाशी बोलतेय, हे कळू शकेल का?"),
+              ("user", "मी आई बोलतेय"))
+    assert gender_from_transcript(t)[0] == "f"
+
+
+def test_role_answer_and_self_reference_that_disagree_give_no_verdict():
+    t = _call(("assistant", _ASK), ("user", "मम्मी"), ("assistant", "जी बताइए"),
+              ("user", "मैं बोल रहा हूँ"))
+    assert gender_from_transcript(t)[0] is None
+
+
 def test_summary_marks_agreement():
-    s = summarize({"gender": "f", "confidence": 0.9, "medianHz": 214.0, "voicedSecs": 3.0},
-                  ["मैं उसकी मम्मी हूँ"])
+    mom = _call(("assistant", _ASK), ("user", "मैं उसकी मम्मी हूँ"))
+    s = summarize({"gender": "f", "confidence": 0.9, "medianHz": 214.0, "voicedSecs": 3.0}, mom)
     assert s["words"] == "f" and s["agree"] is True
-    s = summarize({"gender": "m", "confidence": 0.9}, ["मैं उसकी मम्मी हूँ"])
+    s = summarize({"gender": "m", "confidence": 0.9}, mom)
     assert s["agree"] is False
-    s = summarize({"gender": "unsure", "confidence": 0.0}, ["मैं उसकी मम्मी हूँ"])
+    s = summarize({"gender": "unsure", "confidence": 0.0}, mom)
     assert s["agree"] is None
+    s = summarize({"gender": "m", "confidence": 0.8},
+                  _call(("assistant", _ASK), ("user", "पापा।")))
+    assert s["words"] == "m" and s["agree"] is True
 
 
 @pytest.mark.asyncio

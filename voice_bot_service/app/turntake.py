@@ -59,6 +59,12 @@ _BACKCHANNEL_WORDS = frozenset({
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
     "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",
+    "बोल", "बोलें", "बोलिये",
+    # Marathi "yes" — and how the STT writes some callers' "हाँ". Call 8208166f
+    # (2026-10-01): "हो।" then "हो नमस्ते।" each cut the opening ~1.3 s in and
+    # restarted it; the caller heard "नमस्ते जी, मैं श्रेया" three times in 4 s
+    # and never why we called.
+    "हो", "होय", "बरोबर", "आहे", "ho", "hoy",
     # Romanized Hindi / Hinglish
     "haan", "haa", "han", "ha", "hn", "hm", "hmm", "hmmm", "mm", "mhm", "mhmm",
     "ji", "jee", "jii", "achha", "accha", "acha", "achcha", "thik", "theek",
@@ -537,6 +543,34 @@ def is_question(text: str) -> bool:
     return any(w in _QUESTION_WORDS for w in _words(t))
 
 
+_BUSY_PHRASES = (
+    "busy", "बिज़ी", "बिजी", "व्यस्त", "time नहीं", "टाइम नहीं", "समय नहीं", "वक्त नहीं", "वक़्त नहीं",
+    "बाद में", "baad me", "baad mein", "later", "अभी नहीं", "abhi nahi", "not now", "driving",
+    "drive कर", "गाड़ी चला", "गाडी चला", "bike चला", "बाइक चला", "meeting में", "in a meeting",
+    "free नहीं", "फ्री नहीं", "urgency", "urgent",
+)
+
+
+def caller_is_busy(text: str) -> bool:
+    """"अभी time नहीं है madam" / "I'm driving" / "बाद में call करना" — a real
+    answer that wants a call-back, not a pickup "hello". Call 1f2b97ab
+    (2026-10-01): said twice over the opening, and both times the opening
+    started again from "नमस्ते जी"; they hung up at 15 s."""
+    t = " ".join((text or "").casefold().split())
+    return bool(t) and not t.startswith("[") and any(p in t for p in _BUSY_PHRASES)
+
+
+# Measured on live openings (2026-10-01): Shreya's 168 key chars play in
+# 12.4 s, Aarushi's 41 in 3.0 s — ~13.6/s. 12/s makes the estimate a little
+# LONGER than the audio, so "heard half of it" needs a little more time.
+_OPENING_KEY_CHARS_PER_SEC = 12.0
+
+
+def opening_expected_secs(opening: str) -> float:
+    """Roughly how long the scripted opening plays, from its text."""
+    return len(spoken_key(opening)) / _OPENING_KEY_CHARS_PER_SEC
+
+
 def takes_over_opening(text: str) -> bool:
     """Before our opening has been heard, does THIS utterance earn a model
     reply instead? Only a question to us, a refusal, or our own cue does.
@@ -549,7 +583,7 @@ def takes_over_opening(text: str) -> bool:
         return False
     if t.startswith("["):
         return True                    # our own steering cue
-    if caller_asks_who(t) or caller_wants_to_end(t):
+    if caller_asks_who(t) or caller_wants_to_end(t) or caller_is_busy(t):
         return True
     if is_audio_check(t) or caller_checking_presence(t):
         return False                   # "Hello?" — the opening IS the answer

@@ -36,7 +36,8 @@
         "typeSaveError": "Erreur lors de l'enregistrement de la diapositive {{type}}",
         "forcedOverride": "Diapositive enregistrée (remplacement forcé).",
         "discardedRestored": "Modifications abandonnées — la dernière version enregistrée a été restaurée.",
-        "autoPublished": "Diapositive publiée automatiquement pour relecture"
+        "autoPublished": "Diapositive publiée automatiquement pour relecture",
+        "renameUnsupported": "Ce type de diapositive ne peut pas être renommé ici."
     },
     "ui": {
         "openDoubtSidebar": "Ouvrir le panneau de résolution des questions",

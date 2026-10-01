@@ -868,6 +868,7 @@ export const SlideMaterial = ({
         addUpdateAudioSlide,
         addUpdateScormSlide,
         addUpdateAssessmentSlide,
+        addUpdateHtmlVideoSlide,
     } = useSlidesMutations(
             chapterId || '',
             moduleId || '',
@@ -4508,7 +4509,11 @@ export const SlideMaterial = ({
                                             addUpdateDocumentSlide,
                                             addUpdateQuizSlide, // <-- pass this for QUIZ support
                                             updateAssignmentOrder, // <-- pass for ASSIGNMENT
-                                            updateQuestionOrder // <-- pass for QUESTION
+                                            updateQuestionOrder, // <-- pass for QUESTION
+                                            addUpdateAudioSlide,
+                                            addUpdateScormSlide,
+                                            addUpdateAssessmentSlide,
+                                            addUpdateHtmlVideoSlide
                                         )
                                     }
                                     className="cursor-pointer hover:text-primary-500"

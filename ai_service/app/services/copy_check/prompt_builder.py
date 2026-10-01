@@ -118,6 +118,9 @@ INPUTS
 1. ONE question from the paper, with its paper number, max marks and rubric.
 2. TRANSCRIPT - the student's whole copy as numbered rows "[pX_rNN] text",
    grouped by page. Row ids are the ONLY way to say where a mark goes.
+   A maths row may end "(close-up reading of the same line: ...)": a second
+   look at the SAME handwriting, not extra writing. Where the two differ, use
+   the one that fits the working on the rows before and after it.
 
 MATCHING THE ANSWER - READ THIS FIRST
 The student's question labels may NOT match the paper's numbering (restart per
@@ -247,6 +250,11 @@ def _transcript_for_prompt(layout_map: dict[str, Any], page_ids: list[str] | Non
             text = (line.get("text") or "").strip()
             if line.get("printed"):
                 text = text + " (printed question text)"
+            second = (line.get("second_reading") or "").strip()
+            if second:
+                # A close-up of this maths line (math_reread.py) read it
+                # differently. Neither reader is always right, so both go in.
+                text = text + " (close-up reading of the same line: " + second + ")"
             out.append("[" + str(line.get("line_id")) + "] " + text)
         for region in page.get("regions") or []:
             out.append("[" + str(region.get("region_id")) + "] <"

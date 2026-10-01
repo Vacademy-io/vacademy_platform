@@ -1,7 +1,7 @@
 """grade_copy() — the end-to-end copy-check flow that ai_service runs as a
 FastAPI BackgroundTask. Reads from CopyCheckGradeRequest, drives render_worker
-OCR, resolves rubrics per question, grades each, applies Mathpix fallback on
-low-confidence math lines, and POSTs per-question + final callbacks to Java.
+OCR, resolves rubrics per question, gives low-confidence maths lines a close-up
+second reading, grades each, and POSTs per-question + final callbacks to Java.
 
 Cancellation is checked at three checkpoints — before OCR, before grading,
 and between questions — matching the Java cancellation model.
@@ -21,7 +21,7 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, locate, typed_answers, vision_transcript
+from . import annotator, callbacks, cancellation, locate, math_reread, typed_answers, vision_transcript
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
 from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
@@ -31,6 +31,10 @@ from .validator import validate_and_cap
 from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
+
+# Which reader gives flagged maths lines a second look: "glm" (math_reread.py,
+# the default), "mathpix" (the old crop OCR that overwrote the row) or "off".
+MATH_READER = os.getenv("COPY_CHECK_MATH_READER", "glm").strip().lower()
 
 # A silent job looks dead to Java's stale-job sweeper, which requeues it and
 # would then run the same copy twice. Long phases (a 30-page handwriting read,
@@ -395,9 +399,24 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
 
         await _progress("LAYOUT_OCR_DONE", layout_map=layout_map)
 
-        # 2. Selective math fallback (cheap if there are no flagged lines).
+        # 2. A close-up second reading of flagged maths lines (cheap if there
+        # are none). See math_reread.py for why this is not Mathpix any more.
         cancellation.check(job_id, process_id)
-        layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
+        maths_rows_read = 0
+        if MATH_READER == "glm":
+            try:
+                maths_rows_read = await math_reread.reread_math_rows(
+                    pdf_url, layout_map, llm,
+                    institute_id=institute_id,
+                    token_sink=grader,
+                    cancellation_check=lambda: cancellation.is_cancelled(job_id, process_id),
+                )
+            except cancellation.Cancelled:
+                raise
+            except Exception:
+                logger.exception("Maths re-read failed; grading on the full-page reading")
+        elif MATH_READER == "mathpix":
+            layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
         # 2b. Where is each answer? One call over the page prose so every
         # grading call below gets only the pages that matter (+1 either side)
@@ -549,8 +568,8 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             evaluated_file_id=evaluated_file_id,
         )
         logger.info(
-            "copy-check job %s complete: %s/%s, %d Mathpix crops used, %d tokens",
-            job_id, total_awarded, total_max, mathpix.used, grader.tokens_used,
+            "copy-check job %s complete: %s/%s, %d maths row(s) re-read, %d Mathpix crops used, %d tokens",
+            job_id, total_awarded, total_max, maths_rows_read, mathpix.used, grader.tokens_used,
         )
 
         # Meter the copy: charge the institute's credits once per completed

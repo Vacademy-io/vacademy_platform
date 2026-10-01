@@ -30,6 +30,8 @@ class CallState:
     # (VAD blips re-arming it made the hangup escalation unreachable — A10).
     nudged: bool = False
     nudge_count: int = 0
+    # Idle fired while a reply was on its way: times it looked again (≤3).
+    idle_rechecks: int = 0
     # True while bot audio is playing / caller is audibly speaking (VAD).
     bot_speaking: bool = False
     user_speaking: bool = False

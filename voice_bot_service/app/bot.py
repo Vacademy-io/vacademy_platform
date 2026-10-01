@@ -317,7 +317,7 @@ class TranscriptCollector(FrameProcessor):
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  end_pending=None,
                  diag=None, in_machine_window=None, reply_in_flight=None, reply_pending=None,
-                 caller_forming=None,
+                 caller_forming=None, register_cue=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
@@ -393,6 +393,8 @@ class TranscriptCollector(FrameProcessor):
         # re-asks, resumes); see run_bot._reply_pending.
         self._reply_pending_fn = reply_pending
         self._caller_forming = caller_forming or (lambda: False)
+        # The bot's own runs announce their cue to RunGuard (single-flight step 5).
+        self._register_cue = register_cue or (lambda text: None)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -1393,12 +1395,12 @@ class TranscriptCollector(FrameProcessor):
         direction = FrameDirection.DOWNSTREAM
         logger.info("turn-gate: %.2fs of noise killed the reply before they heard any of it "
                     "— asking for it again (their turn: %r)", voice, said[:40])
+        cue = ("[A noise on the line cut your reply off before they heard a single "
+               "word of it. Say that reply now, in one or two short sentences. Do "
+               "not apologise, and do not ask them to repeat anything.]")
+        self._register_cue(cue)
         await self.push_frame(LLMMessagesAppendFrame(
-            messages=[{"role": "user", "content":
-                       "[A noise on the line cut your reply off before they heard a single "
-                       "word of it. Say that reply now, in one or two short sentences. Do "
-                       "not apologise, and do not ask them to repeat anything.]"}],
-            run_llm=True), direction)
+            messages=[{"role": "user", "content": cue}], run_llm=True), direction)
         return True
 
     async def _resume_cut_words(self, direction, why: str) -> bool:
@@ -1478,16 +1480,16 @@ class TranscriptCollector(FrameProcessor):
                     heard = self._heard_tail()
                     logger.warning("turn-gate: the resumed words were lost twice — asking "
                                    "the model to finish the thought")
+                    cue = (("[The line dropped the end of your last reply; they "
+                            "heard nothing after: \"" + heard + "\". Say the rest "
+                            "now, in one or two short sentences. Do not restart, "
+                            "re-greet or apologise.]") if heard else
+                           "[The line dropped the end of your last reply. Say the "
+                           "rest now, in one or two short sentences. Do not "
+                           "restart, re-greet or apologise.]")
+                    self._register_cue(cue)
                     await self.push_frame(LLMMessagesAppendFrame(
-                        messages=[{"role": "user", "content":
-                                   ("[The line dropped the end of your last reply; they "
-                                    "heard nothing after: \"" + heard + "\". Say the rest "
-                                    "now, in one or two short sentences. Do not restart, "
-                                    "re-greet or apologise.]") if heard else
-                                   "[The line dropped the end of your last reply. Say the "
-                                   "rest now, in one or two short sentences. Do not "
-                                   "restart, re-greet or apologise.]"}],
-                        run_llm=True), direction)
+                        messages=[{"role": "user", "content": cue}], run_llm=True), direction)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -1976,13 +1978,15 @@ class NoRepeatGate(FrameProcessor):
     def __init__(self, enabled=None, last_caller_text=None, diag=None,
                  no_echo=None, handbacks=None, played_text=None, end_forced=None,
                  request_next_step=None, drop_stale_bridge=None, max_sentences=None,
-                 max_chars=None, ending=None, primary_errored_since=None):
+                 max_chars=None, ending=None, primary_errored_since=None,
+                 caller_turn_pending=None):
         super().__init__()
         self._enabled = enabled or (lambda: True)
         # (t) -> did the waterfall's primary LLM error at or after t, with a
         # fallback to take the turn? Then an empty reply is the failure, not the
         # model saying nothing — the fallback's re-run answers it.
         self._primary_errored_since = primary_errored_since or (lambda t: False)
+        self._caller_turn_pending = caller_turn_pending or (lambda: False)
         # The most body sentences one reply may put on the line (0 = no cap).
         # Call bd9e6a0d: a five-sentence pitch became a 30 s monologue
         # (quiz → programme → fees → "identify हों…"), and the parent came back
@@ -2200,6 +2204,13 @@ class NoRepeatGate(FrameProcessor):
         a run that died without a response must not disable recovery for good."""
         return (self._runs_passed > self._responses_started
                 and time.time() - self._last_run_t < 4.0)
+
+    def refund_next_step(self) -> None:
+        """A next-step cue's run was dropped at the door (a reply was already on
+        its way): it never ran, so it does not count against the per-call budget,
+        and the same caller turn may ask again later."""
+        self._next_steps = max(0, self._next_steps - 1)
+        self._next_step_for = None
 
     def note_dropped_run(self) -> None:
         """A run RunGuard passed was dropped by a retired LLM primary: it will
@@ -2807,7 +2818,10 @@ class NoRepeatGate(FrameProcessor):
             # will answer everything this one failed to. Any recovery here
             # (a next-step request, a handback, speaking a held line) would be
             # a SECOND reply to the same moment — call 22062aac (2026-09-29).
-            superseded = self._newer_run_queued() and not self._end_forced()
+            # A held caller turn or one still forming is a newer run too: it
+            # will answer everything (single-flight step 5).
+            superseded = ((self._newer_run_queued() or self._caller_turn_pending())
+                          and not self._end_forced())
             # AN EMPTY REPLY. Gemini sometimes answers with zero tokens (call
             # 963347ab: out=0 after the parent's "ये apply."), and nothing at all
             # followed — the bridge line, then 8.2 s, then "are you there?". Ask
@@ -3080,8 +3094,15 @@ class RunGuard(FrameProcessor):
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
-                 forming_cap_secs: float = 5.5):
+                 forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None):
         super().__init__()
+        # The bot's OWN runs (single-flight step 5): cue text → on_drop. A run
+        # whose last user message is a registered cue is the bot's; any caller
+        # words after the cue make it the caller's turn instead.
+        self._cues: Dict[str, Any] = {}
+        self._held_cue = None
+        self._bot_run_drop_reason = bot_run_drop_reason or (lambda: None)
+        self._voice_live = voice_live or (lambda: False)
         # The caller's words are still in the user aggregator: a run now would
         # answer half a turn and the turn's own run would follow it.
         self._caller_forming = caller_forming or (lambda: False)
@@ -3149,6 +3170,39 @@ class RunGuard(FrameProcessor):
             n += len([w for w in re.split(r"[\s,.!?।]+", text) if w])
         return n
 
+    def register_cue(self, text: str, on_drop=None) -> None:
+        """The bot is about to start a run of its own with this cue."""
+        self._cues[text] = on_drop
+
+    def _bot_cue(self, msgs):
+        """(text, on_drop) when the run's last user message is a registered cue."""
+        last = self._last_user_text(msgs)
+        return (last, self._cues[last]) if last in self._cues else None
+
+    def _drop_cue(self, cue, why: str) -> None:
+        """Take the cue out of the context (it never ran — the model must not
+        see a stale instruction ahead of the caller's next words) and refund it."""
+        text, on_drop = cue
+        self._cues.pop(text, None)
+        try:
+            msgs = list(self._context.get_messages())
+            for i in range(len(msgs) - 1, -1, -1):
+                m = msgs[i]
+                if (isinstance(m, dict) and m.get("role") == "user"
+                        and m.get("content") == text):
+                    self._context.set_messages(msgs[:i] + msgs[i + 1:])
+                    break
+        except Exception:
+            logger.exception("run-guard: could not remove a dropped cue")
+        if on_drop is not None:
+            try:
+                on_drop()
+            except Exception:
+                logger.exception("run-guard: cue on_drop failed")
+        if self._diag is not None:
+            self._diag.bump("cue_runs_dropped")
+        logger.info("run-guard: dropping the bot's own run (%s) — %s", text[:40], why)
+
     def held(self) -> bool:
         """A caller turn is held for its short-answer grace (it will run)."""
         return self._held is not None and not self._held.done()
@@ -3157,15 +3211,22 @@ class RunGuard(FrameProcessor):
         if self._held is not None and not self._held.done():
             self._held.cancel()
             logger.info("run-guard: held short-answer run superseded — %s", why)
+            if self._held_cue is not None:
+                self._drop_cue(self._held_cue, "superseded by the caller's turn")
         self._held = None
+        self._held_cue = None
 
-    async def _release_when_formed(self, frame: Frame, direction: FrameDirection):
+    def _one_door(self) -> bool:
+        return True
+
+    async def _release_when_formed(self, frame: Frame, direction: FrameDirection, cue=None):
         """Held because the caller's turn was forming. Normally their turn's own
         run supersedes this (process_frame → _drop_held). If it never comes — the
         words were taken some other way — run once nothing is forming and the
         context has been still for 0.3 s; never later than the cap."""
         t0 = time.time()
-        while self._caller_forming() and time.time() - t0 < self._forming_cap:
+        while ((self._caller_forming() or (cue is not None and self._voice_live()))
+               and time.time() - t0 < self._forming_cap):
             await asyncio.sleep(0.1)
         capped = self._caller_forming()
         stable, waited, n = 0.0, 0.0, self._context_len()
@@ -3178,6 +3239,13 @@ class RunGuard(FrameProcessor):
             else:
                 stable += 0.1
         self._held = None
+        self._held_cue = None
+        if cue is not None:
+            why = self._bot_run_drop_reason()
+            if why:
+                self._drop_cue(cue, why + " (at release)")
+                return
+            self._cues.pop(cue[0], None)
         if capped and self._diag is not None:
             self._diag.bump("forming_hold_cap_releases")
         logger.info("run-guard: run held for a forming turn released after %.2fs%s",
@@ -3329,6 +3397,28 @@ class RunGuard(FrameProcessor):
                     logger.info("run-guard: blocking generation — context unchanged "
                                 "since the previous run")
                     return
+                cue = self._bot_cue(msgs) if self._one_door() else None
+                if cue is not None:
+                    # The BOT's own run. One door: never beside a reply that is
+                    # already on its way, never once the call is ending, and
+                    # never over a caller whose turn is still forming (calls
+                    # c05f6c83, 1d28af3a: a cue and the caller's turn each ran
+                    # the model for the same moment).
+                    why = self._bot_run_drop_reason()
+                    if why:
+                        self._drop_cue(cue, why)
+                        return
+                    if self._caller_forming() or self._voice_live():
+                        if self._held is not None and not self._held.done():
+                            self._drop_cue(cue, "a caller turn is already held")
+                            return
+                        logger.info("run-guard: the bot's own run waits — the caller is "
+                                    "talking or their turn is forming")
+                        self._held_cue = cue
+                        self._held = self.create_task(
+                            self._release_when_formed(frame, direction, cue=cue))
+                        return
+                    self._cues.pop(cue[0], None)
                 # A newer run supersedes a held one (its context contains the
                 # held words too) — but only a run that is itself let through.
                 # Dropped ABOVE the two blocks, a stale retrigger or a run with
@@ -5471,6 +5561,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if not backchannel:
             flags["nudged"] = False
             flags["nudge_count"] = 0
+            flags["idle_rechecks"] = 0
 
     def _on_duck():
         flags["ducked_since"] = time.time()
@@ -5653,6 +5744,15 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         except AttributeError:
             return False
 
+    def _bot_run_drop_reason():
+        """Why a run the BOT started must not run now (None = it may)."""
+        if (outcome.end_requested or outcome.end_forced or outcome.transfer_requested
+                or flags["end_pending_since"] > 0 or flags["stopping_since"] is not None):
+            return "the call is ending"
+        if _reply_pending():
+            return "a reply is already on its way"
+        return None
+
     def _reply_pending() -> bool:
         """A reply is on its way: in flight, or a caller turn RunGuard is holding
         for its short-answer grace. Every place the bot would start a run of its
@@ -5690,6 +5790,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      reply_pending=lambda: _reply_pending(),
                                      caller_forming=lambda: (settings.run_forming_hold
                                                              and _caller_forming()),
+                                     register_cue=lambda text: run_guard.register_cue(text),
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),
@@ -5723,6 +5824,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         what, cue = next_step_cue(held, kind, attempt)
         logger.info("next-step: requesting a fresh line (%s, attempt %d) corr=%s",
                     what, attempt, corr)
+        run_guard.register_cue(cue, on_drop=no_repeat.refund_next_step)
         await task.queue_frames([LLMMessagesAppendFrame(
             messages=[{"role": "user", "content": cue}], run_llm=True)])
 
@@ -5740,6 +5842,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     no_repeat = NoRepeatGate(
         primary_errored_since=lambda t: (llm_fallback is not None and t > 0
                                          and getattr(llm_primary, "errored_t", 0.0) >= t),
+        caller_turn_pending=lambda: (settings.cue_one_door
+                                     and (run_guard.held() or _caller_forming())),
         enabled=lambda: settings.no_repeat_enabled,
         end_forced=lambda: outcome.end_forced,
         last_caller_text=lambda: (outcome.transcript[-1].get("text", "")
@@ -5797,7 +5901,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          opening_pending=lambda: _opening_pending(),
                          noise_cap_secs=settings.short_answer_noise_cap_secs,
                          caller_forming=lambda: (settings.run_forming_hold and _caller_forming()),
-                         forming_cap_secs=settings.forming_hold_cap_secs)
+                         forming_cap_secs=settings.forming_hold_cap_secs,
+                         bot_run_drop_reason=lambda: _bot_run_drop_reason(),
+                         voice_live=lambda: (flags["voice_tick_t"] > 0
+                                             and time.time() - flags["voice_tick_t"] < 0.4))
+    run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,
@@ -5947,6 +6055,22 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             logger.info("idle: after farewell — closing, not nudging corr=%s", corr)
             await _begin_stop()
             return
+        if (settings.cue_one_door and (_reply_pending() or _caller_forming())
+                and flags["idle_rechecks"] < 3):
+            # A reply is on its way (composing, held for a short answer, or the
+            # caller's turn is still forming): "Hello? Are you there?" or a
+            # next-step request now would be a second voice. Look again soon.
+            flags["idle_rechecks"] += 1
+            logger.info("idle: a reply is already on its way — not nudging; checking "
+                        "again in 3 s corr=%s", corr)
+
+            async def _recheck():
+                await asyncio.sleep(3.0)
+                if not flags["bot_speaking"] and not flags["user_speaking"]:
+                    await _on_idle(None)
+            asyncio.get_running_loop().create_task(_recheck())
+            return
+        flags["idle_rechecks"] = 0
         if transcript.looks_like_voicemail():
             # Nothing to nudge and nobody to say goodbye to (call 24089872).
             diag.idle_hangup = True

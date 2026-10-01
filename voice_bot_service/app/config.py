@@ -748,6 +748,11 @@ class Settings:
     # request — a request queued behind the failure is dropped, not run beside
     # the fallback's re-run (providers.with_retire).
     llm_retire_primary: bool = field(default_factory=lambda: _env("LLM_RETIRE_PRIMARY", "1") == "1")
+    # Single-flight step 5: the bot's OWN runs (next-step cues, the noise
+    # re-ask, the lost-resume cue) pass one door — RunGuard drops them when a
+    # reply is already on its way or the call is ending, holds them while the
+    # caller's turn forms; the idle handler does not nudge over a pending reply.
+    cue_one_door: bool = field(default_factory=lambda: _env("CUE_ONE_DOOR", "1") == "1")
     forming_hold_cap_secs: float = field(
         default_factory=lambda: float(_env("FORMING_HOLD_CAP_SECS", "5.5")))
     reply_inflight_grace_secs: float = field(

@@ -5387,6 +5387,64 @@ def test_a_greeting_during_the_opening_is_absorbed():
         assert mid_reply_action(t) == ABSORB, t
 
 
+# ── call 1f2b97ab (2026-10-01): "अभी time नहीं है madam" at 10.4 s of a 12.4 s
+#    cached opening -> the opening again from "नमस्ते जी", twice; hung up at 15 s ─
+_SHREYA_OPENING = ("नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से । आपने अपने बच्चे के लिए "
+                   "live classes की inquiry की थी, उसी के बारे में दो मिनट बात करनी थी। क्या मैं "
+                   "जान सकती हूँ कि मैं बच्चे के माता-पिता में से किससे बात कर रही हूँ?")
+
+
+def test_opening_heard_is_measured_by_audio_not_only_by_recorded_text():
+    # A cached opening is one blob: nothing of it is in the played transcript
+    # until it ENDS. 10.4 s of it had played.
+    assert not b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=10.4)
+    assert not b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=7.5)
+    # A real cut at the start is still unheard, by either measure.
+    assert b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=1.3)
+    assert b._opening_barely_heard(_SHREYA_OPENING, [], 0.0)
+    # The estimate errs LONG (a little more audio needed to call it heard).
+    from app.turntake import opening_expected_secs
+    assert 12.4 <= opening_expected_secs(_SHREYA_OPENING) <= 15.5
+
+
+def test_busy_and_later_are_answers_not_pickup_noise():
+    from app.turntake import caller_is_busy, takes_over_opening
+    for t in ["अभी time नहीं है madam.", "अभी थोड़ा busy है ma'am।", "मैं गाड़ी चला रहा हूँ",
+              "बाद में call करना", "Madam अभी मैं bike चला रहा हूँ", "I'm driving, call later",
+              "अभी अभी मुझे urgency है"]:
+        assert caller_is_busy(t), t
+        assert takes_over_opening(t), t
+    for t in ["हाँ जी बोलिए।", "Hello.", "नमस्ते।", "मैं बच्चे का पिता बोल रहा हूँ", "[cue busy]"]:
+        assert not caller_is_busy(t), t
+
+
+def test_resay_measures_heard_by_audio_and_yields_to_a_real_answer():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
+    assert "played_secs=played" in resay
+    # Only once some of it PLAYED: before any audio (call ab194522) the opening
+    # is owed whatever they said.
+    assert "if played > 0 and takes_over_opening(" in resay
+    pending = src[src.index("def _opening_pending()"):src.index("async def _resay_opening(text")]
+    assert "played_secs=_opening_played_secs()" in pending, \
+        "RunGuard and the re-say must read the same 'heard'"
+    played = src[src.index("def _opening_played_secs()"):src.index("def _opening_pending()")]
+    assert 'flags["last_cut_t"]' in played, "frozen at the cut"
+
+
+@pytest.mark.parametrize("text", ["हो।", "हो नमस्ते।", "होय", "हाँ बोल।", "हाँ बोलें।", "बरोबर।"])
+def test_marathi_yes_and_bol_forms_are_backchannels(text):
+    from app.turntake import mid_reply_action, ABSORB
+    assert mid_reply_action(text) == ABSORB, text
+
+
+@pytest.mark.parametrize("text", ["क्या हो रहा है", "करतो करतो।", "हो गया काम?", "नहीं हो पाएगा"])
+def test_ho_inside_a_sentence_still_interrupts(text):
+    from app.turntake import mid_reply_action, ABSORB
+    assert mid_reply_action(text) != ABSORB, text
+
+
 # ── call 4243a436 (2026-09-22): room chatter at pickup ran the model and cut ──
 def test_takes_over_opening_only_for_questions_refusals_and_cues():
     from app.turntake import takes_over_opening

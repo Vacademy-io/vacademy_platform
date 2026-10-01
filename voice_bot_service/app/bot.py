@@ -99,7 +99,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
-                       is_screener_hold, spoken_key, takes_over_opening, is_question)
+                       is_screener_hold, spoken_key, takes_over_opening, is_question,
+                       opening_expected_secs)
 
 logger = logging.getLogger(__name__)
 
@@ -4120,7 +4121,7 @@ def _fill_placeholders(text: str, context: Dict[str, Any], sink=None, *, full_na
 
 
 def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
-                          heard_ratio: float = 0.5) -> bool:
+                          heard_ratio: float = 0.5, played_secs: float = 0.0) -> bool:
     """Was the scripted opening cut before the caller could have taken it in?
 
     True only while the call is still AT the opening: no LLM reply has started
@@ -4129,6 +4130,14 @@ def _opening_barely_heard(opening: str, transcript, reply_started_t: float,
     it, or a reply has since run — is the ordinary continuation case.
     Call 9e566e32 (2026-09-09): played "Hi," of a 109-char opening."""
     if not opening or reply_started_t:
+        return False
+    # AUDIO first. A cached opening is ONE blob, and its text reaches the played
+    # transcript only when the blob ends — so a cut at 10.4 s of 12.4 s left no
+    # opening text at all, read as "barely heard", and the caller who had just
+    # said "अभी time नहीं है madam" heard "नमस्ते जी, मैं श्रेया…" from the top,
+    # twice, then hung up (call 1f2b97ab, 2026-10-01; 13 of 58 re-says in
+    # 28 Sep-1 Oct came after more than half of the opening had played).
+    if played_secs >= heard_ratio * opening_expected_secs(opening):
         return False
     # How much of THE OPENING played — not whatever the bot said last. A
     # "Hmm…" filler after a fully-played opening made the last entry 4 chars,
@@ -5021,6 +5030,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["bot_speaking"] = speaking
         flags["tts_gen_t"] = 0.0
         outcome.replay["bot"].append([round(time.time() - outcome.connected_at, 2), int(speaking)])
+        # The opening's audio, stretch by stretch (CallState.opening_play_secs).
+        if flags["greet_queued_t"] and not flags["reply_started_t"]:
+            if speaking:
+                flags["opening_seg_t"] = flags["opening_seg_t"] or time.time()
+            elif flags["opening_seg_t"]:
+                flags["opening_play_secs"] += time.time() - flags["opening_seg_t"]
+                flags["opening_seg_t"] = 0.0
         if speaking:
             flags["bot_started_t"] = time.time()
         # Set when the FIRST frame reaches the line, not when the opening ends:
@@ -5378,6 +5394,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _opening_resays = 0        # at most two: a noisy pickup can cut it twice
     _greet_queued_t = 0.0      # stamped by _greet_when_ready when it queues the opening
 
+    def _opening_played_secs() -> float:
+        """Seconds of the opening's audio played in its current delivery —
+        frozen at the cut, so RunGuard ("the opening is the reply", it swallows
+        the run) and _resay_opening (it re-says) read the SAME number in the
+        few hundred ms before the transport reports the bot stopped. Were they
+        to straddle the half-way mark, the run would be swallowed and nothing
+        said."""
+        seg = flags["opening_seg_t"]
+        if not seg:
+            return flags["opening_play_secs"]
+        end = flags["last_cut_t"] if flags["last_cut_t"] > seg else time.time()
+        return flags["opening_play_secs"] + max(0.0, end - seg)
+
     def _opening_pending() -> bool:
         """The scripted opening is still owed to the caller: it was never
         played, or was cut before half of it played, no reply has run, and
@@ -5385,7 +5414,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         try:
             return (diag.greet_path == "scripted" and _in_machine_window()
                     and _opening_barely_heard(_opening_for_cache, outcome.transcript,
-                                              flags["reply_started_t"]))
+                                              flags["reply_started_t"],
+                                              played_secs=_opening_played_secs()))
         except NameError:
             return False
 
@@ -5402,14 +5432,30 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # introduction twice back to back.
             if not cut_now and not (flags["last_cut_t"] > _greet_queued_t):
                 return False
+            played = _opening_played_secs()
             if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
-                                         flags["reply_started_t"]):
+                                         flags["reply_started_t"], played_secs=played):
+                if played > 0:
+                    logger.info("greet: %r after %.1fs of the opening — heard; the model "
+                                "answers it corr=%s", (text or "")[:20], played, corr)
+                return False
+            # Some of it played and what they said is a real answer — busy, a
+            # refusal, a question: the model answers THAT (it has the opening in
+            # its context). The top of the opening again ignores them — call
+            # 1f2b97ab: "अभी time नहीं है" -> "नमस्ते जी, मैं श्रेया…". Before ANY
+            # audio played (call ab194522) the opening is still owed, whatever
+            # they said.
+            if played > 0 and takes_over_opening(text or ""):
+                logger.info("greet: %r over the opening is an answer, not a pickup "
+                            "— the model takes it corr=%s", (text or "")[:20], corr)
                 return False
         # force=True: a call screener took the opening and the human has just
         # picked up — the "was it cut / barely heard" tests are about THEIR
         # ears, and none of it reached them (calls 612f5e37, 91d1541e).
         _opening_resays += 1
         diag.bump("opening_resaid")
+        flags["opening_play_secs"] = 0.0         # a new delivery; heard is measured afresh
+        flags["opening_seg_t"] = time.time() if flags["bot_speaking"] else 0.0
         logger.info("greet: %s — saying the opening again corr=%s",
                     "the line was screening; the person just picked up" if force
                     else "caller's %r cut the opening at its start" % (text or "")[:20], corr)
@@ -5873,6 +5919,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     run_llm=True))
             nonlocal _greet_queued_t
             _greet_queued_t = time.time()
+            flags["greet_queued_t"] = _greet_queued_t
             await task.queue_frames(_frames)
 
             # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
@@ -6210,9 +6257,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 logger.exception("teardown: background task died corr=%s", corr)
         try:
             from .caller_gender import summarize as _gender_summary
-            diag.caller_gender = _gender_summary(
-                gender_probe.tracker.estimate(),
-                [t.get("text") or "" for t in outcome.transcript if t.get("role") == "user"])
+            diag.caller_gender = _gender_summary(gender_probe.tracker.estimate(),
+                                                 outcome.transcript)
             _g = diag.caller_gender
             logger.info("caller-gender corr=%s pitch=%s conf=%.2f median=%sHz voiced=%.1fs "
                         "words=%s (%s) agree=%s", corr, _g.get("gender"), _g.get("confidence") or 0,

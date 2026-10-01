@@ -635,6 +635,45 @@ HI_Q_EFFORT = "यही वो साल है जब syllabus heavy लगन
 HI_EXPECT = "आमतौर पर parents की तीन-चार expectations होती हैं। पहली, faculty अच्छे हों और concepts clear करें।"
 
 
+# ── call 1f2b97ab (2026-10-01): "अभी time नहीं है madam" over the CACHED opening ─
+# The cached opening is one 13 s blob whose text reaches the played transcript
+# only when it ends. Cut at 10 s, it read as "barely heard": the opening started
+# again from "नमस्ते जी", twice, and the caller hung up at 15 s.
+HI_OPENING = json.loads((FIXTURE_DIR / "hindi_parent_agent_context.json")
+                        .read_text(encoding="utf-8"))["agent"]["openingLine"]
+HI_BUSY = "अभी time नहीं है madam."
+HI_BUSY_REPLY = "जी, कोई बात नहीं। मैं आपको किस समय call करूँ?"
+
+
+def chk_busy_over_cached_opening(res):
+    f = []
+    if res["opening_resaid"]:
+        f.append(f"the opening was said again ({res['opening_resaid']}x) over 'busy'")
+    if not any("किस समय call" in t for t in _assistant_texts(res)):
+        f.append("the busy caller never got an answer")
+    cut = next((c for c in res["caller"]), None)
+    if cut:
+        again = [iv for iv in res["bot"] if iv[0] >= cut[1] and iv[1] - iv[0] > 7.0]
+        if again:
+            f.append(f"a {again[0][1] - again[0][0]:.1f}s utterance after 'busy' — the opening again")
+    return f
+
+
+def chk_hello_over_cached_opening(res):
+    """A pickup "Hello." over the cached opening is a backchannel in voice
+    mode: the opening plays on to its end — heard ONCE, never restarted, and
+    no model reply on top of it — and the caller's answer gets the next step."""
+    f = []
+    intros = sum(1 for t in _assistant_texts(res) if "श्रेया" in t)
+    if intros != 1:
+        f.append(f"the introduction was heard {intros}x (expected once)")
+    if res["opening_resaid"]:
+        f.append(f"the opening was said again ({res['opening_resaid']}x) over a pickup hello")
+    if not any("किस class" in t for t in _after_user(res, "पिता")):
+        f.append("the father's answer never got the next question")
+    return f
+
+
 def _hindi_pieces_reply(last_user: str) -> str:
     """Gemini's behaviour on the real call: a bare "जी।"/"जी सर।" to every piece
     and to the SOFT next-step cue; it moved on only when told firmly."""
@@ -1378,6 +1417,28 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "Just to clarify, is it that you don't take online classes, or someone handles it?"],
              checks=chk_forced_close, max_secs=45,
              note="call ada2e60c: the model clarifies instead of ending; the gate must end the call anyway"),
+    Scenario("busy_over_cached_opening_late",
+             caller=[Say(HI_BUSY, 1.0, after_bot_start=1, offset=10.0)],
+             replies=[HI_BUSY_REPLY],
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_busy_over_cached_opening, max_secs=35,
+             note="call 1f2b97ab: 'busy' at 10 s of a 13 s cached opening re-said it from the top"),
+    Scenario("busy_over_cached_opening_early",
+             caller=[Say(HI_BUSY, 1.0, after_bot_start=1, offset=2.0)],
+             replies=[HI_BUSY_REPLY],
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_busy_over_cached_opening, max_secs=35,
+             note="'busy' 2 s into the opening is an answer, not a pickup hello"),
+    Scenario("hello_over_cached_opening",
+             caller=[Say("Hello.", 0.6, after_bot_start=1, offset=0.8),
+                     Say("जी, मैं उसका पिता बोल रहा हूँ।", 1.4, after_bot_stop=1, offset=0.6)],
+             replies=[HI_Q_CLASS],
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_hello_over_cached_opening, max_secs=40,
+             note="the time-based 'heard' must not change a pickup Hello over a cached opening"),
     Scenario("hindi_pieces_bare_acks",
              caller=[Say("हाँ जी पिताजी हैं।", 1.2, after_bot_stop=1, offset=0.6),
                      Say("नौवीं में पढ़ रहा है।", 1.3, after_bot_stop=2, offset=0.6),

@@ -156,15 +156,83 @@ class PitchTracker:
 # No \b around Devanagari: vowel signs (ा ी) are not \w, so "पिता\b" never
 # matches. And FIRST person only — "वो पढ़ रहा था" is about the child.
 _MALE_WORDS = re.compile(
-    r"(मैं|मै)\s+[^।?!.]{0,40}?(पिता|पापा|पिताजी|चाचा|मामा|दादा|नाना|भैया|भाई)(जी)?(\s|।|$|,)"
+    r"(मैं|मै)\s+[^।?!.]{0,40}?(पिता|पापा|पिताजी|चाचा|मामा|दादा|नाना|भैया|भाई|father|papa|daddy|dad)(जी|ji)?(\s|।|$|,|\.)"
     r"|(बोल|कह|पूछ|सुन|बता|कर|आ|जा|रह)\s*रहा\s*(हूँ|हूं|हु)"
     r"|(मैं|मै)\s+[^।?!.]{0,30}?(सकता|चाहता|करता|बोलता|रहता)\s*(हूँ|हूं)", re.I)
 _FEMALE_WORDS = re.compile(
-    r"(मैं|मै)\s+[^।?!.]{0,40}?(माँ|मां|मम्मी|माता|बुआ|मौसी|चाची|मामी|दादी|नानी|दीदी|बहन)(जी)?(\s|।|$|,)"
+    r"(मैं|मै)\s+[^।?!.]{0,40}?(माँ|मां|मम्मी|माता|बुआ|मौसी|चाची|मामी|दादी|नानी|दीदी|बहन|mother|mummy|mommy|mom|mumma)(जी|ji)?(\s|।|$|,|\.)"
     r"|(बोल|कह|पूछ|सुन|बता|कर|आ|जा|रह)\s*रही\s*(हूँ|हूं|हु)"
     r"|(मैं|मै)\s+[^।?!.]{0,30}?(सकती|चाहती|करती|बोलती|रहती)\s*(हूँ|हूं)", re.I)
 _EN_MALE = re.compile(r"\bi(?:'m| am) (?:his |her |the )?(?:father|dad|uncle|grandfather|brother)\b", re.I)
 _EN_FEMALE = re.compile(r"\bi(?:'m| am) (?:his |her |the )?(?:mother|mom|mum|aunt|grandmother|sister)\b", re.I)
+
+
+# The agent ASKED who is on the line ("…माता-पिता में से किससे बात कर रही हूँ?",
+# "am I speaking with the father or the mother?") — the next caller turn is
+# usually just the role: "पापा।", "मम्मी जी।", "Father." — or "हाँ जी" first and
+# the role as a second STT final, so every caller entry up to the agent's next
+# turn counts (the played transcript keeps one entry per agent turn, one per
+# caller final). Counted only when the
+# whole answer IS the role (+ हूँ/हैं/जी/बोल रहा/बोल रही/ack words): "पापा अभी घर
+# पर नहीं हैं" names someone ELSE and must not label the caller.
+_ROLE_QUESTION_RE = re.compile(
+    r"माता-पिता|माता पिता|मम्मी या पापा|पापा या मम्मी|पिता या माता|माता या पिता|"
+    r"किससे बात कर|parent से|parents में से|father or (the )?mother|mother or (the )?father|"
+    r"who am i speaking|whom am i speaking|am i speaking with the (father|mother|parent)|"
+    r"आई-वडिल|आई वडिल", re.I)
+_ROLE_M = frozenset({"पापा", "पिता", "पिताजी", "father", "papa", "daddy", "dad", "fatherji",
+                     "वडील", "बाबा"})
+_ROLE_F = frozenset({"मम्मी", "माँ", "मां", "माता", "माताजी", "mother", "mummy", "mommy", "mom",
+                     "mumma", "mummyji", "आई"})
+_ROLE_FILLER = frozenset({"जी", "ji", "हूँ", "हूं", "हैं", "है", "मैं", "मै", "उसका", "उसकी", "उनका",
+                          "उनकी", "बच्चे", "का", "की", "बोल", "रहा", "रही", "हाँ", "हां", "हम्म",
+                          "सर", "मैम", "मैडम", "yes", "haan", "i", "am", "his", "her", "the",
+                          "speaking", "this", "is", "here", "बोलतोय", "बोलतेय", "आहे", "मी"})
+
+
+def _role_answer(text: str) -> Optional[str]:
+    ws = [w.strip("।.,!?;:\"'()").casefold() for w in (text or "").split()]
+    ws = [w for w in ws if w]
+    if not ws or len(ws) > 6:
+        return None
+    rest = [w for w in ws if w not in _ROLE_FILLER]
+    if len(rest) != 1:
+        return None
+    w = rest[0]
+    if w in _ROLE_M:
+        return "m"
+    if w in _ROLE_F:
+        return "f"
+    return None
+
+
+def gender_from_transcript(transcript) -> tuple:
+    """Like gender_from_words over the caller's turns, plus the caller's ANSWER
+    to a role question the agent asked (opening or a later turn)."""
+    callers = [t.get("text") or "" for t in transcript or () if t.get("role") == "user"]
+    g, ev = gender_from_words(callers)
+    m_hit = f_hit = None
+    last_bot = ""
+    for t in transcript or ():
+        role, text = t.get("role"), t.get("text") or ""
+        if role == "assistant":
+            last_bot = text
+        elif role == "user":
+            if _ROLE_QUESTION_RE.search(last_bot):
+                r = _role_answer(text)
+                if r == "m" and not m_hit:
+                    m_hit = text
+                elif r == "f" and not f_hit:
+                    f_hit = text
+    if g:                                    # a self-reference: check it against the role answer
+        if (g == "m" and f_hit) or (g == "f" and m_hit):
+            return None, ev
+        return g, ev
+    if m_hit and not f_hit:
+        return "m", m_hit
+    if f_hit and not m_hit:
+        return "f", f_hit
+    return None, (ev or m_hit or f_hit)
 
 
 def gender_from_words(texts) -> tuple:
@@ -230,10 +298,11 @@ def make_probe(is_bot_speaking, echo_tail_secs: float = 0.3):
     return CallerGenderProbe()
 
 
-def summarize(pitch: dict, caller_texts) -> dict:
-    """The call's verdict for the report: the pitch estimate, the words cue, and
-    whether they agree (None when either is missing) — shadow-mode evidence."""
-    words, evidence = gender_from_words(caller_texts)
+def summarize(pitch: dict, transcript) -> dict:
+    """The call's verdict for the report: the pitch estimate, the words cue (the
+    caller's self-references and their answer to a role question), and whether
+    they agree (None when either is missing) — shadow-mode evidence."""
+    words, evidence = gender_from_transcript(transcript)
     p = pitch.get("gender")
     agree = None if (not words or p not in ("m", "f")) else (words == p)
     return {**pitch, "words": words, "wordsEvidence": (evidence or "")[:60], "agree": agree}

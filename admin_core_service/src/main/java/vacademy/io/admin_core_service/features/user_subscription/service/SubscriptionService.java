@@ -15,12 +15,12 @@ import vacademy.io.admin_core_service.features.plan_change.service.PlanChangeSer
 import vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo;
 import vacademy.io.admin_core_service.features.user_subscription.dto.SubscriptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
-import vacademy.io.common.payment.dto.EwayRequestDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
@@ -54,14 +54,16 @@ public class SubscriptionService {
     private final vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository paymentLogRepository;
     private final InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
     private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
+    private final vacademy.io.admin_core_service.features.payments.manager.EwayPaymentManager ewayPaymentManager;
+    private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+    private final PaymentLogService paymentLogService;
+
 
     /**
-     * Reported back instead of a charge when a stored-token gateway has no card on file for
-     * this learner: nothing has been charged and no order exists, and the client is expected
-     * to collect a card and call again with it. Deliberately not a {@code PaymentStatusEnum} --
-     * no payment reached a status, because none was attempted.
+     * Reported back when the learner must finish paying on the gateway's own hosted page.
+     * Nothing has been charged; {@code redirectUrl} in the same block is where to send them.
      */
-    public static final String RENEWAL_REQUIRES_CARD = "REQUIRES_CARD";
+    public static final String RENEWAL_REDIRECT = "REDIRECT";
 
     /**
      * How long a just-submitted manual renewal blocks another one for the same plan. Only
@@ -257,17 +259,15 @@ public class SubscriptionService {
      * approval charges the price AND registers a fresh UPI Autopay/e-mandate,
      * so future cycles auto-deduct again.
      *
-     * <p>Three shapes come back, and the caller branches on {@code response_data}:
-     * a CHECKOUT gateway (Razorpay) returns order coordinates for the client to
-     * open; a STORED-TOKEN gateway (eWay) with a card on file has already taken the
-     * payment and returns {@code paymentStatus: PAID}; and one with no card on file
-     * returns {@code paymentStatus: REQUIRES_CARD} having charged nothing, so the
-     * client can collect a card and call again passing it as {@code card}.
+     * <p>Two shapes come back, and the caller branches on {@code response_data}:
+     * a CHECKOUT gateway (Razorpay) returns order coordinates for the client to open,
+     * and a HOSTED gateway (eWay) returns {@code paymentStatus: REDIRECT} with the
+     * {@code redirectUrl} of the gateway's own card page. Nothing is charged either
+     * way; the hosted leg finishes in {@link #completeHostedRenewal}.
      */
     public vacademy.io.common.payment.dto.PaymentResponseDTO initiateRenewalPayment(
             vacademy.io.common.auth.model.CustomUserDetails userDetails,
-            String instituteId, String userPlanId, boolean withAutopay, String mandateMethod,
-            EwayRequestDTO card) {
+            String instituteId, String userPlanId, boolean withAutopay, String mandateMethod) {
         UserPlan plan = userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new VacademyException("Subscription not found: " + userPlanId));
         if (!userDetails.getUserId().equals(plan.getUserId())) {
@@ -351,7 +351,7 @@ public class SubscriptionService {
         // the request carried only a RazorpayRequestDTO, so EwayPaymentManager dereferenced a
         // null ewayRequest and every "Pay to continue" on eWay threw an NPE.
         if (isStoredTokenGateway(vendor)) {
-            return chargeStoredTokenRenewal(plan, instituteId, request, user, armAutopay, card);
+            return startHostedCheckoutRenewal(plan, instituteId, request, user, armAutopay);
         }
 
         var razorpayRequest = new vacademy.io.common.payment.dto.RazorpayRequestDTO();
@@ -373,21 +373,17 @@ public class SubscriptionService {
     }
 
     /**
-     * "Pay to continue" on a stored-token gateway (eWay). Charges the card already held at
-     * the gateway and, because that answers synchronously, confirms the renewal inline --
-     * the same two steps the autopay sweep performs, just triggered by the learner instead
-     * of the scheduler, and without its {@code claimForRenewal} guard (a plan being paid
-     * manually has no armed next_charge_at to claim).
-     *
-     * <p>The mandate's {@code max_amount} is deliberately NOT applied: that cap bounds
-     * UNATTENDED charges, whereas here the learner is looking at the amount and pressing pay.
+     * "Pay to continue" on a gateway with a hosted card page (eWay Responsive Shared Page).
+     * Raises the order, asks eWay for a hosted session, and hands the client the URL to send
+     * the learner to. Nothing is charged here and no card is ever posted to us -- the number
+     * and CVN are entered on eWay's page. {@link #completeHostedRenewal} finishes the job
+     * when the learner is redirected back.
      */
-    private vacademy.io.common.payment.dto.PaymentResponseDTO chargeStoredTokenRenewal(
+    private vacademy.io.common.payment.dto.PaymentResponseDTO startHostedCheckoutRenewal(
             UserPlan plan, String instituteId,
             PaymentInitiationRequestDTO request,
             vacademy.io.common.auth.dto.UserDTO user,
-            boolean withAutopay,
-            EwayRequestDTO card) {
+            boolean withAutopay) {
 
         String vendor = request.getVendor();
 
@@ -404,77 +400,165 @@ public class SubscriptionService {
                     + "Please refresh the page before trying again.");
         }
 
-        String token = resolveChargeableToken(plan, instituteId, vendor);
-        if (!StringUtils.hasText(token)) {
-            // No card on file. Rather than dead-ending the learner, tell the client to collect
-            // one -- a member whose plan lapsed before tokens existed, or who enrolled on a
-            // gateway this institute no longer uses, has no token through no fault of theirs.
-            if (card == null || !StringUtils.hasText(card.getCardNumber())) {
-                return requiresCardResponse(vendor);
-            }
-            // Tokenise the entered card FIRST, then charge the token, rather than charging the
-            // card directly. Two reasons: the learner ends up with a card on file so every
-            // later renewal is one tap, and the direct-card path pre-marks its payment_log
-            // PAID from the gateway intent, which would make the renewal confirmation's
-            // claimPaidIfNotAlready lose and silently skip extending the membership.
-            token = tokeniseCard(plan, instituteId, vendor, request, user, card);
-        }
+        // The learner always goes through the gateway's own hosted checkout, even when a card
+        // is on file. Charging a saved card the instant the button is pressed gives them no
+        // moment to confirm and no sight of which card is billed -- it reads as money
+        // vanishing by magic. It is also the difference between a hijacked session being able
+        // to spend someone's stored card and not: on the hosted page the attacker would have
+        // to supply a card of their own, and the number and CVN never touch us at all.
 
-        MandateInfo storedCard = MandateInfo.builder()
-                .vendor(vendor)
-                .customerId(token)
-                .providerRef(token)
-                .currency(request.getCurrency())
-                .status(MandateInfo.STATUS_ACTIVE)
-                .build();
+        // Autopay is armed only once the money actually lands -- see completeHostedRenewal.
+        // Arming it here would leave a learner who abandoned the hosted page signed up for
+        // recurring billing they never paid for.
 
-        // Re-arm autopay BEFORE confirming, because handleSuccessfulRenewal only sets the
-        // next charge date on a plan that has auto_renewal_enabled. No gateway call is
-        // needed: the token autopay will charge is the one being charged right now, which is
-        // exactly why this gateway needs no mandate ceremony (and so no method picker).
-        if (withAutopay && !Boolean.TRUE.equals(plan.getAutoRenewalEnabled())) {
-            plan.setAutoRenewalEnabled(true);
-            userPlanRepository.save(plan);
-        }
+        // The payment_log is raised FIRST so the order exists before the learner leaves for
+        // eWay: its id is what the redirect comes back with, and what reconciles an abandoned
+        // return later.
+        String orderId = paymentLogService.createPaymentLog(
+                user.getId(), request.getAmount(), vendor, request.getVendorId(),
+                request.getCurrency(), plan, null);
+        request.setOrderId(orderId);
 
-        vacademy.io.common.payment.dto.PaymentResponseDTO response;
-        try {
-            response = paymentService.handleRecurringCharge(
-                    user, instituteId, vendor, request, plan, storedCard);
-        } catch (Exception e) {
-            // No dunning here: escalating attempt counts belongs to the unattended sweep. The
-            // learner just needs the gateway's reason, so they know whether to fix their card.
-            log.error("Manual renewal charge failed on {} for plan {}: {}",
-                    vendor, plan.getId(), e.getMessage());
-            throw new VacademyException("The payment could not be completed: " + e.getMessage());
-        }
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+        String returnBase = learnerPortalBase(instituteId);
+        // Both ids travel in the return URL: the order to confirm, and the plan it belongs to
+        // (the confirm endpoint checks the two agree AND that the caller owns the plan, so a
+        // learner editing these parameters cannot reach anybody else's payment).
+        String returnUrl = returnBase + "/subscriptions/payment-return?orderId=" + orderId
+                + "&userPlanId=" + plan.getId();
+        var shared = ewayPaymentManager.createSharedAccessCode(
+                request, user, returnUrl, returnUrl + "&cancelled=true", gatewayData);
 
-        try {
-            renewalPaymentService.handleRenewalPaymentConfirmation(
-                    response.getOrderId(), instituteId, PaymentStatusEnum.PAID, response);
-        } catch (Exception e) {
-            // The money HAS been taken. This must never read as "payment failed" -- that
-            // invites a second payment for the same cycle. The log is PAID, so replaying the
-            // confirmation finishes the activation.
-            log.error("Manual renewal CHARGED but confirmation failed - plan {} order {} is PAID "
-                    + "and NOT yet extended", plan.getId(), response.getOrderId(), e);
-            throw new VacademyException("Your payment went through, but activating the membership "
-                    + "is taking longer than usual. Please refresh in a minute - do not pay again.");
-        }
+        // Remember the access code against the order so the result can still be read if the
+        // learner never makes it back to the redirect URL.
+        paymentLogService.updatePaymentLog(orderId, PaymentLogStatusEnum.ACTIVE.name(),
+                PaymentStatusEnum.PAYMENT_PENDING.name(),
+                JsonUtil.toJson(Map.of("ewayAccessCode", shared.AccessCode,
+                        "autopayOnSuccess", withAutopay)));
 
-        // Tell the client it is already done, so it shows success instead of hunting for
-        // checkout coordinates. Copied into a mutable map: the gateway manager hands back an
-        // immutable Map.of(...).
-        Map<String, Object> data = new HashMap<>(
-                response.getResponseData() == null ? Map.of() : response.getResponseData());
-        data.put("paymentStatus", PaymentStatusEnum.PAID.name());
+        Map<String, Object> data = new HashMap<>();
+        data.put("paymentStatus", RENEWAL_REDIRECT);
+        data.put("redirectUrl", shared.SharedPaymentUrl);
+        data.put("orderId", orderId);
         data.put("amount", request.getAmount());
         data.put("currency", request.getCurrency());
+        var response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+        response.setOrderId(orderId);
         response.setResponseData(data);
 
-        log.info("Manual renewal charged inline on {} for plan {} (order {})",
-                vendor, plan.getId(), response.getOrderId());
+        log.info("Hosted checkout opened for plan {} (order {}, accessCode {})",
+                plan.getId(), orderId, shared.AccessCode);
         return response;
+    }
+
+    /**
+     * Finishes a renewal the learner paid for on the gateway's hosted page.
+     *
+     * <p>Called when they are redirected back. The outcome is read from the GATEWAY, never
+     * from the redirect's query string -- a learner can edit that URL, so trusting it would
+     * let anyone mark their own renewal paid. Idempotent: the confirmation claims the
+     * payment_log exactly once, so a refresh of the return page cannot extend twice.
+     */
+    public vacademy.io.common.payment.dto.PaymentResponseDTO completeHostedRenewal(
+            vacademy.io.common.auth.model.CustomUserDetails userDetails,
+            String instituteId, String userPlanId, String orderId) {
+
+        UserPlan plan = ownPlan(userDetails, userPlanId);
+        var paymentLog = paymentLogRepository.findById(orderId)
+                .orElseThrow(() -> new VacademyException("Payment not found: " + orderId));
+        if (paymentLog.getUserPlan() == null || !plan.getId().equals(paymentLog.getUserPlan().getId())) {
+            throw new VacademyException("That payment does not belong to this subscription");
+        }
+
+        String accessCode = readAccessCode(paymentLog);
+        if (!StringUtils.hasText(accessCode)) {
+            throw new VacademyException("This payment has no hosted checkout to confirm");
+        }
+
+        String vendor = paymentLog.getVendor();
+        Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+        var result = ewayPaymentManager.getSharedAccessCodeResult(accessCode, gatewayData);
+
+        boolean paid = result != null && Boolean.TRUE.equals(result.TransactionStatus);
+        Map<String, Object> data = new HashMap<>();
+        data.put("paymentStatus", paid ? PaymentStatusEnum.PAID.name() : PaymentStatusEnum.FAILED.name());
+        data.put("orderId", orderId);
+        if (result != null) {
+            data.put("transactionId", result.TransactionID);
+            data.put("reason", result.ResponseMessage);
+        }
+
+        if (paid) {
+            // Autopay only now, and only if it was asked for when the checkout was opened.
+            if (readAutopayOnSuccess(paymentLog) && !Boolean.TRUE.equals(plan.getAutoRenewalEnabled())
+                    && isAutopayAvailable(plan)) {
+                plan.setAutoRenewalEnabled(true);
+                userPlanRepository.save(plan);
+            }
+            var confirmation = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+            confirmation.setOrderId(orderId);
+            confirmation.setResponseData(data);
+            renewalPaymentService.handleRenewalPaymentConfirmation(
+                    orderId, instituteId, PaymentStatusEnum.PAID, confirmation);
+            log.info("Hosted renewal confirmed for plan {} (order {})", plan.getId(), orderId);
+        } else {
+            paymentLogService.updatePaymentLog(orderId, PaymentLogStatusEnum.FAILED.name(),
+                    PaymentStatusEnum.FAILED.name(), JsonUtil.toJson(data));
+            log.warn("Hosted renewal NOT paid for plan {} (order {}): {}", plan.getId(), orderId,
+                    result == null ? "no result" : result.ResponseMessage);
+        }
+
+        var response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+        response.setOrderId(orderId);
+        response.setResponseData(data);
+        return response;
+    }
+
+    /** The access code stashed on the log when the hosted checkout was opened. */
+    private String readAccessCode(vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog paymentLog) {
+        try {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(paymentLog.getPaymentSpecificData());
+            return node.path("ewayAccessCode").asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Whether the learner asked for autopay when they opened the checkout. */
+    private boolean readAutopayOnSuccess(vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog paymentLog) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(paymentLog.getPaymentSpecificData())
+                    .path("autopayOnSuccess").asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Where to send the learner back to. Institute values are inconsistent -- some carry the
+     * scheme, some are a bare host, some have a trailing slash -- so normalise before
+     * appending a path or eWay is handed a URL it will refuse.
+     */
+    private String learnerPortalBase(String instituteId) {
+        String base = instituteRepository.findById(instituteId)
+                .map(vacademy.io.common.institute.entity.Institute::getLearnerPortalBaseUrl)
+                .orElse(null);
+        if (!StringUtils.hasText(base)) {
+            throw new VacademyException(
+                    "This institute has no learner portal URL configured — cannot return from checkout");
+        }
+        base = base.trim();
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            base = "https://" + base;
+        }
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
     }
 
     /**
@@ -502,66 +586,6 @@ public class SubscriptionService {
             return plan.getCurrency();
         }
         return "INR";
-    }
-
-    /** Nothing charged, no order raised: the client must collect a card and call again. */
-    private vacademy.io.common.payment.dto.PaymentResponseDTO requiresCardResponse(String vendor) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("paymentStatus", RENEWAL_REQUIRES_CARD);
-        data.put("vendor", vendor);
-        var response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
-        response.setResponseData(data);
-        return response;
-    }
-
-    /**
-     * Registers the card the learner just entered as a gateway customer token and returns it.
-     *
-     * <p>Only the card fields of {@code card} are used. A customerId arriving in the request
-     * body is dropped on purpose: honouring one would let a caller charge a card belonging to
-     * somebody else, since the token is all eWay needs.
-     */
-    private String tokeniseCard(UserPlan plan, String instituteId, String vendor,
-            PaymentInitiationRequestDTO request,
-            vacademy.io.common.auth.dto.UserDTO user,
-            EwayRequestDTO card) {
-        EwayRequestDTO safeCard = new EwayRequestDTO();
-        safeCard.setCardName(card.getCardName());
-        safeCard.setCardNumber(card.getCardNumber());
-        safeCard.setExpiryMonth(card.getExpiryMonth());
-        safeCard.setExpiryYear(card.getExpiryYear());
-        safeCard.setCvn(card.getCvn());
-        safeCard.setCountryCode(card.getCountryCode());
-        request.setEwayRequest(safeCard);
-
-        var mapping = paymentService.createOrGetCustomer(instituteId, user, vendor, request);
-        String token = mapping != null ? mapping.getPaymentGatewayCustomerId() : null;
-        if (!StringUtils.hasText(token)) {
-            throw new VacademyException(
-                    "The card could not be saved with the payment gateway. Please try again.");
-        }
-        log.info("Registered a new {} card token for plan {} during manual renewal",
-                vendor, plan.getId());
-        return token;
-    }
-
-    /**
-     * The gateway token to charge for a manual renewal, whatever the mandate says. A learner
-     * who cancelled autopay still has a card on file at eWay, and paying once is precisely
-     * what they are asking to do -- so a REVOKED mandate's token is still used. The customer
-     * mapping is the fallback for plans that never had a mandate row, which is the norm for
-     * the eWay members migrated before mandates existed.
-     */
-    private String resolveChargeableToken(UserPlan plan, String instituteId, String vendor) {
-        MandateInfo mandate = mandateService.getMandateOrLegacyToken(
-                plan.getUserId(), instituteId, vendor, plan.getId());
-        if (mandate != null && StringUtils.hasText(mandate.getCustomerId())) {
-            return mandate.getCustomerId();
-        }
-        return mandateService.findByUserIdAndInstituteId(plan.getUserId(), instituteId, vendor)
-                .map(mapping -> mapping.getPaymentGatewayCustomerId())
-                .filter(StringUtils::hasText)
-                .orElse(null);
     }
 
     /**

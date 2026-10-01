@@ -611,16 +611,23 @@
       "changePlan": "Change plan",
       "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
       "planChangeCancelScheduled": "Cancel this change",
-      "planChangeAwaitingPayment": "Your move to {{plan}} is waiting for payment of {{amount}}.",
-      "planChangeAwaitingPaymentNoAmount": "Your move to {{plan}} is waiting for payment.",
-      "planChangeCompletePayment": "Complete payment",
-      "planChangeDiscard": "Discard this change",
       "cardDialog": {
         "title": "Add a card to continue",
         "description": "We don't have a card saved for this membership yet. Enter one to pay now — we'll save it securely so future renewals are one tap.",
         "loadingForm": "Loading secure card form..."
       },
       "autopayDefaultNotice": "Future renewals will be charged automatically to this card. You can stop auto-pay any time from this page."
+    },
+    "paymentReturn": {
+      "confirmingTitle": "Confirming your payment…",
+      "confirmingBody": "Please don't close this page — we're checking with the payment provider.",
+      "paidTitle": "Payment received!",
+      "paidBody": "Your membership has been renewed. It may take a few seconds to show everywhere.",
+      "failedTitle": "Payment not completed",
+      "failedBody": "Nothing has been charged. You can try again from your membership page.",
+      "cancelled": "You cancelled the payment. Nothing has been charged.",
+      "missingReference": "We couldn't tell which payment this was. Please try again from your membership page.",
+      "backToMembership": "Back to my membership"
     }
   },
   "termsAndConditions": {

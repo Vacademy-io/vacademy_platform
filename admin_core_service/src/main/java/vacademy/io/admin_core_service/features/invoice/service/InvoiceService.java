@@ -3924,16 +3924,15 @@ public class InvoiceService {
         for (InvoiceDTO existing : result) {
             if (existing.getId() != null) realInvoiceIds.add(existing.getId());
         }
-        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId);
-        java.util.Set<String> sfpRowsTakingOverRealId = new java.util.HashSet<>();
+        java.util.Set<String> coveredInvoiceIds = new java.util.HashSet<>();
+        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId, coveredInvoiceIds);
         for (InvoiceDTO sfpRow : sfpRows) {
             String id = sfpRow.getId();
-            if (id != null && !id.startsWith("sfp:") && realInvoiceIds.contains(id)) {
-                sfpRowsTakingOverRealId.add(id);
-            }
+            if (id != null && !id.startsWith("sfp:")) coveredInvoiceIds.add(id);
         }
-        if (!sfpRowsTakingOverRealId.isEmpty()) {
-            result.removeIf(r -> r.getId() != null && sfpRowsTakingOverRealId.contains(r.getId()));
+        coveredInvoiceIds.retainAll(realInvoiceIds);
+        if (!coveredInvoiceIds.isEmpty()) {
+            result.removeIf(r -> r.getId() != null && coveredInvoiceIds.contains(r.getId()));
         }
         result.addAll(sfpRows);
 
@@ -3968,6 +3967,17 @@ public class InvoiceService {
      * entries from real Invoice rows. Skips DELETED rows.
      */
     private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
+        return buildSfpInvoiceDTOs(userId, new java.util.HashSet<>());
+    }
+
+    /**
+     * @param coveredInvoiceIds filled with every Invoice reachable from this user's installment
+     *                          ledger. An installment paid in parts has a ledger row per payment,
+     *                          and each of those payments has its own Invoice; the listing must
+     *                          drop all of them, not just the one the installment row ends up
+     *                          labelled with, or the rest are counted a second time.
+     */
+    private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId, java.util.Set<String> coveredInvoiceIds) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserId(userId);
 
         // Pre-build a sfpId → (realInvoiceId, pdfFileId, pdfUrl) lookup so each
@@ -3999,9 +4009,20 @@ public class InvoiceService {
                 Map<String, String> sfpIdToPaymentLogId = new HashMap<>();
                 for (var ledger : ledgers) {
                     // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
-                    // putIfAbsent keeps the most-recent PaymentLog per SFP.
+                    // putIfAbsent keeps the most-recent PaymentLog per SFP — that is the one
+                    // the row gets labelled with. Every *other* payment against the same
+                    // installment still has an Invoice of its own, and the loop below walks
+                    // all of them so none is left to be listed twice.
                     sfpIdToPaymentLogId.putIfAbsent(
                             ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
+                    if (ledger.getPaymentLogId() != null) {
+                        invoicePaymentLogMappingRepository
+                                .findFirstByPaymentLogId(ledger.getPaymentLogId())
+                                .ifPresent(extra -> {
+                                    Invoice other = extra.getInvoice();
+                                    if (other != null) coveredInvoiceIds.add(other.getId());
+                                });
+                    }
                 }
                 for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
                     invoicePaymentLogMappingRepository
@@ -4014,6 +4035,7 @@ public class InvoiceService {
                                 String url = StringUtils.hasText(pdfFileId)
                                         ? mediaService.getFilePublicUrlById(pdfFileId)
                                         : null;
+                                coveredInvoiceIds.add(realInvoiceId);
                                 sfpIdToPdfInfo.put(e.getKey(),
                                         new String[]{realInvoiceId, pdfFileId, url, inv.getCurrency(),
                                                 inv.getInvoiceNumber()});

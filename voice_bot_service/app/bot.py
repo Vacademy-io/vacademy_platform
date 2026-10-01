@@ -99,7 +99,8 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        question_topic, strip_echo_opener, ABSORB, caller_checking_presence,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
-                       is_screener_hold, spoken_key, takes_over_opening, is_question)
+                       is_screener_hold, spoken_key, takes_over_opening, is_question,
+                       is_bare_agreement, restates_previous, reasks_previous_question)
 
 logger = logging.getLogger(__name__)
 
@@ -1976,6 +1977,11 @@ class NoRepeatGate(FrameProcessor):
         # everything, i.e. the old behaviour.
         self._played_text = played_text
         self._spoken: list = []
+        # The sentences of the bot's last reply / this reply, as emitted — for
+        # the loop guard in _keep (call 62af8895).
+        self._said_prev_reply: list = []
+        self._said_this_reply: list = []
+        self._looping = False
         self._greeted = False              # one greeting per call (see _GREETING_RE)
         # The caller asked to end (outcome.end_forced): the model gets one
         # goodbye line, and a question in it is never spoken — timing sim
@@ -2271,6 +2277,41 @@ class NoRepeatGate(FrameProcessor):
             return True            # they ASKED us to say it again
         if caller_checking_presence(self._last_caller_text()):
             return True            # "Hello?" — they LOST it; the re-ask is the reply
+        # A LOOP (call 62af8895, 2026-10-01). The parent just AGREED ("हाँ जी।")
+        # to what the last reply said, and this reply says it again in other
+        # words — the father hung up 3 s into the bot giving the same two
+        # reasons for low marks and asking the same question again. After a
+        # bare agreement: a sentence restating the previous reply (>= 50 % of
+        # its content words; then >= 30 % for the rest of this reply, which is
+        # continuing the restatement) is dropped, and so is a re-ask of the
+        # question just answered. Genuinely new sentences still play ("हम्म" →
+        # paraphrased intro + a NEW question: test_a_continuation_may_not_
+        # paraphrase_what_already_played). Near-verbatim
+        # repeats stay with the 0.80 check below. If nothing new is asked, the
+        # End branch treats the reply as saying nothing and asks for what comes
+        # AFTER it in the script.
+        # Only what is still on record as SAID: a sentence un-recorded because it
+        # never played (cancelled reply, cut tail) is one to say, not a loop.
+        _prev = ([t for t in self._said_prev_reply if normalize_spoken(t) in self._spoken]
+                 if self._said_prev_reply else [])
+        if (_prev and is_bare_agreement(self._last_caller_text() or "")
+                and not is_repeat(sentence, _prev, threshold=0.80)):
+            if restates_previous(sentence, _prev, ratio=0.3 if self._looping else 0.5):
+                logger.info("no-repeat: the caller agreed (%r) and this says the last reply "
+                            "again — dropping %r", (self._last_caller_text() or "")[:24],
+                            sentence.strip()[:56])
+                self._looping = True
+                if self._diag is not None:
+                    self._diag.bump("loops_dropped")
+                return False
+            if reasks_previous_question(sentence, _prev):
+                logger.info("no-repeat: the caller already answered it (%r) — dropping the "
+                            "re-asked question %r", (self._last_caller_text() or "")[:24],
+                            sentence.strip()[:56])
+                self._looping = True
+                if self._diag is not None:
+                    self._diag.bump("loops_dropped")
+                return False
         # Same QUESTION, different words. Sentence similarity at 0.80 cannot see
         # this (597aeb3f's pair scores ~0.7), so the topic supplies the candidate
         # and a looser similarity bar confirms it.
@@ -2487,6 +2528,7 @@ class NoRepeatGate(FrameProcessor):
         norm = normalize_spoken(text)
         self._spoken.append(norm)
         self._norms_this_reply.add(norm)
+        self._said_this_reply.append(text.strip())
         topic = question_topic(text)
         # Remember the PREVIOUS exemplar so an un-poison can restore it exactly.
         prev_exemplar = self._asked.get(topic) if topic else None
@@ -2525,6 +2567,10 @@ class NoRepeatGate(FrameProcessor):
             self._cf_this_reply = set()
             self._real_this_reply = False
             self._norms_this_reply = set()
+            if self._said_this_reply:
+                self._said_prev_reply = self._said_this_reply
+            self._said_this_reply = []
+            self._looping = False
             self._strict_this_response = self._continuation_next
             self._continuation_next = False
             # The previous response ran to a natural start-of-next — its
@@ -2791,9 +2837,12 @@ class NoRepeatGate(FrameProcessor):
             # said)" left "समझ सकती हूँ सर।", 8.2 s of silence and "are you
             # there?". No word list can name every acknowledgment; the shape can.
             if (self._real_this_reply and (self._held_tail or self._held_question)
-                    and not self._asked_this_reply and self._body_chars <= 40):
-                logger.info("no-repeat: only a short line survived the already-said drops "
-                            "— treating the reply as saying nothing new")
+                    and not self._asked_this_reply
+                    and (self._body_chars <= 40 or self._looping)):
+                logger.info("no-repeat: %s — treating the reply as saying nothing new",
+                            "the reply looped on the last one and asked nothing new"
+                            if self._looping else
+                            "only a short line survived the already-said drops")
                 self._real_this_reply = False
             if superseded and (not self._real_this_reply or self._echo_held or self._cf_held):
                 logger.info("no-repeat: a newer caller turn is already queued — "

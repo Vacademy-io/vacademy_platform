@@ -777,6 +777,67 @@ _QUESTION_CUES = frozenset({
 })
 
 
+# ── A loop: the caller agreed and the reply says the last one again ─────────
+# Call 62af8895 (2026-10-01): the bot gave the two reasons for low marks and
+# asked "क्या ऋषभ के साथ भी ऐसा ही है सर?"; the father said "हाँ जी।"; the
+# model then gave the SAME reasons in the script's own words ("आमतौर पर कम
+# marks आने के दो-तीन कारण होते हैं…") and asked the same question again —
+# and he hung up 3 s into it. is_repeat (0.80 character similarity) cannot see
+# a paraphrase; shared CONTENT words can.
+_AGREE_EXTRA = frozenset({"yes", "yeah", "yep", "yup", "right", "sure", "correct",
+                          "exactly", "ok", "okay", "haanji"})
+_ADDRESS_WORDS = frozenset({"सर", "मैम", "मैडम", "जी", "sir", "maam", "madam", "ji"})
+
+
+def is_bare_agreement(text: str) -> bool:
+    """1-4 words, all acknowledgement: "हाँ जी।", "जी सर", "Yes.", "ठीक है"."""
+    ws = _words(text)
+    return 0 < len(ws) <= 4 and all(w in _BACKCHANNEL_WORDS or w in _AGREE_EXTRA for w in ws)
+
+
+def _content_words(text: str) -> set:
+    return {w for w in _words(text)
+            if len(w) > 1 and w not in _ECHO_STOPWORDS and w not in _BACKCHANNEL_WORDS
+            and w not in _ADDRESS_WORDS and w not in _QUESTION_CUES}
+
+
+def restates_previous(sentence: str, previous, min_words: int = 4,
+                      ratio: float = 0.5, min_shared: int = 3) -> bool:
+    """PURE. Does `sentence` say again what one of `previous` (the sentences of
+    the bot's last reply) said — by shared content words, so in other words too?
+    Overlap coefficient over content words (question words excluded), both
+    sides >= min_words, and >= min_shared words in common: the child's name and
+    "क्या" alone made "क्या आप ऋषभ का free demo करवाना चाहेंगे?" a restatement
+    of "क्या ऋषभ के साथ भी ऐसा ही है?"."""
+    a = _content_words(sentence)
+    if len(a) < min_words:
+        return False
+    for p in previous or ():
+        b = _content_words(p)
+        shared = len(a & b)
+        if len(b) >= min_words and shared >= min_shared \
+                and shared / min(len(a), len(b)) >= ratio:
+            return True
+    return False
+
+
+def reasks_previous_question(sentence: str, previous, ratio: float = 0.6) -> bool:
+    """PURE. Is `sentence` the same QUESTION as one in `previous`, reworded?"""
+    if "?" not in sentence and "？" not in sentence:
+        return False
+    a = _content_words(sentence)
+    if len(a) < 2:
+        return False
+    for p in previous or ():
+        if "?" not in p and "？" not in p:
+            continue
+        b = _content_words(p)
+        shared = len(a & b)
+        if len(b) >= 2 and shared >= 2 and shared / min(len(a), len(b)) >= ratio:
+            return True
+    return False
+
+
 def caller_asked_a_question(text: str) -> bool:
     """Was the caller's last turn a QUESTION rather than an answer?
 

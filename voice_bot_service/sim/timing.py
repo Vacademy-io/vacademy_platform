@@ -892,6 +892,40 @@ def _nv_tail_scenario(key: str, cache: bool) -> "Scenario":
         note="review of 2cfb1cff29: the parent answers over the tail of a Navana question")
 
 
+# ── call 62af8895 (2026-10-01): "हाँ जी।" then the same pitch in other words ──
+L62_A = ("जी सर, समझ सकती हूँ — ये इस stage पर बहुत common है। Generally कम marks आने के दो "
+         "major reasons होते हैं — या तो बच्चे के concepts properly clear नहीं होते, या फिर जब "
+         "बच्चा self-study करने बैठता है तो उसके doubts समय पर clear नहीं हो पाते। क्या ऋषभ के "
+         "साथ भी ऐसा ही है सर?")
+L62_B = ("सर, आमतौर पर कम marks आने के दो-तीन कारण होते हैं। Class में तीस-पैंतीस बच्चों के बीच "
+         "कुछ बच्चों के concepts clear नहीं हो पाते, और जब बच्चा खुद self-study करता है तो उसकी "
+         "queries unanswered रह जाती हैं। क्या आपको लगता है कि ऋषभ के साथ भी ऐसा हो रहा है?")
+L62_C = ("इसीलिए Shiksha Nation में हम Day one से concept clarity पर काम करते हैं और हर doubt "
+         "उसी दिन clear करते हैं। क्या आप ऋषभ का एक free demo class करवाना चाहेंगे?")
+
+
+def _l62_reply(last_user: str) -> str:
+    """Gemini on the real call: after "हाँ जी।" it gave the reasons AGAIN, reworded."""
+    u = last_user or ""
+    if u.startswith("["):
+        return L62_C                      # the next-step cue → the next step
+    if "fifty" in u or "percent" in u:
+        return L62_A
+    if "हाँ" in u:
+        return L62_B
+    return "जी।"
+
+
+def chk_l62_loop(res):
+    f = []
+    sent = " ".join(res.get("tts_texts", []))
+    if "कारण होते हैं" in sent or "ऐसा हो रहा है" in sent:
+        f.append("the reworded pitch / re-asked question reached the TTS: " + sent[-220:])
+    if "free demo" not in sent:
+        f.append("the next step never played")
+    return f
+
+
 LONG_ANSWER = ("Yes, I take classes in the evening, mostly at the studio near my house, "
                "and a few students come to my home on weekends")
 _LONG_KEYS = ("classes", "evening", "studio", "students", "weekends")
@@ -1378,6 +1412,16 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "Just to clarify, is it that you don't take online classes, or someone handles it?"],
              checks=chk_forced_close, max_secs=45,
              note="call ada2e60c: the model clarifies instead of ending; the gate must end the call anyway"),
+    Scenario("hindi_loop_after_yes",
+             caller=[Say("ऋषभ के fifty three percent बने थे ma'am.", 1.6, after_bot_stop=1,
+                         offset=0.6),
+                     Say("हाँ जी।", 0.6, after_bot_stop=2, offset=0.8)],
+             replies=[],
+             reply_for=_l62_reply,
+             context="hindi_parent_agent_context.json",
+             checks=chk_l62_loop, max_secs=70,
+             note="call 62af8895: after 'हाँ जी।' the bot gave the same pitch reworded and "
+                  "re-asked; the father hung up"),
     Scenario("hindi_pieces_bare_acks",
              caller=[Say("हाँ जी पिताजी हैं।", 1.2, after_bot_stop=1, offset=0.6),
                      Say("नौवीं में पढ़ रहा है।", 1.3, after_bot_stop=2, offset=0.6),

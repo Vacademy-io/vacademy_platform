@@ -6795,3 +6795,85 @@ def test_memory_reclaim_never_freezes_a_finished_call(monkeypatch):
     del pinned
     st = memory.reclaim(idle=True, corr="t")
     assert st["froze"] and frozen == [1]
+
+
+
+# ── Call 62af8895 (2026-10-01): a loop after "हाँ जी।" ───────────────────────
+L62_A = ("जी सर, समझ सकती हूँ — ये इस stage पर बहुत common है। ",
+         "Generally कम marks आने के दो major reasons होते हैं — या तो बच्चे के concepts properly "
+         "clear नहीं होते, या फिर जब बच्चा self-study करने बैठता है तो उसके doubts समय पर clear "
+         "नहीं हो पाते। ",
+         "क्या ऋषभ के साथ भी ऐसा ही है सर? ")
+L62_B = ("सर, आमतौर पर कम marks आने के दो-तीन कारण होते हैं। ",
+         "Class में तीस-पैंतीस बच्चों के बीच कुछ बच्चों के concepts clear नहीं हो पाते, और जब बच्चा "
+         "खुद self-study करता है तो उसकी queries unanswered रह जाती हैं। ",
+         "क्या आपको लगता है कि ऋषभ के साथ भी ऐसा हो रहा है? ")
+
+
+@pytest.mark.asyncio
+async def test_after_yes_the_same_pitch_in_other_words_is_dropped_and_the_next_step_asked():
+    """Verbatim call 62af8895: the father said "हाँ जी।" and heard the reasons
+    pitch and its question AGAIN, reworded — he hung up 3 s in. Nothing of it
+    may play, and the model must be asked for what comes AFTER it."""
+    caller = {"t": "ऋषभ के fifty three percent बने थे ma'am."}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, *L62_A)
+    caller["t"] = "हाँ जी।"
+    rec.text.clear()
+    await _reply(g, *L62_B)
+    said = " ".join(rec.text)
+    assert "कारण होते हैं" not in said and "ऐसा हो रहा है" not in said, said
+    assert "self-study" not in said, said
+    assert asked and asked[-1][1] == "all-repeat", asked
+
+
+@pytest.mark.asyncio
+async def test_after_yes_a_genuine_next_step_plays():
+    caller = {"t": "ऋषभ के fifty three percent बने थे ma'am."}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, *L62_A)
+    caller["t"] = "हाँ जी।"
+    rec.text.clear()
+    nxt = ("इसीलिए Shiksha Nation में हम Day one से concept clarity पर काम करते हैं और हर doubt "
+           "उसी दिन clear करते हैं। ", "क्या आप ऋषभ का एक free demo class करवाना चाहेंगे? ")
+    await _reply(g, *nxt)
+    said = " ".join(rec.text)
+    assert "concept clarity" in said and "free demo" in said, said
+    assert not [k for _h, k, _a in asked if k == "all-repeat"], asked
+
+
+@pytest.mark.asyncio
+async def test_after_a_real_answer_the_guard_stays_out():
+    """Not a bare agreement (the parent said something): the loop guard must not
+    fire — elaborating on the same topic is fine then."""
+    caller = {"t": "ऋषभ के fifty three percent बने थे ma'am."}
+    g, rec, _asked = _nr_with_steps(caller)
+    await _reply(g, *L62_A)
+    caller["t"] = "हाँ जी, उसके doubts clear नहीं होते, tuition भी जाता है।"
+    rec.text.clear()
+    await _reply(g, L62_B[0])
+    assert "कारण होते हैं" in " ".join(rec.text)
+
+
+
+def test_memory_reclaim_waits_for_idle_before_the_first_freeze(monkeypatch):
+    """The first full collection (before survivors are frozen) took 232 ms on the
+    box (2026-10-01): never run it while calls are live."""
+    import gc
+    from app import memory
+    collected = []
+    monkeypatch.setattr(memory, "_frozen_after_call", False)
+    monkeypatch.setattr(gc, "collect", lambda *a: collected.append(1) or 0)
+    monkeypatch.setattr(gc, "freeze", lambda: None)
+    st = memory.reclaim(idle=False, corr="t")
+    assert st.get("deferred") and not collected
+    st = memory.reclaim(idle=True, corr="t")
+    assert collected and not st.get("deferred")
+    collected.clear()
+    st = memory.reclaim(idle=False, corr="t")            # frozen now: cheap, runs live
+    assert collected and not st.get("deferred")
+
+
+def test_call_modules_preload():
+    from app import memory
+    assert memory.preload_call_modules() >= 1

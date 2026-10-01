@@ -398,3 +398,44 @@ def test_strip_echo_opener_only_ever_deletes():
         assert sent.strip() == "" or out.strip(), f"blanked a reply: {sent!r}"
         assert "?" not in sent or "?" in out, f"swallowed a question: {sent!r}"
         assert subsequence(bare(out), bare(sent)), f"invented text from {sent!r}"
+
+
+
+# ── Call 62af8895 (2026-10-01): "हाँ जी।" then the same pitch in other words ──
+from app.turntake import is_bare_agreement, restates_previous, reasks_previous_question
+
+L62_PREV = ["जी सर, समझ सकती हूँ — ये इस stage पर बहुत common है।",
+            "Generally कम marks आने के दो major reasons होते हैं — या तो बच्चे के concepts "
+            "properly clear नहीं होते, या फिर जब बच्चा self-study करने बैठता है तो उसके doubts "
+            "समय पर clear नहीं हो पाते।",
+            "क्या ऋषभ के साथ भी ऐसा ही है सर?"]
+L62_LOOP = ["सर, आमतौर पर कम marks आने के दो-तीन कारण होते हैं।",
+            "क्या आपको लगता है कि ऋषभ के साथ भी ऐसा हो रहा है?"]
+L62_NEW = ["इसीलिए Shiksha Nation में हम Day one से concept clarity पर काम करते हैं और हर "
+           "doubt उसी दिन clear करते हैं।",
+           "हमारे live classes में हर बच्चे पर personal attention दिया जाता है, और doubts तुरंत "
+           "solve होते हैं।",
+           "क्या आप ऋषभ का एक free demo class करवाना चाहेंगे?",
+           "तो ऋषभ के लिए हमारा Class 6 वाला program सही रहेगा।",
+           "Shiksha Nation में teachers हर बच्चे के doubts उसी दिन clear करते हैं, ताकि concepts "
+           "कभी अधूरे न रहें।"]
+
+
+def test_bare_agreement_is_only_an_acknowledgement():
+    for t in ("हाँ जी।", "जी सर", "Yes.", "ठीक है", "हाँ जी बताइए।"):
+        assert is_bare_agreement(t), t
+    for t in ("नहीं जी", "हाँ जी, पर fees कितनी है?", "ऋषभ है", "", "मैं बच्चे का पिता बोल रहा हूँ"):
+        assert not is_bare_agreement(t), t
+
+
+def test_the_looped_pitch_is_a_restatement_and_its_question_a_reask():
+    assert restates_previous(L62_LOOP[0], L62_PREV)
+    assert reasks_previous_question(L62_LOOP[1], L62_PREV)
+
+
+def test_the_next_step_of_the_script_is_neither():
+    """Sharing the child's name, "क्या", or even 4 topic words (doubts, concepts,
+    clear, बच्चे) with the reasons pitch must not make a NEXT step a repeat."""
+    for s in L62_NEW:
+        assert not restates_previous(s, L62_PREV), s
+        assert not reasks_previous_question(s, L62_PREV), s

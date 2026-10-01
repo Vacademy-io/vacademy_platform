@@ -3512,7 +3512,11 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     import inspect
     src = inspect.getsource(b.run_bot)
     resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
-    assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    assert 'flags["last_cut_t"]' in resay and "max(_greet_queued_t, flags[\"opening_queued_t\"])" in resay
+    # Call 8208166f (2026-10-01): the cut of the FIRST delivery must not
+    # justify re-saying the re-said one (an absorbed "हाँ।" queued a third copy).
+    tail = src[src.index("_opening_resays += 1"):src.index("_opening_resays += 1") + 1200]
+    assert 'flags["opening_queued_t"] = time.time() + 0.5' in tail
     # cut_now is the one exception: the turn-gate has just broadcast the
     # interruption itself (a real barge-in), so the cut is a fact, not a guess.
     assert "not cut_now and not (flags" in resay
@@ -4763,7 +4767,11 @@ def test_replay_record_becomes_a_scenario_with_finals_at_their_times():
     assert len(turns) == 3, "the 0.2 s VAD blip with no words is not a turn"
     assert sc.reply_for("[cue] बोलिए।") == "जी सर। बच्चे का नाम?"      # by trigger, not order
     assert sc.reply_for("Hello") == "जी, मैं सुन रही हूँ।"
-    assert sc.reply_for("anything") is None, "every recorded reply used once"
+    # Every recorded reply used once: a run the live call never made gets a
+    # unique contentful line (never a stub "Okay.", which starts a cue
+    # cascade), and is counted as drift from the live call.
+    extra = sc.reply_for("anything")
+    assert extra and "नोट" in extra and sc.reply_for.unrecorded == 1, extra
     assert 170 < sc.max_secs <= 180
 
 

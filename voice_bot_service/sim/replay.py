@@ -276,7 +276,12 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     if res.get("opening_resaid") and res.get("bot") and res.get("opening_text"):
         from app.turntake import opening_expected_secs
         first = res["bot"][0]
-        heard, exp = first[1] - first[0], opening_expected_secs(res["opening_text"])
+        # Heard = first audio up to the first CUT. A cut and the re-said opening
+        # can be back to back, and the sim then records ONE bot stretch (replay
+        # of 953d5366: cut at ~1 s, re-said, "14.2 s heard").
+        cuts = [t for t in res.get("interruption_times") or [] if t > first[0]]
+        end = min([first[1]] + cuts[:1])
+        heard, exp = end - first[0], opening_expected_secs(res["opening_text"])
         if exp and heard >= 0.5 * exp:
             f.append(f"opening re-said after {heard:.1f}s of ~{exp:.1f}s had played")
     # 13. steering-cue storms: the bot correcting itself run after run

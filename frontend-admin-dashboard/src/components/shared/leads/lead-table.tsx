@@ -440,6 +440,21 @@ export function LeadTable({
             render: (vm) => <LeadSourcePill label={vm.audience} />,
         },
         {
+            // The channel the audience itself belongs to (audience.campaign_type).
+            // Sits beside Lead source because that column shows the audience LIST —
+            // one channel holds many lists, and institutes read them together.
+            id: 'campaignType',
+            header: terminology.campaignType,
+            thClass: 'min-w-32',
+            show: true,
+            render: (vm) => (
+                <LeadSourcePill
+                    label={vm.campaignType}
+                    className="bg-primary-50 text-primary-500"
+                />
+            ),
+        },
+        {
             id: 'status',
             header: terminology.leadStatus,
             thClass: 'w-40',

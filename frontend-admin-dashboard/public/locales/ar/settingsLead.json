@@ -71,6 +71,8 @@
         "tierPlaceholder": "مثل مستوى الاهتمام",
         "leadStatusLabel": "اسم «حالة العميل»",
         "leadStatusPlaceholder": "مثل الإجراء",
+        "campaignTypeLabel": "اسم \"نوع الحملة\"",
+        "campaignTypePlaceholder": "مثال: Source",
         "hint": "يُستخدم في رؤوس جدول العملاء والفلاتر والعرض الجانبي وهذه الإعدادات. احفظ بالزر أدناه."
     }
 }

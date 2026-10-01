@@ -7,7 +7,7 @@
         "placeholder": "أدخل اسم الحملة"
     },
     "campaignType": {
-        "label": "نوع الحملة"
+        "label": "{{term}}"
     },
     "campaignObjective": {
         "label": "هدف الحملة",

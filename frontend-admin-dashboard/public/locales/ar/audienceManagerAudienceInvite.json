@@ -16,8 +16,8 @@
         "placeholder": "تصفية حسب الحالة"
     },
     "typeFilter": {
-        "allTypes": "جميع أنواع الحملات",
-        "placeholder": "التصفية حسب نوع الحملة"
+        "allTypes": "كل {{term}}",
+        "placeholder": "تصفية حسب {{term}}"
     },
     "toolbar": {
         "searchPlaceholder": "البحث في {{term}}",

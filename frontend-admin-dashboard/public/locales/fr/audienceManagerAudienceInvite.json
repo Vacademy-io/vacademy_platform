@@ -16,8 +16,8 @@
         "placeholder": "Filtrer par statut"
     },
     "typeFilter": {
-        "allTypes": "Tous les types de campagne",
-        "placeholder": "Filtrer par type de campagne"
+        "allTypes": "Tous les {{term}}",
+        "placeholder": "Filtrer par {{term}}"
     },
     "toolbar": {
         "searchPlaceholder": "Rechercher {{term}}",

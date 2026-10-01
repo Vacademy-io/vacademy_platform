@@ -53,7 +53,7 @@ export interface LeadSettingsData {
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
      * through useLeadTerminology().
      */
-    labels?: { tier?: string; leadStatus?: string };
+    labels?: { tier?: string; leadStatus?: string; campaignType?: string };
 }
 
 const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
@@ -147,7 +147,7 @@ export default function LeadSettings() {
         setHasChanges(true);
     };
 
-    const updateLabel = (key: 'tier' | 'leadStatus', value: string) => {
+    const updateLabel = (key: 'tier' | 'leadStatus' | 'campaignType', value: string) => {
         setSettings((prev) => ({ ...prev, labels: { ...(prev.labels ?? {}), [key]: value } }));
         setHasChanges(true);
     };
@@ -222,7 +222,7 @@ export default function LeadSettings() {
 interface ConfigSectionProps {
     settings: LeadSettingsData;
     update: (patch: Partial<LeadSettingsData>) => void;
-    updateLabel: (key: 'tier' | 'leadStatus', value: string) => void;
+    updateLabel: (key: 'tier' | 'leadStatus' | 'campaignType', value: string) => void;
     updateWeight: (key: keyof LeadSettingsData['scoringWeights'], value: number) => void;
     weightTotal: number;
     weightError: boolean;
@@ -428,7 +428,7 @@ function ConfigSection({
                         </CardContent>
                     </Card>
 
-                    {/* ── Terminology: what this institute calls Tier / Lead status ── */}
+                    {/* ── Terminology: what this institute calls Tier / Lead status / Campaign type ── */}
                     <Card>
                         <CardHeader>
                             <CardTitle>{t('terminologyCard.title')}</CardTitle>
@@ -457,6 +457,18 @@ function ConfigSection({
                                     placeholder={t('terminologyCard.leadStatusPlaceholder')}
                                     maxLength={40}
                                     onChange={(e) => updateLabel('leadStatus', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="lead-label-campaign-type">
+                                    {t('terminologyCard.campaignTypeLabel')}
+                                </Label>
+                                <Input
+                                    id="lead-label-campaign-type"
+                                    value={settings.labels?.campaignType ?? ''}
+                                    placeholder={t('terminologyCard.campaignTypePlaceholder')}
+                                    maxLength={40}
+                                    onChange={(e) => updateLabel('campaignType', e.target.value)}
                                 />
                             </div>
                             <p className="text-xs text-muted-foreground sm:col-span-2">

@@ -139,7 +139,7 @@ const formAppearanceSchema = z.object({
 // real consumer (useAudienceCampaignForm.ts) can rebuild it from a component-scoped `t`,
 // recomputed whenever the active locale changes — see the buildAddDiscountSchema precedent in
 // manage-students/invite/-components/create-invite/GenerateInviteLinkSchema.ts.
-export const buildAudienceCampaignSchema = (t: TFunction) =>
+export const buildAudienceCampaignSchema = (t: TFunction, campaignTypeTerm: string) =>
     z
         .object({
             campaign_name: z
@@ -149,7 +149,12 @@ export const buildAudienceCampaignSchema = (t: TFunction) =>
             campaign_type: z
                 .string()
                 .toUpperCase()
-                .min(1, t('audienceManagerAudienceCampaignSchema:validation.campaignTypeRequired')),
+                .min(
+                    1,
+                    t('audienceManagerAudienceCampaignSchema:validation.campaignTypeRequired', {
+                        term: campaignTypeTerm,
+                    })
+                ),
             description: z.string().optional(),
             campaign_objective: z.string().optional().default(''),
             to_notify: z.string().optional(),

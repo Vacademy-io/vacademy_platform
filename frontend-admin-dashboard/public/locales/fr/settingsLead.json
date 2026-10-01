@@ -71,6 +71,8 @@
         "tierPlaceholder": "p. ex. Niveau d'intérêt",
         "leadStatusLabel": "Nom de « Statut du lead »",
         "leadStatusPlaceholder": "p. ex. Action",
+        "campaignTypeLabel": "Nom pour « Type de campagne »",
+        "campaignTypePlaceholder": "ex. Source",
         "hint": "Utilisé dans les en-têtes du tableau des leads, les filtres, la vue latérale et ces réglages. Enregistrez avec le bouton ci-dessous."
     }
 }

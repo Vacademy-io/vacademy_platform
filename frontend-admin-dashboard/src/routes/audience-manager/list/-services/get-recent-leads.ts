@@ -11,6 +11,8 @@ export interface RecentLeadDetail {
     response_id?: string;
     audience_id?: string;
     campaign_name?: string;
+    /** The audience's campaign type — the channel the lead came in through. */
+    campaign_type?: string;
     user_id?: string;
     source_type?: string;
     source_id?: string;

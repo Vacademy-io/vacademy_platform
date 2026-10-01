@@ -54,6 +54,7 @@ import {
     parseFormAppearance,
     validateFormAppearance,
 } from '@/services/audience-form-appearance';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -139,6 +140,7 @@ interface CreateCampaignFormProps {
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
     const { t } = useTranslation('audienceManagerCreateCampaignForm');
+    const { campaignType: term } = useLeadTerminology();
     const { t: tUpdateAudienceCampaign } = useTranslation(
         'audienceManagerUseUpdateAudienceCampaign'
     );
@@ -953,7 +955,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        {t('campaignType.label')} <span className="text-red-500">*</span>
+                        {t('campaignType.label', { term })} <span className="text-red-500">*</span>
                     </label>
                     <div className="mt-2">
                         <CampaignTypeDropdown

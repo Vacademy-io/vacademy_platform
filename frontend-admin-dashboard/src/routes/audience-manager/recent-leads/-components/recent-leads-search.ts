@@ -75,6 +75,13 @@ export const RecentLeadsSearchSchema = z.object({
     /** "Worked within the last N hours" — same presets as calledWithin, but bounds the
      *  last timeline activity of any kind (note, status change, logged call). */
     workedWithin: z.string().optional(),
+    /** Explicit from–to for `calledWithin` / `workedWithin` when they hold 'CUSTOM'
+     *  (yyyy-mm-dd, same shape as `from`/`to`). Both ends are inclusive calendar days,
+     *  unlike the rolling presets. */
+    calledFrom: z.string().optional(),
+    calledTo: z.string().optional(),
+    workedFrom: z.string().optional(),
+    workedTo: z.string().optional(),
     /** Campaign (UTM) filters — comma-separated values per dimension. Only
      *  honoured while the institute's UTM setting is on (the controls that
      *  read them render nothing otherwise). The Reports Center's UTM tab

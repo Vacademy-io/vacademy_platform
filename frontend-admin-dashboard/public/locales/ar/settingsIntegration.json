@@ -77,8 +77,8 @@
         "skipOption": "— تخطٍّ —"
     },
     "campaignTypeFilter": {
-        "label": "نوع الحملة",
-        "all": "جميع أنواع الحملات",
+        "label": "{{term}}",
+        "all": "كل {{term}}",
         "noAudiences": "لا توجد جماهير من هذا النوع"
     },
     "google": {

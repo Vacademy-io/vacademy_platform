@@ -119,6 +119,8 @@ export interface LeadSettingsConfig {
 export interface LeadTerminologyLabels {
     tier?: string;
     leadStatus?: string;
+    /** What this institute calls the audience's channel (default "Campaign type"; many say "Source"). */
+    campaignType?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {

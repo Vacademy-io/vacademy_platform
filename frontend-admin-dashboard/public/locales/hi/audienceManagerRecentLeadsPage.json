@@ -44,7 +44,7 @@
             "untitled": "बिना शीर्षक वाली ऑडियंस"
         },
         "campaignType": {
-            "label": "सभी अभियान प्रकार"
+            "label": "सभी {{term}}"
         },
         "customDate": {
             "setDates": "तारीखें सेट करें",
@@ -73,7 +73,7 @@
     "chips": {
         "search": "खोज: {{query}}",
         "audience": "ऑडियंस: {{names}}",
-        "campaignType": "अभियान प्रकार: {{types}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "स्तर: {{tiers}}",
         "status": "स्थिति: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -131,6 +131,7 @@
             "email": "ईमेल",
             "mobile": "मोबाइल",
             "audience": "ऑडियंस",
+            "campaignType": "{{term}}",
             "leadStatus": "लीड स्थिति",
             "counsellor": "काउंसलर",
             "activityNotes": "गतिविधि और नोट्स",

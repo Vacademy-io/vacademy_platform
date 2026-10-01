@@ -3562,9 +3562,12 @@ public class AudienceService {
                 .map(AudienceResponse::getAudienceId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, String> audienceIdToName = audienceIds.isEmpty() ? Collections.emptyMap()
+        // Keep the whole Audience, not just its name: the leads table also shows the
+        // campaign type (the channel a lead came in through), and reusing this one
+        // fetch keeps that free.
+        Map<String, Audience> audienceById = audienceIds.isEmpty() ? Collections.emptyMap()
                 : audienceRepository.findAllById(audienceIds).stream()
-                        .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName, (a, b) -> a));
+                        .collect(Collectors.toMap(Audience::getId, a -> a, (a, b) -> a));
 
         return responses.map(response -> {
             // Build custom field values map from batch-fetched data
@@ -3621,7 +3624,10 @@ public class AudienceService {
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
                     .audienceId(response.getAudienceId())
-                    .campaignName(audienceIdToName.get(response.getAudienceId()))
+                    .campaignName(Optional.ofNullable(audienceById.get(response.getAudienceId()))
+                            .map(Audience::getCampaignName).orElse(null))
+                    .campaignType(Optional.ofNullable(audienceById.get(response.getAudienceId()))
+                            .map(Audience::getCampaignType).orElse(null))
                     .userId(response.getUserId())
                     .studentUserId(response.getStudentUserId())
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)
@@ -3732,6 +3738,7 @@ public class AudienceService {
                 .responseId(response.getId())
                 .audienceId(response.getAudienceId())
                 .campaignName(audience.getCampaignName())
+                .campaignType(audience.getCampaignType())
                 .userId(response.getUserId())
                 .studentUserId(response.getStudentUserId())
                 .user(user)

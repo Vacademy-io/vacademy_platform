@@ -48,7 +48,7 @@
             "untitled": "جمهور بلا عنوان"
         },
         "campaignType": {
-            "label": "جميع أنواع الحملات"
+            "label": "كل {{term}}"
         },
         "customDate": {
             "setDates": "تحديد التواريخ",
@@ -77,7 +77,7 @@
     "chips": {
         "search": "بحث: {{query}}",
         "audience": "الجمهور: {{names}}",
-        "campaignType": "نوع الحملة: {{types}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "المستوى: {{tiers}}",
         "status": "الحالة: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -147,6 +147,7 @@
             "email": "البريد الإلكتروني",
             "mobile": "الجوال",
             "audience": "الجمهور",
+            "campaignType": "{{term}}",
             "leadStatus": "حالة العميل المحتمل",
             "counsellor": "المستشار",
             "activityNotes": "النشاط والملاحظات",

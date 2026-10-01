@@ -54,6 +54,8 @@ KINDS = [
     ("cue-storm", r"steering-cue runs within"),
     ("concurrent-generations", r"^two generations at once"),
     ("lost-words", r"^caller words never reached the model"),
+    ("late-words", r"^caller words reached the model late"),
+    ("nudge", r"^nudge: "),
     ("run-error", r"^run error"),
     ("timeout", r"^timeout"),
 ]

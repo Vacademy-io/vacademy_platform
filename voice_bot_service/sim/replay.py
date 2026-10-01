@@ -139,6 +139,12 @@ def _sentences(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"(?<=[.!?।])\s+", text or "") if p.strip()]
 
 
+def _is_nudge(sentence: str) -> bool:
+    """The idle nudge's sentences ("हेलो?" / "क्या आप मुझे सुन पा रहे हैं?")."""
+    s = (sentence or "").strip().casefold().strip("?।.!, ")
+    return _is_presence_check(sentence) or s in ("हेलो", "hello", "हैलो")
+
+
 def _is_presence_check(text: str) -> bool:
     t = (text or "").casefold()
     return any(k in t for k in ("सुन पा रहे", "sun paa rahe", "are you still there",
@@ -173,8 +179,8 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         if t["role"] != "assistant":
             continue
         for s in _sentences(t["text"]):
-            if len(s.split()) < 5:
-                continue
+            if len(s.split()) < 5 or _is_nudge(s):
+                continue                               # the nudge is DESIGNED to repeat (#16 counts it)
             k = _key(s)
             if k in said:
                 between = [u["text"] for u in tr[said[k] + 1:idx] if u["role"] == "user"]
@@ -242,8 +248,10 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     for t in tr:
         if t["role"] != "assistant":
             continue
+        # The idle nudge after an unanswered question shares the played entry
+        # (no caller words between), but it is a separate utterance 8 s later.
         topics = {question_topic(x) or _key(x)[:24] for x in _sentences(t["text"] or "")
-                  if "?" in x or "？" in x}
+                  if ("?" in x or "？" in x) and not _is_nudge(x)}
         if len(topics) >= 2:
             f.append(f"two different questions in one turn: {(t['text'] or '')[:80]!r}")
     # 10-13 read the stub model's generation log (sim.timing SimLLM.gens),
@@ -305,6 +313,13 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         if n >= 4:
             f.append(f"{n} steering-cue runs within 30 s from {cues[i]:.1f}s")
             break
+    # 16. nudges, counted (not a defect by itself): excluded from #2 and #9
+    #     because they are designed to repeat, so an INCREASE stays visible here.
+    for t in tr:
+        if t["role"] == "assistant":
+            for x in _sentences(t["text"] or ""):
+                if _is_presence_check(x):
+                    f.append(f"nudge: {x[:40]!r}")
     # 7. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     for cs, ce in res.get("caller", []):
         heard = any(cs <= t <= ce + 3.0 and x.strip() for t, x in finals)
@@ -330,13 +345,18 @@ def invariants(res: Dict[str, Any]) -> List[str]:
                 break
     # 15. the caller's words never reached the model. A substantive final
     #     (not a bare backchannel, not the network) must be in some generation's
-    #     context within 8 s — a run dropped or superseded must not drop words.
+    #     context — a run dropped or superseded must not drop words. Words said
+    #     OVER THE OPENING (before the call's first model run) are answered when
+    #     it ends — the opening is their reply — so they only have to arrive;
+    #     words after that must arrive within 8 s or count as LATE. (A flat 8 s
+    #     window read a 12-14 s opening as "lost words".)
     from app.turntake import (mid_reply_action, ABSORB, is_carrier_announcement,
                               is_call_screener)
     ctxs = res.get("contexts") or []
     seen = [(g["requested"], _key(" ".join(c for r, c in (ctxs[i] if i < len(ctxs) else [])
                                           if r == "user")))
             for i, g in enumerate(gens)]
+    first_run = min((g["requested"] for g in gens), default=None)
     for t, x in finals:
         x = (x or "").strip()
         if (not x or mid_reply_action(x) == ABSORB or is_carrier_announcement(x)
@@ -345,8 +365,14 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         if ended is not None and t > ended - 8.0:
             continue
         k = _key(x)[:20]
-        if k and not any(t - 0.5 <= rt <= t + 8.0 and k in uk for rt, uk in seen):
+        if not k:
+            continue
+        arrived = [rt for rt, uk in seen if rt >= t - 0.5 and k in uk]
+        if not arrived:
             f.append(f"caller words never reached the model: {x[:40]!r} at {t:.1f}s")
+        elif (first_run is not None and t >= first_run and min(arrived) > t + 8.0):
+            f.append(f"caller words reached the model late ({min(arrived) - t:.1f}s): "
+                     f"{x[:40]!r} at {t:.1f}s")
     return f
 
 

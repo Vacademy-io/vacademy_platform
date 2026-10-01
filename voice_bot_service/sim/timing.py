@@ -145,6 +145,18 @@ class Line:
             self.bot[-1][1] = max(self.bot[-1][1], t + secs_of_audio)
         self._last_bot_write = t
 
+    def bot_cut(self):
+        """An interruption reached the output: the queued audio is dropped, so
+        the utterance ENDS here — and whatever plays next is a new one. Without
+        this a cut and the line spoken right after it (a re-said opening, a
+        resumed reply) merged into one stretch whose end even counted the
+        dropped audio, and the replay invariants saw "no reply" to the turn
+        that caused the cut (replay of 953d5366, 2026-10-01)."""
+        t = self.now()
+        if self.bot and self.bot[-1][1] > t:
+            self.bot[-1][1] = max(self.bot[-1][0], t)
+        self._last_bot_write = -10.0
+
     def bot_speaking(self) -> bool:
         return bool(self.bot) and self.now() < self.bot[-1][1]
 
@@ -329,10 +341,13 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
 
     class SimOutput(BaseOutputTransport):
         interruptions = 0
+        interruption_times: List[float] = []
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             if isinstance(frame, InterruptionFrame):
                 self.interruptions += 1
+                self.interruption_times = self.interruption_times + [round(line.now(), 2)]
+                line.bot_cut()
                 log("OUTPUT interruption → dropping queued bot audio")
             n = type(frame).__name__
             if n in ("TTSStartedFrame", "TTSStoppedFrame", "BotStartedSpeakingFrame",
@@ -617,6 +632,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "transcript": outcome.transcript,
         "ended_at": None if ended_at is None else round(ended_at, 2),
         "interruptions_at_output": transport.output().interruptions,
+        "interruption_times": list(getattr(transport.output(), "interruption_times", [])),
         "llm_runs": providers["llm"].runs,
         "llm_gens": list(getattr(providers["llm"], "gens", [])),
         "contexts": providers["llm"].contexts,

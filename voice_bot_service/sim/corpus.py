@@ -50,6 +50,8 @@ KINDS = [
     ("same-reply-twice", r"^the same reply generated twice"),
     ("opening-resaid-heard", r"^opening re-said after"),
     ("cue-storm", r"steering-cue runs within"),
+    ("concurrent-generations", r"^two generations at once"),
+    ("lost-words", r"^caller words never reached the model"),
     ("run-error", r"^run error"),
     ("timeout", r"^timeout"),
 ]

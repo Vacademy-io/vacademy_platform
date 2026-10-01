@@ -213,6 +213,8 @@ def invariants(res: Dict[str, Any]) -> List[str]:
         spoke_before = any(bs < cs < be + 0.5 for bs, be in res.get("bot", []))
         if not spoke_before:
             continue                                   # they were not talking over us
+        if any(bs <= ce <= be for bs, be in res.get("bot", [])):
+            continue                                   # the bot talked on through it: no silence
         nxt = [bs for bs, _ in res.get("bot", []) if bs >= ce - 0.2]
         gap = (nxt[0] - ce) if nxt else 99.0
         if gap > 2.0:
@@ -299,8 +301,41 @@ def invariants(res: Dict[str, Any]) -> List[str]:
             continue
         if ended is not None and ce > ended - 1.0:
             continue
-        if not any(cs <= bs <= ce + 5.0 for bs, _ in res.get("bot", [])):
+        # Bot audio PLAYING at or after the end of their turn counts — a reply
+        # that talks on through an absorbed "हाँ" answered it. Only a new
+        # utterance START counted before, so every absorbed backchannel was
+        # "unanswered" (~600 per 172-call corpus).
+        if not any(be > ce - 0.3 and bs <= ce + 5.0 for bs, be in res.get("bot", [])):
             f.append(f"caller turn at {cs:.1f}s got no reply within 5 s")
+    # 14. two generations at once (a failover: the stalled primary's queued
+    #     request and the fallback's rerun) — never two replies composing.
+    live = [g for g in gens if g.get("started") is not None]
+    for i, g1 in enumerate(live):
+        e1 = g1.get("ended") or g1.get("cancelled") or g1.get("errored") or g1["started"]
+        for g2 in live[i + 1:]:
+            if g2["started"] < e1 - 0.05:
+                f.append(f"two generations at once: {g1['started']:.1f}-{e1:.1f}s and "
+                         f"{g2['started']:.1f}s ({g1.get('trigger', '')[:24]!r} / {g2.get('trigger', '')[:24]!r})")
+                break
+    # 15. the caller's words never reached the model. A substantive final
+    #     (not a bare backchannel, not the network) must be in some generation's
+    #     context within 8 s — a run dropped or superseded must not drop words.
+    from app.turntake import (mid_reply_action, ABSORB, is_carrier_announcement,
+                              is_call_screener)
+    ctxs = res.get("contexts") or []
+    seen = [(g["requested"], _key(" ".join(c for r, c in (ctxs[i] if i < len(ctxs) else [])
+                                          if r == "user")))
+            for i, g in enumerate(gens)]
+    for t, x in finals:
+        x = (x or "").strip()
+        if (not x or mid_reply_action(x) == ABSORB or is_carrier_announcement(x)
+                or is_call_screener(x)):
+            continue
+        if ended is not None and t > ended - 8.0:
+            continue
+        k = _key(x)[:20]
+        if k and not any(t - 0.5 <= rt <= t + 8.0 and k in uk for rt, uk in seen):
+            f.append(f"caller words never reached the model: {x[:40]!r} at {t:.1f}s")
     return f
 
 

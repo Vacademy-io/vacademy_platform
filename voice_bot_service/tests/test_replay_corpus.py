@@ -105,3 +105,40 @@ def test_a_cut_ends_the_bot_utterance_on_the_simulated_line():
     line.bot_wrote(5.0)                  # the re-said opening, right away
     assert len(line.bot) == 2, line.bot
     assert line.bot[1][0] >= cut_at
+
+
+def test_a_reply_that_talks_on_through_an_absorbed_haan_answered_it():
+    # bot speaking 10-30 s; the caller's "हाँ" at 15-15.5 s is absorbed.
+    res = _res([], finals=[(15.4, "हाँ।")], bot=[[10.0, 30.0]])
+    res["caller"] = [[15.0, 15.5]]
+    f = invariants(res)
+    assert not any(x.startswith("caller turn at") for x in f), f
+    assert not any(x.startswith("backchannel") for x in f), f
+    # …but a barge-in that cut the bot and then got nothing is unanswered
+    res = _res([], finals=[(16.0, "नहीं नहीं मुझे नहीं चाहिए")], bot=[[10.0, 15.2], [40.0, 41.0]])
+    res["caller"] = [[15.0, 16.2]]
+    res["ended_at"] = 45.0
+    assert any(x.startswith("caller turn at") for x in invariants(res))
+
+
+def test_two_generations_at_once_are_flagged():
+    gens = [{"requested": 5.0, "started": 5.0, "ended": 9.0, "trigger": "a", "reply": "x y z w"},
+            {"requested": 6.0, "started": 6.5, "ended": 7.5, "trigger": "b", "reply": "p q r s"}]
+    assert any(x.startswith("two generations at once") for x in invariants(_res(gens)))
+    gens[1]["started"] = 9.2
+    assert not any(x.startswith("two generations at once") for x in invariants(_res(gens)))
+
+
+def test_caller_words_that_never_reach_the_model_are_flagged():
+    gens = [{"requested": 21.0, "started": 21.0, "ended": 22.0, "trigger": "x", "reply": "a b c d"}]
+    res = _res(gens, finals=[(20.0, "बच्चा नौवीं में है")])
+    res["ended_at"] = 60.0
+    res["contexts"] = [[("user", "हाँ जी")]]
+    assert any(x.startswith("caller words never reached the model") for x in invariants(res))
+    res["contexts"] = [[("user", "बच्चा नौवीं में है")]]
+    assert not any(x.startswith("caller words never") for x in invariants(res))
+    # a bare backchannel is not expected to reach the model
+    res = _res(gens, finals=[(20.0, "हाँ जी।")])
+    res["ended_at"] = 60.0
+    res["contexts"] = [[("user", "something else")]]
+    assert not any(x.startswith("caller words never") for x in invariants(res))

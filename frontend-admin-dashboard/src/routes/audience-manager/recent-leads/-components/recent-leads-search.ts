@@ -78,6 +78,10 @@ export const RecentLeadsSearchSchema = z.object({
     /** Explicit from–to for `calledWithin` / `workedWithin` when they hold 'CUSTOM'
      *  (yyyy-mm-dd, same shape as `from`/`to`). Both ends are inclusive calendar days,
      *  unlike the rolling presets. */
+    /** Comma-separated filter names this ROUTE owns (see pinned-filters.ts). They
+     *  survive "Clear all" and render read-only, so a sidebar sub-tab keeps meaning
+     *  what its label says. Absent = nothing pinned, i.e. the old behaviour. */
+    lock: z.string().optional(),
     calledFrom: z.string().optional(),
     calledTo: z.string().optional(),
     workedFrom: z.string().optional(),

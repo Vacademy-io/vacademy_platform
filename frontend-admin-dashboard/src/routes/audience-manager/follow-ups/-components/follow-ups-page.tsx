@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
+import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -115,7 +116,14 @@ const FollowUpsContent = () => {
     }, []);
     const currentUserId = useMemo(() => getUserId() ?? '', []);
 
-    const [bucket, setBucket] = useState<FollowUpBucket>('today');
+    // Seeded from the route so a sub-tab link opens on its own tile, and kept in step
+    // with it: every sub-tab shares this pathname, so switching between them does not
+    // remount the page. The page never writes the param back, so there is no loop.
+    const { bucket: bucketParam } = useSearch({ from: '/audience-manager/follow-ups/' });
+    const [bucket, setBucket] = useState<FollowUpBucket>(bucketParam ?? 'today');
+    useEffect(() => {
+        if (bucketParam) setBucket(bucketParam);
+    }, [bucketParam]);
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;

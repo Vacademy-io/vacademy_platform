@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { parseLockedParams, searchSignature } from './pinned-filters';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -8,15 +9,16 @@ import type { TFunction } from 'i18next';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import {
-    DownloadSimple,
-    MagnifyingGlass,
-    X,
-    Flame,
+    CalendarBlank,
     CheckCircle,
     Clock,
-    Megaphone,
-    CalendarBlank,
+    DownloadSimple,
+    Flame,
     Folders,
+    Lock,
+    MagnifyingGlass,
+    Megaphone,
+    X,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -255,14 +257,37 @@ export const RecentLeadsPage = () => {
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">{t('nav.title')}</h1>);
     }, [setNavHeading, t]);
+
+    // Every sidebar sub-tab points at THIS pathname and differs only in its query
+    // string, so moving between them never unmounts the content — its filter state is
+    // seeded from the URL once and then keeps writing itself back, which overwrote the
+    // tab the user just clicked. Remount on an external navigation so the seeding runs
+    // again; `selfWriteRef` holds the signature the content last wrote, so its own
+    // URL updates are not mistaken for one.
+    const urlSearch = useSearch({ from: '/audience-manager/recent-leads/' });
+    const signature = searchSignature(urlSearch as Record<string, unknown>);
+    const selfWriteRef = useRef(signature);
+    const [entryKey, setEntryKey] = useState(0);
+    useEffect(() => {
+        if (signature === selfWriteRef.current) return;
+        selfWriteRef.current = signature;
+        setEntryKey((k) => k + 1);
+    }, [signature]);
+
     return (
         <StudentSidebarProvider>
-            <RecentLeadsContent />
+            <RecentLeadsContent key={entryKey} selfWriteRef={selfWriteRef} />
         </StudentSidebarProvider>
     );
 };
 
-const RecentLeadsContent = () => {
+const RecentLeadsContent = ({
+    selfWriteRef,
+}: {
+    /** Set to the signature of every search object this component writes, so the
+     *  parent can tell those apart from a sub-tab click. */
+    selfWriteRef: React.MutableRefObject<string>;
+}) => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
@@ -286,6 +311,38 @@ const RecentLeadsContent = () => {
     // effect below writes every change back with replace:true — same pattern
     // as the Follow-ups page (use-follow-ups-view-state.ts).
     const urlSearch = useSearch({ from: '/audience-manager/recent-leads/' });
+    // Filters this ROUTE owns (sidebar sub-tabs bake them into their link). They cannot
+    // be removed, and "Clear all" puts them back to the value the route asked for rather
+    // than dropping them — otherwise an "Untouched Leads" tab quietly becomes "all leads".
+    const lockedParams = useMemo(() => parseLockedParams(urlSearch.lock), [urlSearch.lock]);
+    // Captured once: the component remounts on an external navigation, so the search at
+    // mount IS the tab's intent even after the user has since narrowed things down.
+    const pinnedEntryRef = useRef<Record<string, string | undefined>>({
+        range: urlSearch.range,
+        from: urlSearch.from,
+        to: urlSearch.to,
+        status: urlSearch.status,
+        tier: urlSearch.tier,
+        sla: urlSearch.sla,
+        counsellor: urlSearch.counsellor,
+        audience: urlSearch.audience,
+        campaignType: urlSearch.campaignType,
+        source: urlSearch.source,
+        called: urlSearch.called,
+        calledCount: urlSearch.calledCount,
+        calledWithin: urlSearch.calledWithin,
+        workedWithin: urlSearch.workedWithin,
+        search: urlSearch.search,
+    });
+    const isLocked = (param: string) => lockedParams.has(param as never);
+    /** The route's value for a pinned filter, or the cleared value when it is not pinned. */
+    const clearedOr = (param: string, cleared: string) =>
+        isLocked(param) ? pinnedEntryRef.current[param] ?? cleared : cleared;
+    const clearedOrList = (param: string): string[] => {
+        if (!isLocked(param)) return [];
+        const v = pinnedEntryRef.current[param];
+        return v ? v.split(',').filter(Boolean) : [];
+    };
     const navigate = useNavigate({ from: '/audience-manager/recent-leads/' });
 
     const [page, setPage] = useState(0);
@@ -459,41 +516,42 @@ const RecentLeadsContent = () => {
     // tweaks shouldn't pollute browser history). Arrays are serialised as
     // comma-separated strings; empty arrays are omitted so the bare URL stays clean.
     useEffect(() => {
-        void navigate({
-            search: {
-                status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
-                tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
-                sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
-                counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
-                audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
-                campaignType:
-                    campaignTypeFilters.length > 0 ? campaignTypeFilters.join(',') : undefined,
-                search: appliedSearch || undefined,
-                range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
-                from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
-                to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
-                source: sourceFilter || undefined,
-                called: callHistoryFilter || undefined,
-                calledCount: callCountParam ? String(callCountParam) : undefined,
-                calledWithin: calledWindow || undefined,
-                calledFrom: calledIsCustom && calledRange.from ? calledRange.from : undefined,
-                calledTo: calledIsCustom && calledRange.to ? calledRange.to : undefined,
-                workedWithin: workedWindow || undefined,
-                workedFrom: workedIsCustom && workedRange.from ? workedRange.from : undefined,
-                workedTo: workedIsCustom && workedRange.to ? workedRange.to : undefined,
-                utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
-                utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
-                utmCampaign: utmFilters.campaign?.length
-                    ? utmFilters.campaign.join(',')
-                    : undefined,
-                utmContent: utmFilters.content?.length ? utmFilters.content.join(',') : undefined,
-                utmTerm: utmFilters.term?.length ? utmFilters.term.join(',') : undefined,
-                utmChannel: utmFilters.source_type?.length
-                    ? utmFilters.source_type.join(',')
-                    : undefined,
-            },
-            replace: true,
-        });
+        const nextSearch = {
+            // Carried through untouched: the route owns it, not the user.
+            lock: urlSearch.lock || undefined,
+            status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
+            tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+            sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
+            counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
+            audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
+            campaignType:
+                campaignTypeFilters.length > 0 ? campaignTypeFilters.join(',') : undefined,
+            search: appliedSearch || undefined,
+            range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
+            from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
+            to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
+            source: sourceFilter || undefined,
+            called: callHistoryFilter || undefined,
+            calledCount: callCountParam ? String(callCountParam) : undefined,
+            calledWithin: calledWindow || undefined,
+            calledFrom: calledIsCustom && calledRange.from ? calledRange.from : undefined,
+            calledTo: calledIsCustom && calledRange.to ? calledRange.to : undefined,
+            workedWithin: workedWindow || undefined,
+            workedFrom: workedIsCustom && workedRange.from ? workedRange.from : undefined,
+            workedTo: workedIsCustom && workedRange.to ? workedRange.to : undefined,
+            utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
+            utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
+            utmCampaign: utmFilters.campaign?.length ? utmFilters.campaign.join(',') : undefined,
+            utmContent: utmFilters.content?.length ? utmFilters.content.join(',') : undefined,
+            utmTerm: utmFilters.term?.length ? utmFilters.term.join(',') : undefined,
+            utmChannel: utmFilters.source_type?.length
+                ? utmFilters.source_type.join(',')
+                : undefined,
+        };
+        // Record what we are about to write so the parent does not read our own
+        // update back as a sub-tab click and remount us mid-edit.
+        selfWriteRef.current = searchSignature(nextSearch);
+        void navigate({ search: nextSearch, replace: true });
     }, [
         navigate,
         leadStatusFilters,
@@ -511,6 +569,8 @@ const RecentLeadsContent = () => {
         callCountParam,
         calledWindow,
         workedWindow,
+        urlSearch.lock,
+        selfWriteRef,
         calledIsCustom,
         workedIsCustom,
         calledRange,
@@ -956,22 +1016,28 @@ const RecentLeadsContent = () => {
 
     // Filters
     const handleClearFilter = () => {
-        setAudienceFilters([]);
-        setCampaignTypeFilters([]);
-        setSearchInput('');
-        setAppliedSearch('');
-        setTierFilters([]);
-        setLeadStatusFilters([]);
-        setSlaFilters([]);
-        setCounsellorFilters([]);
-        setSourceFilter('');
-        setCallHistoryFilter('');
-        setCallCountValue(DEFAULT_CALL_COUNT);
+        setAudienceFilters(clearedOrList('audience'));
+        setCampaignTypeFilters(clearedOrList('campaignType'));
+        setSearchInput(clearedOr('search', ''));
+        setAppliedSearch(clearedOr('search', ''));
+        setTierFilters(clearedOrList('tier'));
+        setLeadStatusFilters(clearedOrList('status'));
+        setSlaFilters(clearedOrList('sla'));
+        setCounsellorFilters(clearedOrList('counsellor'));
+        setSourceFilter(clearedOr('source', ''));
+        setCallHistoryFilter(clearedOr('called', ''));
+        setCallCountValue(
+            isLocked('calledCount') && pinnedEntryRef.current.calledCount
+                ? Number(pinnedEntryRef.current.calledCount)
+                : DEFAULT_CALL_COUNT
+        );
         setCustomFieldFilters({});
         setUtmFilters({});
-        setRangeDays(DEFAULT_RANGE_DAYS);
-        setCustomFrom('');
-        setCustomTo('');
+        setRangeDays(clearedOr('range', DEFAULT_RANGE_DAYS));
+        setCustomFrom(clearedOr('from', ''));
+        setCustomTo(clearedOr('to', ''));
+        setCalledWindow(clearedOr('calledWithin', ''));
+        setWorkedWindow(clearedOr('workedWithin', ''));
         setPage(0);
     };
     const setDateRange = (value: string) => {
@@ -1319,10 +1385,13 @@ const RecentLeadsContent = () => {
         }
     };
     // Active filter chips
-    const chips: { label: string; onRemove: () => void }[] = [];
+    // `param` names the search key a chip stands for, so a pinned one can render a lock
+    // instead of a remove cross. Chips with no param (custom fields, UTM) are never pinned.
+    const chips: { label: string; onRemove: () => void; param?: string }[] = [];
     if (appliedSearch)
         chips.push({
             label: t('chips.search', { query: appliedSearch }),
+            param: 'search',
             onRemove: () => {
                 setSearchInput('');
                 setAppliedSearch('');
@@ -1335,6 +1404,7 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.campaignType', { term, types: types.join(', ') }),
             onRemove: () => handleCampaignTypeChange([]),
+            param: 'campaignType',
         });
     }
     if (audienceFilters.length > 0) {
@@ -1344,6 +1414,7 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.audience', { names: names.join(', ') }),
             onRemove: () => handleAudienceChange([]),
+            param: 'audience',
         });
     }
     if (tierFilters.length > 0)
@@ -1352,6 +1423,7 @@ const RecentLeadsContent = () => {
                 tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', '),
             }),
             onRemove: () => setTierFilters([]),
+            param: 'tier',
         });
     if (leadStatusFilters.length > 0) {
         const statusLabels = leadStatusFilters.map((v) => {
@@ -1362,6 +1434,7 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.status', { statuses: statusLabels.join(', ') }),
             onRemove: () => setLeadStatusFilters([]),
+            param: 'status',
         });
     }
     if (slaFilters.length > 0)
@@ -1372,6 +1445,7 @@ const RecentLeadsContent = () => {
                     .join(', '),
             }),
             onRemove: () => setSlaFilters([]),
+            param: 'sla',
         });
     if (counsellorFilters.length > 0) {
         const cLabels = counsellorFilters.map((id) =>
@@ -1383,11 +1457,13 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.counsellor', { names: cLabels.join(', ') }),
             onRemove: () => setCounsellorFilters([]),
+            param: 'counsellor',
         });
     }
     if (sourceFilter)
         chips.push({
             label: t('chips.source', { source: sourceFilter }),
+            param: 'source',
             onRemove: () => {
                 setPage(0);
                 setSourceFilter('');
@@ -1454,6 +1530,7 @@ const RecentLeadsContent = () => {
             label: t('chips.calledWithin', {
                 window: windowChipLabel(calledWindow, calledRange),
             }),
+            param: 'calledWithin',
             onRemove: () => {
                 setCalledWindow('');
                 setCalledRange({ from: '', to: '' });
@@ -1466,6 +1543,7 @@ const RecentLeadsContent = () => {
             label: t('chips.workedWithin', {
                 window: windowChipLabel(workedWindow, workedRange),
             }),
+            param: 'workedWithin',
             onRemove: () => {
                 setWorkedWindow('');
                 setWorkedRange({ from: '', to: '' });
@@ -1487,6 +1565,7 @@ const RecentLeadsContent = () => {
         }
         chips.push({
             label,
+            param: 'range',
             onRemove: () => {
                 setRangeDays(DEFAULT_RANGE_DAYS);
                 setCustomFrom('');
@@ -1794,22 +1873,38 @@ const RecentLeadsContent = () => {
             {/* Active filter chips */}
             {chips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {chips.map((chip, i) => (
-                        <span
-                            key={i}
-                            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600"
-                        >
-                            {chip.label}
-                            <button
-                                type="button"
-                                onClick={chip.onRemove}
-                                className="text-neutral-400 hover:text-neutral-700"
-                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
+                    {chips.map((chip, i) => {
+                        // A pinned filter belongs to the route (a sidebar sub-tab), not to
+                        // the user: it shows a lock and has no remove cross.
+                        const pinned = !!chip.param && isLocked(chip.param);
+                        return (
+                            <span
+                                key={i}
+                                className={cn(
+                                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
+                                    pinned
+                                        ? 'border-primary-200 bg-primary-50 text-primary-600'
+                                        : 'border-neutral-200 bg-white text-neutral-600'
+                                )}
+                                title={pinned ? t('chips.pinnedTitle') : undefined}
                             >
-                                <X className="size-3" />
-                            </button>
-                        </span>
-                    ))}
+                                {pinned && <Lock className="size-3 shrink-0" weight="fill" />}
+                                {chip.label}
+                                {!pinned && (
+                                    <button
+                                        type="button"
+                                        onClick={chip.onRemove}
+                                        className="text-neutral-400 hover:text-neutral-700"
+                                        aria-label={t('chips.removeAriaLabel', {
+                                            label: chip.label,
+                                        })}
+                                    >
+                                        <X className="size-3" />
+                                    </button>
+                                )}
+                            </span>
+                        );
+                    })}
                     <button
                         type="button"
                         onClick={handleClearFilter}

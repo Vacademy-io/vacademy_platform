@@ -87,6 +87,7 @@ def _one(rec_path: Path, ctx_path: Path, faithful: bool, tree: Path) -> Dict[str
         row["fails"] = res.get("fails") if res else [f"run error: exit {p.returncode}: {p.stderr[-300:]}"]
         row["llm_runs"] = len(res.get("llm_gens") or []) if res else None
         row["engine"] = res.get("engine")
+        row["unrecorded"] = res.get("unrecorded_replies")
     except subprocess.TimeoutExpired:
         row["fails"] = ["timeout: replay did not finish"]
     except Exception as e:  # noqa: BLE001

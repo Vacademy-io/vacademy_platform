@@ -102,6 +102,9 @@ class CallState:
     # TEXT is no measure: a cached opening is one blob whose text reaches the
     # played transcript only when the blob ENDS (call 1f2b97ab, 2026-10-01).
     greet_queued_t: float = 0.0
+    # When the CURRENT delivery of the opening was queued (the greet, then each
+    # re-say). A re-say needs a cut AFTER this — not after the first greet.
+    opening_queued_t: float = 0.0
     opening_seg_t: float = 0.0
     opening_play_secs: float = 0.0
     # reply_started_t of the reply we already covered with a latency bridge

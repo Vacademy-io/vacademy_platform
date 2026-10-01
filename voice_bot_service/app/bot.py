@@ -5430,7 +5430,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # the pipeline had even started playing it; nothing had cancelled it,
             # the re-say queued a second copy, and the caller heard the whole
             # introduction twice back to back.
-            if not cut_now and not (flags["last_cut_t"] > _greet_queued_t):
+            # …and a cut of THIS delivery. Measured against the first greet, the
+            # one cut that caused a re-say also justified the next: an absorbed
+            # "हाँ।" during the re-said opening queued another copy, and the
+            # father's "fifth class…" waited 26 s behind two more openings
+            # (call 8208166f replayed on the live build, 2026-10-01).
+            if not cut_now and not (flags["last_cut_t"]
+                                    > max(_greet_queued_t, flags["opening_queued_t"])):
                 return False
             played = _opening_played_secs()
             if not _opening_barely_heard(_opening_for_cache, outcome.transcript,
@@ -5456,6 +5462,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         diag.bump("opening_resaid")
         flags["opening_play_secs"] = 0.0         # a new delivery; heard is measured afresh
         flags["opening_seg_t"] = time.time() if flags["bot_speaking"] else 0.0
+        # The interruption of the cut that caused THIS re-say can be stamped a
+        # few ms after it is queued (DuckGate sees the frame later): it must
+        # not count as a cut of the new delivery, which has not played yet.
+        flags["opening_queued_t"] = time.time() + 0.5
         logger.info("greet: %s — saying the opening again corr=%s",
                     "the line was screening; the person just picked up" if force
                     else "caller's %r cut the opening at its start" % (text or "")[:20], corr)

@@ -709,6 +709,45 @@ def chk_busy_over_cached_opening(res):
     return f
 
 
+# ── call 8208166f (2026-10-01, replayed on the live build): a real barge-in
+#    cut the opening and it was re-said; then an ABSORBED "हाँ।" during the
+#    re-said opening queued ANOTHER copy — the cut check compared against the
+#    ORIGINAL greet time, so the first cut justified every later re-say. The
+#    father's "fifth class…" waited 26 s behind two more openings. ──────────
+HI_FATHER = "जी, मैं उसका पिता बोल रहा हूँ।"
+HI_WHO = "जी, क्या मैं बच्चे के माता-पिता में से किसी से बात कर रही हूँ?"
+
+
+def _resaid_opening_reply(last_user: str) -> str:
+    """The father's answer gets the class question; the earlier swallowed
+    "करतो करतो। हाँ।" turn (answered once the re-said opening is over) gets
+    the who-am-I-speaking-to question; a cue gets a fresh line, never a stub
+    "Okay." (a bare ack would start a next-step cascade of its own)."""
+    u = last_user or ""
+    if "पिता" in u:
+        return HI_Q_CLASS
+    if u.startswith("["):
+        return "जी सर, बच्चे के बारे में थोड़ा बताइए — अभी किस class में है?"
+    return HI_WHO
+
+
+def chk_absorbed_ack_does_not_resay_again(res):
+    f = []
+    if res["opening_resaid"] != 1:
+        f.append(f"opening re-said {res['opening_resaid']}x (expected once, for the real cut)")
+    said = " ".join(_assistant_texts(res))
+    if said.count("श्रेया") > 1 and res["opening_resaid"] > 1:
+        f.append("the caller heard the introduction more than twice")
+    if "किस class" not in " ".join(_after_user(res, "पिता")):
+        f.append("the father's answer never got the next question")
+    gaps = [t for t, x in res["finals"] if "पिता" in x]
+    if gaps:
+        nxt = [bs for bs, _ in res["bot"] if bs > gaps[0]]
+        if not nxt or nxt[0] - gaps[0] > 4.0:
+            f.append(f"reply to the father came {round(nxt[0] - gaps[0], 1) if nxt else 'never'}s after his answer")
+    return f
+
+
 def chk_hello_over_cached_opening(res):
     """A pickup "Hello." over the cached opening is a backchannel in voice
     mode: the opening plays on to its end — heard ONCE, never restarted, and
@@ -1481,6 +1520,16 @@ SCENARIOS: List[Scenario] = [
              cache_warm=[HI_OPENING],
              checks=chk_busy_over_cached_opening, max_secs=35,
              note="'busy' 2 s into the opening is an answer, not a pickup hello"),
+    Scenario("absorbed_ack_during_resaid_opening",
+             caller=[Say("करतो करतो।", 0.9, after_bot_start=1, offset=3.0),
+                     Say("हाँ।", 0.4, after_bot_start=2, offset=1.5),
+                     Say(HI_FATHER, 1.4, after_bot_stop=2, offset=0.6)],
+             replies=[],
+             reply_for=_resaid_opening_reply,
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_absorbed_ack_does_not_resay_again, max_secs=50,
+             note="call 8208166f: an absorbed 'हाँ' during the re-said opening queued another copy"),
     Scenario("hello_over_cached_opening",
              caller=[Say("Hello.", 0.6, after_bot_start=1, offset=0.8),
                      Say("जी, मैं उसका पिता बोल रहा हूँ।", 1.4, after_bot_stop=1, offset=0.6)],

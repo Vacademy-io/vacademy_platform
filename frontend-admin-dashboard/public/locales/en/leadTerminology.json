@@ -1,4 +1,5 @@
 {
     "tier": "Tier",
-    "leadStatus": "Lead status"
+    "leadStatus": "Lead status",
+    "campaignType": "Campaign type"
 }

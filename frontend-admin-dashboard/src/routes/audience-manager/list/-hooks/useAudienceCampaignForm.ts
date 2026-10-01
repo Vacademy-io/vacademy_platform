@@ -8,14 +8,19 @@ import {
     AudienceCampaignForm,
     defaultFormValues,
 } from '../-schema/AudienceCampaignSchema';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 export const useAudienceCampaignForm = (initialValues?: AudienceCampaignForm) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { t } = useTranslation('audienceManagerAudienceCampaignSchema');
+    const { campaignType: campaignTypeTerm } = useLeadTerminology();
 
     // Rebuilt from this hook's own `t` so the validation messages stay in sync with the
     // active locale (see buildAudienceCampaignSchema's doc comment in AudienceCampaignSchema.ts).
-    const audienceCampaignSchema = useMemo(() => buildAudienceCampaignSchema(t), [t]);
+    const audienceCampaignSchema = useMemo(
+        () => buildAudienceCampaignSchema(t, campaignTypeTerm),
+        [t, campaignTypeTerm]
+    );
 
     const form = useForm<AudienceCampaignForm>({
         resolver: zodResolver(audienceCampaignSchema),

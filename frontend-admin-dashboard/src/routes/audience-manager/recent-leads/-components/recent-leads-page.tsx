@@ -270,6 +270,7 @@ const RecentLeadsContent = () => {
     // own names for "Tier" / "Lead status".
     const tierCatalog = useLeadTiers();
     const terminology = useLeadTerminology();
+    const term = terminology.campaignType;
     const tierLabels: Record<string, string> = useMemo(
         () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
         [tierCatalog.tiers]
@@ -531,8 +532,9 @@ const RecentLeadsContent = () => {
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
+                campaignType: terminology.campaignType,
             }),
-        [showOps, showScore, terminology.tier, terminology.leadStatus]
+        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
 
     const audiencesQuery = useQuery(
@@ -1024,6 +1026,7 @@ const RecentLeadsContent = () => {
             { key: 'email', label: t('export.columns.email') },
             { key: 'mobile', label: t('export.columns.mobile') },
             { key: 'audience', label: t('export.columns.audience') },
+            { key: 'campaign_type', label: t('export.columns.campaignType', { term }) },
         ];
         // Custom-field columns: the institute catalog gives the full pickable
         // set (Recent Leads is cross-campaign, so no single form definition
@@ -1059,7 +1062,7 @@ const RecentLeadsContent = () => {
             );
         }
         return cols;
-    }, [showOps, customFieldSetup, data, t]);
+    }, [showOps, customFieldSetup, data, t, term]);
     const exportLeadsCsv = async (leads: RecentLeadDetail[], prefix: string) => {
         if (leads.length === 0) {
             toast.info(t('export.noLeadsToExport'));
@@ -1088,6 +1091,8 @@ const RecentLeadsContent = () => {
         if (selectedExportCols.has('email')) baseHeaders.push(t('export.columns.email'));
         if (selectedExportCols.has('mobile')) baseHeaders.push(t('export.columns.mobile'));
         if (selectedExportCols.has('audience')) baseHeaders.push(t('export.columns.audience'));
+        if (selectedExportCols.has('campaign_type'))
+            baseHeaders.push(t('export.columns.campaignType', { term }));
         // Custom-field columns. Fields the picker listed follow the user's
         // selection; fields discovered only in the fetched data (not in the
         // catalog / current page when the picker was built) are always
@@ -1146,6 +1151,8 @@ const RecentLeadsContent = () => {
             if (selectedExportCols.has('mobile'))
                 row.push(csvSafe(u.mobile_number || lead.parent_mobile || '-'));
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
+            if (selectedExportCols.has('campaign_type'))
+                row.push(csvSafe(lead.campaign_type ?? ''));
             cfFieldIds.forEach((fieldId) => row.push(csvSafe(lead.custom_field_values?.[fieldId])));
             if (showOps) {
                 const cName = userId
@@ -1285,7 +1292,7 @@ const RecentLeadsContent = () => {
             (value) => campaignTypeOptions.find((o) => o.value === value)?.label ?? value
         );
         chips.push({
-            label: t('chips.campaignType', { types: types.join(', ') }),
+            label: t('chips.campaignType', { term, types: types.join(', ') }),
             onRemove: () => handleCampaignTypeChange([]),
         });
     }
@@ -1498,7 +1505,7 @@ const RecentLeadsContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label={t('filters.campaignType.label')}
+                        label={t('filters.campaignType.label', { term })}
                         icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
                         options={campaignTypeOptions}
                         selected={campaignTypeFilters}

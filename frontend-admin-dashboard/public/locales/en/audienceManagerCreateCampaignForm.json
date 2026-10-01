@@ -7,7 +7,7 @@
         "placeholder": "Enter campaign name"
     },
     "campaignType": {
-        "label": "Campaign Type"
+        "label": "{{term}}"
     },
     "campaignObjective": {
         "label": "Campaign Objective",

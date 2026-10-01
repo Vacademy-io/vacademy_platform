@@ -44,7 +44,7 @@
             "untitled": "Untitled audience"
         },
         "campaignType": {
-            "label": "All campaign types"
+            "label": "All {{term}}"
         },
         "customDate": {
             "setDates": "Set dates",
@@ -73,7 +73,7 @@
     "chips": {
         "search": "Search: {{query}}",
         "audience": "Audience: {{names}}",
-        "campaignType": "Campaign type: {{types}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "Tier: {{tiers}}",
         "status": "Status: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -132,6 +132,7 @@
             "email": "Email",
             "mobile": "Mobile",
             "audience": "Audience",
+            "campaignType": "{{term}}",
             "leadStatus": "Lead Status",
             "counsellor": "Counsellor",
             "activityNotes": "Activity & Notes",

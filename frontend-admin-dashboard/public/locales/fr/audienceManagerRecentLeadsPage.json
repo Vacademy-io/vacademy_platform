@@ -45,7 +45,7 @@
             "untitled": "Audience sans titre"
         },
         "campaignType": {
-            "label": "Tous les types de campagne"
+            "label": "Tous les {{term}}"
         },
         "customDate": {
             "setDates": "Définir les dates",
@@ -74,7 +74,7 @@
     "chips": {
         "search": "Recherche : {{query}}",
         "audience": "Audience : {{names}}",
-        "campaignType": "Type de campagne : {{types}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "Niveau : {{tiers}}",
         "status": "Statut : {{statuses}}",
         "sla": "SLA : {{states}}",
@@ -135,6 +135,7 @@
             "email": "E-mail",
             "mobile": "Mobile",
             "audience": "Audience",
+            "campaignType": "{{term}}",
             "leadStatus": "Statut du prospect",
             "counsellor": "Conseiller",
             "activityNotes": "Activité et notes",

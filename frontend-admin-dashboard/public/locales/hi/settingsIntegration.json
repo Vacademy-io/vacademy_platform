@@ -77,8 +77,8 @@
         "skipOption": "— छोड़ें —"
     },
     "campaignTypeFilter": {
-        "label": "अभियान प्रकार",
-        "all": "सभी अभियान प्रकार",
+        "label": "{{term}}",
+        "all": "सभी {{term}}",
         "noAudiences": "इस प्रकार की कोई ऑडियंस नहीं"
     },
     "google": {

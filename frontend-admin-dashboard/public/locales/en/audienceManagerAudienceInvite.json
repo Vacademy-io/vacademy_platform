@@ -16,8 +16,8 @@
         "placeholder": "Filter by Status"
     },
     "typeFilter": {
-        "allTypes": "All Campaign Types",
-        "placeholder": "Filter by Campaign Type"
+        "allTypes": "All {{term}}",
+        "placeholder": "Filter by {{term}}"
     },
     "toolbar": {
         "searchPlaceholder": "Search {{term}}",

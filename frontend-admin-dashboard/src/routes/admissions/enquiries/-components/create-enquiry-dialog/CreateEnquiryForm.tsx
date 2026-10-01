@@ -484,6 +484,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
                                 });
                             }}
                             placeholder="Select enquiry type"
+                            customInputPlaceholder="Enter enquiry type"
                             initialOptions={[
                                 { value: 'Admission', label: 'Admission' },
                                 { value: 'Mid-term', label: 'Mid-term' },

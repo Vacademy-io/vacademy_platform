@@ -7,7 +7,7 @@
         "placeholder": "कैंपेन का नाम दर्ज करें"
     },
     "campaignType": {
-        "label": "कैंपेन का प्रकार"
+        "label": "{{term}}"
     },
     "campaignObjective": {
         "label": "कैंपेन का उद्देश्य",

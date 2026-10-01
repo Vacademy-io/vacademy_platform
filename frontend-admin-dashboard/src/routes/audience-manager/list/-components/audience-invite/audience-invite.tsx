@@ -54,6 +54,7 @@ import {
     buildCampaignTypeFilterOptions,
     buildDefaultCampaignTypeOptions,
 } from '../../-utils/campaign-types';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DRAFT';
 const VALID_STATUS: readonly string[] = ['ALL', 'ACTIVE', 'INACTIVE', 'DRAFT'];
@@ -89,6 +90,7 @@ const buildStatusDropdownOptions = (t: TFunction): { label: string; value: Statu
 
 export const AudienceInvite = () => {
     const { t, i18n } = useTranslation('audienceManagerAudienceInvite');
+    const { campaignType: term } = useLeadTerminology();
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const statusDropdownOptions = useMemo(() => buildStatusDropdownOptions(t), [t]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -418,10 +420,10 @@ export const AudienceInvite = () => {
                 </Select>
                 <Select value={typeFilter} onValueChange={handleTypeChange}>
                     <SelectTrigger className="h-10 w-full sm:w-48">
-                        <SelectValue placeholder={t('typeFilter.placeholder')} />
+                        <SelectValue placeholder={t('typeFilter.placeholder', { term })} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="ALL">{t('typeFilter.allTypes')}</SelectItem>
+                        <SelectItem value="ALL">{t('typeFilter.allTypes', { term })}</SelectItem>
                         {typeFilterOptions.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}

@@ -2,7 +2,7 @@
     "validation": {
         "campaignNameRequired": "اسم الحملة مطلوب",
         "campaignNameMinLength": "يجب أن يتكون الاسم من 3 أحرف على الأقل",
-        "campaignTypeRequired": "نوع الحملة مطلوب",
+        "campaignTypeRequired": "{{term}} مطلوب",
         "startDateRequired": "تاريخ البدء مطلوب",
         "endDateRequired": "تاريخ الانتهاء مطلوب",
         "initialScoreMin": "يجب ألا تقل نقاط العميل المحتمل الأولية عن 0",

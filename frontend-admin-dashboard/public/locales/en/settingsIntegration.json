@@ -77,8 +77,8 @@
         "skipOption": "— skip —"
     },
     "campaignTypeFilter": {
-        "label": "Campaign Type",
-        "all": "All campaign types",
+        "label": "{{term}}",
+        "all": "All {{term}}",
         "noAudiences": "No audiences of this type"
     },
     "google": {

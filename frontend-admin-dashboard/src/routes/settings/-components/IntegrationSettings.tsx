@@ -61,6 +61,7 @@ import {
     buildDefaultCampaignTypeOptions,
     filterByCampaignTypes,
 } from '@/routes/audience-manager/list/-utils/campaign-types';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 // ── Audience list hook ───────────────────────────────────────────────────────
 
@@ -118,6 +119,7 @@ function AudiencePickerByType({
     audiencePlaceholder: string;
 }) {
     const { t } = useTranslation('settingsIntegration');
+    const { campaignType: term } = useLeadTerminology();
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const [campaignType, setCampaignType] = useState('');
     const typeOptions = buildCampaignTypeFilterOptions(
@@ -138,13 +140,13 @@ function AudiencePickerByType({
     return (
         <>
             <div className="space-y-1">
-                <Label className="text-xs">{t('campaignTypeFilter.label')}</Label>
+                <Label className="text-xs">{t('campaignTypeFilter.label', { term })}</Label>
                 <select
                     className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                     value={campaignType}
                     onChange={(e) => handleTypeChange(e.target.value)}
                 >
-                    <option value="">{t('campaignTypeFilter.all')}</option>
+                    <option value="">{t('campaignTypeFilter.all', { term })}</option>
                     {typeOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                             {opt.label}

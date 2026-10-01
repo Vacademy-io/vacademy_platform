@@ -28,6 +28,8 @@ export interface LeadCardVM {
     email: string;
     phone: string;
     audience: string;
+    /** The audience's campaign type — the channel the lead came in through ('-' when unset). */
+    campaignType: string;
     /** Human-readable submitted date, already formatted for display ('-' when unknown). */
     submittedDisplay: string;
     /** Raw ISO submitted timestamp (when available) for relative-time + sorting. */
@@ -82,6 +84,7 @@ export const recentLeadPhone = (lead: RecentLeadDetail) =>
     lead.user?.mobile_number || lead.parent_mobile || '-';
 export const recentLeadAudience = (lead: RecentLeadDetail) =>
     lead.campaign_name || lead.source_audience_name || '-';
+export const recentLeadCampaignType = (lead: RecentLeadDetail) => lead.campaign_type || '-';
 
 // Truncate a display name for table/card views (full name is preserved in
 // the `title` tooltip and in CSV exports — only the on-screen label is cut).
@@ -164,6 +167,8 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
     (result as unknown as Record<string, unknown>)._response_fields = responseFields;
     (result as unknown as Record<string, unknown>)._audience_campaign_name =
         lead.campaign_name ?? lead.source_audience_name ?? null;
+    (result as unknown as Record<string, unknown>)._audience_campaign_type =
+        lead.campaign_type ?? null;
     (result as unknown as Record<string, unknown>)._response_id = lead.response_id ?? null;
     return result;
 };
@@ -225,6 +230,8 @@ export const mapCampaignRowToStudent = (row: CampaignUserTable): StudentTable =>
     (result as unknown as Record<string, unknown>)._response_fields = row._response_fields;
     (result as unknown as Record<string, unknown>)._audience_campaign_name =
         row._audience_campaign_name;
+    (result as unknown as Record<string, unknown>)._audience_campaign_type =
+        row._audience_campaign_type;
     (result as unknown as Record<string, unknown>)._response_id = row._response_id ?? null;
     return result;
 };
@@ -246,6 +253,7 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         email: recentLeadEmail(lead),
         phone: recentLeadPhone(lead),
         audience: recentLeadAudience(lead),
+        campaignType: recentLeadCampaignType(lead),
         submittedDisplay: formatSubmitted(lead.submitted_at_local),
         submittedIso: lead.submitted_at_local,
         responseId: lead.response_id,
@@ -277,6 +285,7 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         email: (row.email as string) || row._user?.email || '-',
         phone: (row.phone_number as string) || row._user?.mobile_number || '-',
         audience: (row._audience_campaign_name as string) || (row.opted_out_from as string) || '-',
+        campaignType: (row._audience_campaign_type as string) || '-',
         submittedDisplay: row.submittedAt || '-',
         // `row.submittedAt` is the formatted display string. The raw ISO lives
         // on `_submitted_iso` (set by the campaign-users row transformation);

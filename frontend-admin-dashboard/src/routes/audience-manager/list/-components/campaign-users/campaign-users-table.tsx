@@ -120,7 +120,11 @@ import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
-const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source'];
+// The campaign type is redundant here for the same reason, but it ships AFTER
+// users already have saved column prefs, and `defaultHidden` only seeds the very
+// first open. So it stays in the Manage Column list: new users get it hidden,
+// everyone else can switch it off themselves.
+const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source', 'campaignType'];
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
@@ -573,6 +577,7 @@ const CampaignUsersContent = ({
                 _user: user,
                 _custom_field_values: customValues,
                 _audience_campaign_name: lead.campaign_name || campaignName || null,
+                _audience_campaign_type: lead.campaign_type || campaignType || null,
                 _tat_due_at: lead.tat_due_at ?? null,
                 _follow_up_due_at: lead.follow_up_due_at ?? null,
                 _tat_overdue: lead.tat_overdue ?? null,
@@ -587,7 +592,7 @@ const CampaignUsersContent = ({
             };
             return row;
         });
-    }, [usersResponse, page, customFieldMap, campaignFieldsMap, campaignName]);
+    }, [usersResponse, page, customFieldMap, campaignFieldsMap, campaignName, campaignType]);
 
     const totalElements = usersResponse?.totalElements ?? 0;
     const totalPages = usersResponse?.totalPages ?? 0;
@@ -713,8 +718,9 @@ const CampaignUsersContent = ({
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
+                campaignType: terminology.campaignType,
             }).filter((c) => c.id !== 'source'),
-        [showOps, showScore, terminology.tier, terminology.leadStatus]
+        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
 
     // ── Filter handlers ──────────────────────────────────────

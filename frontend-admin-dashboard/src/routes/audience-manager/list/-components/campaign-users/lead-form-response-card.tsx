@@ -321,6 +321,7 @@ export const LeadFormResponseCard = () => {
     const ext = selectedStudent as unknown as {
         _response_fields?: LeadResponseField[];
         _audience_campaign_name?: string;
+        _audience_campaign_type?: string;
         _response_id?: string | null;
     } | null;
     const fields = ext?._response_fields;
@@ -336,6 +337,9 @@ export const LeadFormResponseCard = () => {
     if (!fields || fields.length === 0) return null;
 
     const campaignName = ext?._audience_campaign_name;
+    // Channel › list, so the side view reads the same hierarchy as the leads table.
+    const campaignType = ext?._audience_campaign_type;
+    const campaignTrail = [campaignType, campaignName].filter(Boolean).join(' › ');
 
     // The Call button shows on the phone-number row only (see {@link isPhoneField}).
     // We disable it pre-emptively when we don't have a response id (the backend
@@ -380,9 +384,9 @@ export const LeadFormResponseCard = () => {
                 <CardTitle className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
                     <ListChecks className="size-4 text-primary-500" />
                     {t('card.title')}
-                    {campaignName && (
+                    {campaignTrail && (
                         <span className="text-xs font-normal text-neutral-500">
-                            · {campaignName}
+                            · {campaignTrail}
                         </span>
                     )}
                 </CardTitle>

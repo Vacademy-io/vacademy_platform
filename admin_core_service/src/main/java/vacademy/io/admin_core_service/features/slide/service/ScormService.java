@@ -7,6 +7,7 @@ import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.slide.entity.ScormSlide;
 import vacademy.io.admin_core_service.features.slide.repository.ScormSlideRepository;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -17,7 +18,10 @@ import org.w3c.dom.NodeList;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -32,6 +36,7 @@ public class ScormService {
     // immutable for a year, so a changed file at the old key would never reach
     // CloudFront or browsers that already cached it.
     private static final String PLAYER_FILE_NAME = "vacademy_player_v2.html";
+    private static final String LEGACY_PLAYER_FILE_NAME = "vacademy_player.html";
 
     private final ScormSlideRepository scormSlideRepository;
     private final MediaService mediaService;
@@ -93,6 +98,65 @@ public class ScormService {
                 deleteDirectory(tempDir);
             }
         }
+    }
+
+    /**
+     * Moves SCORM slides still launched through the legacy player onto the
+     * current one: uploads {@link #PLAYER_FILE_NAME} next to the package and
+     * repoints launch_url at it. The legacy file is left in place, so reverting
+     * a slide is just restoring its old launch_url. Idempotent — an upgraded
+     * slide no longer matches the legacy suffix.
+     */
+    public Map<String, Object> upgradeLegacyPlayers(boolean dryRun, int limit) {
+        List<ScormSlide> legacy = scormSlideRepository.findByLaunchUrlEndingWith("/" + LEGACY_PLAYER_FILE_NAME);
+        List<ScormSlide> batch = legacy.subList(0, Math.min(Math.max(limit, 0), legacy.size()));
+
+        List<String> upgraded = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        for (ScormSlide slide : batch) {
+            if (isBlank(slide.getOriginalFileId()) || isBlank(slide.getLaunchPath())) {
+                failed.add(slide.getId() + " (missing original_file_id or launch_path)");
+                continue;
+            }
+            if (dryRun) {
+                upgraded.add(slide.getId());
+                continue;
+            }
+            File tempDir = null;
+            try {
+                tempDir = Files.createTempDirectory("scorm_player_" + slide.getId()).toFile();
+                File player = generatePlayerWrapper(tempDir, slide.getLaunchPath(), slide.getScormVersion());
+                String key = slide.getOriginalFileId() + "/" + PLAYER_FILE_NAME;
+                FileDetailsDTO result = mediaService.uploadFileToKey(new CustomMultipartFile(player), key);
+                if (result == null || result.getUrl() == null || !result.getUrl().endsWith("/" + PLAYER_FILE_NAME)) {
+                    failed.add(slide.getId() + " (upload returned no usable url)");
+                    continue;
+                }
+                slide.setLaunchUrl(result.getUrl());
+                scormSlideRepository.save(slide);
+                upgraded.add(slide.getId());
+            } catch (Exception e) {
+                log.error("[SCORM] Player upgrade failed for scorm_slide {}", slide.getId(), e);
+                failed.add(slide.getId() + " (" + e.getMessage() + ")");
+            } finally {
+                if (tempDir != null) {
+                    deleteDirectory(tempDir);
+                }
+            }
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("dryRun", dryRun);
+        summary.put("legacyRemainingBefore", legacy.size());
+        summary.put("processed", batch.size());
+        summary.put(dryRun ? "wouldUpgrade" : "upgraded", upgraded.size());
+        summary.put("failed", failed);
+        summary.put("slideIds", upgraded);
+        return summary;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /**

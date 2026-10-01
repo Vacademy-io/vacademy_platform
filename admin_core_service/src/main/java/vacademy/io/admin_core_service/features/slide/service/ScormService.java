@@ -28,6 +28,11 @@ import java.util.zip.ZipInputStream;
 @Slf4j
 public class ScormService {
 
+    // New name rather than an overwrite: the media bucket serves objects as
+    // immutable for a year, so a changed file at the old key would never reach
+    // CloudFront or browsers that already cached it.
+    private static final String PLAYER_FILE_NAME = "vacademy_player_v2.html";
+
     private final ScormSlideRepository scormSlideRepository;
     private final MediaService mediaService;
 
@@ -98,6 +103,13 @@ public class ScormService {
      * The wrapper also uses postMessage to bridge SCORM API calls back to the
      * parent
      * React app for learner tracking.
+     *
+     * The content iframe is only pointed at the package once the parent app has
+     * sent the learner's data (vacademy_scorm_init). Packages read
+     * cmi.learner_id / cmi.suspend_data the moment they initialise; when those
+     * come back empty, packages that keep their own browser-storage copy fall
+     * back to it, and one learner's progress lands in the next account opened
+     * in the same browser.
      */
     private File generatePlayerWrapper(File tempDir, String launchPath, String scormVersion) throws IOException {
         String wrapperHtml = """
@@ -114,7 +126,7 @@ public class ScormService {
                     </style>
                 </head>
                 <body>
-                    <iframe id="scormContent" src="%s" allowfullscreen></iframe>
+                    <iframe id="scormContent" data-src="%s" allowfullscreen></iframe>
                     <script>
                         // ===== SCORM Data Store =====
                         var cmiData = {};
@@ -135,12 +147,23 @@ public class ScormService {
                             } catch(e) { /* cross-origin, ignore */ }
                         }
 
+                        // Content waits for the learner's data; see generatePlayerWrapper
+                        var contentStarted = false;
+                        function startContent() {
+                            if (contentStarted) return;
+                            contentStarted = true;
+                            var frame = document.getElementById('scormContent');
+                            frame.src = frame.getAttribute('data-src');
+                        }
+
                         // Listen for initialization data from parent app
                         window.addEventListener('message', function(event) {
                             if (event.data && event.data.type === 'vacademy_scorm_init') {
+                                if (contentStarted) return;
                                 if (event.data.cmiData) {
                                     cmiData = event.data.cmiData;
                                 }
+                                startContent();
                             }
                         });
 
@@ -203,12 +226,20 @@ public class ScormService {
                             GetErrorString: function(code) { return 'No error'; },
                             GetDiagnostic: function(code) { return 'No error'; }
                         };
+
+                        // Opened directly, or embedded by a host that never sends
+                        // init: start anyway rather than sit on a blank page.
+                        if (window.parent === window) {
+                            startContent();
+                        } else {
+                            setTimeout(startContent, 3000);
+                        }
                     </script>
                 </body>
                 </html>
                 """.formatted(launchPath);
 
-        File wrapperFile = new File(tempDir, "vacademy_player.html");
+        File wrapperFile = new File(tempDir, PLAYER_FILE_NAME);
         Files.writeString(wrapperFile.toPath(), wrapperHtml, StandardCharsets.UTF_8);
         log.info("Generated SCORM player wrapper at: {}", wrapperFile.getAbsolutePath());
         return wrapperFile;

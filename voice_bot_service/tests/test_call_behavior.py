@@ -2646,6 +2646,22 @@ async def test_short_answer_run_waits_for_the_rest_when_the_voice_resumes():
 
 
 @pytest.mark.asyncio
+async def test_a_blocked_retrigger_never_cancels_a_held_answer():
+    """A held short answer, then a run that is BLOCKED (context unchanged, or
+    the last word was ours): the block must not take the held answer with it."""
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d = _graced_guard(lambda: 5.0)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "कृष्णा साहू।"}]
+    await g.process_frame(LLMRunFrame(), D)          # held: a 2-word answer
+    assert rec.passed == []
+    await g.process_frame(LLMRunFrame(), D)          # stale retrigger, same context
+    assert rec.passed == [], "the retrigger itself must stay blocked"
+    await asyncio.sleep(1.4)                         # grace + settle
+    assert len(rec.passed) == 1, "the held answer was lost to a blocked run"
+
+
+@pytest.mark.asyncio
 async def test_short_answer_run_is_superseded_by_the_next_turn():
     from pipecat.frames.frames import LLMRunFrame
     state = {"quiet": 0.1}

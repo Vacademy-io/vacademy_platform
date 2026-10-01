@@ -5283,7 +5283,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             or (_inst_id and _inst_id in settings.sarvam_llm_institutes)):
         _llm_provider = "sarvam"
     if providers.get("llm") is not None:
-        llm, llm_primary, llm_fallback = providers["llm"], providers["llm"], None
+        llm = llm_primary = providers["llm"]
+        llm_fallback = providers.get("llm_fallback")     # the timing sim's LLM waterfall
+        if llm_fallback is not None:                     # built as build_llm_waterfall builds it
+            from pipecat.pipeline.service_switcher import (ServiceSwitcher,
+                                                           ServiceSwitcherStrategyFailover)
+            llm = ServiceSwitcher([llm_primary, llm_fallback],
+                                  strategy_type=ServiceSwitcherStrategyFailover)
     else:
         llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
     flags["llm_failed_over"] = False

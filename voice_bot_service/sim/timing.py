@@ -118,6 +118,15 @@ class Scenario:
     # Hindi-only behaviour (Devanagari fillers, "।"-terminated finals, the Hindi
     # presence check) never ran in the gate before 2026-09-29.
     context: str = ""
+    # LLM WATERFALL, as production runs it (build_llm_waterfall: Vertex primary
+    # + fallback in pipecat's ServiceSwitcher, failover strategy). llm_stalls[k]
+    # is the PRIMARY's first-token delay on its k-th generation (None = ttft);
+    # past the guard (vertex_first_token_timeout_secs, 3 s) it errors as the
+    # guarded Vertex service does and the fallback answers in fallback_ttft.
+    # Non-empty — or SIM_SLOW_PRIMARY_EVERY=N, for any scenario or replay —
+    # builds the fallback. 13 failovers in 283 calls on 2026-10-01.
+    llm_stalls: List[Optional[float]] = field(default_factory=list)
+    fallback_ttft: float = 0.8
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -191,20 +200,33 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                                   FrameDirection.DOWNSTREAM)
 
     class SimLLM(LLMService):
-        def __init__(self):
+        def __init__(self, service: str = "primary", peer: "SimLLM | None" = None,
+                     first_token: Callable[[int], float] | None = None, guard: float = 0.0):
             super().__init__()
-            self._i = 0
+            self.sim_service = service
+            self._first_token = first_token or (lambda k: scenario.ttft)
+            self._guard = guard               # the production first-token timeout; 0 = none
+            self._n = 0                       # this service's generations so far
             self._gen = None
-            self.runs = 0
-            self.prompts: List[str] = []       # last user message per run (cues included)
+            # The two ends of a waterfall share ONE book: the scripted replies
+            # are consumed in order whichever service answers, and the log
+            # below holds every generation, tagged with the service that ran it.
+            self._book = peer._book if peer is not None else {"i": 0, "runs": 0}
+            # Last user message per run (cues included).
+            self.prompts: List[str] = peer.prompts if peer is not None else []
             # The tail of the history each run SAW — (role, text) — so a check
             # can prove the model's own last reply is in it, whole and in order.
-            self.contexts: List[list] = []
+            self.contexts: List[list] = peer.contexts if peer is not None else []
             # One entry per generation: when it was REQUESTED (context frame),
-            # STARTED, ENDED, whether an interruption killed it, its trigger
-            # and reply. sim.replay's invariants read it ("two replies for one
-            # moment", "the same reply twice", cue storms).
-            self.gens: List[Dict[str, Any]] = []
+            # STARTED, ENDED, whether an interruption killed it or the vendor
+            # ERRORED, its service, trigger and reply. sim.replay's invariants
+            # read it ("two replies for one moment", "the same reply twice",
+            # cue storms).
+            self.gens: List[Dict[str, Any]] = peer.gens if peer is not None else []
+
+        @property
+        def runs(self) -> int:
+            return self._book["runs"]
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             await super().process_frame(frame, direction)
@@ -224,7 +246,8 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                 # the first reply to finish. Overlapping generations here
                 # interleaved two replies' words — a failure production cannot
                 # have, which hid the one it does (two replies back to back).
-                entry = {"requested": round(line.now(), 2), "trigger": str(last_user)[:200]}
+                entry = {"requested": round(line.now(), 2), "trigger": str(last_user)[:200],
+                         "service": self.sim_service}
                 self.gens.append(entry)
                 prev = self._gen if (self._gen and not self._gen.done()) else None
                 self._gen = self.create_task(self._queued(prev, str(last_user), entry))
@@ -248,24 +271,50 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                 raise
 
         async def _generate(self, last_user: str, entry: Dict[str, Any] | None = None):
-            self.runs += 1
+            self._book["runs"] += 1
             self.prompts.append(last_user)
+            first_token = self._first_token(self._n)
+            self._n += 1
+            if self._guard and first_token > self._guard:
+                await self._time_out(last_user, entry)
+                return
             # A steering cue ("[…]") from the gates counts as a turn too: the
             # scripted replies are consumed in order, whatever prompted them.
             text = None
             if scenario.reply_for is not None:
                 text = scenario.reply_for(last_user)
             if text is None:
-                text = scenario.replies[self._i] if self._i < len(scenario.replies) else "Okay."
-                self._i += 1
+                i = self._book["i"]
+                text = scenario.replies[i] if i < len(scenario.replies) else "Okay."
+                self._book["i"] = i + 1
             if entry is not None:
                 entry["reply"] = text[:300]
-            log(f"LLM run {self.runs} for {last_user[:40]!r} → {text[:60]!r}")
+            log(f"LLM run {self.runs} ({self.sim_service}) for {last_user[:40]!r} → {text[:60]!r}")
             await self.push_frame(LLMFullResponseStartFrame())
-            await asyncio.sleep(scenario.ttft)
+            await asyncio.sleep(first_token)
             for w in text.split(" "):
                 await self.push_frame(LLMTextFrame(w + " "))
                 await asyncio.sleep(0.025)
+            await self.push_frame(LLMFullResponseEndFrame())
+
+        async def _time_out(self, last_user: str, entry: Dict[str, Any] | None):
+            """The guarded production service whose first token never comes:
+            app/providers.py's _FirstChunkGuard raises TimeoutError inside
+            pipecat's GoogleLLMService._process_context, which has already
+            pushed Start; its `except Exception` turns that into push_error —
+            a NON-fatal ErrorFrame upstream with processor=self, what the
+            failover strategy and run_bot's on_pipeline_error key on — and its
+            `finally` pushes End. No text, and no scripted reply consumed."""
+            log(f"LLM run {self.runs} ({self.sim_service}) for {last_user[:40]!r} → "
+                f"no first token within {self._guard:.1f}s")
+            await self.push_frame(LLMFullResponseStartFrame())
+            await asyncio.sleep(self._guard)
+            try:
+                raise TimeoutError(f"LLM first token not received within {self._guard:.1f}s")
+            except TimeoutError as e:
+                if entry is not None:
+                    entry["errored"] = round(line.now(), 2)
+                await self.push_error(error_msg=f"Unknown error occurred: {e}", exception=e)
             await self.push_frame(LLMFullResponseEndFrame())
 
     class SimTTS(TTSService):
@@ -435,7 +484,28 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             _svc.push_frame = _mk(_svc)
     else:
         stt = SimSTT()
-    llm = SimLLM()
+    # The LLM waterfall. SIM_SLOW_PRIMARY_EVERY=N stalls every N-th primary
+    # generation SIM_SLOW_PRIMARY_SECS (4 s) — a variant any scenario, replay or
+    # corpus run takes from the environment.
+    slow_every = int(os.environ.get("SIM_SLOW_PRIMARY_EVERY") or 0)
+    slow_secs = float(os.environ.get("SIM_SLOW_PRIMARY_SECS") or 4.0)
+
+    def _primary_first_token(k: int) -> float:
+        if slow_every > 0 and (k + 1) % slow_every == 0:
+            return slow_secs
+        stall = scenario.llm_stalls[k] if k < len(scenario.llm_stalls) else None
+        return scenario.ttft if stall is None else stall
+    if scenario.llm_stalls or slow_every > 0:
+        from app.config import get_settings as _gs
+        # The guards production puts on each end (app/providers.py build_llm):
+        # Vertex with a fallback fails fast; the OpenAI-compatible fallback has
+        # the general first-token timeout.
+        llm = SimLLM("primary", first_token=_primary_first_token,
+                     guard=_gs().vertex_first_token_timeout_secs)
+        llm_fallback = SimLLM("fallback", peer=llm, first_token=lambda k: scenario.fallback_ttft,
+                              guard=_gs().llm_first_token_timeout_secs)
+    else:
+        llm, llm_fallback = SimLLM(), None
     if scenario.engine == "smallest":
         from sim.smallest_fake import patch_smallest_service
         os.environ.setdefault("SMALLEST_API_KEY", "sim-not-a-key")
@@ -548,6 +618,8 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
 
     transport = SimTransport(feeder)
     out = {"stt": stt, "llm": llm, "tts": tts}
+    if llm_fallback is not None:
+        out["llm_fallback"] = llm_fallback
     if real_stt:
         out["stt_primary"], out["stt_fallback"] = _stt_primary, _stt_fallback
     return transport, out
@@ -640,6 +712,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "nudges": getattr(d, "nudges", 0) or 0,
         "replies_scripted": list(scenario.replies),
         "stt_failovers": getattr(d, "stt_failovers", 0) or 0,
+        "llm_failovers": getattr(d, "llm_failovers", 0) or 0,
         "orphan_reasks": getattr(d, "orphan_reasks", 0) or 0,
         "opening_resaid": getattr(d, "opening_resaid", 0) or 0,
         "end_forced": getattr(outcome, "end_forced", False),
@@ -1292,6 +1365,57 @@ def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8,
     return chk
 
 
+def chk_vertex_stall_failover(res, bar: float = 7.0):
+    """Call c05f6c83 and 12 more on 2026-10-01: no Vertex first token within
+    3 s → a non-fatal ErrorFrame → the switcher moves to the fallback and
+    run_bot re-runs the failed turn there. The turn gets ONE fallback reply,
+    the primary is never asked again, the errored (text-less) reply is not
+    taken for an EMPTY one that needs a "continue" cue, and the caller hears
+    the answer within ~7 s of finishing (3 s of it the guard)."""
+    from app.bot import next_step_cue
+    f = []
+    gens = res.get("llm_gens") or []
+    if res.get("llm_failovers") != 1:
+        f.append(f"llm_failovers = {res.get('llm_failovers')} (want 1)")
+    errs = [g for g in gens if g.get("errored") is not None]
+    if len(errs) != 1 or errs[0].get("service") != "primary":
+        return f + [f"expected one errored primary generation, got "
+                    f"{[(g.get('service'), g.get('errored')) for g in errs]}"]
+    t_err = errs[0]["errored"]
+    again = [g["requested"] for g in gens if g.get("service") == "primary" and g["requested"] >= t_err]
+    if again:
+        f.append(f"{len(again)} primary generation(s) requested after its error, at {again}")
+    fb = [g for g in gens if g.get("service") == "fallback" and t_err <= g["requested"] <= t_err + 8.0]
+    if len(fb) != 1:
+        f.append(f"{len(fb)} fallback generations for the failed turn (want 1): "
+                 f"{[(g['requested'], (g.get('trigger') or '')[:48]) for g in fb]}")
+    cue = next_step_cue("", "continue")[1][:40]
+    cued = [g["requested"] for g in gens if (g.get("trigger") or "").startswith(cue)]
+    if cued:
+        f.append(f"the errored reply read as EMPTY: a 'continue' next-step cue ran the model at {cued}")
+    if not res["caller"]:
+        return f + ["caller never spoke"]
+    cend = res["caller"][0][1]
+    # Said once (sent to the TTS once) and heard. Not a count in the played
+    # transcript: pipecat's word-timestamp sequencer re-emits a multi-sentence
+    # reply's later sentences there, failover or not (pieces_with_gaps too).
+    said = sum(1 for t in res.get("tts_texts", []) if "So the reason I called" in t)
+    if said != 1:
+        f.append(f"the answer to the failed turn was sent to the TTS {said}x (want 1)")
+    if "So the reason I called" not in " ".join(_assistant_texts(res)):
+        f.append("the answer to the failed turn never reached the played transcript")
+    # The reply, not the 1 s "Just a second." bridge the stall earns at 2 s.
+    # 7 s: the sim's ~2.5 s turn + the 3 s guard + the fallback's 0.8 s — and
+    # SimTTS keeps the bridge's audio context open for its 3 s idle timeout,
+    # which the reply waits behind (5.7 s with the bridge off, 6.6 s with it).
+    reply = [iv for iv in res["bot"] if iv[0] >= cend and iv[1] - iv[0] >= 2.0]
+    if not reply:
+        f.append("the failed turn was never answered on the line")
+    elif reply[0][0] - cend > bar:
+        f.append(f"reply started {reply[0][0] - cend:.2f}s after the caller stopped (bar {bar})")
+    return f
+
+
 _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
@@ -1506,6 +1630,26 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q, "Just to clarify, is it that you don't take online classes, or someone handles it?"],
              checks=chk_forced_close, max_secs=45,
              note="call ada2e60c: the model clarifies instead of ending; the gate must end the call anyway"),
+    Scenario("vertex_stall_failover",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[PITCH_Q],
+             llm_stalls=[4.0], fallback_ttft=0.8,
+             checks=chk_vertex_stall_failover, max_secs=30,
+             note="c05f6c83 + 12 calls 2026-10-01: no Vertex first token in 3 s → the fallback answers the turn"),
+    # FAILS on bae0308b34. The errored reply's End reaches NoRepeatGate before
+    # the bridge is heard, so the caller's words are still the last transcript
+    # entry: the EMPTY-reply recovery queues a "continue" cue, the cue's run
+    # takes the fallback, and RunGuard then blocks on_pipeline_error's re-run
+    # as "context unchanged" — the failed turn is answered under the cue. With
+    # the bridge heard first (the scenario above) the same code passes.
+    Scenario("vertex_stall_failover_slow_tts",
+             caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)],
+             replies=[PITCH_Q],
+             llm_stalls=[4.0], fallback_ttft=0.8, tts_ttfb=0.9,
+             # +1 s: the bridge and the reply each pay the slower TTS.
+             checks=lambda r: chk_vertex_stall_failover(r, bar=8.0), max_secs=30,
+             note="the same with a 0.9 s TTS: the 'Just a second.' bridge is not yet HEARD when the "
+                  "errored reply ends"),
     Scenario("busy_over_cached_opening_late",
              caller=[Say(HI_BUSY, 1.0, after_bot_start=1, offset=10.0)],
              replies=[HI_BUSY_REPLY],
@@ -1617,7 +1761,12 @@ async def main():
                          "'all' then includes the real_stt scenarios")
     ap.add_argument("--app-log", action="store_true",
                     help="show app.* INFO lines (watchdog/orphan diagnostics) alongside events")
+    ap.add_argument("--slow-primary-every", type=int, default=0,
+                    help="LLM waterfall variant: every N-th primary generation stalls past the "
+                         "first-token guard (= SIM_SLOW_PRIMARY_EVERY, which sim.replay/corpus read)")
     args = ap.parse_args()
+    if args.slow_primary_every:
+        os.environ["SIM_SLOW_PRIMARY_EVERY"] = str(args.slow_primary_every)
     if args.app_log:
         # Only stdlib loggers under app.*; pipecat's loguru stays as-is.
         h = logging.StreamHandler()

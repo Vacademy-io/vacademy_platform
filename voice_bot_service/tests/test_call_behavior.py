@@ -4763,7 +4763,11 @@ def test_replay_record_becomes_a_scenario_with_finals_at_their_times():
     assert len(turns) == 3, "the 0.2 s VAD blip with no words is not a turn"
     assert sc.reply_for("[cue] बोलिए।") == "जी सर। बच्चे का नाम?"      # by trigger, not order
     assert sc.reply_for("Hello") == "जी, मैं सुन रही हूँ।"
-    assert sc.reply_for("anything") is None, "every recorded reply used once"
+    # Every recorded reply used once: a run the live call never made gets a
+    # unique contentful line (never a stub "Okay.", which starts a cue
+    # cascade), and is counted as drift from the live call.
+    extra = sc.reply_for("anything")
+    assert extra and "नोट" in extra and sc.reply_for.unrecorded == 1, extra
     assert 170 < sc.max_secs <= 180
 
 

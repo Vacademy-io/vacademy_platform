@@ -243,6 +243,9 @@ class CallDiagnostics:
     late_reply_commits: int = 0
     floor_holds: int = 0
     floor_holds_dropped: int = 0
+    # Shadow mode (2026-10-01): the caller's gender from voice pitch and from
+    # their own words — measured and reported, not yet used. app/caller_gender.py
+    caller_gender: dict = field(default_factory=dict)
     floor_holds_released: int = 0
     floor_holds_capped: int = 0
     voice_cuts: int = 0
@@ -972,6 +975,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "lateReplyCommits": d.late_reply_commits,
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
+                "callerGender": d.caller_gender or None,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,

@@ -5614,8 +5614,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     _voice_eq.highpass_hz, _voice_eq.lowpass_hz, _voice_eq.presence_db,
                     _voice_eq.presence_hz, settings.voice_eq_makeup_db, corr)
 
+    # Shadow mode: the caller's gender from their voice — measured and reported,
+    # never used yet (app/caller_gender.py). Pass-through; skips while the bot talks.
+    from .caller_gender import make_probe as _make_gender_probe
+    gender_probe = _make_gender_probe(lambda: flags["bot_speaking"])
+
     pipeline = Pipeline([
         transport.input(),
+        gender_probe,
         stt,
         transcript,
         aggregators.user(),
@@ -6202,6 +6208,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 pass
             except Exception:
                 logger.exception("teardown: background task died corr=%s", corr)
+        try:
+            from .caller_gender import summarize as _gender_summary
+            diag.caller_gender = _gender_summary(
+                gender_probe.tracker.estimate(),
+                [t.get("text") or "" for t in outcome.transcript if t.get("role") == "user"])
+            _g = diag.caller_gender
+            logger.info("caller-gender corr=%s pitch=%s conf=%.2f median=%sHz voiced=%.1fs "
+                        "words=%s (%s) agree=%s", corr, _g.get("gender"), _g.get("confidence") or 0,
+                        _g.get("medianHz"), _g.get("voicedSecs") or 0, _g.get("words"),
+                        _g.get("wordsEvidence"), _g.get("agree"))
+        except Exception:
+            logger.exception("caller-gender: summary failed corr=%s", corr)
         # Release this call's two ONNX models and their executor threads NOW,
         # by reference count. The pipeline itself is cyclic garbage that only a
         # full collection frees (app/memory.py does that ~3 s later); if any

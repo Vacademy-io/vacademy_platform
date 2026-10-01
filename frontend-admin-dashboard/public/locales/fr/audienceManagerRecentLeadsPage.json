@@ -44,6 +44,9 @@
             "label": "Toutes les audiences",
             "untitled": "Audience sans titre"
         },
+        "campaignType": {
+            "label": "Tous les types de campagne"
+        },
         "customDate": {
             "setDates": "Définir les dates",
             "done": "Terminé",
@@ -71,6 +74,7 @@
     "chips": {
         "search": "Recherche : {{query}}",
         "audience": "Audience : {{names}}",
+        "campaignType": "Type de campagne : {{types}}",
         "tier": "Niveau : {{tiers}}",
         "status": "Statut : {{statuses}}",
         "sla": "SLA : {{states}}",

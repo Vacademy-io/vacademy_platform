@@ -43,6 +43,9 @@
             "label": "सभी ऑडियंस",
             "untitled": "बिना शीर्षक वाली ऑडियंस"
         },
+        "campaignType": {
+            "label": "सभी अभियान प्रकार"
+        },
         "customDate": {
             "setDates": "तारीखें सेट करें",
             "done": "हो गया",
@@ -70,6 +73,7 @@
     "chips": {
         "search": "खोज: {{query}}",
         "audience": "ऑडियंस: {{names}}",
+        "campaignType": "अभियान प्रकार: {{types}}",
         "tier": "स्तर: {{tiers}}",
         "status": "स्थिति: {{statuses}}",
         "sla": "SLA: {{states}}",

@@ -16,6 +16,7 @@ import {
     Clock,
     Megaphone,
     CalendarBlank,
+    Folders,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,12 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
+import {
+    buildCampaignTypeFilterOptions,
+    buildDefaultCampaignTypeOptions,
+    filterByCampaignTypes,
+    resolveLeadAudienceIds,
+} from '../../list/-utils/campaign-types';
 import { useCustomFieldSetup } from '../../list/-hooks/useCustomFieldSetup';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
@@ -256,6 +263,7 @@ export const RecentLeadsPage = () => {
 
 const RecentLeadsContent = () => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
     const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
     // Institute tier catalog (custom tiers + labels + colours) and the institute's
@@ -318,6 +326,11 @@ const RecentLeadsContent = () => {
         urlSearch.audience
             ? urlSearch.audience.split(',').filter((v) => v && v !== ALL_AUDIENCES_VALUE)
             : []
+    );
+    // Campaign-type multi-select — narrows both the audience dropdown and the
+    // leads to audiences of these types. Empty = every type.
+    const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>(() =>
+        urlSearch.campaignType ? urlSearch.campaignType.split(',').filter(Boolean) : []
     );
 
     const [searchInput, setSearchInput] = useState(urlSearch.search ?? '');
@@ -432,6 +445,8 @@ const RecentLeadsContent = () => {
                 sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
                 counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
                 audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
+                campaignType:
+                    campaignTypeFilters.length > 0 ? campaignTypeFilters.join(',') : undefined,
                 search: appliedSearch || undefined,
                 range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
                 from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
@@ -461,6 +476,7 @@ const RecentLeadsContent = () => {
         slaFilters,
         counsellorFilters,
         audienceFilters,
+        campaignTypeFilters,
         appliedSearch,
         rangeDays,
         customFrom,
@@ -528,10 +544,46 @@ const RecentLeadsContent = () => {
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
                     name: c.campaign_name || t('filters.audience.untitled'),
+                    campaignType: c.campaign_type,
                 }))
                 .filter((opt) => opt.id !== ''),
         [audiencesQuery.data, t]
     );
+    // Same options as the Lead List's Campaign Type filter: the defaults, then
+    // every other type saved on this institute's audiences.
+    const campaignTypeOptions = useMemo(
+        () =>
+            buildCampaignTypeFilterOptions(buildDefaultCampaignTypeOptions(tCampaignType), [
+                ...audienceOptions.map((opt) => opt.campaignType),
+                ...campaignTypeFilters,
+            ]),
+        [tCampaignType, audienceOptions, campaignTypeFilters]
+    );
+    // Audiences of the picked campaign types — what the audience dropdown offers.
+    const typeAudienceOptions = useMemo(
+        () => filterByCampaignTypes(audienceOptions, campaignTypeFilters),
+        [audienceOptions, campaignTypeFilters]
+    );
+    // The audiences the leads are narrowed to. With no campaign type picked this
+    // is audienceFilters itself, so the request is exactly what it was before the
+    // type filter existed. The 200-row audience fetch above covers every institute
+    // (the largest has ~80 audiences).
+    const resolvedAudienceIds = useMemo(
+        () => resolveLeadAudienceIds(audienceFilters, campaignTypeFilters, audienceOptions),
+        [audienceFilters, campaignTypeFilters, audienceOptions]
+    );
+    // The type → audience mapping needs the audience list, so the leads request
+    // waits for it. Once it is in, null means no audience of these types: skip the
+    // request, because sending no audience ids would mean "all leads". Keyed on
+    // having data, not on status, so a failed background refetch keeps the list
+    // already loaded instead of blanking the leads.
+    const hasAudienceList = audiencesQuery.data !== undefined;
+    const waitingForTypeAudiences = campaignTypeFilters.length > 0 && !hasAudienceList;
+    const noTypeAudiences = !waitingForTypeAudiences && resolvedAudienceIds === null;
+    // An audience list that never loaded can't be mapped to types — show the
+    // error, not "0 leads".
+    const typeAudiencesError =
+        waitingForTypeAudiences && audiencesQuery.isError ? audiencesQuery.error : null;
 
     // Translate the multi-select status filter into the two backend params.
     const specialStatuses = new Set([ALL_STATUSES_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
@@ -588,13 +640,13 @@ const RecentLeadsContent = () => {
     // per-campaign query (audience_id, which also honours the source filter);
     // two or more go to the institute-wide query narrowed by audience_ids.
     // Strictly either/or — sending both would be ambiguous server-side.
-    const audienceParams = useMemo(
-        () => ({
-            audience_id: audienceFilters.length === 1 ? audienceFilters[0] : undefined,
-            audience_ids: audienceFilters.length > 1 ? audienceFilters : undefined,
-        }),
-        [audienceFilters]
-    );
+    const audienceParams = useMemo(() => {
+        const ids = resolvedAudienceIds ?? [];
+        return {
+            audience_id: ids.length === 1 ? ids[0] : undefined,
+            audience_ids: ids.length > 1 ? ids : undefined,
+        };
+    }, [resolvedAudienceIds]);
 
     const {
         data,
@@ -606,7 +658,10 @@ const RecentLeadsContent = () => {
             instituteId,
             appliedRange.from,
             appliedRange.to,
-            audienceFilters.join(','),
+            (resolvedAudienceIds ?? []).join(','),
+            // Keeps a type with no audiences (request skipped) from reading the
+            // cached unfiltered list, which has the same empty audience ids.
+            campaignTypeFilters.join(','),
             appliedSearch,
             tierFilters.join(','),
             leadStatusFilters.join(','),
@@ -659,11 +714,18 @@ const RecentLeadsContent = () => {
                 size: pageSize,
             }),
         // Wait for lead settings so the first request already carries the right conversion filter.
-        enabled: !!instituteId && !leadSettings.isLoading,
+        enabled:
+            !!instituteId &&
+            !leadSettings.isLoading &&
+            !waitingForTypeAudiences &&
+            !noTypeAudiences,
         staleTime: 30 * 1000,
     });
-    // A disabled query is not "loading" in v5, so count the settings wait too.
-    const isLoading = leadsLoading || leadSettings.isLoading;
+    // A disabled query is not "loading" in v5, so count the settings and audience-list waits too.
+    const isLoading =
+        leadsLoading ||
+        leadSettings.isLoading ||
+        (waitingForTypeAudiences && audiencesQuery.isPending);
 
     const totalPages = data?.totalPages ?? 0;
     const totalElements = data?.totalElements ?? 0;
@@ -800,7 +862,7 @@ const RecentLeadsContent = () => {
     // all matching ids in one call, mirroring the paginated query's params.
     const [selectAllLoading, setSelectAllLoading] = useState(false);
     const selectAllAcrossPages = async () => {
-        if (!totalElements) return;
+        if (!totalElements || noTypeAudiences) return;
         try {
             setSelectAllLoading(true);
             const res = await fetchRecentLeads({
@@ -854,6 +916,7 @@ const RecentLeadsContent = () => {
     // Filters
     const handleClearFilter = () => {
         setAudienceFilters([]);
+        setCampaignTypeFilters([]);
         setSearchInput('');
         setAppliedSearch('');
         setTierFilters([]);
@@ -917,10 +980,22 @@ const RecentLeadsContent = () => {
         setPage(0);
         setAudienceFilters(values);
     };
+    // Picked audiences that are not of the new types would be invisible in the
+    // dropdown yet still narrow the leads, so drop them. Only once the audience
+    // list is in — before that every pick would look type-less and be wiped
+    // (resolveLeadAudienceIds still keeps the leads inside the types meanwhile).
+    const handleCampaignTypeChange = (values: string[]) => {
+        setPage(0);
+        setCampaignTypeFilters(values);
+        if (values.length === 0 || !hasAudienceList) return;
+        const keep = new Set(filterByCampaignTypes(audienceOptions, values).map((opt) => opt.id));
+        setAudienceFilters((prev) => prev.filter((id) => keep.has(id)));
+    };
 
     const isFilterActive =
         rangeDays !== DEFAULT_RANGE_DAYS ||
         audienceFilters.length > 0 ||
+        campaignTypeFilters.length > 0 ||
         !!appliedSearch ||
         tierFilters.length > 0 ||
         leadStatusFilters.length > 0 ||
@@ -1146,7 +1221,7 @@ const RecentLeadsContent = () => {
     };
 
     const handleExportAll = async () => {
-        if (!instituteId) return;
+        if (!instituteId || noTypeAudiences) return;
         setIsExporting(true);
         try {
             const allLeads: RecentLeadDetail[] = [];
@@ -1205,6 +1280,15 @@ const RecentLeadsContent = () => {
                 setAppliedSearch('');
             },
         });
+    if (campaignTypeFilters.length > 0) {
+        const types = campaignTypeFilters.map(
+            (value) => campaignTypeOptions.find((o) => o.value === value)?.label ?? value
+        );
+        chips.push({
+            label: t('chips.campaignType', { types: types.join(', ') }),
+            onRemove: () => handleCampaignTypeChange([]),
+        });
+    }
     if (audienceFilters.length > 0) {
         const names = audienceFilters.map(
             (id) => audienceOptions.find((o) => o.id === id)?.name ?? t('chips.fallbackSelected')
@@ -1414,9 +1498,17 @@ const RecentLeadsContent = () => {
                         />
                     )}
                     <MultiSelectFilter
+                        label={t('filters.campaignType.label')}
+                        icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
+                        options={campaignTypeOptions}
+                        selected={campaignTypeFilters}
+                        onChange={handleCampaignTypeChange}
+                        widthClass="w-48"
+                    />
+                    <MultiSelectFilter
                         label={t('filters.audience.label')}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
-                        options={audienceOptions.map((opt) => ({
+                        options={typeAudienceOptions.map((opt) => ({
                             value: opt.id,
                             label: opt.name,
                         }))}
@@ -1795,7 +1887,7 @@ const RecentLeadsContent = () => {
                             </div>
                         </div>
                     )}
-                    {error ? (
+                    {error || typeAudiencesError ? (
                         <LeadEmptyState
                             title={t('emptyState.errorTitle')}
                             description={t('emptyState.errorDescription')}

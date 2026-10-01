@@ -43,6 +43,9 @@ export const RecentLeadsSearchSchema = z.object({
     counsellor: z.string().optional(),
     /** Audience (campaign) ids — comma-separated. */
     audience: z.string().optional(),
+    /** Campaign types — comma-separated audience.campaign_type values. Narrows the
+     *  audience dropdown and the leads to audiences of these types. */
+    campaignType: z.string().optional(),
     /** Free-text search query (applied, not the live input). */
     search: z.string().optional(),
     /** Date-range preset — '1' | '7' | '15' | '30' | 'ALL' | 'CUSTOM'. */

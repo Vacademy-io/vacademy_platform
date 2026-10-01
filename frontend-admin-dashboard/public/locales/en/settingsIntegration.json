@@ -76,6 +76,11 @@
         "audienceField": "Audience Field",
         "skipOption": "— skip —"
     },
+    "campaignTypeFilter": {
+        "label": "Campaign Type",
+        "all": "All campaign types",
+        "noAudiences": "No audiences of this type"
+    },
     "google": {
         "keyLabel": "Google Key",
         "keyPlaceholder": "e.g. my-leads-abc123",

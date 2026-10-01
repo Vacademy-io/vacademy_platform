@@ -3101,7 +3101,7 @@ class RunGuard(FrameProcessor):
         # words after the cue make it the caller's turn instead.
         self._cues: Dict[str, Any] = {}
         self._held_cue = None
-        self._bot_run_drop_reason = bot_run_drop_reason or (lambda: None)
+        self._bot_run_drop_reason = bot_run_drop_reason or (lambda for_reply=0.0: None)
         self._voice_live = voice_live or (lambda: False)
         # The caller's words are still in the user aggregator: a run now would
         # answer half a turn and the turn's own run would follow it.
@@ -3170,19 +3170,26 @@ class RunGuard(FrameProcessor):
             n += len([w for w in re.split(r"[\s,.!?।]+", text) if w])
         return n
 
-    def register_cue(self, text: str, on_drop=None) -> None:
-        """The bot is about to start a run of its own with this cue."""
-        self._cues[text] = on_drop
+    def register_cue(self, text: str, on_drop=None, for_reply: float = 0.0) -> None:
+        """The bot is about to start a run of its own with this cue. `for_reply`:
+        the reply_started_t of the reply this cue RECOVERS (a next-step after an
+        empty / filler / all-repeat reply) — that reply must not count as "a
+        reply on its way" against its own recovery (design review 2026-10-01)."""
+        self._cues[text] = (on_drop, for_reply)
 
     def _bot_cue(self, msgs):
-        """(text, on_drop) when the run's last user message is a registered cue."""
+        """(text, on_drop, for_reply) when the run's last user message is a
+        registered cue."""
         last = self._last_user_text(msgs)
-        return (last, self._cues[last]) if last in self._cues else None
+        if last in self._cues:
+            on_drop, for_reply = self._cues[last]
+            return (last, on_drop, for_reply)
+        return None
 
     def _drop_cue(self, cue, why: str) -> None:
         """Take the cue out of the context (it never ran — the model must not
         see a stale instruction ahead of the caller's next words) and refund it."""
-        text, on_drop = cue
+        text, on_drop = cue[0], cue[1]
         self._cues.pop(text, None)
         try:
             msgs = list(self._context.get_messages())
@@ -3241,7 +3248,7 @@ class RunGuard(FrameProcessor):
         self._held = None
         self._held_cue = None
         if cue is not None:
-            why = self._bot_run_drop_reason()
+            why = self._bot_run_drop_reason(cue[2])
             if why:
                 self._drop_cue(cue, why + " (at release)")
                 return
@@ -3404,7 +3411,7 @@ class RunGuard(FrameProcessor):
                     # never over a caller whose turn is still forming (calls
                     # c05f6c83, 1d28af3a: a cue and the caller's turn each ran
                     # the model for the same moment).
-                    why = self._bot_run_drop_reason()
+                    why = self._bot_run_drop_reason(cue[2])
                     if why:
                         self._drop_cue(cue, why)
                         return
@@ -5399,6 +5406,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     else:
         llm, llm_primary, llm_fallback = await asyncio.to_thread(build_llm_waterfall, _llm_provider)
     flags["llm_failed_over"] = False
+    flags["llm_failed_over_t"] = 0.0
     if (llm_fallback is not None and settings.llm_retire_primary
             and hasattr(llm_primary, "retire_on_error")):
         llm_primary.retire_on_error = True
@@ -5744,12 +5752,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         except AttributeError:
             return False
 
-    def _bot_run_drop_reason():
-        """Why a run the BOT started must not run now (None = it may)."""
-        if (outcome.end_requested or outcome.end_forced or outcome.transfer_requested
-                or flags["end_pending_since"] > 0 or flags["stopping_since"] is not None):
-            return "the call is ending"
-        if _reply_pending():
+    def _bot_run_drop_reason(for_reply: float = 0.0):
+        """Why a run the BOT started must not run now (None = it may).
+        Only a line that is actually CLOSING drops it: a goodbye or transfer
+        line a noise killed before it played still needs the re-ask (design
+        review 2026-10-01), and NoRepeatGate guards its own cues after a
+        goodbye. A recovery cue does not count the very reply it recovers —
+        an empty or fully-dropped reply still sits in the reply_started_t
+        window, and dropping its recovery left ~8 s of silence."""
+        if flags["stopping_since"] is not None:
+            return "the line is closing"
+        if for_reply and flags["reply_started_t"] == for_reply:
+            pending = (floor.is_holding()
+                       or (settings.reply_ledger
+                           and (no_repeat.generating() or run_guard.held())))
+        else:
+            pending = _reply_pending()
+        if pending:
             return "a reply is already on its way"
         return None
 
@@ -5824,7 +5843,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         what, cue = next_step_cue(held, kind, attempt)
         logger.info("next-step: requesting a fresh line (%s, attempt %d) corr=%s",
                     what, attempt, corr)
-        run_guard.register_cue(cue, on_drop=no_repeat.refund_next_step)
+        run_guard.register_cue(cue, on_drop=no_repeat.refund_next_step,
+                               for_reply=flags["reply_started_t"])
         await task.queue_frames([LLMMessagesAppendFrame(
             messages=[{"role": "user", "content": cue}], run_llm=True)])
 
@@ -5840,8 +5860,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                          if _bridge_is_stale(text) else None)
 
     no_repeat = NoRepeatGate(
-        primary_errored_since=lambda t: (llm_fallback is not None and t > 0
-                                         and getattr(llm_primary, "errored_t", 0.0) >= t),
+        # Only when THIS error's failover re-run is coming: the failover
+        # handler re-runs once per call (a later primary error, after the
+        # switcher went back to it, is answered by the ordinary recovery).
+        primary_errored_since=lambda t: (settings.llm_retire_primary and llm_fallback is not None
+                                         and t > 0
+                                         and getattr(llm_primary, "errored_t", 0.0) >= t
+                                         and (not flags["llm_failed_over"]
+                                              or flags["llm_failed_over_t"] >= t)),
         caller_turn_pending=lambda: (settings.cue_one_door
                                      and (run_guard.held() or _caller_forming())),
         enabled=lambda: settings.no_repeat_enabled,
@@ -5902,7 +5928,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          noise_cap_secs=settings.short_answer_noise_cap_secs,
                          caller_forming=lambda: (settings.run_forming_hold and _caller_forming()),
                          forming_cap_secs=settings.forming_hold_cap_secs,
-                         bot_run_drop_reason=lambda: _bot_run_drop_reason(),
+                         bot_run_drop_reason=lambda for_reply=0.0: _bot_run_drop_reason(for_reply),
                          voice_live=lambda: (flags["voice_tick_t"] > 0
                                              and time.time() - flags["voice_tick_t"] < 0.4))
     run_guard._one_door = lambda: settings.cue_one_door
@@ -5999,6 +6025,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if proc is not llm_primary:
                 return
             flags["llm_failed_over"] = True
+            flags["llm_failed_over_t"] = time.time()
             diag.bump("llm_failovers")
             diag.llm_vendor_final = type(llm_fallback).__name__
             logger.warning("llm failover: %s — switching %s → %s for the rest of the call corr=%s",

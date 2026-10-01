@@ -235,6 +235,43 @@ except ImportError:  # pragma: no cover - module sits next to this file
     def _reasoning_for(model):  # type: ignore[misc]
         return None
 
+_ROUTER_IMPORT_WARNED = False
+
+
+def _llm_router():
+    """The llm_router module, or None where there is none (the render worker).
+
+    ai-service runs as `uvicorn ai_service.main:app` from /app, so its package
+    is `ai_service.app` and a bare `app.` import raises ModuleNotFoundError.
+    This client used to import the router only as `app.services.llm_router` and
+    swallow the ImportError, so every video LLM call went to OpenRouter even with
+    a route configured — from 2026-09-27, when GLM was routed to Isoquant, until
+    2026-10-01, with nothing in any log to say so.
+
+    The production name is tried first. When neither resolves, that is expected
+    in the render worker (no ai_service package at all); inside ai-service it
+    means routing is off, so it is said out loud, once.
+    """
+    global _ROUTER_IMPORT_WARNED
+    import importlib
+    import importlib.util
+
+    errors = []
+    for name in ("ai_service.app.services.llm_router", "app.services.llm_router"):
+        try:
+            return importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001 - any failure means "no router here"
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
+    try:
+        inside_ai_service = importlib.util.find_spec("ai_service") is not None
+    except Exception:  # noqa: BLE001
+        inside_ai_service = False
+    if inside_ai_service and not _ROUTER_IMPORT_WARNED:
+        _ROUTER_IMPORT_WARNED = True
+        print(f"⚠️ llm_router could not be imported inside ai-service — video LLM calls "
+              f"stay on OpenRouter ({'; '.join(errors)})")
+    return None
+
 try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
@@ -1691,16 +1728,13 @@ class OpenRouterClient:
         try:
             return urllib.request.urlopen(_req(url, headers, wire), timeout=timeout)
         except Exception as exc:
-            if route is None:
+            router = _llm_router() if route is not None else None
+            if router is None:
                 raise
-            try:
-                from app.services.llm_router import mark_router_failed, should_fail_over
-            except ImportError:
-                raise exc
             status = getattr(exc, "code", None)
-            if not should_fail_over(route, status):
+            if not router.should_fail_over(route, status):
                 raise
-            mark_router_failed(route.router)
+            router.mark_router_failed(route.router)
             print(
                 f"   ↪ {route.label} failed for {model} at stage '{_llm_stage.get()}' "
                 f"({status or type(exc).__name__}) — retrying the same model on OpenRouter"
@@ -1803,13 +1837,26 @@ class OpenRouterClient:
                     if _reasoning:
                         payload["reasoning"] = _reasoning
                     _url, _headers, _wire, _route = self.base_url, self.headers, payload, None
-                    try:
-                        from app.services.llm_router import route_chat as _route_chat
-                        _routed = _route_chat(payload, self.api_key)
-                        if not _routed[3].is_default:
-                            _url, _headers, _wire, _route = _routed[0], _routed[1], _routed[2], _routed[3]
-                    except ImportError:
-                        pass  # outside the ai_service app (render worker): OpenRouter
+                    _router = _llm_router()
+                    if _router is not None:
+                        try:
+                            _routed = _router.route_chat(payload, self.api_key)
+                            if not _routed[3].is_default:
+                                _url, _headers, _wire, _route = _routed[0], _routed[1], _routed[2], _routed[3]
+                        except Exception as _route_err:  # noqa: BLE001
+                            # A routing fault must never take generation down:
+                            # this call simply stays on OpenRouter.
+                            print(f"   ⚠️ routing {model_to_use} failed ({_route_err}) — using OpenRouter")
+                    # Say where each call actually went. The router fell back to
+                    # OpenRouter silently for four days; a line per call is the
+                    # cheapest way to make that visible next time.
+                    print(
+                        f"   ⇢ {model_to_use} via "
+                        f"{_route.label if _route is not None else 'OpenRouter'}"
+                        f"{(' reasoning_effort=' + str(_wire['reasoning_effort'])) if _wire.get('reasoning_effort') else ''}"
+                        f"{(' reasoning=' + str((_wire.get('reasoning') or {}).get('effort'))) if _wire.get('reasoning') else ''}"
+                        f" stage='{_llm_stage.get()}'"
+                    )
                     _t_start = time.perf_counter()
                     # A flat 180s was sized for a fast non-reasoning model. A
                     # thinking model planning a 20-shot video spends minutes in

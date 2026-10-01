@@ -140,21 +140,35 @@ class _FakeResponse(io.BytesIO):
         return False
 
 
-def _load_open_chat():
-    """The real OpenRouterClient._open_chat, lifted out of the pipeline source.
-    Importing automation_pipeline.py pulls in the whole renderer; the method
-    under test needs only urllib, json and the router."""
+def _pipeline_ns():
+    """The real `_llm_router` and `OpenRouterClient._open_chat`, lifted out of the
+    pipeline source into one namespace. Importing automation_pipeline.py pulls
+    in the whole renderer; these need only importlib, urllib, json and the router."""
     tree = ast.parse(PIPELINE.read_text())
+    resolver = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_llm_router")
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "OpenRouterClient")
     fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "_open_chat")
-    mod = ast.Module(body=[fn], type_ignores=[])
+    mod = ast.Module(body=[resolver, fn], type_ignores=[])
     ns: Dict[str, Any] = {"json": json, "Dict": Dict, "Any": Any, "Optional": Optional,
-                          "_llm_stage": _Stage()}
+                          "_llm_stage": _Stage(), "_ROUTER_IMPORT_WARNED": False}
     import urllib.request as _ur
     ns["urllib"] = sys.modules["urllib"]
     ns["urllib"].request = _ur
     exec(compile(mod, str(PIPELINE), "exec"), ns)
-    return ns["_open_chat"]
+    return ns
+
+
+def _load_open_chat():
+    return _pipeline_ns()["_open_chat"]
+
+
+def _as_in_production(monkeypatch):
+    """ai-service runs as `uvicorn ai_service.main:app` from /app: the package is
+    `ai_service.app`, and `import app` fails. A None entry in sys.modules makes
+    that import raise exactly as it does there. The first version of these tests
+    aliased `app` to `ai_service.app` instead — which made the broken import
+    pass here while every video call in production went to OpenRouter."""
+    monkeypatch.setitem(sys.modules, "app", None)
 
 
 class _Client:
@@ -173,14 +187,10 @@ def _harness(monkeypatch, first_error):
             raise first_error
         return _FakeResponse(b'{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}')
 
-    router = _router()  # skips the test when the app's deps are not installed
+    _router()  # skips the test when the app's deps are not installed
     import urllib.request as _ur
     monkeypatch.setattr(_ur, "urlopen", fake_urlopen)
-    # _open_chat imports `app.services.llm_router` (the in-service package name);
-    # point that name at the real router module.
-    monkeypatch.setitem(sys.modules, "app", sys.modules.get("app") or __import__("ai_service.app", fromlist=["services"]))
-    monkeypatch.setitem(sys.modules, "app.services", sys.modules.get("app.services") or sys.modules["ai_service.app.services"])
-    monkeypatch.setitem(sys.modules, "app.services.llm_router", router)
+    _as_in_production(monkeypatch)
     return calls
 
 
@@ -202,7 +212,7 @@ def test_a_gateway_outage_retries_the_same_model_on_openrouter(monkeypatch, erro
     NEXT model - an Isoquant blip silently made a GLM video into a Gemini one."""
     open_chat = _load_open_chat()
     calls = _harness(monkeypatch, error)
-    r = sys.modules["app.services.llm_router"]
+    r = _router()
 
     resp = _routed_call(open_chat, r)
 
@@ -220,7 +230,7 @@ def test_a_bad_request_is_not_retried_on_openrouter(monkeypatch):
     """A 400 is the request's own fault; OpenRouter would reject it too."""
     open_chat = _load_open_chat()
     calls = _harness(monkeypatch, _http_error(400))
-    r = sys.modules["app.services.llm_router"]
+    r = _router()
     with pytest.raises(urllib.error.HTTPError):
         _routed_call(open_chat, r)
     assert len(calls) == 1
@@ -236,6 +246,42 @@ def test_an_unrouted_call_raises_exactly_as_before(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# The router is found under the name the service actually runs as
+# --------------------------------------------------------------------------
+
+def test_the_router_resolves_under_the_production_package_name(monkeypatch):
+    """The regression. With `app` unimportable — as in the live process — the
+    old import found nothing and every video call went to OpenRouter."""
+    real = _router()
+    _as_in_production(monkeypatch)
+    resolved = _pipeline_ns()["_llm_router"]()
+    assert resolved is real, "the video client must reach the same router module the service uses"
+
+
+def test_a_dev_layout_where_only_app_resolves_still_routes(monkeypatch):
+    """Run from the service root (tests, local dev) `app.` is the importable name."""
+    real = _router()
+    monkeypatch.setitem(sys.modules, "ai_service.app.services.llm_router", None)
+    monkeypatch.setitem(sys.modules, "app", sys.modules.get("app") or __import__("ai_service.app", fromlist=["services"]))
+    monkeypatch.setitem(sys.modules, "app.services", sys.modules["ai_service.app.services"])
+    monkeypatch.setitem(sys.modules, "app.services.llm_router", real)
+    assert _pipeline_ns()["_llm_router"]() is real
+
+
+def test_no_router_inside_ai_service_is_reported_not_swallowed(monkeypatch, capsys):
+    """The silent `except ImportError: pass` is what hid this for four days."""
+    _router()
+    monkeypatch.setitem(sys.modules, "ai_service.app.services.llm_router", None)
+    _as_in_production(monkeypatch)
+    ns = _pipeline_ns()
+    assert ns["_llm_router"]() is None
+    out = capsys.readouterr().out
+    assert "llm_router could not be imported inside ai-service" in out
+    ns["_llm_router"]()
+    assert "could not be imported" not in capsys.readouterr().out, "warn once, not on every call"
+
+
+# --------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------
 
@@ -246,6 +292,21 @@ def test_the_client_sends_the_setting_and_opens_through_the_failover():
     assert "with self._open_chat(_url, _headers, _wire, payload, _route," in src
     # the bare urlopen of the routed request is gone
     assert "with urllib.request.urlopen(request, timeout=_req_timeout) as response:" not in src
+
+
+def test_the_router_is_never_imported_by_the_bare_name_alone():
+    """`from app.services.llm_router import …` fails in production. Every use
+    must go through _llm_router(), which tries `ai_service.app` first."""
+    src = PIPELINE.read_text()
+    assert "from app.services.llm_router import" not in src
+    assert "_router = _llm_router()" in src
+    assert "router = _llm_router() if route is not None else None" in src
+
+
+def test_each_call_says_which_gateway_served_it():
+    src = PIPELINE.read_text()
+    assert 'f"   ⇢ {model_to_use} via "' in src
+    assert "_route.label if _route is not None else 'OpenRouter'" in src
 
 
 def test_the_shot_planner_starts_with_room_for_a_full_plan():

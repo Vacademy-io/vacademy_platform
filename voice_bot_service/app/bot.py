@@ -316,7 +316,7 @@ class TranscriptCollector(FrameProcessor):
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  end_pending=None,
-                 diag=None, in_machine_window=None, reply_in_flight=None,
+                 diag=None, in_machine_window=None, reply_in_flight=None, opening_owed=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
@@ -388,6 +388,8 @@ class TranscriptCollector(FrameProcessor):
         # cannot be flipped by a single bad transcript.
         self._in_machine_window = in_machine_window or (lambda: False)
         self._reply_in_flight = reply_in_flight or (lambda: False)
+        # The scripted opening is still owed (see run_bot._opening_pending).
+        self._opening_owed = opening_owed or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -918,6 +920,16 @@ class TranscriptCollector(FrameProcessor):
                         # not "carry on"; the caller repeats the greeting.
                         if (self._resay_opening is not None
                                 and await self._resay_opening(text)):
+                            return
+                        if self._opening_owed() and self._is_bot_speaking():
+                            # The (re-said) opening is still playing and still
+                            # owed: an ack over it needs no reply of its own —
+                            # the opening IS the reply. The cue below put the
+                            # model's answer right after the opening's own
+                            # question, so the caller heard two questions back
+                            # to back (call 8208166f replayed, 2026-10-01).
+                            logger.info("turn-gate: %r over the opening still playing "
+                                        "— no cue", text[:20])
                             return
                         # Call 7003c36a (2026-09-09): "Actually I am busy for
                         # classes" -> "No problem. When would be a better time
@@ -5548,6 +5560,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                                           or outcome.end_requested),
                                      in_machine_window=_in_machine_window,
                                      reply_in_flight=_reply_in_flight,
+                                     opening_owed=lambda: _opening_pending(),
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),

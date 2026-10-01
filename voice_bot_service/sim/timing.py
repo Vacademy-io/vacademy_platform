@@ -735,6 +735,10 @@ def chk_absorbed_ack_does_not_resay_again(res):
     f = []
     if res["opening_resaid"] != 1:
         f.append(f"opening re-said {res['opening_resaid']}x (expected once, for the real cut)")
+    two_q = [t for t in _assistant_texts(res)
+             if sum(1 for q in ("किससे बात कर रही", "किसी से बात कर रही", "किस class") if q in t) >= 2]
+    if two_q:
+        f.append(f"two questions back to back after the re-said opening: {two_q[0][-90:]!r}")
     said = " ".join(_assistant_texts(res))
     if said.count("श्रेया") > 1 and res["opening_resaid"] > 1:
         f.append("the caller heard the introduction more than twice")

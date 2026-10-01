@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { counsellorDisplayName } from './counsellor-display';
 import { format } from 'date-fns';
 import {
     Envelope,
@@ -520,7 +521,7 @@ export function LeadTable({
             interactive: true,
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
-                const owner = profile?.assigned_counselor_name;
+                const owner = counsellorDisplayName(profile);
                 if (!owner) {
                     return (
                         <button

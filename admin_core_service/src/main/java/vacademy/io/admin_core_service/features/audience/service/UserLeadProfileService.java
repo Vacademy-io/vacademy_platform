@@ -740,6 +740,19 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        // Resolve the display name when the caller only knows the id. The column is a
+        // denormalised copy and the lead list renders the NAME, so an id written with a
+        // null name shows the lead as unassigned however correct the id is -- and on a
+        // REassignment it also wipes the name the previous assignment had stored, which
+        // is how an owned lead ends up looking ownerless. The AI-call outcome processor
+        // is the caller that has only the id (the pool rotation returns a user id), so
+        // it relied on this. A genuine un-assignment still clears both, because the
+        // backfill only runs when an id is actually being set.
+        if (counselorId != null && !counselorId.isBlank()
+                && (counselorName == null || counselorName.isBlank())) {
+            counselorName = resolveCounselorName(counselorId);
+        }
+
         profile.setAssignedCounselorId(counselorId);
         profile.setAssignedCounselorName(counselorName);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
@@ -756,6 +769,26 @@ public class UserLeadProfileService {
             safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
         }
         return saved;
+    }
+
+    /**
+     * Display name for a counsellor user id, or null when it cannot be resolved.
+     *
+     * <p>Never throws: a name is cosmetic next to the assignment itself, so a flaky
+     * auth-service lookup must not fail the assignment or roll back the transaction
+     * it runs in. Returning null simply leaves the column as it would have been.
+     */
+    private String resolveCounselorName(String counselorId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorId));
+            if (users != null && !users.isEmpty() && users.get(0) != null) {
+                String name = users.get(0).getFullName();
+                if (name != null && !name.isBlank()) return name;
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve counsellor name for {}: {}", counselorId, e.getMessage());
+        }
+        return null;
     }
 
     private UserLeadProfileDTO toDTO(UserLeadProfile p) {

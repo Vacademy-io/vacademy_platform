@@ -10,6 +10,7 @@ import {
     CampaignFormCustomField,
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { counsellorDisplayName } from '@/components/shared/leads/counsellor-display';
 import { LeadConversionBadge } from '@/components/shared/leads';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
 import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
@@ -489,7 +490,7 @@ export const generateDynamicColumns = (
                     row.original._user?.full_name ||
                     '';
                 const profile = userId && leadProfiles ? leadProfiles[userId] : undefined;
-                const counselorName = profile?.assigned_counselor_name;
+                const counselorName = counsellorDisplayName(profile);
                 if (!userId) {
                     return <div className="p-3 text-sm text-neutral-400">—</div>;
                 }

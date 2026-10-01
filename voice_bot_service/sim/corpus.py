@@ -173,6 +173,45 @@ def cmd_compare(a) -> int:
     return 1 if worse and not a.report_only else 0
 
 
+def cmd_gate(a) -> int:
+    """Two runs of main, two of the candidate. Per kind, on totals and on
+    calls affected: the candidate's MEAN may not exceed main's WORSE run plus
+    the main-vs-main spread (at least `--slack`). Per-call comparison is not a
+    gate: two runs of identical code differ in ~100 call×kind cells (the
+    replays run in real time on a loaded machine)."""
+    def load(p):
+        return {r["corr"]: r for r in json.loads(Path(p).read_text(encoding="utf-8"))["rows"]}
+    base = [load(p) for p in a.base]
+    cand = [load(p) for p in a.cand]
+    calls = set.intersection(*(set(x) for x in base + cand))
+    kinds = sorted({k for run in base + cand for c in calls for k in run[c]["kinds"]})
+
+    def tot(run, k):
+        return sum(run[c]["kinds"].get(k, 0) for c in calls)
+
+    def ncalls(run, k):
+        return sum(1 for c in calls if run[c]["kinds"].get(k))
+    worse = []
+    print(f"{len(calls)} calls in all runs — base {len(base)} runs, candidate {len(cand)} runs")
+    print(f"{'kind':26} {'base range':>13} {'cand mean':>10}   {'calls base':>12} {'cand':>6}  verdict")
+    for k in kinds:
+        bt = [tot(r, k) for r in base]
+        ct = [tot(r, k) for r in cand]
+        bc = [ncalls(r, k) for r in base]
+        cc = [ncalls(r, k) for r in cand]
+        band_t = max(a.slack, max(bt) - min(bt))
+        band_c = max(a.slack, max(bc) - min(bc))
+        mt, mc = sum(ct) / len(ct), sum(cc) / len(cc)
+        bad = mt > max(bt) + band_t or mc > max(bc) + band_c
+        good = mt < min(bt) - band_t and mc < min(bc) - band_c
+        verdict = "▲ WORSE" if bad else ("▼ better" if good else "~ within noise")
+        if bad:
+            worse.append(k)
+        print(f"{k:26} {min(bt):5}-{max(bt):<7} {mt:10.1f}   {min(bc):5}-{max(bc):<6} {mc:6.1f}  {verdict}")
+    print("\nGATE:", "FAIL — worse beyond noise: " + ", ".join(worse) if worse else "PASS")
+    return 1 if worse else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="python -m sim.corpus")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -189,8 +228,12 @@ def main() -> int:
     c.add_argument("--show", type=int, default=40)
     c.add_argument("--worse-list", help="write the corr ids that got worse (re-run them to rule out flakes)")
     c.add_argument("--report-only", action="store_true")
+    g = sub.add_parser("gate")
+    g.add_argument("--base", nargs="+", required=True, help="two (or more) runs of main")
+    g.add_argument("--cand", nargs="+", required=True, help="two (or more) runs of the candidate")
+    g.add_argument("--slack", type=int, default=2)
     a = ap.parse_args()
-    return cmd_run(a) if a.cmd == "run" else cmd_compare(a)
+    return {"run": cmd_run, "compare": cmd_compare, "gate": cmd_gate}[a.cmd](a)
 
 
 if __name__ == "__main__":

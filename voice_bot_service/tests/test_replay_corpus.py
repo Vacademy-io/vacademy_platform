@@ -142,3 +142,21 @@ def test_caller_words_that_never_reach_the_model_are_flagged():
     res["ended_at"] = 60.0
     res["contexts"] = [[("user", "something else")]]
     assert not any(x.startswith("caller words never") for x in invariants(res))
+
+
+def test_gate_judges_totals_against_the_noise_band(tmp_path):
+    """Two runs of identical code differ call by call; the gate compares the
+    candidate's mean with main's worse run plus main's own spread."""
+    def run(name, counts):
+        p = tmp_path / f"{name}.json"
+        rows = [{"corr": f"c{i}", "fails": [], "kinds": ({"two-replies-one-moment": n} if n else {})}
+                for i, n in enumerate(counts)]
+        p.write_text(json.dumps({"build": name, "rows": rows}))
+        return str(p)
+    base = [run("a", [2, 1, 0, 3]), run("b", [1, 2, 1, 3])]          # totals 6 and 7
+    same = [run("c", [2, 2, 0, 3]), run("d", [1, 1, 1, 3])]          # 7, 6: noise
+    better = [run("e", [0, 0, 0, 0]), run("f", [0, 0, 0, 1])]
+    worse = [run("g", [5, 5, 5, 5]), run("h", [4, 6, 5, 5])]
+    gate = lambda cand: corpus.cmd_gate(type("A", (), {"base": base, "cand": cand, "slack": 2}))
+    assert gate(same) == 0 and gate(better) == 0
+    assert gate(worse) == 1

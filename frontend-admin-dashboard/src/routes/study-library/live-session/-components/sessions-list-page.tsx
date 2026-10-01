@@ -39,6 +39,7 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { type SelectOption } from '@/components/design-system/SelectChips';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useTranslation } from 'react-i18next';
+import { useLiveClassActionVisibility } from '@/lib/display-settings/live-class-actions';
 
 const AllBatchesOption: SelectOption = ALL_BATCHES_OPTION;
 
@@ -91,6 +92,8 @@ export default function SessionListPage() {
     const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
     const { data: instituteDetails } = useQuery(useInstituteQuery());
+    // Read once here rather than per card — one settings fetch for the whole list.
+    const { canDeletePastSessions } = useLiveClassActionVisibility();
     const { SubjectFilterData } = useFilterDataForAssesment(instituteDetails!);
     const { instituteDetails: storeInstituteDetails } = useInstituteDetailsStore();
 
@@ -1345,6 +1348,7 @@ export default function SessionListPage() {
                                         key={`${session.session_id}-${session.schedule_id}`}
                                         session={sessionData}
                                         avatarUrlByFileId={instructorAvatars}
+                                        canDelete={canDeletePastSessions}
                                     />
                                 );
                             } else if (selectedTab === SessionStatus.DRAFTS) {

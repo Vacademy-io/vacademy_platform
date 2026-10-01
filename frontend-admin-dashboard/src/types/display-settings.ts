@@ -407,6 +407,16 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
     singleScheduleEnabled: true,
 };
 
+// Per-role actions on the live-class list (Live Sessions page).
+export interface LiveClassActionSettings {
+    // "Delete" in the "…" menu of each card on the Past tab. Deleting a past
+    // class takes its attendance, recordings and feedback out of the list, so it
+    // is role-dependent: ON for ADMIN, OFF for teachers and custom roles. Absent
+    // (every blob saved before this flag) falls through to the role's default,
+    // so read sites must resolve `?? isAdmin`, never `?? true`.
+    allowDeletePastSessions?: boolean;
+}
+
 // Per-role control over which roles this role can see/select in the Team tab —
 // in the role-type filter chips and the "Role Type" dropdown of the Invite
 // User dialog. Keys are role names uppercased (matches backend authorities and
@@ -729,6 +739,10 @@ export interface DisplaySettingsData {
     //      scheduling for specific roles even if it's institute-enabled.
     //      Both flags default to true so existing institutes are unaffected.
     liveClassScheduling?: LiveClassSchedulingSettings;
+
+    // 13b-ii) Live class list actions (Past tab delete). See
+    //         LiveClassActionSettings — ON for admin, OFF for other roles.
+    liveClassActions?: LiveClassActionSettings;
 
     // 13c) Team tab role-visibility controls. Restricts which roles the
     //      viewing role can see/select in the Team tab's role-type filter and

@@ -13,11 +13,13 @@ import {
     DownloadSimple,
     FilmSlate,
     GlobeHemisphereWest,
+    Trash,
 } from '@phosphor-icons/react';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -50,6 +52,7 @@ import {
     SessionTeacher,
 } from './session-card-shell';
 import { AttendanceBulkActions } from './attendance-bulk-actions';
+import DeletePastSessionDialog from './delete-past-session-dialog';
 import { SendMessageDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-message-dialog';
 import { SendEmailDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/send-email-dialog';
 import { useDialogStore } from '@/routes/manage-students/students-list/-hooks/useDialogStore';
@@ -60,15 +63,19 @@ interface PreviousSessionCardProps {
     session: LiveSession;
     /** Resolved once per page by the list, so avatars cost one lookup, not one per card. */
     avatarUrlByFileId?: Record<string, string>;
+    /** Display Settings → Live Class Actions; resolved once by the list for the viewer's role. */
+    canDelete?: boolean;
 }
 
 export default function PreviousSessionCard({
     session,
     avatarUrlByFileId,
+    canDelete = false,
 }: PreviousSessionCardProps) {
     const { t } = useTranslation('studyLibraryPreviousSessionCard');
     const { t: tCard } = useTranslation('studyLibraryLiveSessionCard');
     const [openDialog, setOpenDialog] = useState<boolean>(false);
+    const [openDeleteDialog, setOpenDeleteDialog] = useState<boolean>(false);
     const [scheduledSessionDetails, setScheduleSessionDetails] =
         useState<SessionDetailsResponse | null>(null);
     const [isAttendanceExporting, setIsAttendanceExporting] = useState<boolean>(false);
@@ -397,6 +404,7 @@ export default function PreviousSessionCard({
     const timeRangeLabel = formatTimeRange(session.start_time, session.last_entry_time);
     const batchesTerm = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
     const teacherTerm = getTerminology(RoleTerms.Teacher, SystemTerms.Teacher);
+    const liveSessionTerm = getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession);
     const batchNames = (session.package_session_details ?? [])
         .map((d) => `${d.level_name} ${d.package_name}`.trim())
         .filter(Boolean);
@@ -450,6 +458,18 @@ export default function PreviousSessionCard({
                                 <FilmSlate size={16} />
                                 {t('actions.viewRecordings')}
                             </DropdownMenuItem>
+                            {canDelete && session.schedule_id ? (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        className="cursor-pointer gap-2 text-danger-600 focus:text-danger-600"
+                                        onClick={() => setOpenDeleteDialog(true)}
+                                    >
+                                        <Trash size={16} />
+                                        {tCard('actions.deleteSession', { term: liveSessionTerm })}
+                                    </DropdownMenuItem>
+                                </>
+                            ) : null}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 }
@@ -703,6 +723,19 @@ export default function PreviousSessionCard({
                     </div>
                 </div>
             </MyDialog>
+
+            {canDelete && session.schedule_id ? (
+                <DeletePastSessionDialog
+                    open={openDeleteDialog}
+                    onOpenChange={setOpenDeleteDialog}
+                    scheduleId={session.schedule_id}
+                    title={session.title}
+                    dateLabel={dateLabel ?? session.meeting_date}
+                    timeRangeLabel={timeRangeLabel ?? session.start_time}
+                    isRecurring={session.recurrence_type !== 'once'}
+                    term={liveSessionTerm}
+                />
+            ) : null}
 
             {/* Bulk Action Dialogs */}
             <SendMessageDialog />

@@ -259,6 +259,9 @@ const ADMIN_DEFAULTS_BASE: Omit<DisplaySettingsData, 'sidebar'> = {
         showEnrolledStudentCount: false,
     },
     assessmentPage: { ...DEFAULT_ASSESSMENT_ACTION_SETTINGS },
+    liveClassActions: {
+        allowDeletePastSessions: true,
+    },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

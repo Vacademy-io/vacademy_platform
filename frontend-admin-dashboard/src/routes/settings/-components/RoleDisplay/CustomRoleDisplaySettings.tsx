@@ -27,6 +27,7 @@ import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
+import { LiveClassActionsCard } from './LiveClassActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import {
@@ -1402,6 +1403,11 @@ export default function CustomRoleDisplaySettings({
             <AssessmentActionsCard
                 settings={settings.assessmentPage}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
+            />
+            <LiveClassActionsCard
+                settings={settings.liveClassActions}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
+                defaultAllowDeletePastSessions={false}
             />
             </section>
 

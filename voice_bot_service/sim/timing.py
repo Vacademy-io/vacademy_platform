@@ -188,10 +188,17 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             # The tail of the history each run SAW — (role, text) — so a check
             # can prove the model's own last reply is in it, whole and in order.
             self.contexts: List[list] = []
+            # One entry per generation: when it was REQUESTED (context frame),
+            # STARTED, ENDED, whether an interruption killed it, its trigger
+            # and reply. sim.replay's invariants read it ("two replies for one
+            # moment", "the same reply twice", cue storms).
+            self.gens: List[Dict[str, Any]] = []
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             await super().process_frame(frame, direction)
             if isinstance(frame, InterruptionFrame) and self._gen and not self._gen.done():
+                # Like pipecat's own LLM services: an interruption kills the
+                # running generation AND any request queued behind it.
                 await self.cancel_task(self._gen)
                 self._gen = None
             if isinstance(frame, LLMContextFrame):
@@ -200,11 +207,35 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                                   if isinstance(m, dict) and m.get("role") == "user"), "")
                 self.contexts.append([(m.get("role"), str(m.get("content") or ""))
                                       for m in msgs[-6:] if isinstance(m, dict)])
-                self._gen = self.create_task(self._generate(str(last_user)))
+                # QUEUED, as in production: pipecat's OpenAI/Google services
+                # await _process_context inline, so a second context waits for
+                # the first reply to finish. Overlapping generations here
+                # interleaved two replies' words — a failure production cannot
+                # have, which hid the one it does (two replies back to back).
+                entry = {"requested": round(line.now(), 2), "trigger": str(last_user)[:200]}
+                self.gens.append(entry)
+                prev = self._gen if (self._gen and not self._gen.done()) else None
+                self._gen = self.create_task(self._queued(prev, str(last_user), entry))
                 return
             await self.push_frame(frame, direction)
 
-        async def _generate(self, last_user: str):
+        async def _queued(self, prev, last_user: str, entry: Dict[str, Any]):
+            try:
+                if prev is not None:
+                    try:
+                        await prev
+                    except asyncio.CancelledError:
+                        pass
+                entry["started"] = round(line.now(), 2)
+                await self._generate(last_user, entry)
+                entry["ended"] = round(line.now(), 2)
+            except asyncio.CancelledError:
+                entry["cancelled"] = round(line.now(), 2)
+                if prev is not None and not prev.done():
+                    prev.cancel()
+                raise
+
+        async def _generate(self, last_user: str, entry: Dict[str, Any] | None = None):
             self.runs += 1
             self.prompts.append(last_user)
             # A steering cue ("[…]") from the gates counts as a turn too: the
@@ -215,6 +246,8 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             if text is None:
                 text = scenario.replies[self._i] if self._i < len(scenario.replies) else "Okay."
                 self._i += 1
+            if entry is not None:
+                entry["reply"] = text[:300]
             log(f"LLM run {self.runs} for {last_user[:40]!r} → {text[:60]!r}")
             await self.push_frame(LLMFullResponseStartFrame())
             await asyncio.sleep(scenario.ttft)
@@ -585,6 +618,7 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "ended_at": None if ended_at is None else round(ended_at, 2),
         "interruptions_at_output": transport.output().interruptions,
         "llm_runs": providers["llm"].runs,
+        "llm_gens": list(getattr(providers["llm"], "gens", [])),
         "contexts": providers["llm"].contexts,
         "llm_prompts": providers["llm"].prompts,
         "nudges": getattr(d, "nudges", 0) or 0,

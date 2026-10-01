@@ -38,3 +38,38 @@ export const buildCampaignTypeFilterOptions = (
     extra.sort((a, b) => a.label.localeCompare(b.label));
     return [...defaults, ...extra];
 };
+
+/**
+ * Keeps the campaigns whose type is one of `selectedTypes`. Exact match, but
+ * case- and whitespace-insensitive, so the "Google Ads" option matches campaigns
+ * saved as GOOGLE ADS. An empty selection keeps every campaign.
+ */
+export const filterByCampaignTypes = <T extends { campaignType?: string | null }>(
+    campaigns: T[],
+    selectedTypes: string[]
+): T[] => {
+    if (selectedTypes.length === 0) return campaigns;
+    const wanted = new Set(selectedTypes.map((type) => type.trim().toUpperCase()));
+    return campaigns.filter((c) => wanted.has(c.campaignType?.trim().toUpperCase() ?? ''));
+};
+
+/**
+ * The audience ids a lead list is narrowed to. With no campaign type picked it
+ * returns `pickedAudienceIds` itself, untouched. With types picked, picks are
+ * kept only if they are of those types, and no pick means every audience of
+ * those types. `null` means no audience qualifies, so no lead can match —
+ * distinct from `[]`, which means "no audience filter".
+ */
+export const resolveLeadAudienceIds = (
+    pickedAudienceIds: string[],
+    selectedTypes: string[],
+    audiences: { id: string; campaignType?: string | null }[]
+): string[] | null => {
+    if (selectedTypes.length === 0) return pickedAudienceIds;
+    const typeIds = filterByCampaignTypes(audiences, selectedTypes).map((a) => a.id);
+    const ids =
+        pickedAudienceIds.length === 0
+            ? typeIds
+            : pickedAudienceIds.filter((id) => typeIds.includes(id));
+    return ids.length > 0 ? ids : null;
+};

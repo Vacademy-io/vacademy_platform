@@ -76,6 +76,11 @@
         "audienceField": "Champ de l'audience",
         "skipOption": "— ignorer —"
     },
+    "campaignTypeFilter": {
+        "label": "Type de campagne",
+        "all": "Tous les types de campagne",
+        "noAudiences": "Aucune audience de ce type"
+    },
     "google": {
         "keyLabel": "Clé Google",
         "keyPlaceholder": "ex. my-leads-abc123",

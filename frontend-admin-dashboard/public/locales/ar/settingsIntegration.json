@@ -76,6 +76,11 @@
         "audienceField": "حقل الجمهور",
         "skipOption": "— تخطٍّ —"
     },
+    "campaignTypeFilter": {
+        "label": "نوع الحملة",
+        "all": "جميع أنواع الحملات",
+        "noAudiences": "لا توجد جماهير من هذا النوع"
+    },
     "google": {
         "keyLabel": "مفتاح Google",
         "keyPlaceholder": "مثال: my-leads-abc123",

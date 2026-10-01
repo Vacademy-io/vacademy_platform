@@ -76,6 +76,11 @@
         "audienceField": "ऑडियंस फ़ील्ड",
         "skipOption": "— छोड़ें —"
     },
+    "campaignTypeFilter": {
+        "label": "अभियान प्रकार",
+        "all": "सभी अभियान प्रकार",
+        "noAudiences": "इस प्रकार की कोई ऑडियंस नहीं"
+    },
     "google": {
         "keyLabel": "Google Key",
         "keyPlaceholder": "उदा. my-leads-abc123",

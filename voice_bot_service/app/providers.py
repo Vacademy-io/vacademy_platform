@@ -540,6 +540,57 @@ def with_stream_first_token_timeout(cls, secs: float):
     return _Guarded
 
 
+def with_retire(cls):
+    """The PRIMARY of an LLM waterfall retires the moment it fails a request.
+
+    pipecat's failover strategy switches the ServiceSwitcher to the fallback
+    when the primary's ErrorFrame passes it, and run_bot's on_pipeline_error
+    re-runs the failed turn there. But a request already QUEUED in the primary
+    (the caller's next words arrived while it stalled) is still processed by the
+    primary after the error — a second generation beside the fallback's re-run.
+    Retired synchronously in push_error_frame (before the error travels), such
+    a request is dropped: its words are in the shared context, and the re-run
+    answers them. `retire_on_error` is set per call by run_bot only when a
+    fallback exists; a fatal error or one outside a request never retires."""
+    from pipecat.frames.frames import LLMContextFrame
+
+    class _Retiring(cls):
+        retire_on_error = False
+        retired = False
+        errored_t = 0.0
+        on_retired_drop = None
+        _in_ctx = False
+
+        async def process_frame(self, frame, direction):
+            if isinstance(frame, LLMContextFrame):
+                if self.retired:
+                    logger.info("llm: the primary has retired — dropping a request queued "
+                                "behind its failure (the fallback's re-run answers it)")
+                    cb = self.on_retired_drop
+                    if cb is not None:
+                        try:
+                            cb()
+                        except Exception:
+                            logger.exception("llm: retired-drop callback failed")
+                    return
+                self._in_ctx = True
+                try:
+                    await super().process_frame(frame, direction)
+                finally:
+                    self._in_ctx = False
+                return
+            await super().process_frame(frame, direction)
+
+        async def push_error_frame(self, error):
+            self.errored_t = time.time()
+            if self.retire_on_error and self._in_ctx and not getattr(error, "fatal", False):
+                self.retired = True
+            await super().push_error_frame(error)
+    _Retiring.__name__ = cls.__name__
+    _Retiring.__qualname__ = cls.__qualname__
+    return _Retiring
+
+
 def build_llm_waterfall(provider: str | None = None):
     """(switcher_or_primary, primary, fallback). Like build_stt_waterfall: when
     LLM_FALLBACK_PROVIDER names a different provider that builds, the call
@@ -577,6 +628,8 @@ def build_llm(provider: str | None = None, fail_fast: bool = False):
     s = get_settings()
     prov = (provider or s.llm_provider or "").strip().lower()
     _Timed = with_first_token_timeout(OpenAILLMService, s.llm_first_token_timeout_secs)
+    if fail_fast:
+        _Timed = with_retire(_Timed)
     if prov == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
@@ -606,8 +659,8 @@ def build_llm(provider: str | None = None, fail_fast: bool = False):
         from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 
         creds = s.vertex_credentials_json.strip() or None
-        _Vertex = (with_stream_first_token_timeout(GoogleVertexLLMService,
-                                                   s.vertex_first_token_timeout_secs)
+        _Vertex = (with_retire(with_stream_first_token_timeout(GoogleVertexLLMService,
+                                                               s.vertex_first_token_timeout_secs))
                    if fail_fast else GoogleVertexLLMService)
         return _Vertex(
             credentials=creds,

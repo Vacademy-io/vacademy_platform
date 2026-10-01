@@ -744,6 +744,10 @@ class Settings:
     # class "हाँ" joins it instead of firing a cue run of its own. The cap is
     # pipecat's 5 s user-turn stop timeout + 0.5 s.
     run_forming_hold: bool = field(default_factory=lambda: _env("RUN_FORMING_HOLD", "1") == "1")
+    # Single-flight step 2: a waterfall primary retires on its first failed
+    # request — a request queued behind the failure is dropped, not run beside
+    # the fallback's re-run (providers.with_retire).
+    llm_retire_primary: bool = field(default_factory=lambda: _env("LLM_RETIRE_PRIMARY", "1") == "1")
     forming_hold_cap_secs: float = field(
         default_factory=lambda: float(_env("FORMING_HOLD_CAP_SECS", "5.5")))
     reply_inflight_grace_secs: float = field(

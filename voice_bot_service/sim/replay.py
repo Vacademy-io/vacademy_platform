@@ -255,8 +255,9 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     #     one moment, played back to back. 29% of live calls 27 Sep-1 Oct
     #     (calls 1d28af3a, c05f6c83: a steering cue and the caller's own
     #     still-forming turn each ran the model).
-    for g1, g2 in zip(gens, gens[1:]):
-        if g1.get("cancelled") is not None:
+    ran = [g for g in gens if g.get("dropped") is None]   # a retired primary's drop never ran
+    for g1, g2 in zip(ran, ran[1:]):
+        if g1.get("cancelled") is not None or g1.get("errored") is not None:
             continue
         gap = g2["requested"] - g1["requested"]
         if gap >= 1.2 or any(g1["requested"] < t <= g2["requested"] for t in fin_t):

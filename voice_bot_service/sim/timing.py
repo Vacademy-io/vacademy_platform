@@ -224,6 +224,21 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
             # cue storms).
             self.gens: List[Dict[str, Any]] = peer.gens if peer is not None else []
 
+        # The production primary's retire (app/providers.py with_retire): run_bot
+        # sets retire_on_error when a fallback exists. Retired synchronously when
+        # the error is pushed; a request queued behind the failure is dropped
+        # when it would start (pipecat would dequeue it then), never run.
+        retire_on_error = False
+        retired = False
+        errored_t = 0.0
+        on_retired_drop = None
+
+        async def push_error_frame(self, error):
+            self.errored_t = time.time()
+            if self.retire_on_error and not getattr(error, "fatal", False):
+                self.retired = True
+            await super().push_error_frame(error)
+
         @property
         def runs(self) -> int:
             return self._book["runs"]
@@ -261,6 +276,12 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                         await prev
                     except asyncio.CancelledError:
                         pass
+                if self.retired:
+                    entry["dropped"] = round(line.now(), 2)
+                    log(f"LLM ({self.sim_service}) retired — dropping {last_user[:40]!r}")
+                    if self.on_retired_drop is not None:
+                        self.on_retired_drop()
+                    return
                 entry["started"] = round(line.now(), 2)
                 await self._generate(last_user, entry)
                 entry["ended"] = round(line.now(), 2)

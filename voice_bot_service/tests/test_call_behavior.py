@@ -6939,3 +6939,58 @@ def test_reply_in_flight_is_measured_from_the_replys_own_start():
     pending = src[src.index("def _reply_pending() -> bool:"):]
     pending = pending[:pending.index("\n    def ")]
     assert "run_guard.held()" in pending
+
+
+# ── single-flight step 2 (2026-10-01): a failed LLM primary retires at once ──
+@pytest.mark.asyncio
+async def test_a_failed_primary_retires_and_drops_what_was_queued_behind_it():
+    from pipecat.frames.frames import ErrorFrame, LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from app.providers import with_retire
+
+    seen, errors = [], []
+
+    class _Base:
+        async def process_frame(self, frame, direction):
+            seen.append(frame)
+            if getattr(self, "_fail_next", False):
+                self._fail_next = False
+                await self.push_error_frame(ErrorFrame(error="first token not received",
+                                                       fatal=False))
+
+        async def push_error_frame(self, error):
+            errors.append(error)
+
+    P = with_retire(_Base)
+    p = P()
+    drops = []
+    p.retire_on_error = True
+    p.on_retired_drop = lambda: drops.append(1)
+    D = b.FrameDirection.DOWNSTREAM
+    p._fail_next = True
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)   # the stalled request
+    assert p.retired and p.errored_t > 0 and len(errors) == 1
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)   # queued behind it
+    assert len(seen) == 1 and drops == [1], "a retired primary must not start another generation"
+
+    # a fatal error, or one outside a request, never retires; nor without a fallback
+    q = P()
+    q.retire_on_error = True
+    await q.push_error_frame(ErrorFrame(error="outside", fatal=False))
+    assert not q.retired
+    q._fail_next = True
+    q._in_ctx = False
+    r = P()
+    r._fail_next = True
+    await r.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert not r.retired, "retire_on_error is off when there is no fallback"
+
+
+def test_an_errored_primary_reply_is_not_read_as_empty():
+    import inspect
+    src = inspect.getsource(b.NoRepeatGate.process_frame)
+    i = src.index("the model's reply was EMPTY")
+    assert "self._primary_errored_since(self._last_start_t)" in src[:i]
+    run = inspect.getsource(b.run_bot)
+    assert "llm_primary.retire_on_error = True" in run
+    assert "no_repeat.note_dropped_run()" in run

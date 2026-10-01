@@ -25,7 +25,7 @@ def test_two_runs_for_one_moment_are_flagged():
     # c05f6c83 at 33.95 / 34.01: the caller's turn and a "continue" cue.
     f = invariants(_res([_g(33.95, "तो किस बात की बात?", "सर, आपने inquiry की थी।"),
                          _g(34.01, "[You have not moved the call forward yet…]", "जी सर, Shiksha Nation…")]))
-    assert any(x.startswith("two replies for one moment") for x in f), f
+    assert any(x.startswith("two replies at once") for x in f), f
 
 
 def test_new_caller_words_or_an_interruption_between_runs_are_legitimate():
@@ -63,7 +63,8 @@ def test_opening_resaid_after_it_was_heard_is_flagged():
 
 def test_corpus_kinds_cover_every_invariant_message():
     for msg, kind in [
-        ("two replies for one moment: runs 0.06s apart at 33.9s ('a' / 'b')", "two-replies-one-moment"),
+        ("two replies at once: runs 0.06s apart at 33.9s ('a' / 'b')", "two-replies-at-once"),
+        ("recovery run 0.05s after a reply ended at 10.6s ('[You just said')", "recovery-run"),
         ("the same reply generated twice 5.7s apart: 'x'", "same-reply-twice"),
         ("5 steering-cue runs within 30 s from 22.8s", "cue-storm"),
         ("opening re-said after 10.4s of ~14.0s had played", "opening-resaid-heard"),
@@ -85,9 +86,9 @@ def test_compare_flags_only_what_got_worse(tmp_path, capsys):
     args = type("A", (), {"base": str(a), "cand": str(b), "show": 5, "worse_list": None,
                           "report_only": False})
     assert corpus.cmd_compare(args) == 0, "a pure improvement passes"
-    b.write_text(json.dumps(rep("cand", [("c1", {}), ("c2", {"two-replies-one-moment": 2})])))
+    b.write_text(json.dumps(rep("cand", [("c1", {}), ("c2", {"two-replies-at-once": 2})])))
     assert corpus.cmd_compare(args) == 1, "anything worse fails"
-    assert "two-replies-one-moment" in capsys.readouterr().out
+    assert "two-replies-at-once" in capsys.readouterr().out
 
 
 def test_a_cut_ends_the_bot_utterance_on_the_simulated_line():
@@ -149,7 +150,7 @@ def test_gate_judges_totals_against_the_noise_band(tmp_path):
     candidate's mean with main's worse run plus main's own spread."""
     def run(name, counts):
         p = tmp_path / f"{name}.json"
-        rows = [{"corr": f"c{i}", "fails": [], "kinds": ({"two-replies-one-moment": n} if n else {})}
+        rows = [{"corr": f"c{i}", "fails": [], "kinds": ({"two-replies-at-once": n} if n else {})}
                 for i, n in enumerate(counts)]
         p.write_text(json.dumps({"build": name, "rows": rows}))
         return str(p)
@@ -160,3 +161,26 @@ def test_gate_judges_totals_against_the_noise_band(tmp_path):
     gate = lambda cand: corpus.cmd_gate(type("A", (), {"base": base, "cand": cand, "slack": 2}))
     assert gate(same) == 0 and gate(better) == 0
     assert gate(worse) == 1
+
+
+def test_a_recovery_after_the_reply_ended_is_not_two_replies_at_once():
+    """Caller turn → the model's reply → NoRepeatGate drops it as a repeat and
+    asks for the next line: sequential, one audible reply. Counted apart."""
+    g1 = {"requested": 10.0, "started": 10.0, "ended": 10.6, "trigger": "हाँ जी", "reply": "x y z w"}
+    g2 = {"requested": 10.65, "started": 10.65, "ended": 11.3,
+          "trigger": "[You just said: \"…\". Do not…]", "reply": "p q r s"}
+    f = invariants(_res([g1, g2]))
+    assert not any(x.startswith("two replies at once") for x in f), f
+    assert any(x.startswith("recovery run") for x in f), f
+
+
+def test_rescore_rejudges_stored_raw_results(tmp_path):
+    g1 = {"requested": 33.95, "started": 33.95, "ended": 34.9, "trigger": "a", "reply": "x y z w"}
+    g2 = {"requested": 34.01, "started": 34.9, "ended": 35.5, "trigger": "[cue]", "reply": "p q r s"}
+    raw = {"transcript": [], "finals": [], "bot": [], "caller": [], "llm_gens": [g1, g2]}
+    p = tmp_path / "run.json"
+    p.write_text(json.dumps({"build": "x", "rows": [{"corr": "c1", "fails": [], "kinds": {}, "raw": raw}]}))
+    out = tmp_path / "re.json"
+    corpus.cmd_rescore(type("A", (), {"run": str(p), "out": str(out)}))
+    row = json.loads(out.read_text())["rows"][0]
+    assert row["kinds"].get("two-replies-at-once") == 1, row

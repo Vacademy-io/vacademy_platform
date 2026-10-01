@@ -47,6 +47,8 @@ KINDS = [
     ("two-questions", r"^two different questions"),
     ("unanswered-turn", r"^caller turn at"),
     ("two-replies-one-moment", r"^two replies for one moment"),
+    ("two-replies-at-once", r"^two replies at once"),
+    ("recovery-run", r"^recovery run"),
     ("same-reply-twice", r"^the same reply generated twice"),
     ("opening-resaid-heard", r"^opening re-said after"),
     ("cue-storm", r"steering-cue runs within"),
@@ -55,6 +57,10 @@ KINDS = [
     ("run-error", r"^run error"),
     ("timeout", r"^timeout"),
 ]
+
+
+RAW_KEYS = ("transcript", "finals", "bot", "caller", "tts_texts", "turn_latency", "ended_at",
+            "llm_gens", "contexts", "interruption_times", "opening_resaid", "opening_text")
 
 
 def kind_of(msg: str) -> str:
@@ -90,6 +96,9 @@ def _one(rec_path: Path, ctx_path: Path, faithful: bool, tree: Path) -> Dict[str
         row["llm_runs"] = len(res.get("llm_gens") or []) if res else None
         row["engine"] = res.get("engine")
         row["unrecorded"] = res.get("unrecorded_replies")
+        # Everything the invariants read: `rescore` re-judges a run offline
+        # with the current checks — no re-run when a check is refined.
+        row["raw"] = {k: res.get(k) for k in RAW_KEYS} if res else None
     except subprocess.TimeoutExpired:
         row["fails"] = ["timeout: replay did not finish"]
     except Exception as e:  # noqa: BLE001
@@ -212,6 +221,24 @@ def cmd_gate(a) -> int:
     return 1 if worse else 0
 
 
+def cmd_rescore(a) -> int:
+    """Re-judge a run's stored raw results with the CURRENT invariants."""
+    from sim.replay import invariants
+    rep = json.loads(Path(a.run).read_text(encoding="utf-8"))
+    n = 0
+    for row in rep["rows"]:
+        raw = row.get("raw")
+        if not raw:
+            continue
+        row["fails"] = invariants(dict(raw))
+        row["kinds"] = dict(collections.Counter(kind_of(m) for m in row["fails"]))
+        n += 1
+    rep["rescored"] = True
+    Path(a.out).write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"rescored {n} of {len(rep['rows'])} calls → {a.out}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="python -m sim.corpus")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -232,8 +259,12 @@ def main() -> int:
     g.add_argument("--base", nargs="+", required=True, help="two (or more) runs of main")
     g.add_argument("--cand", nargs="+", required=True, help="two (or more) runs of the candidate")
     g.add_argument("--slack", type=int, default=2)
+    rs = sub.add_parser("rescore")
+    rs.add_argument("run")
+    rs.add_argument("--out", required=True)
     a = ap.parse_args()
-    return {"run": cmd_run, "compare": cmd_compare, "gate": cmd_gate}[a.cmd](a)
+    return {"run": cmd_run, "compare": cmd_compare, "gate": cmd_gate,
+            "rescore": cmd_rescore}[a.cmd](a)
 
 
 if __name__ == "__main__":

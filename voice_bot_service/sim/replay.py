@@ -250,18 +250,29 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     #   which queues requests as pipecat's real LLM services do.
     gens = res.get("llm_gens") or []
     fin_t = [t for t, _ in finals]
-    # 10. ONE reply per moment. Two requests < 1.2 s apart with no new caller
-    #     words between them and the first not interrupted = two replies for
-    #     one moment, played back to back. 29% of live calls 27 Sep-1 Oct
-    #     (calls 1d28af3a, c05f6c83: a steering cue and the caller's own
-    #     still-forming turn each ran the model).
-    for g1, g2 in zip(gens, gens[1:]):
-        if g1.get("cancelled") is not None:
+    # 10. ONE reply at a time. The second request arrived while the first was
+    #     still being generated (or queued), with no new caller words between
+    #     and the first not interrupted: two replies for one moment, played
+    #     back to back (calls c05f6c83 33.95/34.01 s, 1d28af3a 183.07/183.61 s:
+    #     a steering cue and the caller's still-forming turn).
+    #     A request made AFTER the first finished — NoRepeatGate dropping that
+    #     reply as a repeat and asking for the next line — is a RECOVERY: one
+    #     audible reply plus a wasted generation (latency, not a double). It is
+    #     counted apart; audible duplicates are #2 and #11's business.
+    ran = [g for g in gens if g.get("dropped") is None]   # a retired primary's drop never ran
+    for g1, g2 in zip(ran, ran[1:]):
+        if g1.get("cancelled") is not None or g1.get("errored") is not None:
             continue
         gap = g2["requested"] - g1["requested"]
         if gap >= 1.2 or any(g1["requested"] < t <= g2["requested"] for t in fin_t):
             continue
-        f.append(f"two replies for one moment: runs {gap:.2f}s apart at {g1['requested']:.1f}s "
+        done = g1.get("ended")
+        if done is not None and g2["requested"] >= done - 0.05:
+            if (g2.get("trigger") or "").startswith("["):
+                f.append(f"recovery run {g2['requested'] - done:.2f}s after a reply ended at "
+                         f"{done:.1f}s ({g2.get('trigger', '')[:32]!r})")
+            continue
+        f.append(f"two replies at once: runs {gap:.2f}s apart at {g1['requested']:.1f}s "
                  f"({g1.get('trigger', '')[:28]!r} / {g2.get('trigger', '')[:28]!r})")
     # 11. the same reply generated twice in a row (neither interrupted).
     for g1, g2 in zip(gens, gens[1:]):

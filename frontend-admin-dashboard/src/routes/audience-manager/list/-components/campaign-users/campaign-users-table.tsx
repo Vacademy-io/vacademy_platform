@@ -515,7 +515,8 @@ const CampaignUsersContent = ({
 
     // ── Settings + per-row data ──────────────────────────────
     const showScore = showOps && leadSettings.showScoreInEnquiryTable;
-    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const { statuses: leadStatusCatalog, filterStatuses: leadStatusFilterOptions } =
+        useLeadStatuses();
 
     const leadUserIds = useMemo(
         () =>
@@ -1159,11 +1160,16 @@ const CampaignUsersContent = ({
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            {
-                                value: ALL_CONVERTED_VALUE,
-                                label: t('filters.leadStatus.converted'),
-                            },
-                            ...leadStatusCatalog.map((s) => ({
+                            // Built-in, not a catalog row — see Lead Settings -> All Leads View.
+                            ...(leadSettings.showConvertedFilterOption
+                                ? [
+                                      {
+                                          value: ALL_CONVERTED_VALUE,
+                                          label: t('filters.leadStatus.converted'),
+                                      },
+                                  ]
+                                : []),
+                            ...leadStatusFilterOptions.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
                             })),

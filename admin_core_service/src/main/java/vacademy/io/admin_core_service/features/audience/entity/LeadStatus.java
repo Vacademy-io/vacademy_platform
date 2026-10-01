@@ -52,6 +52,15 @@ public class LeadStatus {
     private Boolean isActive = true;
 
     /** System default (New/Converted/Lost): editable (rename/recolour) but not deletable. */
+    /**
+     * Whether this status is offered in the Lead Status FILTER dropdowns. Deliberately
+     * separate from {@code isActive}: a hidden status is still assignable, still shown on
+     * the leads that carry it, and still reportable — it is only kept out of the filter.
+     */
+    @Column(name = "show_in_filter", nullable = false)
+    @Builder.Default
+    private Boolean showInFilter = true;
+
     @Column(name = "is_system", nullable = false)
     @Builder.Default
     private Boolean isSystem = false;

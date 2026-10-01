@@ -14,7 +14,11 @@
         "defaultStatusAriaLabel": "Statut par défaut",
         "setAsDefaultAriaLabel": "Définir par défaut",
         "systemDefaultTitle": "Statut système par défaut — peut être renommé/recoloré",
-        "systemDefaultBadge": "Par défaut"
+        "systemDefaultBadge": "Par défaut",
+        "showInFilterAriaLabel": "Afficher dans le filtre de statut",
+        "hideFromFilterAriaLabel": "Masquer du filtre de statut",
+        "showInFilterTitle": "Masqué du filtre de statut — cliquez pour l’afficher",
+        "hideFromFilterTitle": "Affiché dans le filtre de statut — cliquez pour le masquer"
     },
     "addStatus": "Ajouter un statut",
     "footer": {

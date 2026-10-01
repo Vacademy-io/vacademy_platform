@@ -4,9 +4,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -220,23 +218,24 @@ public class AnnouncementDeliveryService {
         int totalFailed = 0;
         long overallStartTime = System.currentTimeMillis();
         
-        // Process in batches (pagination)
+        // Process in batches, keyset-paged by id (see the repository method for why not page numbers)
         int pageNumber = 0;
-        Page<RecipientMessage> page;
-        
+        String lastId = "";
+        List<RecipientMessage> batch;
+
         do {
-            Pageable pageable = PageRequest.of(pageNumber, deliveryBatchSize);
-            page = recipientMessageRepository.findByAnnouncementIdAndStatusAndMediumType(
-                announcement.getId(), 
-                MessageStatus.PENDING, 
+            batch = recipientMessageRepository.findByAnnouncementIdAndStatusAndMediumTypeAndIdGreaterThanOrderByIdAsc(
+                announcement.getId(),
+                MessageStatus.PENDING,
                 MediumType.EMAIL,
-                pageable
+                lastId,
+                PageRequest.of(0, deliveryBatchSize)
             );
             
-            List<RecipientMessage> batch = page.getContent();
             if (batch.isEmpty()) {
                 break;
             }
+            lastId = batch.get(batch.size() - 1).getId();
             
             log.debug("Processing batch {} with {} messages for announcement {}", 
                     pageNumber + 1, batch.size(), announcement.getId());
@@ -371,7 +370,7 @@ public class AnnouncementDeliveryService {
             
             pageNumber++;
             
-        } while (page.hasNext());
+        } while (batch.size() == deliveryBatchSize);
         
         // Final summary
         long totalTimeSeconds = (System.currentTimeMillis() - overallStartTime) / 1000;
@@ -416,15 +415,17 @@ public class AnnouncementDeliveryService {
         int pageNumber = 0;
         int totalSuccess = 0;
         int totalFailed = 0;
-        Page<RecipientMessage> page;
+        String lastId = "";
+        List<RecipientMessage> batch;
 
         do {
-            Pageable pageable = PageRequest.of(pageNumber, deliveryBatchSize);
-            page = recipientMessageRepository.findByAnnouncementIdAndStatusAndMediumType(
-                    announcement.getId(), MessageStatus.PENDING, MediumType.WHATSAPP, pageable);
+            // Keyset-paged by id, same as email (see the repository method for why not page numbers)
+            batch = recipientMessageRepository.findByAnnouncementIdAndStatusAndMediumTypeAndIdGreaterThanOrderByIdAsc(
+                    announcement.getId(), MessageStatus.PENDING, MediumType.WHATSAPP, lastId,
+                    PageRequest.of(0, deliveryBatchSize));
 
-            List<RecipientMessage> batch = page.getContent();
             if (batch.isEmpty()) break;
+            lastId = batch.get(batch.size() - 1).getId();
 
             // Resolve the recipients' user records once per page, mirroring the email path. Without
             // this, dynamic_values could only ever carry the announcement's own fields, so a
@@ -539,7 +540,7 @@ public class AnnouncementDeliveryService {
                     pageNumber + 1, announcement.getId(), totalSuccess, totalFailed);
             pageNumber++;
 
-        } while (page.hasNext());
+        } while (batch.size() == deliveryBatchSize);
 
         log.info("WhatsApp delivery completed for announcement {}: {} success, {} failed out of {}",
                 announcement.getId(), totalSuccess, totalFailed, totalRecipients);

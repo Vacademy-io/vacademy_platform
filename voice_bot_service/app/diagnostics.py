@@ -205,6 +205,8 @@ class CallDiagnostics:
     # the caller could not answer.
     handbacks: int = 0
     empty_replies: int = 0        # genuinely empty model answers re-asked for the next line
+    forming_holds: int = 0        # runs held because the caller's turn was still forming
+    forming_hold_cap_releases: int = 0   # …released by the cap, not by the turn (expect ~0)
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
@@ -976,6 +978,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
                 "callerGender": d.caller_gender or None,
+                "formingHolds": d.forming_holds,
+                "formingHoldCapReleases": d.forming_hold_cap_releases,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,

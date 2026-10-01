@@ -317,6 +317,7 @@ class TranscriptCollector(FrameProcessor):
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  end_pending=None,
                  diag=None, in_machine_window=None, reply_in_flight=None, reply_pending=None,
+                 caller_forming=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
@@ -391,6 +392,7 @@ class TranscriptCollector(FrameProcessor):
         # In flight OR a held caller turn — for the bot's OWN runs (cues,
         # re-asks, resumes); see run_bot._reply_pending.
         self._reply_pending_fn = reply_pending
+        self._caller_forming = caller_forming or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -833,6 +835,18 @@ class TranscriptCollector(FrameProcessor):
                     return
                 if mid_reply_action(
                         text, extra_backchannels=self._backchannel_extra) == ABSORB:
+                    if self._caller_forming():
+                        # Their turn is still FORMING (words in the aggregator,
+                        # not yet a run): this "हाँ" is part of it, not a
+                        # backchannel to our reply. Forward it as an ordinary
+                        # final — no cue run of its own; the turn's run answers
+                        # all of it (call c05f6c83: a cue at 30.88 s and their
+                        # turn at 31.36 s, two replies).
+                        logger.info("turn-gate: %r while their turn is forming — "
+                                    "part of it, not a backchannel", text[:24])
+                        self._on_transcript()
+                        await self.push_frame(frame, direction)
+                        return
                     # "Absorb but never lose" (founder decision 2026-08-05): the
                     # reply continues (resumes if held) AND the ack still reaches
                     # the LLM context — run_llm omitted, so no generation. The
@@ -3049,8 +3063,13 @@ class RunGuard(FrameProcessor):
     def __init__(self, context, enabled=None, diag=None,
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
                  quiet_for=None, on_run=None, opening_pending=None,
-                 noise_cap_secs: float = 3.0):
+                 noise_cap_secs: float = 3.0, caller_forming=None,
+                 forming_cap_secs: float = 5.5):
         super().__init__()
+        # The caller's words are still in the user aggregator: a run now would
+        # answer half a turn and the turn's own run would follow it.
+        self._caller_forming = caller_forming or (lambda: False)
+        self._forming_cap = forming_cap_secs
         self._context = context
         self._noise_cap = noise_cap_secs
         # While the scripted opening has not been heard, the opening is the
@@ -3123,6 +3142,32 @@ class RunGuard(FrameProcessor):
             self._held.cancel()
             logger.info("run-guard: held short-answer run superseded — %s", why)
         self._held = None
+
+    async def _release_when_formed(self, frame: Frame, direction: FrameDirection):
+        """Held because the caller's turn was forming. Normally their turn's own
+        run supersedes this (process_frame → _drop_held). If it never comes — the
+        words were taken some other way — run once nothing is forming and the
+        context has been still for 0.3 s; never later than the cap."""
+        t0 = time.time()
+        while self._caller_forming() and time.time() - t0 < self._forming_cap:
+            await asyncio.sleep(0.1)
+        capped = self._caller_forming()
+        stable, waited, n = 0.0, 0.0, self._context_len()
+        while stable < 0.3 and waited < 1.0 and not capped:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+            m = self._context_len()
+            if m != n:
+                n, stable = m, 0.0
+            else:
+                stable += 0.1
+        self._held = None
+        if capped and self._diag is not None:
+            self._diag.bump("forming_hold_cap_releases")
+        logger.info("run-guard: run held for a forming turn released after %.2fs%s",
+                    time.time() - t0, " (cap)" if capped else "")
+        self._note_run()
+        await self.push_frame(frame, direction)
 
     async def _release(self, frame: Frame, direction: FrameDirection):
         # Silence already elapsed counts: a final that landed 0.4 s after the
@@ -3276,6 +3321,18 @@ class RunGuard(FrameProcessor):
                 # 2026-10-01, the single-flight map).
                 self._drop_held("a newer turn arrived")
                 self._last_allowed_fp = fp
+                if self._caller_forming():
+                    # Their turn is still forming. Its own run arrives when it
+                    # closes and supersedes this one (the _drop_held above), so
+                    # ONE run answers everything — calls c05f6c83 (a cue at
+                    # 30.88 s, their turn at 31.36 s) and 20d1c619 ("हाँ।" and
+                    # "से अभी।" as two runs 0.56 s apart).
+                    if self._diag is not None:
+                        self._diag.bump("forming_holds")
+                    logger.info("run-guard: the caller's turn is still forming — "
+                                "holding this run for it")
+                    self._held = self.create_task(self._release_when_formed(frame, direction))
+                    return
                 words = self._caller_words(msgs)
                 unfinished = self._grace > 0 and len(msgs) > 2 and self._ends_mid_clause(msgs)
                 if self._grace > 0 and len(msgs) > 2 and (0 < words <= self._max_words or unfinished):
@@ -5561,6 +5618,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         return (flags["bot_stopped_t"] < st
                 and (time.time() - st) < settings.reply_inflight_grace_secs)
 
+    def _caller_forming() -> bool:
+        """The caller's words are in the user aggregator, not yet pushed as a
+        turn (pipecat clears _aggregation BEFORE it pushes, so this is exact)."""
+        try:
+            return bool(aggregators.user()._aggregation)
+        except AttributeError:
+            return False
+
     def _reply_pending() -> bool:
         """A reply is on its way: in flight, or a caller turn RunGuard is holding
         for its short-answer grace. Every place the bot would start a run of its
@@ -5596,6 +5661,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      in_machine_window=_in_machine_window,
                                      reply_in_flight=_reply_in_flight,
                                      reply_pending=lambda: _reply_pending(),
+                                     caller_forming=lambda: (settings.run_forming_hold
+                                                             and _caller_forming()),
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),
@@ -5699,7 +5766,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                              outcome.replay["runs"].append(
                                  [round(time.time() - outcome.connected_at, 2), text])),
                          opening_pending=lambda: _opening_pending(),
-                         noise_cap_secs=settings.short_answer_noise_cap_secs)
+                         noise_cap_secs=settings.short_answer_noise_cap_secs,
+                         caller_forming=lambda: (settings.run_forming_hold and _caller_forming()),
+                         forming_cap_secs=settings.forming_hold_cap_secs)
 
     # One EQ per call: it carries IIR state across frames, so it must not be
     # shared between concurrent calls. None when disabled or scipy is missing,

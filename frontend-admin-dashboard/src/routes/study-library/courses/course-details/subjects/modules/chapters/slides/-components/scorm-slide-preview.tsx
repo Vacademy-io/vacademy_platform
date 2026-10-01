@@ -309,12 +309,15 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
                             title={activeItem.title || t('iframeTitle')}
                             allow="fullscreen"
                             onLoad={() => {
-                                // Send saved tracking data to the wrapper for resume (learner view)
-                                if (isLearnerView && iframeRef.current?.contentWindow) {
+                                // Send saved tracking data to the wrapper for resume (learner view).
+                                // Admin view still answers, with null data: the wrapper holds the
+                                // package back until it hears from us, and null leaves the older
+                                // wrapper's in-memory data untouched.
+                                if (iframeRef.current?.contentWindow) {
                                     iframeRef.current.contentWindow.postMessage(
                                         {
                                             type: 'vacademy_scorm_init',
-                                            cmiData: cmiDataRef.current,
+                                            cmiData: isLearnerView ? cmiDataRef.current : null,
                                         },
                                         '*'
                                     );

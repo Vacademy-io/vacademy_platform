@@ -328,6 +328,21 @@ _END_PHRASES = (
     "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
 )
 _BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+# The same asks as Sarvam writes them — Devanagari, often mixed with English.
+# Call f1368e22 (2026-10-01): "काट कर रख दो", "cut करो", "call cut कर दो" (and
+# "phone रख दो" / "काट दो" in the same family) matched nothing above, and the bot
+# talked for another 4.5 minutes. Imperatives only ("मार्क्स कट गए" is not a
+# request), and "रहने दो" stays OUT — it means "leave that topic".
+_END_RE_HI = re.compile(
+    r"(call|कॉल|phone|फोन|फ़ोन)\s*(cut|कट|काट)"
+    r"|(cut|कट)\s*(करो|कर\s*दो|कर\s*दीजिए|कर\s*दें|कीजिए)"
+    r"|काट\s*(कर\s*)?(रख\s*)?(दो|दीजिए|दिजिए|दें)"
+    r"|(phone|फोन|फ़ोन|call|कॉल)\s*(रख\s*(दो|दीजिए|दिजिए|दें)|रखो|रखिए)"
+    r"|(call|कॉल|phone|फोन|फ़ोन)\s*(बंद|band)\s*(करो|कर\s*दो|कीजिए|कर\s*दीजिए)"
+    r"|मत\s*(call|कॉल|phone|फोन|फ़ोन)\s*(करो|करना|कीजिए)"
+    r"|(call|कॉल|phone|फोन|फ़ोन)\s*मत\s*(करो|करना|कीजिए)"
+    r"|(ग़लत|गलत|रॉन्ग)\s*(नंबर|number)"
+    r"|(ज़रूरत|जरूरत|interest|इंटरेस्ट|रुचि)\s*नहीं|नहीं\s*चाहिए", re.I)
 
 
 _FAREWELL_RE = re.compile(
@@ -367,7 +382,7 @@ def caller_wants_to_end(text: str) -> bool:
     t = " ".join((text or "").casefold().split())
     if not t:
         return False
-    if any(p in t for p in _END_PHRASES):
+    if any(p in t for p in _END_PHRASES) or _END_RE_HI.search(t):
         return True
     ws = _words(t)
     return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))

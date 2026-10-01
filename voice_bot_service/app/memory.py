@@ -56,17 +56,53 @@ def _malloc_trim() -> bool:
         return False
 
 
+# Modules the first call imports lazily (providers.build_* import them inside
+# the functions). Imported before the startup freeze so their module objects are
+# frozen too — otherwise the first full collection after a call traverses them
+# all: 232 ms on the box on 2026-10-01 (call 62af8895, the first of the day).
+_CALL_MODULES = (
+    "pipecat.services.sarvam.stt", "pipecat.services.smallest.stt",
+    "pipecat.services.smallest.tts", "pipecat.services.google.llm",
+    "pipecat.services.google.vertex.llm", "pipecat.services.google.tts",
+    "pipecat.services.deepgram.tts", "bodhi.integrations.pipecat_tts",
+)
+
+
+def preload_call_modules() -> int:
+    import importlib
+    n = 0
+    for name in _CALL_MODULES:
+        try:
+            importlib.import_module(name)
+            n += 1
+        except Exception:          # an optional SDK that is not installed
+            pass
+    return n
+
+
 def freeze_startup() -> None:
     """Freeze everything alive after startup (no call can be live yet)."""
+    loaded = preload_call_modules()
     gc.collect()
     gc.freeze()
-    logger.info("memory: froze %d startup objects", gc.get_freeze_count())
+    logger.info("memory: froze %d startup objects (%d call modules preloaded)",
+                gc.get_freeze_count(), loaded)
 
 
 def reclaim(idle: bool, corr: str = "") -> dict:
     """Free what a finished call left for the cyclic collector. `idle` = no call
     is live: then (once) freeze the survivors and return freed arenas to the OS."""
     global _frozen_after_call
+    if not idle and not _frozen_after_call:
+        # Until the first idle freeze, a full collection walks everything the
+        # first call created (232 ms on the box) — a stall for the live calls.
+        # Each finished call's ONNX models and threads are already released by
+        # run_bot at hang-up, so its leftover Python objects can wait for the
+        # first idle moment.
+        logger.info("memory: after call %s — collection deferred to the first idle "
+                    "moment (calls are live)", corr[:8])
+        return {"freed": 0, "gc_ms": 0.0, "rss_before": -1, "rss_after": -1,
+                "froze": False, "trimmed": False, "deferred": True}
     before = _rss_mb()
     t0 = time.perf_counter()
     freed = gc.collect()

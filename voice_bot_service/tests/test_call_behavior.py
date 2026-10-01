@@ -6795,3 +6795,27 @@ def test_memory_reclaim_never_freezes_a_finished_call(monkeypatch):
     del pinned
     st = memory.reclaim(idle=True, corr="t")
     assert st["froze"] and frozen == [1]
+
+
+
+def test_memory_reclaim_waits_for_idle_before_the_first_freeze(monkeypatch):
+    """The first full collection (before survivors are frozen) took 232 ms on the
+    box (2026-10-01): never run it while calls are live."""
+    import gc
+    from app import memory
+    collected = []
+    monkeypatch.setattr(memory, "_frozen_after_call", False)
+    monkeypatch.setattr(gc, "collect", lambda *a: collected.append(1) or 0)
+    monkeypatch.setattr(gc, "freeze", lambda: None)
+    st = memory.reclaim(idle=False, corr="t")
+    assert st.get("deferred") and not collected
+    st = memory.reclaim(idle=True, corr="t")
+    assert collected and not st.get("deferred")
+    collected.clear()
+    st = memory.reclaim(idle=False, corr="t")            # frozen now: cheap, runs live
+    assert collected and not st.get("deferred")
+
+
+def test_call_modules_preload():
+    from app import memory
+    assert memory.preload_call_modules() >= 1

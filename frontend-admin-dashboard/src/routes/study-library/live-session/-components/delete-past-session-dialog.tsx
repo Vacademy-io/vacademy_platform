@@ -72,7 +72,10 @@ export default function DeletePastSessionDialog({
 
     return (
         <AlertDialog open={open} onOpenChange={(next) => !isDeleting && onOpenChange(next)}>
-            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            {/* grid-cols-1 = minmax(0, 1fr): the base content is an auto-width grid,
+                so one long unbreakable line would widen the column past max-w-lg
+                and spill the text out of the panel. */}
+            <AlertDialogContent className="grid-cols-1" onClick={(e) => e.stopPropagation()}>
                 <AlertDialogHeader>
                     <div className="flex items-start gap-3">
                         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-50 text-danger-600">
@@ -87,8 +90,10 @@ export default function DeletePastSessionDialog({
                     </div>
                 </AlertDialogHeader>
 
-                <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
-                    <div className="truncate text-sm font-semibold text-neutral-800" title={title}>
+                <div className="min-w-0 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
+                    {/* Wraps rather than truncates — the admin should read the full
+                        class name before confirming a delete. */}
+                    <div className="break-words text-sm font-semibold text-neutral-800">
                         {title}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">

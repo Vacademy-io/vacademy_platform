@@ -226,6 +226,49 @@ def invariants(res: Dict[str, Any]) -> List[str]:
                   if "?" in x or "？" in x}
         if len(topics) >= 2:
             f.append(f"two different questions in one turn: {(t['text'] or '')[:80]!r}")
+    # 10-13 read the stub model's generation log (sim.timing SimLLM.gens),
+    #   which queues requests as pipecat's real LLM services do.
+    gens = res.get("llm_gens") or []
+    fin_t = [t for t, _ in finals]
+    # 10. ONE reply per moment. Two requests < 1.2 s apart with no new caller
+    #     words between them and the first not interrupted = two replies for
+    #     one moment, played back to back. 29% of live calls 27 Sep-1 Oct
+    #     (calls 1d28af3a, c05f6c83: a steering cue and the caller's own
+    #     still-forming turn each ran the model).
+    for g1, g2 in zip(gens, gens[1:]):
+        if g1.get("cancelled") is not None:
+            continue
+        gap = g2["requested"] - g1["requested"]
+        if gap >= 1.2 or any(g1["requested"] < t <= g2["requested"] for t in fin_t):
+            continue
+        f.append(f"two replies for one moment: runs {gap:.2f}s apart at {g1['requested']:.1f}s "
+                 f"({g1.get('trigger', '')[:28]!r} / {g2.get('trigger', '')[:28]!r})")
+    # 11. the same reply generated twice in a row (neither interrupted).
+    for g1, g2 in zip(gens, gens[1:]):
+        if g1.get("cancelled") is not None or g2.get("cancelled") is not None:
+            continue
+        r1, r2 = g1.get("reply") or "", g2.get("reply") or ""
+        if (len(r1.split()) >= 4 and _key(r1)[:80] == _key(r2)[:80]
+                and g2["requested"] - g1["requested"] < 6.0):
+            f.append(f"the same reply generated twice {g2['requested'] - g1['requested']:.1f}s apart: "
+                     f"{r1[:48]!r}")
+    # 12. the opening started again after the caller had heard most of it
+    #     (call 1f2b97ab: 10.4 s of a 12.4 s cached opening, then "नमस्ते जी…"
+    #     from the top). Needs res["opening_text"] (replay_one sets it).
+    if res.get("opening_resaid") and res.get("bot") and res.get("opening_text"):
+        from app.turntake import opening_expected_secs
+        first = res["bot"][0]
+        heard, exp = first[1] - first[0], opening_expected_secs(res["opening_text"])
+        if exp and heard >= 0.5 * exp:
+            f.append(f"opening re-said after {heard:.1f}s of ~{exp:.1f}s had played")
+    # 13. steering-cue storms: the bot correcting itself run after run
+    #     (c05f6c83: five next-step cues in a minute, each another reply).
+    cues = [g["requested"] for g in gens if (g.get("trigger") or "").startswith("[")]
+    for i in range(len(cues)):
+        n = sum(1 for t in cues[i:] if t - cues[i] <= 30.0)
+        if n >= 4:
+            f.append(f"{n} steering-cue runs within 30 s from {cues[i]:.1f}s")
+            break
     # 7. every heard caller turn gets a reply (audio within 5 s), unless the call ended
     for cs, ce in res.get("caller", []):
         heard = any(cs <= t <= ce + 3.0 and x.strip() for t, x in finals)
@@ -253,9 +296,36 @@ async def _context_for(corr: str | None, agent: str | None, ctx_file: str | None
     return json.loads((T.FIXTURE_DIR / "yoga_agent_context.json").read_text(encoding="utf-8"))
 
 
-async def replay_one(rec: Dict[str, Any], corr: str, ctx: Dict[str, Any], verbose: bool) -> Dict[str, Any]:
+def production_audio(ctx: Dict[str, Any]):
+    """(engine, cache_warm, opening) as the agent runs in production: Navana /
+    Smallest through their protocol fakes, and a FULL/FIXED speech cache with
+    the opening already cached — ONE blob, whose text reaches the played
+    transcript only when it ends (call 1f2b97ab). The plain SimTTS with the
+    cache OFF could never reproduce that."""
+    from app.bot import _clean_opening, _fill_placeholders
+    a = ctx.get("agent") or {}
+    model = (a.get("tts_model") or "").lower()
+    engine = ("navana" if model.startswith("navana")
+              else "smallest" if model.startswith("smallest") else "sim")
+    try:
+        opening = _clean_opening(_fill_placeholders((a.get("openingLine") or "").strip(), ctx,
+                                                    full_name=True))
+    except Exception:  # noqa: BLE001
+        opening = ""
+    cached = (a.get("speech_cache_mode") or "").upper() in ("FULL", "FIXED")
+    return engine, ([opening] if opening and cached and engine != "sim" else []), opening
+
+
+async def replay_one(rec: Dict[str, Any], corr: str, ctx: Dict[str, Any], verbose: bool,
+                     faithful: bool = False) -> Dict[str, Any]:
     sc = scenario_from_record(rec, f"replay-{corr[:8]}", invariants)
+    engine, warm, opening = production_audio(ctx)
+    if faithful:
+        sc.engine, sc.cache_warm = engine, warm
+    sc.checks = lambda r, _o=opening: invariants({**r, "opening_text": _o})
     res = await T.run_scenario(sc, ctx, verbose)
+    res["opening_text"] = opening
+    res["engine"] = sc.engine
     res["caller_turns"] = len(sc.caller)
     res["replies"] = len(sc.replies)
     return res
@@ -272,6 +342,9 @@ async def main():
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--out", default="sim_replay.json")
     ap.add_argument("--ci", action="store_true")
+    ap.add_argument("--faithful", action="store_true",
+                    help="the agent's own TTS engine (Navana/Smallest fakes) and speech cache, "
+                         "opening pre-cached — as production runs it")
     ap.add_argument("--app-log", action="store_true",
                     help="show app.* INFO lines (the gates' decisions) alongside events")
     args = ap.parse_args()
@@ -290,7 +363,7 @@ async def main():
         ctx_file = args.context or (str(T.FIXTURE_DIR / rec["_context"]) if rec.get("_context") else None)
         ctx = await _context_for(corr if not ctx_file else None, rec.get("agent"), ctx_file)
         try:
-            res = await replay_one(rec, corr, ctx, args.verbose)
+            res = await replay_one(rec, corr, ctx, args.verbose, faithful=args.faithful)
         except Exception as e:  # noqa: BLE001
             res = {"key": corr, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"]}
         res["corr"] = corr

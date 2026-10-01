@@ -3227,9 +3227,6 @@ class RunGuard(FrameProcessor):
                         logger.info("run-guard: the opening has not played yet and %r does "
                                     "not take over — the opening is the reply", last[:32])
                         return
-                # A newer run supersedes a held one (its context contains the
-                # held words too).
-                self._drop_held("a newer turn arrived")
                 if role != "user":
                     # Nothing new to answer — the last word was OURS.
                     if self._diag is not None:
@@ -3245,6 +3242,13 @@ class RunGuard(FrameProcessor):
                     logger.info("run-guard: blocking generation — context unchanged "
                                 "since the previous run")
                     return
+                # A newer run supersedes a held one (its context contains the
+                # held words too) — but only a run that is itself let through.
+                # Dropped ABOVE the two blocks, a stale retrigger or a run with
+                # nothing new cancelled the caller's held short answer and was
+                # then blocked itself: the answer was never run (design review
+                # 2026-10-01, the single-flight map).
+                self._drop_held("a newer turn arrived")
                 self._last_allowed_fp = fp
                 words = self._caller_words(msgs)
                 unfinished = self._grace > 0 and len(msgs) > 2 and self._ends_mid_clause(msgs)

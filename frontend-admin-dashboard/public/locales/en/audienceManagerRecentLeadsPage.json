@@ -91,7 +91,8 @@
         "removeAriaLabel": "Remove {{label}}",
         "clearAll": "Clear all",
         "calledWithin": "Called: {{window}}",
-        "workedWithin": "Worked: {{window}}"
+        "workedWithin": "Worked: {{window}}",
+        "pinnedTitle": "Pinned by this tab — it cannot be removed here"
     },
     "search": {
         "placeholder": "Search leads",

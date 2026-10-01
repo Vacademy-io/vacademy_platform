@@ -92,7 +92,8 @@
         "removeAriaLabel": "Supprimer {{label}}",
         "clearAll": "Tout effacer",
         "calledWithin": null,
-        "workedWithin": null
+        "workedWithin": null,
+        "pinnedTitle": "Épinglé par cet onglet — impossible de le retirer ici"
     },
     "search": {
         "placeholder": "Rechercher des prospects",

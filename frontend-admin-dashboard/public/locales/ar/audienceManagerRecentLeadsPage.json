@@ -95,7 +95,8 @@
         "removeAriaLabel": "إزالة {{label}}",
         "clearAll": "مسح الكل",
         "calledWithin": null,
-        "workedWithin": null
+        "workedWithin": null,
+        "pinnedTitle": "مثبَّت بواسطة هذا التبويب — لا يمكن إزالته من هنا"
     },
     "search": {
         "placeholder": "البحث عن العملاء المحتملين",

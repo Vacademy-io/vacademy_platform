@@ -91,7 +91,8 @@
         "removeAriaLabel": "{{label}} हटाएं",
         "clearAll": "सभी हटाएं",
         "calledWithin": null,
-        "workedWithin": null
+        "workedWithin": null,
+        "pinnedTitle": "यह फ़िल्टर इस टैब का है — इसे यहाँ से हटाया नहीं जा सकता"
     },
     "search": {
         "placeholder": "लीड्स खोजें",

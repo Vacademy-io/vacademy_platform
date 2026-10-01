@@ -17,6 +17,10 @@ const FollowUpsSearchSchema = z.object({
         .regex(/^\d{4}-\d{2}$/)
         .optional(),
     counsellor: z.string().optional(),
+    /** Which stat tile the page opens on. Sidebar sub-tabs link straight to one
+     *  ("Overdue Follow ups" -> ?bucket=overdue); before this the param was dropped
+     *  by the schema and every such tab landed on "today". */
+    bucket: z.enum(['overdue', 'today', 'upcoming', 'all']).optional(),
 });
 
 export type FollowUpsSearch = z.infer<typeof FollowUpsSearchSchema>;

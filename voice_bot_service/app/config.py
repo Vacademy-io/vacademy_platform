@@ -739,6 +739,13 @@ class Settings:
     # counts a run that passed and is still composing (NoRepeatGate's run ledger)
     # and is measured from the reply's own audio START. 0 = the old test.
     reply_ledger: bool = field(default_factory=lambda: _env("REPLY_LEDGER", "1") == "1")
+    # Single-flight step 4: while the caller's turn is still FORMING (words in
+    # the user aggregator, not yet pushed) a run waits for it, and an absorb-
+    # class "हाँ" joins it instead of firing a cue run of its own. The cap is
+    # pipecat's 5 s user-turn stop timeout + 0.5 s.
+    run_forming_hold: bool = field(default_factory=lambda: _env("RUN_FORMING_HOLD", "1") == "1")
+    forming_hold_cap_secs: float = field(
+        default_factory=lambda: float(_env("FORMING_HOLD_CAP_SECS", "5.5")))
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     # FloorGate: a reply whose first audio is ready while the caller is talking

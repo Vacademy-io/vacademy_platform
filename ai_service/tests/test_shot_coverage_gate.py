@@ -52,11 +52,11 @@ def test_a_frame_carrying_only_an_image_counts():
 def test_missing_and_blank_are_both_reported(tmp_path):
     meta_shots = [{"shot_idx": i, "shot_type": "DEVICE_MOCKUP"} for i in range(5)]
     entries = [
+        {"id": "shot-0", "html": REAL},
         {"id": "shot-1", "html": REAL},
-        {"id": "shot-2", "html": REAL},
-        # shot-3 absent entirely — the placement-step failure
-        {"id": "shot-4", "html": EMPTY_FALLBACK},  # present but blank
-        {"id": "shot-5", "html": REAL},
+        # shot-2 absent entirely — the placement-step failure
+        {"id": "shot-3", "html": EMPTY_FALLBACK},  # present but blank
+        {"id": "shot-4", "html": REAL},
     ]
     tl = tmp_path / "timeline"
     tl.mkdir()
@@ -72,7 +72,7 @@ def test_missing_and_blank_are_both_reported(tmp_path):
 
 def test_a_complete_run_reports_no_gap(tmp_path):
     meta_shots = [{"shot_idx": i, "shot_type": "TEXT_DIAGRAM"} for i in range(3)]
-    entries = [{"id": f"shot-{i+1}", "html": REAL} for i in range(3)]
+    entries = [{"id": f"shot-{i}", "html": REAL} for i in range(3)]
     tl = tmp_path / "timeline"
     tl.mkdir()
     (tl / "time_based_frame.json").write_text(
@@ -81,6 +81,64 @@ def test_a_complete_run_reports_no_gap(tmp_path):
     cov = _timeline_coverage(tmp_path)
     assert cov["missing"] == []
     assert cov["present"] == cov["planned"] == 3
+
+
+def _write(tmp_path, n_planned, entries):
+    tl = tmp_path / "timeline"
+    tl.mkdir()
+    (tl / "time_based_frame.json").write_text(json.dumps({
+        "meta": {"shots": [{"shot_idx": i, "shot_type": "TEXT_DIAGRAM"} for i in range(n_planned)]},
+        "entries": entries,
+    }))
+    return _timeline_coverage(tmp_path)
+
+
+def test_ids_are_the_pipelines_zero_based_shot_index(tmp_path):
+    """A 2026-10-01 film shipped all 12 shots as `shot-0`..`shot-11`, and the
+    gate said "Shipped 11 of 12 shots — missing/blank: [11]". It looked up
+    `shot-{idx + 1}`: every complete film reported its last shot missing, and
+    each shot was judged by its neighbour's frame."""
+    cov = _write(tmp_path, 12, [{"id": f"shot-{i}", "html": REAL} for i in range(12)])
+    assert cov["missing"] == [] and cov["present"] == 12
+
+
+def test_a_blank_first_shot_is_caught(tmp_path):
+    """Under the old lookup shot 0 was judged by `shot-1`, so a blank opener —
+    the first thing anyone sees — could never be reported."""
+    entries = [{"id": "shot-0", "html": EMPTY_FALLBACK}] + [
+        {"id": f"shot-{i}", "html": REAL} for i in (1, 2)
+    ]
+    assert _write(tmp_path, 3, entries)["missing"] == [0]
+
+
+def test_a_split_shot_counts_through_its_sub_entries(tmp_path):
+    """A split shot has `shot-N-sub0`/`-sub1` and no plain `shot-N` entry."""
+    entries = [
+        {"id": "shot-0", "html": REAL},
+        {"id": "shot-1-sub0", "html": REAL},
+        {"id": "shot-1-sub1", "html": REAL},
+        {"id": "shot-2", "html": REAL},
+    ]
+    assert _write(tmp_path, 3, entries)["missing"] == []
+
+
+def test_a_split_shot_with_one_blank_half_is_reported(tmp_path):
+    entries = [
+        {"id": "shot-0", "html": REAL},
+        {"id": "shot-1-sub0", "html": REAL},
+        {"id": "shot-1-sub1", "html": EMPTY_FALLBACK},
+    ]
+    assert _write(tmp_path, 2, entries)["missing"] == [1]
+
+
+def test_the_gate_reads_the_id_format_the_pipeline_writes():
+    """The fixtures above are only right if the pipeline still names entries
+    this way. If the naming changes, this fails instead of the gate quietly
+    reporting the wrong shots again."""
+    pipe = open(os.path.join(
+        os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py"
+    )).read()
+    assert '_entry_id = f"shot-{shot_idx}" + (f"-sub{_sub_idx_val}"' in pipe
 
 
 def test_an_unreadable_timeline_is_unknown_not_failed(tmp_path):

@@ -85,21 +85,35 @@ def scenario_from_record(rec: Dict[str, Any], key: str, checks) -> Scenario:
     runs = [str(r) for _, r in rec.get("runs", [])]
     pairs = list(zip(runs, replies)) if runs else []
     ended = float(rec.get("ended") or 0.0)
+    import re as _re
+    texts = [x for _, x in finals] + replies
+    hindi = sum(1 for x in texts if _re.search(r"[\u0900-\u097F]", x)) * 2 >= max(1, len(texts))
     return Scenario(key, caller=says, replies=replies, checks=checks,
                     max_secs=max(20.0, min(ended + 6.0, 420.0)),
-                    reply_for=_reply_matcher(pairs) if pairs else None,
+                    reply_for=_reply_matcher(pairs, hindi),
                     note=f"replay of live call; {len(says)} caller turns, {len(replies)} replies")
 
 
-def _reply_matcher(pairs):
-    """Closure: best unconsumed recorded reply for a run's last user text."""
+def _reply_matcher(pairs, hindi: bool = True):
+    """Closure: best unconsumed recorded reply for a run's last user text.
+
+    A run the live call never made (the build under test runs the model more
+    often) has no recorded reply. It gets a UNIQUE, contentful statement —
+    never "Okay.": the gates read a bare acknowledgment as "the bot said
+    nothing new" and ask for the next line, so a stub "Okay." manufactured
+    cue cascades the live call never had (replay of 1f2b97ab, 2026-10-01).
+    `pick.unrecorded` counts them: a high count means the replay has drifted
+    from the call it came from."""
     import difflib
     from app.turntake import normalize_spoken
     left = [(normalize_spoken(trig), reply) for trig, reply in pairs]
 
     def pick(last_user: str):
         if not left:
-            return None
+            pick.unrecorded += 1
+            n = pick.unrecorded
+            return (f"जी, ये बात नोट कर ली है, पॉइंट नंबर {n}।" if hindi
+                    else f"Understood, I have noted that as point number {n}.")
         q = normalize_spoken(last_user or "")
         best, score = 0, -1.0
         for i, (trig, _) in enumerate(left):
@@ -109,6 +123,7 @@ def _reply_matcher(pairs):
         if score < 0.45:
             best = 0                                  # nothing close: take the next in order
         return left.pop(best)[1]
+    pick.unrecorded = 0
     return pick
 
 
@@ -138,8 +153,11 @@ def invariants(res: Dict[str, Any]) -> List[str]:
     bot_texts = [t["text"] for t in tr if t["role"] == "assistant"]
     # 1. the opening is said once. After the person has spoken, its first
     #    words must not come back (screener flag, re-greet).
-    if bot_texts:
-        opening = " ".join(bot_texts[0].split()[:6])
+    # The OPENING TEXT when the replay knows it: a cut cached opening never
+    # reaches the played transcript, and the first entry is then a reply.
+    first = res.get("opening_text") or (bot_texts[0] if bot_texts else "")
+    if bot_texts and first:
+        opening = " ".join(first.split()[:6])
         seen_user = False
         for t in tr[1:]:
             if (t["role"] == "user" and not caller_checking_presence(t["text"])
@@ -326,6 +344,7 @@ async def replay_one(rec: Dict[str, Any], corr: str, ctx: Dict[str, Any], verbos
     res = await T.run_scenario(sc, ctx, verbose)
     res["opening_text"] = opening
     res["engine"] = sc.engine
+    res["unrecorded_replies"] = getattr(sc.reply_for, "unrecorded", 0)
     res["caller_turns"] = len(sc.caller)
     res["replies"] = len(sc.replies)
     return res

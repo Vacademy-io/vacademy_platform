@@ -14,7 +14,11 @@
         "defaultStatusAriaLabel": "डिफ़ॉल्ट स्थिति",
         "setAsDefaultAriaLabel": "डिफ़ॉल्ट के रूप में सेट करें",
         "systemDefaultTitle": "सिस्टम डिफ़ॉल्ट — नाम/रंग बदला जा सकता है",
-        "systemDefaultBadge": "डिफ़ॉल्ट"
+        "systemDefaultBadge": "डिफ़ॉल्ट",
+        "showInFilterAriaLabel": "स्टेटस फ़िल्टर में दिखाएँ",
+        "hideFromFilterAriaLabel": "स्टेटस फ़िल्टर से छिपाएँ",
+        "showInFilterTitle": "स्टेटस फ़िल्टर में छिपा है — दिखाने के लिए क्लिक करें",
+        "hideFromFilterTitle": "स्टेटस फ़िल्टर में दिख रहा है — छिपाने के लिए क्लिक करें"
     },
     "addStatus": "स्थिति जोड़ें",
     "footer": {

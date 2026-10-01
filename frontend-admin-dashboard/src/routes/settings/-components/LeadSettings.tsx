@@ -48,6 +48,7 @@ export interface LeadSettingsData {
     showScoreInStudentsTable: boolean;
     /** Hide converted leads from the unfiltered "All leads" view (Recent Leads + Lead List). */
     hideConvertedInAllLeads: boolean;
+    showConvertedFilterOption: boolean;
     /**
      * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
@@ -69,6 +70,7 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
+    showConvertedFilterOption: true,
     labels: {},
 };
 
@@ -310,7 +312,7 @@ function ConfigSection({
                             <CardTitle>{t('allLeadsCard.title')}</CardTitle>
                             <CardDescription>{t('allLeadsCard.description')}</CardDescription>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center gap-3">
                                 <Switch
                                     id="hideConvertedInAllLeads"
@@ -321,6 +323,24 @@ function ConfigSection({
                                     {t('allLeadsCard.hideConverted')}
                                 </Label>
                             </div>
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="showConvertedFilterOption"
+                                    checked={settings.showConvertedFilterOption}
+                                    onCheckedChange={(v) =>
+                                        update({ showConvertedFilterOption: v })
+                                    }
+                                />
+                                <Label
+                                    htmlFor="showConvertedFilterOption"
+                                    className="cursor-pointer"
+                                >
+                                    {t('allLeadsCard.showConvertedFilter')}
+                                </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('allLeadsCard.showConvertedFilterHint')}
+                            </p>
                         </CardContent>
                     </Card>
 

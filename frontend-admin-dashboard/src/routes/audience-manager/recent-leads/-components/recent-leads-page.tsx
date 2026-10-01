@@ -534,7 +534,8 @@ const RecentLeadsContent = () => {
 
     // Custom lead-status catalog — drives both the filter dropdown and the
     // editable status chip in the table.
-    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const { statuses: leadStatusCatalog, filterStatuses: leadStatusFilterOptions } =
+        useLeadStatuses();
 
     // Table UI state — column show/hide is persisted per user (localStorage) so
     // the "Manage Column" choice survives reloads and navigation.
@@ -1530,11 +1531,17 @@ const RecentLeadsContent = () => {
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            {
-                                value: ALL_CONVERTED_VALUE,
-                                label: t('filters.leadStatus.converted'),
-                            },
-                            ...leadStatusCatalog.map((s) => ({
+                            // Built-in, not a catalog row — it filters on conversion_status,
+                            // so it has its own switch in Lead Settings.
+                            ...(leadSettings.showConvertedFilterOption
+                                ? [
+                                      {
+                                          value: ALL_CONVERTED_VALUE,
+                                          label: t('filters.leadStatus.converted'),
+                                      },
+                                  ]
+                                : []),
+                            ...leadStatusFilterOptions.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
                             })),

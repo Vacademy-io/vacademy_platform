@@ -14,7 +14,11 @@
         "defaultStatusAriaLabel": "Default status",
         "setAsDefaultAriaLabel": "Set as default",
         "systemDefaultTitle": "System default — can be renamed/recoloured",
-        "systemDefaultBadge": "Default"
+        "systemDefaultBadge": "Default",
+        "showInFilterAriaLabel": "Show in the status filter",
+        "hideFromFilterAriaLabel": "Hide from the status filter",
+        "showInFilterTitle": "Hidden from the status filter — click to show it",
+        "hideFromFilterTitle": "Shown in the status filter — click to hide it"
     },
     "addStatus": "Add status",
     "footer": {

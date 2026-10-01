@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
-import { Plus, DotsSixVertical, Star } from '@phosphor-icons/react';
+import { Plus, DotsSixVertical, Star, Eye, EyeSlash } from '@phosphor-icons/react';
 import {
     useLeadStatuses,
     saveLeadStatuses,
@@ -37,6 +37,7 @@ export default function LeadStatusesManager() {
                 color: s.color,
                 display_order: s.display_order,
                 is_default: s.is_default,
+                show_in_filter: s.show_in_filter !== false,
                 is_system: s.is_system,
             }))
         );
@@ -52,7 +53,13 @@ export default function LeadStatusesManager() {
     const add = () => {
         setRows((prev) => [
             ...prev,
-            { label: '', color: DEFAULT_STATUS_COLOR, display_order: prev.length + 1, is_default: false },
+            {
+                label: '',
+                color: DEFAULT_STATUS_COLOR,
+                display_order: prev.length + 1,
+                is_default: false,
+                show_in_filter: true,
+            },
         ]);
         setHasChanges(true);
     };
@@ -153,6 +160,36 @@ export default function LeadStatusesManager() {
                                         onChange={(e) => update(i, { label: e.target.value })}
                                         className="h-9 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-input focus-visible:bg-white"
                                     />
+
+                                    <MyButton
+                                        buttonType="text"
+                                        layoutVariant="icon"
+                                        scale="small"
+                                        aria-label={
+                                            s.show_in_filter === false
+                                                ? t('row.showInFilterAriaLabel')
+                                                : t('row.hideFromFilterAriaLabel')
+                                        }
+                                        title={
+                                            s.show_in_filter === false
+                                                ? t('row.showInFilterTitle')
+                                                : t('row.hideFromFilterTitle')
+                                        }
+                                        onClick={() =>
+                                            update(i, { show_in_filter: s.show_in_filter === false })
+                                        }
+                                        className={
+                                            s.show_in_filter === false
+                                                ? 'shrink-0 !text-neutral-300 hover:!text-primary-500'
+                                                : 'shrink-0 !text-primary-500'
+                                        }
+                                    >
+                                        {s.show_in_filter === false ? (
+                                            <EyeSlash className="size-4" />
+                                        ) : (
+                                            <Eye className="size-4" />
+                                        )}
+                                    </MyButton>
 
                                     <MyButton
                                         buttonType="text"

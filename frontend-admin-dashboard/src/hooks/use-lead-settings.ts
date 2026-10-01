@@ -101,6 +101,13 @@ export interface LeadSettingsConfig {
      * the institute's CONVERTED status and the Lead Board. Off by default.
      */
     hideConvertedInAllLeads: boolean;
+    /**
+     * Whether the built-in "Enrolled / Converted" option is offered in the Lead Status
+     * filter. It is NOT a lead_status row — it filters on conversion_status, which is why
+     * it needs its own flag rather than the per-status show_in_filter toggle. Institutes
+     * that keep their own CONVERTED status see two near-identical options without this.
+     */
+    showConvertedFilterOption: boolean;
 
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
@@ -136,6 +143,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
+    showConvertedFilterOption: true,
     tatReminder: {
         enabled: false,
         tatHours: 24,

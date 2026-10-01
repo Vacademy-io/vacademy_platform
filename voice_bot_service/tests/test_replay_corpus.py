@@ -88,3 +88,20 @@ def test_compare_flags_only_what_got_worse(tmp_path, capsys):
     b.write_text(json.dumps(rep("cand", [("c1", {}), ("c2", {"two-replies-one-moment": 2})])))
     assert corpus.cmd_compare(args) == 1, "anything worse fails"
     assert "two-replies-one-moment" in capsys.readouterr().out
+
+
+def test_a_cut_ends_the_bot_utterance_on_the_simulated_line():
+    """Replay of 953d5366: the opening cut at ~1 s and the re-said opening were
+    recorded as ONE 14 s stretch — "no reply to the caller", "opening heard
+    for 14 s". A cut must end the stretch; the next audio is a new utterance."""
+    import time
+    from sim.timing import Line
+    line = Line()
+    line.bot_wrote(10.0)                 # an opening queued: 10 s of audio
+    time.sleep(0.05)
+    line.bot_cut()                       # the caller barged in
+    cut_at = line.bot[-1][1]
+    assert cut_at - line.bot[-1][0] < 0.5, "the dropped audio must not count"
+    line.bot_wrote(5.0)                  # the re-said opening, right away
+    assert len(line.bot) == 2, line.bot
+    assert line.bot[1][0] >= cut_at

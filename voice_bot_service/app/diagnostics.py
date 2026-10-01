@@ -208,6 +208,7 @@ class CallDiagnostics:
     forming_holds: int = 0        # runs held because the caller's turn was still forming
     forming_hold_cap_releases: int = 0   # …released by the cap, not by the turn (expect ~0)
     retired_runs_dropped: int = 0  # requests a failed LLM primary dropped (the fallback answered)
+    cue_runs_dropped: int = 0      # the bot's own runs dropped at the door (a reply was on its way)
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
@@ -982,6 +983,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "formingHolds": d.forming_holds,
                 "formingHoldCapReleases": d.forming_hold_cap_releases,
                 "retiredRunsDropped": d.retired_runs_dropped,
+                "cueRunsDropped": d.cue_runs_dropped,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,

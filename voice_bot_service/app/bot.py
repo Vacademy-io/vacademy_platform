@@ -317,7 +317,7 @@ class TranscriptCollector(FrameProcessor):
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  end_pending=None,
                  diag=None, in_machine_window=None, reply_in_flight=None, reply_pending=None,
-                 caller_forming=None, register_cue=None,
+                 caller_forming=None, register_cue=None, opening_owed=None,
                  bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
                  resume_unplayed=None, resume_on_stop_secs: float = 0.0,
                  resume_max_chars: int = 600, resume_settle_secs: float = 0.6,
@@ -395,6 +395,8 @@ class TranscriptCollector(FrameProcessor):
         self._caller_forming = caller_forming or (lambda: False)
         # The bot's own runs announce their cue to RunGuard (single-flight step 5).
         self._register_cue = register_cue or (lambda text: None)
+        # The scripted opening is still owed (see run_bot._opening_pending).
+        self._opening_owed = opening_owed or (lambda: False)
         self._bot_spoke_once = bot_spoke_once or (lambda: True)
         # Have we already identified this line as a machine greeting? Kept for the
         # log/diagnostic trail only — the scrap filter below deliberately no
@@ -941,6 +943,16 @@ class TranscriptCollector(FrameProcessor):
                         # not "carry on"; the caller repeats the greeting.
                         if (self._resay_opening is not None
                                 and await self._resay_opening(text)):
+                            return
+                        if self._opening_owed() and self._is_bot_speaking():
+                            # The (re-said) opening is still playing and still
+                            # owed: an ack over it needs no reply of its own —
+                            # the opening IS the reply. The cue below put the
+                            # model's answer right after the opening's own
+                            # question, so the caller heard two questions back
+                            # to back (call 8208166f replayed, 2026-10-01).
+                            logger.info("turn-gate: %r over the opening still playing "
+                                        "— no cue", text[:20])
                             return
                         # Call 7003c36a (2026-09-09): "Actually I am busy for
                         # classes" -> "No problem. When would be a better time
@@ -5763,9 +5775,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         if flags["stopping_since"] is not None:
             return "the line is closing"
         if for_reply and flags["reply_started_t"] == for_reply:
-            pending = (floor.is_holding()
-                       or (settings.reply_ledger
-                           and (no_repeat.generating() or run_guard.held())))
+            # Not floor.is_holding(): the floor may be holding THIS reply's own
+            # first audio while the caller breathes — the voice-live hold at the
+            # door takes the cue instead and re-checks once they stop
+            # (re-review 2026-10-01: an empty/filler reply's recovery dropped).
+            pending = (settings.reply_ledger
+                       and (no_repeat.generating() or run_guard.held()))
         else:
             pending = _reply_pending()
         if pending:
@@ -5810,6 +5825,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      caller_forming=lambda: (settings.run_forming_hold
                                                              and _caller_forming()),
                                      register_cue=lambda text: run_guard.register_cue(text),
+                                     opening_owed=lambda: _opening_pending(),
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),

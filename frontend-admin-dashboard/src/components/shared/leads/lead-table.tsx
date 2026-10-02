@@ -31,6 +31,7 @@ import { LeadAvatar } from './lead-avatar';
 import { LeadInlineSelect, useLeadTierOptions } from './lead-inline-select';
 import { useLeadTiers } from '@/hooks/use-lead-tiers';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { orderColumnIds } from './use-lead-column-prefs';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
 import { LeadConversionBadge } from './lead-conversion-badge';
@@ -85,6 +86,13 @@ interface LeadTableProps {
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
+    /**
+     * Column ids in the order the user dragged them (from useColumnOrderPrefs). Ids the
+     * table does not have are ignored and ids it has but the order does not mention keep
+     * their natural slot, so a newly shipped column never disappears for someone who
+     * reordered before it existed.
+     */
+    columnOrder?: string[];
     emptyState?: ReactNode;
     /** Surface-specific trailing columns (e.g. the Follow-ups page's inline
      *  "Mark complete" action). Cells are interactive — clicks don't bubble
@@ -251,6 +259,7 @@ export function LeadTable({
     actions,
     onStatusUpdated,
     hiddenColumns,
+    columnOrder,
     emptyState,
     extraColumns,
     selectable = false,
@@ -455,6 +464,18 @@ export function LeadTable({
             ),
         },
         {
+            // The UTM campaign the lead was tagged with. Separate from the audience's
+            // campaign type: that is the channel the LIST belongs to, this is the ad
+            // campaign the individual lead arrived on.
+            id: 'utmCampaign',
+            header: 'UTM campaign',
+            thClass: 'min-w-32',
+            show: true,
+            render: (vm) => (
+                <LeadSourcePill label={vm.utmCampaign} className="bg-neutral-50 text-neutral-500" />
+            ),
+        },
+        {
             id: 'status',
             header: terminology.leadStatus,
             thClass: 'w-40',
@@ -620,7 +641,15 @@ export function LeadTable({
         allCols.push({ ...extra, show: true, interactive: true });
     }
 
-    const cols = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+    const visible = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+    const cols = columnOrder?.length
+        ? orderColumnIds(
+              visible.map((c) => c.id),
+              columnOrder
+          )
+              .map((id) => visible.find((c) => c.id === id))
+              .filter((c): c is Col => !!c)
+        : visible;
 
     const handleSortClick = (key: LeadSortKey) => {
         if (!onSortChange) return;

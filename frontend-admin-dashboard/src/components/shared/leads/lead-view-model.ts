@@ -30,6 +30,10 @@ export interface LeadCardVM {
     audience: string;
     /** The audience's campaign type — the channel the lead came in through ('-' when unset). */
     campaignType: string;
+    /** Latest UTM campaign this lead was tagged with ('-' when untagged). */
+    utmCampaign: string;
+    /** utm_source for the same row — shown as the campaign cell's tooltip. */
+    utmSource?: string;
     /** Human-readable submitted date, already formatted for display ('-' when unknown). */
     submittedDisplay: string;
     /** Raw ISO submitted timestamp (when available) for relative-time + sorting. */
@@ -85,6 +89,7 @@ export const recentLeadPhone = (lead: RecentLeadDetail) =>
 export const recentLeadAudience = (lead: RecentLeadDetail) =>
     lead.campaign_name || lead.source_audience_name || '-';
 export const recentLeadCampaignType = (lead: RecentLeadDetail) => lead.campaign_type || '-';
+export const recentLeadUtmCampaign = (lead: RecentLeadDetail) => lead.utm_campaign || '-';
 
 // Truncate a display name for table/card views (full name is preserved in
 // the `title` tooltip and in CSV exports — only the on-screen label is cut).
@@ -169,6 +174,8 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
         lead.campaign_name ?? lead.source_audience_name ?? null;
     (result as unknown as Record<string, unknown>)._audience_campaign_type =
         lead.campaign_type ?? null;
+    (result as unknown as Record<string, unknown>)._utm_campaign = lead.utm_campaign ?? null;
+    (result as unknown as Record<string, unknown>)._utm_source = lead.utm_source ?? null;
     (result as unknown as Record<string, unknown>)._response_id = lead.response_id ?? null;
     return result;
 };
@@ -232,6 +239,8 @@ export const mapCampaignRowToStudent = (row: CampaignUserTable): StudentTable =>
         row._audience_campaign_name;
     (result as unknown as Record<string, unknown>)._audience_campaign_type =
         row._audience_campaign_type;
+    (result as unknown as Record<string, unknown>)._utm_campaign = row._utm_campaign;
+    (result as unknown as Record<string, unknown>)._utm_source = row._utm_source;
     (result as unknown as Record<string, unknown>)._response_id = row._response_id ?? null;
     return result;
 };
@@ -254,6 +263,8 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         phone: recentLeadPhone(lead),
         audience: recentLeadAudience(lead),
         campaignType: recentLeadCampaignType(lead),
+        utmCampaign: recentLeadUtmCampaign(lead),
+        utmSource: lead.utm_source ?? undefined,
         submittedDisplay: formatSubmitted(lead.submitted_at_local),
         submittedIso: lead.submitted_at_local,
         responseId: lead.response_id,
@@ -286,6 +297,8 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         phone: (row.phone_number as string) || row._user?.mobile_number || '-',
         audience: (row._audience_campaign_name as string) || (row.opted_out_from as string) || '-',
         campaignType: (row._audience_campaign_type as string) || '-',
+        utmCampaign: (row._utm_campaign as string) || '-',
+        utmSource: (row._utm_source as string) || undefined,
         submittedDisplay: row.submittedAt || '-',
         // `row.submittedAt` is the formatted display string. The raw ISO lives
         // on `_submitted_iso` (set by the campaign-users row transformation);

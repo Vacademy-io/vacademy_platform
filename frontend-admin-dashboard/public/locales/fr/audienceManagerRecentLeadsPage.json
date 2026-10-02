@@ -141,7 +141,8 @@
             "counsellor": "Conseiller",
             "activityNotes": "Activité et notes",
             "notesCount": "Nombre de notes",
-            "leadJourney": "Parcours du prospect (disposition et notes)"
+            "leadJourney": "Parcours du prospect (disposition et notes)",
+            "utmCampaign": "Campagne UTM"
         },
         "notes": {
             "defaultTitle": "Note",

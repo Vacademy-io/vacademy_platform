@@ -37,6 +37,7 @@ export function buildLeadColumnToggles(
         { id: 'contact', label: 'Contact' },
         { id: 'source', label: 'Lead source' },
         { id: 'campaignType', label: labels?.campaignType || 'Campaign type' },
+        { id: 'utmCampaign', label: 'UTM campaign' },
     ];
     if (showOps) cols.push({ id: 'status', label: labels?.leadStatus || 'Lead status' });
     if (showScore) cols.push({ id: 'score', label: 'Lead score' });

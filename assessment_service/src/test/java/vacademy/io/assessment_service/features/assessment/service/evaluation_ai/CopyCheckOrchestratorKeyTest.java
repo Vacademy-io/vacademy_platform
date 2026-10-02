@@ -46,7 +46,9 @@ class CopyCheckOrchestratorKeyTest {
                                 new ObjectMapper(),
                                 mock(OptionRepository.class),
                                 mappings,
-                                mock(TypedAnswerEvaluation.class));
+                                mock(TypedAnswerEvaluation.class),
+                                mock(org.springframework.transaction.PlatformTransactionManager.class),
+                                mock(vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate.class), null);
         }
 
         private static Option option(String id, String html) {

@@ -34,6 +34,8 @@ import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.assessment_service.features.assessment.sort.StableSort;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ResultLockGuard;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ResultLockedException;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -64,6 +66,9 @@ public class AdminManualEvaluationManager {
     @Autowired
     EvaluationDraftRepository evaluationDraftRepository;
 
+    @Autowired
+    ResultLockGuard resultLockGuard;
+
 
     public ResponseEntity<String> submitManualEvaluatedMarks(CustomUserDetails userDetails, String assessmentId, String instituteId, String attemptId, ManualSubmitMarksRequest request) {
         try {
@@ -78,6 +83,10 @@ public class AdminManualEvaluationManager {
             Assessment assessment = attemptOptional.get().getRegistration().getAssessment();
             if (!assessment.getId().equals(assessmentId)) throw new VacademyException("Assessment Not Found");
 
+            // Partner-API exam whose result is already released: finalized, no new marks
+            // until it is unfinalized (gate G8). Dashboard exams are unaffected.
+            resultLockGuard.requireNotFinalizedForApiExam(attemptOptional.get());
+
             updateMarksForAttempt(assessment, attemptOptional.get(), request);
 
             createEvaluationLog(attemptOptional.get(), userDetails, request.getDataJson());
@@ -87,6 +96,8 @@ public class AdminManualEvaluationManager {
             discardDraftsForAttempt(attemptId);
 
             return ResponseEntity.ok("Done");
+        } catch (ResultLockedException e) {
+            throw e; // 409, not the generic 510 below
         } catch (Exception e) {
             throw new VacademyException("Failed To Update Marks: " + e.getMessage());
         }

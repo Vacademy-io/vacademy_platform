@@ -9,6 +9,8 @@ import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserR
 import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiInstituteFlags;
 
 import java.util.HashMap;
 import java.util.List;
@@ -50,9 +52,16 @@ public class AssessmentWorkflowEventPublisher {
     @Autowired
     SectionRepository sectionRepository;
 
+    /** Per-institute fire_workflow_events of the partner API; null in unit tests. */
+    @Autowired(required = false)
+    ApiInstituteFlags apiInstituteFlags;
+
     /** Fires ASSESSMENT_CREATE when an assessment row is first saved (as a DRAFT). */
     public void publishAssessmentCreated(Assessment assessment, String instituteId, String createdByUserId) {
         if (assessment == null || instituteId == null) {
+            return;
+        }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_CREATE)) {
             return;
         }
         Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
@@ -71,6 +80,9 @@ public class AssessmentWorkflowEventPublisher {
         if (assessment == null || instituteId == null) {
             return;
         }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_PUBLISHED)) {
+            return;
+        }
         Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
         putIfPresent(ctx, "publishedBy", publishedByUserId);
         emit(ASSESSMENT_PUBLISHED, assessment.getId(), instituteId, ctx);
@@ -84,6 +96,9 @@ public class AssessmentWorkflowEventPublisher {
      */
     public void publishAssessmentStart(StudentAttempt attempt, Assessment assessment, String instituteId) {
         if (attempt == null || assessment == null || instituteId == null) {
+            return;
+        }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_START)) {
             return;
         }
         emit(ASSESSMENT_START, assessment.getId(), instituteId,
@@ -109,6 +124,9 @@ public class AssessmentWorkflowEventPublisher {
                     safeAttemptId(attempt));
             return;
         }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_END)) {
+            return;
+        }
         Map<String, Object> ctx = contextBuilder.forAttempt(attempt, assessment, instituteId);
         ctx.put("endSource", endSource);
         emit(ASSESSMENT_END, assessment.getId(), instituteId, ctx);
@@ -132,6 +150,9 @@ public class AssessmentWorkflowEventPublisher {
                     safeAttemptId(attempt));
             return;
         }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_RESULT_RELEASED)) {
+            return;
+        }
         Map<String, Object> ctx = contextBuilder.forResult(attempt, assessment, instituteId,
                 totalAchievableMarks(assessment.getId()), rank, percentile);
         emit(ASSESSMENT_RESULT_RELEASED, assessment.getId(), instituteId, ctx);
@@ -152,6 +173,9 @@ public class AssessmentWorkflowEventPublisher {
                 Assessment assessment = assessmentOf(attempt);
                 String instituteId = instituteIdOf(attempt);
                 if (assessment == null || instituteId == null) {
+                    continue;
+                }
+                if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_RESULT_RELEASED)) {
                     continue;
                 }
                 // Not computeIfAbsent: totalAchievableMarks returns null for an assessment
@@ -188,6 +212,9 @@ public class AssessmentWorkflowEventPublisher {
         if (instituteId == null) {
             log.debug("Skipping ASSESSMENT_FORM_SUBMISSION emit — no institute on registration {}",
                     registration.getId());
+            return;
+        }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_FORM_SUBMISSION)) {
             return;
         }
         Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
@@ -234,6 +261,9 @@ public class AssessmentWorkflowEventPublisher {
                 if (instituteId == null) {
                     continue;
                 }
+                if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_REMINDER_BEFORE_START)) {
+                    continue;
+                }
                 Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
                 putRegistrant(ctx, registration);
                 putIfPresent(ctx, "minutesToStart", minutesToStart);
@@ -262,6 +292,9 @@ public class AssessmentWorkflowEventPublisher {
             try {
                 String instituteId = registration != null ? registration.getInstituteId() : null;
                 if (instituteId == null) {
+                    continue;
+                }
+                if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_REATTEMPT_GRANTED)) {
                     continue;
                 }
                 Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);
@@ -301,6 +334,9 @@ public class AssessmentWorkflowEventPublisher {
         }
         try {
             String instituteId = request.getInstituteId();
+            if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_REATTEMPT_REQUESTED)) {
+                return;
+            }
             Map<String, Object> ctx = assessment != null
                     ? contextBuilder.forAssessment(assessment, instituteId)
                     : new HashMap<>();
@@ -326,6 +362,29 @@ public class AssessmentWorkflowEventPublisher {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /**
+     * Exams created through the partner API fire no institute workflow event unless the
+     * institute opted in ({@code institute_api_access.fire_workflow_events}, spec 12 item 6):
+     * those automations would message API candidates, who have no login and blank
+     * channels. Dashboard exams are never affected.
+     */
+    private boolean suppressedForApiExam(Assessment assessment, String instituteId, String eventName) {
+        if (!ApiCandidatePolicy.isApiExam(assessment)) {
+            return false;
+        }
+        try {
+            if (ApiCandidatePolicy.workflowEventsAllowed(assessment, instituteId, apiInstituteFlags)) {
+                return false;
+            }
+        } catch (Exception e) {
+            // Policy failure must not break the flow; for an API exam, fail quiet (suppress).
+            log.debug("Workflow policy check failed for {}: {}", eventName, e.getMessage());
+        }
+        log.debug("Skipping {} for API exam {} (institute has not opted in to workflow events)",
+                eventName, assessment.getId());
+        return true;
+    }
 
     /**
      * Whole minutes from now until {@code when}, or null if unknown. Floored at 0 so an
@@ -385,6 +444,9 @@ public class AssessmentWorkflowEventPublisher {
     public void publishAiEvaluationBatchCompleted(Assessment assessment, String instituteId,
                                                   String batchId, Map<String, Object> counts) {
         if (assessment == null || instituteId == null) {
+            return;
+        }
+        if (suppressedForApiExam(assessment, instituteId, ASSESSMENT_AI_EVALUATION_COMPLETED)) {
             return;
         }
         Map<String, Object> ctx = contextBuilder.forAssessment(assessment, instituteId);

@@ -17,6 +17,7 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.requ
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
+import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentModeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
@@ -38,6 +39,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import vacademy.io.assessment_service.features.assessment.sort.StableSort;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ResultLockGuard;
 
 @Slf4j
 @Component
@@ -48,6 +51,10 @@ public class AdminAssessmentGetManager {
 
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
+
+    /** Finalized-result lock for partner-API exams (gate G8). */
+    @Autowired(required = false)
+    ResultLockGuard resultLockGuard;
 
     @Autowired
     AssessmentLinkQuestionsManager assessmentLinkQuestionsManager;
@@ -119,7 +126,7 @@ public class AdminAssessmentGetManager {
 
         makeFilterFieldEmptyArrayIfNull(adminAssessmentFilter);
 
-        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(), adminAssessmentFilter.getAssessmentTypes(), pageable);
+        assessmentsPage = assessmentRepository.filterAssessments(adminAssessmentFilter.getName(), adminAssessmentFilter.getBatchIds().isEmpty() ? null : true, adminAssessmentFilter.getBatchIds(), adminAssessmentFilter.getSubjectsIds().isEmpty() ? null : true, adminAssessmentFilter.getSubjectsIds(), adminAssessmentFilter.getAssessmentStatuses(), adminAssessmentFilter.getGetLiveAssessments(), adminAssessmentFilter.getGetPassedAssessments(), adminAssessmentFilter.getGetUpcomingAssessments(), adminAssessmentFilter.getAssessmentModes(), adminAssessmentFilter.getAccessStatuses(), adminAssessmentFilter.getInstituteIds(), adminAssessmentFilter.getEvaluationTypes(), adminAssessmentFilter.getAssessmentTypes(), adminAssessmentFilter.getSources().isEmpty() ? null : true, adminAssessmentFilter.getSources(), pageable);
         List<AdminBasicAssessmentListItemDto> content = assessmentsPage.stream().map(AssessmentMapper::toDto).collect(Collectors.toList());
         int queryPageNo = assessmentsPage.getNumber();
         int queryPageSize = assessmentsPage.getSize();
@@ -144,6 +151,15 @@ public class AdminAssessmentGetManager {
         }
         if (adminAssessmentFilter.getEvaluationTypes() == null) {
             adminAssessmentFilter.setEvaluationTypes(new ArrayList<>());
+        }
+        if (adminAssessmentFilter.getSources() == null) {
+            adminAssessmentFilter.setSources(new ArrayList<>());
+        } else {
+            // Values are matched exactly in SQL (API / DASHBOARD); accept any case.
+            adminAssessmentFilter.setSources(adminAssessmentFilter.getSources().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(v -> v.trim().toUpperCase(java.util.Locale.ROOT))
+                    .toList());
         }
     }
 
@@ -322,6 +338,8 @@ public class AdminAssessmentGetManager {
         Assessment assessment = assessmentRepository.findById(assessmentId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
+        requireNoFinalizedAttemptsForApiExam(assessment, methodType, request);
+
         return switch (RevaluateRequestEnum.valueOf(methodType)) {
             case ENTIRE_ASSESSMENT -> revaluateForAllParticipants(assessment, instituteId);
             case ENTIRE_ASSESSMENT_PARTICIPANTS ->
@@ -332,6 +350,29 @@ public class AdminAssessmentGetManager {
         };
     }
 
+
+    /**
+     * Revaluation rewrites marks. On a partner-API exam a released result is finalized and
+     * must be unfinalized first (gate G8): refuse when any targeted attempt is released.
+     * Dashboard exams are unaffected.
+     */
+    private void requireNoFinalizedAttemptsForApiExam(Assessment assessment, String methodType,
+            RevaluateRequest request) {
+        if (resultLockGuard == null || !ApiCandidatePolicy.isApiExam(assessment)) {
+            return;
+        }
+        List<StudentAttempt> targeted;
+        if (RevaluateRequestEnum.ENTIRE_ASSESSMENT.name().equals(methodType)) {
+            targeted = studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(
+                    assessment.getId(), List.of("DELETED"));
+        } else if (request != null && request.getAttemptIds() != null) {
+            targeted = new ArrayList<>();
+            studentAttemptRepository.findAllById(request.getAttemptIds()).forEach(targeted::add);
+        } else {
+            return;
+        }
+        resultLockGuard.requireNoneFinalizedForApiExam(assessment, targeted);
+    }
 
     private ResponseEntity<String> revaluateAssessmentForParticipantsAndQuestions(Assessment assessment, RevaluateRequest request, String instituteId) {
         if (Objects.isNull(request) || Objects.isNull(request.getAttemptIds()) || Objects.isNull(request.getQuestions()))

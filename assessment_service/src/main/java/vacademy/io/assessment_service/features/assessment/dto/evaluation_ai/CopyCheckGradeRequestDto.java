@@ -48,6 +48,38 @@ public class CopyCheckGradeRequestDto {
     @JsonProperty("questions")
     private List<QuestionInput> questions;
 
+    // ---- Partner API fields (AI_EVALUATION_PUBLIC_API.md 10.3, 10.8, C4). All null on
+    // ---- dashboard runs, and NON_NULL keeps them out of the JSON, so a dashboard
+    // ---- request is byte-for-byte what it was.
+
+    /** Who the run is billed to: {@code apikey:<key_id>} for partner API traffic. */
+    @JsonProperty("billing_actor")
+    private String billingActor;
+
+    /**
+     * The rate the copy was quoted at when it was accepted:
+     * {tool_key, flat_base_credits, per_unit_credits, unit_field, params, rate_source}.
+     * ai_service charges at this rate instead of re-pricing at completion.
+     */
+    @JsonProperty("rate_snapshot")
+    private Map<String, Object> rateSnapshot;
+
+    /** Pages of the uploaded copy (per-page API billing). */
+    @JsonProperty("page_count")
+    private Integer pageCount;
+
+    /** {level, subject, instructions, answer_language} for the grader persona. */
+    @JsonProperty("exam_context")
+    private Map<String, Object> examContext;
+
+    /** Internal choice: [{question_ids, attempt, policy}]. */
+    @JsonProperty("choice_groups")
+    private List<Map<String, Object>> choiceGroups;
+
+    /** The paper's total marks when internal choice makes it less than the sum of questions. */
+    @JsonProperty("paper_max")
+    private Double paperMax;
+
     @Data
     @Builder
     @NoArgsConstructor

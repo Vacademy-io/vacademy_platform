@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
@@ -16,6 +17,7 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
 import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
 import vacademy.io.assessment_service.features.rich_text.enums.TextType;
@@ -69,14 +71,26 @@ public class AssessmentBasicDetailsManager {
             assessment.setSubmissionType(EvaluationTypes.AUTO.name());
         }
 
-        if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
+        boolean apiExam = ApiCandidatePolicy.isApiExam(assessment);
+        if (apiExam) {
+            // Exams created through the partner API (spec 3.2, 12): evaluation type and
+            // result type are owned by the API. AI marks must stay a draft until finalize
+            // or Release Result, so result_type stays MANUAL (AUTO_AFTER_ASSESSMENT_END
+            // would let the auto-release cron publish AI drafts), and a save that omits
+            // evaluation_type must not reset it to AUTO.
+            requireApiManagedFieldsUnchanged(assessment, basicAssessmentDetailsDTO);
+        } else if (!ObjectUtils.isEmpty(basicAssessmentDetailsDTO.getEvaluationType())) {
             assessment.setEvaluationType(basicAssessmentDetailsDTO.getEvaluationType());
         } else {
             assessment.setEvaluationType(EvaluationTypes.AUTO.name());
         }
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
-        Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        if (apiExam) {
+            assessment.setResultType(API_RESULT_TYPE);
+        } else {
+            Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
+        }
         // ifPresent, not a plain set: AI evaluation spends institute credits, so a
         // partial basic-details save must never flip it on or off by omission.
         Optional.ofNullable(basicAssessmentDetailsDTO.getAiEvaluationEnabled())
@@ -105,8 +119,33 @@ public class AssessmentBasicDetailsManager {
     }
 
     private ResponseEntity<AssessmentSaveResponseDto> handleNewAssessment(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type) {
+        return handleNewAssessment(user, basicAssessmentDetailsDTO, assessmentId, instituteId, type, null, null);
+    }
+
+    /**
+     * Creates the assessment row of an exam made through the partner API (spec 5, 7.1):
+     * {@code source = 'API'} and {@code source_id = {key_id}} are set <b>before</b> the first
+     * save, so the ASSESSMENT_CREATE workflow event already sees an API exam (and is
+     * suppressed unless the institute opted in); result type is forced to MANUAL.
+     * Everything else is the ordinary new-assessment path.
+     */
+    public ResponseEntity<AssessmentSaveResponseDto> createApiAssessment(CustomUserDetails user,
+            BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String instituteId, String type, String apiKeyId) {
+        if (!StringUtils.hasText(apiKeyId)) {
+            throw new VacademyException("API key id is required for an API exam");
+        }
+        basicAssessmentDetailsDTO.setResultType(API_RESULT_TYPE);
+        return handleNewAssessment(user, basicAssessmentDetailsDTO, null, instituteId, type,
+                ApiCandidatePolicy.SOURCE_API, apiKeyId);
+    }
+
+    private ResponseEntity<AssessmentSaveResponseDto> handleNewAssessment(CustomUserDetails user, BasicAssessmentDetailsDTO basicAssessmentDetailsDTO, String assessmentId, String instituteId, String type, String source, String sourceId) {
 
         Assessment assessment = new Assessment();
+        if (source != null) {
+            assessment.setSource(source);
+            assessment.setSourceId(sourceId);
+        }
         AssessmentInstituteMapping assessmentInstituteMapping = new AssessmentInstituteMapping();
         assessmentInstituteMapping.setInstituteId(instituteId);
         assessmentInstituteMapping.setAssessmentUrl(RandomGenerator.generateNumber(6));
@@ -156,6 +195,23 @@ public class AssessmentBasicDetailsManager {
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessment.getId(), AssessmentStatus.DRAFT.name()));
     }
 
+
+    /** Result type every API exam keeps (spec 3.2): AI marks are a draft until released. */
+    static final String API_RESULT_TYPE = "MANUAL";
+
+    private static void requireApiManagedFieldsUnchanged(Assessment assessment, BasicAssessmentDetailsDTO dto) {
+        String requestedResultType = dto.getResultType();
+        if (StringUtils.hasText(requestedResultType) && !API_RESULT_TYPE.equalsIgnoreCase(requestedResultType)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "Result type of an exam created through the API is managed by the API and stays Manual.");
+        }
+        String requestedEvaluationType = dto.getEvaluationType();
+        if (StringUtils.hasText(requestedEvaluationType)
+                && !requestedEvaluationType.equalsIgnoreCase(assessment.getEvaluationType())) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "Evaluation type of an exam created through the API cannot be changed.");
+        }
+    }
 
     private void addOrUpdateTestCreationData(Assessment assessment, AssessmentInstituteMapping assessmentInstituteMapping, BasicAssessmentDetailsDTO.TestCreation testCreation) {
         if (!ObjectUtils.isEmpty(testCreation)) {

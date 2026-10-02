@@ -39,10 +39,12 @@ public class CopyIntakeController {
 
     @PostMapping("/start")
     public ResponseEntity<CopyIntakeDtos.BatchDto> start(@RequestAttribute("user") CustomUserDetails user,
+                                                         @RequestHeader(value = "clientId", required = false) String clientId,
                                                          @RequestParam("assessmentId") String assessmentId,
                                                          @RequestParam("instituteId") String instituteId,
                                                          @RequestBody CopyIntakeDtos.StartRequest request) {
-        requireAssessmentInInstitute(user, assessmentId, instituteId);
+        requireAssessmentInInstitute(user, clientId, assessmentId, instituteId);
+        accessValidator.requireStaffRole(user);
         AiCopyIntakeBatch batch = service.start(user, assessmentId, instituteId, request);
         runner.run(batch.getId());
         return ResponseEntity.ok(service.toDto(batch, false));
@@ -56,10 +58,12 @@ public class CopyIntakeController {
     @PostMapping("/submitted/preview")
     public ResponseEntity<CopyIntakeDtos.SubmittedPreviewDto> previewSubmitted(
             @RequestAttribute("user") CustomUserDetails user,
+            @RequestHeader(value = "clientId", required = false) String clientId,
             @RequestParam("assessmentId") String assessmentId,
             @RequestParam("instituteId") String instituteId,
             @RequestBody(required = false) CopyIntakeDtos.SubmittedRequest request) {
-        requireAssessmentInInstitute(user, assessmentId, instituteId);
+        requireAssessmentInInstitute(user, clientId, assessmentId, instituteId);
+        accessValidator.requireStaffRole(user);
         return ResponseEntity.ok(service.previewSubmitted(assessmentId,
                 request == null ? null : request.getAttemptIds(),
                 request != null && Boolean.TRUE.equals(request.getIncludeChecked())));
@@ -72,10 +76,12 @@ public class CopyIntakeController {
     @PostMapping("/submitted/start")
     public ResponseEntity<CopyIntakeDtos.BatchDto> startFromSubmitted(
             @RequestAttribute("user") CustomUserDetails user,
+            @RequestHeader(value = "clientId", required = false) String clientId,
             @RequestParam("assessmentId") String assessmentId,
             @RequestParam("instituteId") String instituteId,
             @RequestBody(required = false) CopyIntakeDtos.SubmittedRequest request) {
-        requireAssessmentInInstitute(user, assessmentId, instituteId);
+        requireAssessmentInInstitute(user, clientId, assessmentId, instituteId);
+        accessValidator.requireStaffRole(user);
         AiCopyIntakeBatch batch = service.startFromSubmitted(user, assessmentId, instituteId, request);
         runner.run(batch.getId());
         return ResponseEntity.ok(service.toDto(batch, false));
@@ -83,27 +89,33 @@ public class CopyIntakeController {
 
     @GetMapping("/batches")
     public ResponseEntity<List<CopyIntakeDtos.BatchDto>> list(@RequestAttribute("user") CustomUserDetails user,
+                                                              @RequestHeader(value = "clientId", required = false) String clientId,
                                                               @RequestParam("assessmentId") String assessmentId,
                                                               @RequestParam("instituteId") String instituteId) {
-        accessValidator.requireInstituteMembership(user, instituteId);
+        requireMember(user, clientId, instituteId);
+        accessValidator.requireStaffRole(user);
         return ResponseEntity.ok(service.listBatches(assessmentId, instituteId).stream()
                 .map(b -> service.toDto(b, false)).toList());
     }
 
     @GetMapping("/batch/{batchId}")
     public ResponseEntity<CopyIntakeDtos.BatchDto> get(@RequestAttribute("user") CustomUserDetails user,
+                                                       @RequestHeader(value = "clientId", required = false) String clientId,
                                                        @RequestParam("instituteId") String instituteId,
                                                        @PathVariable String batchId) {
-        AiCopyIntakeBatch batch = requireBatch(user, instituteId, batchId);
+        AiCopyIntakeBatch batch = requireBatch(user, clientId, instituteId, batchId);
+        accessValidator.requireStaffRole(user);
         return ResponseEntity.ok(service.toDto(batch, true));
     }
 
     @PostMapping("/item/{itemId}/resolve")
     public ResponseEntity<CopyIntakeDtos.ItemDto> resolve(@RequestAttribute("user") CustomUserDetails user,
+                                                          @RequestHeader(value = "clientId", required = false) String clientId,
                                                           @RequestParam("instituteId") String instituteId,
                                                           @PathVariable String itemId,
                                                           @RequestBody CopyIntakeDtos.ResolveRequest request) {
-        requireItem(user, instituteId, itemId);
+        requireItem(user, clientId, instituteId, itemId);
+        accessValidator.requireStaffRole(user);
         AiCopyIntakeItem item = service.resolve(user, itemId, request);
         service.finalizeIfDone(item.getBatchId());
         return ResponseEntity.ok(service.toDto(item));
@@ -111,9 +123,11 @@ public class CopyIntakeController {
 
     @PostMapping("/item/{itemId}/skip")
     public ResponseEntity<CopyIntakeDtos.ItemDto> skip(@RequestAttribute("user") CustomUserDetails user,
+                                                       @RequestHeader(value = "clientId", required = false) String clientId,
                                                        @RequestParam("instituteId") String instituteId,
                                                        @PathVariable String itemId) {
-        requireItem(user, instituteId, itemId);
+        requireItem(user, clientId, instituteId, itemId);
+        accessValidator.requireStaffRole(user);
         AiCopyIntakeItem item = service.skip(user, itemId);
         service.finalizeIfDone(item.getBatchId());
         return ResponseEntity.ok(service.toDto(item));
@@ -121,9 +135,11 @@ public class CopyIntakeController {
 
     @PostMapping("/item/{itemId}/retry")
     public ResponseEntity<CopyIntakeDtos.ItemDto> retry(@RequestAttribute("user") CustomUserDetails user,
+                                                        @RequestHeader(value = "clientId", required = false) String clientId,
                                                         @RequestParam("instituteId") String instituteId,
                                                         @PathVariable String itemId) {
-        requireItem(user, instituteId, itemId);
+        requireItem(user, clientId, instituteId, itemId);
+        accessValidator.requireStaffRole(user);
         AiCopyIntakeItem item = service.retry(user, itemId);
         runner.run(item.getBatchId());
         return ResponseEntity.ok(service.toDto(item));
@@ -131,15 +147,27 @@ public class CopyIntakeController {
 
     // ---- tenant binding ------------------------------------------------------
 
-    private void requireAssessmentInInstitute(CustomUserDetails user, String assessmentId, String instituteId) {
+    /**
+     * The instituteId parameter must be the clientId institute the caller's roles
+     * were loaded for; otherwise an admin of their own institute could name
+     * another one here and pass the membership and staff checks with their roles.
+     */
+    private void requireMember(CustomUserDetails user, String clientId, String instituteId) {
+        accessValidator.requireActiveInstitute(clientId, instituteId);
         accessValidator.requireInstituteMembership(user, instituteId);
+    }
+
+    private void requireAssessmentInInstitute(CustomUserDetails user, String clientId, String assessmentId,
+                                              String instituteId) {
+        requireMember(user, clientId, instituteId);
         if (assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId).isEmpty()) {
             throw new ForbiddenException("This assessment does not belong to your institute");
         }
     }
 
-    private AiCopyIntakeBatch requireBatch(CustomUserDetails user, String instituteId, String batchId) {
-        accessValidator.requireInstituteMembership(user, instituteId);
+    private AiCopyIntakeBatch requireBatch(CustomUserDetails user, String clientId, String instituteId,
+                                           String batchId) {
+        requireMember(user, clientId, instituteId);
         AiCopyIntakeBatch batch = service.getBatch(batchId).orElseThrow(() -> new VacademyException("Batch not found"));
         if (!instituteId.equals(batch.getInstituteId())) {
             throw new ForbiddenException("This upload belongs to another institute");
@@ -147,9 +175,9 @@ public class CopyIntakeController {
         return batch;
     }
 
-    private void requireItem(CustomUserDetails user, String instituteId, String itemId) {
+    private void requireItem(CustomUserDetails user, String clientId, String instituteId, String itemId) {
         String batchId = service.getItem(itemId).map(AiCopyIntakeItem::getBatchId)
                 .orElseThrow(() -> new VacademyException("Copy not found"));
-        requireBatch(user, instituteId, batchId);
+        requireBatch(user, clientId, instituteId, batchId);
     }
 }

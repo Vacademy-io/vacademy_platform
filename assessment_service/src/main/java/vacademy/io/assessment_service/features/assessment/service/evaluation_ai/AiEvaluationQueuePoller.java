@@ -5,8 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationLane;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.queue.AiEvaluationLaneCaps;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.queue.AiEvaluationQueueClaimer;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.queue.AiEvaluationQueueClaimer.ClaimedJob;
 
 import java.net.InetAddress;
 import java.time.Instant;
@@ -23,10 +27,13 @@ import java.util.UUID;
  * owned by a row in the database, not by whichever pod served the learner's submit, so a
  * deploy or a crash mid-exam does not lose anybody's grading.
  *
- * Every replica runs this loop, which is safe because claiming is a single atomic UPDATE
- * (see AiEvaluationProcessRepository#claimPendingJobs). Without that, two pods would
- * routinely grade the same attempt -- and since AI evaluation is metered per graded
- * question, that means charging the institute twice for one submission.
+ * Two lanes, each on its own tick (AI_EVALUATION_PUBLIC_API.md 11.2): COPY (handwritten
+ * sheets, minutes each) every 15 s and TYPED (typed long answers, seconds each) every
+ * 5 s. Each tick claims the lane's fair share through {@link AiEvaluationQueueClaimer}:
+ * an advisory lock per lane so replicas take turns, then one UPDATE that moves the
+ * chosen rows straight to DISPATCHED with this instance's claim. Every claimed row is
+ * then handed to the dispatch executor, whose first step is a guarded
+ * DISPATCHED -> PROCESSING update - so a row can be dispatched once, by its claimant.
  */
 @Slf4j
 @Component
@@ -35,6 +42,8 @@ public class AiEvaluationQueuePoller {
 
         private final AiEvaluationProcessRepository processRepository;
         private final AiEvaluationAsyncService aiEvaluationAsyncService;
+        private final AiEvaluationQueueClaimer claimer;
+        private final AiEvaluationLaneCaps laneCaps;
 
         /**
          * Off by default.
@@ -47,35 +56,16 @@ public class AiEvaluationQueuePoller {
         private boolean pollerEnabled;
 
         /**
-         * How many jobs one instance takes per tick. Small on purpose: each job is a
-         * multi-minute OCR + LLM pipeline on a shared async pool, so a big batch would
-         * just queue up inside the JVM where the sweeper cannot see it, and starve the
-         * teacher-triggered path that shares that pool.
-         */
-        @Value("${assessment.ai-evaluation.poller-batch-size:5}")
-        private int batchSize;
-
-        /**
-         * A claim older than this is treated as abandoned and may be taken by another
-         * instance. Must stay comfortably longer than the time between claiming and the
-         * worker moving the row off PENDING, or two pods will pick up the same job.
+         * A PENDING row still carrying a claim younger than this is left alone. Only
+         * rows claimed by a pre-V52 pod during a rolling deploy carry one (claims now
+         * move rows to DISPATCHED, and every hand-back clears the claim); the window
+         * keeps a new pod from dispatching what an old pod is about to.
          */
         @Value("${assessment.ai-evaluation.claim-stale-minutes:15}")
         private long claimStaleMinutes;
 
-        /**
-         * Cap on copies with the AI service at once, across all instances. One
-         * ai-service pod and one render-worker serve everyone; without this a
-         * 200-copy bulk upload was dispatched in ten minutes, every job then
-         * fought for the same CPU, and the ones that lost were swept as stale
-         * before they had started. Queued rows stay PENDING and wait their turn.
-         */
-        @Value("${assessment.ai-evaluation.max-in-flight:3}")
-        private int maxInFlight;
-
-        /** Statuses that mean "with the AI service now" - counted against the cap. */
-        static final List<String> IN_FLIGHT = List.of(
-                        "PROCESSING", "DISPATCHED", "STARTED", "EXTRACTING", "EVALUATING", "GRADING", "IN_PROGRESS");
+        /** Statuses that mean "with the AI service now" - counted against the lane caps. */
+        static final List<String> IN_FLIGHT = AiEvaluationStatusEnum.IN_FLIGHT;
 
         /**
          * Identifies this instance in claimed_by. Host name plus a per-boot suffix: the
@@ -97,92 +87,75 @@ public class AiEvaluationQueuePoller {
                 return id.length() > 120 ? id.substring(0, 120) : id;
         }
 
+        String instanceId() {
+                return instanceId;
+        }
+
+        /** Handwritten copies. Keeps the old poller-interval-ms so existing env config holds. */
         @Scheduled(fixedDelayString = "${assessment.ai-evaluation.poller-interval-ms:15000}",
                         initialDelayString = "${assessment.ai-evaluation.poller-initial-delay-ms:30000}")
         public void drainQueue() {
+                drainLane(AiEvaluationLane.COPY);
+        }
+
+        /** Typed long answers: short jobs, so a shorter tick keeps them from waiting on it. */
+        @Scheduled(fixedDelayString = "${assessment.ai-evaluation.typed-poller-interval-ms:5000}",
+                        initialDelayString = "${assessment.ai-evaluation.poller-initial-delay-ms:30000}")
+        public void drainTypedQueue() {
+                drainLane(AiEvaluationLane.TYPED);
+        }
+
+        void drainLane(AiEvaluationLane lane) {
                 if (!pollerEnabled) {
                         return;
                 }
                 try {
-                        List<AiEvaluationProcess> claimed = claimBatch();
+                        Date now = new Date();
+                        Date staleBefore = Date.from(Instant.now().minus(claimStaleMinutes, ChronoUnit.MINUTES));
+                        List<ClaimedJob> claimed = claimer.claim(lane, laneCaps, instanceId, now, staleBefore);
                         if (claimed.isEmpty()) {
                                 return;
                         }
-
-                        log.info("[ai-eval-poller] {} claimed {} queued evaluation(s)", instanceId, claimed.size());
-                        for (AiEvaluationProcess process : claimed) {
-                                dispatch(process);
+                        log.info("[ai-eval-poller] {} claimed {} queued {} evaluation(s)", instanceId, claimed.size(), lane);
+                        for (ClaimedJob job : claimed) {
+                                dispatch(job);
                         }
                 } catch (Exception e) {
                         // A scheduled method that throws is not retried, and on some
                         // schedulers it silently stops being scheduled at all. Swallow, log,
                         // and let the next tick try again.
-                        log.error("[ai-eval-poller] tick failed: {}", e.getMessage(), e);
+                        log.error("[ai-eval-poller] {} tick failed: {}", lane, e.getMessage(), e);
                 }
         }
 
         /**
-         * Claim, then read back what we got.
-         *
-         * Two statements rather than one because the claim has to be a bare UPDATE for
-         * the atomicity to hold; reading the claimed rows afterwards is safe precisely
-         * because claimed_by is now ours and no other instance will take them.
-         *
-         * The transaction lives on the repository method, NOT here. This is called from
-         * a @Scheduled method on the same bean, and Spring's proxy does not intercept
-         * self-invocation -- an @Transactional annotation on this method would look
-         * correct and do nothing, which is exactly how the marks calculation in
-         * StudentAttemptService ended up running outside a transaction.
-         */
-        private List<AiEvaluationProcess> claimBatch() {
-                Date now = new Date();
-                Date staleBefore = Date.from(Instant.now().minus(claimStaleMinutes, ChronoUnit.MINUTES));
-
-                long inFlight = processRepository.countByStatusIn(IN_FLIGHT);
-                int room = (int) Math.max(0, Math.min(batchSize, maxInFlight - inFlight));
-                if (room == 0) {
-                        return List.of();
-                }
-                int claimedCount = processRepository.claimPendingJobs(instanceId, now, staleBefore, room);
-                if (claimedCount == 0) {
-                        return List.of();
-                }
-                // Rows a previous tick claimed but could not dispatch (a failed tick)
-                // come back here too; still hand out at most `room` at a time so the
-                // in-flight cap holds. The rest stay ours for the next tick.
-                List<AiEvaluationProcess> claimed = processRepository.findClaimedPending(instanceId);
-                return claimed.size() > room ? claimed.subList(0, room) : claimed;
-        }
-
-        /**
-         * Hand one job to the existing worker.
+         * Hand one claimed job to the dispatch executor.
          *
          * The worker is the same one the teacher-triggered path uses, so automatic and
          * manual evaluations behave identically from here on -- same progress reporting,
          * same callbacks, same review-and-release gates before a learner sees anything.
          */
-        private void dispatch(AiEvaluationProcess process) {
-                String processId = process.getId();
-                String attemptId = process.getStudentAttempt() == null ? null : process.getStudentAttempt().getId();
-                if (attemptId == null) {
+        private void dispatch(ClaimedJob job) {
+                String processId = job.processId();
+                if (job.attemptId() == null) {
                         log.error("[ai-eval-poller] process {} has no attempt, leaving it for the sweeper", processId);
                         return;
                 }
-
                 try {
-                        // Inside the try: the assessment is fetched with the claim query, but
-                        // a lazy proxy here once threw "no Session" before the try and took
-                        // the whole tick down with it - every tick, for every row.
-                        String model = process.getAssessment() == null ? null
-                                        : process.getAssessment().getAiEvaluationModel();
-                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, model);
+                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, job.attemptId(), job.model(), instanceId);
                         log.info("[ai-eval-poller] dispatched evaluation {} for attempt {} (model {})",
-                                        processId, attemptId, model);
+                                        processId, job.attemptId(), job.model());
                 } catch (Exception e) {
-                        // The row stays PENDING with our claim on it. Once the claim goes stale
-                        // another instance re-claims it, so a dispatch failure costs a delay
-                        // rather than the job.
+                        // Usually the dispatch executor's queue is full. The row is DISPATCHED
+                        // with our claim on it: give it straight back to the queue rather than
+                        // leave it for the sweeper's stale timeout.
                         log.error("[ai-eval-poller] could not dispatch evaluation {}: {}", processId, e.getMessage(), e);
+                        try {
+                                processRepository.handBackClaim(processId, instanceId, new Date());
+                        } catch (Exception handBack) {
+                                log.error("[ai-eval-poller] could not hand back evaluation {}: {}", processId,
+                                                handBack.getMessage());
+                        }
                 }
         }
 }

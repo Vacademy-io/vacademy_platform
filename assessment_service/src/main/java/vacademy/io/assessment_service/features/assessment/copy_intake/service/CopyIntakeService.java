@@ -29,12 +29,15 @@ import vacademy.io.assessment_service.features.assessment.dto.offline_entry.Offl
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
+import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.manager.AdminOfflineDataEntryManager;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentBatchRegistrationRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationEnqueueContext;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationService;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -94,6 +97,7 @@ public class CopyIntakeService {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate tx;
     private final AuthService authService;
+    private final InstituteFileOwnership fileOwnership;
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
@@ -144,6 +148,20 @@ public class CopyIntakeService {
         if (usable.isEmpty()) {
             throw new VacademyException("No usable files in the upload");
         }
+        // Only the institute's own uploads (G12): a fileId is just a string, and this
+        // pipeline reads the sheet and attaches it to one of this exam's students.
+        List<String> foreign = fileOwnership.notOwnedBy(instituteId,
+                usable.stream().map(CopyIntakeDtos.UploadedFile::getFileId).toList());
+        if (!foreign.isEmpty()) {
+            log.warn("[copy-intake] refused {} file(s) not recorded for institute {} on assessment {}: {}",
+                    foreign.size(), instituteId, assessmentId, foreign);
+            throw new VacademyException(foreign.size() == 1
+                    ? "One of the files was not uploaded for this institute; upload it again from this page"
+                    : foreign.size() + " of the files were not uploaded for this institute; upload them again from this page");
+        }
+        // Every copy must fit the institute's AI credits before any work starts (10.6);
+        // each is checked again, under the institute lock, when it is queued.
+        aiEvaluationService.requireCreditsForCopies(assessment, instituteId, usable.size());
 
         AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()
                 .assessmentId(assessment.getId())
@@ -179,12 +197,11 @@ public class CopyIntakeService {
     // ------------------------------------------------- submitted copies
 
     /**
-     * Evaluation states that mean "the AI is on this copy now". Mirrors
-     * AiEvaluationService.ACTIVE_STATUSES; re-declared like the enqueuer does,
-     * so this path is free to diverge.
+     * Evaluation states that mean "the AI is on this copy now": the shared list
+     * (queued, claimed, running), so a newly added state is never missed here.
      */
-    private static final List<String> EVALUATION_ACTIVE = List.of(
-            "PENDING", "STARTED", "PROCESSING", "EXTRACTING", "EVALUATING");
+    private static final List<String> EVALUATION_ACTIVE =
+            vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum.ACTIVE;
 
     /** One submitted attempt and where its AI check stands. */
     private record SubmittedCopy(StudentAttempt attempt, String fileId, boolean checked, boolean running) {
@@ -255,6 +272,11 @@ public class CopyIntakeService {
             throw new VacademyException("At most " + MAX_FILES_PER_BATCH + " copies per batch; select fewer students");
         }
 
+        // One credit check for the whole batch, held under the institute lock until this
+        // transaction commits (10.6); a shortfall refuses the batch with the reason.
+        Map<String, AiEvaluationCreditGate.Reservation> reserved = aiEvaluationService.reserveDashboardCredits(
+                copies.stream().map(SubmittedCopy::attempt).toList());
+
         String model = request == null ? null : request.getPreferredModel();
         AiCopyIntakeBatch batch = batchRepository.save(AiCopyIntakeBatch.builder()
                 .assessmentId(assessment.getId())
@@ -277,7 +299,10 @@ public class CopyIntakeService {
                     ? reg.getParticipantName() : "Student";
             // The teacher is recorded on the run so the evaluations page shows who
             // asked; the completion notice still comes from this batch, not per copy.
-            String processId = aiEvaluationService.initiateEvaluationForAttempt(attempt, model, true, user.getUserId());
+            AiEvaluationCreditGate.Reservation reservation = reserved == null ? null : reserved.get(attempt.getId());
+            String processId = aiEvaluationService.initiateEvaluationForAttempt(attempt, model, true, user.getUserId(),
+                    AiEvaluationEnqueueContext.dashboard().withReservation(
+                            reservation != null ? reservation : AiEvaluationCreditGate.Reservation.NONE));
             items.add(AiCopyIntakeItem.builder()
                     .batchId(batch.getId())
                     .fileId(c.fileId())
@@ -312,6 +337,8 @@ public class CopyIntakeService {
                         && a.getRegistration().getAssessment() != null
                         && assessmentId.equals(a.getRegistration().getAssessment().getId())
                         && "ENDED".equalsIgnoreCase(a.getStatus()))
+                // A released result is frozen (G8, T0.33): it is never offered for a check.
+                .filter(a -> !ReleaseResultStatusEnum.RELEASED.name().equalsIgnoreCase(a.getReportReleaseStatus()))
                 .toList();
         if (ended.isEmpty()) return List.of();
 
@@ -793,7 +820,9 @@ public class CopyIntakeService {
         // than hook the dispatcher (which would close a bean cycle).
         String status = i.getStatus();
         if (AiCopyIntakeItem.QUEUED.equals(status) && process != null) {
-            status = "PENDING".equals(process.getStatus()) ? AiCopyIntakeItem.QUEUED : AiCopyIntakeItem.EVALUATING;
+            // DISPATCHED is a claimed row a few seconds from being sent: still queued.
+            status = "PENDING".equals(process.getStatus()) || "DISPATCHED".equals(process.getStatus())
+                    ? AiCopyIntakeItem.QUEUED : AiCopyIntakeItem.EVALUATING;
         }
         return CopyIntakeDtos.ItemDto.builder()
                 .id(i.getId()).fileId(i.getFileId()).fileName(i.getFileName()).pageCount(i.getPageCount())

@@ -15,6 +15,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vacademy.io.assessment_service.core.config.AssessmentInternalUserDetailsService;
+import vacademy.io.common.auth.apikey.ApiKeyAuthentication;
 import vacademy.io.common.auth.entity.UserActivity;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserActivityRepository;
@@ -68,6 +69,14 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
         // If header is missing or doesn't start with "Bearer ", skip filter
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Already authenticated by an institute API key (partner API, ApiKeyAuthFilter runs
+        // first): a stray Authorization header must neither replace that identity nor turn
+        // an unparseable token into an error on a key-authenticated call.
+        if (SecurityContextHolder.getContext().getAuthentication() instanceof ApiKeyAuthentication) {
             filterChain.doFilter(request, response);
             return;
         }

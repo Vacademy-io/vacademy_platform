@@ -76,19 +76,28 @@ public class CopyCheckCallbackService {
             processRepository.touch(process.getId(), new Date(), TERMINAL);
             return;
         }
-        process.setCurrentStep(payload.getStep());
+        // A targeted UPDATE of step/status/updated_at only, guarded on "not finished".
+        // A full-row save here used to write back every column as this callback had
+        // read it - including a claim, job id or status another writer had just
+        // changed (gate G6). The entity is deliberately not modified, so nothing
+        // else is flushed either.
+        String status = null;
         if ("LAYOUT_OCR_DONE".equals(payload.getStep())) {
-            process.setStatus(AiEvaluationStatusEnum.EXTRACTING.name());
+            status = AiEvaluationStatusEnum.EXTRACTING.name();
             persistLayoutIfPresent(process, payload.getLayoutMap());
         } else if ("GRADING".equals(payload.getStep())) {
-            process.setStatus(AiEvaluationStatusEnum.EVALUATING.name());
+            status = AiEvaluationStatusEnum.EVALUATING.name();
         }
-        process.setUpdatedAt(new Date());
-        processRepository.save(process);
+        Date now = new Date();
+        if (status != null) {
+            processRepository.applyProgressStepAndStatus(process.getId(), payload.getStep(), status, now, TERMINAL);
+        } else {
+            processRepository.applyProgressStep(process.getId(), payload.getStep(), now, TERMINAL);
+        }
     }
 
     /** Nothing further can happen to a process in one of these states. */
-    private static final List<String> TERMINAL = List.of("COMPLETED", "FAILED", "CANCELLED");
+    private static final List<String> TERMINAL = AiEvaluationStatusEnum.TERMINAL;
 
     private static boolean isTerminal(String status) {
         return status != null && TERMINAL.contains(status.toUpperCase());
@@ -138,7 +147,7 @@ public class CopyCheckCallbackService {
             log.warn("[copy-check] {} tracking rows for question {} in process {}; using the newest",
                     rowsForQuestion.size(), payload.getQuestionId(), process.getId());
         }
-        Optional<AiQuestionEvaluation> row = rowsForQuestion.stream().findFirst();
+        Optional<AiQuestionEvaluation> row = AiQuestionEvaluationService.newest(rowsForQuestion);
 
         // Never let a late or retried AI callback overwrite a mark a human has
         // already reviewed/edited on the review page.
@@ -197,9 +206,10 @@ public class CopyCheckCallbackService {
         }
 
         if (!wasTerminal) {
-            int completed = (process.getQuestionsCompleted() == null ? 0 : process.getQuestionsCompleted()) + 1;
-            process.setQuestionsCompleted(completed);
-            processRepository.save(process);
+            // An increment in SQL: question callbacks arrive concurrently, and a
+            // read-modify-save of the whole row lost counts (and could undo other
+            // columns' changes) when two landed together.
+            processRepository.incrementQuestionsCompleted(process.getId(), new Date());
         }
     }
 
@@ -250,8 +260,9 @@ public class CopyCheckCallbackService {
                 // recomputes this total via AiEvaluationReviewService. An online
                 // attempt's run covers only its written answers; the objective
                 // marks scored on submit are added back in.
-                List<AiQuestionEvaluation> rows = questionEvaluationRepository
-                        .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
+                // One row per question (newest): a pre-V53 duplicate must not count twice.
+                List<AiQuestionEvaluation> rows = AiQuestionEvaluationService.newestPerQuestion(questionEvaluationRepository
+                        .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId()));
                 double total = typedAnswerEvaluation.attemptTotal(attempt, rows);
                 attempt.setTotalMarks(total);
                 attempt.setResultMarks(total);
@@ -307,12 +318,28 @@ public class CopyCheckCallbackService {
             return;
         }
         process.setStatus(AiEvaluationStatusEnum.FAILED.name());
-        process.setErrorMessage(payload.getErrorMessage());
+        process.setErrorMessage(withErrorCode(payload.getErrorCode(), payload.getErrorMessage()));
         process.setCompletedAt(new Date());
         processRepository.save(process);
         notifyIntake(payload.getProcessId(), false, payload.getErrorMessage());
         cancellationService.clearFlag(payload.getProcessId());
         log.warn("[copy-check] process {} failed: {}", payload.getProcessId(), payload.getErrorMessage());
+    }
+
+    /**
+     * The stored failure text with ai_service's machine code in front ("code: message"),
+     * the same shape the dispatcher uses for its own refusals ("insufficient_credits: ..."),
+     * so the partner API can report the code without matching message text. A message
+     * that already starts with the code, or a callback without one, is stored as is.
+     */
+    static String withErrorCode(String code, String message) {
+        if (code == null || !code.matches("[a-z][a-z0-9_]{0,63}")) {
+            return message;
+        }
+        if (message == null || message.isBlank()) {
+            return code;
+        }
+        return message.startsWith(code + ":") ? message : code + ": " + message;
     }
 
     /** A process that has been reaped by the sweeper (FAILED) or the user (CANCELLED). */

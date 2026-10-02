@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,8 @@ import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.assessment_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.assessment_service.features.notification.service.NotificationService;
 import vacademy.io.assessment_service.features.notification.service.StaffNoticeEmails;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiExamDigestQueries;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 
 /**
@@ -62,10 +65,8 @@ public class AiEvaluationCompletionNotifier {
 
     static final List<String> TERMINAL = List.of(
             AiEvaluationStatusEnum.COMPLETED.name(), AiEvaluationStatusEnum.FAILED.name());
-    static final List<String> ACTIVE = List.of(
-            AiEvaluationStatusEnum.PENDING.name(), AiEvaluationStatusEnum.STARTED.name(),
-            AiEvaluationStatusEnum.PROCESSING.name(), AiEvaluationStatusEnum.EXTRACTING.name(),
-            AiEvaluationStatusEnum.EVALUATING.name());
+    /** Still running for the assessment, so its notice waits (includes a claimed DISPATCHED row). */
+    static final List<String> ACTIVE = AiEvaluationStatusEnum.ACTIVE;
     /** Who is told when nobody in particular asked for the check. */
     static final List<String> DEFAULT_STAFF_ROLES = List.of("ADMIN");
 
@@ -84,6 +85,10 @@ public class AiEvaluationCompletionNotifier {
 
     @Value("${assessment.copy-intake.dashboard-base-url:https://dash.vacademy.io}")
     private String dashboardBaseUrl;
+
+    /** Digest window for partner-API exams; null in unit tests that do not need it. */
+    @Autowired(required = false)
+    private ApiExamDigestQueries apiExamDigestQueries;
 
     @Scheduled(fixedDelayString = "${assessment.ai-evaluation.notice-interval-ms:60000}",
             initialDelayString = "${assessment.ai-evaluation.notice-initial-delay-ms:90000}")
@@ -142,6 +147,54 @@ public class AiEvaluationCompletionNotifier {
         }
     }
 
+    /**
+     * Once a day, one bell per partner-API exam that had AI results in the last 24 h:
+     * "N copies graded, M need review" (spec 12 item 5), to the exam's creation/evaluation
+     * users and the institute admins. No email and no workflow event. Replica-safe: each
+     * exam's day is claimed with one guarded UPDATE on api_exam.digest_sent_on.
+     */
+    @Scheduled(cron = "${assessment.open-api.digest-cron:0 30 12 * * *}", zone = "UTC")
+    public void sendApiExamDigests() {
+        if (apiExamDigestQueries == null) {
+            return;
+        }
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        List<ApiExamDigestQueries.ExamDigest> digests;
+        try {
+            digests = apiExamDigestQueries.pendingDigests(Instant.now().minus(24, ChronoUnit.HOURS), today);
+        } catch (Exception e) {
+            log.warn("[ai-notice] API exam digest query failed: {}", e.getMessage());
+            return;
+        }
+        for (ApiExamDigestQueries.ExamDigest digest : digests) {
+            try {
+                if (!apiExamDigestQueries.claimDigest(digest.assessmentId(), today)) {
+                    continue; // another replica sent it
+                }
+                sendApiExamDigest(digest);
+            } catch (Exception e) {
+                log.warn("[ai-notice] API exam digest for {} failed: {}", digest.assessmentId(), e.getMessage());
+            }
+        }
+    }
+
+    void sendApiExamDigest(ApiExamDigestQueries.ExamDigest digest) {
+        String name = digest.assessmentName() != null ? digest.assessmentName() : digest.assessmentId();
+        long graded = digest.checked();
+        long review = digest.failed();
+        String title = "AI evaluation today: " + name;
+        String summary = graded + (graded == 1 ? " copy" : " copies") + " graded, " + review
+                + (review == 1 ? " needs" : " need") + " review (last 24 hours, via API).";
+        List<String> userIds = recipients(digest.instituteId(), digest.assessmentId(), Set.of()).stream()
+                .map(Recipient::id).filter(StringUtils::hasText).toList();
+        if (userIds.isEmpty()) {
+            return;
+        }
+        notificationService.sendSystemAlertToUsers(digest.instituteId(), userIds, title, summary);
+        log.info("[ai-notice] API exam digest assessment={} graded={} review={} recipients={}",
+                digest.assessmentId(), graded, review, userIds.size());
+    }
+
     private Date settledAt(AiEvaluationProcess p) {
         if (p.getCompletedAt() != null) return p.getCompletedAt();
         if (p.getUpdatedAt() != null) return p.getUpdatedAt();
@@ -154,6 +207,14 @@ public class AiEvaluationCompletionNotifier {
         Assessment assessment = first.getAssessment();
         String instituteId = instituteIdOf(first);
         if (assessment == null || instituteId == null) {
+            return;
+        }
+        if (ApiCandidatePolicy.isApiExam(assessment)) {
+            // Partner-API exams stream copies all day: a bell + email to every admin per
+            // settle window would be spam (spec 12 item 5). They get one bell per exam per
+            // day from sendApiExamDigests() instead, no email, and no workflow event.
+            log.info("[ai-notice] assessment={} is an API exam; {} settled copies go to the daily digest",
+                    assessment.getId(), group.size());
             return;
         }
         long checked = group.stream().filter(p -> AiEvaluationStatusEnum.COMPLETED.name().equals(p.getStatus())).count();

@@ -24,9 +24,9 @@ public interface AiCopyIntakeItemRepository extends JpaRepository<AiCopyIntakeIt
     @Query("SELECT i.status, COUNT(i) FROM AiCopyIntakeItem i WHERE i.batchId = :batchId GROUP BY i.status")
     List<Object[]> countByStatus(@Param("batchId") String batchId);
 
-    /** Queued copies whose evaluation row has left PENDING - i.e. with the AI service now. */
+    /** Queued copies whose evaluation row has left the queue (PENDING / claimed DISPATCHED) - i.e. with the AI service now. */
     @Query("SELECT COUNT(i) FROM AiCopyIntakeItem i, AiEvaluationProcess p WHERE i.batchId = :batchId"
-            + " AND i.status = 'QUEUED' AND p.id = i.processId AND p.status <> 'PENDING'")
+            + " AND i.status = 'QUEUED' AND p.id = i.processId AND p.status NOT IN ('PENDING', 'DISPATCHED')")
     long countEvaluating(@Param("batchId") String batchId);
 
     /** Another copy in the same upload already placed on this student. */

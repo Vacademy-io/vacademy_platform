@@ -5443,7 +5443,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                             temperature=_as_float(agent.get("temperature")),
                                             tts_model=_agent_tts_model(agent),
                                             language=agent.get("language"))
-    for _svc in (stt, tts):
+    # The STT waterfall's own services too (stalls are counted on them — the
+    # switcher has no set_diagnostics); `stt` IS the primary without a fallback.
+    _diag_set = set()
+    for _svc in (stt, stt_primary, stt_fallback, tts):
+        if _svc is None or id(_svc) in _diag_set:
+            continue
+        _diag_set.add(id(_svc))
         if hasattr(_svc, "set_diagnostics"):
             _svc.set_diagnostics(diag)
     diag.tts_vendor = (getattr(tts, "model_name", "")

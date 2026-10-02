@@ -6332,6 +6332,23 @@ def test_whatsapp_number_question_is_not_the_link_question():
     assert qt("Is this number on WhatsApp?") != qt("Kya aap link WhatsApp pe bhejte hain?")
 
 
+def test_hinglish_whatsapp_number_question_is_not_the_link_question():
+    """Prompt v8 probe (2026-10-02): THE CLOSE asks "क्या ये number WhatsApp पर
+    है?" and then the quiz link. Both fell to quiz_link, so the quiz question was
+    dropped as a re-ask of the number question in every simulated run."""
+    from app.turntake import question_topic as qt
+    number_q = ("सर, इस call के बाद मैं आपको sample report और demo videos share कर दूँगी। "
+                "क्या ये number WhatsApp पर है?")
+    assert qt(number_q) == "whatsapp_number"
+    assert qt("क्या आपका number WhatsApp पर है?") == "whatsapp_number"
+    assert qt("क्या इसी number पर WhatsApp कर दूँ?") == "whatsapp_number"
+    for link_q in ("क्या मैं उसका link भी WhatsApp कर दूँ?",
+                   "क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ?",
+                   "क्या मैं quiz का लिंक भेज दूँ?"):
+        assert qt(link_q) == "quiz_link", link_q
+        assert qt(link_q) != qt(number_q)
+
+
 def test_screener_hold_lines():
     from app.turntake import is_screener_hold as f
     for t in ("Thanks Aarushi. Please stay on the line.", ", uh, you're still in.", "One moment please"):

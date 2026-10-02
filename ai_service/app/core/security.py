@@ -56,6 +56,73 @@ def decode_access_token(token: str) -> Optional[dict]:
     return _decode_jwt_token(token, get_settings())
 
 
+def is_platform_staff(user) -> bool:
+    """
+    True only for a caller whose auth user id is on SUPER_ADMIN_USER_IDS: the
+    gate for global writes (super-admin endpoints, credit rate, credit grants,
+    model registry). Exact id match: ids are immutable, unlike usernames, which
+    their owner can rename or case-vary. is_root_user and the ADMIN / ROOT_ADMIN
+    roles are deliberately NOT staff signals (ordinary admins and learners carry
+    them). Unset = nobody passes.
+    """
+    if not user:
+        return False
+    raw = get_settings().super_admin_user_ids or ""
+    allowed = {uid.strip() for uid in raw.split(",") if uid.strip()}
+    user_id = user.get("user_id") if isinstance(user, dict) else getattr(user, "user_id", None)
+    return bool(user_id) and str(user_id).strip() in allowed
+
+
+def jwt_institute_roles(authorization: Optional[str], institute_id: Optional[str]) -> Optional[set]:
+    """
+    The caller's roles in ONE institute, read from the verified JWT's
+    per-institute authorities map, or None when the token is missing/invalid or
+    names no such institute. Roles are uppercased with spaces/hyphens as '_'.
+
+    No root bypass: is_root_user is set for ordinary admins and learners, so it
+    says nothing about membership of a particular institute.
+    """
+    token = _extract_bearer(authorization)
+    if not token or not institute_id:
+        return None
+    payload = _decode_jwt_token(token, get_settings())
+    if payload is None:
+        return None
+    authorities = payload.get("authorities")
+    entry = authorities.get(str(institute_id)) if isinstance(authorities, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    return {
+        str(r).strip().upper().replace("-", "_").replace(" ", "_")
+        for r in (entry.get("roles") or []) if r
+    }
+
+
+def require_institute_member(
+    authorization: Optional[str],
+    institute_id: Optional[str],
+    *,
+    admin: bool = False,
+) -> None:
+    """
+    403 unless the bearer token is a member of `institute_id` (and, with
+    admin=True, holds the ADMIN role there). Call it after get_current_user /
+    get_optional_user has authenticated the caller; it adds the tenant check
+    those do not make (they trust the clientId header verbatim).
+    """
+    roles = jwt_institute_roles(authorization, institute_id)
+    if roles is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this institute.",
+        )
+    if admin and "ADMIN" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only institute admins can do this.",
+        )
+
+
 async def get_optional_user(
     request: Request,
     authorization: Optional[str] = Header(None),

@@ -81,6 +81,19 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {},
     },
+    # AI evaluation through the partner API (spec 10.1): a FIXED price per
+    # page of the graded handwritten copy (the evalezy.com price), and for a
+    # typed attempt `typed_per_answer` per non-blank long answer. fixed_price
+    # = the quote is the charge, no real-token overage. The live default is
+    # the `copy_check_evaluation_api` row in ai_tool_pricing (admin_core V545
+    # seeds it); a partner's own price is an institute_tool_pricing row.
+    "copy_check_evaluation_api": {
+        "request_type": "evaluation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "pages",
+        "params": {"fixed_price": True, "typed_per_answer": 1},
+    },
     # Vsmart Extract: digitising an EXISTING paper (mode=extract on
     # pdf-to-questions). A digital PDF is read locally for free, so the only
     # cost is the model (≈ ₹3 for a 60-question paper with solutions) — priced
@@ -533,6 +546,37 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
 # Tool keys this estimator knows about (used for validation / FE discovery).
 KNOWN_TOOLS = tuple(DEFAULT_TOOL_PRICING.keys())
 
+# The partner API's evaluation key (spec 10.1). Always charged at a fixed price.
+COPY_CHECK_API_TOOL_KEY = "copy_check_evaluation_api"
+
+# rate_source values (spec 10.3), written into the credit transaction
+# description so reconciliation can tell which price a charge used.
+RATE_SOURCE_DEFAULT = "default"
+RATE_SOURCE_GLOBAL = "global"
+RATE_SOURCE_SNAPSHOT = "snapshot"
+OVERRIDE_PREFIX = "override:"
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def is_fixed_price(tool_key: str, pricing: Dict[str, Any]) -> bool:
+    """True when the charge must be exactly the parametric quote, with no
+    real-token overage: `params.fixed_price` / `params.no_token_overage` on the
+    resolved row, `no_token_overage` on an institute override, and always for
+    the partner API key (spec 10.3)."""
+    if tool_key == COPY_CHECK_API_TOOL_KEY:
+        return True
+    params = pricing.get("params") or {}
+    return (
+        _truthy(params.get("fixed_price"))
+        or _truthy(params.get("no_token_overage"))
+        or _truthy(pricing.get("no_token_overage"))
+    )
+
 
 def _d(value: Any, default: str = "0") -> Decimal:
     """Coerce mixed JSON/None/number values to Decimal safely."""
@@ -551,6 +595,84 @@ def _ceil_whole(value: Decimal) -> Decimal:
     return value.quantize(Decimal("1"), rounding=ROUND_CEILING)
 
 
+def _json_dict(value: Any) -> Dict[str, Any]:
+    """params_json as a dict, whether the driver returned JSONB parsed or as text."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return {}
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def apply_override(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """The global/default rate with an institute override laid over it: each
+    non-null override field replaces the global value; override params are
+    merged over the global params key by key (so a partner price that sets
+    only a per-page rate keeps the row's fixed_price / typed_per_answer)."""
+    out = dict(base)
+    if override.get("flat_base_credits") is not None:
+        out["flat_base_credits"] = _d(override["flat_base_credits"])
+    if override.get("per_unit_credits") is not None:
+        out["per_unit_credits"] = _d(override["per_unit_credits"])
+    if override.get("params") is not None:
+        out["params"] = {**(base.get("params") or {}), **(override.get("params") or {})}
+    out["no_token_overage"] = bool(override.get("no_token_overage"))
+    out["override_id"] = override.get("id")
+    out["rate_source"] = f"{OVERRIDE_PREFIX}{override.get('id')}"
+    return out
+
+
+def _usable_snapshot(tool_key: str, snapshot: Any) -> Optional[Dict[str, Any]]:
+    """The snapshot as a dict when it prices this tool, else None (a pydantic
+    model is accepted too)."""
+    if snapshot is None:
+        return None
+    if hasattr(snapshot, "model_dump"):
+        snapshot = snapshot.model_dump()
+    if not isinstance(snapshot, dict):
+        return None
+    snap_key = snapshot.get("tool_key")
+    if snap_key and snap_key != tool_key:
+        logger.warning("rate_snapshot for %s ignored when pricing %s", snap_key, tool_key)
+        return None
+    return snapshot
+
+
+def rate_snapshot_of(tool_key: str, pricing: Dict[str, Any]) -> Dict[str, Any]:
+    """The resolved rate in the grade request's `rate_snapshot` shape (spec
+    10.3, C4): what a caller stores at enqueue and sends back at completion so
+    the charge uses this quote. An override's no_token_overage travels in
+    params, the only place the snapshot has for it."""
+    params = dict(pricing.get("params") or {})
+    if pricing.get("no_token_overage"):
+        params["no_token_overage"] = True
+    return {
+        "tool_key": tool_key,
+        "flat_base_credits": float(_d(pricing.get("flat_base_credits"))),
+        "per_unit_credits": float(_d(pricing.get("per_unit_credits"))),
+        "unit_field": pricing.get("unit_field"),
+        "params": params,
+        "rate_source": pricing.get("rate_source") or RATE_SOURCE_DEFAULT,
+    }
+
+
+def apply_snapshot(base: Dict[str, Any], snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """The rate quoted at enqueue replaces the resolved rate. The snapshot's
+    params are the full resolved params at that time, so they replace (not
+    merge into) today's. request_type, and unit_field when the snapshot has
+    none, come from the resolved row."""
+    out = dict(base)
+    out["flat_base_credits"] = _d(snapshot.get("flat_base_credits"))
+    out["per_unit_credits"] = _d(snapshot.get("per_unit_credits"))
+    if snapshot.get("unit_field"):
+        out["unit_field"] = snapshot["unit_field"]
+    out["params"] = dict(snapshot.get("params") or {})
+    out["no_token_overage"] = _truthy(out["params"].get("no_token_overage"))
+    out["rate_source"] = snapshot.get("rate_source") or RATE_SOURCE_SNAPSHOT
+    return out
+
+
 class ToolCostEstimator:
     """Computes predictable parametric credit estimates for AI tools."""
 
@@ -558,14 +680,24 @@ class ToolCostEstimator:
         self.db = db
 
     # ------------------------------------------------------------------
-    # Rate resolution (DB → fallback)
+    # Rate resolution (institute override → DB global → code default)
     # ------------------------------------------------------------------
-    def get_tool_pricing(self, tool_key: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    def get_tool_pricing(
+        self,
+        tool_key: Optional[str] = None,
+        institute_id: Optional[str] = None,
+    ) -> Dict[str, Dict[str, Any]]:
         """Return active parametric rates, keyed by tool_key.
 
-        Reads `ai_tool_pricing` when present; falls back to
-        DEFAULT_TOOL_PRICING per-tool when a row is missing. Pass a tool_key
-        to fetch just one (still merged with the fallback).
+        Resolution (spec 10.3): the institute's open `institute_tool_pricing`
+        row for the exact tool_key (its non-null fields replace the global
+        values) → the global `ai_tool_pricing` row → DEFAULT_TOOL_PRICING.
+        Without `institute_id` this is the global rate card, as before. Pass a
+        tool_key to fetch just one (still merged with the fallback).
+
+        Every entry carries `rate_source`: "override:<id>", "global" or
+        "default"; an overridden entry also carries `override_id` and
+        `no_token_overage`.
         """
         rows_by_key: Dict[str, Dict[str, Any]] = {}
         try:
@@ -578,42 +710,99 @@ class ToolCostEstimator:
                 """
             )
             for row in self.db.execute(query).fetchall():
-                params = row.params_json
-                if isinstance(params, str):
-                    try:
-                        params = json.loads(params)
-                    except Exception:
-                        params = {}
                 rows_by_key[row.tool_key] = {
                     "request_type": row.request_type,
                     "flat_base_credits": _d(row.flat_base_credits),
                     "per_unit_credits": _d(row.per_unit_credits),
                     "unit_field": row.unit_field,
-                    "params": params or {},
+                    "params": _json_dict(row.params_json),
+                    "rate_source": RATE_SOURCE_GLOBAL,
                 }
         except Exception as exc:  # table missing in pre-migration envs
             logger.warning("ai_tool_pricing lookup failed (%s); using defaults", exc)
 
-        merged = {**DEFAULT_TOOL_PRICING, **rows_by_key}
+        merged: Dict[str, Dict[str, Any]] = {
+            key: {**cfg, "rate_source": RATE_SOURCE_DEFAULT} for key, cfg in DEFAULT_TOOL_PRICING.items()
+        }
+        merged.update(rows_by_key)
+
+        if institute_id:
+            for key, override in self.institute_overrides(institute_id, tool_key).items():
+                if key in merged:
+                    merged[key] = apply_override(merged[key], override)
+
         if tool_key is not None:
             single = merged.get(tool_key)
             return {tool_key: single} if single else {}
         return merged
 
+    def institute_overrides(
+        self,
+        institute_id: str,
+        tool_key: Optional[str] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """The institute's OPEN override rows (effective_to IS NULL), keyed by
+        tool_key. Read inside a SAVEPOINT: on an environment without the table
+        (ai_service deployed before admin_core V545) the failed statement must
+        not abort the caller's transaction (charge_tool deducts on the same
+        session right after). Any failure = no overrides."""
+        sql = (
+            "SELECT id, tool_key, flat_base_credits, per_unit_credits, params_json, no_token_overage "
+            "FROM institute_tool_pricing "
+            "WHERE institute_id = :institute_id AND effective_to IS NULL"
+        )
+        bind: Dict[str, Any] = {"institute_id": str(institute_id)}
+        if tool_key is not None:
+            sql += " AND tool_key = :tool_key"
+            bind["tool_key"] = tool_key
+        out: Dict[str, Dict[str, Any]] = {}
+        try:
+            with self.db.begin_nested():
+                rows = self.db.execute(text(sql), bind).fetchall()
+            for row in rows:
+                out[row.tool_key] = {
+                    "id": str(row.id),
+                    "flat_base_credits": None if row.flat_base_credits is None else _d(row.flat_base_credits),
+                    "per_unit_credits": None if row.per_unit_credits is None else _d(row.per_unit_credits),
+                    "params": None if row.params_json is None else _json_dict(row.params_json),
+                    "no_token_overage": bool(row.no_token_overage),
+                }
+        except Exception as exc:  # noqa: BLE001 - table missing / DB blip: global price applies
+            logger.warning("institute_tool_pricing lookup failed for %s (%s); using global rates",
+                           institute_id, exc)
+        return out
+
     # ------------------------------------------------------------------
     # Estimation
     # ------------------------------------------------------------------
-    def estimate(self, tool_key: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def estimate(
+        self,
+        tool_key: str,
+        params: Optional[Dict[str, Any]] = None,
+        institute_id: Optional[str] = None,
+        rate_snapshot: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Estimate the parametric credit cost of one tool invocation.
 
+        `institute_id` applies that institute's override (spec 10.3).
+        `rate_snapshot` - the rate quoted when the work was queued
+        ({tool_key, flat_base_credits, per_unit_credits, unit_field, params,
+        rate_source}) - replaces the resolved rate, so an edit made while the
+        work waited never changes its price. A snapshot for another tool_key
+        is ignored.
+
         Returns: {tool_key, request_type, estimated_credits (float),
-                  breakdown: [{component, detail, credits}], unit_field}.
+                  breakdown: [{component, detail, credits}], unit_field,
+                  rate_source, fixed_price}.
         Raises ValueError for an unknown tool_key.
         """
         params = params or {}
-        pricing = self.get_tool_pricing(tool_key).get(tool_key)
+        pricing = self.get_tool_pricing(tool_key, institute_id=institute_id).get(tool_key)
         if not pricing:
             raise ValueError(f"Unknown tool_key '{tool_key}'. Known: {', '.join(KNOWN_TOOLS)}")
+        snapshot = _usable_snapshot(tool_key, rate_snapshot)
+        if snapshot is not None:
+            pricing = apply_snapshot(pricing, snapshot)
 
         unit_field = pricing["unit_field"]
         flat_base = pricing["flat_base_credits"]
@@ -622,6 +811,23 @@ class ToolCostEstimator:
 
         breakdown: List[Dict[str, Any]] = []
         total = Decimal("0")
+
+        typed_per_answer = extra.get("typed_per_answer")
+        if (str(params.get("answer_mode") or "").upper() == "TYPED"
+                and typed_per_answer is not None):
+            # A typed attempt has no pages (spec 10.1): credits = non-blank
+            # long answers x typed_per_answer, nothing else.
+            answers = max(0, int(params.get("num_answers") or 0))
+            rate = _d(typed_per_answer)
+            answer_credits = Decimal(answers) * rate
+            total += answer_credits
+            breakdown.append({
+                "component": "answers",
+                "detail": f"{answers} typed answer(s) × {rate}",
+                "credits": float(answer_credits),
+            })
+            unit_field = "answers"
+            return self._result(tool_key, pricing, unit_field, total, breakdown)
 
         if flat_base > 0:
             total += flat_base
@@ -730,6 +936,16 @@ class ToolCostEstimator:
         else:
             logger.warning("Unknown unit_field '%s' for tool '%s'", unit_field, tool_key)
 
+        return self._result(tool_key, pricing, unit_field, total, breakdown)
+
+    @staticmethod
+    def _result(
+        tool_key: str,
+        pricing: Dict[str, Any],
+        unit_field: str,
+        total: Decimal,
+        breakdown: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         estimated = _ceil_whole(total)
         return {
             "tool_key": tool_key,
@@ -737,6 +953,9 @@ class ToolCostEstimator:
             "unit_field": unit_field,
             "estimated_credits": float(estimated),
             "breakdown": breakdown,
+            "rate_source": pricing.get("rate_source") or RATE_SOURCE_DEFAULT,
+            "fixed_price": is_fixed_price(tool_key, pricing),
+            "rate_snapshot": rate_snapshot_of(tool_key, pricing),
         }
 
     def estimate_with_balance(
@@ -745,8 +964,8 @@ class ToolCostEstimator:
         params: Optional[Dict[str, Any]],
         institute_id: Optional[str],
     ) -> Dict[str, Any]:
-        """estimate() + the institute's current balance / affordability."""
-        result = self.estimate(tool_key, params)
+        """estimate() at the institute's price + its current balance / affordability."""
+        result = self.estimate(tool_key, params, institute_id=institute_id)
         estimated = Decimal(str(result["estimated_credits"]))
         result["current_balance"] = None
         result["balance_after"] = None

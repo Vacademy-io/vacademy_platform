@@ -90,6 +90,9 @@ class Result:
     total: dict[str, Any] | None
     report: list[str] = field(default_factory=list)
     unmarked: list[str] = field(default_factory=list)
+    # The mark enforce settled on for each result, in input order (key match,
+    # half-mark steps, clamp to max): the figure the score on the copy shows.
+    awarded: list[float] = field(default_factory=list)
 
 
 def _rows(layout_map: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -146,6 +149,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
     report: list[str] = []
     unmarked: list[str] = []
     awarded_sum = 0.0
+    awarded_list: list[float] = []
     seen_praise = 0
 
     for res in results:
@@ -174,6 +178,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
         awarded = round(awarded * 2) / 2                      # 0.5 steps
         awarded = max(0.0, min(mx, awarded))
         awarded_sum += awarded
+        awarded_list.append(awarded)
         cancelled = str(res.get("verdict") or "").lower() == "cancelled"
         attempted = bool(res.get("extracted_answer")) or bool(res.get("annotations")) or cancelled
         tag = f"Q{qid}"
@@ -338,7 +343,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
                  "placement": "right_margin", "text": f"{_fmt(awarded_sum)}/{_fmt(mx_total)}"}
     if unmarked:
         report.append(f"UNMARKED QUESTIONS: {', '.join(unmarked)} - shipped without a mark")
-    return Result(out, total, report, unmarked)
+    return Result(out, total, report, unmarked, awarded_list)
 
 
 # ------------------------------------------------------------------ self-test

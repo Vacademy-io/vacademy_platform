@@ -21,13 +21,25 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, locate, math_reread, typed_answers, vision_transcript
+from . import annotator, callbacks, cancellation, language_check, locate, math_reread, typed_answers, vision_transcript
+from .choice_groups import counted_awarded, counted_flags, resolve_paper_max
+from .failure import (
+    COPY_UNREADABLE,
+    ENGINE_UNAVAILABLE,
+    FILE_MISSING,
+    LANGUAGE_NOT_SUPPORTED,
+    NO_GRADABLE_QUESTIONS,
+    CANCELLED as FAILURE_CANCELLED,
+    CopyCheckFailure,
+    error_code_for,
+    redact_urls,
+)
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria, token_budget_for
 from .prompt_builder import paper_label_for
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
-from .rubric import RubricResolver, load_snapshot
-from .validator import validate_and_cap
+from .rubric import RubricGenerationFailed, RubricResolver, load_snapshot
+from .validator import attach_criteria_max, validate_and_cap
 from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
@@ -101,14 +113,15 @@ def _render_client() -> CopyCheckRenderClient:
     return CopyCheckRenderClient(base, key)
 
 
-async def grade_copy(process_id: Optional[str] = None) -> str:
-    """Allocate a job_id and arm the in-memory cancellation slot for it
+async def grade_copy(process_id: Optional[str] = None, job_id: Optional[str] = None) -> str:
+    """Allocate a job_id (or adopt the one the router already claimed in
+    copy_check_job) and arm the in-memory cancellation slot for it
     (indexed by both job_id and process_id so a cancel-by-process arriving
     before the BG task runs still aborts the job). The actual pipeline runs
     via `run(payload, job_id, db)` in a background task — the router
     schedules it after this returns.
     """
-    job_id = _new_job_id()
+    job_id = job_id or _new_job_id()
     cancellation.register(job_id, process_id=process_id)
     return job_id
 
@@ -174,7 +187,7 @@ async def _grade_typed(
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
                 raw = await grader.grade_typed_question(q, rubric, preferred_model)
-                verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                verdict = attach_criteria_max(validate_and_cap(raw, q, _EMPTY_LAYOUT), rubric)
             except cancellation.Cancelled:
                 raise
             except Exception as e:
@@ -184,7 +197,7 @@ async def _grade_typed(
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
                     raw = await grader.grade_typed_question(q, rubric, DEFAULT_MODEL)
-                    verdict = validate_and_cap(raw, q, _EMPTY_LAYOUT)
+                    verdict = attach_criteria_max(validate_and_cap(raw, q, _EMPTY_LAYOUT), rubric)
                 except cancellation.Cancelled:
                     raise
                 except Exception as retry_err:
@@ -212,9 +225,159 @@ async def _grade_typed(
     return total_awarded, total_max, evaluated, graded
 
 
-async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
+# Tool keys (spec 10.1): the dashboard prices per graded question with
+# real-token overage; the partner API prices per page (typed: per non-blank
+# answer) at a fixed price.
+DASHBOARD_TOOL_KEY = "copy_check_evaluation"
+API_TOOL_KEY = "copy_check_evaluation_api"
+API_ACTOR_PREFIX = "apikey:"
+API_KEY_USER_ROLE = "API_KEY"
+
+# What run() reports to the grade route, which records it on copy_check_job
+# (the nightly billing reconciliation reads it): the copy was graded and a
+# charge is due / graded with nothing to charge / not graded (failed or
+# cancelled; never billed).
+RUN_BILLED = "COMPLETED"
+RUN_NO_CHARGE = "NO_CHARGE"
+RUN_FAILED = "FAILED"
+
+
+def is_api_actor(billing_actor: Any) -> bool:
+    return isinstance(billing_actor, str) and billing_actor.startswith(API_ACTOR_PREFIX)
+
+
+def charge_plan(
+    billing: dict[str, Any],
+    *,
+    typed: bool,
+    num_questions: int,
+    num_answers: int = 0,
+    layout_pages: Optional[int] = None,
+) -> Optional[dict[str, Any]]:
+    """The record_tool_billing arguments for a completed copy (spec 10.1,
+    10.8), or None when nothing is chargeable.
+
+    Dashboard (no `apikey:` actor): unchanged - copy_check_evaluation on the
+    graded questions (typed: the answers actually read), no user attribution.
+    API: copy_check_evaluation_api at a fixed price on the copy's pages as
+    counted at upload (`page_count`; the OCR'd page count if the request had
+    none), or on the non-blank typed answers; user_id = the billing actor,
+    user_role API_KEY. A rate_snapshot for the chosen key is passed through.
+    """
+    actor = billing.get("billing_actor")
+    snapshot = billing.get("rate_snapshot") or None
+    if not is_api_actor(actor):
+        if typed and num_answers <= 0:
+            return None  # every answer blank: nothing was read
+        units = num_answers if typed else num_questions
+        return {
+            "tool_key": DASHBOARD_TOOL_KEY,
+            "tool_params": {"num_questions": units},
+            "user_id": None,
+            "user_role": None,
+            "rate_snapshot": snapshot if _snapshot_key(snapshot) == DASHBOARD_TOOL_KEY else None,
+        }
+    if typed:
+        if num_answers <= 0:
+            return None
+        params: dict[str, Any] = {"answer_mode": "TYPED", "num_answers": int(num_answers)}
+    else:
+        pages = billing.get("page_count")
+        if not pages:
+            pages = layout_pages or 0
+        if int(pages) <= 0:
+            return None
+        params = {"num_pages": int(pages)}
+    return {
+        "tool_key": API_TOOL_KEY,
+        "tool_params": params,
+        "user_id": actor,
+        "user_role": API_KEY_USER_ROLE,
+        "rate_snapshot": snapshot if _snapshot_key(snapshot) == API_TOOL_KEY else None,
+    }
+
+
+def _snapshot_key(snapshot: Any) -> Optional[str]:
+    return snapshot.get("tool_key") if isinstance(snapshot, dict) else None
+
+
+def _layout_page_count(layout_map: Any) -> Optional[int]:
+    pages = layout_map.get("pages") if isinstance(layout_map, dict) else None
+    return len(pages) if isinstance(pages, list) else None
+
+
+def billing_context(req: dict[str, Any]) -> dict[str, Any]:
+    """What the charge at completion is computed from (spec 10.3, 10.8): who
+    is billed ("apikey:<key_id>" for API runs, None = the institute), the rate
+    quoted at enqueue, and the copy's page count. Carried with the run; the
+    billing step reads it."""
+    return {
+        "billing_actor": req.get("billing_actor"),
+        "rate_snapshot": req.get("rate_snapshot"),
+        "page_count": req.get("page_count"),
+    }
+
+
+async def _repost_revised(
+    callback_base: str,
+    process_id: str,
+    job_id: str,
+    verdicts: list[dict[str, Any]],
+    sent: dict[str, tuple[float, list[Any]]],
+    rubric_version: Optional[int],
+) -> int:
+    """Re-send the question callback for every question whose mark changed
+    after it was first reported (enforcement) or that a choice group left out
+    (T0.21, T1.36). Same endpoint: Java upserts by (process, question), skips
+    rows a reviewer edited, and counts a question once. The first send's
+    annotations go again so the dashboard overlay keeps the grader's rows."""
+    reposted = 0
+    for v in verdicts:
+        qid = str(v.get("question_id"))
+        first = sent.get(qid)
+        if first is None:
+            continue
+        marks_then, annotations_then = first
+        failed = str(v.get("status") or "").upper() == "FAILED"
+        # A FAILED question keeps its 0 and status; it is re-sent only when a
+        # choice group left it out, so Java does not keep counted=true from
+        # the live first send.
+        changed = (not failed) and abs(float(v.get("marks_awarded") or 0) - marks_then) > 1e-9
+        if not changed and v.get("counted", True):
+            continue
+        payload = dict(v, annotations=_rescore_annotations(annotations_then, v) if changed else annotations_then)
+        await callbacks.question_done(
+            callback_base, process_id, job_id, payload, rubric_version=rubric_version,
+        )
+        reposted += 1
+    return reposted
+
+
+def _rescore_annotations(annotations: list[Any], verdict: dict[str, Any]) -> list[Any]:
+    """The first send's annotations with every score annotation rewritten to
+    the enforced mark, so the overlay Java stores agrees with marks_awarded."""
+    try:
+        mark = float(verdict.get("marks_awarded") or 0)
+        mx = float(verdict.get("max_marks") or 0)
+    except (TypeError, ValueError):
+        return list(annotations)
+
+    def _fmt(x: float) -> str:
+        return str(int(x)) if float(x).is_integer() else f"{x:g}"
+
+    out: list[Any] = []
+    for a in annotations:
+        if isinstance(a, dict) and a.get("style") == "score":
+            a = dict(a, text=f"{_fmt(mark)}/{_fmt(mx)}", marks=mark)
+        out.append(a)
+    return out
+
+
+async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
     """The actual pipeline. Designed to never raise out of the BG task — any
-    failure ends in a callbacks.failed() POST so Java can surface it."""
+    failure ends in a callbacks.failed() POST so Java can surface it.
+
+    Returns RUN_BILLED, RUN_NO_CHARGE or RUN_FAILED (see above)."""
     process_id = req["process_id"]
     callback_base = req["callback_base_url"]
     pdf_url = req.get("pdf_url")
@@ -222,9 +385,14 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     institute_id = req.get("institute_id")
     preferred_model = req.get("preferred_model")
     questions: list[dict[str, Any]] = req["questions"]
+    choice_groups = req.get("choice_groups") or None
+    billing = billing_context(req)
 
     llm = ChatLLMClient(ApiKeyResolver(db))
-    grader = CopyCheckGrader(llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)))
+    grader = CopyCheckGrader(
+        llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)),
+        exam_context=req.get("exam_context"),
+    )
     mathpix = MathpixFallback()
 
     async def _llm_for_criteria(system: str, user: str, model: str | None) -> dict[str, Any]:
@@ -238,7 +406,14 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
     # up-front rubric step below, before the long-running OCR/grading calls so
     # the pool isn't pinned for minutes (#17).
     rubric_snapshot = load_snapshot(db, assessment_id)
-    rubric_resolver = RubricResolver(rubric_snapshot, _llm_for_criteria)
+    rubric_resolver = RubricResolver(rubric_snapshot, _llm_for_criteria, exam_context=req.get("exam_context"))
+    # Attach teacher model answers before anything uses the questions: the
+    # grader reads them as the reference for a full-marks answer, and the
+    # criteria generator below builds its rubric from them (T0.24).
+    for q in questions:
+        model_answer = rubric_snapshot.model_answers.get(q["question_id"])
+        if model_answer:
+            q["model_answer"] = model_answer
 
     current_step = {"step": "QUEUED"}
 
@@ -267,6 +442,11 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 pass
 
     try:
+        if not questions:
+            raise CopyCheckFailure(NO_GRADABLE_QUESTIONS, "no questions to grade on this copy")
+        if req.get("answer_mode") != "TYPED" and not pdf_url:
+            raise CopyCheckFailure(FILE_MISSING, "no answer sheet (pdf_url) for this copy")
+
         # 0. Rubric coherence: generate any missing rubrics ONCE, persist them,
         # and reuse for every student — so two students on the same question are
         # graded against identical criteria, not a fresh per-copy invention.
@@ -280,6 +460,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                     generated[q["question_id"]] = await rubric_resolver.generate(q, preferred_model)
                 except cancellation.Cancelled:
                     raise
+                except RubricGenerationFailed:
+                    # Not persisted: this copy grades the question with the
+                    # default rubric (resolver remembers it for this run only)
+                    # and the next copy tries generation again.
+                    logger.warning("Rubric generation failed for question %s; default rubric for this copy only",
+                                   q.get("question_id"))
                 except Exception:
                     logger.exception("Rubric generation failed for question %s", q.get("question_id"))
             if generated and institute_id:
@@ -303,24 +489,39 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 rubric_snapshot.fixed_rubric.update(generated)
 
         rubric_version = rubric_snapshot.rubric_version
-        # Attach teacher model answers so the grader can use them as a reference.
-        for q in questions:
-            model_answer = rubric_snapshot.model_answers.get(q["question_id"])
-            if model_answer:
-                q["model_answer"] = model_answer
         db.close()
 
         if req.get("answer_mode") == "TYPED":
             # An online attempt: the answers are exact text already. Nothing to
             # OCR, locate or draw on - grade each answer and finish.
             await _progress("GRADING")
+            typed_verdicts: list[dict[str, Any]] = []
+            typed_sent: dict[str, tuple[float, list[Any]]] = {}
+
+            async def _typed_done(verdict: dict[str, Any]) -> None:
+                typed_verdicts.append(verdict)
+                typed_sent[str(verdict["question_id"])] = (
+                    float(verdict.get("marks_awarded") or 0), list(verdict.get("annotations") or []))
+                await callbacks.question_done(
+                    callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                )
+
             total_awarded, total_max, evaluated, graded = await _grade_typed(
                 questions, rubric_resolver, grader, preferred_model,
-                lambda verdict: callbacks.question_done(
-                    callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
-                ),
+                _typed_done,
                 lambda: cancellation.check(job_id, process_id),
             )
+            if choice_groups and typed_verdicts:
+                # Internal choice across the typed answers sent here. Objective
+                # questions are marked in Java and never reach this run, so
+                # the paper total (and request paper_max) is Java's to compose;
+                # this total covers only these questions.
+                flags = counted_flags(typed_verdicts, choice_groups)
+                for v in typed_verdicts:
+                    v["counted"] = flags.get(str(v.get("question_id")), True)
+                await _repost_revised(callback_base, process_id, job_id, typed_verdicts, typed_sent, rubric_version)
+                total_awarded = counted_awarded(typed_verdicts)
+                total_max = resolve_paper_max(questions, choice_groups) or total_max
             await _stop_heartbeat()
             await callbacks.complete(
                 callback_base, process_id, job_id,
@@ -332,26 +533,28 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             logger.info("copy-check job %s (typed) complete: %s/%s, %d graded, %d tokens",
                         job_id, total_awarded, total_max, graded, grader.tokens_used)
             # Blank answers were zeroed without a model call; only the answers
-            # actually read are charged.
-            if graded:
-                record_tool_billing(
-                    tool_key="copy_check_evaluation",
-                    tool_params={"num_questions": graded},
-                    request_type=RequestType.EVALUATION,
-                    model=(preferred_model or DEFAULT_MODEL),
-                    prompt_tokens=grader.prompt_tokens,
-                    completion_tokens=grader.completion_tokens,
-                    institute_id=institute_id,
-                    request_id=job_id,
-                    idempotency_key=process_id,
-                )
-            return
+            # actually read are charged (dashboard: per answer as a question;
+            # API: typed_per_answer each, fixed price).
+            plan = charge_plan(billing, typed=True, num_questions=graded, num_answers=graded)
+            if plan is None:
+                return RUN_NO_CHARGE
+            record_tool_billing(
+                request_type=RequestType.EVALUATION,
+                model=(preferred_model or DEFAULT_MODEL),
+                prompt_tokens=grader.prompt_tokens,
+                completion_tokens=grader.completion_tokens,
+                institute_id=institute_id,
+                request_id=job_id,
+                idempotency_key=process_id,
+                **plan,
+            )
+            return RUN_BILLED
 
         # 1. OCR via render_worker.
         cancellation.check(job_id, process_id)
         render = _render_client()
         if not render.is_configured:
-            raise RuntimeError("RENDER_WORKER_URL not configured on ai_service")
+            raise CopyCheckFailure(ENGINE_UNAVAILABLE, "RENDER_WORKER_URL not configured on ai_service")
         await _progress("LAYOUT_OCR_STARTED")
         layout_map = await render.submit_and_wait(
             pdf_url, dpi=200, poll_interval=3.0, timeout=300.0,
@@ -385,13 +588,24 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             logger.exception("Vision transcription failed; falling back to raw OCR")
 
         cancellation.check(job_id, process_id)
+        # A copy written in Hindi is refused before any grading call (T1.15):
+        # row OCR is English-only and no Hindi evaluation set has passed, so
+        # it must never be graded as English. Not billed (failed copy).
+        if language_check.applies_to(billing["billing_actor"]) and language_check.is_unsupported_language(layout_map):
+            share, letters = language_check.devanagari_share(layout_map)
+            raise CopyCheckFailure(
+                LANGUAGE_NOT_SUPPORTED,
+                f"answers are written in Devanagari ({share:.0%} of {letters} letters); "
+                "this language is not supported yet - needs manual evaluation",
+            )
         quality = layout_map.get("vision_quality") or {}
         if quality and not quality.get("gradeable", True):
             # Refuse to grade a copy we could not read. Before this gate existed
             # nothing checked the transcript was usable, so an unreadable scan
             # came back as confident marks. A human reading it is the correct
             # outcome; a fabricated mark is not.
-            raise RuntimeError(
+            raise CopyCheckFailure(
+                COPY_UNREADABLE,
                 "answer sheet could not be read reliably "
                 f"({quality.get('legible_pages')}/{quality.get('pages')} pages legible, "
                 f"{quality.get('avg_chars_per_page')} chars/page) — needs manual evaluation"
@@ -449,6 +663,9 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         _mark_label_blocks(questions)
         all_labels = [paper_label_for(q) for q in questions]
         verdicts: list[dict[str, Any]] = []
+        # What each question callback said first: enforcement below may change
+        # the mark, and the callback is then sent again (T0.21).
+        sent: dict[str, tuple[float, list[Any]]] = {}
         for index, q in enumerate(questions):
             q["neighbour_labels"] = [lbl for i, lbl in enumerate(all_labels) if i != index][:80]
             cancellation.check(job_id, process_id)
@@ -471,7 +688,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                         qid, page_ids,
                     )
                     raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
-                verdict = validate_and_cap(raw, q, layout_map)
+                verdict = attach_criteria_max(validate_and_cap(raw, q, layout_map), rubric)
             except cancellation.Cancelled:
                 raise
             except Exception as e:
@@ -487,7 +704,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 try:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
                     raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
-                    verdict = validate_and_cap(raw, q, layout_map)
+                    verdict = attach_criteria_max(validate_and_cap(raw, q, layout_map), rubric)
                 except cancellation.Cancelled:
                     raise
                 except Exception as retry_err:
@@ -519,6 +736,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             evaluated += 1
             verdict.setdefault("question_number", q.get("question_number") or evaluated)
             verdicts.append(verdict)
+            sent[qid] = (float(verdict.get("marks_awarded") or 0), list(verdict.get("annotations") or []))
             await callbacks.question_done(
                 callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
             )
@@ -549,11 +767,23 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             } for q in questions]
         except Exception:
             questions_meta = None
+        # The paper's maximum: the request's paper_max, else derived from the
+        # choice groups, else None (enforce sums every question, as before).
+        paper_max = resolve_paper_max(questions, choice_groups, req.get("paper_max"))
         verdicts, _total, enforce_report, unmarked = apply_enforcement(
-            verdicts, layout_map, questions_meta)
+            verdicts, layout_map, questions_meta, paper_max=paper_max, choice_groups=choice_groups)
         if unmarked:
             logger.warning("copy-check %s: enforce could not place a mark for %s; shipping the copy without them",
                            process_id, unmarked)
+        # The marks Java stores must be the marks on the checked copy (gate G9):
+        # re-send every question enforcement changed or a choice group dropped,
+        # before `complete` makes Java total the rows.
+        revised = await _repost_revised(callback_base, process_id, job_id, verdicts, sent, rubric_version)
+        if revised:
+            logger.info("copy-check %s: re-sent %d question callback(s) after enforcement", process_id, revised)
+        total_awarded = counted_awarded(verdicts)
+        if paper_max is not None:
+            total_max = paper_max
         evaluated_file_id = await annotator.render_and_upload(
             pdf_url, layout_map, verdicts, req.get("attempt_id") or process_id,
         )
@@ -568,19 +798,25 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             evaluated_file_id=evaluated_file_id,
         )
         logger.info(
-            "copy-check job %s complete: %s/%s, %d maths row(s) re-read, %d Mathpix crops used, %d tokens",
+            "copy-check job %s complete: %s/%s, %d maths row(s) re-read, %d Mathpix crops used, %d tokens, billing %s",
             job_id, total_awarded, total_max, maths_rows_read, mathpix.used, grader.tokens_used,
+            {k: v for k, v in billing.items() if k != "rate_snapshot"},
         )
 
         # Meter the copy: charge the institute's credits once per completed
-        # evaluation. Priced per graded question with real-token overage
-        # (see tool_cost_estimator "copy_check_evaluation"). Idempotent on
+        # evaluation. Dashboard: per graded question with real-token overage
+        # (tool_cost_estimator "copy_check_evaluation"); API: every page of the
+        # copy at a fixed price ("copy_check_evaluation_api"). Idempotent on
         # process_id so a retried complete callback never double-charges, and
-        # best-effort so a billing error never fails a delivered evaluation.
+        # best-effort so a billing error never fails a delivered evaluation
+        # (the nightly reconciliation flags a completed copy left unbilled).
         # Cancelled/failed copies are intentionally not charged.
+        plan = charge_plan(billing, typed=False, num_questions=evaluated,
+                           layout_pages=_layout_page_count(layout_map))
+        if plan is None:
+            logger.warning("copy-check %s: API copy with no page count; not billed", process_id)
+            return RUN_NO_CHARGE
         record_tool_billing(
-            tool_key="copy_check_evaluation",
-            tool_params={"num_questions": evaluated},
             request_type=RequestType.EVALUATION,
             model=(preferred_model or DEFAULT_MODEL),
             prompt_tokens=grader.prompt_tokens,
@@ -588,15 +824,24 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             institute_id=institute_id,
             request_id=job_id,
             idempotency_key=process_id,
+            **plan,
         )
+        return RUN_BILLED
     except (cancellation.Cancelled, OcrCancelled):
         logger.info(f"copy-check job {job_id} cancelled")
         await _stop_heartbeat()
-        await callbacks.failed(callback_base, process_id, job_id, "Cancelled by user")
+        await callbacks.failed(callback_base, process_id, job_id, "Cancelled by user",
+                               error_code=FAILURE_CANCELLED)
+        return RUN_FAILED
     except Exception as e:
-        logger.exception(f"copy-check job {job_id} failed")
+        if isinstance(e, CopyCheckFailure):
+            logger.warning("copy-check job %s failed (%s): %s", job_id, e.error_code, e)
+        else:
+            logger.exception(f"copy-check job {job_id} failed")
         await _stop_heartbeat()
-        await callbacks.failed(callback_base, process_id, job_id, str(e))
+        await callbacks.failed(callback_base, process_id, job_id, redact_urls(str(e)),
+                               error_code=error_code_for(e))
+        return RUN_FAILED
     finally:
         heartbeat.cancel()
         cancellation.cleanup(job_id, process_id=process_id)

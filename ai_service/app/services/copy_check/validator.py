@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -518,3 +518,41 @@ def validate_and_cap(
                           if r and str(r) in idx] or None,
         "status": "COMPLETED",
     }
+
+
+def _criterion_key(name: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(name or "").lower()).strip()
+
+
+def attach_criteria_max(verdict: dict[str, Any], rubric: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Give each criteria_breakdown item the `max` of its criterion in the
+    rubric the question was graded against (spec 7.8, T1.13).
+
+    Matched by name (case and punctuation ignored). When names do not match
+    but the grader returned exactly one item per rubric criterion, items are
+    paired in order (the prompt asks for the rubric's order). Anything still
+    unmatched gets max None rather than a guess. In place; returns verdict."""
+    breakdown = verdict.get("criteria_breakdown") or []
+    items = [it for it in (rubric or {}).get("rubric") or [] if isinstance(it, dict)]
+    if not breakdown:
+        return verdict
+    maxima: dict[str, float] = {}
+    ordered: list[Optional[float]] = []
+    for it in items:
+        value = coerce_number(it.get("max_marks"), float("nan"))
+        value = None if value != value else round(value, 2)
+        ordered.append(value)
+        key = _criterion_key(it.get("criteria_name"))
+        if key and value is not None and key not in maxima:
+            maxima[key] = value
+    by_name = [maxima.get(_criterion_key(c.get("criteria_name"))) if isinstance(c, dict) else None
+               for c in breakdown]
+    positional = len(ordered) == len(breakdown)
+    for i, c in enumerate(breakdown):
+        if not isinstance(c, dict):
+            continue
+        value = by_name[i]
+        if value is None and positional:
+            value = ordered[i]
+        c["max"] = value
+    return verdict

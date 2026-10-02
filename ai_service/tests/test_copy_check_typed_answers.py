@@ -47,7 +47,7 @@ def test_prompt_carries_the_typed_answer_and_word_count():
 
 
 def test_copy_request_still_needs_a_pdf_but_typed_does_not():
-    base = {"process_id": "p", "attempt_id": "a", "assessment_id": "x",
+    base = {"process_id": "p", "attempt_id": "a", "assessment_id": "x", "institute_id": "inst",
             "questions": [_q(answer="hi")], "callback_base_url": "http://cb"}
     with pytest.raises(ValueError):
         CopyCheckGradeRequest(**base)

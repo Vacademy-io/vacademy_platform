@@ -19,11 +19,13 @@ a different dpi than the map claims, or if pages differ in size.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Optional
 
@@ -4234,8 +4236,11 @@ def _append_summary(doc: Any, verdicts: list[dict[str, Any]],
     """
     import fitz
 
-    total = sum(float(v.get("marks_awarded") or 0) for v in verdicts)
-    out_of = sum(float(v.get("max_marks") or 0) for v in verdicts)
+    # Internal choice: a question outside its group's `attempt` is listed but
+    # not added up (T1.36). Without choice groups every question counts.
+    counted = [v for v in verdicts if v.get("counted", True)]
+    total = sum(float(v.get("marks_awarded") or 0) for v in counted)
+    out_of = sum(float(v.get("max_marks") or 0) for v in counted)
 
     page = doc.new_page()
     y = 56.0
@@ -4279,6 +4284,8 @@ def _append_summary(doc: Any, verdicts: list[dict[str, Any]],
                 f"{round(float(v.get('max_marks') or 0), 2)}")
         if str(v.get("status") or "").upper() == "FAILED":
             head += "   (needs manual review)"
+        elif not v.get("counted", True):
+            head += "   (not counted: internal choice)"
         page.insert_text((48, y), _latin1(head), fontsize=10, color=_HIGHLIGHT)
         y += 14
 
@@ -4417,6 +4424,20 @@ def _resize(pix: "fitz.Pixmap", factor: float) -> "fitz.Pixmap":
         doc.close()
 
 
+# PyMuPDF does not promise thread safety, so one checked copy is drawn at a
+# time per pod. It runs off the event loop (T0.27): drawing and shrinking a
+# 40-page copy is seconds of CPU, which on the loop froze every other copy's
+# callbacks and heartbeats, and the /grade and /inspect endpoints. The pool is
+# its own single worker, never the default asyncio executor: copies queued for
+# a render must not hold the threads job_guard's claim/heartbeat calls use.
+_RENDER_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="copy-check-render")
+
+
+def _render_sync(pdf_bytes: bytes, layout_map: dict[str, Any], verdicts: list[dict[str, Any]]) -> bytes:
+    annotated = build_annotated_pdf(pdf_bytes, layout_map, verdicts)
+    return shrink_scans(annotated)
+
+
 async def render_and_upload(
     pdf_url: str,
     layout_map: dict[str, Any],
@@ -4431,8 +4452,8 @@ async def render_and_upload(
     """
     try:
         pdf_bytes = await _fetch_pdf(pdf_url)
-        annotated = build_annotated_pdf(pdf_bytes, layout_map, verdicts)
-        annotated = shrink_scans(annotated)
+        annotated = await asyncio.get_running_loop().run_in_executor(
+            _RENDER_POOL, _render_sync, pdf_bytes, layout_map, verdicts)
         file_id = await _upload(annotated, f"evaluated-copy-{attempt_id}.pdf")
         if not file_id:
             logger.warning("copy-check annotator: media-service returned no id for attempt %s", attempt_id)

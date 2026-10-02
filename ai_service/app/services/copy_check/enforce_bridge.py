@@ -8,6 +8,11 @@ orchestrator, the renderer and every test keep the shape they already use.
 
     verdicts, total, report, unmarked = apply_enforcement(verdicts, layout_map)
 
+Marks: each verdict's `marks_awarded` is set to the mark enforce settled on,
+so the question callbacks and the totals carry the figure written on the copy
+(spec 7.8, gate G9). With choice groups each verdict also gets `counted`, and
+the grand total on the copy adds only the counted questions (T1.36).
+
 Placement names: enforce emits the marking guide's names (right_margin,
 below_line, ...); the validator's canonical field is `position` in the older
 vocabulary. Both are written so either reader works.
@@ -18,7 +23,8 @@ import logging
 import re
 from typing import Any
 
-from .enforce import SHORT_TYPES, enforce
+from . import choice_groups as _choice
+from .enforce import SHORT_TYPES, _fmt, enforce
 from .validator import VALID_POSITIONS, _POSITION_ALIASES
 
 logger = logging.getLogger(__name__)
@@ -164,9 +170,46 @@ def _question_meta(verdicts: list[dict[str, Any]],
     return out
 
 
+def _write_back_marks(verdicts: list[dict[str, Any]], awarded: list[float],
+                      meta: list[dict[str, Any]], report: list[str]) -> None:
+    """Put enforce's mark on each verdict. A FAILED verdict keeps its 0 and
+    status; a question with no max in the meta (enforce clamps those to 0) is
+    left as graded rather than zeroed. The criteria breakdown is rescaled so
+    it still adds up to the mark."""
+    max_of: dict[str, float] = {}
+    for m in meta:
+        try:
+            max_of[str(m.get("question_id"))] = float(m.get("max_marks") or 0)
+        except (TypeError, ValueError):
+            pass
+    for v, mark in zip(verdicts, awarded):
+        if str(v.get("status") or "").upper() == "FAILED":
+            continue
+        if max_of.get(str(v.get("question_id")), 0.0) <= 0:
+            continue
+        try:
+            before = float(v.get("marks_awarded") or 0)
+            vmax = float(v.get("max_marks") or mark)
+        except (TypeError, ValueError):
+            continue
+        mark = min(float(mark), vmax)
+        if abs(before - mark) <= 1e-9:
+            continue
+        v["marks_awarded"] = round(mark, 2)
+        report.append(f"Q{v.get('question_id')}: mark {before:g} -> {mark:g} (as written on the copy)")
+        breakdown = [c for c in (v.get("criteria_breakdown") or []) if isinstance(c, dict)]
+        bsum = sum(float(c.get("marks") or 0) for c in breakdown)
+        if bsum > 0:
+            for c in breakdown:
+                c["marks"] = round(float(c.get("marks") or 0) * mark / bsum, 2)
+        elif len(breakdown) == 1:
+            breakdown[0]["marks"] = round(mark, 2)
+
+
 def apply_enforcement(verdicts: list[dict[str, Any]], layout_map: dict[str, Any],
                       questions: list[dict[str, Any]] | None = None,
                       paper_max: float | None = None,
+                      choice_groups: list[Any] | None = None,
                       ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[str], list[str]]:
     meta = _question_meta(verdicts, questions)
     results = []
@@ -183,6 +226,18 @@ def apply_enforcement(verdicts: list[dict[str, Any]], layout_map: dict[str, Any]
         results.append(r)
     fixed = enforce(results, layout_map, meta, paper_max=paper_max)
     fixed.report[:0] = pre_report
+    _write_back_marks(verdicts, fixed.awarded, meta, fixed.report)
+    if choice_groups:
+        flags = _choice.counted_flags(verdicts, choice_groups, layout_map)
+        for v in verdicts:
+            v["counted"] = flags.get(str(v.get("question_id")), True)
+        if fixed.total:
+            mx_total = (paper_max if paper_max is not None
+                        else sum(float(m.get("max_marks") or 0) for m in meta))
+            fixed.total["text"] = f"{_fmt(_choice.counted_awarded(verdicts))}/{_fmt(mx_total)}"
+        dropped = [str(v.get("question_id")) for v in verdicts if not v.get("counted", True)]
+        if dropped:
+            fixed.report.append(f"choice groups: not counted {', '.join(dropped)}")
 
     by_q: dict[str, list[dict[str, Any]]] = {}
     for a in fixed.annotations:

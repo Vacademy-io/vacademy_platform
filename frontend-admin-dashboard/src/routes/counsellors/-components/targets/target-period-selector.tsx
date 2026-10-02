@@ -33,6 +33,8 @@ export function TargetPeriodSelector({
     onChange: (next: TargetPeriodValue) => void;
 }) {
     const { t } = useTranslation('counsellorsTargetsPeriodSelector');
+    // Size token sits outside cn(): tailwind-merge reads text-caption/text-body/… as a text
+    // colour and drops it when a text-colour class follows, so it would never apply.
     const options = buildOptions(t);
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -42,12 +44,12 @@ export function TargetPeriodSelector({
                         key={o.key}
                         type="button"
                         onClick={() => onChange({ ...value, periodType: o.key })}
-                        className={cn(
-                            'px-3 py-1.5 text-caption font-medium',
+                        className={`text-caption ${cn(
+                            'px-3 py-1.5 font-medium',
                             value.periodType === o.key
                                 ? 'bg-primary-500 text-white'
                                 : 'bg-white text-neutral-700 hover:bg-neutral-50'
-                        )}
+                        )}`}
                     >
                         {o.label}
                     </button>

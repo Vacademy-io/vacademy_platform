@@ -1,7 +1,8 @@
 import { createLazyFileRoute, useNavigate, useParams } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
@@ -12,10 +13,8 @@ import { toast } from 'sonner';
 import {
     MagnifyingGlass,
     User,
-    UsersThree,
     ChatCircleText,
     ArrowsClockwise,
-    Crown,
     ChartLineUp,
     Phone,
     SquaresFour,
@@ -54,6 +53,20 @@ import { TargetProgress } from './-components/targets/target-progress';
 import { TargetsSettingsDialog } from './-components/targets/targets-settings-dialog';
 import { CounsellorTargetsTab } from './-components/targets/counsellor-targets-tab';
 import type { TargetProgressItem } from './-services/counsellor-target-services';
+import {
+    COUNSELLOR_DASHBOARD_QUERY_KEY,
+    useCounsellorDashboardStats,
+} from './-components/dashboard/use-counsellor-dashboard-stats';
+import { CounsellorKpiRow } from './-components/dashboard/counsellor-kpi-row';
+import { NeedsAttentionPanel } from './-components/dashboard/needs-attention-panel';
+import { CounsellorSummaryStrip } from './-components/dashboard/counsellor-summary-strip';
+import {
+    buildAttentionItems,
+    buildStatsByUser,
+    formatCount,
+    formatRate,
+    type CounsellorStats,
+} from './-utils/dashboard-stats';
 
 export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
@@ -241,6 +254,29 @@ export function WorkbenchPage() {
         targetPeriod
     );
 
+    // Dashboard numbers (KPI row, needs-attention list, per-person figures on
+    // cards/rows and in the drawer). Same period as the targets above.
+    const dashboard = useCounsellorDashboardStats(instituteId ?? undefined, targetPeriod);
+    const periodName = periodDisplayName(targetPeriod, t);
+    const openCounsellorId = openCounsellor?.user_id;
+    // Memo deps are the query results themselves; the `?? []` fallbacks above
+    // are fresh arrays every render.
+    const candidatesData = candidatesQuery.data;
+    const counsellorsData = counsellorsQuery.data;
+    const statsByUser = useMemo(() => {
+        const roster = [...(candidatesData?.content ?? []), ...(counsellorsData?.content ?? [])];
+        const ids = new Set(roster.map((c) => c.user_id));
+        if (openCounsellorId) ids.add(openCounsellorId);
+        return buildStatsByUser([...ids], dashboard.performance, dashboard.aging);
+    }, [candidatesData, counsellorsData, openCounsellorId, dashboard.performance, dashboard.aging]);
+    const attentionItems = useMemo(() => {
+        const all = candidatesData?.content ?? [];
+        return buildAttentionItems(
+            dashboard.aging?.by_counsellor ?? [],
+            all.length > 0 ? all : counsellorsData?.content ?? []
+        );
+    }, [dashboard.aging, candidatesData, counsellorsData]);
+
     // URL → drawer sync. When the URL carries a userId, find that counsellor
     // in the full candidate list (settings-side size=500 fetch) and pin the
     // drawer to them. Falls back to the current page if the candidate set
@@ -295,6 +331,7 @@ export function WorkbenchPage() {
             queryClient.invalidateQueries({
                 queryKey: ['workbench-counsellors-candidates', instituteId],
             });
+            queryClient.invalidateQueries({ queryKey: [COUNSELLOR_DASHBOARD_QUERY_KEY] });
             toast.success(t('toast.markedActive'));
         },
         onError: (e) => {
@@ -382,6 +419,8 @@ export function WorkbenchPage() {
             queryKey: ['workbench-counsellors-candidates', instituteId],
         });
         queryClient.invalidateQueries({ queryKey: ['workbench-leads', instituteId] });
+        // Moving leads changes who owns them, so the per-person numbers move too.
+        queryClient.invalidateQueries({ queryKey: [COUNSELLOR_DASHBOARD_QUERY_KEY] });
     }
 
     /**
@@ -413,11 +452,12 @@ export function WorkbenchPage() {
 
     if (!instituteId) return null;
 
-    // Stat chips count over ALL counsellors, not just the current page.
-    // Fall back to current page values until the all-candidates query
-    // resolves, so the chips don't flash zeros on first load.
+    // Header counts and the "Assigned leads" KPI cover ALL counsellors, not
+    // just the current page. Fall back to current page values until the
+    // all-candidates query resolves, so they don't flash zeros on first load.
     const statSource = candidates.length > 0 ? candidates : counsellors;
     const activeCount = statSource.filter((c) => c.is_active).length;
+    const teamTotal = candidatesQuery.data?.totalElements ?? totalCounsellors;
     const totalOpenLeads = statSource.reduce((sum, c) => sum + c.open_leads_count, 0);
 
     return (
@@ -432,18 +472,50 @@ export function WorkbenchPage() {
                     <h1 className="text-h1 font-medium text-neutral-900">
                         {teamQuery.data?.team_name ?? t('header.titleFallback')}
                     </h1>
-                    <p className="mt-1 text-subtitle text-neutral-500">{t('header.subtitle')}</p>
+                    <p className="mt-1 text-subtitle text-neutral-500">
+                        {t('header.teamSize', { count: teamTotal, active: activeCount })}
+                        {' · '}
+                        {t('header.subtitle')}
+                    </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <StatChip icon={UsersThree} label={t('stats.counsellors')} value={totalCounsellors} />
-                    <StatChip icon={Crown} label={t('stats.active')} value={activeCount} tone="success" />
-                    <StatChip
-                        icon={ChatCircleText}
-                        label={t('stats.assignedLeads')}
-                        value={totalOpenLeads}
-                        tone="primary"
-                    />
+                {/* The period drives the targets AND the dashboard numbers below. */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-caption font-semibold text-neutral-500">
+                        {t('header.periodLabel')}
+                    </span>
+                    <TargetPeriodSelector value={targetPeriod} onChange={setTargetPeriod} />
+                    <button
+                        type="button"
+                        onClick={() => setTargetsDialogOpen(true)}
+                        className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-700 hover:bg-primary-100"
+                    >
+                        <Target size={14} /> {t('targets.setTargets')}
+                    </button>
                 </div>
+            </div>
+
+            {/* ── At-a-glance numbers + what needs attention ─────── */}
+            <div className="mb-6 flex flex-col gap-4">
+                <CounsellorKpiRow
+                    totals={dashboard.totals}
+                    assignedLeads={totalOpenLeads}
+                    assignedLoading={counsellorsQuery.isLoading}
+                    statsLoading={dashboard.isLoading}
+                    periodName={periodName}
+                    periodIncomplete={dashboard.periodIncomplete}
+                    onOpenFollowUps={() => void navigate({ to: '/audience-manager/follow-ups' })}
+                />
+                <NeedsAttentionPanel
+                    items={attentionItems}
+                    loading={dashboard.isLoading || counsellorsQuery.isLoading}
+                    onViewFollowUps={(userId) =>
+                        void navigate({
+                            to: '/audience-manager/follow-ups',
+                            search: { counsellor: userId },
+                        })
+                    }
+                    onReassign={(userId, name) => void startReassignLeads(userId, name)}
+                />
             </div>
 
             {/* ── Search + filter bar ────────────────────────────── */}
@@ -466,25 +538,17 @@ export function WorkbenchPage() {
                             key={s}
                             type="button"
                             onClick={() => setStatusFilter(s)}
-                            className={cn(
-                                'px-3 py-1.5 text-caption font-medium capitalize',
+                            className={`text-caption ${cn(
+                                'px-3 py-1.5 font-medium capitalize',
                                 statusFilter === s
                                     ? 'bg-primary-500 text-white'
                                     : 'bg-white text-neutral-700 hover:bg-neutral-50'
-                            )}
+                            )}`}
                         >
                             {t(`statusFilter.${s}`)}
                         </button>
                     ))}
                 </div>
-                <TargetPeriodSelector value={targetPeriod} onChange={setTargetPeriod} />
-                <button
-                    type="button"
-                    onClick={() => setTargetsDialogOpen(true)}
-                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-700 hover:bg-primary-100"
-                >
-                    <Target size={14} /> {t('targets.setTargets')}
-                </button>
                 <div
                     className="ms-auto flex overflow-hidden rounded-md border border-neutral-300"
                     role="group"
@@ -495,12 +559,12 @@ export function WorkbenchPage() {
                         onClick={() => changeViewMode('cards')}
                         title={t('viewMode.cardTitle')}
                         aria-pressed={viewMode === 'cards'}
-                        className={cn(
-                            'flex items-center gap-1.5 px-3 py-1.5 text-caption font-medium',
+                        className={`text-caption ${cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 font-medium',
                             viewMode === 'cards'
                                 ? 'bg-primary-500 text-white'
                                 : 'bg-white text-neutral-700 hover:bg-neutral-50'
-                        )}
+                        )}`}
                     >
                         <SquaresFour size={14} /> {t('viewMode.cards')}
                     </button>
@@ -509,12 +573,12 @@ export function WorkbenchPage() {
                         onClick={() => changeViewMode('list')}
                         title={t('viewMode.listTitle')}
                         aria-pressed={viewMode === 'list'}
-                        className={cn(
-                            'flex items-center gap-1.5 px-3 py-1.5 text-caption font-medium',
+                        className={`text-caption ${cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 font-medium',
                             viewMode === 'list'
                                 ? 'bg-primary-500 text-white'
                                 : 'bg-white text-neutral-700 hover:bg-neutral-50'
-                        )}
+                        )}`}
                     >
                         <ListIcon size={14} /> {t('viewMode.list')}
                     </button>
@@ -536,6 +600,8 @@ export function WorkbenchPage() {
                 <CounsellorTable
                     counsellors={counsellors}
                     instituteId={instituteId}
+                    statsByUser={statsByUser}
+                    statsLoading={dashboard.isLoading}
                     progressByUser={targetProgress.byUser}
                     progressLoading={targetProgress.isFetching}
                     statusPendingId={
@@ -563,6 +629,8 @@ export function WorkbenchPage() {
                             key={c.user_id}
                             counsellor={c}
                             instituteId={instituteId}
+                            stats={statsByUser[c.user_id]}
+                            statsLoading={dashboard.isLoading}
                             progress={targetProgress.byUser[c.user_id]}
                             progressLoading={targetProgress.isFetching}
                             onOpen={() => openDrawer(c)}
@@ -607,6 +675,8 @@ export function WorkbenchPage() {
                     if (!o) closeDrawer();
                 }}
                 counsellor={openCounsellor}
+                stats={openCounsellorId ? statsByUser[openCounsellorId] : undefined}
+                periodName={periodName}
                 tab={detailTab}
                 onTabChange={setDetailTab}
                 instituteId={instituteId}
@@ -654,32 +724,52 @@ export function WorkbenchPage() {
     );
 }
 
-// ─── Stat chip ────────────────────────────────────────────────
+// Styling note for this file: where a className is `text-caption ${cn(...)}`, the size
+// token sits outside cn() on purpose. tailwind-merge reads text-caption/text-body/… as a
+// text colour and drops it when a text-colour class follows, so it would never apply.
 
-function StatChip({
-    icon: Icon,
+// ─── Period name ──────────────────────────────────────────────
+
+/** Lower-case period name used inside labels: "this week", "this month", "1 Sep – 10 Sep". */
+function periodDisplayName(period: TargetPeriodValue, t: TFunction): string {
+    if (period.periodType === 'WEEK') return t('period.week');
+    if (period.periodType === 'MONTH') return t('period.month');
+    if (period.from && period.to) {
+        const fmt = (iso: string) =>
+            new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+            });
+        return t('period.range', { from: fmt(period.from), to: fmt(period.to) });
+    }
+    return t('period.custom');
+}
+
+// ─── Small metric cell (cards) ────────────────────────────────
+
+function MetricCell({
     label,
     value,
     tone = 'neutral',
+    loading,
 }: {
-    icon: typeof UsersThree;
     label: string;
-    value: number;
-    tone?: 'neutral' | 'primary' | 'success';
+    value: string;
+    tone?: 'neutral' | 'danger';
+    loading?: boolean;
 }) {
-    const toneClass =
-        tone === 'primary'
-            ? 'bg-primary-50 text-primary-700'
-            : tone === 'success'
-              ? 'bg-success-50 text-success-700'
-              : 'bg-neutral-100 text-neutral-700';
     return (
-        <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 ${toneClass}`}>
-            <Icon size={16} />
-            <span className="text-caption">
-                <span className="font-semibold">{value}</span>{' '}
-                <span className="opacity-70">{label}</span>
-            </span>
+        <div className="min-w-0">
+            <div className="truncate text-neutral-500">{label}</div>
+            <div
+                className={`text-body ${cn(
+                    'font-semibold tabular-nums',
+                    loading && 'text-neutral-300',
+                    !loading && (tone === 'danger' ? 'text-danger-600' : 'text-neutral-900')
+                )}`}
+            >
+                {loading ? '…' : value}
+            </div>
         </div>
     );
 }
@@ -689,6 +779,8 @@ function StatChip({
 function CounsellorCard({
     counsellor,
     instituteId,
+    stats,
+    statsLoading,
     progress,
     progressLoading,
     onOpen,
@@ -698,6 +790,8 @@ function CounsellorCard({
 }: {
     counsellor: WorkbenchCounsellor;
     instituteId: string;
+    stats: CounsellorStats | undefined;
+    statsLoading: boolean;
     progress: TargetProgressItem[] | undefined;
     progressLoading: boolean;
     onOpen: () => void;
@@ -737,6 +831,11 @@ function CounsellorCard({
                             </div>
                         )
                     )}
+                    {counsellor.team_name && (
+                        <div className="truncate text-caption text-neutral-500">
+                            {t('card.teamLine', { team: counsellor.team_name })}
+                        </div>
+                    )}
                 </div>
                 <CounsellorRatingBadge
                     instituteId={instituteId}
@@ -745,19 +844,35 @@ function CounsellorCard({
                 />
             </div>
 
+            {/* Workload right now (assigned, overdue, due today) + converted in the period. */}
             <div className="grid grid-cols-2 gap-3 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 text-caption">
-                <div>
-                    <div className="text-neutral-500">{t('card.assignedLeads')}</div>
-                    <div className="text-body font-semibold text-neutral-900">
-                        {counsellor.open_leads_count}
-                    </div>
-                </div>
-                <div>
-                    <div className="text-neutral-500">{t('card.team')}</div>
-                    <div className="truncate text-body font-medium text-neutral-700">
-                        {counsellor.team_name ?? '—'}
-                    </div>
-                </div>
+                <MetricCell
+                    label={t('card.assignedLeads')}
+                    value={formatCount(counsellor.open_leads_count)}
+                />
+                <MetricCell
+                    label={t('card.overdueFollowUps')}
+                    value={formatCount(stats?.overdueFollowups)}
+                    tone={(stats?.overdueFollowups ?? 0) > 0 ? 'danger' : 'neutral'}
+                    loading={statsLoading}
+                />
+                <MetricCell
+                    label={t('card.dueToday')}
+                    value={formatCount(stats?.dueTodayFollowups)}
+                    loading={statsLoading}
+                />
+                <MetricCell
+                    label={t('card.converted')}
+                    value={
+                        stats?.converted != null && stats.newLeads != null
+                            ? t('card.convertedOf', {
+                                  converted: formatCount(stats.converted),
+                                  total: formatCount(stats.newLeads),
+                              })
+                            : '—'
+                    }
+                    loading={statsLoading}
+                />
             </div>
 
             <div className="border-t border-neutral-100 px-4 py-2.5">
@@ -767,10 +882,10 @@ function CounsellorCard({
 
             <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-2.5">
                 <span
-                    className={cn(
-                        'flex items-center gap-1.5 text-caption font-medium',
+                    className={`text-caption ${cn(
+                        'flex items-center gap-1.5 font-medium',
                         counsellor.is_active ? 'text-success-700' : 'text-neutral-500'
-                    )}
+                    )}`}
                 >
                     <span
                         className={cn(
@@ -808,12 +923,12 @@ function CounsellorCard({
                             }
                         }}
                         disabled={statusLoading}
-                        className={cn(
-                            'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
+                        className={`text-caption ${cn(
+                            'rounded-md px-2.5 py-1 font-medium transition-colors',
                             counsellor.is_active
                                 ? 'text-danger-600 hover:bg-danger-50'
                                 : 'text-success-700 hover:bg-success-50'
-                        )}
+                        )}`}
                     >
                         {statusLoading
                             ? '…'
@@ -832,6 +947,8 @@ function CounsellorCard({
 function CounsellorTable({
     counsellors,
     instituteId,
+    statsByUser,
+    statsLoading,
     progressByUser,
     progressLoading,
     statusPendingId,
@@ -841,6 +958,8 @@ function CounsellorTable({
 }: {
     counsellors: WorkbenchCounsellor[];
     instituteId: string;
+    statsByUser: Record<string, CounsellorStats>;
+    statsLoading: boolean;
     progressByUser: Record<string, TargetProgressItem[]>;
     progressLoading: boolean;
     statusPendingId: string | null;
@@ -856,9 +975,10 @@ function CounsellorTable({
                 <thead className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase tracking-wide text-neutral-500">
                     <tr>
                         <th className="px-3 py-2.5 text-start">{t('table.colCounsellor')}</th>
-                        <th className="px-3 py-2.5 text-start">{t('table.colTeam')}</th>
                         <th className="px-3 py-2.5 text-end">{t('table.colRating')}</th>
                         <th className="px-3 py-2.5 text-end">{t('table.colAssignedLeads')}</th>
+                        <th className="px-3 py-2.5 text-end">{t('table.colFollowUps')}</th>
+                        <th className="px-3 py-2.5 text-end">{t('table.colConverted')}</th>
                         <th className="px-3 py-2.5 text-start">{t('table.colTargets')}</th>
                         <th className="px-3 py-2.5 text-start">{t('table.colStatus')}</th>
                         <th className="px-3 py-2.5 text-end">{t('table.colActions')}</th>
@@ -868,6 +988,8 @@ function CounsellorTable({
                     {counsellors.map((c) => {
                         const name = c.full_name || t('card.unnamed');
                         const pending = statusPendingId === c.user_id;
+                        const stats = statsByUser[c.user_id];
+                        const overdue = stats?.overdueFollowups ?? null;
                         return (
                             <tr
                                 key={c.user_id}
@@ -885,13 +1007,12 @@ function CounsellorTable({
                                                 {name}
                                             </div>
                                             <div className="truncate text-caption text-neutral-500">
-                                                {c.email ?? c.role_label ?? '—'}
+                                                {[c.team_name, c.email ?? c.role_label]
+                                                    .filter(Boolean)
+                                                    .join(' · ') || '—'}
                                             </div>
                                         </div>
                                     </div>
-                                </td>
-                                <td className="px-3 py-2.5 text-neutral-700">
-                                    {c.team_name ?? '—'}
                                 </td>
                                 <td className="px-3 py-2.5 text-right">
                                     <span className="inline-flex">
@@ -902,8 +1023,56 @@ function CounsellorTable({
                                         />
                                     </span>
                                 </td>
-                                <td className="px-3 py-2.5 text-right text-body font-semibold text-neutral-900">
-                                    {c.open_leads_count}
+                                <td className="px-3 py-2.5 text-right text-body font-semibold tabular-nums text-neutral-900">
+                                    {formatCount(c.open_leads_count)}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                    {statsLoading ? (
+                                        <span className="text-neutral-300">…</span>
+                                    ) : (
+                                        <div className="leading-tight">
+                                            <div
+                                                className={`text-body ${cn(
+                                                    'font-semibold tabular-nums',
+                                                    overdue != null && overdue > 0
+                                                        ? 'text-danger-600'
+                                                        : 'text-neutral-900'
+                                                )}`}
+                                            >
+                                                {overdue != null
+                                                    ? t('table.overdueValue', {
+                                                          count: overdue,
+                                                      })
+                                                    : '—'}
+                                            </div>
+                                            {stats?.dueTodayFollowups != null && (
+                                                <div className="text-caption text-neutral-500">
+                                                    {t('table.dueTodayValue', {
+                                                        count: stats.dueTodayFollowups,
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                    {statsLoading ? (
+                                        <span className="text-neutral-300">…</span>
+                                    ) : (
+                                        <div className="leading-tight">
+                                            <div className="text-body font-semibold tabular-nums text-neutral-900">
+                                                {formatCount(stats?.converted)}
+                                            </div>
+                                            {stats?.newLeads != null && stats.newLeads > 0 && (
+                                                <div className="text-caption text-neutral-500">
+                                                    {t('table.convertedSub', {
+                                                        rate: formatRate(stats.conversionRate),
+                                                        total: formatCount(stats.newLeads),
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="min-w-44 px-3 py-2.5">
                                     <TargetProgress
@@ -914,10 +1083,10 @@ function CounsellorTable({
                                 </td>
                                 <td className="px-3 py-2.5">
                                     <span
-                                        className={cn(
-                                            'inline-flex items-center gap-1.5 text-caption font-medium',
+                                        className={`text-caption ${cn(
+                                            'inline-flex items-center gap-1.5 font-medium',
                                             c.is_active ? 'text-success-700' : 'text-neutral-500'
-                                        )}
+                                        )}`}
                                     >
                                         <span
                                             className={cn(
@@ -961,12 +1130,12 @@ function CounsellorTable({
                                             }
                                         }}
                                         disabled={pending}
-                                        className={cn(
-                                            'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
+                                        className={`text-caption ${cn(
+                                            'rounded-md px-2.5 py-1 font-medium transition-colors',
                                             c.is_active
                                                 ? 'text-danger-600 hover:bg-danger-50'
                                                 : 'text-success-700 hover:bg-success-50'
-                                        )}
+                                        )}`}
                                     >
                                         {pending
                                             ? '…'
@@ -990,6 +1159,8 @@ function DetailDrawer({
     open,
     onOpenChange,
     counsellor,
+    stats,
+    periodName,
     tab,
     onTabChange,
     instituteId,
@@ -998,6 +1169,8 @@ function DetailDrawer({
     open: boolean;
     onOpenChange: (open: boolean) => void;
     counsellor: WorkbenchCounsellor | null;
+    stats: CounsellorStats | undefined;
+    periodName: string;
     tab: DetailTab;
     onTabChange: (t: DetailTab) => void;
     instituteId: string;
@@ -1031,6 +1204,12 @@ function DetailDrawer({
                     />
                     {/* SheetContent renders its own close button (X) at top-right. */}
                 </div>
+
+                <CounsellorSummaryStrip
+                    assignedLeads={counsellor.open_leads_count}
+                    stats={stats}
+                    periodName={periodName}
+                />
 
                 <Tabs
                     value={tab}

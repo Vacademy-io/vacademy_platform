@@ -31,6 +31,14 @@
             "instructionPrefix": "— सूची अपडेट करने के लिए",
             "applyLabel": "लागू करें",
             "instructionSuffix": "दबाएँ।"
+        },
+        "source": {
+            "label": "स्रोत",
+            "options": {
+                "DASHBOARD": "डैशबोर्ड",
+                "API": "API"
+            },
+            "emptyOnPage": "इस पेज पर इस स्रोत का कोई मूल्यांकन नहीं है। दूसरा पेज देखें या स्रोत फ़िल्टर हटाएँ।"
         }
     },
     "dialogs": {

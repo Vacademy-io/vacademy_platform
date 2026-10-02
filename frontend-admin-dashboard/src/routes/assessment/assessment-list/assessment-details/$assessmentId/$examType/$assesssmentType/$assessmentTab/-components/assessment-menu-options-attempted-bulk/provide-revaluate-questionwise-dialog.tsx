@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useSubmissionsBulkActionsDialogStoreAttempted } from '../bulk-actions-zustand-store/useSubmissionsBulkActionsDialogStoreAttempted';
 import { toast } from 'sonner';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface ProvideDialogDialogProps {
     trigger: ReactNode;
@@ -212,9 +213,10 @@ export const ProvideRevaluateQuestionWiseDialogContent = () => {
                                     <TableCell>{index + 1}</TableCell>
                                     <TableCell
                                         dangerouslySetInnerHTML={{
-                                            __html:
+                                            __html: sanitizeRichHtml(
                                                 question.assessment_question_preview_dto
-                                                    .questionName || '',
+                                                    .questionName
+                                            ),
                                         }}
                                     />
                                     <TableCell>

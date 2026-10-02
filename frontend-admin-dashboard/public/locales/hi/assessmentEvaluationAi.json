@@ -78,7 +78,17 @@
         "pendingStatus": "लंबित",
         "failedGradeMessage": "AI इसे ग्रेड नहीं कर सका — आपकी समीक्षा आवश्यक है",
         "editedBadge": "संपादित",
-        "needsReviewBadge": "समीक्षा आवश्यक"
+        "needsReviewBadge": "समीक्षा आवश्यक",
+        "reviewMeta": {
+            "reviewedViaApiBy": "API के माध्यम से {{reviewer}} द्वारा समीक्षित",
+            "reviewedViaApi": "API के माध्यम से समीक्षित",
+            "reviewedBy": "{{reviewer}} द्वारा समीक्षित",
+            "reviewed": "समीक्षित",
+            "approvedViaApiBy": "API के माध्यम से {{reviewer}} द्वारा स्वीकृत",
+            "approvedViaApi": "API के माध्यम से स्वीकृत",
+            "approvedBy": "{{reviewer}} द्वारा स्वीकृत",
+            "approved": "स्वीकृत"
+        }
     },
     "teacherReview": {
         "failedTitle": "इस प्रश्न को स्वचालित रूप से ग्रेड नहीं किया गया।",

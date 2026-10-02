@@ -36,6 +36,7 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
+import { ASSESSMENT_SOURCE_FILTERS } from '../-utils.ts/assessment-source';
 
 export interface SelectedQuestionPaperFilters {
     name: string | { id: string; name: string }[];
@@ -140,6 +141,14 @@ export const ScheduleTestMainComponent = ({
 
     // Whether the admin changed a filter since the last Apply — see hasUnappliedFilters.
     const [filtersTouched, setFiltersTouched] = useState(false);
+
+    // Source (All / Dashboard / API). The list endpoint has no source parameter, so this
+    // filters the loaded page client-side and takes effect immediately (no Apply needed).
+    const [sourceFilter, setSourceFilter] = useState<MyFilterOption[]>([]);
+    const sourceFilterOptions: MyFilterOption[] = ASSESSMENT_SOURCE_FILTERS.map((value) => ({
+        id: value,
+        name: t(`filters.source.options.${value}`),
+    }));
 
     const [scheduleTestTabsData, setScheduleTestTabsData] = useState<ScheduleTestTab[]>([
         {
@@ -285,6 +294,7 @@ export const ScheduleTestMainComponent = ({
 
     const handleResetFilters = () => {
         setFiltersTouched(false);
+        setSourceFilter([]);
         setSelectedQuestionPaperFilters({
             name: '',
             // Keep the batch selection if in course outline mode
@@ -680,6 +690,12 @@ export const ScheduleTestMainComponent = ({
                                             handleFilterChange('evaluation_types', items)
                                         }
                                     />
+                                    <ScheduleTestFilters
+                                        label={t('filters.source.label')}
+                                        data={sourceFilterOptions}
+                                        selectedItems={sourceFilter}
+                                        onSelectionChange={setSourceFilter}
+                                    />
                                 </div>
                                 {/* Apply / Clear sit OUTSIDE the scrolling cluster. Inside it
                                     they scrolled out of reach on a narrow window — the one
@@ -733,6 +749,7 @@ export const ScheduleTestMainComponent = ({
                             handlePageChange={handlePageChange}
                             selectedTab={selectedTab}
                             handleRefetchData={handleRefetchData}
+                            sourceFilter={sourceFilter.map((option) => option.id)}
                         />
                     ))}
                 </Tabs>

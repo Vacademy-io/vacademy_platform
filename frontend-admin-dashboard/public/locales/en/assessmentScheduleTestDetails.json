@@ -69,5 +69,9 @@
         "description": "Learners scan the code or open the link to register and take the assessment.",
         "copy": "Copy",
         "download": "Download QR code"
+    },
+    "source": {
+        "api": "Source: API",
+        "apiTooltip": "Created through the AI Evaluation API"
     }
 }

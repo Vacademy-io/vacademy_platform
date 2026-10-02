@@ -1,8 +1,0 @@
-{
-    "steps": {
-        "basicInfo": "Informations de base",
-        "addQuestion": "Ajouter une question"
-    },
-    "pageTitle": "Créer une évaluation",
-    "pageDescription": "Cette page permet de créer une évaluation pour les étudiants via l'administration."
-}

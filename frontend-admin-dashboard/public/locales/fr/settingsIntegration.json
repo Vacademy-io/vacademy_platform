@@ -144,5 +144,88 @@
         "syncedLeads_one": "{{count}} prospect synchronisé depuis Meta",
         "syncedLeads_many": "{{count}} prospects synchronisés depuis Meta",
         "syncedLeads_other": "{{count}} prospects synchronisés depuis Meta"
+    },
+    "apiKeys": {
+        "title": "Clés API",
+        "description": "Clés de l'API d'évaluation IA. Un système partenaire (votre ERP, OSM ou fournisseur de séries de tests) utilise une clé pour créer des examens, envoyer des copies et lire les notes IA de cet établissement.",
+        "createButton": "Créer une clé",
+        "loading": "Chargement des clés API…",
+        "loadError": "Impossible de charger les clés API.",
+        "retry": "Réessayer",
+        "disabled": {
+            "title": "L'API d'évaluation n'est pas activée",
+            "description": "Contactez Vacademy pour activer l'API d'évaluation",
+            "checkAgain": "Vérifier à nouveau"
+        },
+        "empty": {
+            "title": "Aucune clé API pour l'instant",
+            "description": "Créez une clé et partagez-la avec le système qui appellera l'API d'évaluation."
+        },
+        "table": {
+            "name": "Nom",
+            "prefix": "Clé",
+            "scopes": "Autorisations",
+            "createdBy": "Créée par",
+            "createdByYou": "Vous",
+            "lastUsed": "Dernière utilisation",
+            "status": "Statut",
+            "neverUsed": "Jamais",
+            "statusActive": "Active",
+            "statusRevoked": "Révoquée",
+            "statusExpired": "Expirée",
+            "revoke": "Révoquer",
+            "expires": "Expire le {{date}}",
+            "dailyCap": "Jusqu'à {{cap}} copies par jour",
+            "activeCount": "Clés actives : {{active}} sur 50"
+        },
+        "scopes": {
+            "evaluation_read": "Lire les examens, soumissions, résultats et crédits",
+            "evaluation_write": "Créer des examens, questions, barèmes, candidats, téléversements et soumissions",
+            "evaluation_review": "Modifier les notes IA et les approuver",
+            "evaluation_finalize": "Finaliser et annuler la finalisation des résultats"
+        },
+        "form": {
+            "heading": "Créer une clé API",
+            "nameLabel": "Nom de la clé",
+            "namePlaceholder": "ex. ERP de l'école",
+            "scopesLabel": "Autorisations",
+            "expiryLabel": "Expire le (facultatif)",
+            "capLabel": "Limite quotidienne de copies (facultatif)",
+            "capPlaceholder": "Limite de l'établissement",
+            "hint": "Laissez l'expiration vide pour une clé sans expiration. La limite quotidienne plafonne le nombre de copies que cette clé peut envoyer par jour, dans la limite de l'établissement.",
+            "cancel": "Annuler",
+            "submit": "Créer la clé",
+            "errors": {
+                "nameRequired": "Saisissez un nom pour la clé.",
+                "nameTooLong": "Le nom ne doit pas dépasser 120 caractères.",
+                "scopesRequired": "Choisissez au moins une autorisation.",
+                "expiryInvalid": "Saisissez une date d'expiration valide.",
+                "expiryInPast": "La date d'expiration doit être aujourd'hui ou plus tard.",
+                "capInvalid": "La limite quotidienne doit être un nombre entier supérieur à 0.",
+                "generic": "Vérifiez le formulaire et réessayez."
+            }
+        },
+        "issued": {
+            "heading": "Copiez votre clé API",
+            "warning": "Enregistrez cette clé maintenant. Elle n'est affichée qu'une seule fois et ne pourra plus être affichée. En cas de perte, révoquez-la et créez-en une nouvelle.",
+            "copy": "Copier",
+            "copiedShort": "Copiée",
+            "copied": "Clé API copiée",
+            "copyFailed": "Copie impossible. Sélectionnez la clé et copiez-la vous-même.",
+            "usage": "Envoyez-la dans l'en-tête X-API-Key à https://api.evalezy.com/v1.",
+            "done": "J'ai enregistré la clé",
+            "notCopiedWarning": "Vous n'avez pas encore copié cette clé. Fermez à nouveau pour l'abandonner ; elle ne pourra plus être affichée."
+        },
+        "revoke": {
+            "title": "Révoquer cette clé API ?",
+            "description": "« {{name}} » cessera de fonctionner d'ici une minute, et tout système qui l'utilise recevra une erreur. Cette action est irréversible.",
+            "cancel": "Annuler",
+            "confirm": "Révoquer la clé"
+        },
+        "toasts": {
+            "issueFailed": "Impossible de créer la clé API.",
+            "revoked": "Clé API révoquée",
+            "revokeFailed": "Impossible de révoquer la clé API."
+        }
     }
 }

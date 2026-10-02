@@ -5,6 +5,7 @@ import {
     CalendarBlank,
     CalendarCheck,
     CheckSquareOffset,
+    PlugsConnected,
     Timer,
     UsersThree,
 } from '@phosphor-icons/react';
@@ -34,6 +35,7 @@ import {
     SessionMetaRow,
 } from '@/routes/study-library/live-session/-components/session-card-shell';
 import { AssessmentTag, statusForTab, typeMetaFor } from './assessment-presentation';
+import { isApiSourced } from '../-utils.ts/assessment-source';
 
 /**
  * "26 Sep 2026, 6:15 PM" in the viewer's zone. Same UTC handling as
@@ -207,6 +209,13 @@ const ScheduleTestDetails = ({
                     onClick={(e) => e.stopPropagation()}
                 >
                     <AssessmentTag tone={type.tone}>{t(`types.${type.key}`)}</AssessmentTag>
+                    {isApiSourced(scheduleTestContent.source) ? (
+                        <span title={t('source.apiTooltip')}>
+                            <AssessmentTag tone="info" icon={<PlugsConnected size={12} />}>
+                                {t('source.api')}
+                            </AssessmentTag>
+                        </span>
+                    ) : null}
                     <AssessmentTag tone={status.tone} dot>
                         {t(`status.${status.key}`)}
                     </AssessmentTag>

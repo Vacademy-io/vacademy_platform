@@ -930,16 +930,6 @@ export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get
 // Migrated to ai_service: single-step audio → in-house transcribe → questions.
 export const GET_QUESTIONS_FROM_AUDIO = `${AI_SERVICE_BASE_URL}/ai/get-question-audio/audio-parser/audio-to-questions`;
 
-// Evaluation AI Free tool
-export const CREATE_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/create`;
-export const ADD_QUESTIONS_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/sections`;
-export const GET_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
-
-// Migrated to ai_service (metadata from assessment-service + 2-step LLM via
-// ai_task; model from registry). status/{taskId} maps PROGRESS→PROCESSING.
-export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/evaluate-assessment`;
-export const EVALUATION_TOOL_STATUS = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/status`;
-export const EVALUATION_TOOL_GET_QUESTION = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
 export const GET_QUESTIONS_FROM_TEXT = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/from-text`;
 // Lecture planner + feedback: migrated to ai_service (hard cut). Both kick-offs
 // and result polling are served by ai_service, which resolves the model from the

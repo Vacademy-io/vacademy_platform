@@ -62,6 +62,7 @@ import {
     filterByCampaignTypes,
 } from '@/routes/audience-manager/list/-utils/campaign-types';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { EvaluationApiKeysCard } from './EvaluationApiKeysCard';
 
 // ── Audience list hook ───────────────────────────────────────────────────────
 
@@ -1501,6 +1502,9 @@ export default function IntegrationSettings() {
                     {showAddGoogle && <AddGoogleForm onSaved={handleSaved} />}
                 </CardContent>
             </Card>
+
+            {/* ── AI Evaluation API keys (partner access, spec §6.3) ── */}
+            <EvaluationApiKeysCard />
 
             <ConnectorEditDialog
                 connector={editingConnector}

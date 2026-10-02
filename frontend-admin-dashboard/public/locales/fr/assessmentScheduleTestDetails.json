@@ -73,5 +73,9 @@
         "description": "Les apprenants scannent le code ou ouvrent le lien pour s'inscrire et passer l'évaluation.",
         "copy": "Copier",
         "download": "Télécharger le code QR"
+    },
+    "source": {
+        "api": "Source : API",
+        "apiTooltip": "Créé via l'API d'évaluation IA"
     }
 }

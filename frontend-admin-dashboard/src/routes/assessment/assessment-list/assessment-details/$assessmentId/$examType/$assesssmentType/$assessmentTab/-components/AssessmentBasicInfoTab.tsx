@@ -28,6 +28,7 @@ import {
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface InfoCardItem {
     icon: React.ComponentType<{ className?: string }>;
@@ -154,7 +155,7 @@ export const AssessmentBasicInfoTab = () => {
                     />
                     {instructionsHtml ? (
                         <div
-                            dangerouslySetInnerHTML={{ __html: instructionsHtml }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(instructionsHtml) }}
                             className="custom-html-content prose prose-sm mt-2 max-w-none text-slate-700"
                         />
                     ) : (

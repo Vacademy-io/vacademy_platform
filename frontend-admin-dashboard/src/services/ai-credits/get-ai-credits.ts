@@ -346,9 +346,19 @@ export const useUserAiUsageQuery = (userId: string, days = 7, enabled = true) =>
     });
 };
 
+/**
+ * Rates can differ per institute (per-institute pricing overrides, spec §10.3-10.4):
+ * /credits/v1/tool-pricing merges the overrides of the `clientId` institute the
+ * request carries. The cache key therefore includes the institute, so switching
+ * institutes never shows the previous institute's rates for up to 10 minutes.
+ */
+export const toolPricingQueryKey = (instituteId: string | undefined) =>
+    ['GET_TOOL_PRICING', instituteId ?? null] as const;
+
 export const useToolPricingQuery = (enabled = true) => {
+    const instituteId = getCurrentInstituteId();
     return useQuery({
-        queryKey: ['GET_TOOL_PRICING'],
+        queryKey: toolPricingQueryKey(instituteId),
         queryFn: fetchToolPricing,
         enabled,
         staleTime: 10 * 60 * 1000, // 10 minutes — rates change rarely

@@ -60,7 +60,8 @@
                     "label": "Manual evaluation & release",
                     "help": "Teacher grades each submission by hand. Results stay hidden until you manually evaluate and release them."
                 }
-            }
+            },
+            "managedByApi": "Managed by API: results are released by the partner system (or with Release Result), so this stays Manual."
         },
         "submissionType": {
             "label": "Submission Type",

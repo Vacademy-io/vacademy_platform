@@ -31,6 +31,14 @@
             "instructionPrefix": "— press",
             "applyLabel": "Apply",
             "instructionSuffix": "to update the list."
+        },
+        "source": {
+            "label": "Source",
+            "options": {
+                "DASHBOARD": "Dashboard",
+                "API": "API"
+            },
+            "emptyOnPage": "No assessments from this source on this page. Try another page or clear the Source filter."
         }
     },
     "dialogs": {

@@ -49,6 +49,7 @@ import { AssessmentDetailQuestions } from '../-utils/assessment-details-interfac
 import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
 import { QuestionType } from '@/constants/dummy-data';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface Announcement {
     id: string;
@@ -392,7 +393,9 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
                                                 </CardTitle>
                                                 <CardDescription
                                                     dangerouslySetInnerHTML={{
-                                                        __html: announcement.instructions || '',
+                                                        __html: sanitizeRichHtml(
+                                                            announcement.instructions
+                                                        ),
                                                     }}
                                                 />
                                             </CardHeader>

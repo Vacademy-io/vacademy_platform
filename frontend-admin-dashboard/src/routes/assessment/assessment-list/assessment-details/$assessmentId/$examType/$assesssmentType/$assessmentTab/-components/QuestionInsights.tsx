@@ -23,6 +23,7 @@ import {
 import QuestionAssessmentStatus from './QuestionAssessmentStatus';
 import { toast } from 'sonner';
 import ExportDialogPDFCSV from '@/components/common/export-dialog-pdf-csv';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 export function QuestionInsightsComponent() {
     const { t } = useTranslation('assessmentQuestionInsights');
@@ -175,9 +176,10 @@ export function QuestionInsightsComponent() {
                                     {t('questionCard.heading', { number: index + 1 })}&nbsp;
                                     <span
                                         dangerouslySetInnerHTML={{
-                                            __html:
+                                            __html: sanitizeRichHtml(
                                                 question.assessment_question_preview_dto
-                                                    .questionName || '',
+                                                    .questionName
+                                            ),
                                         }}
                                     />
                                 </h3>
@@ -199,7 +201,9 @@ export function QuestionInsightsComponent() {
                                                 </span>
                                                 <span
                                                     dangerouslySetInnerHTML={{
-                                                        __html: String(option.optionName) || '',
+                                                        __html: sanitizeRichHtml(
+                                                            String(option.optionName)
+                                                        ),
                                                     }}
                                                 />
                                             </div>

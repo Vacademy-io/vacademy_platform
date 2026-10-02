@@ -38,11 +38,7 @@ public class CustomRoleService {
             throw new VacademyException("Role with this name already exists in this institute.");
         }
 
-        // Also check if it conflicts with system roles (optional, but good practice to
-        // avoid confusion)
-        if (roleRepository.findByNameAndInstituteId(createRoleDTO.getName(), null).isPresent()) {
-            throw new VacademyException("Role name conflicts with a system role.");
-        }
+        rejectSystemRoleName(createRoleDTO.getName());
 
         Role role = new Role();
         role.setName(createRoleDTO.getName());
@@ -71,6 +67,7 @@ public class CustomRoleService {
             if (roleRepository.findByNameAndInstituteId(updateRoleDTO.getName(), instituteId).isPresent()) {
                 throw new VacademyException("Role with this name already exists in this institute.");
             }
+            rejectSystemRoleName(updateRoleDTO.getName());
         }
 
         role.setName(updateRoleDTO.getName());
@@ -102,6 +99,17 @@ public class CustomRoleService {
         // later.
 
         roleRepository.delete(role);
+    }
+
+    // Role names reach the token's authorities uppercased, so a custom role called "admin"
+    // would read as ADMIN everywhere authorities are checked. Compare ignoring case (the
+    // unused legacy rows only by exact name, as before).
+    private void rejectSystemRoleName(String name) {
+        if (name != null && roleRepository.findAllByInstituteIdIsNull().stream()
+                .anyMatch(role -> name.equals(role.getName()) || (!LEGACY_ROLE_NAMES.contains(role.getName())
+                        && name.trim().equalsIgnoreCase(role.getName())))) {
+            throw new VacademyException("Role name conflicts with a system role.");
+        }
     }
 
     // Global rows seeded in 2024 that are no longer used. "Admin" (id 1) duplicates the

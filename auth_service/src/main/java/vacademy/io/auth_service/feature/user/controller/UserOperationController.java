@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.user.dto.CredentialShareResult;
+import vacademy.io.auth_service.feature.user.service.UserAccountAccessGuard;
 import vacademy.io.auth_service.feature.user.service.UserOperationService;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -16,6 +17,9 @@ public class UserOperationController {
 
     @Autowired
     private UserOperationService userOperationService;
+
+    @Autowired
+    private UserAccountAccessGuard userAccountAccessGuard;
 
     /**
      * Shares login credentials with the given learners.
@@ -37,6 +41,9 @@ public class UserOperationController {
     public ResponseEntity<String> updatePassword(
             @RequestBody UserCredentials userCredentials,
             @RequestAttribute("user") CustomUserDetails userDetails) {
+        // The target is from the body: the user, a super-admin, or staff of their institute
+        // (ADMIN when the target is staff anywhere) — not any signed-in user.
+        userAccountAccessGuard.requireCanChangeCredentials(userDetails, userCredentials.getUserId());
         return ResponseEntity.ok(userOperationService.updateUserPassword(userCredentials, userDetails));
     }
 }

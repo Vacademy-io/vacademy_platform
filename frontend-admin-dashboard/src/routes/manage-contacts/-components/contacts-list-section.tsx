@@ -55,6 +55,11 @@ export const ContactsListSection = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const tableRef = useRef<HTMLDivElement>(null);
 
+    // Does this institute run trials at all? Reported by the list endpoint rather than
+    // configured, so nobody has to remember to switch it on; false hides the Trial/Paid
+    // badge and its filter entirely.
+    const membershipTypesAvailable = Boolean(contactTableData?.membership_types_available);
+
     // Keep the custom-field settings cache fresh (it's cleared on save) and
     // re-render so the column-visibility recomputes — otherwise the readers fail
     // open and show columns that were toggled off.
@@ -135,7 +140,8 @@ export const ContactsListSection = () => {
         handleSort,
         showLeadScore,
         showCounselor ? (userId, userName) => setAssignDialog({ userId, userName }) : undefined,
-        showCounselor
+        showCounselor,
+        membershipTypesAvailable
     );
     // A system field switched off in Settings → Custom Fields stays off and is not offered in
     // Manage Column either; turning it back on belongs to that setting. Read on every render,
@@ -210,7 +216,7 @@ export const ContactsListSection = () => {
                         />
                     </div>
 
-                    <ContactFilters filters={filters} />
+                    <ContactFilters filters={filters} membershipTypesAvailable={membershipTypesAvailable} />
 
                     {isLoading ? (
                         <div className="flex w-full flex-col items-center gap-2 py-6">

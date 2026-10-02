@@ -58,6 +58,21 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const PAGE_SIZE = 20;
 
+/**
+ * The batch's own name, with the course prefix the API bolts on removed — the backend
+ * returns packageSessionName as CONCAT(package_name, ' ', ps.name), and the course name
+ * is already the heading this row sits under.
+ */
+const batchLabel = (batch: { package_session_name?: string | null; package_name?: string }) => {
+    const full = batch.package_session_name?.trim();
+    if (!full) return '';
+    const course = batch.package_name?.trim();
+    if (course && full.toLowerCase().startsWith(course.toLowerCase())) {
+        return full.slice(course.length).trim() || full;
+    }
+    return full;
+};
+
 export const Step2CourseSelector = ({
     selectedPackageSessions,
     onSelectedPackageSessionsChange,
@@ -207,7 +222,7 @@ export const Step2CourseSelector = ({
                         packageSessionId: psId,
                         courseName: item.package_name,
                         sessionName: item.session_name ?? '',
-                        levelName: item.level_name,
+                        levelName: item.package_session_name || item.level_name,
                         enrollInviteId: null,
                         accessDays: null,
                     },
@@ -515,17 +530,32 @@ export const Step2CourseSelector = ({
                                                 onCheckedChange={() => toggle(batch)}
                                                 className="pointer-events-none shrink-0"
                                             />
+                                            {/* The batch's own name leads when it has one.
+                                                Institutes that never set up levels or sessions
+                                                leave every batch on "default · DEFAULT", which
+                                                made six batches of one course indistinguishable
+                                                even though each carried a real name. */}
                                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                                 <span className="truncate text-xs font-medium text-neutral-700">
-                                                    {batch.level_name}
+                                                    {batchLabel(batch) || batch.level_name}
                                                 </span>
-                                                {batch.session_name && (
-                                                    <>
-                                                        <span className="text-neutral-300">·</span>
-                                                        <span className="truncate text-xs text-neutral-500">
-                                                            {batch.session_name}
-                                                        </span>
-                                                    </>
+                                                {batchLabel(batch) ? (
+                                                    <span className="truncate text-xs text-neutral-400">
+                                                        {[batch.level_name, batch.session_name]
+                                                            .filter(Boolean)
+                                                            .join(' · ')}
+                                                    </span>
+                                                ) : (
+                                                    batch.session_name && (
+                                                        <>
+                                                            <span className="text-neutral-300">
+                                                                ·
+                                                            </span>
+                                                            <span className="truncate text-xs text-neutral-500">
+                                                                {batch.session_name}
+                                                            </span>
+                                                        </>
+                                                    )
                                                 )}
                                             </div>
                                             <span

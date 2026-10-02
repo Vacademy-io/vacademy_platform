@@ -1200,6 +1200,26 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         }
     }
 
+    /**
+     * Reads one LMS setting block out of {@code package.course_setting}, plus the
+     * course's own description.
+     *
+     * <p>Params: {@code packageId}, {@code settingKey}, and optionally
+     * {@code defaultCourseDescriptionHtml}.
+     *
+     * <p>Returns {@code lmsConfig} (the {@code setting.<key>.data.data} map, or null
+     * when the package has no such setting) and {@code courseDescription}.
+     *
+     * <p>{@code courseDescription} is {@code package.course_html_description} — the
+     * rich-text course description admins edit in course settings. It is exposed here
+     * so an LMS welcome email can render per-course copy ("How this course is
+     * structured", and for on-demand courses the tips section) from one shared
+     * template: a single workflow serves every course, scoped by package-session
+     * triggers, so the copy cannot live in the template itself. Falls back to
+     * {@code defaultCourseDescriptionHtml} when the course has none, and is never
+     * null — SEND_EMAIL scrubs an unresolved placeholder, so "" simply drops the
+     * section.
+     */
     private Map<String, Object> fetchPackageLMSSetting(Map<String, Object> params) {
         try {
             String packageId = (String) params.get("packageId");
@@ -1213,38 +1233,75 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             if (packageEntityOpt.isEmpty()) {
                 return Map.of("error", "Package not found with ID: " + packageId);
             }
+            PackageEntity packageEntity = packageEntityOpt.get();
 
-            String settingJson = packageEntityOpt.get().getCourseSetting();
+            // HashMap, not Map.of: lmsConfig is legitimately null for a package with no
+            // such setting, and Map.of rejects null values (it used to throw an NPE here
+            // that surfaced as a generic "error" key).
+            Map<String, Object> result = new HashMap<>();
+            result.put("lmsConfig", null);
+            result.put("courseDescription", resolveCourseDescription(packageEntity, params));
 
+            String settingJson = packageEntity.getCourseSetting();
             if (settingJson == null || settingJson.isEmpty()) {
-                return Map.of("lmsConfig", null);
+                return result;
             }
 
             // Parse JSON
             JsonNode rootNode = objectMapper.readTree(settingJson);
 
             // Navigate: setting -> [settingKey] -> data -> data
-            JsonNode settingNode = rootNode.path("setting").path(settingKey);
-
-            if (settingNode.isMissingNode()) {
-                return Map.of("lmsConfig", null);
-            }
-
-            JsonNode dataNode = settingNode.path("data").path("data");
+            JsonNode dataNode = rootNode.path("setting").path(settingKey).path("data").path("data");
 
             if (dataNode.isMissingNode()) {
-                return Map.of("lmsConfig", null);
+                return result;
             }
 
             // Convert back to Map
-            Map<String, Object> settingData = objectMapper.convertValue(dataNode, Map.class);
-
-            return Map.of("lmsConfig", settingData);
+            result.put("lmsConfig", objectMapper.convertValue(dataNode, Map.class));
+            return result;
 
         } catch (Exception e) {
             log.error("Error executing fetchPackageLMSSetting", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * The course's description HTML, or the caller's default when it has none.
+     * Never null.
+     */
+    private String resolveCourseDescription(PackageEntity packageEntity, Map<String, Object> params) {
+        String description = packageEntity.getCourseHtmlDescription();
+        if (!isBlankHtml(description)) {
+            return description;
+        }
+        Object fallback = params.get("defaultCourseDescriptionHtml");
+        String fallbackHtml = fallback == null ? null : String.valueOf(fallback);
+        return isBlankHtml(fallbackHtml) ? "" : fallbackHtml;
+    }
+
+    /** U+00A0, spelled numerically to keep this file pure ASCII. */
+    private static final String NON_BREAKING_SPACE = String.valueOf((char) 160);
+
+    /**
+     * True when this HTML would render as nothing. A rich-text editor that has been
+     * opened and cleared leaves behind markup rather than an empty string — every
+     * Vet Education course sits on a literal {@code <p></p>} — so a plain
+     * {@code isEmpty()} check would treat those as real content and suppress the
+     * caller's default.
+     */
+    private static boolean isBlankHtml(String html) {
+        if (html == null) {
+            return true;
+        }
+        String text = html
+                .replaceAll("(?is)<(script|style)\\b.*?</\\1>", "")
+                .replaceAll("(?s)<[^>]*>", "")
+                .replaceAll("(?i)&nbsp;|&#160;|&#xa0;", " ")
+                // A non-breaking space survives trim(), so fold it to a plain one.
+                .replace(NON_BREAKING_SPACE, " ");
+        return text.trim().isEmpty() && !html.matches("(?is).*<(img|hr|iframe|table)\\b.*");
     }
 
     /**

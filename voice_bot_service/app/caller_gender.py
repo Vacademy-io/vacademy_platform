@@ -173,7 +173,8 @@ _EN_FEMALE = re.compile(r"\bi(?:'m| am) (?:his |her |the )?(?:mother|mom|mum|aun
 # the role as a second STT final, so every caller entry up to the agent's next
 # turn counts (the played transcript keeps one entry per agent turn, one per
 # caller final). Counted only when the
-# whole answer IS the role (+ हूँ/हैं/जी/बोल रहा/बोल रही/ack words): "पापा अभी घर
+# whole answer IS the role (+ हूँ/हैं/जी/बोल रहा/बोल रही/ack words, or "<role>
+# से", below): "पापा अभी घर
 # पर नहीं हैं" names someone ELSE and must not label the caller.
 _ROLE_QUESTION_RE = re.compile(
     r"माता-पिता|माता पिता|मम्मी या पापा|पापा या मम्मी|पिता या माता|माता या पिता|"
@@ -188,6 +189,28 @@ _ROLE_FILLER = frozenset({"जी", "ji", "हूँ", "हूं", "हैं",
                           "उनकी", "बच्चे", "का", "की", "बोल", "रहा", "रही", "हाँ", "हां", "हम्म",
                           "सर", "मैम", "मैडम", "yes", "haan", "i", "am", "his", "her", "the",
                           "speaking", "this", "is", "here", "बोलतोय", "बोलतेय", "आहे", "मी"})
+# "<role> से" answers the question in its own shape: asked "…माता-पिता में से
+# किससे बात कर रही हूँ?" (with WHOM), the mother said "माता से।" (live call
+# 34452119). से is NOT a filler: it counts only right after the role (or role +
+# जी) with nothing but a polite word after it — a verb after it ("पापा से बात
+# करो", "मम्मी से बोल") asks for someone ELSE.
+_ROLE_SE_TAIL = frozenset({"जी", "ji", "सर", "मैम", "मैडम"})
+
+
+def _strip_role_se(ws: list) -> Optional[list]:
+    """ws without its "से" when that से closes a "<role> से" answer; None when
+    the से is anything else (someone else, a verb after it)."""
+    if ws.count("से") != 1:
+        return None
+    i = ws.index("से")
+    if any(w not in _ROLE_SE_TAIL for w in ws[i + 1:]):
+        return None
+    j = i - 1
+    if j >= 1 and ws[j] in ("जी", "ji"):               # "माता जी से"
+        j -= 1
+    if j < 0 or (ws[j] not in _ROLE_M and ws[j] not in _ROLE_F):
+        return None
+    return ws[:i] + ws[i + 1:]
 
 
 def _role_answer(text: str) -> Optional[str]:
@@ -195,6 +218,10 @@ def _role_answer(text: str) -> Optional[str]:
     ws = [w for w in ws if w]
     if not ws or len(ws) > 6:
         return None
+    if "से" in ws:
+        ws = _strip_role_se(ws)
+        if ws is None:
+            return None
     rest = [w for w in ws if w not in _ROLE_FILLER]
     if len(rest) != 1:
         return None

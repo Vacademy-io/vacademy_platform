@@ -90,6 +90,9 @@ def _call(*turns):
     ("मैं उसका पिता हूँ", "m"), ("papa", "m"),
     ("मम्मी।", "f"), ("मम्मी जी।", "f"), ("मैं मम्मी बोल रही हूँ", "f"), ("Mother", "f"),
     ("जी माँ हूँ", "f"),
+    # "<role> से" — the answer in the question's own shape (किससे = with whom).
+    ("माता से।", "f"), ("माता जी से", "f"), ("जी मम्मी से", "f"), ("Mother से।", "f"),
+    ("पापा से।", "m"), ("जी पापा से", "m"), ("पापा जी से", "m"),
 ])
 def test_a_bare_role_answer_to_the_role_question_labels_the_caller(answer, want):
     g, ev = gender_from_transcript(_call(("assistant", _ASK), ("user", answer)))
@@ -102,9 +105,29 @@ def test_a_bare_role_answer_to_the_role_question_labels_the_caller(answer, want)
     "हाँ जी बोलिए",
     "आप कौन बोल रहे हो?",
     "पापा मम्मी दोनों",
+    # से + a verb asks for someone ELSE — the caller is not that role.
+    "पापा से बात करो",
+    "मम्मी से बात कर लीजिए",
+    "Father से बात कर।",
+    "पापा से बोल",
+    "पापा मम्मी से",
 ])
 def test_a_role_word_that_is_not_an_answer_about_the_caller_does_not_label(answer):
     assert gender_from_transcript(_call(("assistant", _ASK), ("user", answer)))[0] is None, answer
+
+
+def test_the_mother_answering_mata_se_is_labelled_female_live_34452119():
+    # Live call 34452119: _role_answer returned None for "माता से।" because से
+    # was not a filler, so a clear role answer left the words column empty.
+    t = _call(("assistant", "जी, क्या मैं जान सकती हूँ कि मैं बच्चे के माता-पिता में से किससे बात "
+                            "कर रही हूँ?"),
+              ("user", "माता से।"),
+              ("assistant", "जी मैम, बच्चा किस class में है?"),
+              ("user", "हाँ बच्चा"))
+    g, ev = gender_from_transcript(t)
+    assert g == "f" and ev == "माता से।", (g, ev)
+    s = summarize({"gender": "f", "confidence": 0.9}, t)
+    assert s["words"] == "f" and s["agree"] is True
 
 
 def test_a_role_word_only_counts_right_after_the_role_question():

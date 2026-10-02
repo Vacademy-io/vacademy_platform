@@ -88,9 +88,12 @@ public class WorkflowCatalogController {
             CatalogItemDTO.builder()
                 .key("fetchPackageLMSSetting")
                 .label("Fetch Package LMS Settings")
-                .description("Get LMS configuration for a specific package")
+                .description("Get LMS configuration for a specific package. Also returns courseDescription "
+                        + "(the course's rich-text description) so a shared welcome-email template can render "
+                        + "per-course copy; pass defaultCourseDescriptionHtml for courses that have none.")
                 .category("Settings")
                 .requiredParams(List.of("packageId", "settingKey"))
+                .optionalParams(List.of("defaultCourseDescriptionHtml"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("upsertUserCustomField")

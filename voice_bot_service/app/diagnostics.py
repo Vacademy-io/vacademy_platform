@@ -338,6 +338,9 @@ class CallDiagnostics:
     # The STT waterfall took over mid-call (STT_FALLBACK_PROVIDER): primary
     # failed audibly (no transcript for a heard utterance) or on its socket.
     stt_failovers: int = 0
+    # The STT vendor's socket stopped finishing sends (providers.decoupled_stt_io)
+    # — call 3e327e8a's "Credits exhausted" close that held the TCP open.
+    stt_stalls: int = 0
     stt_vendor_final: str = ""
     llm_failovers: int = 0
     llm_vendor_final: str = ""
@@ -1051,6 +1054,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "infra": {
                 "sttReconnects": d.stt_reconnects,
                 "sttFailovers": d.stt_failovers,
+                "sttStalls": d.stt_stalls,
                 "sttVendorFinal": d.stt_vendor_final or None,
                 "llmFailovers": d.llm_failovers,
                 "llmVendorFinal": d.llm_vendor_final or None,

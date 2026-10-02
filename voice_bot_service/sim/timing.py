@@ -1564,6 +1564,140 @@ def chk_vertex_stall_failover(res, bar: float = 7.0):
     return f
 
 
+# ── call 71d0d5bd (2026-10-02): "हाँ" over the statement AFTER the question ──
+# The prompt's scripted close puts a sentence after the question. The mother's
+# "हाँ।" landed over that sentence; the deferred answer check wanted the reply
+# to END with "?", so it was dropped as "just listening". Both sides waited:
+# two "हेलो? क्या आप मुझे सुन पा रहे हैं?" nudges, the question asked again,
+# 29 s from her answer to the bot's next line.
+HI_MOTHER = "जी, मैं उसकी मम्मी बोल रही हूँ।"
+HI_QUIZ_Q = "क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ?"
+HI_QUIZ_TAIL = "पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।"
+HI_QUIZ = "ठीक है। " + HI_QUIZ_Q + " " + HI_QUIZ_TAIL
+# 14 words after the "?": past the 8-word tolerance — a statement in its own right.
+HI_QUIZ_LONG_TAIL = ("पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result उसी दिन "
+                     "आपके WhatsApp पर आ जाता है।")
+# A long statement FIRST, then the question and the short tail.
+HI_QUIZ_LONG_HEAD = ("ठीक है, मैं आपको sample report, dashboard का video, course brochure और "
+                     "कुछ demo videos अभी WhatsApp पर भेज दूँगी। " + HI_QUIZ_Q + " " + HI_QUIZ_TAIL)
+HI_QUIZ_SENT = "जी, मैं link अभी भेज देती हूँ। परम से कहिएगा कि आज ही quiz attempt कर ले।"
+HI_QUIZ_LATER = "जी, ठीक है। मैं link भेज देती हूँ।"
+
+
+def _quiz_reply(reply: str):
+    """The mother's answer to the opening gets `reply`; the ANSWER cue gets the
+    next line; anything else (a nudge cue, her later words) a short line."""
+    def pick(last_user: str) -> str:
+        u = last_user or ""
+        if "मम्मी" in u:
+            return reply
+        if "ANSWER" in u:
+            return HI_QUIZ_SENT
+        return HI_QUIZ_LATER
+    return pick
+
+
+def _ack_t(res, needle: str):
+    """(start, end) of the caller's interval whose final contains `needle`."""
+    t = next((t for t, x in res["finals"] if needle in x), None)
+    if t is None:
+        return None
+    iv = [c for c in res["caller"] if c[0] <= t]
+    return iv[-1] if iv else None
+
+
+def _quiz_asked(res) -> int:
+    """Replies that carried the quiz question. Counted on the generations, not
+    tts_texts (a cache HIT never reaches run_tts) nor the played transcript
+    (pipecat's word-timestamp sequencer re-emits later sentences there)."""
+    return sum(1 for g in res.get("llm_gens") or [] if "Scholarship Quiz" in (g.get("reply") or ""))
+
+
+def _answer_gens(res):
+    return [g for g in res.get("llm_gens") or [] if "ANSWER" in (g.get("trigger") or "")]
+
+
+def chk_ack_answers_question_before_statement(res):
+    """The "हाँ" over "पंद्रह questions हैं…" answers "…कर दूँ?": the ANSWER
+    path runs right after the reply ends — no 15 s of silence, no nudge, and
+    the question is never asked again."""
+    f = []
+    ack = _ack_t(res, "हाँ")
+    if ack is None:
+        return ["the caller's 'हाँ।' was never transcribed"]
+    ends = [b_ for a, b_ in res["bot"] if b_ > ack[0]]
+    if not ends:
+        return ["no bot audio around the ack"]
+    reply_end = ends[0]
+    if ack[0] > reply_end or ack[1] < reply_end - 3.0:
+        f.append(f"scenario drift: the ack {ack} is not over the reply's last sentence "
+                 f"(reply ends {reply_end})")
+    gens = [g for g in _answer_gens(res) if g["requested"] >= ack[0]]
+    if not gens:
+        f.append("the 'हाँ' over the statement after the question never ran the ANSWER path "
+                 f"(prompts after it: {[p[:40] for p in res.get('llm_prompts', [])[1:]]})")
+    else:
+        lag = round(gens[0]["requested"] - reply_end, 2)
+        print(f"NOTE ack answer: ANSWER cue {lag}s after the reply ended")
+        if lag > 1.0:
+            f.append(f"the ANSWER path ran {lag}s after the reply ended (bar 1.0)")
+    # The next thing on the line is the reply to her answer — not 15 s of
+    # silence and "हेलो? क्या आप मुझे सुन पा रहे हैं?" (the idle clock is 8 s, so
+    # a line inside 3.5 s cannot be a nudge). A later idle nudge, after that
+    # reply asked nothing, is the next turn's business.
+    nxt = [a for a, _ in res["bot"] if a > reply_end + 0.05]
+    if not nxt or nxt[0] - reply_end > 3.5:
+        f.append(f"next bot line {round(nxt[0] - reply_end, 1) if nxt else 'never'}s after the reply "
+                 "ended (bar 3.5)")
+    first = next((g for g in res.get("llm_gens") or [] if g["requested"] >= ack[0]), None)
+    if first is not None and "ANSWER" not in (first.get("trigger") or ""):
+        f.append(f"the first run after her 'हाँ' was not the answer: {(first.get('trigger') or '')[:60]!r}")
+    if _quiz_asked(res) != 1:
+        f.append(f"the model was asked for the quiz question {_quiz_asked(res)}x (want 1)")
+    if not any("भेज देती" in t for t in _assistant_texts(res)):
+        f.append("the reply to her answer never played")
+    return f
+
+
+def chk_ack_stays_backchannel(needle: str = "हाँ"):
+    """An acknowledgement that is NOT an answer — over a long statement after
+    the question, early in the reply, or a "Hello?" line check — must not be
+    handed to the model as the answer to the question."""
+    def chk(res):
+        f = []
+        ack = _ack_t(res, needle)
+        if ack is None:
+            return [f"the caller's {needle!r} was never transcribed"]
+        ends = [b_ for a, b_ in res["bot"] if b_ > ack[0]]
+        if not ends or ack[0] > ends[0]:
+            f.append(f"scenario drift: {needle!r} at {ack} is not over the reply")
+        bad = [g for g in _answer_gens(res) if g["requested"] >= ack[0]]
+        if bad:
+            f.append(f"{needle!r} was taken as the ANSWER at {bad[0]['requested']}: "
+                     f"{(bad[0].get('trigger') or '')[:90]!r}")
+        if _quiz_asked(res) != 1:
+            f.append(f"the model was asked for the quiz question {_quiz_asked(res)}x (want 1)")
+        return f
+    return chk
+
+
+def chk_hello_over_tail_is_not_an_answer(res):
+    f = chk_ack_stays_backchannel("Hello")(res)
+    if not any("भेज दीजिए" in p for p in res.get("llm_prompts", [])):
+        f.append("her real answer after the line check never reached the model")
+    return f
+
+
+def _quiz_scenario(key: str, reply: str, say: "Say", checks, note: str, **kw) -> "Scenario":
+    return Scenario(
+        key,
+        caller=[Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6, stt_latency=0.4), say,
+                *kw.pop("more", [])],
+        replies=[], reply_for=_quiz_reply(reply),
+        context="hindi_parent_agent_context.json",
+        checks=checks, max_secs=kw.pop("max_secs", 45), note=note, **kw)
+
+
 _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
@@ -1848,6 +1982,54 @@ SCENARIOS: List[Scenario] = [
              checks=chk_hindi_pieces_bare_acks, max_secs=75,
              note="call 22062aac: 'अब पढ़ने में तो।' / 'कोशिश करता है।' got 'जी।' 'जी सर।' x3, "
                   "then 12 s of silence and 'are you there?'"),
+    # Under SimTTS a short first sentence ("ठीक है।", 0.7 s) is its own
+    # utterance on the line — its audio context closes on the 3 s idle timeout
+    # before the next one plays — so the question + tail is bot utterance 3:
+    # the question 3.6 s, then the tail 2.9 s. 4.6 s puts "हाँ" a second into
+    # the tail, where the mother said hers (VAD 182.48 s, tail 181.52-183.83 s).
+    _quiz_scenario("ack_over_statement_after_question",
+                   HI_QUIZ, Say("हाँ।", 0.39, clip="haan", after_bot_start=3, offset=4.6,
+                                stt_latency=0.2),
+                   chk_ack_answers_question_before_statement,
+                   "call 71d0d5bd: 'हाँ' over the sentence after the question was dropped; "
+                   "29 s, two nudges and the question again before the next line"),
+    # Cache HITs play back to back as ONE utterance (60 ms/char): the tail is
+    # its last ~2.8 s; 5.6 s in is ~0.9 s before the end.
+    _quiz_scenario("ack_over_statement_after_question_cached",
+                   HI_QUIZ, Say("हाँ।", 0.39, clip="haan", after_bot_start=2, offset=5.6,
+                                stt_latency=0.2),
+                   chk_ack_answers_question_before_statement,
+                   "the same on Navana with every sentence of the reply a cache HIT "
+                   "(per-sentence audio contexts), as the live call ran",
+                   engine="navana", cache_warm=["ठीक है।", HI_QUIZ_Q, HI_QUIZ_TAIL]),
+    # Negatives. Past the tolerance the statement is a sentence in its own
+    # right, and a "हाँ" over its end acknowledges IT: question 3.6 s + an
+    # 18-word tail of 6.4 s; 8.5 s in is 1.5 s before the end, 4.9 s after "?".
+    _quiz_scenario("ack_over_long_statement_stays_backchannel",
+                   "ठीक है। " + HI_QUIZ_Q + " " + HI_QUIZ_LONG_TAIL,
+                   Say("हाँ।", 0.39, clip="haan", after_bot_start=3, offset=8.5, stt_latency=0.2),
+                   chk_ack_stays_backchannel(),
+                   "negative for 71d0d5bd: an ack over a statement longer than the "
+                   "8-word tolerance is not the answer to the question before it",
+                   max_secs=35),
+    # An ack 1.5 s into a 13 s reply whose question comes near its end: it
+    # acknowledged the first sentence, ~11 s before the reply ends.
+    _quiz_scenario("early_ack_in_question_reply_stays_backchannel",
+                   HI_QUIZ_LONG_HEAD,
+                   Say("हाँ।", 0.39, clip="haan", after_bot_start=2, offset=1.5, stt_latency=0.2),
+                   chk_ack_stays_backchannel(),
+                   "negative for 71d0d5bd: an ack early in a reply that ends on a "
+                   "question (plus a short tail) is still just 'I'm listening'",
+                   max_secs=40),
+    # "Hello?" over the tail is a line check: never the answer. Her real
+    # answer comes 1.2 s after the reply ends and is answered normally.
+    _quiz_scenario("hello_over_statement_after_question_is_not_an_answer",
+                   HI_QUIZ,
+                   Say("Hello?", 0.53, after_bot_start=3, offset=4.6, stt_latency=0.2),
+                   chk_hello_over_tail_is_not_an_answer,
+                   "negative for 71d0d5bd: 'Hello?' over the tail is a line check, not an answer",
+                   more=[Say("हाँ, भेज दीजिए।", 1.0, after_bot_stop=3, offset=1.2,
+                             stt_latency=0.4)]),
 ]
 BY_KEY = {s.key: s for s in SCENARIOS}
 

@@ -424,6 +424,30 @@ def presence_cue(question: str) -> str:
             "words, then ask this again in the same words: \"" + question + "\" Nothing else.]")
 
 
+# How many words may follow the bot's last "?" for an acknowledgement over them
+# to still be the ANSWER to that question. Two reasons for the slack, one
+# number: text reaches the played transcript per word, so by the time a "yes"
+# is transcribed a few words of the next sentence have played ("…right now? Is
+# that" — timing sim yes_over_tail, 2026-09-12); and the scripted close puts a
+# short sentence after the question ("…कर दूँ? पंद्रह questions हैं, सिर्फ
+# पंद्रह मिनट लगते हैं।" — call 71d0d5bd, 2026-10-02, where the mother's "हाँ"
+# over it was dropped as "just listening" and both sides waited 29 s).
+QUESTION_TAIL_WORDS = 8
+
+
+def ends_on_question(text: str, tail_words: int = QUESTION_TAIL_WORDS) -> bool:
+    """Did this stretch of bot speech end on a question — its last "?" followed
+    by at most `tail_words` words? PURE. The one test every turn-gate path uses
+    to decide whether a short "हाँ"/"yes" over the end of a reply answered it;
+    when they disagreed, the same "हाँ" was an answer on one path and a
+    backchannel on another (call 71d0d5bd)."""
+    t = (text or "").rstrip()
+    if t.endswith(("?", "？")):
+        return True
+    i = max(t.rfind("?"), t.rfind("？"))
+    return i >= 0 and len(t[i + 1:].split()) <= tail_words
+
+
 def last_question_in(text: str) -> str:
     """The last question sentence in a block of bot speech, skipping the bot's
     own line checks ("Hello? Are you still there?"), or ''."""

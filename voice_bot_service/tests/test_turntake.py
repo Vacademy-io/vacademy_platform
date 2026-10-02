@@ -412,3 +412,21 @@ def test_hindi_hang_up_requests_end_the_call():
     for t in ("रहने दो।", "अरे वो सब बताने को रहने दो।", "उसके मार्क्स कट गए थे", "कृष्णा दसवीं class में है।",
               "call back कर लेना", "फोन पर बात कर लेते हैं", "हाँ जी।"):
         assert not caller_wants_to_end(t), t
+
+
+def test_a_reply_ends_on_its_question_with_a_short_sentence_after_it():
+    """Call 71d0d5bd (2026-10-02): the scripted close puts a short sentence after
+    the question. A "हाँ" over that sentence answers the question; past the
+    8-word tolerance the sentence stands on its own."""
+    from app.turntake import ends_on_question, QUESTION_TAIL_WORDS
+    assert QUESTION_TAIL_WORDS == 8
+    for t in ("ठीक है। क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ? "
+              "पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।",
+              "क्या आप जुड़ना चाहेंगे?", "क्या आप जुड़ना चाहेंगे？", "Who is it right now? Is that ",
+              "Who is it right now? one two three four five six seven eight"):
+        assert ends_on_question(t), t
+    for t in ("", "   ", "ठीक है, मैं भेज देती हूँ।",
+              "क्या मैं link भेज दूँ? पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result "
+              "उसी दिन आपके WhatsApp पर आ जाता है।",
+              "Who is it right now? one two three four five six seven eight nine"):
+        assert not ends_on_question(t), t

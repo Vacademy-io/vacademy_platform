@@ -100,7 +100,7 @@ from .turntake import (mid_reply_action, is_carrier_announcement,
                        presence_cue, last_question_in, is_fragment_continuation,
                        is_echo_of_answer, is_call_screener, caller_asks_who, caller_says_goodbye,
                        is_screener_hold, spoken_key, takes_over_opening, is_question,
-                       opening_expected_secs)
+                       opening_expected_secs, ends_on_question)
 
 logger = logging.getLogger(__name__)
 
@@ -463,10 +463,13 @@ class TranscriptCollector(FrameProcessor):
         Unlike _played_ended_with_question this does not need their final to
         have landed yet — it is asked at the VAD stop, before any transcript.
         A question mark that PLAYED means they could be answering; a reply cut
-        before it means they cannot be."""
+        before it means they cannot be. Same test as the other two paths
+        (turntake.ends_on_question): with a strict "ends with ?" here, a cut
+        inside the short sentence after the question resumed that sentence, and
+        the "हाँ" that arrived next was dropped as "already resuming"."""
         for entry in reversed(self._outcome.transcript):
             if entry.get("role") == "assistant" and (entry.get("text") or "").strip():
-                return (entry["text"] or "").rstrip().endswith(("?", "？"))
+                return ends_on_question(entry["text"] or "")
         return False
 
     def _played_ended_with_question(self) -> bool:
@@ -480,16 +483,12 @@ class TranscriptCollector(FrameProcessor):
         prev = t[-2]
         if prev.get("role") != "assistant":
             return False
-        text = (prev.get("text") or "").rstrip()
-        if text.endswith(("?", "？")):
-            return True
         # Text reaches the played transcript per WORD (Smallest word timings),
         # and the STT final lands 0.4-0.8 s after the caller starts — by then a
         # few words of the next sentence have played: "…right now? Is that".
         # The caller is answering the question; the fragment is the interrupted
         # continuation. Timing simulator yes_over_tail, 2026-09-12.
-        i = max(text.rfind("?"), text.rfind("？"))
-        return i >= 0 and len(text[i + 1:].split()) <= 8
+        return ends_on_question(prev.get("text") or "")
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -1322,7 +1321,13 @@ class TranscriptCollector(FrameProcessor):
                 if entry.get("role") == "assistant":
                     last = (entry.get("text") or "").strip()
                     break
-            if not last.endswith(("?", "？")):
+            # NOT "ends with ?": the scripted close puts a short sentence after
+            # the question. Call 71d0d5bd (2026-10-02): "…WhatsApp कर दूँ?
+            # पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।" — the mother's
+            # "हाँ" over that last sentence was dropped here as "just
+            # listening"; 15 s of silence, two nudges, the question again, 29 s
+            # to the next line. The same tolerance the ducked and cut paths use.
+            if not ends_on_question(last):
                 return
             q = last_question_in(last) or last[-120:]
             logger.info("turn-gate: %r came over the end of %r — answering it", text[:20], q[:40])

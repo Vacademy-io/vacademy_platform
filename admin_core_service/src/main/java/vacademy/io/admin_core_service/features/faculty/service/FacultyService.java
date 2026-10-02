@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
@@ -37,11 +38,18 @@ public class FacultyService {
     private final FacultySubjectPackageSessionMappingRepository facultyRepository;
     private final AuthService authService;
     private final SubjectService subjectService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     public String addFacultyToSubjectsAndBatches(AddFacultyToSubjectAndBatchDTO addFacultyToSubjectAndBatch,
             String instituteId, CustomUserDetails userDetails) {
         UserDTO userDTO = addFacultyToSubjectAndBatch.getUser();
         if (addFacultyToSubjectAndBatch.isNewUser()) {
+            // The invite creates the user with the roles in the request. Only an ADMIN of
+            // this institute may create another ADMIN (no root bypass: learners are root users).
+            if (userDTO != null && userDTO.getRoles() != null
+                    && userDTO.getRoles().stream().anyMatch("ADMIN"::equalsIgnoreCase)) {
+                instituteAccessValidator.requireInstituteAdmin(userDetails, instituteId);
+            }
             userDTO = inviteUser(userDTO, instituteId);
         }
         List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();

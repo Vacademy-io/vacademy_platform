@@ -70,8 +70,8 @@ public class CreditClient {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/institutes/" + instituteId + "/initialize";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            // ai_service only accepts this from a signed-in user or a service holding the token.
+            HttpHeaders headers = buildInternalHeaders();
 
             HttpEntity<String> request = new HttpEntity<>("{}", headers);
 
@@ -105,8 +105,7 @@ public class CreditClient {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/check";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = buildInternalHeaders();
 
             Map<String, Object> body = Map.of(
                     "institute_id", instituteId,

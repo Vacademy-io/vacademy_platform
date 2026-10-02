@@ -43,7 +43,7 @@ public class AiCallQueueController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "25") int size,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.list(instituteId, status, sourceRef, page, size));
     }
 
@@ -57,7 +57,7 @@ public class AiCallQueueController {
     public ResponseEntity<LaneView> pause(
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.setQueuePaused(instituteId, true));
     }
 
@@ -66,7 +66,7 @@ public class AiCallQueueController {
     public ResponseEntity<LaneView> resume(
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.setQueuePaused(instituteId, false));
     }
 
@@ -76,7 +76,7 @@ public class AiCallQueueController {
             @RequestParam String instituteId,
             @RequestParam(value = "limit", defaultValue = "20") int limit,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.recentRuns(instituteId, limit));
     }
 
@@ -85,7 +85,7 @@ public class AiCallQueueController {
     public ResponseEntity<QueueSummary> summary(
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.summary(instituteId));
     }
 
@@ -99,7 +99,7 @@ public class AiCallQueueController {
             @RequestParam String instituteId,
             @RequestParam String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.bulkRunSummary(instituteId, audienceId));
     }
 
@@ -111,7 +111,7 @@ public class AiCallQueueController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "200") int size,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         return ResponseEntity.ok(queueService.bulkRunItems(instituteId, audienceId, page, size));
     }
 
@@ -132,7 +132,7 @@ public class AiCallQueueController {
             @RequestParam String instituteId,
             @RequestBody(required = false) CancelBody body,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         int cancelled = queueService.cancelForInstitute(instituteId,
                 body == null ? null : body.getSourceRef(),
                 body == null ? null : body.getReason());
@@ -145,7 +145,7 @@ public class AiCallQueueController {
             @RequestParam String instituteId,
             @RequestParam(value = "reason", required = false) String reason,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteStaff(user, instituteId);
         boolean cancelled = queueService.cancelOne(instituteId, id, reason);
         return ResponseEntity.ok(Map.of("cancelled", cancelled));
     }

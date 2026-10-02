@@ -118,6 +118,12 @@ public interface StudentSessionInstituteGroupMappingRepository
    * either way and went out correctly. 20 SuchBliss plans sit on the midnight boundary and
    * the rest do not, which is exactly why the timing looked arbitrary rather than broken.
    *
+   * <p>The timezone is read with {@code jsonb_extract_path_text(cast(... as jsonb), ...)} and
+   * NOT with {@code ::jsonb #>>}: Hibernate parses {@code :} in a native query as a named
+   * parameter and strips one colon from {@code ::}, so the statement reaching Postgres said
+   * {@code setting_json:jsonb} and failed with "syntax error at or near :". The cast function
+   * form has no colons to mangle.
+   *
    * <p>Only ACTIVE plans with autopay still enabled are returned, so learners who already
    * cancelled are naturally excluded. charge_date_label is preformatted for messages
    * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
@@ -133,7 +139,8 @@ public interface StudentSessionInstituteGroupMappingRepository
           up.next_charge_at AS next_charge_at,
           up.end_date AS end_date,
           to_char(up.next_charge_at AT TIME ZONE 'UTC'
-                  AT TIME ZONE coalesce(ei.setting_json::jsonb #>> '{setting,AUTOPAY_SETTING,TRIAL_TIMEZONE}', 'UTC'),
+                  AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
                   'DD Mon YYYY') AS charge_date_label
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
@@ -145,9 +152,11 @@ public interface StudentSessionInstituteGroupMappingRepository
         AND up.auto_renewal_enabled = true
         AND up.next_charge_at IS NOT NULL
         AND CAST(up.next_charge_at AT TIME ZONE 'UTC'
-                 AT TIME ZONE coalesce(ei.setting_json::jsonb #>> '{setting,AUTOPAY_SETTING,TRIAL_TIMEZONE}', 'UTC')
+                 AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
                  AS date)
-            = CAST(now() AT TIME ZONE coalesce(ei.setting_json::jsonb #>> '{setting,AUTOPAY_SETTING,TRIAL_TIMEZONE}', 'UTC')
+            = CAST(now() AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
                    AS date) + CAST(:daysAhead AS int)
       ORDER BY up.id
       """, nativeQuery = true)

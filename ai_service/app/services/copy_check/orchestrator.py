@@ -21,7 +21,7 @@ from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
-from . import annotator, callbacks, cancellation, language_check, locate, math_reread, typed_answers, vision_transcript
+from . import annotator, callbacks, cancellation, deduction_check, language_check, locate, math_reread, option_letter, typed_answers, vision_transcript
 from .choice_groups import counted_awarded, counted_flags, resolve_paper_max
 from .failure import (
     COPY_UNREADABLE,
@@ -44,7 +44,15 @@ from .enforce_bridge import apply_enforcement
 
 logger = logging.getLogger(__name__)
 
-# Which reader gives flagged maths lines a second look: "glm" (math_reread.py,
+# Every cut mark is re-checked against a picture of the answer (deduction_check.py)
+# unless this is "off".
+DEDUCTION_CHECK = os.getenv("COPY_CHECK_DEDUCTION_CHECK", "on").strip().lower() != "off"
+# Token allowance on top of the per-question budget for the steps that work
+# per page (handwriting read, maths close-ups) and per cut (the image check).
+TOKENS_PER_PAGE_ALLOWANCE = 20_000
+TOKENS_PER_QUESTION_CHECK = 4_000
+
+# Which reader gives maths lines a second look: "glm" (math_reread.py,
 # the default), "mathpix" (the old crop OCR that overwrote the row) or "off".
 MATH_READER = os.getenv("COPY_CHECK_MATH_READER", "glm").strip().lower()
 
@@ -83,6 +91,24 @@ def describe_failure(exc: BaseException) -> str:
 
 def _new_job_id() -> str:
     return str(uuid.uuid4())
+
+
+def label_on_copy(question: dict[str, Any], layout_map: dict[str, Any]) -> bool:
+    """Does a row on the copy start with this question's printed number
+    ("16)", "Q16.", "16 -")? The locator's "not attempted" ([]) is then not
+    believed: on a real copy it said so for MCQs 16 and 17 sitting at the top
+    of page 2 as "16) b) 1:5" and "17) b) 9", and both scored 0."""
+    import re as _re
+    m = _re.match(r"\s*(\d{1,3})", str(question.get("paper_label") or question.get("question_number") or ""))
+    if not m:
+        return False
+    num = m.group(1)
+    pattern = _re.compile(r"^\s*(?:[Qq](?:ue)?s?\.?\s*)?0*" + num + r"\s*[).:\-]")
+    for page in layout_map.get("pages") or []:
+        for row in page.get("lines") or []:
+            if pattern.match(str(row.get("text") or "")):
+                return True
+    return False
 
 
 def _looks_unattempted(raw: dict[str, Any]) -> bool:
@@ -389,6 +415,12 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
     billing = billing_context(req)
 
     llm = ChatLLMClient(ApiKeyResolver(db))
+    # The cut-check sends crops of the student's copy to Gemini through
+    # OpenRouter: only zero-data-retention endpoints may serve it. Its own
+    # client, so a model a teacher picks for grading is never restricted.
+    check_llm = ChatLLMClient(ApiKeyResolver(db))
+    if hasattr(check_llm, "provider_prefs"):
+        check_llm.provider_prefs = {"zdr": True, "data_collection": "deny"}
     grader = CopyCheckGrader(
         llm, institute_id=institute_id, token_budget=token_budget_for(len(questions)),
         exam_context=req.get("exam_context"),
@@ -613,8 +645,8 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
 
         await _progress("LAYOUT_OCR_DONE", layout_map=layout_map)
 
-        # 2. A close-up second reading of flagged maths lines (cheap if there
-        # are none). See math_reread.py for why this is not Mathpix any more.
+        # 2. A close-up second reading of the maths lines (cheap if there are
+        # none). See math_reread.py for why this is not Mathpix any more.
         cancellation.check(job_id, process_id)
         maths_rows_read = 0
         if MATH_READER == "glm":
@@ -643,6 +675,15 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             llm, questions, layout_map, DEFAULT_MODEL,
             institute_id=institute_id, token_sink=grader,
         )
+        # The per-question budget was sized before the page count was known;
+        # the page-level steps and the cut checks must not starve the last
+        # questions of the paper (a 43-question copy ran dry on question 42).
+        if hasattr(grader, "token_budget"):
+            grader.token_budget += (TOKENS_PER_PAGE_ALLOWANCE * len(layout_map.get("pages") or [])
+                                    + TOKENS_PER_QUESTION_CHECK * len(questions))
+        checker = (deduction_check.DeductionChecker(
+            pdf_url, layout_map, check_llm, institute_id=institute_id, token_sink=grader,
+        ) if DEDUCTION_CHECK else None)
         all_page_ids = [str(p.get("page_id")) for p in layout_map.get("pages") or []]
         question_order = locate.paper_order(questions)
 
@@ -675,7 +716,8 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
                 raw = await grader.grade_question(q, rubric, layout_map, preferred_model, page_ids)
-                if narrowed and _looks_unattempted(raw) and located.get(qid) != []:
+                if narrowed and _looks_unattempted(raw) and (
+                        located.get(qid) != [] or label_on_copy(q, layout_map)):
                     # The locator said the answer is on these pages (or did not
                     # place it at all) and the grader found nothing there. One
                     # of them is wrong; a wrong locator must never cost a
@@ -689,6 +731,10 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                     )
                     raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
                 verdict = attach_criteria_max(validate_and_cap(raw, q, layout_map), rubric)
+                if option_letter.honour_option_letter(verdict, q):
+                    logger.info("Q%s: the chosen option is the key's - full marks", qid)
+                elif checker is not None:
+                    await checker.check(verdict, q, rubric)
             except cancellation.Cancelled:
                 raise
             except Exception as e:
@@ -705,6 +751,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> str:
                     rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
                     raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL, page_ids)
                     verdict = attach_criteria_max(validate_and_cap(raw, q, layout_map), rubric)
+                    option_letter.honour_option_letter(verdict, q)
                 except cancellation.Cancelled:
                     raise
                 except Exception as retry_err:

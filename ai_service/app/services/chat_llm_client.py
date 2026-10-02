@@ -182,6 +182,7 @@ class ChatLLMClient:
         api_key_resolver: ApiKeyResolver,
         disable_reasoning: bool = False,
         platform_model_key: Optional[str] = None,
+        provider_prefs: Optional[Dict[str, Any]] = None,
     ):
         """
         disable_reasoning: send `reasoning: {"enabled": false}` so the provider
@@ -204,6 +205,10 @@ class ChatLLMClient:
         # default model for this client, e.g. "chatbot.text.model". None keeps
         # the env default — right for every consumer that isn't the chatbot.
         self.platform_model_key = platform_model_key
+        # OpenRouter's `provider` routing object, e.g. {"zdr": True} to allow
+        # only zero-data-retention endpoints. OpenRouter-only: llm_router drops
+        # it for any other gateway. None = OpenRouter's default routing.
+        self.provider_prefs = dict(provider_prefs) if provider_prefs else None
         self.http_client = httpx.AsyncClient(timeout=120.0)
 
     @staticmethod
@@ -404,6 +409,8 @@ class ChatLLMClient:
         # its cost. Models known to require reasoning are handled by payload_variants.
         if self.disable_reasoning:
             payload["reasoning"] = {"enabled": False}
+        if self.provider_prefs:
+            payload["provider"] = dict(self.provider_prefs)
 
         if tools:
             payload["tools"] = tools
@@ -544,6 +551,8 @@ class ChatLLMClient:
         # reasoning are handled by payload_variants.
         if self.disable_reasoning:
             payload["reasoning"] = {"enabled": False}
+        if self.provider_prefs:
+            payload["provider"] = dict(self.provider_prefs)
 
         if tools:
             payload["tools"] = tools

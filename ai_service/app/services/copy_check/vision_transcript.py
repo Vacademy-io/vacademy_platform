@@ -65,10 +65,20 @@ VISION_MODEL = "z-ai/glm-5.3-flash"
 MAX_VISION_PAGES = 40
 
 # Page images are resized so the long edge is at most this many pixels before
-# JPEG encoding. 1600px keeps ordinary handwriting legible while holding a
-# page to roughly 1,600 prompt tokens.
-MAX_IMAGE_EDGE = 1600
+# JPEG encoding. 1600px lost small writing: on a real maths copy the MCQ page
+# was read right 10, 8 and 11 times out of 15 answers; at 2400px (the scan's
+# own size) 14, 14 and 13. The image costs about twice the prompt tokens.
+MAX_IMAGE_EDGE = 2400
 JPEG_QUALITY = 80
+
+# A page that comes back "illegible" or nearly empty although the OCR found
+# plenty of writing on it is read once more, re-rendered at RETRY_DPI so a
+# scan stored above 200 DPI gives up its own detail. On a real maths copy a
+# full page of clear working came back "[illegible]" on one run and was read
+# fine on the next; with no retry, every answer on it scored 0.
+RETRY_DPI = 300
+RETRY_IMAGE_EDGE = 3200
+RETRY_MIN_OCR_WORDS = 12
 
 # How many page reads run at once. Three keeps a 13-page copy under a minute
 # without opening a burst of provider connections.
@@ -336,13 +346,13 @@ def add_unlisted_rows(
     return merged, orphans
 
 
-def _encode_page(img: Any) -> str:
-    """PIL image -> base64 JPEG data, downscaled to MAX_IMAGE_EDGE."""
+def _encode_page(img: Any, max_edge: int = MAX_IMAGE_EDGE) -> str:
+    """PIL image -> base64 JPEG data, downscaled to `max_edge`."""
     from PIL import Image
 
     longest = max(img.width, img.height)
-    if longest > MAX_IMAGE_EDGE:
-        scale = MAX_IMAGE_EDGE / float(longest)
+    if longest > max_edge:
+        scale = max_edge / float(longest)
         img = img.resize(
             (max(1, int(img.width * scale)), max(1, int(img.height * scale))),
             Image.LANCZOS,
@@ -404,6 +414,20 @@ Rules:
   in `unlisted_lines`, with `after` set to the id of the row it sits directly
   below (null if it is above the first row). A line you leave out is an
   answer the grader never sees, and the student gets 0 for it.
+- Numbers decide marks, so read every digit, sign and exponent with care. In
+  handwriting 1 and 7, 5 and 6 (and 5 and S), 8 and 9, and a minus sign are
+  easy to confuse; look at the stroke, and at the same number written
+  elsewhere on the page, before you decide. Still write what is there - never
+  what the answer should be.
+- A fraction written stacked (numerator above the bar, denominator below)
+  often spans two listed rows: keep each part on its own row, and write the
+  whole fraction as a/b in page_text, e.g. "= 7/30".
+- A number or word written OVER another, or struck out and rewritten beside
+  or above it: say so in that order - "350 written over 360", "360 struck out,
+  350". The one written last (on top, or not struck out) is the student's
+  final answer. Never give both as if both were the answer.
+- Writing inside a box the student drew around an answer IS the answer:
+  always transcribe it ("x = 5").
 - If a row is genuinely unreadable, set its text to "[illegible]".
 - If a row holds no student writing (a blank, a ruled line, a page number),
   set its text to "".
@@ -502,6 +526,43 @@ def assess_quality(layout_map: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _render_page(pdf_path: Path, page_id: Any, dpi: int) -> Any:
+    """One page ("p3") of the PDF as a PIL image at `dpi`, or None."""
+    try:
+        import fitz  # PyMuPDF
+        from PIL import Image
+
+        index = int(str(page_id).lstrip("p")) - 1
+        doc = fitz.open(pdf_path)
+        try:
+            pix = doc[index].get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), alpha=False)
+            if pix.n != 3:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        finally:
+            doc.close()
+    except Exception:
+        logger.debug("re-render of page %s failed", page_id, exc_info=True)
+        return None
+
+
+def _read_chars(result: dict[str, Any]) -> int:
+    """How much the model says it read on a page: its prose, else its rows."""
+    text = (result.get("page_text") or "").strip()
+    if not text:
+        text = " ".join((item.get("text") or "") for item in result.get("lines") or []
+                        if (item.get("text") or "") != "[illegible]")
+    return len(text.strip())
+
+
+def needs_second_read(result: dict[str, Any], ocr_word_count: int) -> bool:
+    """The model found (almost) nothing on a page where the OCR saw real
+    writing: worth one more, sharper look before the page is given up."""
+    if ocr_word_count < RETRY_MIN_OCR_WORDS:
+        return False
+    return result.get("legible") is False or _read_chars(result) < MIN_CHARS_PER_PAGE
+
+
 async def enrich_layout_with_vision(
     pdf_url: str,
     layout_map: dict[str, Any],
@@ -567,12 +628,33 @@ async def enrich_layout_with_vision(
                         page_id, e,
                     )
                     return
+                usages = [usage]
+                if needs_second_read(result, int(page.get("ocr_word_count") or 0)):
+                    # One sharper read before accepting "nothing here".
+                    try:
+                        sharp = await asyncio.get_event_loop().run_in_executor(
+                            None, _render_page, pdf_path, page_id, RETRY_DPI,
+                        )
+                        b64 = await asyncio.get_event_loop().run_in_executor(
+                            None, _encode_page, sharp or img, RETRY_IMAGE_EDGE,
+                        )
+                        retry, retry_usage = await _transcribe_page(
+                            llm, model, page, rows, b64, institute_id,
+                        )
+                        usages.append(retry_usage)
+                        if _read_chars(retry) > _read_chars(result):
+                            logger.info("Vision re-read page %s: %d -> %d chars", page_id,
+                                        _read_chars(result), _read_chars(retry))
+                            result = retry
+                    except Exception as e:
+                        logger.warning("Vision re-read of page %s failed: %s", page_id, e)
 
             if token_sink is not None:
-                try:
-                    token_sink.add_usage(usage)
-                except Exception:
-                    logger.debug("token sink rejected vision usage", exc_info=True)
+                for u in usages:
+                    try:
+                        token_sink.add_usage(u)
+                    except Exception:
+                        logger.debug("token sink rejected vision usage", exc_info=True)
 
             by_id = {r["line_id"]: r for r in rows}
             replaced = 0

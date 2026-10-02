@@ -27,7 +27,13 @@ close-up resolves small fractions and signs better than a whole page does.
 
 So this step
 ------------
-  * re-reads only flagged rows whose text looks like maths;
+  * re-reads every row whose text looks like maths, flagged by the OCR or not.
+    The flag alone missed most of them: on a page of fraction working only 2
+    of 23 rows were flagged, the full-page read had turned every 7 into a 1
+    ("1/5 ... = 1/30" for "7/5 ... = 7/30"), and the one flagged row's
+    close-up read it right ("7/5 x 1/6");
+  * takes a stacked fraction's other half into the same crop - its numerator
+    or denominator is often a row of its own ("= 7" over "30");
   * widens each crop to the full width of the page's writing, and pads it
     vertically so a fraction's numerator and denominator are both inside —
     a crop narrower than the line was the main way the old step failed;
@@ -55,8 +61,8 @@ MODEL = "z-ai/glm-5.3-flash"
 # A copy with more flagged maths lines than this keeps the full-page reading
 # for the rest. Each close-up is a tiny call; the cap exists to stop a
 # pathological upload, not to save money.
-MAX_ROWS_PER_COPY = 40
-CONCURRENCY = 4
+MAX_ROWS_PER_COPY = 150
+CONCURRENCY = 6
 # Vertical padding as a share of the row height: enough to take in a stacked
 # fraction above and below the row's centre line.
 VERTICAL_PAD = 0.45
@@ -66,6 +72,8 @@ HORIZONTAL_PAD = 12
 PROMPT = (
     "Transcribe the handwriting in this image exactly as written, keeping the student's own "
     "mistakes. Write maths in plain text: ^ for powers, / for fractions, sqrt() for roots. "
+    "A fraction written stacked (top over a bar over bottom) is ONE number: write it top/bottom. "
+    "A number written over another one: write it as '350 written over 360'. "
     "If a line is crossed out, write [crossed out]. Output only the transcription."
 )
 
@@ -74,6 +82,7 @@ PROMPT = (
 # prose ("to vote", "(ii) Troposphere") and bare question numbers do not match.
 _MATHY = re.compile(
     r"(\w\s*[=<>≤≥≠]\s*\S)"            # relation:  x = 5, a<b
+    r"|(^\s*[=∴]\s*[-−(]?\s*[\dA-Za-z])"  # working that starts "= 7/30", "∴ x = 5"
     r"|(\d\s*[+\-×x*/÷]\s*\d)"          # arithmetic between digits
     r"|([A-Za-z0-9)\]]\s*\^)"           # caret power
     r"|[²³⁴ⁿ√∫∑π∞θ∆Δ±∠⊥]"               # maths glyphs
@@ -86,13 +95,18 @@ def looks_mathy(text: str) -> bool:
     return bool(_MATHY.search(text or ""))
 
 
+# A stacked fraction's other half: a short row of digits (and signs) right
+# above or below a maths row - "30" under "= 7", "5" under "= 1 (".
+_FRACTION_PART = re.compile(r"^[\s\d\-−+×x*/()=.^a-zA-Z]{1,8}$")
+
+
 def rows_to_reread(layout_map: dict[str, Any], limit: int = MAX_ROWS_PER_COPY) -> list[tuple[dict, dict]]:
-    """(page, row) pairs worth a close-up: flagged by the OCR, not illegible,
-    and maths-looking. Kept in page order; capped at `limit`."""
+    """(page, row) pairs worth a close-up: maths-looking student rows, not
+    printed question text and not illegible. Page order; capped at `limit`."""
     picked: list[tuple[dict, dict]] = []
     for page in layout_map.get("pages") or []:
         for row in page.get("lines") or []:
-            if not row.get("needs_math_fallback") or row.get("illegible"):
+            if row.get("illegible") or row.get("printed"):
                 continue
             if not isinstance(row.get("box"), (list, tuple)) or len(row["box"]) != 4:
                 continue
@@ -115,19 +129,66 @@ def crop_box(page: dict[str, Any], row: dict[str, Any], image_size: tuple[int, i
              if isinstance(r.get("box"), (list, tuple)) and len(r["box"]) == 4]
     left = min([x] + [float(b[0]) for b in boxes])
     right = max([x + w] + [float(b[0]) + float(b[2]) for b in boxes])
+    top, bottom = y, y + h
+    for part in fraction_parts(page, row):
+        _, py, _, ph = (float(v) for v in part["box"])
+        top, bottom = min(top, py), max(bottom, py + ph)
     pad = max(MIN_VERTICAL_PAD, h * VERTICAL_PAD)
     return (
         max(0, int(left - HORIZONTAL_PAD)),
-        max(0, int(y - pad)),
+        max(0, int(top - pad)),
         min(width, int(right + HORIZONTAL_PAD)),
-        min(height, int(y + h + pad)),
+        min(height, int(bottom + pad)),
     )
+
+
+def fraction_parts(page: dict[str, Any], row: dict[str, Any]) -> list[dict[str, Any]]:
+    """Short digit rows directly above or below `row` that overlap it
+    sideways: the other half of a stacked fraction the OCR split off."""
+    x, y, w, h = (float(v) for v in row["box"])
+    out = []
+    for other in page.get("lines") or []:
+        if other is row or not isinstance(other.get("box"), (list, tuple)) or len(other["box"]) != 4:
+            continue
+        text = (other.get("text") or "").strip()
+        ox, oy, ow, oh = (float(v) for v in other["box"])
+        gap = max(oy - (y + h), y - (oy + oh))
+        overlap = min(x + w, ox + ow) - max(x, ox)
+        if overlap <= 0.3 * min(w, ow):
+            continue
+        # Rows touching each other are the two levels of one stacked line,
+        # whatever text the page read put in them; a short digit row a little
+        # further off is a numerator or denominator too.
+        touching = gap <= 0.25 * max(h, oh)
+        digit_part = bool(text) and bool(re.search(r"\d", text)) and bool(_FRACTION_PART.match(text))
+        if touching or (digit_part and gap <= 0.9 * max(h, oh)):
+            out.append(other)
+    return out
 
 
 def _crop_png_b64(img: Any, box: tuple[int, int, int, int]) -> str:
     buf = io.BytesIO()
     img.crop(box).save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def plausible_reading(close_up: str, row_text: str) -> bool:
+    """Is the close-up a second reading of THIS row, rather than of a
+    neighbour? When the page read put a line's text on the wrong row, the
+    crop of that row's box shows a different line ("25)" for "= 1/6 (...)"),
+    and handing that to the grader as a "reading of the same line" misleads
+    it. A real second reading shares most of its characters with the first
+    and is not a fragment of it ("30" for "= 1/30")."""
+    from difflib import SequenceMatcher
+
+    def norm(s: str) -> str:
+        return re.sub(r"[^0-9a-z=+\-*/^()]", "", (s or "").lower().replace("×", "*").replace("−", "-"))
+    a, b = norm(close_up), norm(row_text)
+    if not a or not b:
+        return bool(a)
+    if len(a) < 0.5 * len(b):
+        return False
+    return SequenceMatcher(None, a, b).ratio() >= 0.4
 
 
 def _same(a: str, b: str) -> bool:
@@ -192,7 +253,7 @@ async def reread_math_rows(
                 logger.debug("token sink rejected maths re-read usage", exc_info=True)
         read += 1
         text = (response.get("content") or "").strip().strip("`").strip()
-        if text and not _same(text, row.get("text") or ""):
+        if text and not _same(text, row.get("text") or "") and plausible_reading(text, row.get("text") or ""):
             row["second_reading"] = text[:300]
 
     await asyncio.gather(*(one(p, r) for p, r in targets))

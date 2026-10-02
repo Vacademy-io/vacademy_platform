@@ -723,6 +723,119 @@ def test_machine_markers_cover_devanagari_transliteration():
     assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"
 
 
+_SCREEN_OPEN = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से। आपने बच्चे के लिए inquiry की थी।"
+
+
+def _machine_blob(turns, **diag):
+    """The report's diagnostics blob for a played transcript of (role, text)."""
+    o = b.CallOutcome(corr="machine-t", context={})
+    o.transcript = [{"role": r, "text": t} for r, t in turns]
+    o.diagnostics = dg_mod.CallDiagnostics(**diag)
+    return rpt._diagnostics_blob(o)
+
+
+def test_screener_then_a_real_person_is_not_flagged_as_a_machine():
+    """Live calls b5b43ae1 (the father: 2:41, 18 turns, Interested_Follow_Up_Needed)
+    and 34452119 (the mother: 2:14, quiz link sent), 2026-10-02. Google's call
+    screen answered first, a parent then talked through the whole call, and
+    both reports were AMBER "Probably an answering machine, not a person"."""
+    father = [
+        ("user", "Hi."), ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling I will see if this."),
+        ("user", "Hello."), ("assistant", _SCREEN_OPEN),
+        ("user", "हाँ जी।"), ("user", "मैं बच्चे का पिता बोल रहा हूँ।"),
+        ("assistant", "जी सर, आपसे बात करके अच्छा लगा। क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"),
+        ("user", "बच्चे का नाम सुमन है और वो six"), ("user", "हाँ।"),
+        ("assistant", "जी सर, सुमन Class 6 में है। सुमन के previous class में कितने marks आए थे?"),
+        ("user", "हाँ जी।"), ("user", "सुमन के fifty three थे ma'am।"),
+        ("assistant", "जी सर, समझ सकती हूँ — ये इस stage पर बहुत common है।"),
+        ("user", "हाँ बोल सकते हैं पढ़ाई नहीं कर रही है आजकल।"),
+        ("assistant", "समझ सकती हूँ सर।"),
+        ("user", "और sir TV और mobile में लगी रहती है।"),
+        ("assistant", "सर, generally parents की तीन-चार basic expectations होती हैं।"),
+        ("user", "हाँ जी।"),
+        ("assistant", "क्या सर, इसके अलावा आपकी कोई specific expectation है?"),
+        ("user", "नहीं नहीं ऐसे कुछ नहीं।"),
+        ("assistant", "ठीक है सर। तो मैं आपको हमारे MIP के बारे में बताती हूँ।"),
+        ("user", "नहीं नहीं नहीं बताइए और।"),
+        ("assistant", "हमारे यहाँ पचास से ज़्यादा full-time faculties हैं।"),
+        ("user", "कितनी fees?"), ("user", "कितनी रहती है आप लोग की?"),
+        ("assistant", "सर, MIP की fees लगभग बत्तीस हज़ार से पचास हज़ार के बीच रहती है।"),
+        ("user", "अच्छा।"), ("user", "और classes कब से चालू रहेंगी?"),
+        ("assistant", "सर, ये detail हमारे Senior Academic Advisor आपको बता देंगे।"),
+    ]
+    mother = [
+        ("user", "Hi."), ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling I will see if this person."),
+        ("user", "बताएं।"), ("user", "माता से।"),
+        ("assistant", "नमस्ते मैम, Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है।"),
+        ("user", "ठीक है तो फिर हम क्या करना है क्या चाहिए आपको?"),
+        ("assistant", "जी मैम, क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"),
+        ("user", "हाँ बच्चा।"),
+        ("assistant", "बच्चा अभी किस class में है मैम?"),
+        ("user", "हाँ।"), ("user", "third class में है।"),
+        ("assistant", "जी मैम, Class 3। और बच्चे का नाम क्या है मैम?"),
+        ("user", "अरिया नाम है।"),
+        ("assistant", "अरिया के previous class में कितने marks आए थे?"),
+        ("user", "Eighty seven."),
+        ("assistant", "अच्छा! ये तो अच्छी बात है मैम।"),
+        ("user", "ठीक है तो आप ये बताइए आपके कितने क्या क्या plans हैं?"),
+        ("assistant", "मैम, हमारे यहाँ एक Scholarship Test होता है।"),
+        ("user", "हाँ बताओ pricing कितनी है plan की?"),
+        ("assistant", "मैम, MGP की fees लगभग चालीस हज़ार से साठ हज़ार के बीच रहती है।"),
+        ("user", "ठीक है ठीक है भेज दीजिए।"),
+        ("assistant", "जी मैम, मैं आपको Scholarship Quiz का link WhatsApp कर दूँगी।"),
+        ("user", "नहीं किया।"), ("user", "Okay thank you bye bye."),
+        ("assistant", "आपके समय के लिए धन्यवाद। नमस्ते।"),
+    ]
+    for name, turns, users in (("b5b43ae1", father, 18), ("34452119", mother, 15)):
+        p = _machine_blob(turns, bot_turns=12, tts_chars=1800, longest_user_secs=3.1,
+                          barge_ins=2)
+        assert p["turnTaking"]["userTurns"] == users, name
+        assert p["machine"]["markers"], f"{name}: the screener is still on record"
+        assert p["machine"]["personTurns"] >= dg_mod._PERSON_TURNS_OVER_MACHINE, (name, p["machine"])
+        assert dg_mod.LIKELY_MACHINE not in p["faultLevels"], (name, p["faultLevels"])
+        assert p["health"] == "GREEN", (name, p["faultLevels"])
+
+
+def test_screener_or_voicemail_with_nobody_behind_it_is_still_a_machine():
+    """The other side of b5b43ae1/34452119: no person ever answered us."""
+    # replay 787aa111: the screen relayed "Thanks. Arushi." and then gave up
+    screener_only = [
+        ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling, I'll see if this person is available."),
+        ("user", "Thanks."), ("user", "Arushi."), ("user", "Please stay on the line."),
+        ("assistant", "Hello, क्या आप मुझे सुन पा रहे हैं?"),
+        ("user", "I'm sorry."), ("user", "This person is not available."),
+        ("user", "If you would like to leave an additional message."),
+        ("user", "Please reply after the tone."),
+        ("assistant", "ठीक है, मैं बाद में call करती हूँ। धन्यवाद।"),
+    ]
+    # replay 7958a36d: the operator's voicemail, in fragments
+    voicemail = [
+        ("user", "Call has been forwarded to voicemail."), ("assistant", _SCREEN_OPEN),
+        ("user", "The person you are trying to reach is not available."),
+        ("user", "At the tone."), ("user", "Please record your message."),
+        ("assistant", "Hello?"),
+        ("user", "When you have."), ("user", "You have finished recording."),
+        ("user", "You may hang up."),
+        ("assistant", "ठीक है, मैं बाद में call करती हूँ।"),
+    ]
+    # A personal greeting after the operator's line: several unmatched lines
+    # with real words, but all in ONE run over our opening — it never answered.
+    personal = [
+        ("user", "Your call has been forwarded to voicemail."), ("assistant", _SCREEN_OPEN),
+        ("user", "Hi, this is Rahul Sharma."), ("user", "I am busy right now."),
+        ("user", "I will call you back soon."), ("user", "Please leave your name and number."),
+        ("assistant", "Hello, क्या आप मुझे सुन पा रहे हैं?"),
+    ]
+    for name, turns in (("screener", screener_only), ("voicemail", voicemail),
+                        ("personal", personal)):
+        p = _machine_blob(turns, bot_turns=3, tts_chars=400, longest_user_secs=5.0)
+        assert p["machine"]["personTurns"] < dg_mod._PERSON_TURNS_OVER_MACHINE, (name, p["machine"])
+        assert dg_mod.LIKELY_MACHINE in p["faultLevels"], (name, p["faultLevels"])
+
+
 def test_kill_hook_stamps_a_suspicion_not_a_count():
     """The hook must NOT bump the counter directly — 95% of these replies play."""
     src = inspect.getsource(b.run_bot)

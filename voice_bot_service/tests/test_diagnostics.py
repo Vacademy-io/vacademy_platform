@@ -112,6 +112,33 @@ def test_human_call_is_not_flagged_as_machine():
     assert dg.LIKELY_MACHINE not in dg.verdict(d)["faults"]
 
 
+def test_screener_then_a_person_is_not_a_machine():
+    """Calls b5b43ae1 / 34452119 (2026-10-02): Google's call screen spoke
+    first, then a parent talked through a 2-minute call — and both were AMBER
+    "Probably an answering machine" on the screener's marker alone."""
+    d = dg.CallDiagnostics(user_turns=18, bot_turns=12, longest_user_secs=3.1,
+                           barge_ins=2, tts_chars=1800,
+                           machine_markers=["record your name", "reason for calling"],
+                           person_turns=8)
+    assert dg.machine_score(d) < 0.5
+    v = dg.verdict(d)
+    assert dg.LIKELY_MACHINE not in v["faults"] and v["health"] == dg.GREEN, v
+    p = dg.to_payload(d)
+    # the screener is still on record as evidence, with what outweighed it
+    assert p["machine"]["markers"] == ["record your name", "reason for calling"]
+    assert p["machine"]["personTurns"] == 8
+
+
+def test_marker_still_counts_when_nobody_answered_past_it():
+    """A screen with nobody behind it still relays a line or two (787aa111
+    scored 2), and an unmeasured count must not read as a person."""
+    for person in (None, 0, 2):
+        d = dg.CallDiagnostics(user_turns=8, bot_turns=3, tts_chars=300,
+                               machine_markers=["record your name"], person_turns=person)
+        assert dg.verdict(d)["faults"].get(dg.LIKELY_MACHINE) == dg.AMBER, person
+    assert dg.to_payload(dg.CallDiagnostics())["machine"]["personTurns"] is None
+
+
 # ── latency needs a sample floor before it accuses anyone ───────────────────
 
 def test_slow_faults_require_enough_samples():

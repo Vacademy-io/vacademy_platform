@@ -42,7 +42,11 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # ~76% of its payload was social tokens or abandoned fragments. Consent and refusal
 # are explicitly still counted — see _lost_carries_meaning. Compare ANSWER_DELETED
 # rates across the v4/v5 boundary with care.
-RULES_VERSION = 5
+# v6 (2026-10-02): LIKELY_MACHINE no longer fires on a machine marker that a
+# person then answered past (person_turns, see machine_score) — a call screener
+# followed by a real conversation (calls b5b43ae1, 34452119). Compare
+# LIKELY_MACHINE rates across the v5/v6 boundary with care.
+RULES_VERSION = 6
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -292,6 +296,9 @@ class CallDiagnostics:
     first_user_secs: Optional[float] = None
     longest_user_secs: float = 0.0
     machine_markers: List[str] = field(default_factory=list)
+    # Times a person answered the bot after the machine greeting (report.
+    # _person_turns). None = not measured, and then the markers count as before.
+    person_turns: Optional[int] = None
 
     # ── latency reservoirs ──
     llm_ttfb: List[float] = field(default_factory=list)
@@ -753,11 +760,21 @@ def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     return lost.answers, lost.answer_samples
 
 
+# A machine greeting that a person then answered past this many times was a
+# call screener (or a pickup after the operator's line), not an answering
+# machine. Live calls b5b43ae1 and 34452119 (2026-10-02) were AMBER
+# LIKELY_MACHINE on the screener's marker alone, through 18 and 15 caller
+# turns of a real conversation. 3, not 1: a screen with nobody behind it
+# still relays a line or two after our opening ("Thanks. Arushi.", "I'm
+# sorry." — 787aa111 scored 2), and a person answers us far more than that.
+_PERSON_TURNS_OVER_MACHINE = 3
+
+
 def machine_score(d: CallDiagnostics) -> float:
     """Bounded 0..1 heuristic that a machine, not a person, answered. INFERRED —
     v1 is EVIDENCE ONLY and never changes status or disposition."""
     score = 0.0
-    if d.machine_markers:
+    if d.machine_markers and (d.person_turns or 0) < _PERSON_TURNS_OVER_MACHINE:
         score += 0.5
     if d.user_turns <= 1 and d.bot_turns >= 2:
         score += 0.2
@@ -1026,6 +1043,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "machine": {
                 "score": machine_score(d),
                 "markers": d.machine_markers or None,
+                "personTurns": d.person_turns,
                 "firstUserSecs": d.first_user_secs,
                 "longestUserSecs": round(d.longest_user_secs, 2) or None,
                 "src": "inferred",

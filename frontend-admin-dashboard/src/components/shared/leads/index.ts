@@ -22,6 +22,8 @@ export { ManageColumnsPopover } from './manage-columns-popover';
 export {
     useLeadColumnPrefs,
     buildLeadColumnToggles,
+    useColumnOrderPrefs,
+    orderColumnIds,
     type LeadColumnToggle,
 } from './use-lead-column-prefs';
 export {

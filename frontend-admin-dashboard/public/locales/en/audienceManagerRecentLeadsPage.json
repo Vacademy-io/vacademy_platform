@@ -138,7 +138,8 @@
             "counsellor": "Counsellor",
             "activityNotes": "Activity & Notes",
             "notesCount": "Notes Count",
-            "leadJourney": "Lead Journey (disposition & notes)"
+            "leadJourney": "Lead Journey (disposition & notes)",
+            "utmCampaign": "UTM campaign"
         },
         "notes": {
             "defaultTitle": "Note",

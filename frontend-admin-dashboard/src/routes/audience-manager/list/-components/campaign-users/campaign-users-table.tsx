@@ -106,6 +106,9 @@ import {
     LeadTable,
     LeadPagination,
     ManageColumnsPopover,
+    useColumnOrderPrefs,
+    orderColumnIds,
+    type LeadColumnToggle,
     useLeadColumnPrefs,
     buildLeadColumnToggles,
     useUpdateLeadTier,
@@ -579,6 +582,8 @@ const CampaignUsersContent = ({
                 _custom_field_values: customValues,
                 _audience_campaign_name: lead.campaign_name || campaignName || null,
                 _audience_campaign_type: lead.campaign_type || campaignType || null,
+                _utm_campaign: lead.utm_campaign || null,
+                _utm_source: lead.utm_source || null,
                 _tat_due_at: lead.tat_due_at ?? null,
                 _follow_up_due_at: lead.follow_up_due_at ?? null,
                 _tat_overdue: lead.tat_overdue ?? null,
@@ -713,8 +718,18 @@ const CampaignUsersContent = ({
         'crm-lead-columns:audience-leads',
         AUDIENCE_LEADS_DEFAULT_HIDDEN
     );
+    // Order is a second, independent preference, paired with visibility exactly as
+    // Recent Leads and Manage Payments pair them.
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(
+        'crm-lead-column-order:audience-leads'
+    );
+    /** Reset restores BOTH halves of the layout: what is hidden and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
+    };
     // "Manage Column" list — source stays hidden and is not offered here.
-    const toggleableColumns = useMemo(
+    const naturalColumnToggles = useMemo(
         () =>
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
@@ -723,6 +738,12 @@ const CampaignUsersContent = ({
             }).filter((c) => c.id !== 'source'),
         [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
+    const toggleableColumns = useMemo(() => {
+        const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((t): t is LeadColumnToggle => !!t);
+    }, [naturalColumnToggles, columnOrder]);
 
     // ── Filter handlers ──────────────────────────────────────
     const handleTierChange = (values: string[]) => {
@@ -1329,7 +1350,8 @@ const CampaignUsersContent = ({
                         columns={toggleableColumns}
                         hiddenColumns={hiddenColumns}
                         onToggle={toggleColumn}
-                        onReset={resetColumns}
+                        onReset={handleResetColumns}
+                        onReorder={setColumnOrder}
                     />
                     <Button
                         variant="outline"
@@ -1539,6 +1561,7 @@ const CampaignUsersContent = ({
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            columnOrder={columnOrder}
                             selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}

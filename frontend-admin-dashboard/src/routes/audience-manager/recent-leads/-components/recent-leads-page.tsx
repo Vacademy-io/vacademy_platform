@@ -63,7 +63,10 @@ import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter
 import {
     ManageColumnsPopover,
     useLeadColumnPrefs,
+    useColumnOrderPrefs,
+    orderColumnIds,
     buildLeadColumnToggles,
+    type LeadColumnToggle,
 } from '@/components/shared/leads';
 import {
     ExportColumnPickerDialog,
@@ -602,6 +605,16 @@ const RecentLeadsContent = ({
     const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
         'crm-lead-columns:recent-leads'
     );
+    // Order is a second, independent preference — Manage Payments already pairs these two
+    // the same way, so the two tables behave identically.
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(
+        'crm-lead-column-order:recent-leads'
+    );
+    /** Reset restores BOTH halves of the layout: what is hidden and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
+    };
 
     const [noteTarget, setNoteTarget] = useState<{
         userId: string;
@@ -616,7 +629,7 @@ const RecentLeadsContent = ({
 
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
-    const toggleableColumns = useMemo(
+    const naturalColumnToggles = useMemo(
         () =>
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
@@ -625,6 +638,12 @@ const RecentLeadsContent = ({
             }),
         [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
+    const toggleableColumns = useMemo(() => {
+        const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((t): t is LeadColumnToggle => !!t);
+    }, [naturalColumnToggles, columnOrder]);
 
     const audiencesQuery = useQuery(
         handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
@@ -1132,6 +1151,7 @@ const RecentLeadsContent = ({
             { key: 'mobile', label: t('export.columns.mobile') },
             { key: 'audience', label: t('export.columns.audience') },
             { key: 'campaign_type', label: t('export.columns.campaignType', { term }) },
+            { key: 'utm_campaign', label: t('export.columns.utmCampaign') },
         ];
         // Custom-field columns: the institute catalog gives the full pickable
         // set (Recent Leads is cross-campaign, so no single form definition
@@ -1198,6 +1218,8 @@ const RecentLeadsContent = ({
         if (selectedExportCols.has('audience')) baseHeaders.push(t('export.columns.audience'));
         if (selectedExportCols.has('campaign_type'))
             baseHeaders.push(t('export.columns.campaignType', { term }));
+        if (selectedExportCols.has('utm_campaign'))
+            baseHeaders.push(t('export.columns.utmCampaign'));
         // Custom-field columns. Fields the picker listed follow the user's
         // selection; fields discovered only in the fetched data (not in the
         // catalog / current page when the picker was built) are always
@@ -1258,6 +1280,7 @@ const RecentLeadsContent = ({
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
             if (selectedExportCols.has('campaign_type'))
                 row.push(csvSafe(lead.campaign_type ?? ''));
+            if (selectedExportCols.has('utm_campaign')) row.push(csvSafe(lead.utm_campaign ?? ''));
             cfFieldIds.forEach((fieldId) => row.push(csvSafe(lead.custom_field_values?.[fieldId])));
             if (showOps) {
                 const cName = userId
@@ -1852,7 +1875,8 @@ const RecentLeadsContent = ({
                         columns={toggleableColumns}
                         hiddenColumns={hiddenColumns}
                         onToggle={toggleColumn}
-                        onReset={resetColumns}
+                        onReset={handleResetColumns}
+                        onReorder={setColumnOrder}
                     />
                     <Button
                         size="sm"
@@ -2094,6 +2118,7 @@ const RecentLeadsContent = ({
                             alwaysShowActions
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            columnOrder={columnOrder}
                             selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}

@@ -137,7 +137,8 @@
             "counsellor": "काउंसलर",
             "activityNotes": "गतिविधि और नोट्स",
             "notesCount": "नोट्स की संख्या",
-            "leadJourney": "लीड यात्रा (निपटान व नोट्स)"
+            "leadJourney": "लीड यात्रा (निपटान व नोट्स)",
+            "utmCampaign": "UTM कैंपेन"
         },
         "notes": {
             "defaultTitle": "नोट",

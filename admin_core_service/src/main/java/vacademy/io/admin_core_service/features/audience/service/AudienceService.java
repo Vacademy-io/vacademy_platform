@@ -136,6 +136,9 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.repository.UtmAttributionRepository utmAttributionRepository;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -3569,6 +3572,21 @@ public class AudienceService {
                 : audienceRepository.findAllById(audienceIds).stream()
                         .collect(Collectors.toMap(Audience::getId, a -> a, (a, b) -> a));
 
+        // Latest UTM tagging per lead — one query for the whole page, not one per row.
+        // Keyed by user_id because that is what utm_attribution carries.
+        Map<String, String[]> utmByUserId = new HashMap<>();
+        if (StringUtils.hasText(instituteId) && !userIds.isEmpty()) {
+            try {
+                for (Object[] row : utmAttributionRepository.findLatestForUsers(instituteId, userIds)) {
+                    utmByUserId.put((String) row[0],
+                            new String[] { (String) row[1], (String) row[2] });
+                }
+            } catch (Exception e) {
+                // UTM is decoration on this screen; never fail the leads list for it.
+                logger.warn("Could not load UTM attribution for the leads page: {}", e.getMessage());
+            }
+        }
+
         return responses.map(response -> {
             // Build custom field values map from batch-fetched data
             List<CustomFieldValues> responseCfValues = cfValuesByResponseId
@@ -3628,6 +3646,10 @@ public class AudienceService {
                             .map(Audience::getCampaignName).orElse(null))
                     .campaignType(Optional.ofNullable(audienceById.get(response.getAudienceId()))
                             .map(Audience::getCampaignType).orElse(null))
+                    .utmSource(Optional.ofNullable(utmByUserId.get(response.getUserId()))
+                            .map(u -> u[0]).orElse(null))
+                    .utmCampaign(Optional.ofNullable(utmByUserId.get(response.getUserId()))
+                            .map(u -> u[1]).orElse(null))
                     .userId(response.getUserId())
                     .studentUserId(response.getStudentUserId())
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)

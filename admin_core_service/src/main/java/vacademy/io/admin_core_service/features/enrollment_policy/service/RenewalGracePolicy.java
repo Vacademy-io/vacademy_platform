@@ -65,16 +65,31 @@ public class RenewalGracePolicy {
     }
 
     /**
-     * Last calendar day of the grace window (end_date's date + graceDays, in the invite's
-     * billing timezone), or null when no grace applies.
+     * Last calendar day of the grace window ({@link #lastAccessDay} + graceDays, in the
+     * invite's billing timezone), or null when no grace applies.
      */
     public LocalDate lastGraceDay(UserPlan plan) {
         if (!isConfigured(plan)) {
             return null;
         }
+        return lastAccessDay(plan).plusDays(graceDays(plan.getEnrollInvite()));
+    }
+
+    /**
+     * The last day the plan's own term covers.
+     *
+     * <p>{@code end_date} is the instant at which access ENDS, so it is an exclusive bound
+     * and one second is taken off before asking which day it falls on. That is not a
+     * nicety: a 14-day trial ending "27 Sep" is stored as 27 Sep 18:30 UTC, which IS
+     * 28 Sep 00:00 in Asia/Kolkata, so reading the date of the instant itself returned the
+     * 28th -- the day after access ended. Every window anchored on it was then a day long,
+     * which is why lapsed learners kept receiving class links for one more morning than the
+     * configured grace allowed. 26 SuchBliss plans sit exactly on this boundary; the rest
+     * end mid-day and are unaffected either way, which is what made the drift look random.
+     */
+    public LocalDate lastAccessDay(UserPlan plan) {
         ZoneId zone = billingZone(plan.getEnrollInvite());
-        return plan.getEndDate().toInstant().atZone(zone).toLocalDate()
-                .plusDays(graceDays(plan.getEnrollInvite()));
+        return plan.getEndDate().toInstant().minusSeconds(1).atZone(zone).toLocalDate();
     }
 
     /**

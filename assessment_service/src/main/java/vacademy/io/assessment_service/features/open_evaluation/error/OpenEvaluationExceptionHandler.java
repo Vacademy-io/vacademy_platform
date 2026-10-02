@@ -212,8 +212,9 @@ public class OpenEvaluationExceptionHandler {
         if (isUnstorableText(ex)) {
             // Safety net behind NulCharacterGuard (query parameters, anything it cannot see):
             // Postgres refused a character in a partner string. That is the caller's input.
-            log.info("Partner API rejected 422 {}: Postgres refused a character in the input on {} {}",
-                    NulCharacterGuard.CODE, req.getMethod(), req.getRequestURI());
+            // WARN, not INFO: a server-side encoding bug would land here too and must be findable.
+            log.warn("Partner API rejected 422 {}: Postgres refused a character in the input on {} {} (request {})",
+                    NulCharacterGuard.CODE, req.getMethod(), req.getRequestURI(), req.getHeader("X-Request-Id"));
             return handleApi(req, OpenApiException.validation(null, NulCharacterGuard.CODE,
                     "A text value contains a character that cannot be stored, such as U+0000 (NUL)."));
         }

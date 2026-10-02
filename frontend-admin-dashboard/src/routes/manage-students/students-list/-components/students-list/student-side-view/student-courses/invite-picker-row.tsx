@@ -467,7 +467,10 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                                     </div>
                                 </>
                             ) : (
-                                <p className="mt-0.5 text-2xs text-neutral-400">
+                                /* No plan means this invite CANNOT enrol anyone — the backend
+                                   rejects it at preview. Say so here, where the choice is made,
+                                   instead of letting it fail two steps later. */
+                                <p className="mt-0.5 text-2xs font-medium text-warning-600">
                                     {t('summary.plan.none')}
                                 </p>
                             )}

@@ -147,6 +147,15 @@ export const AssignCourseDialog = ({
         );
     };
 
+    /**
+     * The backend reports an unconfigured invite as
+     * "Config resolution failed: No active PaymentPlan found for PaymentOption=<uuid>",
+     * which tells a counsellor nothing they can act on. Everything else is passed through
+     * untouched rather than guessed at.
+     */
+    const explainFailure = (message: string, tr: typeof t): string =>
+        /No active PaymentPlan found/i.test(message) ? tr('preview.noPlanConfigured') : message;
+
     const buildRequest = (dryRun: boolean): BulkAssignRequest => {
         const assignments: AssignmentItem[] = psConfigs.map((cfg) => ({
             package_session_id: cfg.packageSessionId,
@@ -586,7 +595,7 @@ export const AssignCourseDialog = ({
                                             </span>
                                             {r.message && (
                                                 <p className="mt-0.5 text-2xs text-neutral-400">
-                                                    {r.message}
+                                                    {explainFailure(r.message, t)}
                                                 </p>
                                             )}
                                         </td>

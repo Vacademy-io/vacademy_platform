@@ -43,7 +43,8 @@
             "course": "Cours",
             "action": "Action",
             "status": "Statut"
-        }
+        },
+        "noPlanConfigured": "Aucun prix défini pour cette invitation — choisissez Auto (Défaut) pour une inscription gratuite, ou définissez son prix dans Payment Settings."
     },
     "results": {
         "title": "Attribution terminée",

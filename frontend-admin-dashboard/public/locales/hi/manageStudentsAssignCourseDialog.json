@@ -39,7 +39,8 @@
             "course": "कोर्स",
             "action": "कार्रवाई",
             "status": "स्थिति"
-        }
+        },
+        "noPlanConfigured": "इस इनवाइट की कीमत अभी तय नहीं है — मुफ़्त एनरोलमेंट के लिए Auto (Default) चुनें, या पहले Payment Settings में कीमत सेट करें।"
     },
     "results": {
         "title": "असाइनमेंट पूर्ण",

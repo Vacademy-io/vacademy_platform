@@ -1032,6 +1032,10 @@ async def test_no_text_frame_when_pipecat_already_emits_one(monkeypatch, tmp_pat
     sentence in the played transcript and the assistant context twice — the model
     would see itself say the line twice and the repeat check would compare
     doubled text. Only the word-timestamp services (smallest) need ours.
+
+    (A real pipecat service places the text at its heard point and drops
+    pipecat's copy — the tests below. This stand-in has no
+    append_to_audio_context to drop it through, so it must get none of ours.)
     """
     monkeypatch.setattr(ttscache, "get_settings",
                         lambda: _Settings(str(tmp_path)))
@@ -1057,6 +1061,168 @@ def test_owns_text_frame_defaults_to_not_emitting():
     one corrupts the transcript. Prefer the recoverable failure."""
     class _Unknown: pass
     assert ttscache.owns_text_frame(_Unknown()) is False
+
+
+# ── a cached sentence is HEARD by its audio, like a live one (call 34452119) ─
+
+def test_heard_chunk_count_is_the_first_boundary_at_or_past_the_share():
+    assert ttscache.heard_chunk_count(0) == 0
+    assert ttscache.heard_chunk_count(1) == 1, "the text never leads its audio"
+    assert ttscache.heard_chunk_count(3) == 2
+    assert ttscache.heard_chunk_count(10) == 6
+    assert ttscache.heard_chunk_count(660) == 396        # a 13.2 s blob in 20 ms chunks
+    assert ttscache.heard_chunk_count(10, share=1.0) == 10
+    assert ttscache.heard_chunk_count(10, share=2.0) == 10, "never past the last chunk"
+
+
+class _QueueTTS(_FakeTTS):
+    """A push_text_frames engine (navana / sarvam) with pipecat's audio-context
+    append: what the hit path's frames and pipecat's own late TTSTextFrame are
+    queued through. Records the queue in order."""
+    _push_start_frame = True
+    _push_stop_frames = False
+    _push_text_frames = True
+
+    def __init__(self):
+        super().__init__()
+        self.queue = []
+        self._tts_contexts = {}
+
+    async def append_to_audio_context(self, context_id, frame):
+        self.queue.append((context_id, frame))
+
+
+async def _speak(tts, text, cid, *, append_to_context=True, stop_after=None):
+    """pipecat's _push_tts_frames for one sentence: register the context, run
+    run_tts appending every frame it yields, then append the base class's own
+    TTSTextFrame. stop_after=N: the run is interrupted after N yielded frames
+    (the generator is closed and pipecat appends nothing more)."""
+    from types import SimpleNamespace
+    from pipecat.frames.frames import AggregationType, TTSTextFrame
+    tts._tts_contexts[cid] = SimpleNamespace(append_to_context=append_to_context)
+    gen = tts.run_tts(text, cid)
+    n = 0
+    async for f in gen:
+        if f is not None:
+            await tts.append_to_audio_context(cid, f)
+        n += 1
+        if stop_after is not None and n >= stop_after:
+            await gen.aclose()
+            return
+    late = TTSTextFrame(text, aggregated_by=AggregationType.SENTENCE)
+    late.context_id = cid
+    late.append_to_context = append_to_context
+    await tts.append_to_audio_context(cid, late)
+
+
+def _install_queue_tts(monkeypatch, tmp_path, lines):
+    monkeypatch.setattr(ttscache, "get_settings", lambda: _Settings(str(tmp_path)))
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    for line, ms in lines:
+        cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                     pace=1.1, temperature=0.5, fixed=True)
+        c.ladder([cand]); c.store(cand, _pcm(ms))
+    tts = _QueueTTS()
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line for line, _ in lines}, cache_mode="FULL", cache=c)
+    return tts
+
+
+def _kinds(queue, cid=None):
+    return [type(f).__name__ for c, f in queue if cid is None or c == cid]
+
+
+async def test_a_cached_sentence_is_heard_at_60_percent_of_its_audio_and_said_once(
+        monkeypatch, tmp_path):
+    """Call 34452119 (2026-10-02): a 13.2 s cached reply sentence, cut at 63 %.
+    pipecat appended its text BEHIND the whole blob, so the cut left it out of
+    the played transcript; NoRepeatGate un-recorded it and the model said all of
+    it again. The text must sit 60 % of the way into the audio — where a live
+    Navana sentence's is released — and pipecat's late copy must be dropped:
+    one TTSTextFrame per sentence, carrying the context's append_to_context."""
+    from pipecat.frames.frames import TTSTextFrame
+    line = "Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है।"
+    tts = _install_queue_tts(monkeypatch, tmp_path, [(line, 1000)])
+    await _speak(tts, line, "ctx-cached", append_to_context=False)
+    kinds = _kinds(tts.queue)
+    texts = [f for _, f in tts.queue if isinstance(f, TTSTextFrame)]
+    assert len(texts) == 1, f"one text frame per sentence, got {len(texts)}: {kinds}"
+    assert texts[0].text == line
+    assert getattr(texts[0], "_vacademy_cached_text", False), "pipecat's late copy got through"
+    assert texts[0].append_to_context is False, "a re-said opening must not re-enter the context"
+    n_audio = kinds.count("TTSAudioRawFrame")
+    before = kinds[:kinds.index("TTSTextFrame")].count("TTSAudioRawFrame")
+    assert n_audio == 50                                  # 1 s in 20 ms chunks
+    assert before == 30, f"text after {before} of {n_audio} chunks — want 60 % (30)"
+
+
+async def test_a_live_sentence_keeps_pipecats_text_frame(monkeypatch, tmp_path):
+    """The drop is armed only by a cache HIT: a miss (and every live sentence
+    after a hit) keeps the base class's TTSTextFrame — the live path is the
+    engine's own, untouched."""
+    from pipecat.frames.frames import TTSTextFrame
+    cached = "Thank you."
+    tts = _install_queue_tts(monkeypatch, tmp_path, [(cached, 400)])
+    await _speak(tts, cached, "ctx-1")
+    await _speak(tts, "Kuch aur poochhna hai?", "ctx-2")
+    live = [f for c, f in tts.queue if c == "ctx-2" and isinstance(f, TTSTextFrame)]
+    assert [f.text for f in live] == ["Kuch aur poochhna hai?"]
+    assert not getattr(live[0], "_vacademy_cached_text", False)
+    assert len([f for c, f in tts.queue if c == "ctx-1" and isinstance(f, TTSTextFrame)]) == 1
+
+
+async def test_a_hit_cut_before_its_heard_point_places_no_text_and_arms_nothing(
+        monkeypatch, tmp_path):
+    """Interrupted at ~30 % (the 30 % cut of the timing sim): no text frame is
+    queued — the sentence is not heard and may be said again — and no drop is
+    left armed to swallow the next sentence's text on the same context (a
+    shared turn context reuses the id)."""
+    from pipecat.frames.frames import TTSTextFrame
+    line = "Generally parents have three or four basic expectations."
+    tts = _install_queue_tts(monkeypatch, tmp_path, [(line, 1000)])
+    await _speak(tts, line, "ctx-shared", stop_after=15)       # 15 of 50 chunks
+    assert not [f for _, f in tts.queue if isinstance(f, TTSTextFrame)]
+    await _speak(tts, "Would you agree with that?", "ctx-shared")
+    texts = [f.text for _, f in tts.queue if isinstance(f, TTSTextFrame)]
+    assert texts == ["Would you agree with that?"]
+
+
+def test_the_handoff_drops_only_the_armed_contexts_next_copy():
+    from pipecat.frames.frames import AggregationType, TTSTextFrame
+    h = ttscache.CachedTextHandoff()
+
+    def tf(text, own=False):
+        f = TTSTextFrame(text, aggregated_by=AggregationType.SENTENCE)
+        if own:
+            f._vacademy_cached_text = True
+        return f
+    assert not h.take("a", tf("x")), "nothing armed"
+    h.arm("a", "Thank you.")
+    assert not h.take("a", tf("Thank you.", own=True)), "our own placed frame is never dropped"
+    assert not h.take("b", tf("Thank you.")), "another context's frame is not ours to drop"
+    assert h.take("a", tf("Thank you. ")), "pipecat's copy (whitespace aside) is dropped"
+    assert not h.take("a", tf("Thank you.")), "one-shot"
+    h.arm("a", "Thank you.")
+    h.clear()
+    assert not h.take("a", tf("Thank you.")), "cleared by the next run_tts"
+
+
+def test_a_word_timestamp_engine_keeps_its_own_append(monkeypatch, tmp_path):
+    """smallest (push_text_frames off) already spreads a cached sentence's words
+    over its blob: nothing of the handoff is installed on it."""
+    monkeypatch.setattr(ttscache, "get_settings", lambda: _Settings(str(tmp_path)))
+
+    class _WordTTS(_FakeTTS):
+        async def append_to_audio_context(self, context_id, frame):
+            pass
+    tts = _WordTTS()
+    assert ttscache.owns_text_frame(tts)
+    ttscache.install_tts_cache(
+        tts, engine="smallest", model="lightning", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines=set(), cache_mode="FULL",
+        cache=SpeechCache(root=str(tmp_path / "speech")))
+    assert "append_to_audio_context" not in vars(tts), "the word-timestamp engine was wrapped"
 
 
 def test_a_hit_records_itself_even_with_no_prior_provenance(cache):

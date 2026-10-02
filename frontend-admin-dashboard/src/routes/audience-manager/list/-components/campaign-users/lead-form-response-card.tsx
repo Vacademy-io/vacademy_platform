@@ -322,6 +322,7 @@ export const LeadFormResponseCard = () => {
         _response_fields?: LeadResponseField[];
         _audience_campaign_name?: string;
         _audience_campaign_type?: string;
+        _utm_campaign?: string;
         _response_id?: string | null;
     } | null;
     const fields = ext?._response_fields;
@@ -339,7 +340,9 @@ export const LeadFormResponseCard = () => {
     const campaignName = ext?._audience_campaign_name;
     // Channel › list, so the side view reads the same hierarchy as the leads table.
     const campaignType = ext?._audience_campaign_type;
-    const campaignTrail = [campaignType, campaignName].filter(Boolean).join(' › ');
+    // Channel > list > the ad campaign the lead actually arrived on.
+    const utmCampaign = ext?._utm_campaign;
+    const campaignTrail = [campaignType, campaignName, utmCampaign].filter(Boolean).join(' › ');
 
     // The Call button shows on the phone-number row only (see {@link isPhoneField}).
     // We disable it pre-emptively when we don't have a response id (the backend

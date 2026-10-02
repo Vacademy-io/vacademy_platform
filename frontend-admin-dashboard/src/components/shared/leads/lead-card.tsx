@@ -1,4 +1,4 @@
-import { Envelope, Phone, Megaphone, CalendarBlank } from '@phosphor-icons/react';
+import { CalendarBlank, Envelope, Megaphone, Phone, Tag } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LeadCardVM } from './lead-view-model';
@@ -63,8 +63,20 @@ export function LeadCard({ vm, profile, showScore, showOps, actions }: LeadCardP
                 </p>
                 <p className="flex items-center gap-1.5 truncate text-xs text-neutral-500">
                     <Megaphone className="size-3 shrink-0 text-neutral-400" />
-                    <span className="truncate">{vm.audience}</span>
+                    {/* Channel > list, the same trail the table and the side view show. */}
+                    <span className="truncate">
+                        {[vm.campaignType, vm.audience].filter((v) => v && v !== '-').join(' › ') ||
+                            vm.audience}
+                    </span>
                 </p>
+                {vm.utmCampaign && vm.utmCampaign !== '-' && (
+                    <p className="flex items-center gap-1.5 truncate text-xs text-neutral-500">
+                        <Tag className="size-3 shrink-0 text-neutral-400" />
+                        <span className="truncate" title={vm.utmSource ?? undefined}>
+                            {vm.utmCampaign}
+                        </span>
+                    </p>
+                )}
             </div>
 
             {showScore && profile && (

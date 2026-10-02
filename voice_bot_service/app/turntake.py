@@ -784,8 +784,15 @@ _QUESTION_TOPICS = (
     # link question, and the topic dedupe dropped it twice as a re-ask of "you
     # send it to all your students on WhatsApp?" — the booking then ended on
     # "Okay. Okay. Yes, go ahead." (call b2f6330a, 2026-09-15).
+    # The Hinglish form too: Shreya's close asks "क्या ये number WhatsApp पर है?" —
+    # Latin "number" in a Devanagari sentence matched none of these, fell to
+    # quiz_link, and the quiz question after it ("क्या मैं उसका link भी WhatsApp
+    # कर दूँ?") was dropped as a re-ask of it in every simulated run (prompt v8
+    # probe, 2026-10-02).
     ("whatsapp_number", ("this number", "same number", "whatsapp number", "number on whatsapp",
-                         "ये नंबर", "यही नंबर", "yeh number", "yahi number", "isi number")),
+                         "ये नंबर", "यही नंबर", "yeh number", "yahi number", "isi number",
+                         "ये number", "यही number", "इसी number", "number whatsapp",
+                         "नंबर whatsapp", "whatsapp वाला number")),
     ("quiz_link", ("link", "लिंक", "quiz", "क्विज़", "whatsapp", "व्हाट्सएप")),
     ("counselling", ("counselling", "counseling", "काउंसलिंग", "session", "सेशन",
                      "slot", "book kar")),

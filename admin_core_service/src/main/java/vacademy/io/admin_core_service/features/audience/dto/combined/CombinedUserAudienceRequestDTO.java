@@ -38,6 +38,15 @@ public class CombinedUserAudienceRequestDTO {
     private List<String> statuses;
     private List<String> packageSessionIds;
     private List<String> paymentStatuses;
+
+    /** TRIAL and/or PAID. Empty/null = no membership filter. Leads with no plan never match. */
+    private List<String> membershipTypes;
+
+    /** Joined on or after this date (inclusive), on ssigm.enrolled_date. */
+    private String enrolledDateFrom;
+
+    /** Joined on or before this date (inclusive). */
+    private String enrolledDateTo;
     private List<String> subOrgUserTypes;
 
     // Custom-field filters — same wire shape as the leads endpoint:

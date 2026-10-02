@@ -98,6 +98,20 @@ export const useContactFilters = () => {
         const batchFilter = filters.find(f => f.id === 'batch');
         const packageSessionIds = batchFilter?.value.map(v => v.id);
 
+        // Membership filter (Trial / Paid). Learner-only by nature: the backend drops the
+        // audience half of its union whenever this is set, because a lead has no plan.
+        const membershipFilter = filters.find(f => f.id === 'membership');
+        const membershipTypes = membershipFilter?.value.map(v => v.id);
+
+        // Joined-month cohorts. Each option carries an id of "YYYY-MM"; several may be
+        // picked, and the payload is the span from the earliest to the latest selected
+        // month. A single range cannot express "September OR November", so a gap in the
+        // selection widens to include the months between rather than silently dropping one.
+        const joinedFilter = filters.find(f => f.id === 'joined');
+        const joinedMonths = (joinedFilter?.value.map(v => v.id) ?? []).filter(Boolean).sort();
+        const enrolledDateFrom = joinedMonths.length > 0 ? `${joinedMonths[0]}-01` : undefined;
+        const enrolledDateTo = joinedMonths.length > 0 ? lastDayOfMonth(joinedMonths[joinedMonths.length - 1]!) : undefined;
+
         // Audience list filter
         const audienceFilter = filters.find(f => f.id === 'audience_list');
         const audienceIds = audienceFilter?.value.map(v => v.id);
@@ -127,6 +141,9 @@ export const useContactFilters = () => {
                 genders: genders,
             },
             statuses: statuses && statuses.length > 0 ? statuses : undefined,
+            membership_types: membershipTypes && membershipTypes.length > 0 ? membershipTypes : undefined,
+            enrolled_date_from: enrolledDateFrom,
+            enrolled_date_to: enrolledDateTo,
             package_session_ids: packageSessionIds && packageSessionIds.length > 0 ? packageSessionIds : undefined,
             campaign_filter: audienceIds && audienceIds.length > 0 ? { audience_ids: audienceIds } : {},
             custom_field_filters: customFieldFilters.length > 0 ? customFieldFilters : undefined,
@@ -262,3 +279,12 @@ export const useContactFilters = () => {
         clearFilters
     };
 };
+
+/** Last calendar day of a "YYYY-MM" month, as YYYY-MM-DD. */
+function lastDayOfMonth(month: string): string {
+    const [year, mon] = month.split('-').map(Number);
+    // Day 0 of the NEXT month is the last day of this one, which keeps February and leap
+    // years correct without a table of month lengths.
+    const d = new Date(Date.UTC(year!, mon!, 0));
+    return d.toISOString().slice(0, 10);
+}

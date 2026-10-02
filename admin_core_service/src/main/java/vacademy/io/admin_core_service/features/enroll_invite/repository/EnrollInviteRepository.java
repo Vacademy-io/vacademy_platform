@@ -20,6 +20,22 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
 
     Optional<EnrollInvite> findByInviteCode(String inviteCode);
 
+    /**
+     * setting_json of the institute's live invites that mention a trial at all.
+     *
+     * <p>A cheap LIKE prefilter, then the JSON is parsed in Java -- the same shape as
+     * PaymentSettingService's flag lookup, and for the same two reasons: a jsonb cast inside
+     * a native query trips over Hibernate's ":" parameter parsing, and one invite with
+     * malformed settings must not make the whole query error.
+     */
+    @Query(value = """
+            SELECT ei.setting_json FROM enroll_invite ei
+            WHERE ei.institute_id = :instituteId
+              AND ei.status <> 'DELETED'
+              AND ei.setting_json LIKE '%TRIAL_DAYS%'
+            """, nativeQuery = true)
+    List<String> findTrialBearingSettingJson(@Param("instituteId") String instituteId);
+
     // Sub-org registration templates (tag=SUB_ORG_REGISTRATION) for the builder list.
     List<EnrollInvite> findByInstituteIdAndTagAndStatusInOrderByCreatedAtDesc(
             String instituteId, String tag, List<String> statuses);

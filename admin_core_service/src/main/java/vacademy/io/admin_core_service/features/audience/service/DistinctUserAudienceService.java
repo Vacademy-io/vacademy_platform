@@ -71,6 +71,53 @@ public class DistinctUserAudienceService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+
+    /**
+     * An empty string from the UI means "no filter", but CAST('' AS date) is an error in
+     * Postgres, so blanks are normalised to null before they reach the query.
+     */
+    private static String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /**
+     * TRIAL / PAID / null, from user_plan.is_trial. Null means the contact has no plan --
+     * a lead, or a learner enrolled outside any payment option. Deliberately not folded into
+     * PAID: the badge would then claim every lead is a paying member.
+     */
+    /**
+     * True when the institute has at least one live invite configuring a trial. Parsed in
+     * Java after a LIKE prefilter, and an unreadable settings blob is skipped rather than
+     * allowed to decide that an institute runs no trials -- or to fail a list request.
+     */
+    private boolean membershipTypesAvailable(String instituteId) {
+        try {
+            for (String settingJson : enrollInviteRepository.findTrialBearingSettingJson(instituteId)) {
+                if (!StringUtils.hasText(settingJson)) continue;
+                try {
+                    if (objectMapper.readTree(settingJson).path("setting").path("AUTOPAY_SETTING")
+                            .path("TRIAL_DAYS").asInt(0) > 0) {
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                    // malformed invite; try the next one
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not determine trial availability for institute {}: {}", instituteId, e.getMessage());
+        }
+        return false;
+    }
+
+    private static String membershipTypeOf(Boolean isTrial) {
+        if (isTrial == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(isTrial) ? "TRIAL" : "PAID";
+    }
+
     public CombinedUserAudienceResponseDTO getCombinedUsersWithCustomFields(CombinedUserAudienceRequestDTO request) {
         logger.info("Getting combined users for institute: {}", request.getInstituteId());
 
@@ -168,6 +215,12 @@ public class DistinctUserAudienceService {
                 effectiveAudienceIds,
                 cfResolution.matchedIdsCsv(),
                 cfResolution.excludedIdsCsv(),
+                // Membership and join-date filters are learner-only by nature, so they are
+                // passed through untouched: the query's audience half excludes itself
+                // whenever either is set, because a lead has neither a plan nor a join date.
+                includeInstituteUsers ? request.getMembershipTypes() : null,
+                blankToNull(request.getEnrolledDateFrom()),
+                blankToNull(request.getEnrolledDateTo()),
                 searchUserIdsCsv,
                 (request.getSortCustomFieldId() != null && !request.getSortCustomFieldId().isBlank())
                         ? request.getSortCustomFieldId() : null,
@@ -257,6 +310,8 @@ public class DistinctUserAudienceService {
                        .packageSessionId(v2.getPackageSessionId())
                        .instituteEnrollmentNumber(v2.getInstituteEnrollmentNumber())
                        .paymentStatus(v2.getPaymentStatus())
+                       .membershipType(membershipTypeOf(v2.getIsTrial()))
+                       .enrolledDate(v2.getEnrolledDate())
                        .instituteId(v2.getInstituteId())
                        .fathersName(v2.getFathersName())
                        .mothersName(v2.getMothersName())
@@ -282,6 +337,7 @@ public class DistinctUserAudienceService {
                 .pageSize(size)
                 .isLast(page >= totalPages - 1)
                 .filteredAudienceIds(audienceIds)
+                .membershipTypesAvailable(membershipTypesAvailable(request.getInstituteId()))
                 .build();
     }
 
@@ -313,6 +369,10 @@ public class DistinctUserAudienceService {
                 .pageSize(request.getSize() != null ? request.getSize() : 20)
                 .isLast(true)
                 .filteredAudienceIds(audienceIds)
+                // Reported on the empty page too, or the Trial/Paid filter would vanish from
+                // the bar the moment a filter combination returned nothing -- taking away the
+                // control the user needs to widen their search again.
+                .membershipTypesAvailable(membershipTypesAvailable(request.getInstituteId()))
                 .build();
     }
 

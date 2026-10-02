@@ -38,7 +38,8 @@
         "leadStatus": {
             "label": "جميع العملاء المحتملين",
             "active": "نشط (غير مسجَّل)",
-            "converted": "مسجَّل / محوَّل"
+            "converted": "مسجَّل / محوَّل",
+            "excludeSelected": "استبعاد المحدد"
         },
         "sla": {
             "label": "جميع حالات SLA"
@@ -96,7 +97,8 @@
         "clearAll": "مسح الكل",
         "calledWithin": null,
         "workedWithin": null,
-        "pinnedTitle": "مثبَّت بواسطة هذا التبويب — لا يمكن إزالته من هنا"
+        "pinnedTitle": "مثبَّت بواسطة هذا التبويب — لا يمكن إزالته من هنا",
+        "statusExcluded": "الحالة ليست: {{statuses}}"
     },
     "search": {
         "placeholder": "البحث عن العملاء المحتملين",

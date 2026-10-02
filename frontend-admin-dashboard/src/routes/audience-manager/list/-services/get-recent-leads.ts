@@ -84,6 +84,8 @@ export interface RecentLeadsRequest {
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;
+    /** Status keys to EXCLUDE, comma separated. Mutually exclusive with lead_status_id. */
+    lead_status_exclude_id?: string;
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';

@@ -34,7 +34,8 @@
         "leadStatus": {
             "label": "All leads",
             "active": "Active (not enrolled)",
-            "converted": "Enrolled / Converted"
+            "converted": "Enrolled / Converted",
+            "excludeSelected": "Exclude selected"
         },
         "sla": {
             "label": "All SLA states"
@@ -92,7 +93,8 @@
         "clearAll": "Clear all",
         "calledWithin": "Called: {{window}}",
         "workedWithin": "Worked: {{window}}",
-        "pinnedTitle": "Pinned by this tab — it cannot be removed here"
+        "pinnedTitle": "Pinned by this tab — it cannot be removed here",
+        "statusExcluded": "Status is not: {{statuses}}"
     },
     "search": {
         "placeholder": "Search leads",

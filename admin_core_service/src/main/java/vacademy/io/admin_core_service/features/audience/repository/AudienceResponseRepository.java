@@ -275,6 +275,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) act ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -643,6 +644,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) act ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -890,6 +892,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
                         @Param("leadStatusId") String leadStatusId,
+                        @Param("leadStatusExcludeId") String leadStatusExcludeId,
                         @Param("sourceType") String sourceType,
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
@@ -1003,6 +1006,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) act ON true
                             WHERE a.institute_id = :instituteId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               -- "How many did I work / call in the last 24h / 7d" -- deliberately
@@ -1371,6 +1375,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) act ON true
                             WHERE a.institute_id = :instituteId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               -- "How many did I work / call in the last 24h / 7d" -- deliberately
@@ -1618,6 +1623,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
                         @Param("leadStatusId") String leadStatusId,
+                        @Param("leadStatusExcludeId") String leadStatusExcludeId,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,

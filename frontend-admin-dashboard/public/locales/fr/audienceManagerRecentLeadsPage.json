@@ -35,7 +35,8 @@
         "leadStatus": {
             "label": "Tous les prospects",
             "active": "Actif (non inscrit)",
-            "converted": "Inscrit / Converti"
+            "converted": "Inscrit / Converti",
+            "excludeSelected": "Exclure la sélection"
         },
         "sla": {
             "label": "Tous les états SLA"
@@ -93,7 +94,8 @@
         "clearAll": "Tout effacer",
         "calledWithin": null,
         "workedWithin": null,
-        "pinnedTitle": "Épinglé par cet onglet — impossible de le retirer ici"
+        "pinnedTitle": "Épinglé par cet onglet — impossible de le retirer ici",
+        "statusExcluded": "Statut différent de : {{statuses}}"
     },
     "search": {
         "placeholder": "Rechercher des prospects",

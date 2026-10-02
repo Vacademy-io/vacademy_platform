@@ -3258,6 +3258,7 @@ public class AudienceService {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
                     filterDTO.getLeadStatusId(),
+                    filterDTO.getLeadStatusExcludeId(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -3291,6 +3292,7 @@ public class AudienceService {
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
                 filterDTO.getLeadStatusId(),
+                filterDTO.getLeadStatusExcludeId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),

@@ -59,6 +59,12 @@ interface MultiSelectFilterProps {
      * Styling only; behaviour is identical.
      */
     variant?: 'button' | 'pill';
+    /**
+     * Turns the selection inside out: "show only these" becomes "show everything except
+     * these". Omit to leave the control exactly as it was. Saves a view from having to
+     * list nine statuses to mean "not New" — and from breaking when a tenth is added.
+     */
+    exclude?: { value: boolean; onChange: (next: boolean) => void; label: string };
 }
 
 /**
@@ -76,6 +82,7 @@ export function MultiSelectFilter({
     widthClass = 'w-44',
     showSelectedLabel = false,
     variant = 'button',
+    exclude,
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const { isCompact } = useCompactMode();
@@ -185,6 +192,25 @@ export function MultiSelectFilter({
                     <CommandInput placeholder={placeholder} className="h-9" />
                     <CommandList className="max-h-64 overflow-y-auto">
                         <CommandEmpty>No options found.</CommandEmpty>
+                        {exclude && (
+                            <CommandItem
+                                value="__exclude__"
+                                onSelect={() => exclude.onChange(!exclude.value)}
+                                className="cursor-pointer gap-2 text-neutral-600"
+                            >
+                                <span
+                                    className={cn(
+                                        'flex size-4 shrink-0 items-center justify-center rounded border',
+                                        exclude.value
+                                            ? 'border-primary-500 bg-primary-500 text-white'
+                                            : 'border-neutral-300'
+                                    )}
+                                >
+                                    {exclude.value && <Check className="size-3" />}
+                                </span>
+                                {exclude.label}
+                            </CommandItem>
+                        )}
                         {count > 0 && (
                             <CommandItem
                                 value="__clear__"

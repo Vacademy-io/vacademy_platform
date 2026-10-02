@@ -132,10 +132,10 @@ def _layout_target_index(layout_map: dict[str, Any]) -> dict[str, str]:
     return idx
 
 
-_MARK_IN_TEXT = re.compile(r"[\s(\[]*\b\d+(?:\.\d+)?\s*/\s*\d+(?:\.\d+)?\b[\s)\]]*\.?\s*$")
+_MARK_IN_TEXT = re.compile(r"[\s(\[]*\b(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\b[\s)\]]*\.?\s*$")
 
 
-def _strip_mark_from_note(text: Any) -> Any:
+def _strip_mark_from_note(text: Any, max_marks: float = 0.0) -> Any:
     """Take a mark figure out of a written comment.
 
     The score is its own annotation, drawn from the mark this module has
@@ -147,7 +147,14 @@ def _strip_mark_from_note(text: Any) -> Any:
     """
     if not isinstance(text, str):
         return text
-    cleaned = _MARK_IN_TEXT.sub("", text).rstrip(" ,;:-")
+    # Only a figure OUT OF this question's marks is a mark. A fraction that
+    # is the answer - "final answer should be 7/30" - ends a note too, and
+    # stripping it printed "final answer should be" on a real maths copy.
+    m = _MARK_IN_TEXT.search(text)
+    if not m or not max_marks or abs(float(m.group(2)) - float(max_marks)) > 1e-6 \
+            or float(m.group(1)) > float(max_marks):
+        return text
+    cleaned = text[:m.start()].rstrip(" ,;:-")
     # Never return an empty note: if the figure was the whole remark, the
     # score annotation will carry it and the note has nothing left to say.
     return cleaned if cleaned else None
@@ -412,7 +419,7 @@ def validate_and_cap(
             "target": line_id,
             "page_id": page_id,
             "style": style,
-            "text": (_strip_mark_from_note(ann.get("text"))
+            "text": (_strip_mark_from_note(ann.get("text"), max_marks)
                      if style in NOTE_STYLES else ann.get("text")),
             "anchor_text": anchor_text,
             "position": position if position in VALID_POSITIONS else None,

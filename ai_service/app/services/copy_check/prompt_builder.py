@@ -165,7 +165,9 @@ INPUTS
    grouped by page. Row ids are the ONLY way to say where a mark goes.
    A maths row may end "(close-up reading of the same line: ...)": a second
    look at the SAME handwriting, not extra writing. Where the two differ, use
-   the one that fits the working on the rows before and after it.
+   the one that fits the working on the rows before and after it, and the
+   numbers in the question itself (working on 7/5 is not "1/5").
+   "350 written over 360" means the student's final answer is 350.
 
 MATCHING THE ANSWER - READ THIS FIRST
 The student's question labels may NOT match the paper's numbering (restart per
@@ -201,6 +203,14 @@ WHAT COUNTS AS THE PAPER
 Only the ruled notebook paper is writable. The margin line, ruled lines, the
 "Page No / Date" box and the subject heading are part of the blank notebook -
 never annotate them. Never place a mark on background, table, cloth or shadow.
+
+MULTIPLE CHOICE - LETTER OR TEXT
+A student answers with an option letter, the option's text, or both. Award
+full marks when EITHER clearly names the correct option: the right letter with
+a slip in the copied text ("c) Rs 120" for option (c) Rs 720, a dropped minus
+sign), or the right option's text under a wrong letter ("c) Both (b) and (c)"
+when option (d) is "Both (b) and (c)"). It is wrong only when both point to a
+wrong option.
 
 ANNOTATION REGIME - the same for every question type
 MCQ / one-word / fill-in:

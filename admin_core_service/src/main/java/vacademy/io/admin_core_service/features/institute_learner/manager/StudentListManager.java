@@ -58,6 +58,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 public class StudentListManager {
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
+
+    @Autowired
     InternalClientUtils internalClientUtils;
 
     @Autowired
@@ -376,7 +379,9 @@ public class StudentListManager {
             if (typedResolution.shortCircuitsToEmpty()) {
                 return ResponseEntity.ok(AllStudentV2Response.builder()
                         .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
-                        .totalElements(0L).totalPages(0).last(true).build());
+                        .totalElements(0L).totalPages(0).last(true)
+                        .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                        .build());
             }
             studentListFilter.setCfTypedMatchedUserIds(
                     typedResolution.matchedIds == null ? null : new ArrayList<>(typedResolution.matchedIds));
@@ -405,7 +410,9 @@ public class StudentListManager {
             if (combined.shortCircuitsToEmpty()) {
                 return ResponseEntity.ok(AllStudentV2Response.builder()
                         .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
-                        .totalElements(0L).totalPages(0).last(true).build());
+                        .totalElements(0L).totalPages(0).last(true)
+                        .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                        .build());
             }
             studentListFilter.setCfTypedMatchedUserIds(
                     combined.matchedIds == null ? null : new ArrayList<>(combined.matchedIds));
@@ -452,6 +459,7 @@ public class StudentListManager {
                 && CollectionUtils.isEmpty(studentListFilter.getLevelIds())
                 && CollectionUtils.isEmpty(studentListFilter.getSubOrgUserTypes())
                 && !hasSubOrgFilter
+                && CollectionUtils.isEmpty(studentListFilter.getMembershipTypes())
                 && studentListFilter.getStartDate() == null
                 && studentListFilter.getEndDate() == null;
 
@@ -469,6 +477,7 @@ public class StudentListManager {
                 studentListFilter.getLevelIds(),
                 studentListFilter.getSubOrgIds(),
                 studentListFilter.getSubOrgUserTypes(),
+                studentListFilter.getMembershipTypes(),
                 studentListFilter.getStartDate(),
                 studentListFilter.getEndDate(),
                 studentListFilter.getAudienceIds(),
@@ -480,7 +489,9 @@ public class StudentListManager {
         if (pagedUserIds.isEmpty()) {
             return ResponseEntity.ok(AllStudentV2Response.builder()
                     .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
-                    .totalElements(0L).totalPages(0).last(true).build());
+                    .totalElements(0L).totalPages(0).last(true)
+                    .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
+                    .build());
         }
 
         // Slim enrichment: skip user_plan/payment_log/enroll_invite joins and the
@@ -550,6 +561,7 @@ public class StudentListManager {
                 .totalElements(totalElements)
                 .totalPages(totalPages)
                 .last(pageNo >= totalPages - 1)
+                .membershipTypesAvailable(membershipTypesAvailable(studentListFilter.getInstituteIds()))
                 .build());
     }
 
@@ -665,6 +677,46 @@ public class StudentListManager {
         return null;
     }
 
+    /**
+     * TRIAL / PAID / null from user_plan.is_trial. Null means the learner has no plan at
+     * all, which is not the same as paying -- the badge stays off rather than guessing.
+     */
+    /**
+     * True when the institute has a live invite configuring a trial. Parsed in Java after a
+     * LIKE prefilter; an unreadable settings blob is skipped rather than allowed to decide
+     * that an institute runs no trials, or to fail the list.
+     */
+    private boolean membershipTypesAvailable(List<String> instituteIds) {
+        if (CollectionUtils.isEmpty(instituteIds)) {
+            return false;
+        }
+        for (String instituteId : instituteIds) {
+            try {
+                for (String settingJson : enrollInviteRepository.findTrialBearingSettingJson(instituteId)) {
+                    if (settingJson == null || settingJson.isBlank()) continue;
+                    try {
+                        if (new com.fasterxml.jackson.databind.ObjectMapper().readTree(settingJson)
+                                .path("setting").path("AUTOPAY_SETTING").path("TRIAL_DAYS").asInt(0) > 0) {
+                            return true;
+                        }
+                    } catch (Exception ignored) {
+                        // malformed invite; try the next
+                    }
+                }
+            } catch (Exception ignored) {
+                // availability is a display hint; never fail the list over it
+            }
+        }
+        return false;
+    }
+
+    private static String membershipTypeOf(Boolean isTrial) {
+        if (isTrial == null) {
+            return null;
+        }
+        return Boolean.TRUE.equals(isTrial) ? "TRIAL" : "PAID";
+    }
+
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
         List<StudentV2DTO> dtos = new ArrayList<>();
         ObjectMapper mapper = new ObjectMapper();
@@ -685,6 +737,8 @@ public class StudentListManager {
 
             dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
             dto.setGender(p.getGender());
+            dto.setEnrolledDate(p.getEnrolledDate());
+            dto.setMembershipType(membershipTypeOf(p.getIsTrial()));
             dto.setFathersName(p.getFathersName());
             dto.setMothersName(p.getMothersName());
             dto.setParentsMobileNumber(p.getParentsMobileNumber());

@@ -44,6 +44,8 @@ public class StudentListFilter {
     // Pre-resolved into user ids and folded into cfTypedMatchedUserIds /
     // cfTypedExcludedUserIds below, so it rides the same custom-repo path.
     private vacademy.io.admin_core_service.features.utm_attribution.dto.UtmListFilterDTO utmFilters;
+    /** TRIAL and/or PAID. Empty = no membership filter; a learner with no plan never matches. */
+    private List<String> membershipTypes;
     private LocalDate startDate;
     private LocalDate endDate;
 

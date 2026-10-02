@@ -26,6 +26,10 @@ public interface StudentListV2Projection {
     String getUpdatedAt();
     String getFaceFileId();
     String getExpiryDate();
+    /** user_plan.is_trial for the enrolment's plan; null when it has no plan. */
+    Boolean getIsTrial();
+    /** ssigm.enrolled_date -- the learner's join date. */
+    String getEnrolledDate();
     String getParentsToMotherMobileNumber();
     String getParentsToMotherEmail();
     String getBillingContactName();

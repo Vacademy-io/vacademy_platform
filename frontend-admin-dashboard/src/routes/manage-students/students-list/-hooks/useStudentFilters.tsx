@@ -687,6 +687,26 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const paymentFilter = columnFilters.find((filter) => filter.id === 'payment_statuses');
         const paymentStatuses = paymentFilter ? paymentFilter.value.map((opt) => opt.id) : [];
 
+        // Membership (Trial / Paid) — learner-only, so the backend drops audience-only rows
+        // whenever it is set: someone with no plan is neither.
+        const membershipFilter = columnFilters.find((filter) => filter.id === 'membership_types');
+        const membershipTypes = membershipFilter ? membershipFilter.value.map((opt) => opt.id) : [];
+
+        // Joined month cohorts -> the existing start_date/end_date range on enrolled_date.
+        // Several months may be picked and the payload spans earliest to latest, because one
+        // range cannot express "September OR November" — it widens rather than drop a month.
+        const joinedFilter = columnFilters.find((filter) => filter.id === 'joined_month');
+        const joinedMonths = (joinedFilter ? joinedFilter.value.map((opt) => opt.id) : [])
+            .filter(Boolean)
+            .sort();
+        const joinedRange =
+            joinedMonths.length > 0
+                ? {
+                      start_date: `${joinedMonths[0]}-01`,
+                      end_date: lastDayOfMonth(joinedMonths[joinedMonths.length - 1] as string),
+                  }
+                : {};
+
         // Handle custom field filters — keyed by custom_field.id, matching the
         // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
         const customFieldFilters: Record<string, string[]> = {};
@@ -742,6 +762,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             sort_columns: {},
             payment_statuses: paymentStatuses,
             type: learnerType,
+            ...(membershipTypes.length > 0 ? { membership_types: membershipTypes } : {}),
+            ...joinedRange,
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
@@ -1038,3 +1060,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         rangeCustomFields,
     };
 };
+
+/** Last calendar day of a "YYYY-MM" month as YYYY-MM-DD. Day 0 of the next month keeps
+ *  February and leap years right without a table of month lengths. */
+function lastDayOfMonth(month: string): string {
+    const [year, mon] = month.split('-').map(Number);
+    return new Date(Date.UTC(year as number, mon as number, 0)).toISOString().slice(0, 10);
+}

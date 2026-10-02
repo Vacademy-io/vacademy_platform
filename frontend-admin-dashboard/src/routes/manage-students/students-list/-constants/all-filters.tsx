@@ -24,7 +24,11 @@ export const GetFilterData = (
     // DATE/NUMBER custom fields to expose as range popovers. Already gated by
     // the caller (only enabled fields are passed) — range fields have no legacy
     // auto-expose, so an empty/absent list simply renders none.
-    rangeCustomFields?: CustomFieldSetupItem[]
+    rangeCustomFields?: CustomFieldSetupItem[],
+    // From the list response: whether this institute runs trials at all. False hides the
+    // Membership filter, so an institute with no trial memberships is never offered a
+    // Trial/Paid distinction that means nothing there.
+    membershipTypesAvailable = false
 ) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
@@ -80,6 +84,23 @@ export const GetFilterData = (
             id: 'session_expiry_days',
             title: `${getTerminology(ContentTerms.Session, SystemTerms.Session)} ${t('sessionExpiry.titleSuffix')}`,
             filterList: sessionExpiry || [],
+        },
+        ...(membershipTypesAvailable
+            ? [
+                  {
+                      id: 'membership_types',
+                      title: 'Membership',
+                      filterList: [
+                          { id: 'TRIAL', label: 'Trial' },
+                          { id: 'PAID', label: 'Paid' },
+                      ],
+                  },
+              ]
+            : []),
+        {
+            id: 'joined_month',
+            title: 'Joined',
+            filterList: lastTwelveMonths(),
         },
         {
             id: 'payment_statuses',
@@ -204,3 +225,17 @@ export const GetFilterData = (
 
     return filterData;
 };
+
+/** Last 12 months as filter options: id "YYYY-MM", label "Sep 2026", newest first. */
+function lastTwelveMonths(): { id: string; label: string }[] {
+    const out: { id: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        out.push({
+            id: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+            label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }),
+        });
+    }
+    return out;
+}

@@ -42,14 +42,9 @@ interface ContactFiltersProps {
         getActiveFiltersState: () => boolean;
         clearFilters: boolean;
     };
-    /**
-     * From the list response: whether this institute runs trials at all. Gates the
-     * Membership filter, mirroring how the lead columns gate on useLeadSettings().
-     */
-    membershipTypesAvailable?: boolean;
 }
 
-export const ContactFilters = ({ filters, membershipTypesAvailable = false }: ContactFiltersProps) => {
+export const ContactFilters = ({ filters }: ContactFiltersProps) => {
     const {
         searchInput,
         searchFilter,
@@ -80,8 +75,7 @@ export const ContactFilters = ({ filters, membershipTypesAvailable = false }: Co
     const filterConfig = buildFilterConfig(
         instituteDetails,
         selectedSession?.id || '',
-        campaignsData?.content,
-        membershipTypesAvailable
+        campaignsData?.content
     );
 
     // Custom-field filters enabled for the CONTACTS surface in Settings →
@@ -226,8 +220,7 @@ export const ContactFilters = ({ filters, membershipTypesAvailable = false }: Co
 function buildFilterConfig(
     instituteDetails: InstituteDetailsType | null,
     currentSessionId: string,
-    campaigns?: { id?: string; campaign_id?: string; audience_id?: string; campaign_name: string }[],
-    membershipTypesAvailable = false
+    campaigns?: { id?: string; campaign_id?: string; audience_id?: string; campaign_name: string }[]
 ) {
     const filters: { id: string; title: string; filterList: { id: string; label: string }[] }[] = [];
 
@@ -256,28 +249,6 @@ function buildFilterConfig(
     if (statuses.length > 0) {
         filters.push({ id: 'statuses', title: 'Status', filterList: statuses });
     }
-
-    // Membership filter — only for institutes that actually run trials, so a school with
-    // no trial memberships is not offered a Trial/Paid distinction that means nothing there.
-    if (membershipTypesAvailable) {
-        filters.push({
-            id: 'membership',
-            title: 'Membership',
-            filterList: [
-                { id: 'TRIAL', label: 'Trial' },
-                { id: 'PAID', label: 'Paid' },
-            ],
-        });
-    }
-
-    // Joined filter — the last 12 month cohorts, newest first. Months rather than a free
-    // date range because the question being asked is "who joined in this intake?", and it
-    // keeps the control identical to every other filter in this bar.
-    filters.push({
-        id: 'joined',
-        title: 'Joined',
-        filterList: lastTwelveMonths(),
-    });
 
     // Gender filter
     const genders = (instituteDetails?.genders || []).map((gender, index) => ({
@@ -320,19 +291,4 @@ function buildFilterConfig(
     }
 
     return filters;
-}
-
-/** The last 12 months as filter options: id "YYYY-MM", label "Sep 2026". Newest first. */
-function lastTwelveMonths(): { id: string; label: string }[] {
-    const out: { id: string; label: string }[] = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-        const id = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-        out.push({
-            id,
-            label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }),
-        });
-    }
-    return out;
 }

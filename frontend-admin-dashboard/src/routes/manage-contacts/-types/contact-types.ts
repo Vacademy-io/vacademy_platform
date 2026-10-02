@@ -25,11 +25,6 @@ export interface ContactListRequest {
     statuses?: string[];
     package_session_ids?: string[];
     payment_statuses?: string[];
-    /** TRIAL and/or PAID. Setting it excludes leads, who have no membership at all. */
-    membership_types?: string[];
-    /** Joined-on range over the enrolment date, inclusive, as YYYY-MM-DD. */
-    enrolled_date_from?: string;
-    enrolled_date_to?: string;
     sub_org_user_types?: string[];
     // Custom-field filters — same wire shape as the leads endpoint. Values OR
     // within a field, AND across fields; a contact matches on EITHER their
@@ -96,14 +91,6 @@ export interface ContactUser {
     package_session_ids?: string[];
     institute_enrollment_number?: string;
     payment_status?: string;
-    /**
-     * TRIAL | PAID for an enrolled contact, null/absent for a lead with no plan.
-     * Follows user_plan.is_trial, which is cleared the moment a plan's price is collected,
-     * so a learner who converted mid-trial reads PAID from that point.
-     */
-    membership_type?: 'TRIAL' | 'PAID' | null;
-    /** Enrolment date (join date) for this contact's membership. */
-    enrolled_date?: string | null;
     institute_id?: string;
     fathers_name?: string;
     mothers_name?: string;
@@ -132,10 +119,4 @@ export interface ContactListResponse {
     page_size: number;
     is_last: boolean;
     filtered_audience_ids?: string[];
-    /**
-     * True when the institute runs trials at all (some live invite sets TRIAL_DAYS > 0).
-     * The Trial/Paid badge and filter hide themselves when false, so institutes without
-     * trial memberships never see a distinction that means nothing to them.
-     */
-    membership_types_available?: boolean;
 }

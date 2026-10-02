@@ -21,6 +21,7 @@ import { STUDENT_LIST_COLUMN_WIDTHS } from '@/components/design-system/utils/con
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { MembershipBadge } from '@/components/shared/membership-badge';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { UserCircle } from '@phosphor-icons/react';
 import { BulkActions } from './bulk-actions/bulk-actions';
@@ -251,6 +252,10 @@ export const StudentsListSection = () => {
         [studentCfFilterGate, rangeCustomFields]
     );
 
+    // Reported by the list endpoint rather than configured, so nobody has to remember to
+    // switch it on; false hides the Trial/Paid badge and the Membership filter entirely.
+    const membershipTypesAvailable = Boolean(studentTableData?.membership_types_available);
+
     const allFilters = GetFilterData(
         tAllFilters,
         instituteDetails,
@@ -259,7 +264,8 @@ export const StudentsListSection = () => {
         subOrgsData,
         textCustomFields,
         studentCfFilterGate,
-        gatedRangeCustomFields
+        gatedRangeCustomFields,
+        membershipTypesAvailable
     );
     const filters = allFilters.filter((f) => {
         const fixed = FILTER_TO_COLUMNS[f.id];
@@ -510,7 +516,34 @@ export const StudentsListSection = () => {
                                                 last: studentTableData.last,
                                             }}
                                             columns={(() => {
-                                                const cols = getCustomColumns(showApprovalActions);
+                                                const baseCols = getCustomColumns(showApprovalActions);
+                                                // Trial/Paid chip under the name. Applied before the
+                                                // lead-system early return, so it shows for institutes
+                                                // that run trials whether or not leads are enabled.
+                                                const cols = membershipTypesAvailable
+                                                    ? baseCols.map((col) => {
+                                                          if (col.id !== 'full_name') return col;
+                                                          const inner = col.cell;
+                                                          return {
+                                                              ...col,
+                                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                              cell: (props: any) => (
+                                                                  <div className="flex flex-col gap-0.5">
+                                                                      {typeof inner === 'function'
+                                                                          ? inner(props)
+                                                                          : null}
+                                                                      <MembershipBadge
+                                                                          membershipType={
+                                                                              props.row.original
+                                                                                  .membership_type
+                                                                          }
+                                                                          available
+                                                                      />
+                                                                  </div>
+                                                              ),
+                                                          };
+                                                      })
+                                                    : baseCols;
                                                 // If lead system is entirely off, return cols unchanged
                                                 if (!leadReady) return cols;
 

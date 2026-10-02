@@ -1540,6 +1540,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
             )
             AND (
+              :#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM user_plan up
+                WHERE up.id = ssigm.user_plan_id
+                  AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)
+              )
+            )
+            AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
                 ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
@@ -1628,6 +1636,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
             )
             AND (
+              :#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM user_plan up
+                WHERE up.id = ssigm.user_plan_id
+                  AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)
+              )
+            )
+            AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
                 ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
@@ -1704,6 +1720,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("levelIds") List<String> levelIds,
       @Param("subOrgIds") List<String> subOrgIds,
       @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      /** TRIAL and/or PAID, from user_plan.is_trial. Empty = no filter. An EXISTS rather
+       *  than a join, so the default list pays nothing for a filter it is not using. */
+      @Param("membershipTypes") List<String> membershipTypes,
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate,
       @Param("audienceIds") List<String> audienceIds,
@@ -1735,13 +1754,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
-            AND (:#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
-                 OR (up.id IS NOT NULL
-                     AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)))
-            AND (CAST(:enrolledDateFrom AS date) IS NULL
-                 OR ssigm.enrolled_date >= CAST(:enrolledDateFrom AS date))
-            AND (CAST(:enrolledDateTo AS date) IS NULL
-                 OR ssigm.enrolled_date < CAST(:enrolledDateTo AS date) + INTERVAL '1 day')
             AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
             AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
                  OR ssigm.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
@@ -1777,9 +1789,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           LEFT JOIN student sg ON sg.user_id = ar.user_id
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
-            AND :#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
-            AND CAST(:enrolledDateFrom AS date) IS NULL
-            AND CAST(:enrolledDateTo AS date) IS NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
             AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
@@ -1846,13 +1855,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
-            AND (:#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
-                 OR (up.id IS NOT NULL
-                     AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)))
-            AND (CAST(:enrolledDateFrom AS date) IS NULL
-                 OR ssigm.enrolled_date >= CAST(:enrolledDateFrom AS date))
-            AND (CAST(:enrolledDateTo AS date) IS NULL
-                 OR ssigm.enrolled_date < CAST(:enrolledDateTo AS date) + INTERVAL '1 day')
             AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
             AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
                  OR ssigm.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
@@ -1886,9 +1888,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           LEFT JOIN student sg ON sg.user_id = ar.user_id
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
-            AND :#{#membershipTypes == null || #membershipTypes.isEmpty()} = true
-            AND CAST(:enrolledDateFrom AS date) IS NULL
-            AND CAST(:enrolledDateTo AS date) IS NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
             AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
@@ -1933,13 +1932,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("audienceIds") List<String> audienceIds,
       @Param("cfMatchedUserIdsCsv") String cfMatchedUserIdsCsv,
       @Param("cfExcludedUserIdsCsv") String cfExcludedUserIdsCsv,
-      /** TRIAL and/or PAID, derived from user_plan.is_trial. Empty = no membership filter.
-       *  Setting it excludes leads entirely: a contact with no plan is neither. */
-      @Param("membershipTypes") List<String> membershipTypes,
-      /** ssigm.enrolled_date range, inclusive on both ends. Null = unbounded.
-       *  Like membershipTypes, either bound excludes leads, who have no join date. */
-      @Param("enrolledDateFrom") String enrolledDateFrom,
-      @Param("enrolledDateTo") String enrolledDateTo,
       /** Auth-service user ids matching the free-text search; lets a lead whose name
        *  lives only on the auth User still be found. Null/blank = no id match. */
       @Param("searchUserIdsCsv") String searchUserIdsCsv,
@@ -2002,8 +1994,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           s.updated_at AS "updatedAt",
           s.face_file_id AS "faceFileId",
           ssigm.expiry_date AS "expiryDate",
-          ssigm.enrolled_date AS "enrolledDate",
-          up.is_trial AS "isTrial",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
           s.billing_contact_name AS "billingContactName",
@@ -2094,6 +2084,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("customFieldStatus") List<String> customFieldStatus);
 
   // ── SLIM enrichment for the manage-students list ──
+  // isTrial is a correlated PK lookup on user_plan rather than another join: this query
+  // deliberately avoids user_plan/payment_log joins, and one indexed probe per visible row
+  // is cheaper than widening the join shape. Keep it out of the SQL as a comment — prose in
+  // the query text breaks repository startup (see the note below).
   // Returns only what the table + side-view header read directly. Side-view tabs
   // hydrate their own data, so we skip user_plan/payment_log/enroll_invite joins
   // and the per-row paymentPlan/paymentOption JSON parsing.
@@ -2115,6 +2109,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           s.mobile_number     AS "phone",
           ssigm.package_session_id AS "packageSessionId",
           CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
+          ssigm.enrolled_date AS "enrolledDate",
+          (SELECT up.is_trial FROM user_plan up WHERE up.id = ssigm.user_plan_id) AS "isTrial",
           CAST(NULL AS text)  AS "paymentStatus",
           CAST(
             COALESCE(
@@ -2140,8 +2136,6 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           s.updated_at AS "updatedAt",
           s.face_file_id AS "faceFileId",
           ssigm.expiry_date AS "expiryDate",
-          ssigm.enrolled_date AS "enrolledDate",
-          CAST(NULL AS boolean) AS "isTrial",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
           s.billing_contact_name AS "billingContactName",

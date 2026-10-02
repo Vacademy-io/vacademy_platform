@@ -2,8 +2,8 @@
     "dialogTitle": "تعيين إلى {{term}}",
     "selectCourses": {
         "description": "تعيين <strong>{{name}}</strong> إلى مقرر واحد أو أكثر.",
-        "searchPlaceholder": "ابحث عن المقررات...",
-        "selectedCount": "{{selected}} من {{total}} محدد",
+        "searchPlaceholder": "ابحث عن دورة أو دفعة...",
+        "selectedCount": "تم اختيار {{selected}} من {{total}} دفعة · {{courses}} دورة",
         "selectAll": "تحديد الكل",
         "deselectAll": "إلغاء تحديد الكل",
         "noCoursesFound": "لم يتم العثور على مقررات"

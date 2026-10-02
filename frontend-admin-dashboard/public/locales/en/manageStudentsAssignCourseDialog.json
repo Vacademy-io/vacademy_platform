@@ -2,8 +2,8 @@
     "dialogTitle": "Assign to {{term}}",
     "selectCourses": {
         "description": "Assign <strong>{{name}}</strong> to one or more courses.",
-        "searchPlaceholder": "Search courses...",
-        "selectedCount": "{{selected}} of {{total}} selected",
+        "searchPlaceholder": "Search courses or batches...",
+        "selectedCount": "{{selected}} of {{total}} batches selected · {{courses}} courses",
         "selectAll": "Select All",
         "deselectAll": "Deselect All",
         "noCoursesFound": "No courses found"

@@ -2,8 +2,8 @@
     "dialogTitle": "Attribuer à {{term}}",
     "selectCourses": {
         "description": "Attribuer <strong>{{name}}</strong> à un ou plusieurs cours.",
-        "searchPlaceholder": "Rechercher des cours...",
-        "selectedCount": "{{selected}} sur {{total}} sélectionné(s)",
+        "searchPlaceholder": "Rechercher cours ou lots...",
+        "selectedCount": "{{selected}} sur {{total}} lots sélectionnés · {{courses}} cours",
         "selectAll": "Tout sélectionner",
         "deselectAll": "Tout désélectionner",
         "noCoursesFound": "Aucun cours trouvé"

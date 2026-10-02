@@ -13,10 +13,7 @@ import type {
     BulkAssignResponse,
     AssignmentItem,
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
-import {
-    InvitePickerRow,
-    type PackageSessionConfig,
-} from './invite-picker-row';
+import { InvitePickerRow, type PackageSessionConfig } from './invite-picker-row';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
@@ -146,9 +143,7 @@ export const AssignCourseDialog = ({
 
     const updatePSConfig = (updated: PackageSessionConfig) => {
         setPsConfigs((prev) =>
-            prev.map((c) =>
-                c.packageSessionId === updated.packageSessionId ? updated : c
-            )
+            prev.map((c) => (c.packageSessionId === updated.packageSessionId ? updated : c))
         );
     };
 
@@ -207,6 +202,10 @@ export const AssignCourseDialog = ({
         }
     };
 
+    // One row per BATCH meant 757 rows calling themselves courses, with the course name
+    // repeated down the whole list. Group them under the 60 real courses instead and let
+    // the course be opened only when it is wanted.
+    const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
     const filteredBatches = batches.filter((b) => {
         const q = searchQuery.toLowerCase();
         return (
@@ -215,6 +214,22 @@ export const AssignCourseDialog = ({
             b.session.session_name.toLowerCase().includes(q)
         );
     });
+
+    const courseGroups = (() => {
+        const byCourse = new Map<string, PackageSessionDTO[]>();
+        for (const b of filteredBatches) {
+            const key = b.package_dto.package_name || t('course.unnamed');
+            const list = byCourse.get(key);
+            if (list) list.push(b);
+            else byCourse.set(key, [b]);
+        }
+        return Array.from(byCourse, ([courseName, courseBatches]) => ({
+            courseName,
+            batches: courseBatches,
+        }));
+    })();
+    // A search is an explicit ask to see inside, so matches are not left folded away.
+    const isSearching = searchQuery.trim().length > 0;
 
     // ────────────────── STEP RENDERERS ──────────────────
 
@@ -245,15 +260,14 @@ export const AssignCourseDialog = ({
                         {t('selectCourses.selectedCount', {
                             selected: selectedPSIds.size,
                             total: batches.length,
+                            courses: courseGroups.length,
                         })}
                     </span>
                     <button
                         type="button"
                         onClick={() => {
                             const allFilteredIds = filteredBatches.map((b) => b.id);
-                            const allSelected = allFilteredIds.every((id) =>
-                                selectedPSIds.has(id)
-                            );
+                            const allSelected = allFilteredIds.every((id) => selectedPSIds.has(id));
                             if (allSelected) {
                                 // Deselect all filtered
                                 setSelectedPSIds((prev) => {
@@ -289,34 +303,95 @@ export const AssignCourseDialog = ({
                             {t('selectCourses.noCoursesFound')}
                         </p>
                     ) : (
-                        filteredBatches.map((b) => {
-                            const checked = selectedPSIds.has(b.id);
+                        courseGroups.map((group) => {
+                            const ids = group.batches.map((b) => b.id);
+                            const picked = ids.filter((id) => selectedPSIds.has(id)).length;
+                            const open = isSearching || expandedCourses.has(group.courseName);
                             return (
-                                <label
-                                    key={b.id}
-                                    className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all ${
-                                        checked
-                                            ? 'border-primary-400 bg-primary-50/40'
-                                            : 'border-neutral-200 hover:border-neutral-300'
-                                    }`}
+                                <div
+                                    key={group.courseName}
+                                    className="rounded-lg border border-neutral-200"
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => togglePS(b.id)}
-                                        className="h-4 w-4 rounded border-neutral-300 text-primary-500 focus:ring-primary-300"
-                                    />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium text-neutral-800">
-                                            {b.name
-                                                ? `${b.package_dto.package_name} ${b.name}`
-                                                : b.package_dto.package_name}
-                                        </p>
-                                        <p className="truncate text-xs text-neutral-500">
-                                            {b.level.level_name} · {b.session.session_name}
-                                        </p>
+                                    <div className="flex items-center gap-3 p-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={picked === ids.length}
+                                            ref={(el) => {
+                                                if (el)
+                                                    el.indeterminate =
+                                                        picked > 0 && picked < ids.length;
+                                            }}
+                                            onChange={() =>
+                                                setSelectedPSIds((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (picked === ids.length)
+                                                        ids.forEach((id) => next.delete(id));
+                                                    else ids.forEach((id) => next.add(id));
+                                                    return next;
+                                                })
+                                            }
+                                            className="h-4 w-4 rounded border-neutral-300 text-primary-500 focus:ring-primary-300"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setExpandedCourses((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(group.courseName))
+                                                        next.delete(group.courseName);
+                                                    else next.add(group.courseName);
+                                                    return next;
+                                                })
+                                            }
+                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        >
+                                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-800">
+                                                {group.courseName}
+                                            </span>
+                                            <span className="shrink-0 text-xs text-neutral-500">
+                                                {picked > 0
+                                                    ? `${picked}/${ids.length}`
+                                                    : ids.length}
+                                            </span>
+                                            <span className="shrink-0 text-xs text-neutral-400">
+                                                {open ? '▾' : '▸'}
+                                            </span>
+                                        </button>
                                     </div>
-                                </label>
+                                    {open && (
+                                        <div className="flex flex-col gap-1 border-t border-neutral-100 p-2">
+                                            {group.batches.map((b) => {
+                                                const checked = selectedPSIds.has(b.id);
+                                                return (
+                                                    <label
+                                                        key={b.id}
+                                                        className={`flex cursor-pointer items-center gap-3 rounded-md border p-2 transition-all ${
+                                                            checked
+                                                                ? 'border-primary-400 bg-primary-50/40'
+                                                                : 'border-transparent hover:border-neutral-200'
+                                                        }`}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={checked}
+                                                            onChange={() => togglePS(b.id)}
+                                                            className="h-4 w-4 rounded border-neutral-300 text-primary-500 focus:ring-primary-300"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="truncate text-sm text-neutral-700">
+                                                                {b.name || b.session.session_name}
+                                                            </p>
+                                                            <p className="truncate text-xs text-neutral-500">
+                                                                {b.level.level_name} ·{' '}
+                                                                {b.session.session_name}
+                                                            </p>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })
                     )}
@@ -328,11 +403,7 @@ export const AssignCourseDialog = ({
     const renderConfigure = () => (
         <div className="flex flex-col gap-5">
             <p className="text-sm text-neutral-600">
-                <Trans
-                    t={t}
-                    i18nKey="configure.description"
-                    components={{ strong: <strong /> }}
-                />
+                <Trans t={t} i18nKey="configure.description" components={{ strong: <strong /> }} />
             </p>
 
             {/* Invite pickers per PS */}
@@ -422,17 +493,12 @@ export const AssignCourseDialog = ({
                         const isCpo =
                             cfg.resolvedPaymentOption?.type === 'CPO' ||
                             previewResult?.payment_option_type === 'CPO';
-                        const cpoTotal =
-                            previewResult?.cpo_total_amount ?? null;
-                        const cpoCount =
-                            previewResult?.cpo_installment_count ?? null;
+                        const cpoTotal = previewResult?.cpo_total_amount ?? null;
+                        const cpoCount = previewResult?.cpo_installment_count ?? null;
                         const cpoMode = cfg.cpoConfig?.payment_mode ?? 'SKIP';
                         const cpoAmount = cfg.cpoConfig?.payment_amount ?? null;
                         return (
-                            <div
-                                key={cfg.packageSessionId}
-                                className="text-2xs text-neutral-600"
-                            >
+                            <div key={cfg.packageSessionId} className="text-2xs text-neutral-600">
                                 <span className="font-medium">
                                     {cfg.packageSessionName.split(' · ')[0]}:
                                 </span>{' '}

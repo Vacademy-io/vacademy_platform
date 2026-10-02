@@ -2,8 +2,8 @@
     "dialogTitle": "{{term}} में असाइन करें",
     "selectCourses": {
         "description": "<strong>{{name}}</strong> को एक या अधिक कोर्स में असाइन करें।",
-        "searchPlaceholder": "कोर्स खोजें...",
-        "selectedCount": "{{total}} में से {{selected}} चयनित",
+        "searchPlaceholder": "कोर्स या बैच खोजें...",
+        "selectedCount": "{{total}} में से {{selected}} बैच चुने · {{courses}} कोर्स",
         "selectAll": "सभी चुनें",
         "deselectAll": "सभी अचयनित करें",
         "noCoursesFound": "कोई कोर्स नहीं मिला"

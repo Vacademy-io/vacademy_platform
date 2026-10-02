@@ -105,6 +105,37 @@ public class OpenCreditsService {
         return out;
     }
 
+    // ------------------------------------------------------------------ POST /exams quote
+
+    /** The create response must not wait on ai_service: a slow or absent price omits the block. */
+    static final Duration EXAM_RATE_TIMEOUT = Duration.ofSeconds(2);
+
+    /**
+     * The {@code quote} block of the POST /exams response (spec 7.1): the rate of the exam's
+     * unit, from the same ai_service estimate the submission quote and GET /credits use.
+     * {@code {"unit":"page","credits_per_page":1,"rate_source":"standard"}} for a handwritten
+     * exam, {@code {"unit":"answer","credits_per_answer":1,…}} for a typed one. Best effort:
+     * null (block left out) when the credit service does not answer within
+     * {@link #EXAM_RATE_TIMEOUT}; creating the exam never fails on it.
+     */
+    public Map<String, Object> examRate(ApiKeyPrincipal key, boolean typed) {
+        try {
+            AiEvaluationCharge charge = typed ? AiEvaluationCharge.apiTyped(1) : AiEvaluationCharge.apiHandwritten(1);
+            AiServiceCreditClient.ToolEstimate est = creditClient.estimate(charge.toolKey(), charge.params(),
+                    key.getInstituteId(), EXAM_RATE_TIMEOUT);
+            if (est == null || !est.reachable() || est.credits() == null) {
+                return null;
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("unit", typed ? "answer" : "page");
+            out.put(typed ? "credits_per_answer" : "credits_per_page", OpenApiErrors.plain(est.credits()));
+            out.put("rate_source", RateSources.publicName(str(est.rateSnapshot().get("rate_source"))));
+            return out;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     // ------------------------------------------------------------------ POST /credits/quote
 
     public Map<String, Object> quote(ApiKeyPrincipal key, SubmissionInputs.Quote body) {

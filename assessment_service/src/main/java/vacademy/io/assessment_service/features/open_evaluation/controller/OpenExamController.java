@@ -24,7 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.assessment_service.features.open_evaluation.OpenApiPaths;
 import vacademy.io.assessment_service.features.open_evaluation.auth.OpenApiCaller;
 import vacademy.io.assessment_service.features.open_evaluation.choice.ChoiceGroupService;
+import vacademy.io.assessment_service.features.open_evaluation.credits.OpenCreditsService;
 import vacademy.io.assessment_service.features.open_evaluation.error.OpenApiException;
+import vacademy.io.assessment_service.features.open_evaluation.exam.ExamValidator;
 import vacademy.io.assessment_service.features.open_evaluation.exam.OpenExamService;
 import vacademy.io.assessment_service.features.open_evaluation.exam.OpenQuestionService;
 import vacademy.io.assessment_service.features.open_evaluation.exam.dto.ExamInputs;
@@ -58,15 +60,18 @@ public class OpenExamController {
     private final ChoiceGroupService choiceGroups;
     private final RubricSyncService rubricSync;
     private final IdempotencyService idempotency;
+    private final OpenCreditsService credits;
 
     public OpenExamController(OpenExamService exams, OpenQuestionService questions, OpenRubricService rubrics,
-            ChoiceGroupService choiceGroups, RubricSyncService rubricSync, IdempotencyService idempotency) {
+            ChoiceGroupService choiceGroups, RubricSyncService rubricSync, IdempotencyService idempotency,
+            OpenCreditsService credits) {
         this.exams = exams;
         this.questions = questions;
         this.rubrics = rubrics;
         this.choiceGroups = choiceGroups;
         this.rubricSync = rubricSync;
         this.idempotency = idempotency;
+        this.credits = credits;
     }
 
     // ------------------------------------------------------------------ exams
@@ -96,6 +101,8 @@ public class OpenExamController {
                     if (!created.candidates().isEmpty()) {
                         view.setCandidates(created.candidates());
                     }
+                    // After commit, outside the transaction; best effort with a short timeout.
+                    view.setQuote(credits.examRate(key, ExamValidator.MODE_TYPED.equalsIgnoreCase(view.getMode())));
                     view.setWarnings(warnings.isEmpty() ? null : warnings);
                     return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore()).body(view);
                 });

@@ -184,6 +184,23 @@ public class OpenSubmissionController {
         return results.result(OpenApiCaller.require(), submissionId, include);
     }
 
+    @Operation(summary = "Results of an exam, one per live submission (same shape as GET /submissions/{id}/result); "
+            + "limit 1-50, default 20; format=csv is not available yet")
+    @GetMapping("/exams/{examId}/results")
+    @PreAuthorize("@apiScopes.has('evaluation:read')")
+    public Paging.Page<Map<String, Object>> examResults(@PathVariable String examId,
+            @RequestParam(value = "format", required = false) String format,
+            @RequestParam(value = "finalized", required = false) String finalized,
+            @RequestParam(value = "updated_since", required = false) String updatedSince,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "include", required = false) String include) {
+        ApiKeyPrincipal key = OpenApiCaller.require();
+        ResultRules.Include inc = ResultRules.Include.parse(include);
+        return submissions.results(key, examId, format, finalized, updatedSince, cursor, limit,
+                v -> results.build(key, v, inc));
+    }
+
     @Operation(summary = "The checked (annotated) copy as PDF; redirect=true gives a private-CDN link when configured")
     @GetMapping("/submissions/{submissionId}/checked-copy")
     @PreAuthorize("@apiScopes.has('evaluation:read')")

@@ -25,6 +25,7 @@ import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.CreditCheckUnavailableException;
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.InsufficientCreditsException;
 import vacademy.io.assessment_service.features.open_evaluation.auth.ApiScopes;
+import vacademy.io.assessment_service.features.open_evaluation.config.NulCharacterGuard;
 import vacademy.io.assessment_service.features.open_evaluation.policy.ResultLockedException;
 import vacademy.io.common.auth.apikey.ApiErrorWriter;
 import vacademy.io.common.exceptions.ConflictException;
@@ -34,6 +35,7 @@ import vacademy.io.common.exceptions.ResourceNotFoundException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.tracing.RequestIds;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -207,9 +209,40 @@ public class OpenEvaluationExceptionHandler {
     }
 
     private ResponseEntity<Map<String, Object>> internal(HttpServletRequest req, Exception ex) {
+        if (isUnstorableText(ex)) {
+            // Safety net behind NulCharacterGuard (query parameters, anything it cannot see):
+            // Postgres refused a character in a partner string. That is the caller's input.
+            log.info("Partner API rejected 422 {}: Postgres refused a character in the input on {} {}",
+                    NulCharacterGuard.CODE, req.getMethod(), req.getRequestURI());
+            return handleApi(req, OpenApiException.validation(null, NulCharacterGuard.CODE,
+                    "A text value contains a character that cannot be stored, such as U+0000 (NUL)."));
+        }
         log.error("Partner API internal error on {} {}", req.getMethod(), req.getRequestURI(), ex);
         return respond(req, HttpStatus.INTERNAL_SERVER_ERROR, ApiErrorCode.INTERNAL_ERROR,
                 "Something went wrong on our side. Retry later; quote the request_id if it persists.", null, null);
+    }
+
+    /**
+     * True when the failure is Postgres refusing a character of the input: 22021 (a 0x00 byte
+     * in text/varchar, "invalid byte sequence for encoding UTF8") or 22P05 ({@code \\u0000} in
+     * jsonb, "unsupported Unicode escape sequence"), anywhere in the cause chain.
+     */
+    static boolean isUnstorableText(Throwable ex) {
+        Throwable t = ex;
+        for (int depth = 0; t != null && depth < 16; depth++) {
+            if (t instanceof SQLException sql) {
+                for (SQLException s = sql; s != null; s = s.getNextException()) {
+                    if ("22021".equals(s.getSQLState()) || "22P05".equals(s.getSQLState())) {
+                        return true;
+                    }
+                    if (s.getNextException() == s) {
+                        break;
+                    }
+                }
+            }
+            t = t.getCause() == t ? null : t.getCause();
+        }
+        return false;
     }
 
     static ResponseEntity<Map<String, Object>> respond(HttpServletRequest req, HttpStatusCode status, String code,

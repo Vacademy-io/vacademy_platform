@@ -58,6 +58,8 @@ public final class ExamViews {
         private List<ChoiceGroup> choiceGroups;
         private List<Map<String, Object>> candidates;
         private RubricSummary rubric;
+        /** POST /exams only (spec 7.1): the rate of the exam's unit; absent when the price is not known in time. */
+        private Map<String, Object> quote;
         private Map<String, Object> stats;
         private List<Warning> warnings;
         private String openedAt;

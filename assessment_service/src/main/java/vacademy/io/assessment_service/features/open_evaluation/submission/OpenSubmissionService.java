@@ -582,6 +582,58 @@ public class OpenSubmissionService {
         return new Paging.Page<>(data, page.nextCursor(), page.hasMore());
     }
 
+    public static final int RESULTS_DEFAULT_LIMIT = 20;
+
+    /**
+     * {@code GET /exams/{id}/results} (spec 7.8): one result per LIVE submission of the exam, in
+     * the shape of {@code GET /submissions/{id}/result} ({@code resultOf}), ordered by
+     * (updated_at, id) like every list. {@code limit} 1-50 (default 20: a result is the heavy
+     * read), {@code cursor}, {@code updated_since}, {@code finalized}. JSON only; {@code format=csv}
+     * is Phase 2. An exam of another institute is 404.
+     */
+    public Paging.Page<Map<String, Object>> results(ApiKeyPrincipal key, String examId, String format, String finalized,
+            String updatedSince, String cursor, Integer limit,
+            Function<ApiSubmissionStore.SubmissionView, Map<String, Object>> resultOf) {
+        ExamGuards.requireLive(examStore, key.getInstituteId(), examId, false);
+        requireJson(format);
+        int size = resultsLimit(limit);
+        ApiSubmissionStore.Filters filters = new ApiSubmissionStore.Filters(null, null, bool("finalized", finalized), null,
+                Paging.updatedSince(updatedSince));
+        List<ApiSubmissionStore.SubmissionView> rows = store.list(key.getInstituteId(), examId, true, filters,
+                Paging.decode(cursor), size + 1);
+        Paging.Page<ApiSubmissionStore.SubmissionView> page = Paging.page(rows, size,
+                r -> new Paging.Cursor(r.updatedAt(), r.attemptId()));
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (ApiSubmissionStore.SubmissionView v : page.data()) {
+            data.add(resultOf.apply(v));
+        }
+        return new Paging.Page<>(data, page.nextCursor(), page.hasMore());
+    }
+
+    static void requireJson(String format) {
+        if (format == null || format.isBlank()) {
+            return;
+        }
+        String f = format.trim().toLowerCase(Locale.ROOT);
+        if ("csv".equals(f)) {
+            throw featureNotAvailable("format=csv is not available yet; use format=json (the default).");
+        }
+        if (!"json".equals(f)) {
+            throw OpenApiException.validation("format", "invalid", "format must be json or csv.");
+        }
+    }
+
+    static int resultsLimit(Integer limit) {
+        if (limit == null) {
+            return RESULTS_DEFAULT_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_RESULT_LIMIT) {
+            throw OpenApiException.validation("limit", "out_of_range",
+                    "limit must be between 1 and " + MAX_RESULT_LIMIT + ".");
+        }
+        return limit;
+    }
+
     static List<String> statuses(String status) {
         if (status == null || status.isBlank()) {
             return null;

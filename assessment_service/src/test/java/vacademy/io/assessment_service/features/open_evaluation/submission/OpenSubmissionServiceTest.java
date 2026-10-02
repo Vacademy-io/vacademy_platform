@@ -492,6 +492,53 @@ class OpenSubmissionServiceTest {
     }
 
     @Test
+    void exam_results_page_the_live_submissions_through_the_result_read_model() {
+        SubmissionFixtures.View a = SubmissionFixtures.view();
+        a.attemptId = "s-1";
+        SubmissionFixtures.View b = SubmissionFixtures.view();
+        b.attemptId = "s-2";
+        SubmissionFixtures.View c = SubmissionFixtures.view();
+        c.attemptId = "s-3";
+        when(store.list(eq(INSTITUTE), eq("exam-1"), eq(true), any(), isNull(), eq(3)))
+                .thenReturn(List.of(a.build(), b.build(), c.build()));
+
+        vacademy.io.assessment_service.features.open_evaluation.support.Paging.Page<Map<String, Object>> page =
+                service.results(key, "exam-1", "JSON", "true", null, null, 2,
+                        v -> Map.of("submission_id", v.attemptId(), "questions", List.of()));
+
+        assertThat(page.data()).extracting(m -> m.get("submission_id")).containsExactly("s-1", "s-2");
+        assertThat(page.hasMore()).isTrue();
+        assertThat(page.nextCursor()).isNotBlank();
+        ArgumentCaptor<ApiSubmissionStore.Filters> filters = ArgumentCaptor.forClass(ApiSubmissionStore.Filters.class);
+        verify(store).list(eq(INSTITUTE), eq("exam-1"), eq(true), filters.capture(), isNull(), eq(3));
+        assertThat(filters.getValue().finalized()).isTrue();
+        assertThat(filters.getValue().statuses()).isNull();
+
+        // default page is 20 (a result is the heavy read), the cap is 50
+        service.results(key, "exam-1", null, null, null, null, null, v -> Map.of());
+        verify(store).list(eq(INSTITUTE), eq("exam-1"), eq(true), any(), isNull(), eq(21));
+        for (int bad : new int[] {0, 51}) {
+            assertThatThrownBy(() -> service.results(key, "exam-1", null, null, null, null, bad, v -> Map.of()))
+                    .isInstanceOfSatisfying(OpenApiException.class, e -> assertThat(e.getCode()).isEqualTo(ApiErrorCode.VALIDATION_FAILED));
+        }
+    }
+
+    @Test
+    void exam_results_refuse_csv_unknown_formats_and_other_institutes_exams() {
+        assertThatThrownBy(() -> service.results(key, "exam-1", "csv", null, null, null, null, v -> Map.of()))
+                .isInstanceOfSatisfying(OpenApiException.class, e -> {
+                    assertThat(e.getStatus().value()).isEqualTo(422);
+                    assertThat(e.getCode()).isEqualTo(ApiErrorCode.FEATURE_NOT_AVAILABLE);
+                });
+        assertThatThrownBy(() -> service.results(key, "exam-1", "xml", null, null, null, null, v -> Map.of()))
+                .isInstanceOfSatisfying(OpenApiException.class, e -> assertThat(e.getCode()).isEqualTo(ApiErrorCode.VALIDATION_FAILED));
+        when(examStore.find(INSTITUTE, "other")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.results(key, "other", "csv", null, null, null, null, v -> Map.of()))
+                .isInstanceOfSatisfying(OpenApiException.class, e -> assertThat(e.getCode()).isEqualTo(ApiErrorCode.EXAM_NOT_FOUND));
+        verify(store, never()).list(anyString(), anyString(), anyBoolean(), any(), any(), anyInt());
+    }
+
+    @Test
     void cancel_refuses_finished_runs_and_is_idempotent() {
         when(store.findForUpdate(INSTITUTE, "att-1")).thenReturn(Optional.of(
                 new ApiSubmissionStore.SubmissionRow("att-1", "exam-1", "cand-1", INSTITUTE, "LIVE", "handwritten", 10)));

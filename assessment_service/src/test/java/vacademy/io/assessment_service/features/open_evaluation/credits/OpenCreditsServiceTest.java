@@ -153,4 +153,30 @@ class OpenCreditsServiceTest {
         q.setPages(500L);
         assertThat(service.quote(key, q)).containsEntry("sufficient", false);
     }
+
+    @Test
+    void exam_create_quote_gives_the_unit_rate_with_a_short_timeout() {
+        when(client.estimate(eq("copy_check_evaluation_api"), eq(Map.of("num_pages", 1)), eq("inst-1"),
+                eq(OpenCreditsService.EXAM_RATE_TIMEOUT))).thenReturn(estimate("1.5", "override:abc", null));
+        when(client.estimate(eq("copy_check_evaluation_api"), eq(Map.of("answer_mode", "TYPED", "num_answers", 1)),
+                eq("inst-1"), eq(OpenCreditsService.EXAM_RATE_TIMEOUT))).thenReturn(estimate("2", "default", null));
+
+        assertThat(service.examRate(key, false)).containsExactly(
+                Map.entry("unit", "page"), Map.entry("credits_per_page", new BigDecimal("1.5")),
+                Map.entry("rate_source", "contract"));
+        assertThat(service.examRate(key, true)).containsExactly(
+                Map.entry("unit", "answer"), Map.entry("credits_per_answer", 2L),
+                Map.entry("rate_source", "standard"));
+    }
+
+    @Test
+    void exam_create_quote_is_omitted_when_the_credit_service_is_slow_or_down() {
+        when(client.estimate(anyString(), any(), anyString(), any(java.time.Duration.class)))
+                .thenReturn(AiServiceCreditClient.ToolEstimate.unreachable("timeout"));
+        assertThat(service.examRate(key, false)).isNull();
+
+        when(client.estimate(anyString(), any(), anyString(), any(java.time.Duration.class)))
+                .thenThrow(new IllegalStateException("boom"));
+        assertThat(service.examRate(key, true)).isNull();
+    }
 }

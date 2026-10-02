@@ -20,6 +20,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 import vacademy.io.common.auth.service.UserService;
+import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 import vacademy.io.common.core.utils.TextSanitizer;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
@@ -156,6 +157,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);
+
+                // The token's signed "user" claim (users.id at mint time). userDetails came from a
+                // username lookup; SuperAdminAuthUtil requires the two to agree. Best-effort only.
+                try {
+                    Object tokenUserId = jwtService.extractClaim(jwt, claims -> claims.get("user"));
+                    if (tokenUserId instanceof String) {
+                        request.setAttribute(SuperAdminAuthUtil.JWT_USER_ID_ATTRIBUTE, tokenUserId);
+                    }
+                } catch (Exception ignored) {
+                    // No usable claim: the allowlist alone decides.
+                }
 
                 // Validate the JWT token using user details and JwtService
                 if (jwtService.isTokenValid(jwt, userDetails)) {

@@ -32,3 +32,7 @@ The response includes the normalized call status, provider call ID, duration, st
 ## Authentication errors
 
 Missing, invalid, or revoked keys return HTTP `401`. Calls and status lookups are always restricted to the institute that owns the issued key.
+
+## Issuing keys (internal)
+
+Keys are issued, listed and revoked with `/admin-core-service/v1/telephony/ai-call/api-keys` by an ADMIN of the institute that owns them. The request must carry the `clientId` header set to that institute. The root-user flag no longer grants access. A Vacademy staff member who issues a key for a client institute needs the ADMIN role in that institute until a super-admin route exists (planned after the super-admin allowlist lands).

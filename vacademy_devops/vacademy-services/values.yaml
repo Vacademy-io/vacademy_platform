@@ -197,6 +197,7 @@ env:
   toolExecutorBaseUrl: ""
   aiServicePublicUrl: "https://backend-stage.vacademy.io"
   adminDashboardUrl: "https://dash.vacademy.io"
+  superAdminUserIds: ""           # SUPER_ADMIN_USER_IDS (ai-service + Java SuperAdminAuthUtil): auth user ids of the health-check portal's PORTAL_ALLOWED_USERS; blank = no platform staff
   schedulingTimeFrame: "30"
   s3:
     region: ap-south-1

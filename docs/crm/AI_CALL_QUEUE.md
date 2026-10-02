@@ -346,7 +346,7 @@ Authenticated, `instituteAccessValidator` on every call.
 
 ### Super-admin — `/admin-core-service/super-admin/v1/ai-queue`
 
-`SuperAdminAuthUtil.requireSuperAdmin` (root JWT). Cross-tenant, so it *does* carry the
+`SuperAdminAuthUtil.requireSuperAdmin` (caller's `users.id` must be on `SUPER_ADMIN_USER_IDS`). Cross-tenant, so it *does* carry the
 real numbers. This is the feed for the **Vacademy Health** dashboard.
 
 | | |

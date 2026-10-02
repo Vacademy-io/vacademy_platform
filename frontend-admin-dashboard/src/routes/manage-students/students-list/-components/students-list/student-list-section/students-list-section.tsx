@@ -252,9 +252,10 @@ export const StudentsListSection = () => {
         [studentCfFilterGate, rangeCustomFields]
     );
 
-    // Reported by the list endpoint rather than configured, so nobody has to remember to
-    // switch it on; false hides the Trial/Paid badge and the Membership filter entirely.
-    const membershipTypesAvailable = Boolean(studentTableData?.membership_types_available);
+    // Whether this institute runs trials at all, reported by the list endpoint rather than
+    // configured. Held in state because the filter bar is built before the table hook has
+    // run: it starts false and flips once the first page arrives, which re-renders the bar.
+    const [membershipTypesAvailable, setMembershipTypesAvailable] = useState(false);
 
     const allFilters = GetFilterData(
         tAllFilters,
@@ -293,6 +294,12 @@ export const StudentsListSection = () => {
         setAppliedFilters,
         search.package_session_id ? [search.package_session_id] : null
     );
+
+    // Flip the gate once the first page lands. Only on a real change, so this never loops.
+    useEffect(() => {
+        const available = Boolean(studentTableData?.membership_types_available);
+        setMembershipTypesAvailable((current) => (current === available ? current : available));
+    }, [studentTableData]);
 
     // Header badge counts (Total / Active / Inactive) — independent of the status
     // filter so the breakdown is always visible. Pass the same pinned

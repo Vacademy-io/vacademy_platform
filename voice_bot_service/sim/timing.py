@@ -746,6 +746,8 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "end_forced": getattr(outcome, "end_forced", False),
         "floor_holds": getattr(d, "floor_holds", 0) or 0,
         "floor_holds_dropped": getattr(d, "floor_holds_dropped", 0) or 0,
+        "repeats_suppressed": getattr(d, "repeats_suppressed", 0) or 0,
+        "unsaid_reverted": getattr(d, "unsaid_reverted", 0) or 0,
     }
     # turn latency: caller stop → next bot audio start
     lat = []
@@ -865,6 +867,100 @@ def chk_hello_over_cached_opening(res):
         f.append(f"the opening was said again ({res['opening_resaid']}x) over a pickup hello")
     if not any("किस class" in t for t in _after_user(res, "पिता")):
         f.append("the father's answer never got the next question")
+    return f
+
+
+# ── call 34452119 (2026-10-02, Shreya on Navana, speech cache FULL): a REPLY
+#    sentence served from the cache as one 13.2 s clip; the mother cut in at
+#    63 % of it. A cached clip's text reached the played transcript only when
+#    the clip ENDED, so NoRepeatGate un-recorded the sentence as never played
+#    and the model's next reply said all of it again. A LIVE Navana sentence
+#    counts as heard once 60 % of its audio has played; a cached one must too. ─
+# The sentence as the cache served it: NoRepeatGate's echo trim had already
+# dropped the reply's "नमस्ते मैम," opener ("un-recording never-played
+# 'shiksha nation में हमारा focus…'").
+HI_FOCUS = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है — हम हर "
+            "बच्चे के concepts पूरी तरह clear करवाते हैं, हर हफ्ते उसका test लेते हैं और "
+            "उसका progress आपके साथ WhatsApp पर share करते हैं।")
+HI_MOTHER = "जी, मैं उसकी मम्मी बोल रही हूँ।"
+HI_FEES_ASK = "अच्छा, पर इसकी fees कितनी है?"
+HI_FEES_REPLY = "Fees के बारे में मैं अभी बताती हूँ — बच्चा अभी किस class में है?"
+# _warm_cache renders 60 ms of audio per character.
+HI_FOCUS_SECS = 0.06 * len(HI_FOCUS.strip())
+_FOCUS_KEY = "Shiksha Nation में हमारा focus"
+
+
+def _cut_cached_reply(key: str, share: float, heard: bool) -> "Scenario":
+    # The caller's VOICE starts `share` of the way into the clip; the bot audio
+    # stops ~1.0 s later (VAD onset ~0.3 s, then the turn-gate's 0.7 s of talk
+    # over the reply): 0.55 stops it at ~63 % of the 12 s clip, as on the call;
+    # 0.22 at ~30 %.
+    return Scenario(
+        key,
+        caller=[Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6),
+                Say(HI_FEES_ASK, 1.6, after_bot_start=2, offset=round(share * HI_FOCUS_SECS, 2),
+                    stt_latency=0.5)],
+        # The model's answer to the cut repeats the cut sentence first — what
+        # 34452119's model did — then the fees answer.
+        replies=[HI_FOCUS, HI_FOCUS + " " + HI_FEES_REPLY, "जी।"],
+        context="hindi_parent_agent_context.json", engine="navana",
+        cache_warm=[HI_FOCUS],
+        checks=lambda r: chk_cut_cached_reply(r, heard=heard), max_secs=55,
+        note=("call 34452119: cut at 63 % of a 13 s cached reply sentence; it was said again in full"
+              if heard else "cut at 30 % of a cached reply sentence: not heard, so re-saying it is right"))
+
+
+def chk_cut_cached_reply(res, heard: bool):
+    f = []
+    if len(res["caller"]) < 2:
+        return ["caller turns missing"]
+    cut_start = res["caller"][1][0]
+    # The first delivery: the bot stretch the caller's voice started inside.
+    first = next((iv for iv in res["bot"] if iv[0] <= cut_start <= iv[1] + 0.3), None)
+    if first is None:
+        return [f"the caller's cut at {cut_start:.2f}s fell outside any bot audio — scenario shape off"]
+    played = (first[1] - first[0]) / HI_FOCUS_SECS
+    print(f"NOTE {res['key']}: first delivery played {first[1] - first[0]:.2f}s of "
+          f"{HI_FOCUS_SECS:.2f}s ({played:.0%}); repeats_suppressed={res['repeats_suppressed']} "
+          f"unsaid_reverted={res['unsaid_reverted']}")
+    if heard and not 0.6 <= played <= 0.8:
+        f.append(f"scenario shape off: the first delivery played {played:.0%} (want 60-80 %)")
+    if not heard and not 0.15 <= played <= 0.5:
+        f.append(f"scenario shape off: the first delivery played {played:.0%} (want 15-50 %)")
+    # The played transcript, split at the caller's cut-in turn.
+    tr = res["transcript"]
+    i_cut = next((i for i, t in enumerate(tr) if t["role"] == "user" and "fees" in t["text"]), None)
+    if i_cut is None:
+        return f + ["the caller's fees question never reached the transcript"]
+    before = " ".join(t["text"] for t in tr[:i_cut] if t["role"] == "assistant")
+    after = " ".join(t["text"] for t in tr[i_cut:] if t["role"] == "assistant")
+    n = (before + " " + after).count(_FOCUS_KEY)
+    # Said twice on the LINE: any bot stretch after the cut long enough to be
+    # the clip again.
+    again = [iv for iv in res["bot"] if iv[0] > first[1] and iv[1] - iv[0] > 0.7 * HI_FOCUS_SECS]
+    if heard:
+        if _FOCUS_KEY not in before:
+            f.append("the sentence the caller heard 60 %+ of is not in the played transcript — "
+                     "it counts as never said")
+        if n != 1:
+            f.append(f"the sentence is in the played transcript {n}x (want once)")
+        if again:
+            f.append(f"the sentence was said again after the cut: a {again[0][1] - again[0][0]:.1f}s "
+                     f"stretch at {again[0][0]:.1f}s")
+        if res["repeats_suppressed"] < 1:
+            f.append("the model's repeat of the heard sentence was not dropped as already said")
+        for ctx in res.get("contexts", [])[1:2]:
+            if _FOCUS_KEY not in json.dumps(ctx, ensure_ascii=False):
+                f.append("the heard sentence is missing from the model's context at the next run")
+    else:
+        if _FOCUS_KEY in before:
+            f.append("a sentence cut at ~30 % counts as heard — it can never be said again")
+        if _FOCUS_KEY not in after:
+            f.append("the sentence the caller barely heard was not said again")
+        if n != 1:
+            f.append(f"the sentence is in the played transcript {n}x (want once, from the re-say)")
+    if "किस class" not in after:
+        f.append("the answer to the fees question never played")
     return f
 
 
@@ -1739,6 +1835,8 @@ SCENARIOS: List[Scenario] = [
              cache_warm=[HI_OPENING],
              checks=chk_hello_over_cached_opening, max_secs=40,
              note="the time-based 'heard' must not change a pickup Hello over a cached opening"),
+    _cut_cached_reply("cut_cached_reply_late_is_heard", 0.55, heard=True),
+    _cut_cached_reply("cut_cached_reply_early_is_not_heard", 0.22, heard=False),
     Scenario("hindi_pieces_bare_acks",
              caller=[Say("हाँ जी पिताजी हैं।", 1.2, after_bot_stop=1, offset=0.6),
                      Say("नौवीं में पढ़ रहा है।", 1.3, after_bot_stop=2, offset=0.6),

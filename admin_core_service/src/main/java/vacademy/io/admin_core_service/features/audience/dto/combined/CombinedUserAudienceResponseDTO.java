@@ -30,13 +30,4 @@ public class CombinedUserAudienceResponseDTO {
     
     // Optional: List of audience IDs that were used for filtering
     private List<String> filteredAudienceIds;
-
-    /**
-     * Whether this institute runs trials at all, i.e. at least one live invite configures
-     * AUTOPAY_SETTING.TRIAL_DAYS > 0. The Trial/Paid badge and its filter hide themselves
-     * when false, so an institute with no trial memberships never sees a distinction that
-     * means nothing to it. Derived from the invites rather than from a flag someone has to
-     * remember to switch on.
-     */
-    private Boolean membershipTypesAvailable;
 }

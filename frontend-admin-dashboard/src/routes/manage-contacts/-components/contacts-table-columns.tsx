@@ -8,7 +8,6 @@ import { MyDropdown } from '@/components/design-system/dropdown';
 import { useRef } from 'react';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { DuplicateBadge } from '@/components/shared/duplicate-badge';
-import { MembershipBadge } from '@/components/shared/membership-badge';
 
 // Reusing the click handler logic pattern
 export const useClickHandlers = () => {
@@ -184,9 +183,7 @@ export const getContactColumns = (
     onSort?: (columnId: string, direction: string) => void,
     showLeadScore = false,
     onAssignCounselor?: (userId: string, userName: string) => void,
-    showCounselor = false,
-    /** From the list response — hides the Trial/Paid badge for institutes without trials. */
-    membershipTypesAvailable = false
+    showCounselor = false
 ): ColumnDef<ContactUser>[] => [
     {
         id: 'details',
@@ -218,13 +215,7 @@ export const getContactColumns = (
         cell: ({ row }) => (
             <div className="flex flex-col gap-0.5">
                 <CreateClickableCell row={row} columnId="user.full_name" />
-                <div className="flex flex-wrap items-center gap-1">
-                    <MembershipBadge
-                        membershipType={row.original.membership_type}
-                        available={membershipTypesAvailable}
-                    />
-                    <DuplicateBadge isDuplicate={row.original.is_duplicate} />
-                </div>
+                <DuplicateBadge isDuplicate={row.original.is_duplicate} />
             </div>
         ),
     },
@@ -234,30 +225,6 @@ export const getContactColumns = (
         header: 'Username',
         size: 150,
         cell: ({ row }) => <CreateClickableCell row={row} columnId="user.username" />,
-    },
-    {
-        id: 'enrolled_date',
-        accessorKey: 'enrolled_date',
-        header: 'Joined',
-        size: 120,
-        // Rendered in UTC like every other date on this surface: enrolment timestamps are
-        // stored UTC and a local render shifted late-evening joins to the next day.
-        cell: ({ row }) => {
-            const value = row.original.enrolled_date;
-            if (!value) return <span className="text-neutral-400">-</span>;
-            const d = new Date(value);
-            if (Number.isNaN(d.getTime())) return <span className="text-neutral-400">-</span>;
-            return (
-                <span>
-                    {d.toLocaleDateString('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        timeZone: 'UTC',
-                    })}
-                </span>
-            );
-        },
     },
     {
         id: 'user.email',

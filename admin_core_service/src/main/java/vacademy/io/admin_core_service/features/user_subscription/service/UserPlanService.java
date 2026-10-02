@@ -38,7 +38,6 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.*;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
-import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -630,48 +629,8 @@ public class UserPlanService {
         return true;
     }
 
-    /**
-     * Drops {@code is_trial} once the plan's own price has actually been collected.
-     *
-     * <p>Three paths used to clear the flag -- a successful renewal, a manual renewal and an
-     * applied plan change -- and the direct payment path cleared nothing. So a learner who
-     * paid their plan price any other way (the portal's own checkout, an admin-recorded
-     * payment, a one-time option) stayed flagged as a trial member for good: Vibhuti
-     * grover's plan still read {@code is_trial = true} two weeks after her Rs 1,200 landed,
-     * with the row untouched since the day it was created. Reporting and the contacts list
-     * both read this flag, so it has to be true of the money rather than of the enrollment.
-     *
-     * <p>The test is on the AMOUNT, not on the presence of a paid log: registering an autopay
-     * mandate books a Rs 1 debit against the plan and lands as PAID, so "has a paid log" is
-     * true of every trial that ever armed autopay.
-     */
-    private void clearTrialFlagIfPlanPriceCollected(UserPlan userPlan) {
-        if (userPlan == null || !Boolean.TRUE.equals(userPlan.getIsTrial())) {
-            return;
-        }
-        Double price = userPlan.getPaymentPlan() != null ? userPlan.getPaymentPlan().getActualPrice() : null;
-        if (price == null || price <= 0d) {
-            return;
-        }
-        boolean collected = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId()).stream()
-                .filter(l -> PaymentStatusEnum.PAID.name().equalsIgnoreCase(l.getPaymentStatus()))
-                .anyMatch(l -> l.getPaymentAmount() != null && l.getPaymentAmount() >= price);
-        if (!collected) {
-            return;
-        }
-        userPlan.setIsTrial(false);
-        userPlanRepository.save(userPlan);
-        logger.info("UserPlan {} is no longer a trial: plan price {} has been collected",
-                userPlan.getId(), price);
-    }
-
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
-
-        // Deliberately BEFORE the early return below. A learner converting off a trial pays
-        // while their plan is already ACTIVE, so everything after that return is skipped --
-        // which is how a paid member kept reading as a trial member indefinitely.
-        clearTrialFlagIfPlanPriceCollected(userPlan);
 
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
                 || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
@@ -1404,10 +1363,6 @@ public class UserPlanService {
         // 2. Update Status
         stackedPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
         userPlanRepository.save(stackedPlan);
-        // A promoted plan is a real term, not a trial -- but only once its price was
-        // actually taken. When it was not, FinalExpiryProcessor arms it for the charge sweep
-        // instead and the flag clears on the successful renewal, as it does everywhere else.
-        clearTrialFlagIfPlanPriceCollected(stackedPlan);
 
         // 3. Transfer and Extend Mappings
         List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(

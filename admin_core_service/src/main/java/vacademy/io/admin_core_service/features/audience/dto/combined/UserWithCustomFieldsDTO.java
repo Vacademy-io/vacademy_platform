@@ -40,20 +40,6 @@ public class UserWithCustomFieldsDTO {
     private String packageSessionId;
     private String instituteEnrollmentNumber;
     private String paymentStatus;
-
-    /**
-     * TRIAL or PAID for an enrolled contact, null for a lead who has no plan at all.
-     *
-     * <p>Derived from {@code user_plan.is_trial}, which follows the MONEY rather than the
-     * enrollment: every path that collects a plan's price clears the flag, so a learner who
-     * converted mid-trial reads PAID from that moment. A contact with no plan gets null
-     * rather than PAID -- "not a member" and "paying member" are different things and the
-     * badge must not conflate them.
-     */
-    private String membershipType;
-
-    /** ssigm.enrolled_date -- the date this contact joined the batch. */
-    private String enrolledDate;
     private String instituteId;
     private String fathersName;
     private String mothersName;

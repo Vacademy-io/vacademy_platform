@@ -230,18 +230,27 @@ export function MultiSelectFilter({
                                     onSelect={() => toggle(opt.value, opt.clearAll)}
                                     className="cursor-pointer"
                                 >
-                                    <Check
+                                    {/* A real box, not a tick that fades to nothing: with only
+                                        the tick, an unticked row showed blank space and the whole
+                                        control read as single-select. */}
+                                    <span
                                         className={cn(
-                                            'mr-2 size-4 shrink-0',
-                                            opt.clearAll
-                                                ? count === 0
-                                                    ? 'opacity-100'
-                                                    : 'opacity-0'
-                                                : selected.includes(opt.value)
-                                                  ? 'opacity-100'
-                                                  : 'opacity-0'
+                                            'mr-2 flex size-4 shrink-0 items-center justify-center rounded border',
+                                            (
+                                                opt.clearAll
+                                                    ? count === 0
+                                                    : selected.includes(opt.value)
+                                            )
+                                                ? 'border-primary-500 bg-primary-500 text-white'
+                                                : 'border-neutral-300'
                                         )}
-                                    />
+                                    >
+                                        {(opt.clearAll
+                                            ? count === 0
+                                            : selected.includes(opt.value)) && (
+                                            <Check className="size-3" />
+                                        )}
+                                    </span>
                                     <span className="flex min-w-0 flex-col">
                                         <span className="truncate">{opt.label}</span>
                                         {opt.sublabel && (

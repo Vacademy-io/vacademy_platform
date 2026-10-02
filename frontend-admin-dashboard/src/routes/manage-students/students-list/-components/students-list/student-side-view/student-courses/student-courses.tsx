@@ -13,7 +13,7 @@ import {
     DropdownMenuContent,
     DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
-import { AssignCourseDialog } from './assign-course-dialog';
+import { BulkAssignDialog } from '@/routes/manage-students/students-list/-components/enroll-bulk/bulk-assign-dialog/BulkAssignDialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
 import { ManageAccessDialog } from './manage-access-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -50,6 +50,13 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const { selectedStudent } = useStudentSidebar();
     const instituteId = getInstituteId();
     const userId = isSubmissionTab ? selectedStudent?.id || '' : selectedStudent?.user_id || '';
+    // The side view already knows who this is, so the enrolment wizard can skip its
+    // learner step and go straight to picking the course and invite.
+    const assignLearner = {
+        userId,
+        email: selectedStudent?.email || '',
+        name: selectedStudent?.full_name || '',
+    };
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -242,12 +249,11 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                             >
                                 {t('actions.assignToCourse', { term: courseTermSingular })}
                             </MyButton>
-                            <AssignCourseDialog
-                                userId={userId}
-                                userName={selectedStudent?.full_name || t('fallbackStudentName')}
+                            <BulkAssignDialog
                                 open={assignOpen}
                                 onOpenChange={setAssignOpen}
                                 onSuccess={handleRefresh}
+                                initialLearner={assignLearner}
                             />
                         </>
                     }
@@ -433,12 +439,11 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             />
 
             {/* Dialogs */}
-            <AssignCourseDialog
-                userId={userId}
-                userName={selectedStudent?.full_name || t('fallbackStudentName')}
+            <BulkAssignDialog
                 open={assignOpen}
                 onOpenChange={setAssignOpen}
                 onSuccess={handleRefresh}
+                initialLearner={assignLearner}
             />
             <DeassignCourseDialog
                 userId={userId}

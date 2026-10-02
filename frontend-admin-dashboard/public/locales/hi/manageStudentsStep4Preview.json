@@ -40,5 +40,6 @@
             "recordingNow": "अभी ₹{{amount}} दर्ज किया जा रहा है",
             "noInitialPayment": "कोई प्रारंभिक भुगतान दर्ज नहीं"
         }
-    }
+    },
+    "noPlanConfigured": "इस इनवाइट की कीमत अभी तय नहीं है — मुफ़्त एनरोलमेंट के लिए Auto (Default) चुनें, या पहले Payment Settings में कीमत सेट करें।"
 }

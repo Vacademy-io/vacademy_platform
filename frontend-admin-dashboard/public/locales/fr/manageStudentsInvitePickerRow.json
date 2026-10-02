@@ -41,7 +41,7 @@
             "validity_one": "{{count}} jour de validité",
             "validity_many": "{{count}} jours de validité",
             "validity_other": "{{count}} jours de validité",
-            "none": "Aucun forfait déterminé"
+            "none": "Aucun plan — cette invitation ne peut inscrire personne tant qu'un prix n'est pas défini"
         },
         "access": {
             "label": "Accès",

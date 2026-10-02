@@ -34,7 +34,8 @@
         "leadStatus": {
             "label": "सभी लीड्स",
             "active": "सक्रिय (नामांकित नहीं)",
-            "converted": "नामांकित / परिवर्तित"
+            "converted": "नामांकित / परिवर्तित",
+            "excludeSelected": "चुने हुए हटाएँ"
         },
         "sla": {
             "label": "सभी SLA स्थितियां"
@@ -92,7 +93,8 @@
         "clearAll": "सभी हटाएं",
         "calledWithin": null,
         "workedWithin": null,
-        "pinnedTitle": "यह फ़िल्टर इस टैब का है — इसे यहाँ से हटाया नहीं जा सकता"
+        "pinnedTitle": "यह फ़िल्टर इस टैब का है — इसे यहाँ से हटाया नहीं जा सकता",
+        "statusExcluded": "स्टेटस नहीं है: {{statuses}}"
     },
     "search": {
         "placeholder": "लीड्स खोजें",

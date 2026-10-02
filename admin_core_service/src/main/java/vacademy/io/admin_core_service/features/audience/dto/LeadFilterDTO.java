@@ -71,6 +71,12 @@ public class LeadFilterDTO {
     // (lead_status_id NULL and no profile conversion_status) - the "No status"
     // column on the Lead Board.
     private String leadStatusId;
+    /**
+     * Status keys to EXCLUDE, comma separated. Lets a saved view say "everything except New"
+     * instead of listing the other nine statuses, so it keeps working when a status is added.
+     * A lead with no status at all is never excluded.
+     */
+    private String leadStatusExcludeId;
 
     // ── Status Filters ──
     private java.util.List<String> overallStatuses;    // ENQUIRY, APPLICATION, ADMITTED, etc.

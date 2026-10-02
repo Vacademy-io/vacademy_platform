@@ -22,6 +22,7 @@ export const LOCKABLE_PARAMS = [
     'from',
     'to',
     'status',
+    'statusExclude',
     'tier',
     'sla',
     'counsellor',

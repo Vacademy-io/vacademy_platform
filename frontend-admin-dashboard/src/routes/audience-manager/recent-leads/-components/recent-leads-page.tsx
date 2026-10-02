@@ -15,7 +15,6 @@ import {
     DownloadSimple,
     Flame,
     Folders,
-    Lock,
     MagnifyingGlass,
     Megaphone,
     X,
@@ -336,6 +335,7 @@ const RecentLeadsContent = ({
         calledWithin: urlSearch.calledWithin,
         workedWithin: urlSearch.workedWithin,
         search: urlSearch.search,
+        statusExclude: urlSearch.statusExclude,
     });
     const isLocked = (param: string) => lockedParams.has(param as never);
     /** The route's value for a pinned filter, or the cleared value when it is not pinned. */
@@ -432,6 +432,7 @@ const RecentLeadsContent = ({
     );
     // Lead-status multi-select. Empty = all leads. ALL_ACTIVE / ALL_CONVERTED are
     // exclusive: handleLeadStatusChange enforces mutual exclusion with custom statuses.
+    const [statusExclude, setStatusExclude] = useState(urlSearch.statusExclude === '1');
     const [leadStatusFilters, setLeadStatusFilters] = useState<string[]>(() =>
         urlSearch.status ? urlSearch.status.split(',') : []
     );
@@ -523,6 +524,7 @@ const RecentLeadsContent = ({
             // Carried through untouched: the route owns it, not the user.
             lock: urlSearch.lock || undefined,
             status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
+            statusExclude: statusExclude ? '1' : undefined,
             tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
             sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
             counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
@@ -558,6 +560,7 @@ const RecentLeadsContent = ({
     }, [
         navigate,
         leadStatusFilters,
+        statusExclude,
         tierFilters,
         slaFilters,
         counsellorFilters,
@@ -698,7 +701,12 @@ const RecentLeadsContent = ({
     // Translate the multi-select status filter into the two backend params.
     const specialStatuses = new Set([ALL_STATUSES_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
     const customStatusKeys = leadStatusFilters.filter((v) => !specialStatuses.has(v));
-    const leadStatusId = customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    // The same picks, read the other way round when exclude mode is on. The Active /
+    // Enrolled sentinels are conversion filters, not status keys, so they never invert.
+    const leadStatusId =
+        !statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    const leadStatusExcludeId =
+        statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
     // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
     // place they can be seen, and the only way to restore one from the UI.
     const [showDeleted, setShowDeleted] = useState(false);
@@ -776,6 +784,8 @@ const RecentLeadsContent = ({
             tierFilters.join(','),
             leadStatusFilters.join(','),
             leadStatusId,
+            leadStatusExcludeId,
+            leadStatusExcludeId,
             conversionFilter,
             audienceStatusFilter,
             slaFilters.join(','),
@@ -807,6 +817,7 @@ const RecentLeadsContent = ({
                 search_query: appliedSearch || undefined,
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
+                lead_status_exclude_id: leadStatusExcludeId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -991,6 +1002,7 @@ const RecentLeadsContent = ({
                 search_query: appliedSearch || undefined,
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
+                lead_status_exclude_id: leadStatusExcludeId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -1041,6 +1053,7 @@ const RecentLeadsContent = ({
         setAppliedSearch(clearedOr('search', ''));
         setTierFilters(clearedOrList('tier'));
         setLeadStatusFilters(clearedOrList('status'));
+        setStatusExclude(isLocked('statusExclude') && pinnedEntryRef.current.statusExclude === '1');
         setSlaFilters(clearedOrList('sla'));
         setCounsellorFilters(clearedOrList('counsellor'));
         setSourceFilter(clearedOr('source', ''));
@@ -1371,6 +1384,7 @@ const RecentLeadsContent = ({
                     search_query: appliedSearch || undefined,
                     lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                     lead_status_id: leadStatusId,
+                    lead_status_exclude_id: leadStatusExcludeId,
                     conversion_status_filter: conversionFilter,
                     audience_status_filter: audienceStatusFilter,
                     sla_filter:
@@ -1455,7 +1469,9 @@ const RecentLeadsContent = ({
             return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
         });
         chips.push({
-            label: t('chips.status', { statuses: statusLabels.join(', ') }),
+            label: statusExclude
+                ? t('chips.statusExcluded', { statuses: statusLabels.join(', ') })
+                : t('chips.status', { statuses: statusLabels.join(', ') }),
             onRemove: () => setLeadStatusFilters([]),
             param: 'status',
         });
@@ -1597,6 +1613,11 @@ const RecentLeadsContent = ({
         });
     }
 
+    // Pinned filters are the sub-tab's identity, not something the user picked: the tab's
+    // own label already says what it narrows to, and rendering them chipped the whole row
+    // (one I2CAN tab pins nine statuses). They stay applied, they just stop shouting.
+    const visibleChips = chips.filter((c) => !(c.param && isLocked(c.param)));
+
     return (
         <div className="flex w-full flex-col gap-4">
             {/* Heading — while a (re)filtered query is in flight there is no count yet;
@@ -1651,6 +1672,14 @@ const RecentLeadsContent = ({
                         selected={leadStatusFilters}
                         onChange={handleLeadStatusChange}
                         widthClass="w-44"
+                        exclude={{
+                            value: statusExclude,
+                            onChange: (next) => {
+                                setStatusExclude(next);
+                                setPage(0);
+                            },
+                            label: t('filters.leadStatus.excludeSelected'),
+                        }}
                     />
                     {showOps && (
                         <MultiSelectFilter
@@ -1895,40 +1924,24 @@ const RecentLeadsContent = ({
             </div>
 
             {/* Active filter chips */}
-            {chips.length > 0 && (
+            {visibleChips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {chips.map((chip, i) => {
-                        // A pinned filter belongs to the route (a sidebar sub-tab), not to
-                        // the user: it shows a lock and has no remove cross.
-                        const pinned = !!chip.param && isLocked(chip.param);
-                        return (
-                            <span
-                                key={i}
-                                className={cn(
-                                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
-                                    pinned
-                                        ? 'border-primary-200 bg-primary-50 text-primary-600'
-                                        : 'border-neutral-200 bg-white text-neutral-600'
-                                )}
-                                title={pinned ? t('chips.pinnedTitle') : undefined}
+                    {visibleChips.map((chip, i) => (
+                        <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600"
+                        >
+                            {chip.label}
+                            <button
+                                type="button"
+                                onClick={chip.onRemove}
+                                className="text-neutral-400 hover:text-neutral-700"
+                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
                             >
-                                {pinned && <Lock className="size-3 shrink-0" weight="fill" />}
-                                {chip.label}
-                                {!pinned && (
-                                    <button
-                                        type="button"
-                                        onClick={chip.onRemove}
-                                        className="text-neutral-400 hover:text-neutral-700"
-                                        aria-label={t('chips.removeAriaLabel', {
-                                            label: chip.label,
-                                        })}
-                                    >
-                                        <X className="size-3" />
-                                    </button>
-                                )}
-                            </span>
-                        );
-                    })}
+                                <X className="size-3" />
+                            </button>
+                        </span>
+                    ))}
                     <button
                         type="button"
                         onClick={handleClearFilter}

@@ -2,7 +2,8 @@
     "navHeading": "Follow-ups",
     "heading": {
         "team": "Follow-ups",
-        "mine": "My Follow-ups"
+        "mine": "My Follow-ups",
+        "blurb": "Manage and track all your counselling follow-ups in one place."
     },
     "subline": {
         "teamAllCaughtUp": "Team is all caught up",

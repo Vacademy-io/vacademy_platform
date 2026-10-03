@@ -2,7 +2,8 @@
     "navHeading": "Suivis",
     "heading": {
         "team": "Suivis",
-        "mine": "Mes suivis"
+        "mine": "Mes suivis",
+        "blurb": "Gérez et suivez tous vos suivis de conseil au même endroit."
     },
     "subline": {
         "teamAllCaughtUp": "L'équipe est à jour",

@@ -5,6 +5,7 @@ import { CalendarBlank, DownloadSimple, ListBullets, MagnifyingGlass } from '@ph
 import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { cn } from '@/lib/utils';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -81,8 +82,8 @@ const toWindowParams = (b: FollowUpBucket, now: Date = new Date()) => {
     const w = bucketWindow(b, now);
     return { follow_up_from: w.from, follow_up_to: w.to };
 };
-// Hidden on this surface to keep triage focused — easy to surface again in v2.
-const HIDDEN_COLUMNS = new Set(['score', 'source']);
+// Hidden on this surface to keep triage focused.
+const HIDDEN_COLUMNS = new Set(['score']);
 // Static cache keys every mutation on this page must refresh.
 const INVALIDATE_KEYS: string[][] = [['follow-ups'], ['lead-profiles-batch']];
 
@@ -468,20 +469,62 @@ const FollowUpsContent = () => {
 
     return (
         <div className="flex w-full flex-col gap-4">
-            {/* Heading row + (admin) counsellor filter */}
+            {/* Heading row: who/what on the left, the two things you can DO on the right. */}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-semibold text-neutral-900">
+                    <h1 className="text-h1 font-semibold text-card-foreground">
                         {canFilterCounsellors ? t('heading.team') : t('heading.mine')}
                     </h1>
+                    <p className="mt-0.5 text-body text-muted-foreground">{t('heading.blurb')}</p>
                     <p
-                        className={`mt-0.5 text-sm ${
-                            counts.overdue > 0 ? 'text-danger-600' : 'text-neutral-500'
-                        }`}
+                        className={cn(
+                            'mt-1 text-body',
+                            counts.overdue > 0 ? 'text-danger-600' : 'text-muted-foreground'
+                        )}
                     >
                         {subline} · {format(new Date(), 'EEEE, MMM d')}
                     </p>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        disabled={isExporting || counts[bucket] === 0}
+                        onClick={handleExport}
+                    >
+                        <DownloadSimple className="size-4" />
+                        {isExporting ? t('export.running') : t('export.action')}
+                    </MyButton>
+                </div>
+            </div>
+
+            {/* Bucket cards — the dominant element */}
+            <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
+
+            {/* View toggle on the left, counsellor filter on the right — this row
+                renders in both views, which the search toolbar below does not. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <Tabs
+                    value={view}
+                    onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+                >
+                    <TabsList className="h-11 gap-1 rounded-xl border border-neutral-200 bg-card p-1">
+                        <TabsTrigger
+                            value="list"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <ListBullets className="size-4" />
+                            {t('tabs.list')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="calendar"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <CalendarBlank className="size-4" />
+                            {t('tabs.calendar')}
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
                 {canFilterCounsellors && (
                     <CounsellorFilter
                         values={counsellorFilters}
@@ -491,26 +534,6 @@ const FollowUpsContent = () => {
                     />
                 )}
             </div>
-
-            {/* Bucket cards — the dominant element */}
-            <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
-
-            {/* View toggle: List | Calendar */}
-            <Tabs
-                value={view}
-                onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
-            >
-                <TabsList>
-                    <TabsTrigger value="list" className="gap-1.5">
-                        <ListBullets className="size-4" />
-                        {t('tabs.list')}
-                    </TabsTrigger>
-                    <TabsTrigger value="calendar" className="gap-1.5">
-                        <CalendarBlank className="size-4" />
-                        {t('tabs.calendar')}
-                    </TabsTrigger>
-                </TabsList>
-            </Tabs>
 
             {/* Search on the left, count + export on the right — list view only.
                 Same row shape as Recent Leads so the two queues read alike. */}
@@ -538,15 +561,6 @@ const FollowUpsContent = () => {
                                 context: bucket === 'all' ? undefined : bucket,
                             })}
                         </p>
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            disabled={isExporting || counts[bucket] === 0}
-                            onClick={handleExport}
-                        >
-                            <DownloadSimple className="size-4" />
-                            {isExporting ? t('export.running') : t('export.action')}
-                        </MyButton>
                     </div>
                 </div>
             )}

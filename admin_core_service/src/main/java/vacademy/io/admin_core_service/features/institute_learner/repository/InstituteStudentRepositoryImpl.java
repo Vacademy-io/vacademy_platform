@@ -529,6 +529,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             public String getFaceFileId() { return str("facefileid"); }
             public String getExpiryDate() { return str("expirydate"); }
             public String getEnrolledDate() { return str("enrolleddate"); }
+            public String getPlanEndDate() { return str("planenddate"); }
             public Boolean getIsTrial() { try { Object v = t.get("istrial"); return v == null ? null : (Boolean) v; } catch (Exception e) { return null; } }
             public String getParentsToMotherMobileNumber() { return str("parentstomothermobilenumber"); }
             public String getParentsToMotherEmail() { return str("parentstomotheremail"); }

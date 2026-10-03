@@ -1544,7 +1544,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR EXISTS (
                 SELECT 1 FROM user_plan up
                 WHERE up.id = ssigm.user_plan_id
-                  AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)
+                  AND (CASE
+                         WHEN NOT up.is_trial THEN 'PAID'
+                         WHEN up.end_date IS NOT NULL AND up.end_date <= now() THEN 'TRIAL_ENDED'
+                         ELSE 'TRIAL'
+                       END) IN (:membershipTypes)
               )
             )
             AND (
@@ -1640,7 +1644,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR EXISTS (
                 SELECT 1 FROM user_plan up
                 WHERE up.id = ssigm.user_plan_id
-                  AND (CASE WHEN up.is_trial THEN 'TRIAL' ELSE 'PAID' END) IN (:membershipTypes)
+                  AND (CASE
+                         WHEN NOT up.is_trial THEN 'PAID'
+                         WHEN up.end_date IS NOT NULL AND up.end_date <= now() THEN 'TRIAL_ENDED'
+                         ELSE 'TRIAL'
+                       END) IN (:membershipTypes)
               )
             )
             AND (
@@ -2111,6 +2119,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
           ssigm.enrolled_date AS "enrolledDate",
           (SELECT up.is_trial FROM user_plan up WHERE up.id = ssigm.user_plan_id) AS "isTrial",
+          (SELECT up.end_date FROM user_plan up WHERE up.id = ssigm.user_plan_id) AS "planEndDate",
+          (SELECT up.end_date FROM user_plan up WHERE up.id = ssigm.user_plan_id) AS "planEndDate",
           CAST(NULL AS text)  AS "paymentStatus",
           CAST(
             COALESCE(

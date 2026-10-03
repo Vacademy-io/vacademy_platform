@@ -710,11 +710,33 @@ public class StudentListManager {
         return false;
     }
 
-    private static String membershipTypeOf(Boolean isTrial) {
+    private static String membershipTypeOf(Boolean isTrial, String planEndDate) {
         if (isTrial == null) {
             return null;
         }
-        return Boolean.TRUE.equals(isTrial) ? "TRIAL" : "PAID";
+        if (!Boolean.TRUE.equals(isTrial)) {
+            return "PAID";
+        }
+        // A trial that has run out is not a trial member any more, and calling it one put
+        // learners whose trial ended weeks ago next to people currently in theirs. It is
+        // also not PAID -- they never paid. TRIAL_ENDED is the third, honest state.
+        return hasPassed(planEndDate) ? "TRIAL_ENDED" : "TRIAL";
+    }
+
+    /** True when the timestamp is in the past. Unparseable or absent reads as still running. */
+    private static boolean hasPassed(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) {
+            return false;
+        }
+        try {
+            String normalised = timestamp.trim().replace(' ', 'T');
+            if (normalised.length() > 19) {
+                normalised = normalised.substring(0, 19);
+            }
+            return java.time.LocalDateTime.parse(normalised).isBefore(java.time.LocalDateTime.now());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private List<StudentV2DTO> mapProjectionsToDTOs(List<StudentListV2Projection> projections) {
@@ -738,7 +760,7 @@ public class StudentListManager {
             dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
             dto.setGender(p.getGender());
             dto.setEnrolledDate(p.getEnrolledDate());
-            dto.setMembershipType(membershipTypeOf(p.getIsTrial()));
+            dto.setMembershipType(membershipTypeOf(p.getIsTrial(), p.getPlanEndDate()));
             dto.setFathersName(p.getFathersName());
             dto.setMothersName(p.getMothersName());
             dto.setParentsMobileNumber(p.getParentsMobileNumber());

@@ -99,7 +99,7 @@ export interface StudentTable {
     enroll_invite_name?: string | null;
     payment_status: string;
     /** TRIAL | PAID from user_plan.is_trial; absent when the learner has no plan. */
-    membership_type?: 'TRIAL' | 'PAID' | null;
+    membership_type?: 'TRIAL' | 'TRIAL_ENDED' | 'PAID' | null;
     /** Join date (ssigm.enrolled_date). */
     enrolled_date?: string | null;
     custom_fields: Record<string, string | null>;

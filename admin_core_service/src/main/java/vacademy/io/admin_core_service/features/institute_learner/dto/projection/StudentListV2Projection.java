@@ -30,6 +30,8 @@ public interface StudentListV2Projection {
     Boolean getIsTrial();
     /** ssigm.enrolled_date -- the learner's join date. */
     String getEnrolledDate();
+    /** user_plan.end_date — separates a running trial from one that has ended. */
+    String getPlanEndDate();
     String getParentsToMotherMobileNumber();
     String getParentsToMotherEmail();
     String getBillingContactName();

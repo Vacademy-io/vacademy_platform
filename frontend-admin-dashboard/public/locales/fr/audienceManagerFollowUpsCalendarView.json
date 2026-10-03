@@ -42,5 +42,8 @@
     "dayPanel": {
         "emptyTitle": "Rien ce jour-là",
         "emptyDescription": "Choisissez un autre jour dans le calendrier ci-dessus."
+    },
+    "pill": {
+        "openTooltip": "Ouvrir {{name}}"
     }
 }

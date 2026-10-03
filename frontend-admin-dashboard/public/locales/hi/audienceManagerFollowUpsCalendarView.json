@@ -37,5 +37,8 @@
     "dayPanel": {
         "emptyTitle": "इस दिन कुछ नहीं है",
         "emptyDescription": "ऊपर कैलेंडर पर कोई और दिन चुनें।"
+    },
+    "pill": {
+        "openTooltip": "{{name}} खोलें"
     }
 }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import {
     addMonths,
     eachDayOfInterval,
@@ -140,6 +140,17 @@ export function FollowUpsCalendarView({
     };
     const onDayClick = (d: Date) => onSelectDate(format(d, 'yyyy-MM-dd'));
 
+    // "+N more" has to take you somewhere. The grid is six rows tall, so the
+    // panel that actually lists the day sits below the fold — selecting the day
+    // without scrolling looked like the click did nothing.
+    const dayPanelRef = useRef<HTMLDivElement>(null);
+    const showWholeDay = (d: Date) => {
+        onDayClick(d);
+        requestAnimationFrame(() =>
+            dayPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        );
+    };
+
     return (
         <div className="flex w-full flex-col gap-4">
             {/* Header: month nav + Today */}
@@ -199,12 +210,20 @@ export function FollowUpsCalendarView({
                                 const todayCell = isToday(day);
                                 const overflow = Math.max(0, cellVms.length - MAX_PILLS_PER_DAY);
                                 return (
-                                    <button
+                                    <div
                                         key={day.toISOString()}
-                                        type="button"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={format(day, 'EEEE, MMM d')}
                                         onClick={() => onDayClick(day)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                onDayClick(day);
+                                            }
+                                        }}
                                         className={cn(
-                                            'flex min-h-28 flex-col gap-1 border-b border-r border-border bg-card p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                            'flex min-h-28 cursor-pointer flex-col gap-1 border-b border-r border-border bg-card p-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                             !inMonth && 'bg-muted/40',
                                             isSelected && 'ring-2 ring-inset ring-primary-500'
                                         )}
@@ -227,25 +246,43 @@ export function FollowUpsCalendarView({
                                             {cellVms.slice(0, MAX_PILLS_PER_DAY).map((vm) => {
                                                 const bucket = classify(vm);
                                                 return (
-                                                    <span
+                                                    <button
                                                         key={vm.key}
-                                                        title={vm.name}
+                                                        type="button"
+                                                        title={t('pill.openTooltip', {
+                                                            name: vm.name,
+                                                        })}
+                                                        onClick={(e) => {
+                                                            // Don't let the cell swallow it — the
+                                                            // pill means "this lead", the cell
+                                                            // means "this day".
+                                                            e.stopPropagation();
+                                                            onDayClick(day);
+                                                            actions.onOpenDetails(vm);
+                                                        }}
                                                         className={cn(
-                                                            'truncate rounded-md border px-2 py-0.5 text-caption',
+                                                            'truncate rounded-md border px-2 py-0.5 text-left text-caption transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                                             bucketPillClasses(bucket)
                                                         )}
                                                     >
                                                         {vm.name}
-                                                    </span>
+                                                    </button>
                                                 );
                                             })}
                                             {overflow > 0 && (
-                                                <span className="px-2 text-caption text-muted-foreground">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        showWholeDay(day);
+                                                    }}
+                                                    className="rounded-md px-2 text-left text-caption text-muted-foreground underline-offset-2 hover:text-card-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                >
                                                     {t('overflowMore', { count: overflow })}
-                                                </span>
+                                                </button>
                                             )}
                                         </div>
-                                    </button>
+                                    </div>
                                 );
                             })}
                         </div>
@@ -299,7 +336,7 @@ export function FollowUpsCalendarView({
                     </div>
 
                     {/* Selected day panel */}
-                    <div className="mt-2 flex flex-col gap-3">
+                    <div ref={dayPanelRef} className="mt-2 flex scroll-mt-4 flex-col gap-3">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                             <h3 className="text-subtitle font-semibold text-card-foreground">
                                 {format(selectedDate, 'EEEE, MMM d')}

@@ -314,6 +314,33 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         List<UserPlan> findDueForRenewal(@Param("now") java.util.Date now);
 
         /**
+         * Whether this learner has already CONSUMED a free trial at this institute.
+         *
+         * <p>"Consumed" means a previous trial plan whose window has elapsed — not merely
+         * that a trial row exists. A learner who retries checkout creates several trial plans
+         * in a few minutes (Nitika Maheshwari made four in seven), and those must not count
+         * against them: their end_date is still ahead, so they are the same trial, not a
+         * second one. Once the window has passed, the trial was had, whether or not it ever
+         * converted.
+         *
+         * <p>Scoped to the institute rather than the invite: an institute offers one free
+         * trial, and hopping to a different invite is exactly how a second one gets taken.
+         */
+        @Query("""
+                SELECT COUNT(up) > 0 FROM UserPlan up
+                WHERE up.userId = :userId
+                  AND up.id <> :currentPlanId
+                  AND up.isTrial = true
+                  AND up.endDate IS NOT NULL
+                  AND up.endDate < :now
+                  AND up.enrollInvite.instituteId = :instituteId
+                """)
+        boolean hasConsumedTrialAtInstitute(@Param("userId") String userId,
+                @Param("instituteId") String instituteId,
+                @Param("currentPlanId") String currentPlanId,
+                @Param("now") java.util.Date now);
+
+        /**
          * As {@link #findDueForRenewal} but restricted to institutes that have authorised the
          * charge sweep (PAYMENT_SETTING.autopayChargeSchedulerEnabled). The sweep is a single
          * platform-wide cron, so without this scoping every institute with an armed plan is

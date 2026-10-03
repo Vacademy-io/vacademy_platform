@@ -201,8 +201,12 @@ const FollowUpsContent = () => {
     // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used
     // to count the 200 rows it had fetched, which for a real institute meant the tiles read
     // 200 / 0 / 0 / 200 no matter what the pipeline actually held.
+    //
+    // Keyed under the same ['follow-ups', …] root as the list so that completing a
+    // follow-up — every caller invalidates exactly ['follow-ups'] — moves the tiles
+    // too. A sibling 'follow-ups-counts' root would not have been matched.
     const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
-        queryKey: ['follow-ups-counts', instituteId, effectiveCounsellorId, appliedSearch],
+        queryKey: ['follow-ups', 'counts', baseFilter],
         queryFn: async () => {
             const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
             const now = new Date();
@@ -221,15 +225,7 @@ const FollowUpsContent = () => {
     });
 
     const { data, isLoading, error } = useQuery({
-        queryKey: [
-            'follow-ups',
-            instituteId,
-            effectiveCounsellorId,
-            bucket,
-            appliedSearch,
-            page,
-            view,
-        ],
+        queryKey: ['follow-ups', 'list', baseFilter, bucket, page, view],
         queryFn: () =>
             fetchRecentLeads({
                 ...baseFilter,

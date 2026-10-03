@@ -30,5 +30,10 @@
         "disabledHint": "Campaign Links (UTM) are switched off for this institute, so no campaign filters can be shown.",
         "openSettings": "Open Campaign Links settings",
         "autoHint": "(auto — shown once data exists)"
+    },
+    "builtIn": {
+        "title": "Built-in filters",
+        "description": "Turn off the filters this institute doesn't use. They disappear from the list's filter bar.",
+        "counsellor": "Counsellor"
     }
 }

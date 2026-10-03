@@ -95,5 +95,10 @@
         "done_many": "{{count, number}} suivis exportés",
         "truncated_many": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
         "partial_many": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste."
+    },
+    "filters": {
+        "campaignType": "Tous : {{term}}",
+        "audience": "Tous : {{term}}",
+        "audienceUntitled": "Audience sans titre"
     }
 }

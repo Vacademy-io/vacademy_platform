@@ -30,5 +30,10 @@
         "disabledHint": "Les liens de campagne (UTM) sont désactivés pour cet établissement ; aucun filtre de campagne ne peut être affiché.",
         "openSettings": "Ouvrir les paramètres des liens de campagne",
         "autoHint": "(auto — affiché dès qu'il y a des données)"
+    },
+    "builtIn": {
+        "title": "Filtres intégrés",
+        "description": "Désactivez les filtres que cet établissement n'utilise pas. Ils disparaîtront de la barre de filtres.",
+        "counsellor": "Conseiller"
     }
 }

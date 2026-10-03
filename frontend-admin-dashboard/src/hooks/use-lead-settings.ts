@@ -128,6 +128,8 @@ export interface LeadTerminologyLabels {
     leadStatus?: string;
     /** What this institute calls the audience's channel (default "Campaign type"; many say "Source"). */
     campaignType?: string;
+    /** What this institute calls the audience a lead came in through (default "Audience"; I2CAN says "Label"). */
+    leadSource?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {

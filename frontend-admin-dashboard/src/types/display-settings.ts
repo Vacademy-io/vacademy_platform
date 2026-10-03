@@ -550,6 +550,27 @@ export type ListUtmFilterControls = Partial<
     Record<ListCustomFieldSurface, ListUtmFilterSurfaceControls>
 >;
 
+// The filters a list surface ships with, as opposed to custom fields and UTM
+// dimensions. Admins turn these off when a column means nothing to their
+// institute (no counsellors assigned, one audience, …).
+export type ListBuiltInFilter = 'counsellor' | 'campaignType' | 'audience';
+
+export const LIST_BUILT_IN_FILTERS: readonly ListBuiltInFilter[] = [
+    'counsellor',
+    'campaignType',
+    'audience',
+] as const;
+
+export interface ListBuiltInFilterSurfaceControls {
+    // Filters hidden on this surface. ABSENT or empty = all of them show, which
+    // is what every institute got before this existed.
+    hidden?: ListBuiltInFilter[];
+}
+
+export type ListBuiltInFilterControls = Partial<
+    Record<ListCustomFieldSurface, ListBuiltInFilterSurfaceControls>
+>;
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -724,6 +745,11 @@ export interface DisplaySettingsData {
     //      ListUtmFilterSurfaceControls). Edited from the same "Manage
     //      filters" popup / Display Settings card as the custom-field filters.
     listUtmFilterControls?: ListUtmFilterControls;
+
+    // 12f) The built-in filters (counsellor, campaign type, audience) per list
+    //      surface. Absent = every one of them shows. Edited from the same
+    //      "Manage filters" popup as 12d and 12e.
+    listBuiltInFilterControls?: ListBuiltInFilterControls;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

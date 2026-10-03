@@ -11,6 +11,7 @@ import {
     type ListCustomFieldControls,
     type ListCustomFieldSurface,
     type ListUtmFilterControls,
+    type ListBuiltInFilterControls,
 } from '@/types/display-settings';
 
 interface ManageListFiltersDialogProps {
@@ -38,6 +39,9 @@ export function ManageListFiltersDialog({
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [controls, setControls] = useState<ListCustomFieldControls | undefined>(undefined);
     const [utmControls, setUtmControls] = useState<ListUtmFilterControls | undefined>(undefined);
+    const [builtInControls, setBuiltInControls] = useState<ListBuiltInFilterControls | undefined>(
+        undefined
+    );
     const [dirty, setDirty] = useState(false);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -55,6 +59,7 @@ export function ManageListFiltersDialog({
                 setSettings(s);
                 setControls(s.listCustomFieldControls);
                 setUtmControls(s.listUtmFilterControls);
+                setBuiltInControls(s.listBuiltInFilterControls);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -72,6 +77,7 @@ export function ManageListFiltersDialog({
                 ...settings,
                 listCustomFieldControls: controls,
                 listUtmFilterControls: utmControls,
+                listBuiltInFilterControls: builtInControls,
             });
             // Refresh any currently-open list page's filter bar in place.
             await queryClient.invalidateQueries({
@@ -123,6 +129,11 @@ export function ManageListFiltersDialog({
                     hideHeading
                     onChange={(next) => {
                         setControls(next);
+                        setDirty(true);
+                    }}
+                    builtInValue={builtInControls}
+                    onBuiltInChange={(next) => {
+                        setBuiltInControls(next);
                         setDirty(true);
                     }}
                     utmValue={utmControls}

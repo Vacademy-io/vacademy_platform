@@ -84,5 +84,10 @@
         "partial_other": "The export stopped early. Downloaded the {{count, number}} follow-ups it had — try again for the rest.",
         "truncated_one": "Exported the first {{count, number}} follow-ups. Narrow the filter to get the rest.",
         "partial_one": "The export stopped early. Downloaded the {{count, number}} follow-ups it had — try again for the rest."
+    },
+    "filters": {
+        "campaignType": "All {{term}}",
+        "audience": "All {{term}}",
+        "audienceUntitled": "Untitled audience"
     }
 }

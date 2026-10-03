@@ -194,6 +194,17 @@ public class UserPlanService {
                     .readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
             if (ap.path("ENABLED").asBoolean(false)) {
                 Integer trialDays = ap.has("TRIAL_DAYS") ? ap.get("TRIAL_DAYS").asInt(0) : null;
+                // One free trial per learner per institute. Someone who already had one and
+                // comes back through the invite form enrolls as a paying member: no trial
+                // window, and SubscriptionPaymentOptionOperation then charges the plan price
+                // at checkout instead of the Rs 1 mandate authorisation, because that branch
+                // keys off is_trial. Nothing else has to know about the rule.
+                if (trialDays != null && trialDays > 0 && hasConsumedTrial(userPlan, enrollInvite)) {
+                    logger.info("UserPlan {}: learner {} already used their trial at institute {} — "
+                            + "enrolling as a paying member, full price at checkout",
+                            userPlan.getId(), userPlan.getUserId(), enrollInvite.getInstituteId());
+                    trialDays = 0;
+                }
                 // Optional: hold the trial clock until the day the programme actually
                 // starts (e.g. "MONDAY" for an institute whose classes begin on Mondays).
                 // Absent → the trial starts at enrollment, as before.
@@ -203,6 +214,21 @@ public class UserPlanService {
             }
         } catch (Exception e) {
             logger.warn("Could not apply autopay for plan {}: {}", userPlan.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Whether this learner has already consumed a trial at the invite's institute. Any
+     * failure is treated as "no" — a lookup problem must not silently charge someone the
+     * full price when the institute meant to give them a trial.
+     */
+    private boolean hasConsumedTrial(UserPlan userPlan, EnrollInvite enrollInvite) {
+        try {
+            return userPlanRepository.hasConsumedTrialAtInstitute(
+                    userPlan.getUserId(), enrollInvite.getInstituteId(), userPlan.getId(), new java.util.Date());
+        } catch (Exception e) {
+            logger.warn("Could not check trial history for user {}: {}", userPlan.getUserId(), e.getMessage());
+            return false;
         }
     }
 

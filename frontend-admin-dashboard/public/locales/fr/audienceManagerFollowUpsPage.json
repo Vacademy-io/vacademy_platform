@@ -65,5 +65,10 @@
             "teamAllCaughtUp": "L'équipe est à jour sur tous les suivis de cette vue.",
             "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue."
         }
+    },
+    "search": {
+        "placeholder": "Rechercher nom, téléphone ou e-mail…",
+        "action": "Rechercher",
+        "clear": "Effacer"
     }
 }

@@ -57,5 +57,10 @@
             "teamAllCaughtUp": "The team is all caught up on follow-ups for this view.",
             "selfAllCaughtUp": "You have no pending follow-ups in this view."
         }
+    },
+    "search": {
+        "placeholder": "Search name, phone or email…",
+        "action": "Search",
+        "clear": "Clear"
     }
 }

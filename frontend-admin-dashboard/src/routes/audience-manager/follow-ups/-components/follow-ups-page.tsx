@@ -33,6 +33,8 @@ import {
     type LeadActionHandlers,
     type LeadTableExtraColumn,
 } from '@/components/shared/leads';
+import { MyButton } from '@/components/design-system/button';
+import { Input } from '@/components/ui/input';
 import { LeadPagination } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
 import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
@@ -175,8 +177,12 @@ const FollowUpsContent = () => {
                 : counsellorFilter
             : currentUserId || undefined;
 
+    // Search runs on the server with the rest of the filter, so it searches every
+    // follow-up rather than whatever happened to be on screen.
+    const [searchInput, setSearchInput] = useState('');
+    const [appliedSearch, setAppliedSearch] = useState('');
     const [page, setPage] = useState(0);
-    useEffect(() => setPage(0), [bucket, effectiveCounsellorId]);
+    useEffect(() => setPage(0), [bucket, appliedSearch, effectiveCounsellorId]);
 
     /** One request shape for every bucket; only the window moves. */
     const baseFilter = useMemo(
@@ -185,16 +191,17 @@ const FollowUpsContent = () => {
             assigned_counselor_id: effectiveCounsellorId,
             // A converted lead is no longer a pending follow-up.
             conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
+            search_query: appliedSearch || undefined,
             follow_up_pending: true,
         }),
-        [instituteId, effectiveCounsellorId]
+        [instituteId, effectiveCounsellorId, appliedSearch]
     );
 
     // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used
     // to count the 200 rows it had fetched, which for a real institute meant the tiles read
     // 200 / 0 / 0 / 200 no matter what the pipeline actually held.
     const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
-        queryKey: ['follow-ups-counts', instituteId, effectiveCounsellorId],
+        queryKey: ['follow-ups-counts', instituteId, effectiveCounsellorId, appliedSearch],
         queryFn: async () => {
             const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
             const now = new Date();
@@ -218,6 +225,7 @@ const FollowUpsContent = () => {
             instituteId,
             effectiveCounsellorId,
             bucket,
+            appliedSearch,
             page,
             view,
         ],
@@ -450,17 +458,49 @@ const FollowUpsContent = () => {
                 </TabsList>
             </Tabs>
 
-            {/* Showing N {bucket} — list view only */}
+            {/* Search + export, then the count — list view only */}
             {view === 'list' && (
-                <div className="flex items-center justify-end gap-1 text-body text-muted-foreground">
-                    {t('showing.prefix')}{' '}
-                    <span className="font-semibold text-card-foreground">
-                        {countsLoading ? '…' : counts[bucket]}
-                    </span>{' '}
-                    {t('showing.suffix', {
-                        count: counts[bucket],
-                        context: bucket === 'all' ? undefined : bucket,
-                    })}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <Input
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') setAppliedSearch(searchInput.trim());
+                            }}
+                            placeholder={t('search.placeholder')}
+                            className="h-9 w-64"
+                        />
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setAppliedSearch(searchInput.trim())}
+                        >
+                            {t('search.action')}
+                        </MyButton>
+                        {appliedSearch && (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => {
+                                    setSearchInput('');
+                                    setAppliedSearch('');
+                                }}
+                            >
+                                {t('search.clear')}
+                            </MyButton>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1 text-body text-muted-foreground">
+                        {t('showing.prefix')}{' '}
+                        <span className="font-semibold text-card-foreground">
+                            {countsLoading ? '…' : counts[bucket]}
+                        </span>{' '}
+                        {t('showing.suffix', {
+                            count: counts[bucket],
+                            context: bucket === 'all' ? undefined : bucket,
+                        })}
+                    </div>
                 </div>
             )}
 

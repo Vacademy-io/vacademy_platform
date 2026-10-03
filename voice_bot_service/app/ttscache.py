@@ -80,6 +80,19 @@ _NEXT_SENTENCE_LEAD_SECS = 0.3
 # NoRepeatGate's "mostly heard is heard" (bot.mostly_played).
 HEARD_SHARE = 0.6
 
+
+def ends_in_question(text: str) -> bool:
+    """A clip whose last sentence asks something. Its text keeps the old place —
+    behind the whole blob — because 60 % of a question is not the question: the
+    opening's "…क्या मैं जान सकती हूँ कि किससे बात कर रही हूँ?" starts at 66 % of
+    its text, so a "हाँ" that cut it at 61-79 % found the whole opening, '?'
+    included, in the played transcript and got "[That was their ANSWER … Do NOT
+    ask that question again]" for a question never heard (replay corpus,
+    2026-10-02: four calls in every run, the ANSWER cue 3-4 → 8 per run). A cut
+    question stays unheard and is asked again, as it always was."""
+    t = (text or "").rstrip().rstrip("\"'”’)」")
+    return t.endswith(("?", "？"))
+
 # Field separator for the key tuple. \x1f (ASCII unit separator) cannot occur in
 # TTS text, so no field can bleed into the next and collide two distinct inputs.
 _SEP = "\x1f"
@@ -235,8 +248,9 @@ def owns_text_frame(tts) -> bool:
     run_tts returns (tts_service.py:1129), so ours would be a DUPLICATE — the
     sentence would land in the played transcript and the assistant context
     twice. sarvam, deepgram, google and navana all set it. (There the hit path
-    still places the text — at its heard point, not behind the whole blob —
-    and CachedTextHandoff drops pipecat's copy; call 34452119.)
+    places a STATEMENT's text itself — at its heard point, not behind the whole
+    blob — and CachedTextHandoff drops pipecat's copy, call 34452119; a clip
+    that ends in a question keeps pipecat's copy, see ends_in_question.)
 
     When it is CLEAR the service uses word timestamps instead, and pipecat builds
     the text frames from the vendor's word-timing messages. A cache hit never
@@ -1476,7 +1490,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     # append_to_context — a re-said opening is False), and
                     # pipecat's copy after run_tts is dropped.
                     placed = None
-                    if handoff is not None:
+                    if handoff is not None and not ends_in_question(text):
                         placed = TTSTextFrame(
                             text[:-1] if (getattr(tts, "_append_trailing_space", False)
                                           and text.endswith(" ")) else text,

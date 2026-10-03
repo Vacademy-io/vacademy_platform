@@ -89,7 +89,9 @@ export const GetFilterData = (
             ? [
                   {
                       id: 'membership_types',
-                      title: 'Membership',
+                      // Not "Membership": that word already names the sidebar section for
+                      // plans and invites, so reusing it here read as the same thing.
+                      title: 'Member Type',
                       filterList: [
                           { id: 'TRIAL', label: 'Trial' },
                           { id: 'TRIAL_ENDED', label: 'Trial ended' },

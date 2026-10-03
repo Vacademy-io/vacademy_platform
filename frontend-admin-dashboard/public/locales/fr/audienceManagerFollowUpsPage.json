@@ -82,6 +82,17 @@
             "source": "Source",
             "status": "Statut",
             "dueAt": "Échéance"
-        }
+        },
+        "progress": "Export des suivis… {{done}} sur {{total}}",
+        "done_one": "{{count}} suivi exporté",
+        "done_other": "{{count, number}} suivis exportés",
+        "alreadyRunning": "Un export est déjà en cours — le fichier sera téléchargé à la fin.",
+        "truncated_other": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_other": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste.",
+        "truncated_one": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_one": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste.",
+        "done_many": "{{count, number}} suivis exportés",
+        "truncated_many": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_many": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste."
     }
 }

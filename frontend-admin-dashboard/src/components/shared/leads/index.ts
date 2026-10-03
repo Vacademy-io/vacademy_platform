@@ -105,3 +105,8 @@ export {
     type CallOptionsResponse,
     type NumberChoice,
 } from './services/call-options';
+export {
+    startBackgroundExport,
+    useIsExporting,
+    type BackgroundExportSpec,
+} from './background-export';

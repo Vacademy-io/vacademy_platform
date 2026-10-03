@@ -74,6 +74,14 @@
             "source": "Source",
             "status": "Status",
             "dueAt": "Due at"
-        }
+        },
+        "progress": "Exporting follow-ups… {{done}} of {{total}}",
+        "done_one": "Exported {{count}} follow-up",
+        "done_other": "Exported {{count, number}} follow-ups",
+        "alreadyRunning": "An export is already running — it will download when it finishes.",
+        "truncated_other": "Exported the first {{count, number}} follow-ups. Narrow the filter to get the rest.",
+        "partial_other": "The export stopped early. Downloaded the {{count, number}} follow-ups it had — try again for the rest.",
+        "truncated_one": "Exported the first {{count, number}} follow-ups. Narrow the filter to get the rest.",
+        "partial_one": "The export stopped early. Downloaded the {{count, number}} follow-ups it had — try again for the rest."
     }
 }

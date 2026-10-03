@@ -759,8 +759,15 @@ public class StudentListManager {
 
             dto.setDateOfBirth(parseTimestamp(p.getDateOfBirth()));
             dto.setGender(p.getGender());
-            dto.setEnrolledDate(p.getEnrolledDate());
-            dto.setMembershipType(membershipTypeOf(p.getIsTrial(), p.getPlanEndDate()));
+            // Defensive: this mapper is fed by several projections, and a Spring Data
+            // interface projection throws when a getter has no matching result column. A list
+            // that cannot show a badge must still show the learner.
+            try {
+                dto.setEnrolledDate(p.getEnrolledDate());
+                dto.setMembershipType(membershipTypeOf(p.getIsTrial(), p.getPlanEndDate()));
+            } catch (Exception e) {
+                dto.setMembershipType(null);
+            }
             dto.setFathersName(p.getFathersName());
             dto.setMothersName(p.getMothersName());
             dto.setParentsMobileNumber(p.getParentsMobileNumber());

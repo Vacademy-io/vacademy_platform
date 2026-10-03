@@ -20,8 +20,8 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import { CaretDown } from '@phosphor-icons/react';
+import { ChipsWrapper } from '@/components/design-system/chips';
+import { PlusCircle } from '@phosphor-icons/react';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
 import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
 import {
@@ -260,49 +260,51 @@ export const StudentFilters = ({
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
                                 {filter.kind === 'DATE_RANGE' ? (
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                aria-label={`Filter by ${filter.title}`}
-                                                className={cn(
-                                                    'h-10 justify-between gap-2',
-                                                    dateRangeLabel(columnFilters, filter.id) &&
-                                                        'border-primary-300 bg-primary-50'
-                                                )}
-                                            >
-                                                <span className="truncate text-sm font-normal">
-                                                    {dateRangeLabel(columnFilters, filter.id)
-                                                        ? `${filter.title} · ${dateRangeLabel(columnFilters, filter.id)}`
-                                                        : filter.title}
-                                                </span>
-                                                <CaretDown className="size-4 shrink-0 text-neutral-400" />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent align="start" className="w-auto">
-                                            <DateRangeFilter
-                                                onChange={(result) =>
-                                                    onFilterChange(
-                                                        filter.id,
-                                                        result
-                                                            ? [
-                                                                  {
-                                                                      id: `from:${result.startDate}`,
-                                                                      label: result.startDate,
-                                                                  },
-                                                                  {
-                                                                      id: `to:${result.endDate}`,
-                                                                      label: result.endDate,
-                                                                  },
-                                                              ]
-                                                            : []
-                                                    )
-                                                }
-                                            />
-                                        </PopoverContent>
-                                    </Popover>
+                                    <div className="hover:scale-102 group transition-all duration-200">
+                                        <Popover>
+                                            <PopoverTrigger className="flex items-center">
+                                                <button type="button">
+                                                    <ChipsWrapper
+                                                        className={cn(
+                                                            dateRangeLabel(columnFilters, filter.id)
+                                                                ? 'border-primary-500 bg-primary-100'
+                                                                : 'hover:border-primary-500 hover:bg-primary-50'
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <PlusCircle className="size-4 text-neutral-600" />
+                                                            <div className="flex items-center text-body text-neutral-600">
+                                                                {dateRangeLabel(columnFilters, filter.id)
+                                                                    ? `${filter.title}: ${dateRangeLabel(columnFilters, filter.id)}`
+                                                                    : filter.title}
+                                                            </div>
+                                                        </div>
+                                                    </ChipsWrapper>
+                                                </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent align="start" className="w-auto">
+                                                <DateRangeFilter
+                                                    onChange={(result) =>
+                                                        onFilterChange(
+                                                            filter.id,
+                                                            result
+                                                                ? [
+                                                                      {
+                                                                          id: `from:${result.startDate}`,
+                                                                          label: result.startDate,
+                                                                      },
+                                                                      {
+                                                                          id: `to:${result.endDate}`,
+                                                                          label: result.endDate,
+                                                                      },
+                                                                  ]
+                                                                : []
+                                                        )
+                                                    }
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+                                    </div>
                                 ) : filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
                                     <CustomFieldRangeFilter
                                         fieldId={filter.customFieldId}

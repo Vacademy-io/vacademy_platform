@@ -75,6 +75,8 @@
         "leadStatusPlaceholder": "जैसे Action Label",
         "campaignTypeLabel": "\"कैंपेन टाइप\" के लिए नाम",
         "campaignTypePlaceholder": "जैसे Source",
+        "leadSourceLabel": "\"लीड सोर्स\" के लिए नाम",
+        "leadSourcePlaceholder": "जैसे Label",
         "hint": "लीड टेबल हेडर, फ़िल्टर, लीड साइड-व्यू और इन सेटिंग्स में उपयोग होता है। नीचे दिए बटन से सहेजें।"
     }
 }

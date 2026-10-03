@@ -75,6 +75,8 @@
         "leadStatusPlaceholder": "e.g. Action Label",
         "campaignTypeLabel": "Name for \"Campaign type\"",
         "campaignTypePlaceholder": "e.g. Source",
+        "leadSourceLabel": "Name for \"Lead source\"",
+        "leadSourcePlaceholder": "e.g. Label",
         "hint": "Used in the leads table headers, filters, lead side-view and these settings. Save with the button below."
     }
 }

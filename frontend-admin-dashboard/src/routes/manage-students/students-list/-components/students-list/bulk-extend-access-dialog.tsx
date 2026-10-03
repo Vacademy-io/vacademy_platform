@@ -54,6 +54,9 @@ export const BulkExtendAccessDialog = ({
     const [days, setDays] = useState('30');
     const [expiryDate, setExpiryDate] = useState('');
     const [reason, setReason] = useState('');
+    // Optional and independent of the expiry mode: an admin may move only the join date
+    // (a learner who cannot start this intake), only the expiry, or both at once.
+    const [joinDate, setJoinDate] = useState('');
     const [allCourses, setAllCourses] = useState(false);
     const [previewData, setPreviewData] = useState<LearnerAccessChangeResponse | null>(null);
     const [finalResults, setFinalResults] = useState<LearnerAccessChangeResponse | null>(null);
@@ -84,6 +87,7 @@ export const BulkExtendAccessDialog = ({
             setAllCourses(false);
             setPreviewData(null);
             setFinalResults(null);
+            setJoinDate('');
         }
         onOpenChange(isOpen);
     };
@@ -91,7 +95,9 @@ export const BulkExtendAccessDialog = ({
     const numericDays = parseInt(days, 10);
     const isValid =
         userIds.length > 0 &&
-        (mode === 'unlimited' ||
+        // A join-date move stands on its own: no expiry operation has to be chosen with it.
+        (Boolean(joinDate) ||
+            mode === 'unlimited' ||
             (mode === 'set_date' && Boolean(expiryDate)) ||
             (mode === 'extend' && Number.isFinite(numericDays) && numericDays !== 0));
 
@@ -105,6 +111,9 @@ export const BulkExtendAccessDialog = ({
             // End-of-day local, so the final day stays usable rather than being cut at midnight.
             expiryDate: expiryDate ? new Date(`${expiryDate}T23:59:59`).toISOString() : undefined,
         }),
+        // Midday local, so the stored instant lands on the intended calendar day in every
+        // timezone rather than slipping a day either side of midnight.
+        new_join_date: joinDate ? new Date(`${joinDate}T12:00:00`).toISOString() : undefined,
         reason: reason.trim() || undefined,
         dry_run: dryRun,
     });
@@ -227,6 +236,20 @@ export const BulkExtendAccessDialog = ({
             </label>
 
             <div className="flex flex-col gap-1">
+                <label htmlFor="bulk-join-date" className="text-caption font-medium text-neutral-600">
+                    Join date (optional)
+                </label>
+                <Input
+                    id="bulk-join-date"
+                    type="date"
+                    value={joinDate}
+                    onChange={(e) => setJoinDate(e.target.value)}
+                />
+                <p className="text-2xs text-neutral-500">
+                    Moves when the learner joined. Their plan term and next charge date shift with
+                    it, so a trial starting a week later also ends — and is billed — a week later.
+                </p>
+
                 <label htmlFor="bulk-reason" className="text-caption font-medium text-neutral-600">
                     {t('config.reasonLabel')}
                 </label>

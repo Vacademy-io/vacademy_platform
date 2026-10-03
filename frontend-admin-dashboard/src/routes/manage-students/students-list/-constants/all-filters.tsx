@@ -98,9 +98,10 @@ export const GetFilterData = (
               ]
             : []),
         {
-            id: 'joined_month',
+            id: 'joined_range',
             title: 'Joined',
-            filterList: lastTwelveMonths(),
+            kind: 'DATE_RANGE' as const,
+            filterList: [],
         },
         {
             id: 'payment_statuses',
@@ -225,17 +226,3 @@ export const GetFilterData = (
 
     return filterData;
 };
-
-/** Last 12 months as filter options: id "YYYY-MM", label "Sep 2026", newest first. */
-function lastTwelveMonths(): { id: string; label: string }[] {
-    const out: { id: string; label: string }[] = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-        out.push({
-            id: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
-            label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }),
-        });
-    }
-    return out;
-}

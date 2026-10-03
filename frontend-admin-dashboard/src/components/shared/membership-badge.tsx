@@ -20,7 +20,7 @@ export function MembershipBadge({ membershipType, available = false, className }
         <span
             className={cn(
                 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                isTrial ? 'bg-secondary-100 text-secondary-500' : 'bg-success-100 text-success-600',
+                isTrial ? 'bg-yellow-100 text-yellow-800' : 'bg-success-100 text-success-600',
                 className
             )}
         >

@@ -27,6 +27,7 @@ import {
     utmValueLabel,
 } from '@/components/shared/leads/utm-filter-encoding';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import { DateRangeFilter } from '@/components/design-system/date-range-filter';
 import { sentinelLabel } from '@/components/shared/leads/custom-field-filter-encoding';
 import { useTranslation } from 'react-i18next';
 
@@ -255,7 +256,32 @@ export const StudentFilters = ({
                                 className="animate-slideInRight"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
-                                {filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
+                                {filter.kind === 'DATE_RANGE' ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-neutral-600">
+                                            {filter.title}
+                                        </span>
+                                        <DateRangeFilter
+                                            onChange={(result) =>
+                                                onFilterChange(
+                                                    filter.id,
+                                                    result
+                                                        ? [
+                                                              {
+                                                                  id: `from:${result.startDate}`,
+                                                                  label: result.startDate,
+                                                              },
+                                                              {
+                                                                  id: `to:${result.endDate}`,
+                                                                  label: result.endDate,
+                                                              },
+                                                          ]
+                                                        : []
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                ) : filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
                                     <CustomFieldRangeFilter
                                         fieldId={filter.customFieldId}
                                         fieldName={filter.title}

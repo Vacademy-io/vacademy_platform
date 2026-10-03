@@ -692,20 +692,15 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const membershipFilter = columnFilters.find((filter) => filter.id === 'membership_types');
         const membershipTypes = membershipFilter ? membershipFilter.value.map((opt) => opt.id) : [];
 
-        // Joined month cohorts -> the existing start_date/end_date range on enrolled_date.
-        // Several months may be picked and the payload spans earliest to latest, because one
-        // range cannot express "September OR November" — it widens rather than drop a month.
-        const joinedFilter = columnFilters.find((filter) => filter.id === 'joined_month');
-        const joinedMonths = (joinedFilter ? joinedFilter.value.map((opt) => opt.id) : [])
-            .filter(Boolean)
-            .sort();
+        // Joined -> the existing start_date/end_date range over ssigm.enrolled_date. The
+        // control encodes its selection as "from:DD/MM/YYYY" / "to:DD/MM/YYYY"; the API wants
+        // YYYY-MM-DD, so convert here rather than teaching the shared control a second format.
+        const joinedFilter = columnFilters.find((filter) => filter.id === 'joined_range');
+        const joinedValues = joinedFilter ? joinedFilter.value.map((opt) => opt.id) : [];
+        const joinedFrom = toIsoDate(joinedValues.find((v) => v.startsWith('from:'))?.slice(5));
+        const joinedTo = toIsoDate(joinedValues.find((v) => v.startsWith('to:'))?.slice(3));
         const joinedRange =
-            joinedMonths.length > 0
-                ? {
-                      start_date: `${joinedMonths[0]}-01`,
-                      end_date: lastDayOfMonth(joinedMonths[joinedMonths.length - 1] as string),
-                  }
-                : {};
+            joinedFrom && joinedTo ? { start_date: joinedFrom, end_date: joinedTo } : {};
 
         // Handle custom field filters — keyed by custom_field.id, matching the
         // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
@@ -1061,9 +1056,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     };
 };
 
-/** Last calendar day of a "YYYY-MM" month as YYYY-MM-DD. Day 0 of the next month keeps
- *  February and leap years right without a table of month lengths. */
-function lastDayOfMonth(month: string): string {
-    const [year, mon] = month.split('-').map(Number);
-    return new Date(Date.UTC(year as number, mon as number, 0)).toISOString().slice(0, 10);
+/** "DD/MM/YYYY" (what the shared date-range control emits) -> "YYYY-MM-DD". */
+function toIsoDate(value?: string): string | undefined {
+    if (!value) return undefined;
+    const [day, month, year] = value.split('/');
+    if (!day || !month || !year) return undefined;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }

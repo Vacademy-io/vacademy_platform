@@ -7,8 +7,12 @@ import {
   Repeat,
   Question,
 } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { MessageIntent } from "@/services/chatbot-api";
 import { cn } from "@/lib/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface QuickAction {
   label: string;
@@ -20,26 +24,31 @@ export interface QuickAction {
 /**
  * Returns context-aware quick action suggestions based on the current route.
  */
-export const getQuickActions = (pathname: string): QuickAction[] => {
+export const getQuickActions = (
+  pathname: string,
+  t: TFunction,
+  course: string,
+  slide: string,
+): QuickAction[] => {
   // Slide/content pages
   if (pathname.includes("/slides") || pathname.includes("/content")) {
     return [
       {
-        label: "Explain this",
+        label: t("quickActions.explainThis.label"),
         icon: Lightbulb,
-        prompt: "Explain what's on this slide in simple terms",
+        prompt: t("quickActions.explainThis.prompt", { slide }),
         intent: "doubt",
       },
       {
-        label: "Quiz me",
+        label: t("quickActions.quizMe.label"),
         icon: FileDashed,
-        prompt: "Quiz me on ",
+        prompt: t("quickActions.quizMe.prompt"),
         intent: "practice",
       },
       {
-        label: "Summarize",
+        label: t("quickActions.summarize.label"),
         icon: BookOpen,
-        prompt: "Give me a brief summary of this slide",
+        prompt: t("quickActions.summarize.prompt", { slide }),
         intent: "general",
       },
     ];
@@ -52,21 +61,21 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
   ) {
     return [
       {
-        label: "Course overview",
+        label: t("quickActions.courseOverview.label", { course }),
         icon: BookOpen,
-        prompt: "Give me an overview of this course",
+        prompt: t("quickActions.courseOverview.prompt", { course }),
         intent: "general",
       },
       {
-        label: "Learning path",
+        label: t("quickActions.learningPath.label"),
         icon: Repeat,
-        prompt: "What's the recommended learning path for this course?",
+        prompt: t("quickActions.learningPath.prompt", { course }),
         intent: "general",
       },
       {
-        label: "Prerequisites",
+        label: t("quickActions.prerequisites.label"),
         icon: Question,
-        prompt: "What are the prerequisites for this course?",
+        prompt: t("quickActions.prerequisites.prompt", { course }),
         intent: "doubt",
       },
     ];
@@ -76,16 +85,15 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
   if (pathname.includes("/assessment") || pathname.includes("/quiz")) {
     return [
       {
-        label: "Hint",
+        label: t("quickActions.hint.label"),
         icon: Lightbulb,
-        prompt:
-          "Give me a hint for this question without revealing the answer",
+        prompt: t("quickActions.hint.prompt"),
         intent: "doubt",
       },
       {
-        label: "Explain concept",
+        label: t("quickActions.explainConcept.label"),
         icon: ChatCircleText,
-        prompt: "Explain the concept being tested in this question",
+        prompt: t("quickActions.explainConcept.prompt"),
         intent: "doubt",
       },
     ];
@@ -94,21 +102,21 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
   // Default/general suggestions — all end with space so user can type before sending
   return [
     {
-      label: "Help me learn",
+      label: t("quickActions.helpMeLearn.label"),
       icon: Lightbulb,
-      prompt: "Help me learn about ",
+      prompt: t("quickActions.helpMeLearn.prompt"),
       intent: "general",
     },
     {
-      label: "Ask a doubt",
+      label: t("quickActions.askDoubt.label"),
       icon: Question,
-      prompt: "I have a question about ",
+      prompt: t("quickActions.askDoubt.prompt"),
       intent: "doubt",
     },
     {
-      label: "Practice",
+      label: t("quickActions.practice.label"),
       icon: FileDashed,
-      prompt: "Quiz me on ",
+      prompt: t("quickActions.quizMe.prompt"),
       intent: "practice",
     },
   ];
@@ -134,7 +142,10 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
   disabled = false,
   compact = false,
 }) => {
-  const quickActions = getQuickActions(pathname);
+  const { t } = useTranslation("chatFeatureB");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);
+  const quickActions = getQuickActions(pathname, t, course, slide);
 
   return (
     <div

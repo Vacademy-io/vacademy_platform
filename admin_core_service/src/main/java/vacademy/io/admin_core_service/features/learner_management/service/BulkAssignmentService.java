@@ -107,6 +107,8 @@ public class BulkAssignmentService {
     private final InstituteSubOrgRepository instituteSubOrgRepository;
     // Used only to resolve a sub-org's own leader for the workflow context — see resolveSubOrgLeader.
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService leadConversionPolicyService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -312,10 +314,15 @@ public class BulkAssignmentService {
         // had a UserLeadProfile. Best-effort: failures must not affect the response.
         // Skipped on dry-run since no real enrollment happened.
         if (!dryRun && StringUtils.hasText(request.getInstituteId())) {
+            // Courses whose sessions appear in the successful rows, keyed by session, so the
+            // per-course conversion opt-out can be applied without a lookup per row.
+            Map<String, String> packageIdBySessionId = resolvePackageIdsForResults(results);
             Set<String> convertedUserIds = new HashSet<>();
             for (BulkAssignResultItemDTO r : results) {
                 if ("SUCCESS".equals(r.getStatus())
                         && StringUtils.hasText(r.getUserId())
+                        && leadConversionPolicyService.countsAsConversion(
+                                request.getInstituteId(), packageIdBySessionId.get(r.getPackageSessionId()))
                         && convertedUserIds.add(r.getUserId())) {
                     try {
                         boolean flipped = userLeadProfileService.markConvertedIfExists(
@@ -654,11 +661,15 @@ public class BulkAssignmentService {
         // is the canonical conversion event. Best-effort: a profile-write blip
         // shouldn't roll back the enrollment that just succeeded. Default
         // listing filters on the leads endpoints will hide CONVERTED leads.
-        try {
-            userLeadProfileService.markConverted(userId, instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to mark lead converted for userId={} instituteId={}: {}",
-                    userId, instituteId, e.getMessage());
+        // Skipped when this course opted out (free course / trial / lead magnet) —
+        // see LeadConversionPolicyService; defaults to converting.
+        if (countsAsConversion(instituteId, config)) {
+            try {
+                userLeadProfileService.markConverted(userId, instituteId);
+            } catch (Exception e) {
+                log.warn("Failed to mark lead converted for userId={} instituteId={}: {}",
+                        userId, instituteId, e.getMessage());
+            }
         }
 
         // Sub-org resolution for org-associated package sessions — identical to the
@@ -891,12 +902,15 @@ public class BulkAssignmentService {
         authService.addRolesToUserInternal(userId, List.of("STUDENT"), instituteId);
 
         // Re-enrollment is also a conversion event — flip the lead profile to
-        // CONVERTED so this user falls out of the active leads list. Best-effort.
-        try {
-            userLeadProfileService.markConverted(userId, instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to mark lead converted (re-enroll) for userId={} instituteId={}: {}",
-                    userId, instituteId, e.getMessage());
+        // CONVERTED so this user falls out of the active leads list. Best-effort,
+        // and subject to the same per-course opt-out as a fresh enrollment.
+        if (countsAsConversion(instituteId, config)) {
+            try {
+                userLeadProfileService.markConverted(userId, instituteId);
+            } catch (Exception e) {
+                log.warn("Failed to mark lead converted (re-enroll) for userId={} instituteId={}: {}",
+                        userId, instituteId, e.getMessage());
+            }
         }
 
         // Sub-org resolution for org-associated PS — same contract as handleNewEnrollment.
@@ -1172,6 +1186,57 @@ public class BulkAssignmentService {
     }
 
     /**
+     * packageSessionId → packageId for the successful rows, so the conversion opt-out can be
+     * resolved per course in one query rather than per result row. Sessions that don't resolve
+     * are simply absent; a null packageId makes the policy service fall back to the institute
+     * default (converting).
+     */
+    private Map<String, String> resolvePackageIdsForResults(List<BulkAssignResultItemDTO> results) {
+        List<String> sessionIds = results.stream()
+                .filter(r -> "SUCCESS".equals(r.getStatus()) && StringUtils.hasText(r.getPackageSessionId()))
+                .map(BulkAssignResultItemDTO::getPackageSessionId)
+                .distinct()
+                .collect(Collectors.toList());
+        if (sessionIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> bySession = new HashMap<>();
+            for (PackageSession ps : packageSessionService.findAllByIds(sessionIds)) {
+                if (ps.getPackageEntity() != null) {
+                    bySession.put(ps.getId(), ps.getPackageEntity().getId());
+                }
+            }
+            return bySession;
+        } catch (Exception e) {
+            log.warn("Could not resolve packages for bulk-assign conversion policy: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Does enrolling into the course behind this resolved config count as converting the lead?
+     *
+     * <p>Delegates to {@link vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService}
+     * (course setting → institute setting → true). Returns true when the package can't be
+     * resolved or the lookup throws, so an unreadable setting keeps today's behaviour rather
+     * than silently stopping conversions.</p>
+     */
+    private boolean countsAsConversion(String instituteId, DefaultInviteResolver.ResolvedConfig config) {
+        try {
+            PackageSession packageSession = config != null ? config.getPackageSession() : null;
+            String packageId = packageSession != null && packageSession.getPackageEntity() != null
+                    ? packageSession.getPackageEntity().getId()
+                    : null;
+            return leadConversionPolicyService.countsAsConversion(instituteId, packageId);
+        } catch (Exception e) {
+            log.warn("Could not resolve lead-conversion policy for institute {} — defaulting to converting: {}",
+                    instituteId, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
      * Fires SUB_ORG_MEMBER_ENROLLMENT with the exact context shape the /sub-org/v1/add-member route
      * publishes (member / packageSessionIds / subOrgAdmin / packageId), so workflows built for the
      * sub-org members page fire identically when the same person is enrolled from the admin
@@ -1195,10 +1260,21 @@ public class BulkAssignmentService {
             // email resolves to the wrong practice group, or to none at all.
             UserDTO subOrgLeader = resolveSubOrgLeader(subOrg, packageSession.getId());
 
+            // Same lmsEditExistingUser policy the batch path resolves (course → institute,
+            // defaults false), so the edit-user node behaves identically however a member is
+            // enrolled. Best-effort: a read failure leaves the existing LMS account untouched.
+            boolean mayEditExistingLmsUser = false;
+            try {
+                mayEditExistingLmsUser = lmsExistingUserEditPolicyService.mayEditExistingUser(
+                        instituteId, packageSession.getPackageEntity().getId());
+            } catch (Exception e) {
+                log.warn("Could not resolve lmsEditExistingUser for institute {} / package {} — defaulting to false: {}",
+                        instituteId, packageSession.getPackageEntity().getId(), e.getMessage());
+            }
             // Built centrally so this and /sub-org/v1/add-member publish an identical context —
             // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
             Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
-                    userDTO, subOrgLeader, enrolledBy, packageSession);
+                    userDTO, subOrgLeader, enrolledBy, packageSession, mayEditExistingLmsUser);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),

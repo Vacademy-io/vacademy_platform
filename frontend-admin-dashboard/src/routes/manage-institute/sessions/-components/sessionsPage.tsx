@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import SessionHeader from './sessionHeader';
 import { useSessionData } from '@/services/study-library/session-management/getSessionData';
 import { SessionsResponse } from '@/types/study-library/session-types';
@@ -10,6 +11,7 @@ import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export function SessionsPage() {
+    const { t } = useTranslation('manageInstituteSessionsPage');
     const { data, isLoading } = useQuery({
         ...useSessionData(),
     });
@@ -41,15 +43,17 @@ export function SessionsPage() {
                     <div className="flex h-[40vh] flex-col items-center justify-center gap-2 sm:h-[50vh]">
                         {' '}
                         <EmptySessionImage className="size-24 sm:size-32" />{' '}
-                        <p className="text-sm text-neutral-600 sm:text-body">No sessions found</p>
+                        <p className="text-sm text-neutral-600 sm:text-body">
+                            {t('noSessionsFound')}
+                        </p>
                     </div>
                 )}
             </div>
             <NoCourseDialog
                 isOpen={isOpen}
                 setIsOpen={setIsOpen}
-                type="Adding Sessions"
-                content="You need to create a course before"
+                type={t('noCourseDialog.type')}
+                content={t('noCourseDialog.content')}
             />
         </div>
     );

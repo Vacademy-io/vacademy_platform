@@ -1,0 +1,26 @@
+{
+    "navHeading": "إنشاء إعلان",
+    "fixIssues_zero": "أصلح {{count}} مشكلة قبل إنشاء هذا الإعلان.",
+    "fixIssues_one": "أصلح مشكلة واحدة قبل إنشاء هذا الإعلان.",
+    "fixIssues_two": "أصلح مشكلتين قبل إنشاء هذا الإعلان.",
+    "fixIssues_few": "أصلح {{count}} مشكلات قبل إنشاء هذا الإعلان.",
+    "fixIssues_many": "أصلح {{count}} مشكلة قبل إنشاء هذا الإعلان.",
+    "fixIssues_other": "أصلح {{count}} مشكلة قبل إنشاء هذا الإعلان.",
+    "toast": {
+        "createdImmediate": "تم إنشاء الإعلان وإضافته إلى قائمة الإرسال.",
+        "scheduled": "تمت جدولة الإعلان."
+    },
+    "sections": {
+        "howItWillLook": "كيف سيبدو"
+    },
+    "actions": {
+        "reviewAndPreview": "مراجعة ومعاينة",
+        "keepEditing": "متابعة التحرير",
+        "createAndSend": "إنشاء وإرسال",
+        "scheduleAnnouncement": "جدولة الإعلان",
+        "creating": "جارٍ الإنشاء…"
+    },
+    "dialog": {
+        "reviewHeading": "مراجعة ومعاينة"
+    }
+}

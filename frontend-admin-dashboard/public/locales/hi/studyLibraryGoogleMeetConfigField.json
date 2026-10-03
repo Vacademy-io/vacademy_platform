@@ -1,0 +1,13 @@
+{
+    "loadingGoogleAccounts": "Google खाते लोड हो रहे हैं…",
+    "notSetUpMessage": "इस संस्थान के लिए Google Meet एकीकरण सेट नहीं है। <strong>सेटिंग्स → लाइव सेशन → Google Meet एकीकरण</strong> के तहत एक Google Workspace खाता कनेक्ट करें, या नीचे लाइव क्लास लिंक फ़ील्ड में मीटिंग लिंक पेस्ट करें।",
+    "googleMeetSettings": "Google Meet सेटिंग्स",
+    "googleAccountOrganizer": "Google खाता (आयोजक)",
+    "defaultSuffix": "(डिफ़ॉल्ट)",
+    "linkCreatedOnAccount": "इस खाते पर एक Google Meet लिंक बनाया गया है।",
+    "anyoneWithLinkJoins": "लिंक वाला कोई भी सीधे जुड़ सकता है (नॉकिंग नहीं) — शिक्षार्थियों के लिए सबसे बेहतर।",
+    "guestsMustKnock": "अतिथियों को नॉक करना होगा और होस्ट प्रत्येक को स्वीकृति देगा।",
+    "autoRecordingOn": "ऑटो-रिकॉर्डिंग चालू है — संस्थान के Workspace में साइन इन किया हुआ एक शिक्षक उपस्थित होना चाहिए।",
+    "autoRecordingOff": "ऑटो-रिकॉर्डिंग बंद है।",
+    "manageJoinAccessAndRecording": "सेटिंग्स → लाइव सेशन → Google Meet एकीकरण के तहत प्रति खाता जॉइन-एक्सेस और रिकॉर्डिंग प्रबंधित करें।"
+}

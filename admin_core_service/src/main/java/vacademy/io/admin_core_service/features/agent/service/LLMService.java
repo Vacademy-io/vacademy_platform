@@ -37,16 +37,18 @@ public class LLMService {
     // Deliberately NOT the shared RestTemplate bean: that bean has no connect/read timeouts,
     // so one stalled OpenRouter response would pin a Tomcat worker thread forever (and each
     // admin retry would pin another). Other clients of the shared bean are untouched.
-    private final RestTemplate restTemplate = buildLlmRestTemplate();
+    private final RestTemplate restTemplate = buildLlmRestTemplate(160_000);
+    /** For background jobs only ({@link #CTX_LONG_RUNNING}): no request thread is waiting. */
+    private final RestTemplate longRestTemplate = buildLlmRestTemplate(600_000);
     private final ObjectMapper objectMapper;
     private final AiTokenUsageService aiTokenUsageService;
 
-    private static RestTemplate buildLlmRestTemplate() {
+    private static RestTemplate buildLlmRestTemplate(int readTimeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5_000);
         // Large drafts (16k completion tokens) legitimately stream for minutes; the frontend
-        // aborts at 150s, so cap the server-side wait just above that.
-        factory.setReadTimeout(160_000);
+        // aborts at 150s, so the default cap sits just above that.
+        factory.setReadTimeout(readTimeoutMs);
         return new RestTemplate(factory);
     }
 
@@ -74,7 +76,10 @@ public class LLMService {
 
             log.debug("[LLMService] Request: {}", objectMapper.writeValueAsString(requestBody));
 
-            ResponseEntity<String> response = restTemplate.exchange(
+            Map<String, Object> ctx = session.getContext();
+            RestTemplate client = ctx != null && Boolean.TRUE.equals(ctx.get(CTX_LONG_RUNNING))
+                    ? longRestTemplate : restTemplate;
+            ResponseEntity<String> response = client.exchange(
                     OPENROUTER_CHAT_URL,
                     HttpMethod.POST,
                     entity,
@@ -86,8 +91,9 @@ public class LLMService {
 
             LLMResponse llmResponse = parseResponse(response.getBody());
 
-            // Log token usage asynchronously
-            logTokenUsage(response.getBody(), session);
+            // Record the usage row (async by default; see logTokenUsage for the
+            // synchronous variant callers that need to BILL the call opt into)
+            logTokenUsage(llmResponse, session);
 
             return llmResponse;
 
@@ -98,33 +104,104 @@ public class LLMService {
     }
 
     /**
-     * Log token usage from the API response.
+     * Context key a caller sets to bucket its usage under something other than
+     * {@link RequestType#AGENT} — e.g. the Automations chatbot bills as CHATBOT so its
+     * spend is separable from admin agent use in the AI usage screens. Value may be a
+     * {@link RequestType} or its string value.
      */
-    private void logTokenUsage(String responseBody, ConversationSession session) {
+    public static final String CTX_REQUEST_TYPE = "request_type";
+
+    /**
+     * Context flag (Boolean TRUE) asking for the usage row to be written SYNCHRONOUSLY so
+     * its id lands on {@link LLMResponse#getUsageLogId()}. Callers that go on to charge
+     * credits need that id: it is the {@code usage_log_id} on the deduction, which is what
+     * links a credit_transactions row back to the tokens that produced it. Default (absent)
+     * stays fire-and-forget, so the agent path is unchanged.
+     */
+    public static final String CTX_USAGE_LOG_SYNC = "usage_log_sync";
+
+    /** Context (Boolean TRUE): caller runs off-request (a background job) — 10 min read timeout. */
+    public static final String CTX_LONG_RUNNING = "long_running";
+
+    /** Context (String low|medium|high): OpenRouter {@code reasoning.effort} for thinking models. */
+    public static final String CTX_REASONING_EFFORT = "reasoning_effort";
+
+    /** Context (Boolean TRUE): ask for {@code response_format: json_object}. */
+    public static final String CTX_JSON_MODE = "json_mode";
+
+    /** Context (Number): overrides the default 0.7 temperature. */
+    public static final String CTX_TEMPERATURE = "temperature";
+
+    /**
+     * Record the usage row for a completed call.
+     *
+     * <p>Token counts are already on the response (parsed in {@link #parseResponse}); this
+     * only decides which bucket they land in and whether the write blocks.
+     */
+    private void logTokenUsage(LLMResponse llmResponse, ConversationSession session) {
         try {
-            JsonNode root = objectMapper.readTree(responseBody);
-            JsonNode usage = root.get("usage");
+            if (llmResponse.getPromptTokens() <= 0 && llmResponse.getCompletionTokens() <= 0) {
+                return; // provider returned no usage block — nothing to record
+            }
 
-            if (usage != null) {
-                int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
-                int completionTokens = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : 0;
+            // Parse each id independently: a caller with a non-UUID user id (an external
+            // chat participant, say) must still get its institute-level usage recorded.
+            UUID instituteId = toUuid(session.getInstituteId());
+            UUID userId = toUuid(session.getUserId());
 
-                // Convert String IDs to UUIDs
-                UUID instituteId = session.getInstituteId() != null ? UUID.fromString(session.getInstituteId()) : null;
-                UUID userId = session.getUserId() != null ? UUID.fromString(session.getUserId()) : null;
+            Map<String, Object> ctx = session.getContext();
+            RequestType requestType = resolveRequestType(ctx);
 
-                aiTokenUsageService.recordUsageAsync(
+            if (ctx != null && Boolean.TRUE.equals(ctx.get(CTX_USAGE_LOG_SYNC))) {
+                var saved = aiTokenUsageService.recordUsage(
                         ApiProvider.OPENAI,
-                        RequestType.AGENT,
+                        requestType,
                         session.getModel(),
-                        promptTokens,
-                        completionTokens,
+                        llmResponse.getPromptTokens(),
+                        llmResponse.getCompletionTokens(),
                         instituteId,
                         userId);
+                if (saved != null && saved.getId() != null) {
+                    llmResponse.setUsageLogId(saved.getId().toString());
+                }
+                return;
             }
+
+            aiTokenUsageService.recordUsageAsync(
+                    ApiProvider.OPENAI,
+                    requestType,
+                    session.getModel(),
+                    llmResponse.getPromptTokens(),
+                    llmResponse.getCompletionTokens(),
+                    instituteId,
+                    userId);
         } catch (Exception e) {
             // Never fail the main request due to usage logging issues
             log.warn("[LLMService] Failed to log token usage: {}", e.getMessage());
+        }
+    }
+
+    /** {@link #CTX_REQUEST_TYPE} from the session context, defaulting to AGENT. */
+    private static RequestType resolveRequestType(Map<String, Object> ctx) {
+        Object configured = ctx == null ? null : ctx.get(CTX_REQUEST_TYPE);
+        if (configured instanceof RequestType rt) return rt;
+        if (configured instanceof String s && !s.isBlank()) {
+            try {
+                return RequestType.fromValue(s);
+            } catch (IllegalArgumentException ignored) {
+                // Unknown value — fall through to AGENT rather than losing the row to the
+                // ai_token_usage request_type CHECK.
+            }
+        }
+        return RequestType.AGENT;
+    }
+
+    private static UUID toUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
@@ -135,8 +212,16 @@ public class LLMService {
         ObjectNode request = objectMapper.createObjectNode();
 
         request.put("model", session.getModel());
-        request.put("temperature", 0.7);
+        Map<String, Object> ctx = session.getContext();
+        Object temperature = ctx == null ? null : ctx.get(CTX_TEMPERATURE);
+        request.put("temperature", temperature instanceof Number n ? n.doubleValue() : 0.7);
         request.put("max_tokens", session.getMaxTokens() != null ? session.getMaxTokens() : 4096);
+        if (ctx != null && ctx.get(CTX_REASONING_EFFORT) instanceof String effort && !effort.isBlank()) {
+            request.putObject("reasoning").put("effort", effort);
+        }
+        if (ctx != null && Boolean.TRUE.equals(ctx.get(CTX_JSON_MODE))) {
+            request.putObject("response_format").put("type", "json_object");
+        }
 
         // Build messages array
         ArrayNode messages = objectMapper.createArrayNode();
@@ -296,11 +381,19 @@ public class LLMService {
                 ? choices.get(0).get("finish_reason").asText()
                 : "stop";
 
+        // Real token counts — needed both for the usage row and for pricing the charge.
+        JsonNode usage = root.get("usage");
+        int promptTokens = usage != null && usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+        int completionTokens = usage != null && usage.has("completion_tokens")
+                ? usage.get("completion_tokens").asInt() : 0;
+
         return LLMResponse.builder()
                 .content(content)
                 .toolCalls(toolCalls)
                 .finishReason(finishReason)
                 .hasToolCalls(!toolCalls.isEmpty())
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
                 .build();
     }
 
@@ -322,6 +415,17 @@ public class LLMService {
         private List<ToolCall> toolCalls;
         private String finishReason;
         private boolean hasToolCalls;
+
+        /** Real usage from the provider's response — 0 when it returned no usage block. */
+        private int promptTokens;
+        private int completionTokens;
+
+        /**
+         * id of the ai_token_usage row this call wrote, set only when the caller asked
+         * for a synchronous write via {@link LLMService#CTX_USAGE_LOG_SYNC}. Passed on as
+         * {@code usage_log_id} so the credit transaction points back at the tokens.
+         */
+        private String usageLogId;
     }
 
     /**

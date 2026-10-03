@@ -23,6 +23,16 @@ import java.util.Optional;
 @Repository
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
+    /**
+     * Bulk lead id -> display name and number, for screens that list leads they do not
+     * otherwise load. The AI call queue resolves a whole page at once; a per-row lookup
+     * would turn one page into fifty queries.
+     */
+    @Query(value = "SELECT ar.id, ar.parent_name, ar.parent_mobile FROM audience_response ar "
+            + "WHERE ar.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdNameAndMobileByIds(@Param("ids") java.util.Collection<String> ids);
+
+
         /**
          * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
          *
@@ -68,6 +78,38 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<Object[]> findLeadIdAndUserByInstituteAndPhoneLast10(
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10);
+
+        /**
+         * The lead a WhatsApp chatbot flow should treat as "this person is already a lead":
+         * any lead in the institute (any list) whose {@code parent_mobile} matches on the last
+         * 10 digits. Opted-out leads count — someone who opted out and writes again is still a
+         * known person, not a new lead. Rows flagged as duplicates are skipped. A live row wins
+         * over a soft-deleted one, then the newest wins. Returns
+         * {@code [audience_response.id, user_id, audience_status]}.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id, ar.audience_status
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                  AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                ORDER BY CASE WHEN ar.audience_status = 'INACTIVE' THEN 1 ELSE 0 END, ar.created_at DESC
+                LIMIT 1
+                """, nativeQuery = true)
+        List<Object[]> findChatbotLeadMatchByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /**
+         * Transaction-scoped Postgres advisory lock on an arbitrary key. Held until the
+         * surrounding transaction commits or rolls back, so two concurrent callers with the
+         * same key run one after the other. Used to stop two WhatsApp messages arriving at
+         * once from both creating a lead for the same phone.
+         */
+        @Query(value = "SELECT 1 FROM pg_advisory_xact_lock(hashtext(:lockKey))", nativeQuery = true)
+        Integer acquireTransactionLock(@Param("lockKey") String lockKey);
 
         /**
          * The most recent {@code audience_response.id} for a given user in this
@@ -188,12 +230,68 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            -- Last counsellor touch per lead, computed ONCE per row so the
+                            -- "worked in the last 24h / 7d" windows and the Activity-column sort
+                            -- below can both read it without re-running the correlated MAXes.
+                            -- Each arm is its own index-backed subquery (idx_tcl_response,
+                            -- idx_tcl_subject, idx_tcl_user, idx_timeline_event_type_type_id,
+                            -- idx_timeline_student_recent) -- one subquery OR-ing the columns
+                            -- together would seq-scan both logs per candidate lead.
+                            -- GREATEST ignores NULL arms, so a lead with no call / no activity
+                            -- keeps a NULL here and drops out of any window that is set.
+                            LEFT JOIN LATERAL (
+                                -- Each half is wrapped in a CASE that short-circuits to NULL when
+                                -- neither the matching window NOR the matching sort is requested.
+                                -- Without it these six correlated MAXes would run for every row of
+                                -- EVERY leads-list call, including the overwhelming majority that
+                                -- never touch these filters, and this is the hottest query in the CRM.
+                                -- CASE does not evaluate the branch it does not take, so the
+                                -- default path costs nothing.
+                                SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
+                                             AND CAST(:calledTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.response_id = ar.id),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.user_id = ar.user_id
+                                                    AND tcl.institute_id = a.institute_id))
+                                       END AS last_called_at,
+                                       CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
+                                             AND CAST(:activityTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.user_id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.student_user_id))
+                                       END AS last_activity_at
+                            ) act ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
+                              AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              -- "How many did I work / call in the last 24h / 7d" -- deliberately
+                              -- INDEPENDENT of submitted_at, which answers when the lead arrived,
+                              -- not when the counsellor last touched it. Two separate windows:
+                              -- calls only (telephony_call_log) vs any activity (timeline_event).
+                              -- act.* is NULL when the lead was never called / never touched, and
+                              -- NULL fails every comparison, so those leads are excluded as soon
+                              -- as either bound is set -- no COALESCE-to-epoch needed.
+                              AND (CAST(:calledFrom AS timestamp) IS NULL OR act.last_called_at >= CAST(:calledFrom AS timestamp))
+                              AND (CAST(:calledTo AS timestamp) IS NULL OR act.last_called_at <= CAST(:calledTo AS timestamp))
+                              AND (CAST(:activityFrom AS timestamp) IS NULL OR act.last_activity_at >= CAST(:activityFrom AS timestamp))
+                              AND (CAST(:activityTo AS timestamp) IS NULL OR act.last_activity_at <= CAST(:activityTo AS timestamp))
                               AND (:excludeDuplicates IS NULL OR :excludeDuplicates = FALSE OR COALESCE(ar.is_duplicate, FALSE) = FALSE)
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
@@ -205,6 +303,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -428,19 +530,37 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END DESC,
                               CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
                                    THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
                               CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -457,6 +577,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
                               CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_ACTIVITY' AND :sortDirection = 'ASC'
+                                   THEN act.last_activity_at END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_ACTIVITY' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN act.last_activity_at END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_CALLED' AND :sortDirection = 'ASC'
+                                   THEN act.last_called_at END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_CALLED' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN act.last_called_at END DESC NULLS LAST,
                               ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -472,12 +600,68 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            -- Last counsellor touch per lead, computed ONCE per row so the
+                            -- "worked in the last 24h / 7d" windows and the Activity-column sort
+                            -- below can both read it without re-running the correlated MAXes.
+                            -- Each arm is its own index-backed subquery (idx_tcl_response,
+                            -- idx_tcl_subject, idx_tcl_user, idx_timeline_event_type_type_id,
+                            -- idx_timeline_student_recent) -- one subquery OR-ing the columns
+                            -- together would seq-scan both logs per candidate lead.
+                            -- GREATEST ignores NULL arms, so a lead with no call / no activity
+                            -- keeps a NULL here and drops out of any window that is set.
+                            LEFT JOIN LATERAL (
+                                -- Each half is wrapped in a CASE that short-circuits to NULL when
+                                -- neither the matching window NOR the matching sort is requested.
+                                -- Without it these six correlated MAXes would run for every row of
+                                -- EVERY leads-list call, including the overwhelming majority that
+                                -- never touch these filters, and this is the hottest query in the CRM.
+                                -- CASE does not evaluate the branch it does not take, so the
+                                -- default path costs nothing.
+                                SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
+                                             AND CAST(:calledTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.response_id = ar.id),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.user_id = ar.user_id
+                                                    AND tcl.institute_id = a.institute_id))
+                                       END AS last_called_at,
+                                       CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
+                                             AND CAST(:activityTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.user_id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.student_user_id))
+                                       END AS last_activity_at
+                            ) act ON true
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
+                              AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              -- "How many did I work / call in the last 24h / 7d" -- deliberately
+                              -- INDEPENDENT of submitted_at, which answers when the lead arrived,
+                              -- not when the counsellor last touched it. Two separate windows:
+                              -- calls only (telephony_call_log) vs any activity (timeline_event).
+                              -- act.* is NULL when the lead was never called / never touched, and
+                              -- NULL fails every comparison, so those leads are excluded as soon
+                              -- as either bound is set -- no COALESCE-to-epoch needed.
+                              AND (CAST(:calledFrom AS timestamp) IS NULL OR act.last_called_at >= CAST(:calledFrom AS timestamp))
+                              AND (CAST(:calledTo AS timestamp) IS NULL OR act.last_called_at <= CAST(:calledTo AS timestamp))
+                              AND (CAST(:activityFrom AS timestamp) IS NULL OR act.last_activity_at >= CAST(:activityFrom AS timestamp))
+                              AND (CAST(:activityTo AS timestamp) IS NULL OR act.last_activity_at <= CAST(:activityTo AS timestamp))
                               AND (:excludeDuplicates IS NULL OR :excludeDuplicates = FALSE OR COALESCE(ar.is_duplicate, FALSE) = FALSE)
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
@@ -489,6 +673,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -706,6 +894,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
                         @Param("leadStatusId") String leadStatusId,
+                        @Param("leadStatusExcludeId") String leadStatusExcludeId,
+                        @Param("followUpPending") Boolean followUpPending,
+                        @Param("followUpFrom") Timestamp followUpFrom,
+                        @Param("followUpTo") Timestamp followUpTo,
                         @Param("sourceType") String sourceType,
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
@@ -732,6 +924,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         @Param("sortCustomFieldId") String sortCustomFieldId,
+                        @Param("calledFrom") Timestamp calledFrom,
+                        @Param("calledTo") Timestamp calledTo,
+                        @Param("activityFrom") Timestamp activityFrom,
+                        @Param("activityTo") Timestamp activityTo,
                         Pageable pageable);
 
         /**
@@ -770,10 +966,66 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            -- Last counsellor touch per lead, computed ONCE per row so the
+                            -- "worked in the last 24h / 7d" windows and the Activity-column sort
+                            -- below can both read it without re-running the correlated MAXes.
+                            -- Each arm is its own index-backed subquery (idx_tcl_response,
+                            -- idx_tcl_subject, idx_tcl_user, idx_timeline_event_type_type_id,
+                            -- idx_timeline_student_recent) -- one subquery OR-ing the columns
+                            -- together would seq-scan both logs per candidate lead.
+                            -- GREATEST ignores NULL arms, so a lead with no call / no activity
+                            -- keeps a NULL here and drops out of any window that is set.
+                            LEFT JOIN LATERAL (
+                                -- Each half is wrapped in a CASE that short-circuits to NULL when
+                                -- neither the matching window NOR the matching sort is requested.
+                                -- Without it these six correlated MAXes would run for every row of
+                                -- EVERY leads-list call, including the overwhelming majority that
+                                -- never touch these filters, and this is the hottest query in the CRM.
+                                -- CASE does not evaluate the branch it does not take, so the
+                                -- default path costs nothing.
+                                SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
+                                             AND CAST(:calledTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.response_id = ar.id),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.user_id = ar.user_id
+                                                    AND tcl.institute_id = a.institute_id))
+                                       END AS last_called_at,
+                                       CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
+                                             AND CAST(:activityTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.user_id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.student_user_id))
+                                       END AS last_activity_at
+                            ) act ON true
                             WHERE a.institute_id = :instituteId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
+                              AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              -- "How many did I work / call in the last 24h / 7d" -- deliberately
+                              -- INDEPENDENT of submitted_at, which answers when the lead arrived,
+                              -- not when the counsellor last touched it. Two separate windows:
+                              -- calls only (telephony_call_log) vs any activity (timeline_event).
+                              -- act.* is NULL when the lead was never called / never touched, and
+                              -- NULL fails every comparison, so those leads are excluded as soon
+                              -- as either bound is set -- no COALESCE-to-epoch needed.
+                              AND (CAST(:calledFrom AS timestamp) IS NULL OR act.last_called_at >= CAST(:calledFrom AS timestamp))
+                              AND (CAST(:calledTo AS timestamp) IS NULL OR act.last_called_at <= CAST(:calledTo AS timestamp))
+                              AND (CAST(:activityFrom AS timestamp) IS NULL OR act.last_activity_at >= CAST(:activityFrom AS timestamp))
+                              AND (CAST(:activityTo AS timestamp) IS NULL OR act.last_activity_at <= CAST(:activityTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
@@ -782,6 +1034,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -1010,19 +1266,37 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END ASC,
                               CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
-                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   THEN COALESCE(
+                                        (SELECT 1000 - lt.display_order FROM lead_tier lt
+                                          WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                            AND lt.tier_key = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                                (SELECT lt2.tier_key FROM lead_tier lt2
+                                                  WHERE lt2.institute_id = ulp.institute_id AND lt2.is_active = TRUE
+                                                    AND lt2.min_score IS NOT NULL AND ulp.best_score >= lt2.min_score
+                                                  ORDER BY lt2.min_score DESC, lt2.display_order ASC LIMIT 1))
+                                          LIMIT 1),
+                                        CASE COALESCE(NULLIF(ulp.lead_tier, ''),
                                             CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE NULL END)
-                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END) END DESC,
                               CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
                                    THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
                               CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
@@ -1039,6 +1313,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
                               CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_ACTIVITY' AND :sortDirection = 'ASC'
+                                   THEN act.last_activity_at END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_ACTIVITY' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN act.last_activity_at END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_CALLED' AND :sortDirection = 'ASC'
+                                   THEN act.last_called_at END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'LAST_CALLED' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN act.last_called_at END DESC NULLS LAST,
                               ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -1054,10 +1336,66 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            -- Last counsellor touch per lead, computed ONCE per row so the
+                            -- "worked in the last 24h / 7d" windows and the Activity-column sort
+                            -- below can both read it without re-running the correlated MAXes.
+                            -- Each arm is its own index-backed subquery (idx_tcl_response,
+                            -- idx_tcl_subject, idx_tcl_user, idx_timeline_event_type_type_id,
+                            -- idx_timeline_student_recent) -- one subquery OR-ing the columns
+                            -- together would seq-scan both logs per candidate lead.
+                            -- GREATEST ignores NULL arms, so a lead with no call / no activity
+                            -- keeps a NULL here and drops out of any window that is set.
+                            LEFT JOIN LATERAL (
+                                -- Each half is wrapped in a CASE that short-circuits to NULL when
+                                -- neither the matching window NOR the matching sort is requested.
+                                -- Without it these six correlated MAXes would run for every row of
+                                -- EVERY leads-list call, including the overwhelming majority that
+                                -- never touch these filters, and this is the hottest query in the CRM.
+                                -- CASE does not evaluate the branch it does not take, so the
+                                -- default path costs nothing.
+                                SELECT CASE WHEN CAST(:calledFrom AS timestamp) IS NULL
+                                             AND CAST(:calledTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_CALLED'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.response_id = ar.id),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'),
+                                                (SELECT MAX(tcl.created_at) FROM telephony_call_log tcl
+                                                  WHERE tcl.user_id = ar.user_id
+                                                    AND tcl.institute_id = a.institute_id))
+                                       END AS last_called_at,
+                                       CASE WHEN CAST(:activityFrom AS timestamp) IS NULL
+                                             AND CAST(:activityTo AS timestamp) IS NULL
+                                             AND COALESCE(:sortBy, '') <> 'LAST_ACTIVITY'
+                                            THEN NULL
+                                            ELSE GREATEST(
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.user_id),
+                                                (SELECT MAX(te.created_at) FROM timeline_event te
+                                                  WHERE te.student_user_id = ar.student_user_id))
+                                       END AS last_activity_at
+                            ) act ON true
                             WHERE a.institute_id = :instituteId
                               AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) OR ('__NO_STATUS__' = ANY(STRING_TO_ARRAY(:leadStatusId, ',')) AND ar.lead_status_id IS NULL AND ulp.conversion_status IS NULL))
+                              AND (COALESCE(:leadStatusExcludeId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) IS NULL OR NOT (COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusExcludeId, ','))))
+                              AND (COALESCE(:followUpPending, FALSE) = FALSE OR EXISTS (SELECT 1 FROM lead_followup lf WHERE lf.audience_response_id = ar.id AND lf.is_closed = FALSE AND lf.schedule_time IS NOT NULL AND (CAST(:followUpFrom AS timestamp) IS NULL OR lf.schedule_time >= CAST(:followUpFrom AS timestamp)) AND (CAST(:followUpTo AS timestamp) IS NULL OR lf.schedule_time < CAST(:followUpTo AS timestamp))))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              -- "How many did I work / call in the last 24h / 7d" -- deliberately
+                              -- INDEPENDENT of submitted_at, which answers when the lead arrived,
+                              -- not when the counsellor last touched it. Two separate windows:
+                              -- calls only (telephony_call_log) vs any activity (timeline_event).
+                              -- act.* is NULL when the lead was never called / never touched, and
+                              -- NULL fails every comparison, so those leads are excluded as soon
+                              -- as either bound is set -- no COALESCE-to-epoch needed.
+                              AND (CAST(:calledFrom AS timestamp) IS NULL OR act.last_called_at >= CAST(:calledFrom AS timestamp))
+                              AND (CAST(:calledTo AS timestamp) IS NULL OR act.last_called_at <= CAST(:calledTo AS timestamp))
+                              AND (CAST(:activityFrom AS timestamp) IS NULL OR act.last_activity_at >= CAST(:activityFrom AS timestamp))
+                              AND (CAST(:activityTo AS timestamp) IS NULL OR act.last_activity_at <= CAST(:activityTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
@@ -1066,6 +1404,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
                                             ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
@@ -1288,6 +1630,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
                         @Param("leadStatusId") String leadStatusId,
+                        @Param("leadStatusExcludeId") String leadStatusExcludeId,
+                        @Param("followUpPending") Boolean followUpPending,
+                        @Param("followUpFrom") Timestamp followUpFrom,
+                        @Param("followUpTo") Timestamp followUpTo,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
@@ -1310,6 +1656,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         @Param("sortCustomFieldId") String sortCustomFieldId,
+                        @Param("calledFrom") Timestamp calledFrom,
+                        @Param("calledTo") Timestamp calledTo,
+                        @Param("activityFrom") Timestamp activityFrom,
+                        @Param("activityTo") Timestamp activityTo,
                         Pageable pageable);
 
         /**
@@ -1318,30 +1668,42 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * filter bar. Scoped to the institute via custom_field_values →
          * audience_response → audience; backed by idx_cfv_field_source_value.
          * `:search` is a case-insensitive substring (blank = all values).
+         * JSON-array answers (MULTI_SELECT) are split into one value per option;
+         * the filter side matches them via CustomFieldValueSql.matchesAnyOf.
          */
         @Query(value = """
-                            SELECT DISTINCT cfv.value
+                            SELECT DISTINCT opt.v
                             FROM custom_field_values cfv
                             JOIN audience_response ar ON ar.id = cfv.source_id
                             JOIN audience a ON a.id = ar.audience_id
+                            CROSS JOIN LATERAL jsonb_array_elements_text(
+                                CASE WHEN cfv.value LIKE '[%' AND pg_input_is_valid(cfv.value, 'jsonb')
+                                     THEN CAST(cfv.value AS jsonb)
+                                     ELSE jsonb_build_array(cfv.value) END) AS opt(v)
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
-                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
-                            ORDER BY cfv.value ASC
+                              AND opt.v <> ''
+                              AND (COALESCE(:search, '') = '' OR opt.v ILIKE CONCAT('%', :search, '%'))
+                            ORDER BY opt.v ASC
                         """, countQuery = """
-                            SELECT COUNT(DISTINCT cfv.value)
+                            SELECT COUNT(DISTINCT opt.v)
                             FROM custom_field_values cfv
                             JOIN audience_response ar ON ar.id = cfv.source_id
                             JOIN audience a ON a.id = ar.audience_id
+                            CROSS JOIN LATERAL jsonb_array_elements_text(
+                                CASE WHEN cfv.value LIKE '[%' AND pg_input_is_valid(cfv.value, 'jsonb')
+                                     THEN CAST(cfv.value AS jsonb)
+                                     ELSE jsonb_build_array(cfv.value) END) AS opt(v)
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
-                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                              AND opt.v <> ''
+                              AND (COALESCE(:search, '') = '' OR opt.v ILIKE CONCAT('%', :search, '%'))
                         """, nativeQuery = true)
         Page<String> findDistinctLeadCustomFieldValues(
                         @Param("instituteId") String instituteId,
@@ -1444,6 +1806,34 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<AudienceResponse> findAllByInstituteAndUserIds(
                         @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds);
+
+        /**
+         * The newest ACTIVE lead row for one person inside one institute, as either
+         * the submitter or the child the submission was for.
+         *
+         * <p>Used by click-to-call from the LMS surfaces (students list / attendance /
+         * assessment side-view), where the frontend only knows a learner's user id.
+         * A learner who ALSO came through a form gets their call filed on the same
+         * lead — same call history, same timeline, disposition still works. A learner
+         * with no lead row simply yields nothing and the call is logged against the
+         * user alone.
+         *
+         * <p>Institute-scoped through the audience join for the same reason
+         * {@link #findAllByInstituteAndIds} is: a user id alone can't be allowed to
+         * reach another tenant's lead. Paged so the LIMIT 1 stays in SQL.
+         */
+        @Query("""
+                            SELECT ar.id FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND (ar.userId = :userId OR ar.studentUserId = :userId)
+                            AND ar.audienceStatus = 'ACTIVE'
+                            ORDER BY ar.createdAt DESC
+                        """)
+        List<String> findLatestResponseIdForUserInInstitute(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId,
+                        org.springframework.data.domain.Pageable pageable);
 
         /**
          * Find audience response by parent mobile number for pre-fill lookup
@@ -2000,10 +2390,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);
 
-        /** Tier breakdown: explicit lead_tier wins, else score-derived bucket, else UNCLASSIFIED. */
+        /** Tier breakdown: explicit lead_tier wins, else the institute catalog band, else the legacy bucket, else UNCLASSIFIED. */
         @Query(value = """
                             SELECT COALESCE(NULLIF(ulp.lead_tier, ''),
-                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            (SELECT lt.tier_key FROM lead_tier lt
+                                         WHERE lt.institute_id = ulp.institute_id AND lt.is_active = TRUE
+                                           AND lt.min_score IS NOT NULL AND ulp.best_score >= lt.min_score
+                                         ORDER BY lt.min_score DESC, lt.display_order ASC LIMIT 1),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                                  WHEN ulp.best_score >= 50 THEN 'WARM'
                                                  WHEN ulp.best_score IS NOT NULL THEN 'COLD'
                                                  ELSE 'UNCLASSIFIED' END)                AS tier,

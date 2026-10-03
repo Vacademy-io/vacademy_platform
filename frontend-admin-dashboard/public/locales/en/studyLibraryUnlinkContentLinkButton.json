@@ -1,0 +1,11 @@
+{
+    "removedFrom": "Removed from {{chapterName}}",
+    "couldNotRemove": "Could not remove the link. Please try again.",
+    "addedTo": "Added to",
+    "removeFromAriaLabel": "Remove from {{chapterName}}",
+    "remove": "Remove",
+    "removeThisSlideTitle": "Remove this slide?",
+    "removeThisSlideDescription": "This will also remove the slide from the chapter.",
+    "cancel": "Cancel",
+    "removingEllipsis": "Removing…"
+}

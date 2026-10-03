@@ -59,6 +59,15 @@ public class CallBillingService {
 
     private static final Logger log = LoggerFactory.getLogger(CallBillingService.class);
 
+    /**
+     * Platform-wide billing granularity in seconds. 30 = half-minute pulses for every
+     * institute that has not negotiated its own. Rates stay credits-per-MINUTE, so this
+     * does not change anybody's price per minute — it only stops a 5-second call being
+     * rounded up to a full one.
+     */
+    @org.springframework.beans.factory.annotation.Value("${telephony.billing.pulse-seconds:60}")
+    private int defaultPulseSeconds;
+
     /** Providers whose telephony minutes ride Vacademy-paid trunks. */
     private static final List<String> VOICE_BILLABLE_PROVIDERS =
             List.of(ProviderType.PLIVO, ProviderType.VACADEMY_AI);
@@ -84,8 +93,20 @@ public class CallBillingService {
     @Autowired private AiCallResultRepository aiCallResultRepo;
     @PersistenceContext private EntityManager entityManager;
 
-    public boolean isVoiceBillableProvider(String providerType) {
+    /**
+     * Static twin of {@link #isVoiceBillableProvider}, so a pre-dial caller can ask
+     * "would this call be charged to the Vacademy wallet?" without taking a bean
+     * dependency on the billing service. The pre-dial credit gate and this meter
+     * MUST agree on the provider set: gating a provider we never bill would block
+     * an institute for spend it does not make, and billing one we never gate is the
+     * hole this whole change exists to close.
+     */
+    public static boolean isVoiceBillable(String providerType) {
         return providerType != null && VOICE_BILLABLE_PROVIDERS.contains(providerType);
+    }
+
+    public boolean isVoiceBillableProvider(String providerType) {
+        return isVoiceBillable(providerType);
     }
 
     public boolean isAiBillableProvider(String provider) {
@@ -191,10 +212,20 @@ public class CallBillingService {
                 perMinute = perMinute.add(engineSurcharge).max(BigDecimal.ZERO);
             }
         }
-        long minutes = (durationSeconds + 59) / 60; // ceil, min 1 for any >0 duration
-        BigDecimal cost = perMinute.multiply(BigDecimal.valueOf(minutes))
+        // Billing granularity. The rate stays credits-per-MINUTE; the pulse only decides
+        // how coarsely the duration is rounded up, so changing it never reprices the rate
+        // itself. Default 60 = the historical per-minute behaviour.
+        int pulseSeconds = resolvePulseSeconds(instituteId);
+        long pulses = (durationSeconds + pulseSeconds - 1L) / pulseSeconds; // ceil, min 1
+        BigDecimal perPulse = perMinute
+                .multiply(BigDecimal.valueOf(pulseSeconds))
+                .divide(BigDecimal.valueOf(60), 6, RoundingMode.HALF_UP);
+        BigDecimal cost = perPulse.multiply(BigDecimal.valueOf(pulses))
                 .max(rate.minimum())
                 .setScale(4, RoundingMode.HALF_UP);
+        String billedLabel = pulseSeconds == 60
+                ? pulses + " min"
+                : pulses + " x " + pulseSeconds + "s";
         if (cost.signum() <= 0) {
             // 0-rate = metering disabled (globally or per-institute): report success so
             // the caller stamps the row and the sweeper doesn't retry forever.
@@ -202,10 +233,10 @@ public class CallBillingService {
         }
 
         boolean ok = creditClient.deductPrecomputed(
-                instituteId, requestType, description + " · " + minutes + " min",
+                instituteId, requestType, description + " · " + billedLabel,
                 cost, idempotencyKey);
-        log.info("call-billing: {} ref={} inst={} mins={} credits={} ok={}",
-                requestType, refId, instituteId, minutes, cost, ok);
+        log.info("call-billing: {} ref={} inst={} secs={} pulse={}s billed={} credits={} ok={}",
+                requestType, refId, instituteId, durationSeconds, pulseSeconds, billedLabel, cost, ok);
         return ok;
     }
 
@@ -283,6 +314,26 @@ public class CallBillingService {
             log.error("call-billing: engine surcharge lookup failed for '{}': {}", engine, e.getMessage());
             return BigDecimal.ZERO;
         }
+    }
+
+    /**
+     * Billing pulse for this institute, in seconds: the per-institute override when set,
+     * otherwise the platform default. Falls back to 60 (per-minute) on any error, which is
+     * the historical behaviour and never bills MORE than the institute expects.
+     */
+    private int resolvePulseSeconds(String instituteId) {
+        try {
+            VoiceCallingSettingsPojo pojo = voiceSettings.get(instituteId);
+            VoiceCallingSettingsPojo.BillingConfig billing = pojo == null ? null : pojo.getBilling();
+            if (billing != null && billing.getBillingPulseSeconds() != null
+                    && billing.getBillingPulseSeconds() > 0) {
+                return billing.getBillingPulseSeconds();
+            }
+        } catch (Exception e) {
+            log.debug("call-billing: pulse lookup failed for {} — using default {}s",
+                    instituteId, defaultPulseSeconds);
+        }
+        return defaultPulseSeconds > 0 ? defaultPulseSeconds : 30;
     }
 
     private Rate resolveRate(String instituteId, String requestType) {

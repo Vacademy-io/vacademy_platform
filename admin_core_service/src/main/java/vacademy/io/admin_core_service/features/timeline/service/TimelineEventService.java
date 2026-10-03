@@ -77,6 +77,7 @@ public class TimelineEventService {
                         String studentUserId) {
                 saveEvent(type, typeId, actionType.name(), actorType, actorId, actorName,
                                 title, description, metadata, studentUserId, TimelineCategory.JOURNEY);
+
         }
 
         // ── Write: manual event from frontend ────────────────────────────────

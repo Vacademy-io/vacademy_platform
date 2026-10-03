@@ -1,6 +1,8 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ArrowLeft, Lightning, PencilSimple, Prohibit, Users } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -9,10 +11,20 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ToneBadge } from './-components/ToneBadge';
 import { TemplateNegotiation } from './-components/TemplateNegotiation';
-import { CHANNEL_META } from './-constants';
-import { ENGINE_STATUS_META, LANGUAGE_OPTIONS, NEXT_STATUSES } from './-constants';
+import { buildChannelMeta } from './-constants';
+import { buildEngineStatusMeta, buildLanguageOptions, NEXT_STATUSES } from './-constants';
 import {
     useEditPrompt,
     useEngine,
@@ -28,12 +40,14 @@ export const Route = createLazyFileRoute('/engagement-engines/$engineId')({
     component: EngineDetailPage,
 });
 
-const STATUS_ACTION_LABEL: Record<string, string> = {
-    DRY_RUN: 'Start dry run',
-    ACTIVE: 'Activate',
-    PAUSED: 'Pause',
-    ARCHIVED: 'Archive',
-};
+function buildStatusActionLabel(t: TFunction): Record<string, string> {
+    return {
+        DRY_RUN: t('statusActions.DRY_RUN'),
+        ACTIVE: t('statusActions.ACTIVE'),
+        PAUSED: t('statusActions.PAUSED'),
+        ARCHIVED: t('statusActions.ARCHIVED'),
+    };
+}
 
 function EngineDetailPage() {
     const { engineId } = Route.useParams();
@@ -45,9 +59,13 @@ function EngineDetailPage() {
     const editPrompt = useEditPrompt();
     const setAutonomy = useSetAutonomy();
     const [amendOpen, setAmendOpen] = useState(false);
+    const [confirmArchive, setConfirmArchive] = useState(false);
     const [delta, setDelta] = useState('');
+    const { t } = useTranslation('engagementEnginesEngineIdIndex');
+    const { t: tConstants } = useTranslation('engagementEnginesConstants');
+    const STATUS_ACTION_LABEL = buildStatusActionLabel(t);
 
-    useEffect(() => setNavHeading('Engine'), [setNavHeading]);
+    useEffect(() => setNavHeading(t('navHeading')), [setNavHeading, t]);
 
     if (isLoading) {
         return (
@@ -63,16 +81,19 @@ function EngineDetailPage() {
         return (
             <LayoutContainer>
                 <Card className="m-1 p-6 text-center text-body text-danger-600">
-                    Could not load this engine.
+                    {t('loadError')}
                 </Card>
             </LayoutContainer>
         );
     }
 
     const { engine, activeMembers, prompt } = data;
-    const meta = ENGINE_STATUS_META[engine.status] ?? { label: engine.status, tone: 'neutral' as const };
+    const meta = buildEngineStatusMeta(tConstants)[engine.status] ?? {
+        label: engine.status,
+        tone: 'neutral' as const,
+    };
     const nextStatuses = NEXT_STATUSES[engine.status] ?? [];
-    const channels = channelLabels(engine);
+    const channels = channelLabels(engine, tConstants);
     const hasWhatsApp = whatsappEnabled(engine);
 
     return (
@@ -86,7 +107,7 @@ function EngineDetailPage() {
                     onClick={() => navigate({ to: '/engagement-engines' })}
                     className="flex w-fit items-center gap-1 text-caption text-neutral-500 hover:text-primary-600"
                 >
-                    <ArrowLeft className="size-4" /> All engines
+                    <ArrowLeft className="size-4" /> {t('backToAll')}
                 </button>
 
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -104,7 +125,7 @@ function EngineDetailPage() {
                         scale="medium"
                         onClick={() => navigate({ to: '/engagement-engines/inbox' })}
                     >
-                        View task inbox
+                        {t('viewTaskInbox')}
                     </MyButton>
                 </div>
 
@@ -113,7 +134,7 @@ function EngineDetailPage() {
                     <div className="flex items-center gap-2">
                         <Users className="size-5 text-neutral-400" />
                         <span className="text-body text-neutral-600">
-                            <b>{activeMembers}</b> active member{activeMembers === 1 ? '' : 's'}
+                            <b>{activeMembers}</b> {t('detail.activeMember', { count: activeMembers })}
                         </span>
                     </div>
                     <MyButton
@@ -122,16 +143,20 @@ function EngineDetailPage() {
                         disable={enroll.isPending}
                         onClick={() => enroll.mutate(engine.id)}
                     >
-                        {enroll.isPending ? 'Resolving…' : 'Resolve audience'}
+                        {enroll.isPending ? t('detail.resolving') : t('detail.resolveAudience')}
                     </MyButton>
-                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <div className="ms-auto flex flex-wrap items-center gap-2">
                         {nextStatuses.map((s: EngineStatus) => (
                             <MyButton
                                 key={s}
                                 buttonType={s === 'ACTIVE' ? 'primary' : 'secondary'}
                                 scale="small"
                                 disable={transition.isPending}
-                                onClick={() => transition.mutate({ engineId: engine.id, toStatus: s })}
+                                onClick={() =>
+                                    s === 'ARCHIVED'
+                                        ? setConfirmArchive(true)
+                                        : transition.mutate({ engineId: engine.id, toStatus: s })
+                                }
                             >
                                 {STATUS_ACTION_LABEL[s] ?? s}
                             </MyButton>
@@ -139,10 +164,38 @@ function EngineDetailPage() {
                     </div>
                 </Card>
 
+                <AlertDialog open={confirmArchive} onOpenChange={setConfirmArchive}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>{t('archiveDialog.title')}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                {t('archiveDialog.description')}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={transition.isPending}>
+                                {t('archiveDialog.cancel')}
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                                disabled={transition.isPending}
+                                className="bg-danger-600 hover:bg-danger-700"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    transition.mutate(
+                                        { engineId: engine.id, toStatus: 'ARCHIVED' },
+                                        { onSettled: () => setConfirmArchive(false) }
+                                    );
+                                }}
+                            >
+                                {t('archiveDialog.confirm')}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
                 {engine.status === 'TEMPLATES_PENDING' && hasWhatsApp && (
                     <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-caption text-warning-600">
-                        This engine sends on WhatsApp — approve at least one template below before it can go
-                        live.
+                        {t('templatesPendingBanner')}
                     </div>
                 )}
 
@@ -150,7 +203,7 @@ function EngineDetailPage() {
                     {/* Brief */}
                     <Card className="p-4">
                         <div className="flex items-center justify-between">
-                            <p className="text-subtitle font-semibold text-neutral-700">The brief</p>
+                            <p className="text-subtitle font-semibold text-neutral-700">{t('brief.title')}</p>
                             <MyButton
                                 buttonType="text"
                                 scale="small"
@@ -159,29 +212,37 @@ function EngineDetailPage() {
                                     setAmendOpen(true);
                                 }}
                             >
-                                <PencilSimple className="mr-1 size-4" /> Amend
+                                <PencilSimple className="me-1 size-4" /> {t('brief.amend')}
                             </MyButton>
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-body text-neutral-600">
-                            {prompt?.compiledText || engine.objective || 'No brief set.'}
+                            {prompt?.compiledText || engine.objective || t('brief.empty')}
                         </p>
                         {prompt && (
-                            <p className="mt-2 text-caption text-neutral-400">version {prompt.version}</p>
+                            <p className="mt-2 text-caption text-neutral-400">
+                                {t('brief.version', { version: prompt.version })}
+                            </p>
                         )}
                     </Card>
 
                     {/* Config summary */}
                     <Card className="flex flex-col gap-2 p-4">
-                        <p className="text-subtitle font-semibold text-neutral-700">Configuration</p>
-                        <Row label="Channels" value={channels.length ? channels.join(', ') : 'None'} />
+                        <p className="text-subtitle font-semibold text-neutral-700">{t('config.title')}</p>
                         <Row
-                            label="Language"
+                            label={t('config.channels')}
+                            value={channels.length ? channels.join(', ') : t('config.noChannels')}
+                        />
+                        <Row
+                            label={t('config.language')}
                             value={
-                                LANGUAGE_OPTIONS.find((l) => l.value === engine.language)?.label ??
+                                buildLanguageOptions(tConstants).find((l) => l.value === engine.language)?.label ??
                                 engine.language
                             }
                         />
-                        <Row label="Cadence" value={`every ${engine.cadenceHours}h`} />
+                        <Row
+                            label={t('config.cadenceLabel')}
+                            value={t('config.cadence', { hours: engine.cadenceHours })}
+                        />
                     </Card>
                 </div>
 
@@ -202,25 +263,22 @@ function EngineDetailPage() {
 
             {amendOpen && (
                 <MyDialog
-                    heading="Amend the brief"
+                    heading={t('amendDialog.heading')}
                     open={amendOpen}
                     onOpenChange={setAmendOpen}
                     dialogWidth="max-w-lg"
                 >
                     <div className="flex flex-col gap-3 p-1">
-                        <p className="text-caption text-neutral-500">
-                            The brief grows by amendment — this is appended, the original is never rewritten.
-                            It applies at each person&apos;s next natural check-in.
-                        </p>
+                        <p className="text-caption text-neutral-500">{t('amendDialog.description')}</p>
                         <Textarea
                             rows={5}
                             value={delta}
                             onChange={(e) => setDelta(e.target.value)}
-                            placeholder="e.g. Also mention the new weekend batch starting next month."
+                            placeholder={t('amendDialog.placeholder')}
                         />
                         <div className="flex justify-end gap-2">
                             <MyButton buttonType="secondary" scale="small" onClick={() => setAmendOpen(false)}>
-                                Cancel
+                                {t('amendDialog.cancel')}
                             </MyButton>
                             <MyButton
                                 buttonType="primary"
@@ -233,7 +291,7 @@ function EngineDetailPage() {
                                     )
                                 }
                             >
-                                {editPrompt.isPending ? 'Saving…' : 'Add amendment'}
+                                {editPrompt.isPending ? t('amendDialog.saving') : t('amendDialog.submit')}
                             </MyButton>
                         </div>
                     </div>
@@ -265,15 +323,29 @@ function AutonomyStatusBadge({
     target: number;
     engineStatus: EngineStatus;
 }) {
-    if (killed) return <ToneBadge label="Autonomy off (copilot)" tone="neutral" />;
+    const { t } = useTranslation('engagementEnginesEngineIdIndex');
+    const { t: tConstants } = useTranslation('engagementEnginesConstants');
+    if (killed) return <ToneBadge label={t('autonomy.badge.off')} tone="neutral" />;
     if (!graduated)
-        return <ToneBadge label={`Ramping · ${approved}/${target} approved`} tone="warning" />;
+        return (
+            <ToneBadge
+                label={t('autonomy.badge.ramping', { approved, target })}
+                tone="warning"
+            />
+        );
     // Graduated + auto-on, but the badge must not claim live sending unless the engine is ACTIVE —
     // a PAUSED/DRAFT engine sends nothing, and DRY_RUN only simulates.
-    if (engineStatus === 'ACTIVE') return <ToneBadge label="Sending autonomously" tone="success" />;
-    if (engineStatus === 'DRY_RUN') return <ToneBadge label="Dry run (simulated)" tone="info" />;
-    const statusLabel = ENGINE_STATUS_META[engineStatus]?.label ?? engineStatus;
-    return <ToneBadge label={`Autonomy on · engine ${statusLabel.toLowerCase()}`} tone="neutral" />;
+    if (engineStatus === 'ACTIVE')
+        return <ToneBadge label={t('autonomy.badge.sendingAutonomously')} tone="success" />;
+    if (engineStatus === 'DRY_RUN')
+        return <ToneBadge label={t('autonomy.badge.dryRun')} tone="info" />;
+    const statusLabel = buildEngineStatusMeta(tConstants)[engineStatus]?.label ?? engineStatus;
+    return (
+        <ToneBadge
+            label={t('autonomy.badge.onEngineStatus', { status: statusLabel.toLowerCase() })}
+            tone="neutral"
+        />
+    );
 }
 
 function AutonomyPanel({
@@ -285,22 +357,26 @@ function AutonomyPanel({
     onToggleKill: (killed: boolean) => void;
     busy: boolean;
 }) {
-    const { engine, approvedSends, effectiveFirstN } = detail;
+    const { t } = useTranslation('engagementEnginesEngineIdIndex');
+    const { t: tConstants } = useTranslation('engagementEnginesConstants');
+    const { engine, approvedSends, approvedSendsByChannel, effectiveFirstN } = detail;
     const autoChannels = autoSendChannels(engine);
     // Only meaningful once at least one channel is set to auto-send, or a holdout exists.
     if (autoChannels.length === 0 && !(engine.holdoutPct && engine.holdoutPct > 0)) return null;
 
     const killed = engine.autoSendKilled === true;
     const target = effectiveFirstN ?? 0;
-    const approved = approvedSends ?? 0;
-    const graduated = target <= 0 || approved >= target;
+    // Graduation is per channel. An older backend sends only the engine-wide total.
+    const approvedOn = (channel: string) =>
+        approvedSendsByChannel ? approvedSendsByChannel[channel] ?? 0 : approvedSends ?? 0;
+    const channelMeta = buildChannelMeta(tConstants);
 
     return (
         <Card className="flex flex-col gap-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <Lightning className="size-5 text-primary-500" />
-                    <p className="text-subtitle font-semibold text-neutral-700">Autonomy</p>
+                    <p className="text-subtitle font-semibold text-neutral-700">{t('autonomy.title')}</p>
                 </div>
                 {autoChannels.length > 0 &&
                     (killed ? (
@@ -310,7 +386,7 @@ function AutonomyPanel({
                             disable={busy}
                             onClick={() => onToggleKill(false)}
                         >
-                            Allow auto-send
+                            {t('autonomy.allowAutoSend')}
                         </MyButton>
                     ) : (
                         <MyButton
@@ -319,7 +395,7 @@ function AutonomyPanel({
                             disable={busy}
                             onClick={() => onToggleKill(true)}
                         >
-                            <Prohibit className="mr-1 size-4" /> Keep as copilot
+                            <Prohibit className="me-1 size-4" /> {t('autonomy.keepAsCopilot')}
                         </MyButton>
                     ))}
             </div>
@@ -327,34 +403,49 @@ function AutonomyPanel({
             {autoChannels.length > 0 ? (
                 <>
                     <Row
-                        label="Auto-send channels"
-                        value={autoChannels.map((c) => CHANNEL_META[c].label).join(', ')}
+                        label={t('autonomy.autoSendChannels')}
+                        value={autoChannels.map((c) => buildChannelMeta(tConstants)[c].label).join(', ')}
                     />
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-body text-neutral-500">Status</span>
-                        <AutonomyStatusBadge
-                            killed={killed}
-                            graduated={graduated}
-                            approved={approved}
-                            target={target}
-                            engineStatus={engine.status}
-                        />
-                    </div>
-                    {!killed && !graduated && (
-                        <p className="text-caption text-neutral-500">
-                            Still copilot — send {Math.max(0, target - approved)} more approved draft(s)
-                            and this engine graduates to sending on its own.
-                        </p>
-                    )}
+                    {autoChannels.map((channel) => {
+                        const approved = approvedOn(channel);
+                        const graduated = target <= 0 || approved >= target;
+                        return (
+                            <div key={channel} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-body text-neutral-500">
+                                        {t('autonomy.statusFor', {
+                                            channel: channelMeta[channel].label,
+                                        })}
+                                    </span>
+                                    <AutonomyStatusBadge
+                                        killed={killed}
+                                        graduated={graduated}
+                                        approved={approved}
+                                        target={target}
+                                        engineStatus={engine.status}
+                                    />
+                                </div>
+                                {!killed && !graduated && (
+                                    <p className="text-caption text-neutral-500">
+                                        {t('autonomy.rampingHintChannel', {
+                                            channel: channelMeta[channel].label,
+                                            count: Math.max(0, target - approved),
+                                        })}
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    })}
                 </>
             ) : (
-                <p className="text-caption text-neutral-500">
-                    No auto-send channels — this engine only drafts tasks for you to send.
-                </p>
+                <p className="text-caption text-neutral-500">{t('autonomy.noAutoSend')}</p>
             )}
 
             {engine.holdoutPct != null && engine.holdoutPct > 0 && (
-                <Row label="Holdout" value={`${engine.holdoutPct}% (enrolled, never messaged)`} />
+                <Row
+                    label={t('autonomy.holdout')}
+                    value={t('autonomy.holdoutValue', { pct: engine.holdoutPct })}
+                />
             )}
         </Card>
     );

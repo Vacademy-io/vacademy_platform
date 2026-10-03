@@ -27,6 +27,7 @@ from decimal import Decimal
 from typing import Optional
 
 import httpx
+from ..services.llm_router import post_chat
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -210,11 +211,7 @@ async def _openrouter_chat(payload: dict) -> httpx.Response:
         raise HTTPException(status_code=503, detail="AI provider is not configured.")
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
-            return await client.post(
-                _OPENROUTER_URL,
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload,
-            )
+            return await post_chat(client, payload, key)
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Generation timed out. Please try again.")
     except httpx.HTTPError as e:

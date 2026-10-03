@@ -190,7 +190,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 ps.status AS batchStatus,
                 ps.start_time AS startDate,
                 COUNT(ssigm.id) AS countStudents,
-                ei.invite_code AS inviteCode,
+                (SELECT ei.invite_code
+                   FROM package_session_learner_invitation_to_payment_option psli
+                   JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
+                  WHERE psli.package_session_id = ps.id
+                    AND psli.status = 'ACTIVE'
+                    AND ei.tag = 'DEFAULT'
+                    AND ei.status = 'ACTIVE'
+                  ORDER BY ei.created_at DESC
+                  LIMIT 1) AS inviteCode,
                 ps.is_parent AS isParent,
                 ps.parent_id AS parentId
             FROM package_session ps
@@ -199,16 +207,9 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             LEFT JOIN student_session_institute_group_mapping ssigm
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.status IN (:studentSessionStatuses)
-            LEFT JOIN package_session_learner_invitation_to_payment_option psli
-                ON psli.package_session_id = ps.id
-                AND psli.status = 'ACTIVE'
-            LEFT JOIN enroll_invite ei
-                ON ei.id = psli.enroll_invite_id
-                AND ei.tag = 'DEFAULT'
-                AND ei.status = 'ACTIVE'
             WHERE p.id = :packageId
               AND ps.status IN (:packageSessionStatuses)
-            GROUP BY ps.id, batchName, ps.status, ps.start_time, ei.invite_code, ps.is_parent, ps.parent_id
+            GROUP BY ps.id, batchName, ps.status, ps.start_time, ps.is_parent, ps.parent_id
             ORDER BY ps.start_time DESC
             """, nativeQuery = true)
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(
@@ -341,8 +342,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     List<PackageSession> findAllInvitedByPackageIds(@Param("packageIds") Set<String> packageIds);
 
     /**
-     * Autocomplete search for packages by name with relevance scoring
-     * Optimized for 20,000+ packages with database indexing and LIMIT 10
+     * Autocomplete search for packages by name with relevance scoring.
+     *
+     * Matches any part of the course name (substring), not just a prefix, so the batch filter
+     * finds "Advanced Nursing Care" from "nursing". Relevance still ranks an exact name first,
+     * then a prefix match, then a match that starts a word inside the name, then any substring.
+     *
+     * The selective predicate here is package_institute.institute_id (idx_package_institute_access),
+     * which bounds the scan to one institute's packages before the name filter runs — the
+     * LOWER(package_name) b-tree from V84 no longer helps a leading-wildcard LIKE.
      */
     @Query(value = """
                         SELECT
@@ -356,7 +364,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 CASE
                     WHEN LOWER(p.package_name) = LOWER(:query) THEN 100
                     WHEN LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%')) THEN 90
-                    ELSE 50
+                    WHEN LOWER(p.package_name) LIKE LOWER(CONCAT('% ', :query, '%')) THEN 80
+                    ELSE 70
                 END AS matchScore
             FROM package_session ps
             JOIN package p ON ps.package_id = p.id
@@ -365,7 +374,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             JOIN session s ON ps.session_id = s.id
                         WHERE
                             pi.institute_id = :instituteId
-                            AND LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%'))
+                            AND LOWER(p.package_name) LIKE LOWER(CONCAT('%', :query, '%'))
                             AND (:sessionId IS NULL OR :sessionId = '' OR ps.session_id = :sessionId)
                             AND (:levelId IS NULL OR :levelId = '' OR ps.level_id = :levelId)
                             AND ps.status IN ('ACTIVE', 'HIDDEN','DRAFT')

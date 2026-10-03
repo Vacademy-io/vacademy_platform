@@ -1,0 +1,14 @@
+{
+    "selectionLabel": "{{course}} Selection",
+    "selectExisting": "Select existing {{course}}",
+    "createNew": "Create new {{course}}",
+    "selectPlaceholder": "Select a {{course}}",
+    "addNewCourse": "Add New Course",
+    "validation": {
+        "selectCourse": "Please select a course"
+    },
+    "toast": {
+        "batchCreated": "Batch created successfully",
+        "createFailed": "Failed to create batch"
+    }
+}

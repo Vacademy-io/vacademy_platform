@@ -17,7 +17,7 @@ import { z } from 'zod';
 export const ALL_AUDIENCES_VALUE = '__ALL__';
 export const ALL_TIERS_VALUE = '__ALL__';
 export const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted
-export const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status (default — enrolled leads stay visible)
+export const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status (default — enrolled leads stay visible unless LEAD_SETTING.hideConvertedInAllLeads is on)
 export const ALL_CONVERTED_VALUE = '__CONVERTED__'; // only leads enrolled into a course
 export const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage
 export const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
@@ -43,6 +43,9 @@ export const RecentLeadsSearchSchema = z.object({
     counsellor: z.string().optional(),
     /** Audience (campaign) ids — comma-separated. */
     audience: z.string().optional(),
+    /** Campaign types — comma-separated audience.campaign_type values. Narrows the
+     *  audience dropdown and the leads to audiences of these types. */
+    campaignType: z.string().optional(),
     /** Free-text search query (applied, not the live input). */
     search: z.string().optional(),
     /** Date-range preset — '1' | '7' | '15' | '30' | 'ALL' | 'CUSTOM'. */
@@ -65,6 +68,46 @@ export const RecentLeadsSearchSchema = z.object({
     /** Attempt count N for called=CALLED_N_TIMES / CALLED_N_PLUS_TIMES. Kept as a
      *  string like every other param here; the page clamps it to 1–99 on read. */
     calledCount: z.string().optional(),
+    /** "Called within the last N hours" — preset hour-count ('24' | '168' | '360' |
+     *  '720'). Rolling from now, unlike `range`, which buckets by calendar day.
+     *  Bounds the last CALL on the lead, not its submission. */
+    calledWithin: z.string().optional(),
+    /** "Worked within the last N hours" — same presets as calledWithin, but bounds the
+     *  last timeline activity of any kind (note, status change, logged call). */
+    workedWithin: z.string().optional(),
+    /** Explicit from–to for `calledWithin` / `workedWithin` when they hold 'CUSTOM'
+     *  (yyyy-mm-dd, same shape as `from`/`to`). Both ends are inclusive calendar days,
+     *  unlike the rolling presets. */
+    /** Comma-separated filter names this ROUTE owns (see pinned-filters.ts). They
+     *  survive "Clear all" and render read-only, so a sidebar sub-tab keeps meaning
+     *  what its label says. Absent = nothing pinned, i.e. the old behaviour. */
+    /** When '1', the picked statuses mean "everything EXCEPT these". */
+    statusExclude: z.string().optional(),
+    lock: z.string().optional(),
+    calledFrom: z.string().optional(),
+    calledTo: z.string().optional(),
+    workedFrom: z.string().optional(),
+    workedTo: z.string().optional(),
+    /** Campaign (UTM) filters — comma-separated values per dimension. Only
+     *  honoured while the institute's UTM setting is on (the controls that
+     *  read them render nothing otherwise). The Reports Center's UTM tab
+     *  drills through with these. */
+    utmSource: z.string().optional(),
+    utmMedium: z.string().optional(),
+    utmCampaign: z.string().optional(),
+    utmContent: z.string().optional(),
+    utmTerm: z.string().optional(),
+    utmChannel: z.string().optional(),
 });
+
+/** URL param per UTM dimension — shared by the page and its drill-through links. */
+export const UTM_SEARCH_PARAM = {
+    source: 'utmSource',
+    medium: 'utmMedium',
+    campaign: 'utmCampaign',
+    content: 'utmContent',
+    term: 'utmTerm',
+    source_type: 'utmChannel',
+} as const;
 
 export type RecentLeadsSearch = z.infer<typeof RecentLeadsSearchSchema>;

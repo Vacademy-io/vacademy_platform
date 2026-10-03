@@ -1,10 +1,12 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { Component } from '../-types/editor-types';
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Settings, Copy, Trash2 } from 'lucide-react';
+import { CaretDown, CaretUp, Gear, Copy, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 
 export const PageCanvas = () => {
+    const { t } = useTranslation('managePagesPageCanvas');
     const {
         config,
         selectedPageId,
@@ -28,10 +30,10 @@ export const PageCanvas = () => {
                 onClick={() => selectComponent(null)}
             >
                 <div className="mb-2 border-b pb-3">
-                    <h2 className="text-lg font-semibold text-gray-800">Global Settings</h2>
-                    <p className="text-sm text-gray-500">
-                        Configure header, footer, and global properties
-                    </p>
+                    <h2 className="text-lg font-semibold text-gray-800">
+                        {t('globalSettings.title')}
+                    </h2>
+                    <p className="text-sm text-gray-500">{t('globalSettings.description')}</p>
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -47,11 +49,11 @@ export const PageCanvas = () => {
                         >
                             <div className="mb-3 flex items-center justify-between">
                                 <span className="rounded-md bg-blue-100 px-3 py-1.5 text-xs font-bold uppercase text-blue-700">
-                                    Header
+                                    {t('globalSettings.header')}
                                 </span>
                                 {selectedComponentId === 'global-header' && (
                                     <span className="text-xs font-medium text-blue-600">
-                                        ● Selected
+                                        {t('globalSettings.selectedIndicator')}
                                     </span>
                                 )}
                             </div>
@@ -71,11 +73,11 @@ export const PageCanvas = () => {
                         >
                             <div className="mb-3 flex items-center justify-between">
                                 <span className="rounded-md bg-purple-100 px-3 py-1.5 text-xs font-bold uppercase text-purple-700">
-                                    Footer
+                                    {t('globalSettings.footer')}
                                 </span>
                                 {selectedComponentId === 'global-footer' && (
                                     <span className="text-xs font-medium text-blue-600">
-                                        ● Selected
+                                        {t('globalSettings.selectedIndicator')}
                                     </span>
                                 )}
                             </div>
@@ -87,56 +89,70 @@ export const PageCanvas = () => {
                 {/* Other Global Settings Info */}
                 <div className="mt-2 rounded-lg border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 p-5">
                     <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800">
-                        <Settings className="size-4" />
-                        Configuration Overview
+                        <Gear className="size-4" />
+                        {t('globalSettings.overview.title')}
                     </h3>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Catalogue Type</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.catalogueType')}
+                            </div>
                             <div className="font-medium text-gray-900">
-                                {config.globalSettings?.courseCatalogeType?.value || 'N/A'}
+                                {config.globalSettings?.courseCatalogeType?.value ||
+                                    t('globalSettings.overview.notAvailable')}
                             </div>
                         </div>
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Theme Mode</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.themeMode')}
+                            </div>
                             <div className="font-medium capitalize text-gray-900">
                                 {config.globalSettings?.mode || 'light'}
                             </div>
                         </div>
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Font Family</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.fontFamily')}
+                            </div>
                             <div className="font-medium text-gray-900">
-                                {config.globalSettings?.fonts?.family || 'Default'}
+                                {config.globalSettings?.fonts?.family ||
+                                    t('globalSettings.overview.defaultFont')}
                             </div>
                         </div>
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Payment</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.payment')}
+                            </div>
                             <div
                                 className={`font-medium ${config.globalSettings?.payment?.enabled ? 'text-green-600' : 'text-gray-400'}`}
                             >
                                 {config.globalSettings?.payment?.enabled
-                                    ? '✓ Enabled'
-                                    : '✗ Disabled'}
+                                    ? t('globalSettings.overview.enabledBadge')
+                                    : t('globalSettings.overview.disabledBadge')}
                             </div>
                         </div>
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Lead Collection</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.leadCollection')}
+                            </div>
                             <div
                                 className={`font-medium ${config.globalSettings?.leadCollection?.enabled ? 'text-green-600' : 'text-gray-400'}`}
                             >
                                 {config.globalSettings?.leadCollection?.enabled
-                                    ? '✓ Enabled'
-                                    : '✗ Disabled'}
+                                    ? t('globalSettings.overview.enabledBadge')
+                                    : t('globalSettings.overview.disabledBadge')}
                             </div>
                         </div>
                         <div className="rounded-md bg-white p-3 shadow-sm">
-                            <div className="text-xs text-gray-500">Enquiry</div>
+                            <div className="text-xs text-gray-500">
+                                {t('globalSettings.overview.enquiry')}
+                            </div>
                             <div
                                 className={`font-medium ${config.globalSettings?.enrquiry?.enabled ? 'text-green-600' : 'text-gray-400'}`}
                             >
                                 {config.globalSettings?.enrquiry?.enabled
-                                    ? '✓ Enabled'
-                                    : '✗ Disabled'}
+                                    ? t('globalSettings.overview.enabledBadge')
+                                    : t('globalSettings.overview.disabledBadge')}
                             </div>
                         </div>
                     </div>
@@ -147,7 +163,8 @@ export const PageCanvas = () => {
 
     // Show page components
     const page = config.pages.find((p) => p.id === selectedPageId);
-    if (!page) return <div className="p-8 text-center text-gray-500">Page not found</div>;
+    if (!page)
+        return <div className="p-8 text-center text-gray-500">{t('page.notFound')}</div>;
 
     return (
         <div
@@ -157,8 +174,7 @@ export const PageCanvas = () => {
             <div className="mb-2 border-b pb-3">
                 <h2 className="text-lg font-semibold text-gray-800">{page.title || page.route}</h2>
                 <p className="text-sm text-gray-500">
-                    Page components • {page.components.length} component
-                    {page.components.length !== 1 ? 's' : ''}
+                    {t('page.componentsCount', { count: page.components.length })}
                 </p>
             </div>
 
@@ -182,7 +198,7 @@ export const PageCanvas = () => {
                                 e.stopPropagation();
                                 duplicateComponent(page.id, comp.id);
                             }}
-                            title="Duplicate Component"
+                            title={t('page.duplicateComponentTitle')}
                         >
                             <Copy className="size-3" />
                         </Button>
@@ -192,13 +208,13 @@ export const PageCanvas = () => {
                             className="size-7 p-0 text-red-600 hover:text-red-700"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm('Delete this component?')) {
+                                if (confirm(t('page.confirmDeleteComponent'))) {
                                     deleteComponent(page.id, comp.id);
                                 }
                             }}
-                            title="Delete Component"
+                            title={t('page.deleteComponentTitle')}
                         >
-                            <Trash2 className="size-3" />
+                            <Trash className="size-3" />
                         </Button>
                     </div>
 
@@ -207,7 +223,7 @@ export const PageCanvas = () => {
                             {comp.type}
                         </span>
                         {selectedComponentId === comp.id && (
-                            <span className="text-xs text-blue-500">Selected</span>
+                            <span className="text-xs text-blue-500">{t('page.selected')}</span>
                         )}
                     </div>
 
@@ -217,8 +233,8 @@ export const PageCanvas = () => {
 
             {page.components.length === 0 && (
                 <div className="m-4 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-16 text-gray-400">
-                    <div className="text-lg font-medium">No components on this page</div>
-                    <div className="mt-1 text-sm">Drag components from the library to add them</div>
+                    <div className="text-lg font-medium">{t('page.empty.title')}</div>
+                    <div className="mt-1 text-sm">{t('page.empty.hint')}</div>
                 </div>
             )}
         </div>
@@ -226,6 +242,7 @@ export const PageCanvas = () => {
 };
 
 const ComponentSummary = ({ component }: { component: Component }) => {
+    const { t } = useTranslation('managePagesPageCanvas');
     const { type, props } = component;
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -235,7 +252,7 @@ const ComponentSummary = ({ component }: { component: Component }) => {
                 return (
                     <div className="space-y-1">
                         <div className="font-semibold text-gray-800">
-                            {props.heading || 'Hero Section'}
+                            {props.heading || t('summary.hero.fallbackTitle')}
                         </div>
                         {props.subheading && (
                             <div className="text-sm text-gray-600">{props.subheading}</div>
@@ -248,12 +265,19 @@ const ComponentSummary = ({ component }: { component: Component }) => {
                 return (
                     <div className="space-y-1">
                         <div className="font-semibold text-gray-800">
-                            {props.title || 'Course Catalogue'}
+                            {props.title || t('summary.catalogue.fallbackTitle')}
                         </div>
                         <div className="text-xs text-gray-500">
-                            Layout: {props.render?.layout || 'grid'} • Filters:{' '}
-                            {props.showFilters ? 'Enabled' : 'Disabled'}
-                            {props.filtersConfig && ` • ${props.filtersConfig.length} filter(s)`}
+                            {t('summary.catalogue.layoutLine', {
+                                layout: props.render?.layout || 'grid',
+                                filters: props.showFilters
+                                    ? t('summary.catalogue.filtersEnabled')
+                                    : t('summary.catalogue.filtersDisabled'),
+                            })}
+                            {props.filtersConfig &&
+                                t('summary.catalogue.filterCountSuffix', {
+                                    count: props.filtersConfig.length,
+                                })}
                         </div>
                     </div>
                 );
@@ -262,11 +286,13 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             case 'courseDetails':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">Course Details Page</div>
+                        <div className="font-semibold text-gray-800">
+                            {t('summary.courseDetails.title')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            {props.showEnquiry && 'Enquiry • '}
-                            {props.showPayment && 'Payment • '}
-                            {props.showAddToCart && 'Add to Cart'}
+                            {props.showEnquiry && t('summary.courseDetails.enquirySuffix')}
+                            {props.showPayment && t('summary.courseDetails.paymentSuffix')}
+                            {props.showAddToCart && t('summary.courseDetails.addToCart')}
                         </div>
                     </div>
                 );
@@ -274,10 +300,13 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             case 'cartComponent':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">Shopping Cart</div>
+                        <div className="font-semibold text-gray-800">
+                            {t('summary.cart.title')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            {props.showQuantitySelector && 'Quantity controls • '}
-                            {props.showPrice && 'Pricing enabled'}
+                            {props.showQuantitySelector &&
+                                t('summary.cart.quantityControlsSuffix')}
+                            {props.showPrice && t('summary.cart.pricingEnabled')}
                         </div>
                     </div>
                 );
@@ -286,10 +315,15 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             case 'mediaShowcase':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">Media Showcase</div>
+                        <div className="font-semibold text-gray-800">
+                            {t('summary.mediaShowcase.title')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            Layout: {props.layout || 'slider'} •{props.slides?.length || 0} slides
-                            {props.autoplay && ' • Autoplay'}
+                            {t('summary.mediaShowcase.layoutSlides', {
+                                layout: props.layout || 'slider',
+                                count: props.slides?.length || 0,
+                            })}
+                            {props.autoplay && t('summary.mediaShowcase.autoplaySuffix')}
                         </div>
                     </div>
                 );
@@ -298,10 +332,13 @@ const ComponentSummary = ({ component }: { component: Component }) => {
                 return (
                     <div className="space-y-1">
                         <div className="font-semibold text-gray-800">
-                            {props.heading || 'Buy/Rent Section'}
+                            {props.heading || t('summary.buyRent.fallbackTitle')}
                         </div>
                         <div className="text-xs text-gray-500">
-                            {props.buy?.buttonLabel || 'Buy'} • {props.rent?.buttonLabel || 'Rent'}
+                            {t('summary.buyRent.buyRentLine', {
+                                buy: props.buy?.buttonLabel || t('summary.buyRent.buyFallback'),
+                                rent: props.rent?.buttonLabel || t('summary.buyRent.rentFallback'),
+                            })}
                         </div>
                     </div>
                 );
@@ -309,9 +346,11 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             case 'statsHighlights':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">Stats Highlights</div>
+                        <div className="font-semibold text-gray-800">
+                            {t('summary.stats.title')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            {props.stats?.length || 0} statistics
+                            {t('summary.stats.count', { count: props.stats?.length || 0 })}
                         </div>
                     </div>
                 );
@@ -320,11 +359,13 @@ const ComponentSummary = ({ component }: { component: Component }) => {
                 return (
                     <div className="space-y-1">
                         <div className="font-semibold text-gray-800">
-                            {props.title || 'Testimonials'}
+                            {props.title || t('summary.testimonials.fallbackTitle')}
                         </div>
                         <div className="text-xs text-gray-500">
-                            {props.testimonials?.length || 0} testimonials • Layout:{' '}
-                            {props.layout || 'grid'}
+                            {t('summary.testimonials.countLayout', {
+                                count: props.testimonials?.length || 0,
+                                layout: props.layout || 'grid',
+                            })}
                         </div>
                     </div>
                 );
@@ -333,18 +374,22 @@ const ComponentSummary = ({ component }: { component: Component }) => {
                 return (
                     <div className="space-y-1">
                         <div className="font-semibold text-gray-800">
-                            {props.policies?.shipping?.title || 'Policy Content'}
+                            {props.policies?.shipping?.title || t('summary.policy.fallbackTitle')}
                         </div>
-                        <div className="text-xs text-gray-500">Policy page</div>
+                        <div className="text-xs text-gray-500">{t('summary.policy.subtitle')}</div>
                     </div>
                 );
 
             case 'header':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">{props.title || 'Header'}</div>
+                        <div className="font-semibold text-gray-800">
+                            {props.title || t('summary.header.fallbackTitle')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            {props.navigation?.length || 0} nav items
+                            {t('summary.header.navItems', {
+                                count: props.navigation?.length || 0,
+                            })}
                         </div>
                     </div>
                 );
@@ -352,9 +397,11 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             case 'footer':
                 return (
                     <div className="space-y-1">
-                        <div className="font-semibold text-gray-800">Footer</div>
+                        <div className="font-semibold text-gray-800">
+                            {t('summary.footer.title')}
+                        </div>
                         <div className="text-xs text-gray-500">
-                            Layout: {props.layout || 'default'}
+                            {t('summary.footer.layout', { layout: props.layout || 'default' })}
                         </div>
                     </div>
                 );
@@ -386,13 +433,13 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             >
                 {isExpanded ? (
                     <>
-                        <ChevronUp className="size-3" />
-                        Hide details
+                        <CaretUp className="size-3" />
+                        {t('summary.hideDetails')}
                     </>
                 ) : (
                     <>
-                        <ChevronDown className="size-3" />
-                        Show details
+                        <CaretDown className="size-3" />
+                        {t('summary.showDetails')}
                     </>
                 )}
             </button>
@@ -400,7 +447,7 @@ const ComponentSummary = ({ component }: { component: Component }) => {
             {isExpanded && (
                 <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-3">
                     <div className="mb-1 text-xs font-semibold text-gray-700">
-                        Full Configuration:
+                        {t('summary.fullConfigurationLabel')}
                     </div>
                     <pre className="max-h-96 overflow-auto text-xs text-gray-600">
                         {JSON.stringify(props, null, 2)}

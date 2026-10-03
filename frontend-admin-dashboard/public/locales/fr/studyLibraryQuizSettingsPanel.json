@@ -1,0 +1,10 @@
+{
+    "timeLimit": "⏱ Limite de temps",
+    "minutesAbbrev": "min",
+    "marksPerQuestion": "★ Points/Q",
+    "negativeMarking": "− Négatif",
+    "passPercentage": "🎯 % de réussite",
+    "attempts": "Tentatives",
+    "savingEllipsis": "Enregistrement…",
+    "saveSettings": "Enregistrer les paramètres"
+}

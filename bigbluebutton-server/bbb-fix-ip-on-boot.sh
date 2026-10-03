@@ -36,6 +36,7 @@ OLD_IPS=$(grep -ohP '\d+\.\d+\.\d+\.\d+' \
     /opt/freeswitch/etc/freeswitch/sip_profiles/external.xml \
     /etc/bigbluebutton/bbb-webrtc-sfu/production.yml \
     /usr/share/bigbluebutton/nginx/sip.nginx \
+    /etc/turnserver.conf \
     2>/dev/null | grep -v '127\.\|0\.0\.\|255\.\|169\.254\.' | sort -u)
 
 NEEDS_FIX=false
@@ -106,5 +107,37 @@ systemctl restart bbb-webrtc-sfu freeswitch 2>/dev/null || true
 # Step 5: Fix default presentation URL to use domain
 sed -i "s|defaultUploadedPresentation=https://[^/]*/|defaultUploadedPresentation=https://$BBB_DOMAIN/|g" \
     /etc/bigbluebutton/bbb-web.properties 2>/dev/null || true
+
+# Step 6: TURN / coturn — deliberately handled separately.
+# The generic sweep above walks directories; /etc/turnserver.conf sits under
+# none of them and /etc/haproxy/haproxy.cfg matches none of the swept file
+# extensions, so a stale IP survived here on EVERY restore. The symptom is
+# silent: coturn cannot bind a foreign address, exits, and every learner behind
+# a UDP-blocking firewall loses audio/video while everyone else is fine.
+if [ -f /etc/turnserver.conf ]; then
+    for old in $(grep -oP '^\s*(listening-ip|relay-ip|allowed-peer-ip)=\K[\d.]+' \
+                 /etc/turnserver.conf 2>/dev/null | grep -v '^127\.' | sort -u); do
+        if [ "$old" != "$NEW_IP" ]; then
+            log "  TURN: $old → $NEW_IP"
+            sed -i "s/\b$old\b/$NEW_IP/g" /etc/turnserver.conf
+        fi
+    done
+    # Also bind loopback so haproxy's turn backend can be a fixed address.
+    grep -q '^listening-ip=127\.0\.0\.1' /etc/turnserver.conf || \
+        sed -i "/^listening-ip=$NEW_IP/a listening-ip=127.0.0.1" /etc/turnserver.conf
+    systemctl restart coturn 2>/dev/null || true
+    log "  coturn: $(systemctl is-active coturn 2>/dev/null)"
+fi
+
+# Pin haproxy's TURN backend to loopback once — after this it never needs an
+# IP rewrite again, on any future restore.
+if [ -f /etc/haproxy/haproxy.cfg ]; then
+    sed -i 's|^\(\s*server localhost \)[0-9.]\+:3478|\1127.0.0.1:3478|' /etc/haproxy/haproxy.cfg
+    if haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+        systemctl reload haproxy 2>/dev/null || true
+    else
+        log "  WARNING: haproxy config test failed — not reloading"
+    fi
+fi
 
 log "BBB IP fix complete: $BBB_DOMAIN ($NEW_IP)"

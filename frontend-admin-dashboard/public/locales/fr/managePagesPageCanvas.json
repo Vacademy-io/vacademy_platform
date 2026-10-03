@@ -1,0 +1,103 @@
+{
+    "globalSettings": {
+        "title": "Paramètres généraux",
+        "description": "Configurer l'en-tête, le pied de page et les propriétés globales",
+        "header": "En-tête",
+        "footer": "Pied de page",
+        "selectedIndicator": "● Sélectionné",
+        "overview": {
+            "title": "Aperçu de la configuration",
+            "catalogueType": "Type de catalogue",
+            "notAvailable": "N/A",
+            "themeMode": "Mode du thème",
+            "fontFamily": "Police",
+            "defaultFont": "Par défaut",
+            "payment": "Paiement",
+            "leadCollection": "Collecte de prospects",
+            "enquiry": "Demande d'information",
+            "enabledBadge": "✓ Activé",
+            "disabledBadge": "✗ Désactivé"
+        }
+    },
+    "page": {
+        "notFound": "Page introuvable",
+        "componentsCount_one": "Composants de la page • {{count}} composant",
+        "componentsCount_many": "Composants de la page • {{count}} de composants",
+        "componentsCount_other": "Composants de la page • {{count}} composants",
+        "duplicateComponentTitle": "Dupliquer le composant",
+        "deleteComponentTitle": "Supprimer le composant",
+        "confirmDeleteComponent": "Supprimer ce composant ?",
+        "selected": "Sélectionné",
+        "empty": {
+            "title": "Aucun composant sur cette page",
+            "hint": "Glissez des composants depuis la bibliothèque pour les ajouter"
+        }
+    },
+    "summary": {
+        "hero": {
+            "fallbackTitle": "Section héros"
+        },
+        "catalogue": {
+            "fallbackTitle": "Catalogue de cours",
+            "layoutLine": "Disposition : {{layout}} • Filtres : {{filters}}",
+            "filtersEnabled": "Activés",
+            "filtersDisabled": "Désactivés",
+            "filterCountSuffix_one": " • {{count}} filtre",
+            "filterCountSuffix_many": " • {{count}} de filtres",
+            "filterCountSuffix_other": " • {{count}} filtres"
+        },
+        "courseDetails": {
+            "title": "Page de détails du cours",
+            "enquirySuffix": "Demande d'information • ",
+            "paymentSuffix": "Paiement • ",
+            "addToCart": "Ajouter au panier"
+        },
+        "cart": {
+            "title": "Panier d'achat",
+            "quantityControlsSuffix": "Contrôles de quantité • ",
+            "pricingEnabled": "Tarification activée"
+        },
+        "mediaShowcase": {
+            "title": "Vitrine multimédia",
+            "layoutSlides_one": "Disposition : {{layout}} • {{count}} diapositive",
+            "layoutSlides_many": "Disposition : {{layout}} • {{count}} de diapositives",
+            "layoutSlides_other": "Disposition : {{layout}} • {{count}} diapositives",
+            "autoplaySuffix": " • Lecture automatique"
+        },
+        "buyRent": {
+            "fallbackTitle": "Section Acheter/Louer",
+            "buyFallback": "Acheter",
+            "rentFallback": "Louer",
+            "buyRentLine": "{{buy}} • {{rent}}"
+        },
+        "stats": {
+            "title": "Statistiques clés",
+            "count_one": "{{count}} statistique",
+            "count_many": "{{count}} de statistiques",
+            "count_other": "{{count}} statistiques"
+        },
+        "testimonials": {
+            "fallbackTitle": "Témoignages",
+            "countLayout_one": "{{count}} témoignage • Disposition : {{layout}}",
+            "countLayout_many": "{{count}} de témoignages • Disposition : {{layout}}",
+            "countLayout_other": "{{count}} témoignages • Disposition : {{layout}}"
+        },
+        "policy": {
+            "fallbackTitle": "Contenu de la politique",
+            "subtitle": "Page de politique"
+        },
+        "header": {
+            "fallbackTitle": "En-tête",
+            "navItems_one": "{{count}} élément de navigation",
+            "navItems_many": "{{count}} d'éléments de navigation",
+            "navItems_other": "{{count}} éléments de navigation"
+        },
+        "footer": {
+            "title": "Pied de page",
+            "layout": "Disposition : {{layout}}"
+        },
+        "hideDetails": "Masquer les détails",
+        "showDetails": "Afficher les détails",
+        "fullConfigurationLabel": "Configuration complète :"
+    }
+}

@@ -1,0 +1,126 @@
+{
+    "heading": "घोषणा इतिहास",
+    "tabs": {
+        "all": "सभी",
+        "planned": "नियोजित",
+        "past": "बीती हुई"
+    },
+    "toolbar": {
+        "searchLabel": "शीर्षक खोजें",
+        "searchPlaceholder": "खोजें…",
+        "statusLabel": "स्थिति",
+        "statusAll": "सभी",
+        "fromLabel": "से",
+        "toLabel": "तक"
+    },
+    "status": {
+        "DRAFT": "ड्राफ्ट",
+        "PENDING_APPROVAL": "अनुमोदन लंबित",
+        "REJECTED": "अस्वीकृत",
+        "SCHEDULED": "निर्धारित",
+        "ACTIVE": "सक्रिय",
+        "INACTIVE": "निष्क्रिय",
+        "DELIVERED": "वितरित",
+        "CANCELLED": "रद्द"
+    },
+    "results_one": "{{count}} परिणाम",
+    "results_other": "{{count}} परिणाम",
+    "sizeLabel": "आकार",
+    "prev": "पिछला",
+    "next": "अगला",
+    "page": "पृष्ठ {{page}}",
+    "table": {
+        "title": "शीर्षक",
+        "status": "स्थिति",
+        "modes": "मोड",
+        "mediums": "माध्यम",
+        "schedule": "शेड्यूल",
+        "createdBy": "बनाया गया",
+        "createdAt": "बनाने की तिथि",
+        "actions": "कार्रवाई",
+        "loading": "लोड हो रहा है…",
+        "empty": "कोई घोषणा नहीं",
+        "recipientsPrefix": "प्राप्तकर्ता:",
+        "recipientsMore": "+{{count}}"
+    },
+    "actions": {
+        "view": "देखें",
+        "stats": "आँकड़े",
+        "approve": "स्वीकृत करें",
+        "reject": "अस्वीकार करें",
+        "deliverNow": "अभी भेजें",
+        "delete": "हटाएं"
+    },
+    "toasts": {
+        "statsLoadFailed": "आँकड़े लोड करने में विफल",
+        "approved": "स्वीकृत",
+        "approveFailed": "स्वीकृति विफल",
+        "rejected": "अस्वीकृत",
+        "rejectFailed": "अस्वीकृति विफल",
+        "deliveryTriggered": "डिलीवरी शुरू की गई",
+        "triggerFailed": "शुरू करना विफल",
+        "deleted": "हटाया गया",
+        "deleteFailed": "हटाना विफल"
+    },
+    "detailsDialog": {
+        "title": "घोषणा विवरण",
+        "content": "सामग्री",
+        "modes": "मोड",
+        "mediums": "माध्यम",
+        "recipients": "प्राप्तकर्ता"
+    },
+    "statsDialog": {
+        "title": "डिलीवरी आँकड़े",
+        "loading": "आँकड़े लोड हो रहे हैं...",
+        "overviewTitle": "डिलीवरी अवलोकन",
+        "tiles": {
+            "recipients": "प्राप्तकर्ता",
+            "delivered": "वितरित",
+            "read": "पढ़ा गया",
+            "failed": "विफल",
+            "dismissed": "खारिज",
+            "dismissRate": "खारिज दर"
+        },
+        "emailEventsTitle": "ईमेल इवेंट",
+        "viaSes": "SES के माध्यम से",
+        "emailTiles": {
+            "emailsSent": "भेजे गए ईमेल",
+            "delivered": "वितरित",
+            "opened": "खोले गए",
+            "clicked": "क्लिक किए गए",
+            "bounced": "बाउंस हुए",
+            "rejected": "अस्वीकृत",
+            "complained": "शिकायत की गई",
+            "awaitingEvents": "इवेंट की प्रतीक्षा"
+        },
+        "pendingNote": "ईमेल भेजे जा चुके हैं लेकिन अभी तक कोई SES इवेंट वापस नहीं आया है। यदि आप स्थानीय रूप से चला रहे हैं, तो सुनिश्चित करें कि SES → SNS → notification_service वेबहुक कॉन्फ़िगर किया गया है।",
+        "noEmails": "इस घोषणा के लिए कोई ईमेल नहीं भेजा गया।",
+        "recipientsSection": {
+            "title": "प्राप्तकर्ता",
+            "loadFailed": "प्राप्तकर्ता लोड करने में विफल",
+            "loading": "प्राप्तकर्ता लोड हो रहे हैं...",
+            "empty": "इस घोषणा के लिए कोई प्राप्तकर्ता नहीं मिला।",
+            "table": {
+                "name": "नाम",
+                "mode": "मोड",
+                "status": "स्थिति",
+                "seenAt": "देखा गया",
+                "dismissedAt": "खारिज किया गया"
+            },
+            "pagePagination": "पृष्ठ {{page}} में से {{totalPages}}"
+        }
+    },
+    "rejectDialog": {
+        "title": "घोषणा अस्वीकार करें",
+        "reasonPlaceholder": "कारण",
+        "cancel": "रद्द करें",
+        "reject": "अस्वीकार करें"
+    },
+    "schedule": {
+        "none": "-",
+        "immediate": "तत्काल",
+        "oneTime": "एक बार",
+        "recurring": "आवर्ती",
+        "cron": "CRON: {{expr}}"
+    }
+}

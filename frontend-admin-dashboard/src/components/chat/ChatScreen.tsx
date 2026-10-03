@@ -5,28 +5,22 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import {
     listConversations,
     getMessages,
     sendMessage as apiSendMessage,
     deleteMessage as apiDeleteMessage,
+    editMessage as apiEditMessage,
     markRead,
     getRules,
     acknowledgeRules,
-    createReport,
     createBatchConversation,
     createCommunityConversation,
     createDirectConversation,
     searchBatches,
     searchPeople,
     classifyChatSendError,
+    describeDeleteChatError,
+    describeEditChatError,
     type ChatConversationResponse,
     type ChatMessageResponse,
     type ChatRulesResponse,
@@ -49,12 +43,28 @@ import { NewChatModal } from './NewChatModal';
 import { CommunityRulesPanel } from './CommunityRulesPanel';
 import { RulesEditor } from './RulesEditor';
 import { ReportsReviewQueue } from './ReportsReviewQueue';
+import { ReportMessageDialog } from './ReportMessageDialog';
 import {
     getTerminology,
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const CONVERSATIONS_KEY = ['chat', 'conversations'] as const;
+
+/**
+ * Shown both when the open thread reports CHAT_DISABLED and when the whole institute has chat off
+ * (so there is no thread to open at all).
+ */
+const ChatDisabledNotice = () => (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+        <Prohibit size={48} weight="duotone" className="mb-3 text-neutral-300" />
+        <p className="text-sm font-medium text-neutral-600">Chat is currently disabled</p>
+        <p className="mt-1 max-w-xs text-xs text-neutral-400">
+            Chat has been turned off for this institute. Reach out to an administrator if you think
+            this is a mistake.
+        </p>
+    </div>
+);
 
 const conversationTitle = (c: ChatConversationResponse): string => {
     if (c.title) return c.title;
@@ -139,10 +149,8 @@ export function ChatScreen({
     const [isAcknowledging, setIsAcknowledging] = useState(false);
     const [chatDisabled, setChatDisabled] = useState(false);
 
-    // Report dialog state.
+    // Report dialog state (reason + details are collected inside ReportMessageDialog).
     const [reportTarget, setReportTarget] = useState<ChatMessageResponse | null>(null);
-    const [reportReason, setReportReason] = useState('');
-    const [reportSubmitting, setReportSubmitting] = useState(false);
 
     // Latest known seq for the open conversation — used for SSE resync.
     const latestSeqRef = useRef<number>(0);
@@ -158,11 +166,24 @@ export function ChatScreen({
     const {
         data: conversations = [],
         isLoading: conversationsLoading,
+        error: conversationsError,
     } = useQuery({
         queryKey: CONVERSATIONS_KEY,
         queryFn: () => listConversations(),
         refetchOnWindowFocus: false,
+        // Chat being off for the institute is a permanent answer, not a blip — retrying only
+        // repeats the same 403.
+        retry: (failureCount, err) =>
+            classifyChatSendError(err)?.code !== 'CHAT_DISABLED' && failureCount < 2,
     });
+
+    // Chat stays off until an institute opts in, so every chat endpoint answers 403 CHAT_DISABLED
+    // and the list comes back empty. The per-thread `chatDisabled` below can't cover that: it is
+    // set while opening a conversation, and here there is none to open. Without this the screen
+    // sits on "Select a conversation to start chatting" beside an empty list — an instruction that
+    // can never be followed.
+    const instituteChatDisabled =
+        classifyChatSendError(conversationsError)?.code === 'CHAT_DISABLED';
 
     const activeConversation = useMemo(() => {
         const fromList = conversations.find((c) => c.id === activeId);
@@ -523,8 +544,22 @@ export function ChatScreen({
         try {
             const updated = await apiDeleteMessage(message.conversationId, message.id);
             setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
-        } catch {
-            toast.error('Failed to delete the message.');
+        } catch (err) {
+            toast.error(describeDeleteChatError(err));
+        }
+    }, []);
+
+    // ── Edit a message ────────────────────────────────────────────────────
+    const handleEdit = useCallback(async (message: ThreadMessage, text: string) => {
+        try {
+            const updated = await apiEditMessage(message.conversationId, message.id, { text });
+            setMessages((prev) =>
+                prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
+            );
+        } catch (err) {
+            toast.error(describeEditChatError(err));
+            // Rethrow so the dialog stays open on the text the user is still trying to save.
+            throw err;
         }
     }, []);
 
@@ -545,32 +580,7 @@ export function ChatScreen({
     // ── Report a message ──────────────────────────────────────────────────
     const handleReport = useCallback((message: ChatMessageResponse) => {
         setReportTarget(message);
-        setReportReason('');
     }, []);
-
-    const handleReportSubmit = useCallback(async () => {
-        if (!activeId || !reportTarget) return;
-        const trimmed = reportReason.trim();
-        if (!trimmed) {
-            toast.error('A reason is required to report.');
-            return;
-        }
-        setReportSubmitting(true);
-        try {
-            await createReport({
-                conversationId: activeId,
-                messageId: reportTarget.id,
-                reason: trimmed,
-            });
-            toast.success('Report submitted for review.');
-            setReportTarget(null);
-            setReportReason('');
-        } catch {
-            toast.error('Failed to submit the report.');
-        } finally {
-            setReportSubmitting(false);
-        }
-    }, [activeId, reportTarget, reportReason]);
 
     // ── SSE: receive new messages + read receipts ─────────────────────────
     const onStreamMessage = useCallback(
@@ -684,8 +694,29 @@ export function ChatScreen({
             .catch(() => undefined);
     }, [refetchConversations]);
 
+    // ── SSE: an existing message changed in place (edited / deleted) ──────
+    // NOT routed through onStreamMessage: that path reconciles optimistic sends, bumps the unread
+    // badge and rewrites the conversation-list preview — all wrong for a message that already exists.
+    const onStreamMessageUpdated = useCallback(
+        (payload: ChatMessagePayload) => {
+            const msg = payload.message;
+            if (!msg) return;
+            if (payload.conversationId === activeIdRef.current) {
+                setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)));
+            }
+            // The list preview only belongs to this message while it is still the newest one.
+            patchConversation(payload.conversationId, (c) =>
+                c.lastMessageSeq === msg.seq
+                    ? { ...c, lastMessagePreview: msg.content || 'Attachment' }
+                    : c
+            );
+        },
+        [patchConversation]
+    );
+
     useChatStream({
         onMessage: onStreamMessage,
+        onMessageUpdated: onStreamMessageUpdated,
         onRead: onStreamRead,
         onReconnect: onStreamReconnect,
         enabled: Boolean(userId),
@@ -742,6 +773,17 @@ export function ChatScreen({
     // so the composer stays visible without scrolling. No min-height (it would overflow short screens).
     const shellClass =
         'flex h-[calc(100dvh-9rem)] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm'; // design-lint-ignore: viewport-relative chat height has no spacing token
+
+    // Chat off for the whole institute leaves nothing to render in either pane — no conversations to
+    // list, no thread to open, and the reports queue is chat's own moderation queue. Say so once,
+    // full width, instead of showing an empty list beside "Select a conversation to start chatting".
+    if (instituteChatDisabled) {
+        return (
+            <div className={shellClass}>
+                <ChatDisabledNotice />
+            </div>
+        );
+    }
 
     return (
         <div className={shellClass}>
@@ -874,20 +916,7 @@ export function ChatScreen({
                         </header>
 
                         {chatDisabled ? (
-                            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-                                <Prohibit
-                                    size={48}
-                                    weight="duotone"
-                                    className="mb-3 text-neutral-300"
-                                />
-                                <p className="text-sm font-medium text-neutral-600">
-                                    Chat is currently disabled
-                                </p>
-                                <p className="mt-1 max-w-xs text-xs text-neutral-400">
-                                    Chat has been turned off for this institute. Reach out to an
-                                    administrator if you think this is a mistake.
-                                </p>
-                            </div>
+                            <ChatDisabledNotice />
                         ) : (
                             <>
                                 {isCommunity && rules && (
@@ -913,6 +942,7 @@ export function ChatScreen({
                                     onReport={handleReport}
                                     onRetry={handleRetry}
                                     onDelete={handleDelete}
+                                    onEdit={handleEdit}
                                 />
 
                                 <MessageComposer
@@ -958,57 +988,11 @@ export function ChatScreen({
                 />
             )}
 
-            <Dialog
-                open={reportTarget !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setReportTarget(null);
-                        setReportReason('');
-                    }
-                }}
-            >
-                <DialogContent className="w-full max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="text-base font-semibold text-neutral-700">
-                            Report message
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-2 py-2">
-                        <label
-                            htmlFor="chat-report-reason"
-                            className="text-sm font-medium text-neutral-600"
-                        >
-                            Why are you reporting this message?
-                        </label>
-                        <Textarea
-                            id="chat-report-reason"
-                            autoFocus
-                            rows={4}
-                            value={reportReason}
-                            onChange={(e) => setReportReason(e.target.value)}
-                            placeholder="Describe the issue..."
-                        />
-                    </div>
-                    <DialogFooter>
-                        <MyButton
-                            buttonType="secondary"
-                            onClick={() => {
-                                setReportTarget(null);
-                                setReportReason('');
-                            }}
-                        >
-                            Cancel
-                        </MyButton>
-                        <MyButton
-                            buttonType="primary"
-                            disabled={!reportReason.trim() || reportSubmitting}
-                            onClick={() => void handleReportSubmit()}
-                        >
-                            {reportSubmitting ? 'Submitting...' : 'Submit report'}
-                        </MyButton>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ReportMessageDialog
+                target={reportTarget}
+                conversationId={activeId}
+                onClose={() => setReportTarget(null)}
+            />
 
             <LeaderboardShareDialog
                 open={Boolean(leaderboardDialog)}

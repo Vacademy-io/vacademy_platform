@@ -1,0 +1,18 @@
+{
+    "reply": "Répondre",
+    "dialogDescription": "Envoyez une réponse via l'un des expéditeurs configurés de votre établissement.",
+    "loadingSenders": "Chargement des expéditeurs…",
+    "noSenderConfigured": "Aucun expéditeur configuré pour cet établissement. Ajoutez-en un dans Paramètres → Paramètres de notification → Paramètres e-mail pour activer les réponses.",
+    "from": "De",
+    "to": "À",
+    "subject": "Objet",
+    "optional": "(facultatif)",
+    "writeReplyPlaceholder": "Écrire une réponse…",
+    "cancel": "Annuler",
+    "sending": "Envoi en cours…",
+    "sendReply": "Envoyer la réponse",
+    "bodyEmpty": "Le message ne peut pas être vide",
+    "pickSender": "Choisissez un expéditeur",
+    "replySent": "Réponse envoyée",
+    "failedToSendReply": "Échec de l'envoi de la réponse"
+}

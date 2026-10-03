@@ -63,6 +63,29 @@ export const bucketCounts = (
     return counts;
 };
 
+/**
+ * The schedule_time window a bucket stands for, in the USER's clock. Sent to the server so
+ * counts and paging are over the whole institute rather than whatever happened to be on the
+ * first fetched page — and so an Asia/Kolkata counsellor's "today" is their today.
+ */
+export const bucketWindow = (
+    bucket: FollowUpBucket,
+    now: Date = new Date()
+): { from?: string; to?: string } => {
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+    switch (bucket) {
+        case 'overdue':
+            return { to: now.toISOString() };
+        case 'today':
+            return { from: now.toISOString(), to: endOfToday.toISOString() };
+        case 'upcoming':
+            return { from: endOfToday.toISOString() };
+        default:
+            return {};
+    }
+};
+
 /** Filter VMs to a specific bucket (or all). */
 export const filterToBucket = (
     vms: LeadCardVM[],

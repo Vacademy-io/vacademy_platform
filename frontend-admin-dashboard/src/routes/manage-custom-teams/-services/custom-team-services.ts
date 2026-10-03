@@ -64,6 +64,13 @@ export interface CustomRole {
     id: string;
     name: string;
     permissions: string[]; // IDs of permissions
+    /**
+     * Owning institute: null for platform roles, this institute's id for roles it
+     * created. CustomRoleDTO has no naming strategy, so the wire name is camelCase;
+     * the snake_case spelling is accepted too in case that ever changes.
+     */
+    instituteId?: string | null;
+    institute_id?: string | null;
 }
 
 /** Request body for POST /institute/{instituteId}/roles (Create) and PUT .../roles/{roleId} (Update) */
@@ -171,10 +178,16 @@ export interface SubOrgListItem {
     suborg_id?: string | null;
     name?: string | null;
     status?: string | null;
+    /** auth user id of the root admin — the recipient of the row's "Share credentials" action. */
+    admin_user_id?: string | null;
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
-    /** Address stamped on the spawned institute at registration; null when never collected. */
+    /** Address stamped on the spawned institute at registration; null when never collected.
+     *  `address_line` is the street line as typed (registration line 1 + line 2 joined) —
+     *  free text that often repeats the city/state, so it is shown as its own column rather
+     *  than composed together with the fields below. */
+    address_line?: string | null;
     city?: string | null;
     state?: string | null;
     pincode?: string | null;
@@ -247,13 +260,25 @@ export const getSubOrgsWithDetails = async (
     };
 };
 
+// Global role rows seeded in 2024 that nothing uses any more. "Admin" (id 1) is a
+// near-duplicate of the real "ADMIN" (id 5): both render as "Admin" in pickers, and
+// anyone given id 1 lands on a stripped admin dashboard because the FE gates on
+// 'ADMIN' case-sensitively. Matched by exact name — role_name is unique, so these
+// strings can never collide with ADMIN or a custom role. The auth service filters
+// the same list; this keeps them hidden regardless of deploy order.
+export const LEGACY_ROLE_NAMES = ['Admin', 'User', 'Moderator', 'Guest'];
+
 export const getAllRoles = async () => {
     const instituteId = getCurrentInstituteId();
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: `${ROLES_BASE}/${instituteId}/roles`,
     });
-    return response.data;
+    return Array.isArray(response.data)
+        ? response.data.filter(
+              (role: { name?: string }) => !LEGACY_ROLE_NAMES.includes(role?.name ?? '')
+          )
+        : response.data;
 };
 
 export const createCustomRole = async (payload: CreateRoleDTO) => {
@@ -433,6 +458,35 @@ export const resyncSubOrgInvites = async (
 }> => {
     const parentInstituteId = getCurrentInstituteId();
     const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resync-invites`;
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url,
+        params: { parentInstituteId },
+    });
+    return response.data;
+};
+
+/** What the backend reports after re-sending a sub-org admin's login details. */
+export interface ResendSubOrgAdminCredentialsResult {
+    sub_org_id: string;
+    user_id: string;
+    /** 1 when the notification service accepted the email, else 0. */
+    sent: number;
+    failed: number;
+    /** Backend's own explanation — surfaced verbatim when nothing was sent. */
+    message?: string | null;
+}
+
+/**
+ * Re-send the sub-org admin's current login details by email (Manage VLEs → row menu →
+ * "Share credentials"). The mail is branded for the parent institute and links to its admin
+ * portal. Read-only on the admin's account: nothing is rotated or re-enrolled.
+ */
+export const resendSubOrgAdminCredentials = async (
+    subOrgId: string
+): Promise<ResendSubOrgAdminCredentialsResult> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resend-admin-credentials`;
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url,

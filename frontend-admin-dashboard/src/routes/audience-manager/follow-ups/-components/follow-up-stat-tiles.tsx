@@ -1,4 +1,6 @@
-import { Warning, Sun, CalendarBlank, ListChecks } from '@phosphor-icons/react';
+import { Warning, Sun, CalendarBlank, ListChecks, CaretRight } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import type { FollowUpBucket } from './follow-up-buckets';
 
@@ -27,32 +29,32 @@ interface TileSpec {
     tone: 'danger' | 'warning' | 'info' | 'neutral';
 }
 
-const TILES: TileSpec[] = [
+const buildTiles = (t: TFunction): TileSpec[] => [
     {
         bucket: 'overdue',
-        label: 'Pending',
-        caption: 'Overdue',
+        label: t('tiles.overdue.label'),
+        caption: t('tiles.overdue.caption'),
         Icon: Warning,
         tone: 'danger',
     },
     {
         bucket: 'today',
-        label: 'Today',
-        caption: 'Due today',
+        label: t('tiles.today.label'),
+        caption: t('tiles.today.caption'),
         Icon: Sun,
         tone: 'warning',
     },
     {
         bucket: 'upcoming',
-        label: 'Upcoming',
-        caption: 'Next 7 days',
+        label: t('tiles.upcoming.label'),
+        caption: t('tiles.upcoming.caption'),
         Icon: CalendarBlank,
         tone: 'info',
     },
     {
         bucket: 'all',
-        label: 'All',
-        caption: 'All follow-ups',
+        label: t('tiles.all.label'),
+        caption: t('tiles.all.caption'),
         Icon: ListChecks,
         tone: 'neutral',
     },
@@ -79,9 +81,11 @@ const TONE_BORDER: Record<TileSpec['tone'], string> = {
 };
 
 export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTilesProps) {
+    const { t } = useTranslation('audienceManagerFollowUpStatTiles');
+    const tiles = buildTiles(t);
     return (
         <div className="flex flex-wrap gap-3">
-            {TILES.map(({ bucket, label, caption, Icon, tone }) => {
+            {tiles.map(({ bucket, label, caption, Icon, tone }) => {
                 const isActive = active === bucket;
                 const count = counts[bucket] ?? 0;
                 return (
@@ -98,14 +102,31 @@ export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTile
                         )}
                         aria-pressed={isActive}
                     >
-                        <Icon weight="fill" className={cn('size-7 shrink-0', TONE_ICON[tone])} />
+                        {/* The icon sits on its own white tile so it reads as a mark
+                            rather than as part of the number next to it. */}
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/80">
+                            <Icon weight="fill" className={cn('size-6', TONE_ICON[tone])} />
+                        </span>
                         <div className="min-w-0 flex-1">
+                            {/* Grouped: these used to top out at the 200 rows the page had
+                                fetched, so four digits never came up. They do now. */}
                             <p className="text-3xl font-semibold leading-none text-neutral-900">
-                                {count}
+                                {count.toLocaleString()}
                             </p>
                             <p className="mt-1.5 text-sm font-medium text-neutral-700">{label}</p>
                             <p className="text-xs text-neutral-500">{caption}</p>
                         </div>
+                        <span
+                            className={cn(
+                                'flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors',
+                                isActive
+                                    ? 'border-primary-400 bg-primary-500 text-neutral-50'
+                                    : 'border-neutral-200 bg-white/80 text-neutral-400'
+                            )}
+                            aria-hidden="true"
+                        >
+                            <CaretRight className="size-3.5" weight="bold" />
+                        </span>
                     </button>
                 );
             })}

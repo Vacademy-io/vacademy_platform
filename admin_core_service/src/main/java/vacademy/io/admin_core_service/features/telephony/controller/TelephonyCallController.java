@@ -8,6 +8,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.telephony.core.CallOrchestrator;
+import vacademy.io.admin_core_service.features.telephony.core.dto.CallAvailabilityDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallLogDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallOptionsResponseDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRequestDTO;
@@ -49,6 +50,20 @@ public class TelephonyCallController {
             @RequestBody ConnectCallRequestDTO req,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(orchestrator.connect(req, user));
+    }
+
+    /**
+     * Should a Call button render for this person, and can they actually dial?
+     *
+     * <p>Split out from {@code /options} because that one throws when calling is
+     * off, which is correct for a picker opened by a deliberate click but wrong
+     * for a page merely deciding whether to show a button. Always 200.
+     */
+    @GetMapping("/availability")
+    public ResponseEntity<CallAvailabilityDTO> availability(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(orchestrator.computeAvailability(instituteId, user.getUserId()));
     }
 
     /**

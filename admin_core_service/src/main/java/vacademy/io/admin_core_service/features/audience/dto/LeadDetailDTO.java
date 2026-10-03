@@ -24,6 +24,11 @@ public class LeadDetailDTO {
     private String responseId;
     private String audienceId;
     private String campaignName;
+    /** The audience's campaign type, i.e. the channel the lead came in through (FACEBOOK, GOOGLE ADS...). */
+    private String campaignType;
+    /** Latest UTM tagging for this lead, so the list can show where it came from. */
+    private String utmSource;
+    private String utmCampaign;
     private String userId;
     private String studentUserId;
     private String sourceType;

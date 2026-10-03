@@ -142,9 +142,17 @@ class ScreenshotWorker:
             # means tween delays inside the shot HTML compose against globalTimeline=0,
             # which is exactly what we want for screenshot timestamps that are
             # shot-relative seconds.
+            # x/y/w/h are not optional. __updateSnippets sizes the shot's host
+            # from them (`e.w | 0`), so an entry without them gets a 0x0 host
+            # and a shot laid out as 100% of its container collapses: every
+            # frame came back as the bare background colour. The vision
+            # reviewer and creativity critic were judging blank frames — on a
+            # 2026-10-01 run all 21 review screenshots were one identical
+            # single-colour PNG. The preview-MP4 path below already passed them.
             await page.evaluate(
                 "async (entries) => { await window.__updateSnippets(entries); }",
-                [{"id": "screenshot-shot", "html": html, "inTime": 0}],
+                [{"id": "screenshot-shot", "html": html, "inTime": 0,
+                  "x": 0, "y": 0, "w": int(width), "h": int(height)}],
             )
 
             # Wait for shadow-DOM stylesheets and document fonts — same sequence
@@ -313,9 +321,13 @@ class ScreenshotWorker:
                 logger.error(f"bbox_check_shot: __updateSnippets failed to install — {exc}")
                 raise
 
+            # Same as /screenshot: without x/y/w/h the host is 0x0 and the
+            # overflow check measures a collapsed shot, so it cannot see the
+            # overflow it exists to catch.
             await page.evaluate(
                 "async (entries) => { await window.__updateSnippets(entries); }",
-                [{"id": "bbox-check-shot", "html": html, "inTime": 0}],
+                [{"id": "bbox-check-shot", "html": html, "inTime": 0,
+                  "x": 0, "y": 0, "w": int(width), "h": int(height)}],
             )
 
             # Stylesheet + font load. Without these waits the bbox check fires

@@ -1,34 +1,44 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CaretDown, CaretUp, Check, Plus } from '@phosphor-icons/react';
-
-interface CampaignTypeOption {
-    value: string;
-    label: string;
-}
+import { useTranslation } from 'react-i18next';
+import {
+    buildDefaultCampaignTypeOptions,
+    type CampaignTypeOption,
+} from '../../-utils/campaign-types';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 interface CampaignTypeDropdownProps {
     value?: string;
     onChange: (value: string) => void;
     error?: string;
     placeholder?: string;
+    /** Overrides the "Enter <term>" hint — the enquiry form reuses this dropdown under its own name. */
+    customInputPlaceholder?: string;
     initialOptions?: CampaignTypeOption[];
 }
-
-const defaultOptions: CampaignTypeOption[] = [
-    { value: 'Website', label: 'Website' },
-    { value: 'Google Ads', label: 'Google Ads' },
-    { value: 'Social Media', label: 'Social Media' },
-];
 
 const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
     value = '',
     onChange,
     error,
-    placeholder = 'Select campaign type',
-    initialOptions = defaultOptions,
+    placeholder,
+    customInputPlaceholder,
+    initialOptions,
 }) => {
+    const { t } = useTranslation('audienceManagerCampaignTypeDropdown');
+    // What this institute calls the campaign type (Lead Settings → Terminology).
+    // Skipped when the caller names both strings itself (the enquiry form does),
+    // so reusing this dropdown there costs no settings fetch.
+    const { campaignType: term } = useLeadTerminology({
+        skip: Boolean(placeholder && customInputPlaceholder),
+    });
+    const resolvedPlaceholder = placeholder ?? t('placeholder', { term });
+    const resolvedCustomPlaceholder =
+        customInputPlaceholder ?? t('customInputPlaceholder', { term });
     const [isOpen, setIsOpen] = useState(false);
-    const [options, setOptions] = useState<CampaignTypeOption[]>(initialOptions);
+    const [options, setOptions] = useState<CampaignTypeOption[]>(
+        () => initialOptions ?? buildDefaultCampaignTypeOptions(t)
+    );
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [customValue, setCustomValue] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -96,7 +106,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
             );
             return found?.label || value;
         }
-        return placeholder;
+        return resolvedPlaceholder;
     })();
 
     return (
@@ -115,9 +125,9 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                 <span className="truncate text-left">{displayLabel}</span>
                 <div className="ml-2 shrink-0">
                     {isOpen ? (
-                        <CaretUp className="size-[18px] text-neutral-600" />
+                        <CaretUp className="size-4 text-neutral-600" />
                     ) : (
-                        <CaretDown className="size-[18px] text-neutral-600" />
+                        <CaretDown className="size-4 text-neutral-600" />
                     )}
                 </div>
             </button>
@@ -152,7 +162,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                                 className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary-600 transition-colors hover:bg-primary-50"
                             >
                                 <Plus className="size-4" />
-                                Add custom Enquiry type
+                                {t('addCustomType')}
                             </button>
                         ) : (
                             <div className="space-y-2 px-3 py-2">
@@ -161,7 +171,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                                     type="text"
                                     value={customValue}
                                     onChange={(e) => setCustomValue(e.target.value)}
-                                    placeholder="Enter campaign type"
+                                    placeholder={resolvedCustomPlaceholder}
                                     className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                                 />
                                 <div className="flex justify-end gap-2">
@@ -173,14 +183,14 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                                         }}
                                         className="text-sm text-neutral-500 hover:text-neutral-700"
                                     >
-                                        Cancel
+                                        {t('cancel')}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={handleCustomSave}
                                         className="text-sm font-semibold text-primary-600 hover:text-primary-700"
                                     >
-                                        Save
+                                        {t('save')}
                                     </button>
                                 </div>
                             </div>

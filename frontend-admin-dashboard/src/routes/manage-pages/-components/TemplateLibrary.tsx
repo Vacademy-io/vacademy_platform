@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../-stores/editor-store';
 import { PAGE_TEMPLATES, PageTemplate, applyPageTemplate, applySectionTemplate } from '../-utils/page-templates';
 import { Button } from '@/components/ui/button';
@@ -12,11 +13,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Layers } from 'lucide-react';
+import { FileText, Stack } from '@phosphor-icons/react';
 
 type TemplateCategory = 'page' | 'section';
 
 export const TemplateLibrary = () => {
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const { config, selectedPageId, updateConfig } = useEditorStore();
     const [activeCategory, setActiveCategory] = useState<TemplateCategory>('page');
     const [pendingTemplate, setPendingTemplate] = useState<PageTemplate | null>(null);
@@ -29,8 +31,8 @@ export const TemplateLibrary = () => {
         const newPages = config.pages.map((page) => {
             if (page.id !== selectedPageId) return page;
             return template.category === 'page'
-                ? applyPageTemplate(page, template)
-                : applySectionTemplate(page, template);
+                ? applyPageTemplate(page, template, tTemplates)
+                : applySectionTemplate(page, template, tTemplates);
         });
 
         updateConfig({ ...config, pages: newPages });
@@ -71,7 +73,7 @@ export const TemplateLibrary = () => {
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    <Layers className="size-3.5" />
+                    <Stack className="size-3.5" />
                     Sections
                 </button>
             </div>
@@ -92,7 +94,7 @@ export const TemplateLibrary = () => {
                     >
                         <span className="text-sm font-medium text-gray-800">{template.name}</span>
                         <span className="text-xs text-gray-500">{template.description}</span>
-                        <span className="mt-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                        <span className="mt-1 rounded bg-gray-100 px-2 py-0.5 text-2xs font-medium text-gray-500 uppercase tracking-wide">
                             {template.category === 'page' ? 'Replaces page' : 'Inserts section'}
                         </span>
                     </button>

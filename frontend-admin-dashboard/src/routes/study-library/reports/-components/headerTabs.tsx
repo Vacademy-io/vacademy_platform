@@ -1,5 +1,6 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import BatchReports from './batch/batchReports';
 import StudentReports from './student/studentReports';
 import LiveClassReports from './live/liveClassReports';
@@ -34,6 +35,7 @@ const reportTypes = [
 ] as const;
 
 export default function HeaderTabs() {
+    const { t } = useTranslation('studyLibraryReportsHeaderTabs');
     const search = useSearch({ from: Route.id });
 
     const [selectedTab, setSelectedTab] = useState(
@@ -134,7 +136,7 @@ export default function HeaderTabs() {
                                 toggleReportSetting(roleKey, settingKey, type, !!checked)
                             }
                         />
-                        <div className="text-body">Generate {type} reports</div>
+                        <div className="text-body">{t('generateTypeReports', { type })}</div>
                     </div>
                 ))}
             </div>
@@ -147,8 +149,8 @@ export default function HeaderTabs() {
         console.log('Saving updated settings:', settingDetails);
 
         updateSettingsMutation.mutate(settingDetails, {
-            onSuccess: () => toast.success('Settings updated!'),
-            onError: () => toast.error('Failed to update'),
+            onSuccess: () => toast.success(t('toast.settingsUpdated')),
+            onError: () => toast.error(t('toast.updateFailed')),
         });
     };
 
@@ -182,7 +184,7 @@ export default function HeaderTabs() {
                                     : 'border-none bg-transparent'
                                 }`}
                         >
-                            Batch
+                            {t('tabs.batch')}
                         </TabsTrigger>
                         <TabsTrigger
                             value="STUDENT"
@@ -200,7 +202,7 @@ export default function HeaderTabs() {
                                     : 'border-none bg-transparent'
                                 }`}
                         >
-                            Live Classes
+                            {t('tabs.liveClasses')}
                         </TabsTrigger>
                         {showLeaderboard && (
                             <TabsTrigger
@@ -210,7 +212,7 @@ export default function HeaderTabs() {
                                         : 'border-none bg-transparent'
                                     }`}
                             >
-                                Leaderboard
+                                {t('tabs.leaderboard')}
                             </TabsTrigger>
                         )}
                     </TabsList>
@@ -222,7 +224,7 @@ export default function HeaderTabs() {
                             buttonType="secondary"
                             className="w-full sm:w-auto"
                         >
-                            Report Settings
+                            {t('reportSettings')}
                         </MyButton>
                     </div>
                 </div>
@@ -242,7 +244,7 @@ export default function HeaderTabs() {
                 )}
             </Tabs>
             <MyDialog
-                heading="Reports Settings"
+                heading={t('reportsSettingsHeading')}
                 open={settingDialogState}
                 onOpenChange={setSettingDialogState}
                 dialogWidth="w-full max-w-[800px]"
@@ -267,7 +269,7 @@ export default function HeaderTabs() {
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Student via mail
+                                        {t('sendReportsToStudentViaMail')}
                                     </div>
                                 </div>
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
@@ -285,18 +287,18 @@ export default function HeaderTabs() {
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Student via whatsapp
+                                        {t('sendReportsToStudentViaWhatsapp')}
                                     </div>
                                 </div>
                                 {renderProgressReportSection(
                                     RoleSettingEnum.LEARNER,
                                     ReportTypeEnum.LEARNER_PROGRESS,
-                                    'Student Learning Progress Report'
+                                    t('studentLearningProgressReport')
                                 )}
                                 {renderProgressReportSection(
                                     RoleSettingEnum.LEARNER,
                                     ReportTypeEnum.BATCH_PROGRESS,
-                                    'Batch Learning Progress Report'
+                                    t('batchLearningProgressReport')
                                 )}
                             </div>
                             <div className="border"></div>
@@ -316,7 +318,7 @@ export default function HeaderTabs() {
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Parent/Guardian via mail
+                                        {t('sendReportsToParentViaMail')}
                                     </div>
                                 </div>
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
@@ -334,24 +336,24 @@ export default function HeaderTabs() {
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Parent/Guardian via whatsapp
+                                        {t('sendReportsToParentViaWhatsapp')}
                                     </div>
                                 </div>
                                 {renderProgressReportSection(
                                     RoleSettingEnum.PARENT,
                                     ReportTypeEnum.LEARNER_PROGRESS,
-                                    'Student Learning Progress Report'
+                                    t('studentLearningProgressReport')
                                 )}
                                 {renderProgressReportSection(
                                     RoleSettingEnum.PARENT,
                                     ReportTypeEnum.BATCH_PROGRESS,
-                                    'Batch Learning Progress Report'
+                                    t('batchLearningProgressReport')
                                 )}
                             </div>
                         </div>
                         <div className="flex w-full items-center justify-center">
                             <MyButton onClick={handleSave} className="w-full sm:w-auto">
-                                Save Changes
+                                {t('saveChanges')}
                             </MyButton>
                         </div>
                     </div>

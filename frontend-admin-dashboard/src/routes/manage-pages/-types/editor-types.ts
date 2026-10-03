@@ -69,6 +69,44 @@ export interface GlobalSettings {
         enabled: boolean;
         requirePayment: boolean;
     };
+    /**
+     * Per-course authored landing pages: course id (or package session id) →
+     * one of this catalogue's page routes. A mapped course opens that page
+     * from every "View course" CTA and from a direct hit on its course URL,
+     * instead of the shared course details layout; an unmapped course is
+     * untouched. Edited under Global settings → Course Pages.
+     */
+    coursePages?: {
+        enabled: boolean;
+        courses?: Record<
+        string,
+        { mode?: 'DETAILS' | 'PAGE' | 'OUTLINE' | 'TILES'; route?: string }
+    >;
+        /** Pre-modes shape: course id → page route, always meaning PAGE. */
+        map?: Record<string, string>;
+    };
+    /**
+     * Step-by-step "find your course" wizard, shown once over the catalogue.
+     * The OPTIONS are read live from whichever course block the page renders —
+     * only the wording and the grouping are authored, under Global Settings →
+     * Course Finder Wizard.
+     */
+    courseFinder?: {
+        enabled: boolean;
+        /** Asked in this fixed order; a step with no options is skipped. */
+        steps?: ('level' | 'session' | 'tag')[];
+        /** No skip button — the visitor must answer before seeing courses. */
+        mandatory?: boolean;
+        /** Per-step heading override, e.g. `{ level: 'Class' }`. */
+        stepLabels?: Partial<Record<'level' | 'session' | 'tag', string>>;
+        /**
+         * Folds per-subject level names into one option:
+         * `{ 'Class 6': ['English - Class 6', 'Mathematics - Class 6'] }`.
+         * KEY ORDER IS DISPLAY ORDER — the wizard renders Object.keys()
+         * unsorted, so the editor rebuilds this object rather than mutating it.
+         */
+        levelGroups?: Record<string, string[]>;
+    };
     payment: {
         enabled: boolean;
         provider: 'razorpay' | 'stripe' | 'paypal' | 'PHONEPE';
@@ -77,6 +115,31 @@ export interface GlobalSettings {
     layout?: {
         header?: any;
         footer?: any;
+    };
+    /**
+     * Site-level search-engine settings, read by the learner app's edge
+     * middleware for crawlers: keywords + verification go into <head>, the
+     * organization block becomes schema.org EducationalOrganization JSON-LD
+     * (footer social links are merged into sameAs automatically). Per-page
+     * title/description/share image live on each page's `seo`.
+     */
+    seo?: {
+        keywords?: string[];
+        /** `content` value of Search Console's HTML-tag verification. */
+        googleSiteVerification?: string;
+        organization?: {
+            name?: string;
+            legalName?: string;
+            description?: string;
+            founder?: string;
+            foundingDate?: string;
+            email?: string;
+            telephone?: string;
+            address?: string;
+            /** Absolute URL of a clean logo on a plain background (≥112px). */
+            logo?: string;
+            sameAs?: string[];
+        };
     };
     /** Sticky header — sticks to top on scroll */
     stickyHeader?: boolean;
@@ -130,6 +193,11 @@ export interface Page {
     published?: boolean;
     /** Page-level background color override */
     backgroundColor?: string;
+    /** Hide the site header and footer on this page. An imported HTML page
+     *  usually pastes in its own nav and footer, so the site's chrome would
+     *  render a second set. Set automatically when a page is created as an
+     *  HTML page. */
+    hideSiteChrome?: boolean;
     seo?: {
         metaTitle?: string;
         metaDescription?: string;

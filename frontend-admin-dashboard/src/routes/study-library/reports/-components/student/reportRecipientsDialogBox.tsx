@@ -2,6 +2,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { fetchLearnerSetting, updateLearnersReportSetting } from '../../-services/utils';
 import { convertCommaSeparatedToArray } from '../../-services/helper';
 import {
@@ -29,6 +30,7 @@ const reportTypes = [
 ] as const;
 
 export default function ReportRecipientsDialogBox({ userId }: { userId: string }) {
+    const { t } = useTranslation('studyLibraryStudentReportRecipientsDialogBox');
     const [reportRecipientsState, setReportRecipientsState] = useState(false);
     const [settingDetails, setSettingDetails] = useState<InstituteSettingResponse>();
     const settingsMutation = useMutation({ mutationFn: fetchLearnerSetting });
@@ -124,7 +126,7 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                 toggleReportSetting(roleKey, settingKey, type, !!checked)
                             }
                         />
-                        <div className="text-body">Generate {type} reports</div>
+                        <div className="text-body">{t('generateTypeReports', { type })}</div>
                     </div>
                 ))}
             </div>
@@ -139,8 +141,8 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
         updateSettingsMutation.mutate(
             { userId, data: settingDetails },
             {
-                onSuccess: () => toast.success('Settings updated!'),
-                onError: () => toast.error('Failed to update'),
+                onSuccess: () => toast.success(t('toast.settingsUpdated')),
+                onError: () => toast.error(t('toast.updateFailed')),
             }
         );
     };
@@ -173,10 +175,10 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                     setReportRecipientsState(!reportRecipientsState);
                 }}
             >
-                Report Recipients
+                {t('reportRecipients')}
             </MyButton>
             <MyDialog
-                heading="Report Recipients"
+                heading={t('reportRecipients')}
                 open={reportRecipientsState}
                 onOpenChange={setReportRecipientsState}
                 dialogWidth="w-[800px]"
@@ -202,11 +204,11 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                             }
                                         />
                                         <div className="text-subtitle font-[600]">
-                                            Send Reports to Student via mail
+                                            {t('sendReportsToStudentViaMail')}
                                         </div>
                                     </div>
                                     <div>
-                                        <div>Student&apos;s Email</div>
+                                        <div>{t('studentsEmail')}</div>
                                         <MultipleInput
                                             itemsList={convertCommaSeparatedToArray(
                                                 settingDetails?.learner_setting
@@ -234,16 +236,17 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Student via whatsapp
+                                        {t('sendReportsToStudentViaWhatsapp')}
                                     </div>
                                 </div>
                                 <div>
                                     <div>
-                                        {getTerminology(
-                                            RoleTerms.Learner,
-                                            SystemTerms.Learner
-                                        ).toLocaleLowerCase()}
-                                        s&apos;s Mobile Number
+                                        {t('learnerMobileNumberLabel', {
+                                            term: getTerminology(
+                                                RoleTerms.Learner,
+                                                SystemTerms.Learner
+                                            ).toLocaleLowerCase(),
+                                        })}
                                     </div>
                                     <MultipleInput
                                         itemsList={convertCommaSeparatedToArray(
@@ -259,12 +262,12 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                 {renderProgressReportSection(
                                     RoleSettingEnum.LEARNER,
                                     ReportTypeEnum.LEARNER_PROGRESS,
-                                    'Student Learning Progress Report'
+                                    t('studentLearningProgressReport')
                                 )}
                                 {renderProgressReportSection(
                                     RoleSettingEnum.LEARNER,
                                     ReportTypeEnum.BATCH_PROGRESS,
-                                    'Batch Learning Progress Report'
+                                    t('batchLearningProgressReport')
                                 )}
                             </div>
                             <div className="border"></div>
@@ -284,11 +287,11 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Parent/Guardian via mail
+                                        {t('sendReportsToParentViaMail')}
                                     </div>
                                 </div>
                                 <div>
-                                    <div>Parent/Guardian&apos;s Email</div>
+                                    <div>{t('parentGuardianEmail')}</div>
                                     <MultipleInput
                                         itemsList={convertCommaSeparatedToArray(
                                             settingDetails?.parent_setting
@@ -315,11 +318,11 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                         }
                                     />
                                     <div className="text-subtitle font-[600]">
-                                        Send Reports to Parent/Guardian via whatsapp
+                                        {t('sendReportsToParentViaWhatsapp')}
                                     </div>
                                 </div>
                                 <div>
-                                    <div>Parent/Guardian&apos;s Mobile Number</div>
+                                    <div>{t('parentGuardianMobileNumber')}</div>
                                     <MultipleInput
                                         itemsList={convertCommaSeparatedToArray(
                                             settingDetails?.parent_setting
@@ -334,17 +337,17 @@ export default function ReportRecipientsDialogBox({ userId }: { userId: string }
                                 {renderProgressReportSection(
                                     RoleSettingEnum.PARENT,
                                     ReportTypeEnum.LEARNER_PROGRESS,
-                                    'Student Learning Progress Report'
+                                    t('studentLearningProgressReport')
                                 )}
                                 {renderProgressReportSection(
                                     RoleSettingEnum.PARENT,
                                     ReportTypeEnum.BATCH_PROGRESS,
-                                    'Batch Learning Progress Report'
+                                    t('batchLearningProgressReport')
                                 )}
                             </div>
                         </div>
                         <div className="flex w-full items-center justify-center">
-                            <MyButton onClick={handleSave}>Save Changes</MyButton>
+                            <MyButton onClick={handleSave}>{t('saveChanges')}</MyButton>
                         </div>
                     </div>
                 )}

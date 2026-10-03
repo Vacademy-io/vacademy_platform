@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Dialog,
     DialogContent,
@@ -41,6 +42,7 @@ export function RecordSubOrgPaymentDialog({
     contextLabel,
     suggestedAmount,
 }: RecordSubOrgPaymentDialogProps) {
+    const { t } = useTranslation('manageCustomTeamsRecordSubOrgPaymentDialog');
     const queryClient = useQueryClient();
     const [amount, setAmount] = useState<string>('');
     const [paymentDate, setPaymentDate] = useState<string>(
@@ -61,7 +63,7 @@ export function RecordSubOrgPaymentDialog({
         mutationFn: async () => {
             const amt = Number(amount);
             if (!Number.isFinite(amt) || amt <= 0) {
-                throw new Error('Enter a positive amount');
+                throw new Error(t('errors.enterPositiveAmount'));
             }
             return recordSubOrgAdminOfflinePayment(userPlanId, {
                 amount: amt,
@@ -71,7 +73,7 @@ export function RecordSubOrgPaymentDialog({
             });
         },
         onSuccess: () => {
-            toast.success('Recorded offline payment');
+            toast.success(t('toasts.recorded'));
             // Invalidate the surfaces that reflect installment / invoice state so the
             // analytics panel + drawer pick up the new PaymentLog and (if requested)
             // the freshly-generated Invoice without a manual refresh.
@@ -98,7 +100,7 @@ export function RecordSubOrgPaymentDialog({
             onOpenChange(false);
         },
         onError: (err: any) => {
-            toast.error(err?.message || err?.response?.data?.message || 'Payment record failed');
+            toast.error(err?.message || err?.response?.data?.message || t('toasts.failed'));
         },
     });
 
@@ -106,18 +108,16 @@ export function RecordSubOrgPaymentDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[440px]">
                 <DialogHeader>
-                    <DialogTitle>Record offline payment</DialogTitle>
+                    <DialogTitle>{t('title')}</DialogTitle>
                     <DialogDescription>
                         {contextLabel ? `${contextLabel}. ` : ''}
-                        Enter any amount — it is bucket-filled (oldest-first) across the
-                        pending installments. Excess is recorded as overpayment on the
-                        payment log; partials carry into the next installment.
+                        {t('description')}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-3 py-2">
                     <div className="space-y-1">
-                        <Label htmlFor="rsop-amount">Amount (₹)</Label>
+                        <Label htmlFor="rsop-amount">{t('fields.amount')}</Label>
                         <Input
                             id="rsop-amount"
                             type="number"
@@ -125,12 +125,12 @@ export function RecordSubOrgPaymentDialog({
                             step="any"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            placeholder="e.g. 5000"
+                            placeholder={t('fields.amountPlaceholder')}
                             onFocus={(e) => e.currentTarget.select()}
                         />
                     </div>
                     <div className="space-y-1">
-                        <Label htmlFor="rsop-date">Payment date</Label>
+                        <Label htmlFor="rsop-date">{t('fields.paymentDate')}</Label>
                         <Input
                             id="rsop-date"
                             type="date"
@@ -139,13 +139,13 @@ export function RecordSubOrgPaymentDialog({
                         />
                     </div>
                     <div className="space-y-1">
-                        <Label htmlFor="rsop-ref">Reference</Label>
+                        <Label htmlFor="rsop-ref">{t('fields.reference')}</Label>
                         <Input
                             id="rsop-ref"
                             type="text"
                             value={reference}
                             onChange={(e) => setReference(e.target.value)}
-                            placeholder="cheque #, UPI ref, receipt no."
+                            placeholder={t('fields.referencePlaceholder')}
                         />
                     </div>
                     <label className="flex items-center gap-2 text-sm">
@@ -153,7 +153,7 @@ export function RecordSubOrgPaymentDialog({
                             checked={generateInvoice}
                             onCheckedChange={(c) => setGenerateInvoice(!!c)}
                         />
-                        Generate invoice PDF
+                        {t('fields.generateInvoice')}
                     </label>
                 </div>
 
@@ -165,7 +165,7 @@ export function RecordSubOrgPaymentDialog({
                         onClick={() => onOpenChange(false)}
                         disable={mutation.isPending}
                     >
-                        Cancel
+                        {t('cancel')}
                     </MyButton>
                     <MyButton
                         type="button"
@@ -177,10 +177,10 @@ export function RecordSubOrgPaymentDialog({
                         {mutation.isPending ? (
                             <>
                                 <Loader2 className="size-4 animate-spin" />
-                                Saving…
+                                {t('saving')}
                             </>
                         ) : (
-                            'Save & FIFO-allocate'
+                            t('saveAndAllocate')
                         )}
                     </MyButton>
                 </DialogFooter>

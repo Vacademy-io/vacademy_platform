@@ -1,6 +1,7 @@
 import { MyPagination } from '@/components/design-system/pagination';
 import { usePaginationState } from '@/hooks/pagination';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { StudentSearchBox } from '@/components/common/student-search-box';
 import { ActivityLogDialog } from '@/components/common/student-slide-tracking/activity-log-dialog';
@@ -26,6 +27,7 @@ export const ActivityStatsSidebar = ({
     onOpenChange?: (open: boolean) => void;
     hideTrigger?: boolean;
 } = {}) => {
+    const { t } = useTranslation('studyLibraryActivitySidebar');
     const [internalOpen, setInternalOpen] = useState(false);
     const isControlled = controlledOpen !== undefined;
     const open = isControlled ? controlledOpen : internalOpen;
@@ -124,10 +126,10 @@ export const ActivityStatsSidebar = ({
         const diffMin = Math.floor(diffMs / 60000);
         const diffHr = Math.floor(diffMs / 3600000);
         const diffDays = Math.floor(diffMs / 86400000);
-        if (diffMin < 1) return 'Just now';
-        if (diffMin < 60) return `${diffMin}m ago`;
-        if (diffHr < 24) return `${diffHr}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffMin < 1) return t('time.justNow');
+        if (diffMin < 60) return t('time.minutesAgo', { count: diffMin });
+        if (diffHr < 24) return t('time.hoursAgo', { count: diffHr });
+        if (diffDays < 7) return t('time.daysAgo', { count: diffDays });
         return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
@@ -196,10 +198,10 @@ export const ActivityStatsSidebar = ({
                         buttonType="secondary"
                         scale="medium"
                         layoutVariant="default"
-                        title="Activity Stats"
+                        title={t('activityStats')}
                     >
                         <ChartBar className="size-4 md:hidden" />
-                        <span className="hidden md:inline">Activity Stats</span>
+                        <span className="hidden md:inline">{t('activityStats')}</span>
                     </MyButton>
                 </DialogTrigger>
             )}
@@ -212,10 +214,10 @@ export const ActivityStatsSidebar = ({
                         </div>
                         <div className="flex flex-col">
                             <h2 className="text-lg font-semibold text-neutral-900">
-                                Activity Stats
+                                {t('activityStats')}
                             </h2>
                             <p className="text-xs text-neutral-500">
-                                Track student engagement and submissions
+                                {t('trackEngagementSubtitle')}
                             </p>
                         </div>
                         {activeItem?.source_type === 'ASSIGNMENT' && (
@@ -224,14 +226,14 @@ export const ActivityStatsSidebar = ({
                                 onClick={handleDownload}
                                 disabled={isDownloading || !slideId}
                                 className="ml-auto mr-6 flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                title="Download all submissions (CSV)"
+                                title={t('downloadAllSubmissions')}
                             >
                                 {isDownloading ? (
                                     <Spinner size={14} className="animate-spin" />
                                 ) : (
                                     <DownloadSimple size={14} />
                                 )}
-                                {isDownloading ? 'Downloading...' : 'Download CSV'}
+                                {isDownloading ? t('downloading') : t('downloadCsv')}
                             </button>
                         )}
                     </div>
@@ -244,7 +246,7 @@ export const ActivityStatsSidebar = ({
                             </div>
                             <div>
                                 <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                                    Participants
+                                    {t('participants')}
                                 </p>
                                 <p className="text-sm font-semibold text-neutral-900">
                                     {totalParticipants}
@@ -257,7 +259,7 @@ export const ActivityStatsSidebar = ({
                             </div>
                             <div>
                                 <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                                    Avg. Time
+                                    {t('avgTime')}
                                 </p>
                                 <p className="text-sm font-semibold text-neutral-900">
                                     {formatTimeSpent(avgTimeSeconds)}
@@ -270,7 +272,7 @@ export const ActivityStatsSidebar = ({
                             </div>
                             <div>
                                 <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                                    On This Page
+                                    {t('onThisPage')}
                                 </p>
                                 <p className="text-sm font-semibold text-neutral-900">
                                     {students.length}
@@ -290,7 +292,7 @@ export const ActivityStatsSidebar = ({
                                 setSearchInput('');
                                 applySearch('');
                             }}
-                            placeholder="Search by name, email or phone..."
+                            placeholder={t('searchPlaceholder')}
                         />
                     </div>
                 </DialogHeader>
@@ -309,18 +311,18 @@ export const ActivityStatsSidebar = ({
                             </div>
                         ) : error ? (
                             <div className="flex h-32 items-center justify-center text-sm text-red-500">
-                                Failed to load activity data
+                                {t('failedToLoad')}
                             </div>
                         ) : students.length === 0 ? (
                             <div className="flex h-48 flex-col items-center justify-center gap-2 text-neutral-500">
                                 <Users size={32} className="text-neutral-300" />
                                 <p className="text-sm font-medium">
-                                    {searchInput ? 'No matches found' : 'No student activity yet'}
+                                    {searchInput ? t('noMatchesFound') : t('noActivityYet')}
                                 </p>
                                 <p className="text-xs">
                                     {searchInput
-                                        ? 'Try a different search term'
-                                        : 'Activity will appear once students start engaging'}
+                                        ? t('tryDifferentSearch')
+                                        : t('activityWillAppear')}
                                 </p>
                             </div>
                         ) : (
@@ -365,9 +367,9 @@ export const ActivityStatsSidebar = ({
                                         {student.late_submission && (
                                             <span
                                                 className="flex shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700"
-                                                title="Submitted after the assignment's end date"
+                                                title={t('lateSubmissionTooltip')}
                                             >
-                                                Late
+                                                {t('late')}
                                             </span>
                                         )}
                                         {student.review_status && (
@@ -379,13 +381,13 @@ export const ActivityStatsSidebar = ({
                                                 }`}
                                             >
                                                 {student.review_status === 'REVIEWED'
-                                                    ? 'Checked'
-                                                    : 'Pending Review'}
+                                                    ? t('checked')
+                                                    : t('pendingReview')}
                                             </span>
                                         )}
 
                                         <div className="flex shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-xs font-medium text-primary-600 transition-colors group-hover:border-primary-200 group-hover:bg-primary-50">
-                                            View Activity
+                                            {t('viewActivity')}
                                             <ArrowRight size={12} />
                                         </div>
                                     </button>

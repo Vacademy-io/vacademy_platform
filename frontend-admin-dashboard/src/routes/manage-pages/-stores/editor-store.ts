@@ -40,6 +40,7 @@ interface EditorState {
     duplicatePage: (pageId: string) => void;
     updatePageSeo: (pageId: string, seo: Page['seo']) => void;
     updatePageBackgroundColor: (pageId: string, color: string) => void;
+    setPageHideSiteChrome: (pageId: string, hide: boolean) => void;
 
     // Clipboard
     copyComponent: (pageId: string, componentId: string) => void;
@@ -362,6 +363,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             );
             const newConfig = { ...state.config, pages: newPages };
             return pushToHistory(state, newConfig);
+        }),
+
+    setPageHideSiteChrome: (pageId, hide) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((p) =>
+                p.id === pageId ? { ...p, hideSiteChrome: hide || undefined } : p
+            );
+            return pushToHistory(state, { ...state.config, pages: newPages });
         }),
 
     updatePageBackgroundColor: (pageId, color) =>

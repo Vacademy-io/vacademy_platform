@@ -1,0 +1,20 @@
+{
+    "status": {
+        "pending": "Pending",
+        "ongoing": "Ongoing",
+        "overdue": "Overdue",
+        "completed": "Completed"
+    },
+    "card": {
+        "closedReason": "Closed: {{reason}}"
+    },
+    "widget": {
+        "title": "Follow-ups",
+        "openCount_one": "{{count}} open",
+        "openCount_other": "{{count}} open"
+    },
+    "emptyState": {
+        "title": "No open follow-ups",
+        "description": "Schedule one below using the Follow Up tab"
+    }
+}

@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import vacademy.io.admin_core_service.features.live_activity.core.LiveActivityCounsellorRecorder;
+import vacademy.io.admin_core_service.features.live_activity.enums.LiveActivityAction;
 
 @Slf4j
 @Service
@@ -33,6 +35,7 @@ import java.util.stream.Collectors;
 public class LeadFollowupService {
 
     private final LeadFollowupRepository leadFollowupRepository;
+    private final LiveActivityCounsellorRecorder liveActivityCounsellorRecorder;
     private final TimelineEventService timelineEventService;
     private final AuthService authService;
     private final AudienceResponseRepository audienceResponseRepository;
@@ -68,6 +71,10 @@ public class LeadFollowupService {
                         request.getScheduleTime() != null ? request.getScheduleTime().getTime() : null),
                 studentUserId
         );
+
+        liveActivityCounsellorRecorder.recordFollowup(
+                instituteId, LiveActivityAction.FOLLOWUP_CREATED, saved.getId(),
+                user.getUserId(), user.getUserId(), null);
 
         return LeadFollowupDto.from(saved);
     }
@@ -253,6 +260,10 @@ public class LeadFollowupService {
                 Map.of("followupId", id, "status", status),
                 studentUserId
         );
+
+        liveActivityCounsellorRecorder.recordFollowup(
+                followup.getInstituteId(), LiveActivityAction.FOLLOWUP_CLOSED, saved.getId(),
+                user.getUserId(), user.getUserId(), null);
 
         return LeadFollowupDto.from(saved);
     }

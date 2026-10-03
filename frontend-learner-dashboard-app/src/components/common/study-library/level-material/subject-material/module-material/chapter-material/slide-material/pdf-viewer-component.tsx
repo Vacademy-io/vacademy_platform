@@ -21,6 +21,7 @@ import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import "@react-pdf-viewer/full-screen/lib/styles/index.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
 import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 
@@ -39,6 +40,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   handlePageChange,
   initialPage = 0
 }, ref) => {
+  const { t } = useTranslation("libraryCommonB");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<string | undefined>(undefined);
 
@@ -184,7 +186,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-sm text-neutral-400">
-            Loading…
+            {t("pdfViewer.loading")}
           </div>
         )}
       </div>

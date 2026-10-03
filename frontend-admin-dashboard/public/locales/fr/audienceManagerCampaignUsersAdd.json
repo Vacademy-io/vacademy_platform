@@ -1,0 +1,36 @@
+{
+    "schema": {
+        "campaignIdRequired": "L'ID de la campagne est requis"
+    },
+    "navHeading": "Ajouter une réponse",
+    "helmet": {
+        "title": "Ajouter une réponse - {{name}}",
+        "description": "Ajoutez une réponse au nom d'un répondant."
+    },
+    "backButton": "Retour aux utilisateurs de {{audienceTerm}}",
+    "header": {
+        "description": "Remplissez les détails ci-dessous pour soumettre une réponse au nom d'un répondant."
+    },
+    "emptyState": {
+        "title": "Aucun champ de formulaire configuré pour cette {{audienceTerm}}.",
+        "hint": "Veuillez d'abord ajouter des champs personnalisés pour commencer à collecter des réponses."
+    },
+    "form": {
+        "sectionTitle": "Détails du répondant",
+        "requiredFields": "Champs obligatoires",
+        "cancel": "Annuler",
+        "submitting": "Envoi en cours...",
+        "submit": "Envoyer la réponse"
+    },
+    "validation": {
+        "missingFields": "Veuillez remplir les champs obligatoires : {{fields}}"
+    },
+    "toast": {
+        "success": "Réponse envoyée avec succès !",
+        "genericError": "Échec de l'envoi de la réponse. Veuillez réessayer."
+    },
+    "audienceFallbackName": "cette {{audienceTerm}}",
+    "footer": {
+        "responsesAppearUnder": "Les réponses apparaissent sous <bold>{{audienceName}}</bold> dans votre liste {{audienceTerm}}."
+    }
+}

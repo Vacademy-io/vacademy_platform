@@ -1,0 +1,10 @@
+{
+    "selectionLabel": "Sélection de {{session}}",
+    "selectExisting": "Sélectionner un(e) {{session}} existant(e)",
+    "createNew": "Créer un(e) nouveau/nouvelle {{session}}",
+    "selectPlaceholder": "Sélectionner un(e) {{session}}",
+    "startDate": "Date de début : {{date}}",
+    "validation": {
+        "selectSession": "Veuillez sélectionner une session"
+    }
+}

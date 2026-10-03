@@ -6,12 +6,85 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface StudentSessionInstituteGroupMappingRepository
     extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
+
+  /**
+   * Every learner enrolled in any of {@code psIds}, deduped to one row per learner.
+   *
+   * <p>Used by assessment_service to build the "enrolled but has not attempted" list.
+   * Two properties matter and must be preserved:
+   *
+   * <ul>
+   *   <li><b>No exclusion parameter.</b> The caller subtracts the already-attempted
+   *       learners itself. Pushing an exclude-list in as an array made the predicate
+   *       unestimable, and once Postgres picked a generic plan it re-evaluated the array
+   *       per row — measured on prod, the same page went from 22ms to 434-880ms,
+   *       intermittently. As written the plan is stable: 22ms custom / 28ms generic on
+   *       the largest batch in prod (4051 learners), 1-2ms on a typical one.</li>
+   *   <li><b>Index-only on the mapping side.</b> The WHERE columns match
+   *       {@code idx_student_batch_lookup (package_session_id, institute_id, user_id,
+   *       status) WHERE status = 'ACTIVE'}, so the mapping is read from the index with no
+   *       heap access. Adding a column from ssigm outside that index costs heap fetches
+   *       per row. (The student columns come from the joined row, not this index.)</li>
+   * </ul>
+   *
+   * <p>DISTINCT ON is needed because a learner can sit in more than one of the requested
+   * batches; the ORDER BY inside picks the lowest package_session_id so the batch shown
+   * is at least deterministic.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id)
+             ssigm.user_id AS userId,
+             s.full_name AS fullName,
+             ssigm.package_session_id AS packageSessionId,
+             s.email AS email,
+             s.mobile_number AS mobileNumber,
+             s.username AS username
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrolledLearnerDto>
+      findEnrolledLearnersByPackageSessions(@Param("psIds") List<String> psIds,
+                                            @Param("instituteId") String instituteId,
+                                            @Param("statuses") List<String> statuses);
+
+  /**
+   * Every (learner, batch) enrolment in the given batches: one row per pair, so a
+   * learner in two of the batches comes back twice. Used by assessment_service's
+   * Assessment Dashboard to build each assessment's audience from its assigned batches.
+   *
+   * <p>Same access path as {@link #findEnrolledLearnersByPackageSessions}; the DISTINCT ON
+   * only removes duplicate mapping rows for the same pair (and duplicate student rows).
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id, ssigm.package_session_id)
+             ssigm.user_id AS userId,
+             ssigm.package_session_id AS packageSessionId,
+             CAST(ssigm.enrolled_date AS varchar) AS enrolledDate,
+             s.full_name AS fullName,
+             s.email AS email,
+             s.mobile_number AS mobileNumber
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id, ssigm.enrolled_date
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrollmentRowDto>
+      findEnrollmentRowsByPackageSessions(@Param("psIds") List<String> psIds,
+                                          @Param("instituteId") String instituteId,
+                                          @Param("statuses") List<String> statuses);
 
   @Query(value = """
       SELECT
@@ -34,11 +107,27 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("statuses") List<String> statuses);
 
   /**
-   * Learners whose next autopay charge lands exactly N days from today (UTC date
-   * math — the renewal sweep charges on the UTC date of next_charge_at). Only
-   * ACTIVE plans with autopay still enabled are returned, so learners who
-   * already cancelled are naturally excluded. charge_date_label is preformatted
-   * for messages ("11 Aug 2026").
+   * Learners whose next autopay charge lands exactly N days from today, counted in the
+   * INVITE'S OWN timezone (AUTOPAY_SETTING.TRIAL_TIMEZONE, falling back to UTC when an
+   * invite sets none, which preserves the previous behaviour for institutes that do not).
+   *
+   * <p>It used to compare {@code CAST(next_charge_at AS date)} against {@code CURRENT_DATE},
+   * both of which resolve in the database session timezone -- UTC on the pods. A charge due
+   * at IST midnight is stored 18:30 UTC the PREVIOUS day, so it cast to the previous date
+   * and the notice went out a day early; a charge stored mid-day cast to the same date
+   * either way and went out correctly. 20 SuchBliss plans sit on the midnight boundary and
+   * the rest do not, which is exactly why the timing looked arbitrary rather than broken.
+   *
+   * <p>The timezone is read with {@code jsonb_extract_path_text(cast(... as jsonb), ...)} and
+   * NOT with {@code ::jsonb #>>}: Hibernate parses {@code :} in a native query as a named
+   * parameter and strips one colon from {@code ::}, so the statement reaching Postgres said
+   * {@code setting_json:jsonb} and failed with "syntax error at or near :". The cast function
+   * form has no colons to mangle.
+   *
+   * <p>Only ACTIVE plans with autopay still enabled are returned, so learners who already
+   * cancelled are naturally excluded. charge_date_label is preformatted for messages
+   * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
+   * reads matches the date they are charged.
    */
   @Query(value = """
       SELECT DISTINCT ON (up.id)
@@ -49,7 +138,55 @@ public interface StudentSessionInstituteGroupMappingRepository
           s.username AS username,
           up.next_charge_at AS next_charge_at,
           up.end_date AS end_date,
-          to_char(up.next_charge_at, 'DD Mon YYYY') AS charge_date_label
+          to_char(up.next_charge_at AT TIME ZONE 'UTC'
+                  AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
+                  'DD Mon YYYY') AS charge_date_label
+      FROM user_plan up
+      JOIN student_session_institute_group_mapping ssigm
+        ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
+      JOIN student s ON s.user_id = up.user_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND up.status = 'ACTIVE'
+        AND up.auto_renewal_enabled = true
+        AND up.next_charge_at IS NOT NULL
+        AND CAST(up.next_charge_at AT TIME ZONE 'UTC'
+                 AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
+                 AS date)
+            = CAST(now() AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
+                   AS date) + CAST(:daysAhead AS int)
+      ORDER BY up.id
+      """, nativeQuery = true)
+  List<Object[]> findUpcomingAutopayCharges(
+      @Param("psIds") List<String> packageSessionIds,
+      @Param("daysAhead") int daysAhead);
+
+  /**
+   * Learners whose autopay charge was PRESENTED AND REFUSED and who have not renewed
+   * since: plan still ACTIVE with autopay on, at least one renewal attempt recorded
+   * (renewal_attempt_count is reset to 0 only by a successful renewal), and end_date
+   * inside [today - graceDays, today + daysAhead]. This is the "your payment could not
+   * be processed — pay via this link" audience; it is disjoint from
+   * findManualRenewalDuePlans (autopay off / plan cancelled), so a learner is never
+   * chased by both messages. last_error is the gateway's reason from the most recent
+   * FAILED payment_log, when one was recorded.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.id)
+          up.id AS user_plan_id,
+          up.user_id AS user_id,
+          s.full_name AS full_name,
+          s.mobile_number AS mobile_number,
+          s.username AS username,
+          up.renewal_attempt_count AS attempts,
+          up.end_date AS end_date,
+          to_char(up.end_date, 'DD Mon YYYY') AS end_date_label,
+          (SELECT pl.payment_specific_data FROM payment_log pl
+            WHERE pl.user_plan_id = up.id AND pl.payment_status = 'FAILED'
+            ORDER BY pl.created_at DESC LIMIT 1) AS last_failure
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
         ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
@@ -57,13 +194,40 @@ public interface StudentSessionInstituteGroupMappingRepository
       WHERE ssigm.package_session_id IN (:psIds)
         AND up.status = 'ACTIVE'
         AND up.auto_renewal_enabled = true
-        AND up.next_charge_at IS NOT NULL
-        AND CAST(up.next_charge_at AS date) = CURRENT_DATE + CAST(:daysAhead AS int)
+        AND COALESCE(up.renewal_attempt_count, 0) > 0
+        AND up.end_date IS NOT NULL
+        AND CAST(up.end_date AS date) BETWEEN CURRENT_DATE - CAST(:graceDays AS int)
+                                          AND CURRENT_DATE + CAST(:daysAhead AS int)
       ORDER BY up.id
       """, nativeQuery = true)
-  List<Object[]> findUpcomingAutopayCharges(
+  List<Object[]> findRenewalFailedPlans(
       @Param("psIds") List<String> packageSessionIds,
-      @Param("daysAhead") int daysAhead);
+      @Param("daysAhead") int daysAhead,
+      @Param("graceDays") int graceDays);
+
+  /**
+   * Is this user an enrolled member of any of these package sessions right now?
+   *
+   * <p>"Member" means an ACTIVE mapping that came from a completed enrolment. Rows the
+   * checkout leaves behind on the way -- ABANDONED_CART (form filled, never paid) and
+   * PAYMENT_FAILED (authorisation refused) -- are ACTIVE too but grant nothing, so they
+   * are excluded: someone whose payment never went through must stay free to fill the
+   * invite form again. Legacy rows carry no type and count as membership.
+   *
+   * <p>Used by the phone-identifier submission guard: a current member is sent to sign in
+   * and use "Pay to continue" rather than taking a second free trial through a sibling
+   * invite link. An expired or cancelled member (mapping INACTIVE) may re-register.
+   */
+  @Query("""
+      SELECT COUNT(m) > 0 FROM StudentSessionInstituteGroupMapping m
+      WHERE m.userId = :userId
+        AND m.packageSession.id IN :packageSessionIds
+        AND m.status = 'ACTIVE'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """)
+  boolean existsActiveMembership(
+      @Param("userId") String userId,
+      @Param("packageSessionIds") List<String> packageSessionIds);
 
   /**
    * Learners who must PAY MANUALLY to continue: their plan ends within the next
@@ -100,6 +264,55 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("psIds") List<String> packageSessionIds,
       @Param("daysAhead") int daysAhead,
       @Param("graceDays") int graceDays);
+
+  /**
+   * Learners who started an enrolment but never completed checkout, one row per learner.
+   *
+   * <p>The caller chooses which plan statuses count: PENDING_FOR_PAYMENT is an abandoned
+   * cart (payment never attempted), PAYMENT_FAILED is a payment that was tried and
+   * declined. Those want different follow-up copy, so they are queried separately.
+   *
+   * <p>Each retry creates a fresh user_plan, so a naive per-plan query messages the same person
+   * repeatedly -- DISTINCT ON (up.user_id) with the ORDER BY below keeps only their most recent
+   * attempt, which also carries the invite they last chose rather than the one they first tried.
+   *
+   * <p>The NOT EXISTS is the important guard: a learner may abandon several times and then
+   * convert, and telling a paying member their registration is incomplete is worse than staying
+   * silent. Observed live -- one learner left two pending plans at 07:10 and 07:14 and paid at
+   * 07:15.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.user_id)
+          up.id            AS user_plan_id,
+          up.user_id       AS user_id,
+          s.full_name      AS full_name,
+          s.mobile_number  AS mobile_number,
+          s.username       AS username,
+          up.status        AS plan_status,
+          ei.invite_code   AS invite_code,
+          up.created_at    AS created_at
+      FROM user_plan up
+      JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      JOIN student s        ON s.user_id = up.user_id
+      WHERE ei.institute_id = :instituteId
+        AND up.status IN (:statuses)
+        AND CAST(up.created_at AS date) BETWEEN CURRENT_DATE - CAST(:maxAgeDays AS int)
+                                            AND CURRENT_DATE - CAST(:minAgeDays AS int)
+        AND s.mobile_number IS NOT NULL
+        AND s.mobile_number <> ''
+        AND NOT EXISTS (
+              SELECT 1 FROM user_plan act
+              WHERE act.user_id = up.user_id
+                AND act.status = 'ACTIVE'
+            )
+      ORDER BY up.user_id, up.created_at DESC
+      """, nativeQuery = true)
+  List<Object[]> findAbandonedCartPlans(
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses,
+      @Param("minAgeDays") int minAgeDays,
+      @Param("maxAgeDays") int maxAgeDays);
+
 
   @Query(value = """
       SELECT
@@ -158,6 +371,20 @@ public interface StudentSessionInstituteGroupMappingRepository
   Optional<String> findLatestPackageSessionIdByUserIdAndInstituteId(
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
+
+  /**
+   * Of the given user ids, those that have ANY mapping row in the institute (enrolled in a
+   * batch or an audience-only contact, any status). Used to keep staff badge awards inside
+   * the tenant: an id with no row here is skipped, never written or notified.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE institute_id = :instituteId
+      AND user_id IN (:userIds)
+      """, nativeQuery = true)
+  List<String> findUserIdsInInstitute(
+      @Param("instituteId") String instituteId,
+      @Param("userIds") Collection<String> userIds);
 
   /**
    * All package_session_ids a learner is enrolled in within one institute, filtered
@@ -442,6 +669,20 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("instituteId") String instituteId,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * Learners enrolled in one batch — the recipient list for a daily-engagement push.
+   * Distinct so a re-enrolled learner is not notified twice.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE package_session_id = :packageSessionId
+        AND status IN (:statuses)
+        AND user_id IS NOT NULL
+      """, nativeQuery = true)
+  List<String> findDistinctUserIdsByPackageSessionAndStatus(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT DISTINCT institute_id FROM student_session_institute_group_mapping
       WHERE user_id = :userId
@@ -562,6 +803,10 @@ public interface StudentSessionInstituteGroupMappingRepository
       ORDER BY ssigm.sub_org_id, ssigm.created_at
       """, nativeQuery = true)
   List<Object[]> findRootAdminBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
+  /** Every mapping one user holds inside one sub-org, oldest first (partner onboarding picks the ROOT_ADMIN one). */
+  List<StudentSessionInstituteGroupMapping> findBySubOrg_IdAndUserIdAndStatusOrderByCreatedAtAsc(
+      String subOrgId, String userId, String status);
 
   /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session

@@ -1,5 +1,8 @@
 package vacademy.io.auth_service.feature.user.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
@@ -15,6 +18,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.common.auth.service.UserRoleService;
 import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -135,12 +139,59 @@ public class RoleService {
 
     public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds,
             CustomUserDetails user) {
-        int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId,
-                userIds);
-        if (rowsUpdated == 0) {
-            throw new VacademyException("No role found to update the status!!!");
+        if (UserRoleStatus.DISABLED.name().equals(newStatus)) {
+            // Pause only live roles. Deleted/cancelled rows keep their status, so a later
+            // "Enable access" cannot bring back a role the admin removed.
+            userRoleRepository.updateUserRoleStatusFromStatuses(newStatus,
+                    UserRoleService.ACCESS_GRANTING_STATUSES, instituteId, userIds);
+        } else if (UserRoleStatus.ACTIVE.name().equals(newStatus)) {
+            // Restore exactly what a disable paused.
+            userRoleRepository.updateUserRoleStatusFromStatuses(newStatus, PAUSED_STATUSES, instituteId,
+                    userIds);
+        } else {
+            int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId,
+                    userIds);
+            if (rowsUpdated == 0) {
+                throw new VacademyException("No role found to update the status!!!");
+            }
         }
+        // Enable/disable is idempotent: repeating it (double click, retry) is not an error.
+        evictCachedIdentities(instituteId, userIds);
         return "Status updated successfully";
+    }
+
+    private static final List<String> PAUSED_STATUSES = List.of(UserRoleStatus.DISABLED.name(), "INACTIVE");
+    private static final String AUTH_USER_DETAILS_CACHE = "authUserDetails";
+
+    // Field-injected and optional so the explicit constructor above (and anything that builds
+    // this service by hand) is unchanged.
+    @Autowired(required = false)
+    private CacheManager cacheManager;
+
+    /**
+     * Drops the cached caller identity ({@code username_instituteId}) that
+     * /auth-service/v1/internal/user serves to every other service, so a disable blocks the
+     * member's very next request instead of after the 5-minute TTL. Other services keep their
+     * own short-lived copies; those expire on their own. Best effort: a cache that cannot be
+     * evicted must not fail the status change.
+     */
+    private void evictCachedIdentities(String instituteId, List<String> userIds) {
+        if (cacheManager == null || userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        try {
+            Cache cache = cacheManager.getCache(AUTH_USER_DETAILS_CACHE);
+            if (cache == null) {
+                return;
+            }
+            for (User member : userRepository.findAllById(userIds)) {
+                if (member.getUsername() != null) {
+                    cache.evict(member.getUsername() + "_" + instituteId);
+                }
+            }
+        } catch (Exception ignored) {
+            // The entry expires within 5 minutes regardless.
+        }
     }
 
     public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO) {

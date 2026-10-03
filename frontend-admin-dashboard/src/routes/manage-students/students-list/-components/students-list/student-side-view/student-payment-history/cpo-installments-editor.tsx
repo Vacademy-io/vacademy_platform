@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     useApplyCpoDiscount,
     useModifyInstallment,
     useRecordOfflinePayment,
+    useSplitInstallment,
     useUserCpoUserPlans,
     useUserPlanInstallments,
 } from '@/routes/manage-students/students-list/-services/cpoSideViewService';
@@ -15,9 +18,21 @@ import type {
     ModifyInstallmentRequest,
     RecordOfflinePaymentRequest,
 } from '@/routes/manage-students/students-list/-types/cpo-side-view-types';
+import { getCurrencySymbol } from '@/constants/currencies';
+import { serverErrorMessage } from '@/services/payment-logs';
 
-const fmt = (n: number | null | undefined) =>
-    Number.isFinite(n as number) ? `₹${(n as number).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—';
+/**
+ * Money for one CPO plan. The currency comes from the plan itself — this used to hard-code
+ * ₹, so an AUD plan's installments read as rupees. en-IN lakh grouping is likewise only
+ * right for INR.
+ */
+const fmt = (n: number | null | undefined, currency?: string | null) => {
+    if (!Number.isFinite(n as number)) return '—';
+    const code = (currency || 'INR').toUpperCase();
+    return `${getCurrencySymbol(code)}${(n as number).toLocaleString(code === 'INR' ? 'en-IN' : 'en-US', {
+        maximumFractionDigits: 2,
+    })}`;
+};
 
 const isoDate = (s: string | null | undefined) => {
     if (!s) return '';
@@ -26,7 +41,7 @@ const isoDate = (s: string | null | undefined) => {
     return d.toISOString().slice(0, 10);
 };
 
-const statusPill = (status: string) => {
+const statusPill = (status: string, t: TFunction) => {
     const tone =
         status === 'PAID'
             ? 'bg-green-100 text-green-700'
@@ -37,10 +52,128 @@ const statusPill = (status: string) => {
                 : status === 'WAIVED'
                   ? 'bg-neutral-100 text-neutral-500'
                   : 'bg-orange-100 text-orange-700';
+    const statusLabels: Record<string, string> = {
+        PAID: t('status.paid'),
+        PARTIAL_PAID: t('status.partialPaid'),
+        OVERDUE: t('status.overdue'),
+        WAIVED: t('status.waived'),
+    };
+    const label = statusLabels[status] ?? status;
     return (
-        <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}>
-            {status}
+        <span className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${tone}`}>
+            {label}
         </span>
+    );
+};
+
+// ------------------------------------------------------------ Split form
+
+/** Today as YYYY-MM-DD in the admin's own zone (toISOString would give the UTC date — yesterday in IST before 5:30am). */
+const todayIso = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
+interface SplitFormProps {
+    row: CpoInstallmentRow;
+    userPlanId: string;
+    userId: string;
+    currency?: string | null;
+    onDone: () => void;
+}
+
+/**
+ * Moves part of an installment's unpaid balance onto a new installment with its own due date —
+ * how an admin schedules "25,000 paid, the other 40,000 is due on the 10th". The plan total
+ * stays the same; only when that part falls due changes.
+ */
+const SplitInstallmentForm = ({ row, userPlanId, userId, currency, onDone }: SplitFormProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
+    const { mutateAsync, isPending } = useSplitInstallment(userPlanId, userId);
+    const unpaid = Math.max(0, Number(row.outstanding) || 0);
+    const [amount, setAmount] = useState<string>(unpaid > 0 ? String(unpaid) : '');
+    const [startDate, setStartDate] = useState<string>(todayIso());
+    const [dueDate, setDueDate] = useState<string>('');
+
+    const submit = async () => {
+        const amt = Number(amount);
+        if (!Number.isFinite(amt) || amt <= 0 || amt > unpaid) {
+            toast.error(t('split.amountError', { unpaid: fmt(unpaid, currency) }));
+            return;
+        }
+        if (!dueDate) {
+            toast.error(t('split.dueDateError'));
+            return;
+        }
+        try {
+            await mutateAsync({
+                sfpId: row.id,
+                body: { amount: amt, start_date: startDate || null, due_date: dueDate },
+            });
+            toast.success(t('split.successToast', { amount: fmt(amt, currency), date: dueDate }));
+            onDone();
+        } catch (e: unknown) {
+            toast.error(serverErrorMessage(e) || t('split.errorToast'));
+        }
+    };
+
+    return (
+        <div className="rounded border border-primary-200 bg-primary-50/40 p-2.5">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-primary-700">
+                {t('split.heading', { unpaid: fmt(unpaid, currency) })}
+            </p>
+            <p className="mb-2 text-2xs text-neutral-500">{t('split.hint')}</p>
+            <div className="flex flex-wrap items-end gap-2">
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.amountLabel')}</label>
+                    <input
+                        type="number"
+                        step="any"
+                        min={0}
+                        max={unpaid}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="w-28 rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.startDateLabel')}</label>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <div>
+                    <label className="block text-2xs text-neutral-500">{t('split.dueDateLabel')}</label>
+                    <input
+                        type="date"
+                        value={dueDate}
+                        min={startDate || undefined}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
+                    />
+                </div>
+                <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={submit}
+                    className="rounded bg-primary-500 px-3 py-1 text-2xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                    {isPending ? t('split.saving') : t('split.save')}
+                </button>
+                <button
+                    type="button"
+                    onClick={onDone}
+                    className="rounded border border-neutral-200 px-3 py-1 text-2xs text-neutral-600 hover:bg-neutral-50"
+                >
+                    {t('split.cancel')}
+                </button>
+            </div>
+        </div>
     );
 };
 
@@ -51,10 +184,15 @@ interface RowProps {
     index: number;
     userPlanId: string;
     userId: string;
+    currency?: string | null;
 }
 
-const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
+const InstallmentRowEditor = ({ row, index, userPlanId, userId, currency }: RowProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync: modify, isPending } = useModifyInstallment(userPlanId, userId);
+    const [splitOpen, setSplitOpen] = useState(false);
+    // Only an installment with something still unpaid has a balance to move.
+    const canSplit = Number(row.outstanding) > 0 && row.status !== 'WAIVED';
 
     const [startDate, setStartDate] = useState<string>(isoDate(row.start_date));
     const [dueDate, setDueDate] = useState<string>(isoDate(row.due_date));
@@ -121,13 +259,14 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
         };
         try {
             await modify({ sfpId: row.id, body });
-            toast.success(`Installment updated`);
+            toast.success(t('row.updateSuccessToast'));
         } catch (e: any) {
-            toast.error(e?.response?.data?.message || 'Update failed');
+            toast.error(e?.response?.data?.message || t('row.updateErrorToast'));
         }
     };
 
     return (
+        <>
         <tr>
             <td className="px-2 py-1 align-middle">{index + 1}</td>
             <td className="px-2 py-1 align-middle">
@@ -135,7 +274,7 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-[120px] rounded border border-neutral-200 px-1 py-0.5 text-[11px] outline-none focus:border-primary-300"
+                    className="w-32 rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none focus:border-primary-300"
                 />
             </td>
             <td className="px-2 py-1 align-middle">
@@ -143,10 +282,10 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="w-[120px] rounded border border-neutral-200 px-1 py-0.5 text-[11px] outline-none focus:border-primary-300"
+                    className="w-32 rounded border border-neutral-200 px-1 py-0.5 text-2xs outline-none focus:border-primary-300"
                 />
             </td>
-            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.original_amount)}</td>
+            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.original_amount, currency)}</td>
             <td className="px-2 py-1 text-right align-middle">
                 <input
                     type="number"
@@ -154,7 +293,7 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     placeholder={String(row.amount_expected)}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-[88px] rounded border border-neutral-200 px-1 py-0.5 text-right text-[11px] outline-none focus:border-primary-300"
+                    className="w-24 rounded border border-neutral-200 px-1 py-0.5 text-end text-2xs outline-none focus:border-primary-300"
                 />
             </td>
             <td className="px-2 py-1 align-middle">
@@ -162,11 +301,11 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                     <select
                         value={discType}
                         onChange={(e) => setDiscType(e.target.value as DiscountType | '')}
-                        className="rounded border border-neutral-200 px-1 py-0.5 text-[10px]"
+                        className="rounded border border-neutral-200 px-1 py-0.5 text-2xs"
                     >
-                        <option value="">none</option>
-                        <option value="PERCENTAGE">%</option>
-                        <option value="FLAT">₹</option>
+                        <option value="">{t('row.discountOptionNone')}</option>
+                        <option value="PERCENTAGE">{t('row.discountOptionPercentage')}</option>
+                        <option value="FLAT">{t('row.discountOptionFlat')}</option>
                     </select>
                     <input
                         type="number"
@@ -175,7 +314,7 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                         value={discValue}
                         onChange={(e) => setDiscValue(e.target.value)}
                         placeholder="0"
-                        className="w-[60px] rounded border border-neutral-200 px-1 py-0.5 text-right text-[11px] disabled:bg-neutral-50"
+                        className="w-16 rounded border border-neutral-200 px-1 py-0.5 text-end text-2xs disabled:bg-neutral-50"
                     />
                 </div>
                 {discType && (
@@ -183,28 +322,54 @@ const InstallmentRowEditor = ({ row, index, userPlanId, userId }: RowProps) => {
                         type="text"
                         value={discReason}
                         onChange={(e) => setDiscReason(e.target.value)}
-                        placeholder="Reason"
-                        className="mt-1 w-full rounded border border-neutral-200 px-1 py-0.5 text-[10px]"
+                        placeholder={t('row.reasonPlaceholder')}
+                        className="mt-1 w-full rounded border border-neutral-200 px-1 py-0.5 text-2xs"
                     />
                 )}
             </td>
-            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.amount_paid)}</td>
-            <td className="px-2 py-1 align-middle">{statusPill(row.status)}</td>
+            <td className="px-2 py-1 text-right align-middle text-neutral-500">{fmt(row.amount_paid, currency)}</td>
+            <td className="px-2 py-1 align-middle">{statusPill(row.status, t)}</td>
             <td className="px-2 py-1 align-middle">
-                <button
-                    type="button"
-                    disabled={!dirty || isPending}
-                    onClick={save}
-                    className={`rounded px-2 py-0.5 text-[11px] font-medium ${
-                        dirty
-                            ? 'bg-primary-500 text-white hover:bg-primary-600'
-                            : 'cursor-not-allowed bg-neutral-100 text-neutral-400'
-                    }`}
-                >
-                    {isPending ? '…' : 'Save'}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        disabled={!dirty || isPending}
+                        onClick={save}
+                        className={`rounded px-2 py-0.5 text-2xs font-medium ${
+                            dirty
+                                ? 'bg-primary-500 text-white hover:bg-primary-600'
+                                : 'cursor-not-allowed bg-neutral-100 text-neutral-400'
+                        }`}
+                    >
+                        {isPending ? '…' : t('row.save')}
+                    </button>
+                    {canSplit && (
+                        <button
+                            type="button"
+                            onClick={() => setSplitOpen((open) => !open)}
+                            title={t('row.splitTitle')}
+                            className="rounded border border-primary-300 px-2 py-0.5 text-2xs font-medium text-primary-700 hover:bg-primary-50"
+                        >
+                            {t('row.split')}
+                        </button>
+                    )}
+                </div>
             </td>
         </tr>
+        {splitOpen && canSplit && (
+            <tr>
+                <td colSpan={9} className="px-2 pb-2">
+                    <SplitInstallmentForm
+                        row={row}
+                        userPlanId={userPlanId}
+                        userId={userId}
+                        currency={currency}
+                        onDone={() => setSplitOpen(false)}
+                    />
+                </td>
+            </tr>
+        )}
+        </>
     );
 };
 
@@ -217,6 +382,7 @@ interface DiscountEditorProps {
 }
 
 const CpoDiscountEditor = ({ userPlanId, userId, current }: DiscountEditorProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync, isPending } = useApplyCpoDiscount(userPlanId, userId);
     const [type, setType] = useState<DiscountType | ''>(current?.type ?? '');
     const [value, setValue] = useState<string>(current?.value != null ? String(current.value) : '');
@@ -232,7 +398,7 @@ const CpoDiscountEditor = ({ userPlanId, userId, current }: DiscountEditorProps)
         try {
             if (!type) {
                 await mutateAsync({ remove: true });
-                toast.success('CPO discount removed');
+                toast.success(t('cpoDiscount.removeSuccessToast'));
             } else {
                 await mutateAsync({
                     discount: {
@@ -241,33 +407,33 @@ const CpoDiscountEditor = ({ userPlanId, userId, current }: DiscountEditorProps)
                         reason: reason || null,
                     },
                 });
-                toast.success('CPO discount applied');
+                toast.success(t('cpoDiscount.applySuccessToast'));
             }
         } catch (e: any) {
-            toast.error(e?.response?.data?.message || 'Failed to apply CPO discount');
+            toast.error(e?.response?.data?.message || t('cpoDiscount.applyErrorToast'));
         }
     };
 
     return (
         <div className="rounded border border-neutral-200 bg-white p-2.5">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                Discount
+            <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-neutral-500">
+                {t('cpoDiscount.heading')}
             </p>
             <div className="flex flex-wrap items-end gap-2">
                 <div>
-                    <label className="block text-[10px] text-neutral-500">Type</label>
+                    <label className="block text-2xs text-neutral-500">{t('cpoDiscount.typeLabel')}</label>
                     <select
                         value={type}
                         onChange={(e) => setType(e.target.value as DiscountType | '')}
-                        className="rounded border border-neutral-200 px-2 py-1 text-[11px]"
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
                     >
-                        <option value="">none</option>
-                        <option value="PERCENTAGE">% of total</option>
-                        <option value="FLAT">flat ₹ off</option>
+                        <option value="">{t('cpoDiscount.discountOptionNone')}</option>
+                        <option value="PERCENTAGE">{t('cpoDiscount.discountOptionPercentage')}</option>
+                        <option value="FLAT">{t('cpoDiscount.discountOptionFlat')}</option>
                     </select>
                 </div>
                 <div>
-                    <label className="block text-[10px] text-neutral-500">Value</label>
+                    <label className="block text-2xs text-neutral-500">{t('cpoDiscount.valueLabel')}</label>
                     <input
                         type="number"
                         step="any"
@@ -275,27 +441,27 @@ const CpoDiscountEditor = ({ userPlanId, userId, current }: DiscountEditorProps)
                         disabled={!type}
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-[100px] rounded border border-neutral-200 px-2 py-1 text-[11px] disabled:bg-neutral-50"
+                        className="w-24 rounded border border-neutral-200 px-2 py-1 text-2xs disabled:bg-neutral-50"
                     />
                 </div>
-                <div className="flex-1 min-w-[140px]">
-                    <label className="block text-[10px] text-neutral-500">Reason</label>
+                <div className="flex-1 min-w-36">
+                    <label className="block text-2xs text-neutral-500">{t('cpoDiscount.reasonLabel')}</label>
                     <input
                         type="text"
                         disabled={!type}
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
-                        placeholder="e.g. Sibling discount"
-                        className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px] disabled:bg-neutral-50"
+                        placeholder={t('cpoDiscount.reasonPlaceholder')}
+                        className="w-full rounded border border-neutral-200 px-2 py-1 text-2xs disabled:bg-neutral-50"
                     />
                 </div>
                 <button
                     type="button"
                     disabled={isPending}
                     onClick={apply}
-                    className="rounded bg-primary-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                    className="rounded bg-primary-500 px-3 py-1 text-2xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
                 >
-                    {isPending ? 'Applying…' : type ? 'Apply' : 'Remove'}
+                    {isPending ? t('cpoDiscount.applying') : type ? t('cpoDiscount.apply') : t('cpoDiscount.remove')}
                 </button>
             </div>
         </div>
@@ -308,9 +474,11 @@ interface OfflineProps {
     userPlanId: string;
     userId: string;
     outstanding: number;
+    currency?: string | null;
 }
 
-const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) => {
+const OfflinePaymentForm = ({ userPlanId, userId, outstanding, currency }: OfflineProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { mutateAsync, isPending } = useRecordOfflinePayment(userPlanId, userId);
     const [open, setOpen] = useState(false);
     const [amount, setAmount] = useState<string>('');
@@ -321,7 +489,7 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) =
     const submit = async () => {
         const amt = Number(amount);
         if (!Number.isFinite(amt) || amt <= 0) {
-            toast.error('Enter a positive amount');
+            toast.error(t('offlinePayment.amountRequiredError'));
             return;
         }
         const body: RecordOfflinePaymentRequest = {
@@ -332,12 +500,12 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) =
         };
         try {
             await mutateAsync(body);
-            toast.success(`Recorded ${fmt(amt)} offline payment`);
+            toast.success(t('offlinePayment.recordedSuccessToast', { amount: fmt(amt, currency) }));
             setOpen(false);
             setAmount('');
             setReference('');
         } catch (e: any) {
-            toast.error(e?.response?.data?.message || 'Payment record failed');
+            toast.error(e?.response?.data?.message || t('offlinePayment.recordErrorToast'));
         }
     };
 
@@ -349,24 +517,24 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) =
                     setAmount(outstanding > 0 ? String(outstanding) : '');
                     setOpen(true);
                 }}
-                className="rounded border border-primary-300 bg-primary-50 px-3 py-1 text-[11px] font-medium text-primary-700 hover:bg-primary-100"
+                className="rounded border border-primary-300 bg-primary-50 px-3 py-1 text-2xs font-medium text-primary-700 hover:bg-primary-100"
             >
-                + Add Payment
+                {t('offlinePayment.addPaymentButton')}
             </button>
         );
     }
 
     return (
         <div className="rounded border border-primary-200 bg-primary-50/40 p-2.5">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-primary-700">
-                Add Payment
+            <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-primary-700">
+                {t('offlinePayment.heading')}
             </p>
             {/* items-start so labels align at the top of each column regardless
                 of per-column footer hints (which would shove the others around
                 under items-end). */}
             <div className="flex flex-wrap items-start gap-2">
                 <div>
-                    <label className="block text-[10px] text-neutral-500">Amount (₹)</label>
+                    <label className="block text-2xs text-neutral-500">{t('offlinePayment.amountLabel')}</label>
                     <input
                         type="number"
                         step="any"
@@ -375,51 +543,51 @@ const OfflinePaymentForm = ({ userPlanId, userId, outstanding }: OfflineProps) =
                         // Select the seeded outstanding value on focus so admin
                         // types over it instead of appending to it.
                         onFocus={(e) => e.currentTarget.select()}
-                        className="w-[120px] rounded border border-neutral-200 px-2 py-1 text-[11px]"
+                        className="w-32 rounded border border-neutral-200 px-2 py-1 text-2xs"
                     />
                 </div>
                 <div>
-                    <label className="block text-[10px] text-neutral-500">Date</label>
+                    <label className="block text-2xs text-neutral-500">{t('offlinePayment.dateLabel')}</label>
                     <input
                         type="date"
                         value={paymentDate}
                         onChange={(e) => setPaymentDate(e.target.value)}
-                        className="rounded border border-neutral-200 px-2 py-1 text-[11px]"
+                        className="rounded border border-neutral-200 px-2 py-1 text-2xs"
                     />
                 </div>
-                <div className="flex-1 min-w-[140px]">
-                    <label className="block text-[10px] text-neutral-500">Reference</label>
+                <div className="flex-1 min-w-36">
+                    <label className="block text-2xs text-neutral-500">{t('offlinePayment.referenceLabel')}</label>
                     <input
                         type="text"
                         value={reference}
                         onChange={(e) => setReference(e.target.value)}
-                        placeholder="cheque #, UPI ref…"
-                        className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px]"
+                        placeholder={t('offlinePayment.referencePlaceholder')}
+                        className="w-full rounded border border-neutral-200 px-2 py-1 text-2xs"
                     />
                 </div>
-                <label className="flex items-center gap-1 text-[11px] text-neutral-700">
+                <label className="flex items-center gap-1 text-2xs text-neutral-700">
                     <input
                         type="checkbox"
                         checked={generateInvoice}
                         onChange={(e) => setGenerateInvoice(e.target.checked)}
                         className="h-3.5 w-3.5"
                     />
-                    Generate invoice
+                    {t('offlinePayment.generateInvoiceLabel')}
                 </label>
                 <button
                     type="button"
                     disabled={isPending}
                     onClick={submit}
-                    className="rounded bg-primary-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                    className="rounded bg-primary-500 px-3 py-1 text-2xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
                 >
-                    {isPending ? 'Saving…' : 'Save & FIFO-allocate'}
+                    {isPending ? t('offlinePayment.saving') : t('offlinePayment.saveAndAllocate')}
                 </button>
                 <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className="rounded border border-neutral-200 px-3 py-1 text-[11px] text-neutral-600 hover:bg-neutral-50"
+                    className="rounded border border-neutral-200 px-3 py-1 text-2xs text-neutral-600 hover:bg-neutral-50"
                 >
-                    Cancel
+                    {t('offlinePayment.cancel')}
                 </button>
             </div>
         </div>
@@ -434,6 +602,7 @@ interface CardProps {
 }
 
 const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const [expanded, setExpanded] = useState(false);
     const { data, isLoading, isError } = useUserPlanInstallments(expanded ? summary.user_plan_id : null);
 
@@ -449,12 +618,12 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                     <p className="truncate text-sm font-medium text-neutral-800">
                         {summary.cpo_name || summary.payment_option_name || summary.cpo_id}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-neutral-500">
-                        {summary.installment_count} installment{summary.installment_count === 1 ? '' : 's'}
+                    <p className="mt-0.5 text-2xs text-neutral-500">
+                        {t('card.installmentCount', { count: summary.installment_count })}
                         {' · '}
-                        Net {fmt(summary.net_total)}
+                        {t('card.net', { amount: fmt(summary.net_total, summary.currency) })}
                         {' · '}
-                        Paid {fmt(summary.paid_total)}
+                        {t('card.paid', { amount: fmt(summary.paid_total, summary.currency) })}
                         {' · '}
                         <span
                             className={
@@ -465,7 +634,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                       : 'text-neutral-500'
                             }
                         >
-                            Outstanding {fmt(summary.outstanding_total)}
+                            {t('card.outstanding', { amount: fmt(summary.outstanding_total, summary.currency) })}
                         </span>
                     </p>
                 </div>
@@ -475,27 +644,29 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
             {expanded && (
                 <div className="space-y-3 border-t border-neutral-100 px-4 py-3">
                     {isLoading && (
-                        <p className="py-2 text-center text-[11px] text-neutral-500">Loading installments…</p>
+                        <p className="py-2 text-center text-2xs text-neutral-500">
+                            {t('card.loadingInstallments')}
+                        </p>
                     )}
                     {isError && (
-                        <p className="py-2 text-center text-[11px] text-red-600">
-                            Could not load installments.
+                        <p className="py-2 text-center text-2xs text-red-600">
+                            {t('card.loadInstallmentsError')}
                         </p>
                     )}
                     {data && (
                         <>
                             <div className="overflow-x-auto rounded border border-neutral-200">
-                                <table className="w-full text-left text-[11px]">
-                                    <thead className="bg-neutral-50 text-[10px] uppercase text-neutral-500">
+                                <table className="w-full text-start text-2xs">
+                                    <thead className="bg-neutral-50 text-2xs uppercase text-neutral-500">
                                         <tr>
-                                            <th className="px-2 py-1 font-medium">#</th>
-                                            <th className="px-2 py-1 font-medium">Start Date</th>
-                                            <th className="px-2 py-1 font-medium">Due Date</th>
-                                            <th className="px-2 py-1 text-right font-medium">Default</th>
-                                            <th className="px-2 py-1 text-right font-medium">Amount</th>
-                                            <th className="px-2 py-1 font-medium">Discount</th>
-                                            <th className="px-2 py-1 text-right font-medium">Paid</th>
-                                            <th className="px-2 py-1 font-medium">Status</th>
+                                            <th className="px-2 py-1 font-medium">{t('card.tableHeaders.index')}</th>
+                                            <th className="px-2 py-1 font-medium">{t('card.tableHeaders.startDate')}</th>
+                                            <th className="px-2 py-1 font-medium">{t('card.tableHeaders.dueDate')}</th>
+                                            <th className="px-2 py-1 text-end font-medium">{t('card.tableHeaders.default')}</th>
+                                            <th className="px-2 py-1 text-end font-medium">{t('card.tableHeaders.amount')}</th>
+                                            <th className="px-2 py-1 font-medium">{t('card.tableHeaders.discount')}</th>
+                                            <th className="px-2 py-1 text-end font-medium">{t('card.tableHeaders.paid')}</th>
+                                            <th className="px-2 py-1 font-medium">{t('card.tableHeaders.status')}</th>
                                             <th className="px-2 py-1 font-medium">&nbsp;</th>
                                         </tr>
                                     </thead>
@@ -507,6 +678,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                                 index={idx}
                                                 userPlanId={data.user_plan_id}
                                                 userId={userId}
+                                                currency={summary.currency}
                                             />
                                         ))}
                                     </tbody>
@@ -523,6 +695,7 @@ const CpoUserPlanCard = ({ summary, userId }: CardProps) => {
                                 userPlanId={data.user_plan_id}
                                 userId={userId}
                                 outstanding={data.outstanding_total}
+                                currency={summary.currency}
                             />
                         </>
                     )}
@@ -545,13 +718,14 @@ interface CpoInstallmentsEditorProps {
  * an offline-payment recorder.
  */
 export const CpoInstallmentsEditor = ({ userId }: CpoInstallmentsEditorProps) => {
+    const { t } = useTranslation('manageStudentsCpoInstallmentsEditor');
     const { data, isLoading, isError } = useUserCpoUserPlans(userId);
 
     if (isLoading) {
-        return <p className="py-2 text-[11px] text-neutral-500">Loading CPO plans…</p>;
+        return <p className="py-2 text-2xs text-neutral-500">{t('loadingPlans')}</p>;
     }
     if (isError) {
-        return <p className="py-2 text-[11px] text-red-600">Could not load CPO plans.</p>;
+        return <p className="py-2 text-2xs text-red-600">{t('loadPlansError')}</p>;
     }
     if (!data || data.length === 0) {
         return null; // not a CPO learner — silently skip the section

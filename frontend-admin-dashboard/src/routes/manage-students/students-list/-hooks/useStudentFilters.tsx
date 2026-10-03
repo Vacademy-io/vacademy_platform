@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StudentFilterRequest } from '@/types/student-table-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -16,11 +17,13 @@ import {
     sentinelLabel,
     splitLegacyAndTyped,
 } from '@/components/shared/leads/custom-field-filter-encoding';
+import { readUtmSelection, toUtmFiltersPayload } from '@/components/shared/leads/utm-filter-encoding';
 
 export const ALL_SESSIONS_ID = '__ALL__';
 
 export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) => {
     const { allowAllSessions = false } = options;
+    const { t } = useTranslation('manageStudentsUseStudentFilters');
     const navigate = useNavigate();
     const searchParams = useSearch({ strict: false }) as Record<string, any>;
     const INSTITUTE_ID = getCurrentInstituteId();
@@ -53,7 +56,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     const hasInitializedFilters = useRef(false);
     const buildAllOption = (): DropdownItemType => ({
         id: ALL_SESSIONS_ID,
-        name: `All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`,
+        name: t('sessionSelector.allOption', {
+            term: getTerminologyPlural(ContentTerms.Session, SystemTerms.Session),
+        }),
     });
     const buildSessionList = (): DropdownItemType[] => {
         const sessions = getAllSessions().map((session) => ({
@@ -276,7 +281,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 : [searchParams.sessionExpiry];
             const expiryOptions = expiries.map((days) => ({
                 id: String(days),
-                label: `${days} Days`,
+                label: t('filterOptions.sessionExpiryDays', { count: Number(days) }),
             }));
             if (expiryOptions.length > 0) {
                 initialFilters.push({ id: 'session_expiry_days', value: expiryOptions });
@@ -299,7 +304,12 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const statuses = Array.isArray(searchParams.paymentStatus) ? searchParams.paymentStatus : [searchParams.paymentStatus];
             const options = statuses.map((status: string) => ({
                 id: status,
-                label: status === 'PAID' ? 'Paid' : status === 'failed' ? 'Failed' : 'Payment Failed',
+                label:
+                    status === 'PAID'
+                        ? t('filterOptions.paymentStatus.paid')
+                        : status === 'failed'
+                          ? t('filterOptions.paymentStatus.failed')
+                          : t('filterOptions.paymentStatus.paymentFailed'),
             }));
             if (options.length > 0) {
                 initialFilters.push({ id: 'payment_statuses', value: options });
@@ -311,7 +321,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const statuses = Array.isArray(searchParams.approvalStatus) ? searchParams.approvalStatus : [searchParams.approvalStatus];
             const options = statuses.map((status: string) => ({
                 id: status,
-                label: status === 'PENDING_FOR_APPROVAL' ? 'Pending for Approval' : 'Invited',
+                label:
+                    status === 'PENDING_FOR_APPROVAL'
+                        ? t('filterOptions.approvalStatus.pending')
+                        : t('filterOptions.approvalStatus.invited'),
             }));
             if (options.length > 0) {
                 initialFilters.push({ id: 'approval_statuses', value: options });
@@ -323,7 +336,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const learnerType = searchParams.learnerType;
             const options = [{
                 id: learnerType,
-                label: learnerType === 'ABANDONED_CART' ? 'Abandoned Cart' : learnerType,
+                label:
+                    learnerType === 'ABANDONED_CART'
+                        ? t('filterOptions.learnerType.abandonedCart')
+                        : learnerType,
             }];
             initialFilters.push({ id: 'learner_type', value: options });
         }
@@ -671,6 +687,21 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const paymentFilter = columnFilters.find((filter) => filter.id === 'payment_statuses');
         const paymentStatuses = paymentFilter ? paymentFilter.value.map((opt) => opt.id) : [];
 
+        // Membership (Trial / Paid) — learner-only, so the backend drops audience-only rows
+        // whenever it is set: someone with no plan is neither.
+        const membershipFilter = columnFilters.find((filter) => filter.id === 'membership_types');
+        const membershipTypes = membershipFilter ? membershipFilter.value.map((opt) => opt.id) : [];
+
+        // Joined -> the existing start_date/end_date range over ssigm.enrolled_date. The
+        // control encodes its selection as "from:DD/MM/YYYY" / "to:DD/MM/YYYY"; the API wants
+        // YYYY-MM-DD, so convert here rather than teaching the shared control a second format.
+        const joinedFilter = columnFilters.find((filter) => filter.id === 'joined_range');
+        const joinedValues = joinedFilter ? joinedFilter.value.map((opt) => opt.id) : [];
+        const joinedFrom = toIsoDate(joinedValues.find((v) => v.startsWith('from:'))?.slice(5));
+        const joinedTo = toIsoDate(joinedValues.find((v) => v.startsWith('to:'))?.slice(3));
+        const joinedRange =
+            joinedFrom && joinedTo ? { start_date: joinedFrom, end_date: joinedTo } : {};
+
         // Handle custom field filters — keyed by custom_field.id, matching the
         // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
         const customFieldFilters: Record<string, string[]> = {};
@@ -726,6 +757,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             sort_columns: {},
             payment_statuses: paymentStatuses,
             type: learnerType,
+            ...(membershipTypes.length > 0 ? { membership_types: membershipTypes } : {}),
+            ...joinedRange,
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
@@ -736,6 +769,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 ? { custom_field_typed_filters: typedCfFilters }
                 : {}),
         };
+        // Campaign (UTM) filters ride columnFilters under `utm:<dimension>`
+        // (set by the UtmFilterControls pills) and apply with the same button.
+        const utmFilters = toUtmFiltersPayload(readUtmSelection(columnFilters));
+        if (utmFilters) newFilters.utm_filters = utmFilters;
 
         setAppliedFilters(newFilters);
 
@@ -1018,3 +1055,11 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         rangeCustomFields,
     };
 };
+
+/** "DD/MM/YYYY" (what the shared date-range control emits) -> "YYYY-MM-DD". */
+function toIsoDate(value?: string): string | undefined {
+    if (!value) return undefined;
+    const [day, month, year] = value.split('/');
+    if (!day || !month || !year) return undefined;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}

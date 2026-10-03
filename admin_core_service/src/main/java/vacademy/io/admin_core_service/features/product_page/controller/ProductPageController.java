@@ -85,4 +85,28 @@ public class ProductPageController {
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(coursePageService.removeCustomFieldFromPage(productPageId, customFieldId, instituteId));
     }
+
+    /**
+     * Edits a field on this page's form. The properties edited live on the
+     * shared custom field, so the change reaches every form using it.
+     */
+    @PutMapping("/{productPageId}/custom-fields/{customFieldId}")
+    public ResponseEntity<ProductPageResponse> updateCustomField(
+            @PathVariable("productPageId") String productPageId,
+            @PathVariable("customFieldId") String customFieldId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody ProductPageCustomFieldUpdateRequest request) {
+        return ResponseEntity.ok(
+                coursePageService.updateCustomFieldOnPage(productPageId, customFieldId, request, instituteId));
+    }
+
+    /** Body is the custom field ids in the order the checkout form should ask for them. */
+    @PutMapping("/{productPageId}/custom-fields/order")
+    public ResponseEntity<ProductPageResponse> reorderCustomFields(
+            @PathVariable("productPageId") String productPageId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody List<String> orderedCustomFieldIds) {
+        return ResponseEntity
+                .ok(coursePageService.reorderCustomFieldsOnPage(productPageId, orderedCustomFieldIds, instituteId));
+    }
 }

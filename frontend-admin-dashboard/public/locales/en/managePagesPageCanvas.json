@@ -1,0 +1,97 @@
+{
+    "globalSettings": {
+        "title": "Global Settings",
+        "description": "Configure header, footer, and global properties",
+        "header": "Header",
+        "footer": "Footer",
+        "selectedIndicator": "● Selected",
+        "overview": {
+            "title": "Configuration Overview",
+            "catalogueType": "Catalogue Type",
+            "notAvailable": "N/A",
+            "themeMode": "Theme Mode",
+            "fontFamily": "Font Family",
+            "defaultFont": "Default",
+            "payment": "Payment",
+            "leadCollection": "Lead Collection",
+            "enquiry": "Enquiry",
+            "enabledBadge": "✓ Enabled",
+            "disabledBadge": "✗ Disabled"
+        }
+    },
+    "page": {
+        "notFound": "Page not found",
+        "componentsCount_one": "Page components • {{count}} component",
+        "componentsCount_other": "Page components • {{count}} components",
+        "duplicateComponentTitle": "Duplicate Component",
+        "deleteComponentTitle": "Delete Component",
+        "confirmDeleteComponent": "Delete this component?",
+        "selected": "Selected",
+        "empty": {
+            "title": "No components on this page",
+            "hint": "Drag components from the library to add them"
+        }
+    },
+    "summary": {
+        "hero": {
+            "fallbackTitle": "Hero Section"
+        },
+        "catalogue": {
+            "fallbackTitle": "Course Catalogue",
+            "layoutLine": "Layout: {{layout}} • Filters: {{filters}}",
+            "filtersEnabled": "Enabled",
+            "filtersDisabled": "Disabled",
+            "filterCountSuffix_one": " • {{count}} filter",
+            "filterCountSuffix_other": " • {{count}} filters"
+        },
+        "courseDetails": {
+            "title": "Course Details Page",
+            "enquirySuffix": "Enquiry • ",
+            "paymentSuffix": "Payment • ",
+            "addToCart": "Add to Cart"
+        },
+        "cart": {
+            "title": "Shopping Cart",
+            "quantityControlsSuffix": "Quantity controls • ",
+            "pricingEnabled": "Pricing enabled"
+        },
+        "mediaShowcase": {
+            "title": "Media Showcase",
+            "layoutSlides_one": "Layout: {{layout}} •{{count}} slide",
+            "layoutSlides_other": "Layout: {{layout}} •{{count}} slides",
+            "autoplaySuffix": " • Autoplay"
+        },
+        "buyRent": {
+            "fallbackTitle": "Buy/Rent Section",
+            "buyFallback": "Buy",
+            "rentFallback": "Rent",
+            "buyRentLine": "{{buy}} • {{rent}}"
+        },
+        "stats": {
+            "title": "Stats Highlights",
+            "count_one": "{{count}} statistic",
+            "count_other": "{{count}} statistics"
+        },
+        "testimonials": {
+            "fallbackTitle": "Testimonials",
+            "countLayout_one": "{{count}} testimonial • Layout: {{layout}}",
+            "countLayout_other": "{{count}} testimonials • Layout: {{layout}}"
+        },
+        "policy": {
+            "fallbackTitle": "Policy Content",
+            "subtitle": "Policy page"
+        },
+        "header": {
+            "fallbackTitle": "Header",
+            "navItems_one": "{{count}} nav item",
+            "navItems_other": "{{count}} nav items"
+        },
+        "footer": {
+            "title": "Footer",
+            "layout": "Layout: {{layout}}"
+        },
+        "hideDetails": "Hide details",
+        "showDetails": "Show details",
+        "fullConfigurationLabel": "Full Configuration:"
+    }
+}

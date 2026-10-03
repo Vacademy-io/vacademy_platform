@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.dto.UserAudienceMembershipDTO;
 import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
@@ -67,6 +68,7 @@ public class UserLeadProfileService {
     private final AuthService authService;
     private final LeadSlaConfigService leadSlaConfigService;
     private final LeadStatusMirrorService leadStatusMirrorService;
+    private final LeadTierService leadTierService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -280,8 +282,11 @@ public class UserLeadProfileService {
                         .build());
 
         String oldTier = profile.getLeadTier();
-        String requested = tier.toUpperCase();
-        String scoreDerived = profile.computeTier();
+        String requested = tier.trim().toUpperCase();
+        if (!leadTierService.isKnownTier(instituteId, requested)) {
+            throw new VacademyException("Unknown lead tier: " + requested);
+        }
+        String scoreDerived = leadTierService.deriveTier(instituteId, profile.getBestScore());
 
         // If the admin is requesting the tier the score would derive anyway, clear
         // lead_tier instead of storing it. The frontend falls back to score-derived
@@ -735,6 +740,19 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        // Resolve the display name when the caller only knows the id. The column is a
+        // denormalised copy and the lead list renders the NAME, so an id written with a
+        // null name shows the lead as unassigned however correct the id is -- and on a
+        // REassignment it also wipes the name the previous assignment had stored, which
+        // is how an owned lead ends up looking ownerless. The AI-call outcome processor
+        // is the caller that has only the id (the pool rotation returns a user id), so
+        // it relied on this. A genuine un-assignment still clears both, because the
+        // backfill only runs when an id is actually being set.
+        if (counselorId != null && !counselorId.isBlank()
+                && (counselorName == null || counselorName.isBlank())) {
+            counselorName = resolveCounselorName(counselorId);
+        }
+
         profile.setAssignedCounselorId(counselorId);
         profile.setAssignedCounselorName(counselorName);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
@@ -751,6 +769,26 @@ public class UserLeadProfileService {
             safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
         }
         return saved;
+    }
+
+    /**
+     * Display name for a counsellor user id, or null when it cannot be resolved.
+     *
+     * <p>Never throws: a name is cosmetic next to the assignment itself, so a flaky
+     * auth-service lookup must not fail the assignment or roll back the transaction
+     * it runs in. Returning null simply leaves the column as it would have been.
+     */
+    private String resolveCounselorName(String counselorId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorId));
+            if (users != null && !users.isEmpty() && users.get(0) != null) {
+                String name = users.get(0).getFullName();
+                if (name != null && !name.isBlank()) return name;
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve counsellor name for {}: {}", counselorId, e.getMessage());
+        }
+        return null;
     }
 
     private UserLeadProfileDTO toDTO(UserLeadProfile p) {

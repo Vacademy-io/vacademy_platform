@@ -289,7 +289,18 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                sa.total_marks AS totalMarks,
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt, or any
+                -- attempt held PENDING for a teacher, shows no score until released. Admin views pass false.
+                -- NB no apostrophes or colons in these comments -- Spring Data parses the
+                -- whole string for quotes and parameters and cannot see SQL comments.
+                CASE
+                    WHEN :hideHeldManualMarks = TRUE
+                     AND ((a.result_type = 'MANUAL'
+                           AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED'))
+                          OR sa.report_release_status = 'PENDING')
+                    THEN NULL
+                    ELSE sa.total_marks
+                END AS totalMarks,
                 aim.subject_id as subjectId,
                 CASE
                     WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
@@ -339,7 +350,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
-    Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("userId") String userId,
+    Page<StudentReportDto> findAssessmentForUserWithFilter(@Param("hideHeldManualMarks") boolean hideHeldManualMarks,
+                                                           @Param("userId") String userId,
                                                            @Param("instituteId") String instituteId,
                                                            @Param("statusList") List<String> statusList,
                                                            @Param("releaseResultStatus") List<String> releaseStatus,
@@ -359,7 +371,18 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 COALESCE(sa.status, 'PENDING') AS attemptStatus,
                 sa.created_at AS attemptDate,
                 sa.total_time_in_seconds AS durationInSeconds,
-                sa.total_marks AS totalMarks,
+                -- Learner list (hideHeldManualMarks = true) -- a manual-result attempt, or any
+                -- attempt held PENDING for a teacher, shows no score until released. Admin views pass false.
+                -- NB no apostrophes or colons in these comments -- Spring Data parses the
+                -- whole string for quotes and parameters and cannot see SQL comments.
+                CASE
+                    WHEN :hideHeldManualMarks = TRUE
+                     AND ((a.result_type = 'MANUAL'
+                           AND (sa.report_release_status IS NULL OR sa.report_release_status <> 'RELEASED'))
+                          OR sa.report_release_status = 'PENDING')
+                    THEN NULL
+                    ELSE sa.total_marks
+                END AS totalMarks,
                 aim.subject_id as subjectId,
                 CASE
                     WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
@@ -421,7 +444,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             AND (:assessmentType IS NULL OR a.assessment_type IN(:assessmentType))
             and a.status = 'PUBLISHED'
             """, nativeQuery = true)
-    Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("name") String name,
+    Page<StudentReportDto> findAssessmentForUserWithFilterAndSearch(@Param("hideHeldManualMarks") boolean hideHeldManualMarks,
+                                                                    @Param("name") String name,
                                                                     @Param("userId") String userId,
                                                                     @Param("instituteId") String instituteId,
                                                                     @Param("statusList") List<String> statusList,
@@ -610,21 +634,32 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
     List<StudentAttempt> findByStatusNotIn(List<String> name);
 
+    /**
+     * Open attempts on assessments that have no clock (practice, survey). One
+     * query, so the hourly attempt-end sweep does not walk a lazy
+     * registration -> assessment chain per attempt outside a transaction.
+     */
+    @Query("SELECT sa.id FROM StudentAttempt sa WHERE sa.status NOT IN :statuses "
+            + "AND sa.registration.assessment.playMode IN :playModes")
+    List<String> findOpenAttemptIdsByPlayModes(@Param("statuses") List<String> statuses,
+                                               @Param("playModes") List<String> playModes);
+
     Optional<StudentAttempt> findTopByRegistrationOrderByCreatedAtDesc(vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration registration);
 
     /**
      * List the most-recent attempt per assessment for a student within an institute and optional
      * date range, ordered newest first.  Used by the internal student-analysis endpoint.
      *
-     * Dates are inclusive bounds on sa.created_at (attempt creation date).  Pass null to skip
-     * either bound.
+     * Dates are inclusive bounds on the attempt's EXAM date — COALESCE(submit_time, start_time,
+     * created_at). Not created_at alone: bulk-imported offline marks are all created in one
+     * import run, so created_at is the import time, not the exam. Pass null to skip either bound.
      */
     @Query(value = """
             SELECT
                 a.id              AS assessmentId,
                 a.name            AS assessmentName,
                 sa.id             AS attemptId,
-                sa.created_at     AS attemptDate,
+                COALESCE(sa.submit_time, sa.start_time, sa.created_at) AS attemptDate,
                 sa.total_marks    AS totalMarks,
                 sa.total_time_in_seconds AS durationInSeconds,
                 sa.result_status  AS resultStatus
@@ -647,14 +682,16 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     FROM public.student_attempt sa_inner
                     WHERE sa_inner.registration_id = aur.id
                       AND sa_inner.status = 'ENDED'
-                      AND (CAST(:startDate AS timestamp) IS NULL OR sa_inner.created_at >= CAST(:startDate AS timestamp))
-                      AND (CAST(:endDate   AS timestamp) IS NULL OR sa_inner.created_at <= CAST(:endDate AS timestamp))
-                    ORDER BY sa_inner.created_at DESC
+                      AND (CAST(:startDate AS timestamp) IS NULL
+                           OR COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) >= CAST(:startDate AS timestamp))
+                      AND (CAST(:endDate   AS timestamp) IS NULL
+                           OR COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) <= CAST(:endDate AS timestamp))
+                    ORDER BY COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) DESC, sa_inner.id
                     LIMIT 1
                 )
             WHERE a.status = 'PUBLISHED'
               AND sa.status = 'ENDED'
-            ORDER BY sa.created_at DESC
+            ORDER BY COALESCE(sa.submit_time, sa.start_time, sa.created_at) DESC, sa.id
             """, nativeQuery = true)
     List<StudentAttemptHistoryProjection> findAssessmentHistoryForUserInDateRange(
             @Param("userId") String userId,

@@ -2390,6 +2390,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.is_course_published_to_catalaouge = true
                 AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -2433,6 +2434,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             p.is_course_published_to_catalaouge = true
                             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
+                            AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -2462,6 +2464,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
+            @Param("sessionIds") List<String> sessionIds,
             @Param("packageStatus") List<String> packageStatus,
             @Param("packageTypes") List<String> packageTypes,
             @Param("packageSessionStatus") List<String> packageSessionStatus,

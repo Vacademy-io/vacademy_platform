@@ -1,0 +1,49 @@
+{
+    "header": {
+        "title": "Fee Configuration",
+        "totalLabel": "Total:",
+        "afterDiscountLabel": "After discount:"
+    },
+    "loading": "Loading installments…",
+    "loadError": "Could not load CPO details.",
+    "table": {
+        "index": "#",
+        "feeType": "Fee Type",
+        "startDate": "Start Date",
+        "dueDate": "Due Date",
+        "default": "Default",
+        "amount": "Amount (₹)",
+        "discount": "Discount",
+        "amountOverrideTitle": "Manual amount override",
+        "effectiveTitle": "Effective: {{effective}} (template {{template}} after discounts)",
+        "discountOptions": {
+            "none": "none",
+            "percentage": "%",
+            "flat": "₹"
+        }
+    },
+    "cpoDiscount": {
+        "heading": "Discount (optional)",
+        "typeLabel": "Type",
+        "options": {
+            "none": "none",
+            "percentage": "% of total",
+            "flat": "flat ₹ off"
+        },
+        "valueLabel": "Value",
+        "reasonLabel": "Reason",
+        "reasonPlaceholder": "e.g. Sibling discount",
+        "offSuffix": "= {{amount}} off"
+    },
+    "payment": {
+        "heading": "Initial Payment (optional)",
+        "skipLabelBold": "Don't record any payment now.",
+        "skipLabelRest": "Learner pays each installment online later.",
+        "offlineLabelBold": "Record an offline payment.",
+        "offlineLabelRest": "Applied across installments earliest first.",
+        "amountLabel": "Amount (₹)",
+        "netDues": "Net dues: {{amount}}",
+        "referenceLabel": "Reference (optional)",
+        "referencePlaceholder": "e.g. cheque #1234"
+    }
+}

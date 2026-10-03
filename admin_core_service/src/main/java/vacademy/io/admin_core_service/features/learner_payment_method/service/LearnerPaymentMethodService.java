@@ -185,6 +185,12 @@ public class LearnerPaymentMethodService {
         LearnerBillingDetailsDTO billing = new LearnerBillingDetailsDTO();
         String firstName = textOrNull(ewayCustomer, "FirstName");
         String lastName = textOrNull(ewayCustomer, "LastName");
+        // eWay refuses an empty LastName, so a learner who gave only a first name is
+        // sent to the gateway as "Jane Jane" (see EwayPaymentManager#ensureLastName).
+        // That padding is for eWay alone — collapse it back to the single name here.
+        if (lastName != null && lastName.equalsIgnoreCase(firstName)) {
+            lastName = null;
+        }
         String fullName = ((firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "")).trim();
         billing.setName(StringUtils.hasText(fullName) ? fullName : null);
         billing.setEmail(textOrNull(ewayCustomer, "Email"));

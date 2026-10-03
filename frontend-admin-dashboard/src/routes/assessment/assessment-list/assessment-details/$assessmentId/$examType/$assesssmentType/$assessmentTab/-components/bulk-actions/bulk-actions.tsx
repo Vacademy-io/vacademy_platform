@@ -4,6 +4,7 @@ import { BulkActionsMenuAttempted } from './bulk-actions-menu-attempted';
 import { SubmissionStudentData } from '@/types/assessments/assessment-overview';
 import { BulkActionsMenuOngoing } from './bulk-actions-menu-ongoing';
 import { BulkActionsMenuPending } from './bulk-actions-menu-pending';
+import { useTranslation } from 'react-i18next';
 
 interface BulkActionsProps {
     selectedCount: number;
@@ -14,6 +15,9 @@ interface BulkActionsProps {
     // Opens the report ZIP export dialog scoped to the checked rows
     // (Attempted tab only — other tabs have no reports to export).
     onExportReports?: () => void;
+    // Queues the AI check for the checked rows' submitted copies (Attempted
+    // tab, manual-evaluation assessments only).
+    onCheckWithAi?: () => void;
 }
 
 export const BulkActions = ({
@@ -23,7 +27,10 @@ export const BulkActions = ({
     onReset,
     selectedTab,
     onExportReports,
+    onCheckWithAi,
 }: BulkActionsProps) => {
+    const { t } = useTranslation('assessmentBulkActions');
+
     if (selectedCount === 0) {
         return null;
     }
@@ -31,7 +38,7 @@ export const BulkActions = ({
     return (
         <div className="flex items-center gap-5 text-neutral-600">
             <div className="flex gap-1">
-                [{selectedCount}] <div>Selected</div>
+                <div>{t('selectedCount', { count: selectedCount })}</div>
             </div>
 
             <div className="flex items-center gap-20">
@@ -42,7 +49,7 @@ export const BulkActions = ({
                     className="flex items-center"
                     onClick={onReset}
                 >
-                    Reset
+                    {t('reset')}
                     <XCircle />
                 </MyButton>
                 {selectedTab === 'Attempted' && (
@@ -51,6 +58,7 @@ export const BulkActions = ({
                         selectedStudentIds={selectedStudentIds}
                         selectedStudents={selectedStudents} // Pass the selected students
                         onExportReports={onExportReports}
+                        onCheckWithAi={onCheckWithAi}
                         trigger={
                             <MyButton
                                 buttonType="primary"
@@ -58,7 +66,7 @@ export const BulkActions = ({
                                 layoutVariant="default"
                                 className="flex w-full cursor-pointer items-center justify-between"
                             >
-                                <div>Bulk Actions</div>
+                                <div>{t('bulkActions')}</div>
                                 <CaretUpDown />
                             </MyButton>
                         }
@@ -76,7 +84,7 @@ export const BulkActions = ({
                                 layoutVariant="default"
                                 className="flex w-full cursor-pointer items-center justify-between"
                             >
-                                <div>Bulk Actions</div>
+                                <div>{t('bulkActions')}</div>
                                 <CaretUpDown />
                             </MyButton>
                         }
@@ -94,7 +102,7 @@ export const BulkActions = ({
                                 layoutVariant="default"
                                 className="flex w-full cursor-pointer items-center justify-between"
                             >
-                                <div>Bulk Actions</div>
+                                <div>{t('bulkActions')}</div>
                                 <CaretUpDown />
                             </MyButton>
                         }

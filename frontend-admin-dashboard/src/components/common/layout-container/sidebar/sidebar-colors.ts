@@ -1,3 +1,4 @@
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 /**
  * Sidebar Category Color Definitions
  *
@@ -5,6 +6,7 @@
  * - CRM  → Teal   (business/professional)
  * - LMS  → Indigo (educational/knowledge)
  * - AI   → Rose   (tech/futuristic)
+ * - ERP  → Amber  (operations/back-office)
  */
 
 export interface CategoryColors {
@@ -32,7 +34,7 @@ export interface CategoryColors {
     railIconInactive: string;
 }
 
-export const CATEGORY_COLORS: Record<'CRM' | 'LMS' | 'AI', CategoryColors> = {
+export const CATEGORY_COLORS: Record<SidebarCategory, CategoryColors> = {
     CRM: {
         text: 'text-teal-700',
         bg: 'bg-teal-500',
@@ -77,9 +79,22 @@ export const CATEGORY_COLORS: Record<'CRM' | 'LMS' | 'AI', CategoryColors> = {
         railIconActive: 'text-neutral-900',
         railIconInactive: 'text-white/70',
     },
+    ERP: {
+        text: 'text-amber-700',
+        bg: 'bg-amber-500',
+        ring: 'ring-amber-200',
+        hoverText: 'hover:text-amber-700',
+        hoverBg: 'hover:bg-amber-50',
+        railActiveBg: 'bg-white',
+        pillBg: 'bg-amber-500',
+        pillText: 'text-white',
+        divider: 'border-amber-100',
+        railIconActive: 'text-neutral-900',
+        railIconInactive: 'text-white/70',
+    },
 };
 
 /** Get colors for a category, defaulting to CRM */
-export function getCategoryColors(category?: 'CRM' | 'LMS' | 'AI'): CategoryColors {
+export function getCategoryColors(category?: SidebarCategory): CategoryColors {
     return CATEGORY_COLORS[category || 'CRM'];
 }

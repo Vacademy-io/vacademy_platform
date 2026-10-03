@@ -23,24 +23,28 @@ import {
 } from '@/components/ui/select';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
-import { AiAgentPromptAssistant } from '@/routes/settings/-components/AiAgentPromptAssistant';
+import {
+    AiAgentPromptAssistant,
+    type AgentAssistUpdate,
+} from '@/routes/settings/-components/AiAgentPromptAssistant';
 import { SendRulesEditor } from './send-rules-editor';
-import type { AssistDerived } from '@/routes/settings/-services/ai-agent-assist';
 import {
     DEFAULT_SAMPLE_TEXT,
     EXPRESSIVENESS_OPTIONS,
+    VOICE_MODULATION_OPTIONS,
     FALLBACK_VOICES,
     TTS_MODELS,
     creditLine,
     resolveTtsModel,
     voicesForModel,
     patchForModelChange,
-
     fetchVoices,
     saveAgent,
     voicePreviewUrl,
     type AiAgent,
 } from '../-services/ai-agents';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export function AiAgentEditorDialog({
     agent,
@@ -221,9 +225,7 @@ export function AiAgentEditorDialog({
                         <Select
                             value={ttsModel}
                             onValueChange={(v) =>
-                                patch(
-                                    patchForModelChange(v as TtsModelId, draft.voice, allVoices)
-                                )
+                                patch(patchForModelChange(v as TtsModelId, draft.voice, allVoices))
                             }
                         >
                             <SelectTrigger>
@@ -239,11 +241,11 @@ export function AiAgentEditorDialog({
                         </Select>
                         <p className="text-caption text-neutral-500">
                             {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
-                                {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
-                                    <span className="mt-0.5 block font-medium text-neutral-700">
-                                        {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
-                                    </span>
-                                )}
+                            {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
+                                <span className="mt-0.5 block font-medium text-neutral-700">
+                                    {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
+                                </span>
+                            )}
                         </p>
                     </div>
                     <div className="space-y-1.5">
@@ -322,6 +324,39 @@ export function AiAgentEditorDialog({
                             How much the voice varies its intonation and emotion.
                         </p>
                     </div>
+                    <div className="space-y-1.5">
+                        <Label>Voice modulation</Label>
+                        <Select
+                            value={
+                                VOICE_MODULATION_OPTIONS.find(
+                                    (o) => o.factor === draft.voiceModulation
+                                )?.value ?? 'default'
+                            }
+                            onValueChange={(v) =>
+                                patch({
+                                    voiceModulation: VOICE_MODULATION_OPTIONS.find(
+                                        (o) => o.value === v
+                                    )?.factor,
+                                })
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {VOICE_MODULATION_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-caption text-neutral-500">
+                            How much the pitch rises and falls. Applied to the audio itself, so it
+                            works with every voice and engine — a flat, read-out tone becomes
+                            conversational.
+                        </p>
+                    </div>
                 </div>
 
                 <div className="space-y-1.5 rounded-md border border-neutral-200 p-3">
@@ -380,17 +415,14 @@ export function AiAgentEditorDialog({
                     instituteId={instituteId}
                     agentId={draft.id}
                     prompt={draft.systemPrompt ?? ''}
-                    language={draft.language}
-                    onPromptChange={(p) => patch({ systemPrompt: p })}
-                    onApplyDerived={(d: AssistDerived) =>
-                        patch({
-                            ...(d.opening_line ? { openingLine: d.opening_line } : {}),
-                            ...(d.extraction_questions?.length
-                                ? { extractionQuestions: d.extraction_questions }
-                                : {}),
-                            ...(d.dispositions?.length ? { dispositions: d.dispositions } : {}),
-                        })
-                    }
+                    fields={{
+                        agentName: draft.name,
+                        language: draft.language,
+                        openingLine: draft.openingLine,
+                        extractionQuestions: draft.extractionQuestions,
+                        dispositions: draft.dispositions,
+                    }}
+                    onApply={(u: AgentAssistUpdate) => patch(u)}
                 />
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -399,9 +431,7 @@ export function AiAgentEditorDialog({
                         <Textarea
                             rows={3}
                             value={(draft.extractionQuestions ?? []).join('\n')}
-                            placeholder={
-                                'What class is the student in?\nWhich course are they interested in?'
-                            }
+                            placeholder={`What class is the student in?\nWhich ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} are they interested in?`}
                             onChange={(e) =>
                                 patch({
                                     extractionQuestions: e.target.value

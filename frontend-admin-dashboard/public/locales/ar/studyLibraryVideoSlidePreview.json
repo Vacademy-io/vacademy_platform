@@ -1,0 +1,19 @@
+{
+    "loadingVideo": "جارٍ تحميل الفيديو...",
+    "retry": "إعادة المحاولة",
+    "workInProgress": "العمل جارٍ",
+    "videoBeingGenerated": "جارٍ إنشاء الفيديو...",
+    "generatingHint": "قد يستغرق هذا بضع دقائق. يُرجى التحقق مرة أخرى لاحقًا.",
+    "vimeoPlayerTitle": "مشغّل فيديو Vimeo",
+    "toast": {
+        "jumpedTo": "تم الانتقال بالفيديو إلى {{time}}"
+    },
+    "errors": {
+        "refreshFailed": "فشل تحديث رابط الفيديو",
+        "loadFailed": "فشل تحميل الفيديو",
+        "loadUrlsFailed": "فشل تحميل روابط الفيديو",
+        "urlExpiredRefreshing": "انتهت صلاحية رابط الفيديو. جارٍ التحديث...",
+        "playbackError": "خطأ في تشغيل الفيديو: {{message}}",
+        "unknownError": "خطأ غير معروف"
+    }
+}

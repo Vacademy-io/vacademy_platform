@@ -67,4 +67,34 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
     @Query("UPDATE LeadFollowup lf SET lf.status = 'OVERDUE' " +
            "WHERE lf.id = :id AND lf.status = 'ONGOING' AND lf.isClosed = false")
     int claimOverdueTransition(@Param("id") String id);
+
+    /**
+     * Undo a claim whose emission then failed, so the next scan retries it.
+     *
+     * <p>The claim has to happen BEFORE the emit (it is what makes the one-fire guarantee
+     * hold across replicas), which means a failed emit would otherwise leave the row
+     * advanced with nothing sent — and since the status only ever moves forward, that
+     * follow-up's reminder would be lost permanently rather than retried. One transient
+     * auth-service or workflow blip silently costs a counsellor their reminder.</p>
+     *
+     * <p>Retrying is safe: the workflow emission is idempotent per follow-up id
+     * (eventId = the row id under EVENT_BASED dedup), so a re-run cannot double-fire the
+     * workflow. Only the baseline bell alert can repeat, which is the right trade against
+     * dropping it entirely.</p>
+     *
+     * <p>Guarded on the expected current status so a release can never drag a row
+     * backwards past a transition another replica legitimately made in the meantime.</p>
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE LeadFollowup lf SET lf.status = 'PENDING' " +
+           "WHERE lf.id = :id AND lf.status = 'ONGOING' AND lf.isClosed = false")
+    int releaseDueTransition(@Param("id") String id);
+
+    /** Overdue twin of {@link #releaseDueTransition}. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE LeadFollowup lf SET lf.status = 'ONGOING' " +
+           "WHERE lf.id = :id AND lf.status = 'OVERDUE' AND lf.isClosed = false")
+    int releaseOverdueTransition(@Param("id") String id);
 }

@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { CaretDown, CaretUp, Backspace } from "@phosphor-icons/react";
 import { QUESTION_TYPES } from "@/types/assessment";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { cn } from "@/lib/utils";
 
 export function NumericInputWithKeypad() {
+  const { t } = useTranslation("questionTest");
   const { currentQuestion, answers, setAnswer, setQuestionState } =
     useAssessmentStore();
   const [numericValue, setNumericValue] = useState("");
@@ -140,7 +142,7 @@ export function NumericInputWithKeypad() {
   return (
     <div className="md:max-w-reg-450">
       <p className="mb-2 text-3xs font-bold uppercase tracking-wide text-neutral-400">
-        Your answer
+        {t("common.yourAnswer")}
       </p>
 
       <input
@@ -150,7 +152,7 @@ export function NumericInputWithKeypad() {
         value={numericValue}
         onChange={handleInputChange}
         placeholder={isDecimal ? "0.00" : "0"}
-        aria-label="Your numeric answer"
+        aria-label={t("numeric.ariaLabel")}
         onCopy={(e) => e.preventDefault()}
         onCut={(e) => e.preventDefault()}
         onPaste={(e) => e.preventDefault()}
@@ -165,7 +167,7 @@ export function NumericInputWithKeypad() {
           chip beside the question already shows it. */}
       {!hasNegativeMarking && (
         <p className="mt-2 text-caption text-neutral-400">
-          No negative marking on this question.
+          {t("numeric.noNegativeMarking")}
         </p>
       )}
 
@@ -175,7 +177,7 @@ export function NumericInputWithKeypad() {
         aria-expanded={isPadOpen}
         className="mt-3 flex items-center gap-1.5 text-caption font-semibold text-neutral-500 transition-colors hover:text-neutral-800"
       >
-        {isPadOpen ? "Hide number pad" : "Show number pad"}
+        {isPadOpen ? t("numeric.pad.hide") : t("numeric.pad.show")}
         {isPadOpen ? <CaretUp size={14} /> : <CaretDown size={14} />}
       </button>
 
@@ -196,7 +198,7 @@ export function NumericInputWithKeypad() {
               type="button"
               onClick={() => handleKeyPress(".")}
               disabled={numericValue.includes(".")}
-              aria-label="Decimal point"
+              aria-label={t("numeric.pad.decimalPointAriaLabel")}
               className="h-12 rounded-lg border border-neutral-200 bg-white text-title font-semibold text-neutral-800 transition-colors hover:bg-neutral-100 disabled:opacity-40"
             >
               .
@@ -214,7 +216,7 @@ export function NumericInputWithKeypad() {
           <button
             type="button"
             onClick={() => handleKeyPress("backspace")}
-            aria-label="Backspace"
+            aria-label={t("numeric.pad.backspaceAriaLabel")}
             className="grid h-12 place-items-center rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-700 transition-colors hover:bg-neutral-200"
           >
             <Backspace size={20} />

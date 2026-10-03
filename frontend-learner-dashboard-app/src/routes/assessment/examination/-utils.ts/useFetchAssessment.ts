@@ -1,6 +1,7 @@
 import { useAssessmentStore } from "@/stores/assessment-store";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { toast } from "sonner";
+import i18next from "i18next";
 import { getBackendErrorMessage } from "@/utils/error-message";
 import {
   Assessment_List_Filter,
@@ -92,7 +93,7 @@ export const fetchAssessmentData = async (
   try {
     const { student, institute } = await getStoredDetails();
     if (!student || !institute) {
-      toast.error("Missing student or institute details.");
+      toast.error(i18next.t("assessment:util.toast.missingDetails"));
       return;
     }
     // Source batch_ids from a LIVE /details fetch (every enrolled batch) instead
@@ -177,7 +178,7 @@ export const fetchPreviewData = async (
   try {
     const { student, institute } = await getStoredDetails();
     if (!student || !institute) {
-      toast.error("Missing student or institute details.");
+      toast.error(i18next.t("assessment:util.toast.missingDetails"));
       return;
     }
 
@@ -201,7 +202,7 @@ export const fetchPreviewData = async (
     const student_details = await getStudentDetails();
 
     if (!student_details) {
-      toast.error("Student details not found.");
+      toast.error(i18next.t("assessment:util.toast.studentDetailsNotFound"));
       return;
     }
 
@@ -353,7 +354,7 @@ export const fetchPreviewData = async (
     toast.error(
       getBackendErrorMessage(
         error,
-        "Unable to start the assessment. Please try again."
+        i18next.t("assessment:util.toast.startFailed")
       )
     );
   }

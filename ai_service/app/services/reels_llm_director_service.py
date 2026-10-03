@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
+from .llm_router import post_chat
 
 from ..config import get_settings
 
@@ -511,7 +512,7 @@ class LLMDirector:
             async with httpx.AsyncClient(timeout=_LLM_TIMEOUT_S) as client:
                 for attempt in attempts:
                     try:
-                        resp = await client.post(self._llm_url, headers=headers, json=attempt)
+                        resp = await post_chat(client, attempt, self._api_key)
                     except httpx.TimeoutException as e:
                         last_err = f"timeout: {e}"
                         continue

@@ -1,0 +1,232 @@
+{
+    "common": {
+        "startNewChat": "Démarrer une nouvelle discussion",
+        "closeSession": "Fermer la session",
+        "aiGear": "Paramètres IA",
+        "closePanel": "Fermer le panneau",
+        "mathSymbols": "Symboles mathématiques",
+        "preview": "Aperçu :",
+        "retry": "Réessayer",
+        "newChat": "Nouvelle discussion",
+        "dropImageHere": "Déposez l'image ici",
+        "voiceChatLabel": "Appel vocal",
+        "startVoiceConversation": "Démarrer un appel vocal",
+        "creditsExhausted": "Vos crédits OpenRouter sont épuisés. Veuillez recharger vos crédits pour continuer à utiliser l'assistant IA.",
+        "attachmentAlt": "pièce jointe",
+        "attachedImageAlt": "pièce jointe",
+        "copy": "Copier",
+        "popupView": "Ouvrir en fenêtre",
+        "dockView": "Ancrer sur le côté"
+    },
+    "voiceModeLabels": {
+        "interview": "Entretien simulé",
+        "doubt": "Discussion de doute",
+        "oralTest": "Test oral",
+        "sessionFallback": "Session"
+    },
+    "floatingButton": {
+        "nudgeMessages": {
+            "doubts": "Des doutes ?",
+            "learnSomething": "Envie d'apprendre quelque chose de nouveau ?",
+            "practice": "Des questions d'entraînement ?"
+        },
+        "tooltip": {
+            "draggable": "Appuyez pour discuter • Faites glisser pour déplacer",
+            "tapOnly": "Appuyez pour discuter"
+        }
+    },
+    "panel": {
+        "offlineNotice": "Vous êtes hors ligne. Les messages seront envoyés dès que vous serez reconnecté.",
+        "initializing": "Initialisation de la discussion...",
+        "generatingQuiz": "Génération du quiz...",
+        "errorTitle": "Une erreur s'est produite",
+        "sessionEnded": "Cette discussion est terminée",
+        "queuedTooltip": "En attente — sera envoyé une fois en ligne",
+        "copyMessage": "Copier le message",
+        "attachImageTitle": "Joindre une image (les photos de maths sont détectées automatiquement)",
+        "fullscreen": "Plein écran",
+        "exitFullscreen": "Quitter le plein écran",
+        "inputPlaceholder": "Écrivez un message... (utilisez $ pour les maths)"
+    },
+    "sidePanel": {
+        "initializing": "Initialisation...",
+        "generating": "Génération...",
+        "creditsExhaustedShort": "Vos crédits OpenRouter sont épuisés. Veuillez recharger vos crédits pour continuer.",
+        "errorTitle": "Une erreur s'est produite.",
+        "sessionEnded": "Session terminée. Démarrez une nouvelle discussion.",
+        "attachImageTitle": "Joindre une image",
+        "inputPlaceholder": "Posez une question... ($ pour les maths)"
+    },
+    "widget": {
+        "assistantSubtitle": "Assistant IA de {{instituteName}}",
+        "error": "Une erreur s'est produite, veuillez recommencer",
+        "inputPlaceholder": "Écrivez votre message...",
+        "chatButtonAlt": "Discussion",
+        "context": {
+            "title": "Contexte utilisé :",
+            "route": "Route :",
+            "courseId": "ID {{course}} :",
+            "slideId": "ID {{slide}} :",
+            "moduleId": "ID {{module}} :"
+        }
+    },
+    "micButton": {
+        "transcribing": "Transcription en cours...",
+        "stopRecording": "Arrêter l'enregistrement",
+        "voiceToText": "Voix vers texte"
+    },
+    "quickActions": {
+        "explainThis": {
+            "label": "Explique ceci",
+            "prompt": "Explique ce qu'il y a sur ce {{slide}} en termes simples"
+        },
+        "quizMe": {
+            "label": "Interroge-moi",
+            "prompt": "Interroge-moi sur "
+        },
+        "summarize": {
+            "label": "Résume",
+            "prompt": "Donne-moi un bref résumé de ce {{slide}}"
+        },
+        "courseOverview": {
+            "label": "Aperçu du {{course}}",
+            "prompt": "Donne-moi un aperçu de ce {{course}}"
+        },
+        "learningPath": {
+            "label": "Parcours d'apprentissage",
+            "prompt": "Quel est le parcours d'apprentissage recommandé pour ce {{course}} ?"
+        },
+        "prerequisites": {
+            "label": "Prérequis",
+            "prompt": "Quels sont les prérequis pour ce {{course}} ?"
+        },
+        "hint": {
+            "label": "Indice",
+            "prompt": "Donne-moi un indice pour cette question sans révéler la réponse"
+        },
+        "explainConcept": {
+            "label": "Explique le concept",
+            "prompt": "Explique le concept testé dans cette question"
+        },
+        "helpMeLearn": {
+            "label": "Aide-moi à apprendre",
+            "prompt": "Aide-moi à apprendre "
+        },
+        "askDoubt": {
+            "label": "Poser un doute",
+            "prompt": "J'ai une question à propos de "
+        },
+        "practice": {
+            "label": "Entraînement"
+        }
+    },
+    "quiz": {
+        "questionLabel": "Q{{number}}",
+        "answeredCount": "{{answered}} sur {{total}} répondues",
+        "previous": "Précédent",
+        "next": "Suivant",
+        "submitQuiz": "Soumettre le quiz",
+        "submitted": "Soumis"
+    },
+    "quizFeedback": {
+        "passed": "Quiz réussi ! 🎉",
+        "keepPracticing": "Continuez à vous entraîner !",
+        "completedIn": "Terminé en {{minutes}} min {{seconds}} s",
+        "recommendations": "Recommandations",
+        "hideDetails": "Masquer les détails des questions",
+        "showDetails": "Afficher les détails des questions",
+        "questionNumber": "Question {{number}}",
+        "yourAnswer": "Votre réponse : ",
+        "notAnswered": "Sans réponse",
+        "correctAnswer": "Bonne réponse : ",
+        "explanation": "Explication : "
+    },
+    "sessionScorecard": {
+        "summaryTitle": "Résumé — {{mode}}",
+        "score": "Score",
+        "strengths": "Points forts",
+        "areasToImprove": "Axes d'amélioration",
+        "feedback": "Retour",
+        "close": "Fermer",
+        "startNewSession": "Démarrer une nouvelle session"
+    },
+    "toolIndicator": {
+        "checkingProgress": "Vérification de votre progression...",
+        "reviewingPerformance": "Analyse de vos données de performance...",
+        "searchingResources": "Recherche de contenu associé...",
+        "searchingCourseMaterials": "Recherche dans les supports de votre {{course}}...",
+        "workingOnIt": "Traitement en cours..."
+    },
+    "voiceAvatar": {
+        "ready": "Prêt",
+        "listening": "Écoute...",
+        "thinking": "Réflexion...",
+        "speaking": "Parle..."
+    },
+    "voiceModePanel": {
+        "unmute": "Réactiver le microphone",
+        "mute": "Couper le microphone",
+        "end": "Terminer l'appel",
+        "hintIdle": "Appuyez sur le micro quand vous êtes prêt à parler",
+        "hintListening": "Je vous écoute… faites simplement une pause quand vous avez fini",
+        "hintProcessing": "Je réfléchis…",
+        "hintSpeaking": "Appuyez sur le micro pour intervenir",
+        "muted": "Micro coupé — réactivez-le pour continuer",
+        "talk": "Parler",
+        "connecting": "Connexion…",
+        "reconnecting": "Reconnexion…",
+        "noticeNoSpeech": "Je n'ai pas entendu — réessayez",
+        "noticeError": "Un problème est survenu. Appuyez sur le micro pour réessayer.",
+        "noticeMic": "Je n'ai pas accès à votre microphone. Vérifiez les autorisations puis appuyez sur le micro.",
+        "topicPrefix": "Sujet : {{topic}}"
+    },
+    "voiceModeSelector": {
+        "title": "Appel vocal",
+        "subtitle": "Choisissez comment vous voulez parler",
+        "modeInterviewLabel": "Passer mon entretien",
+        "modeInterviewDescription": "Entraînez-vous avec un entretien simulé sur votre sujet actuel",
+        "modeDoubtLabel": "Discuter de votre doute",
+        "modeDoubtDescription": "Discutez de vos doutes par interaction vocale",
+        "modeOralTestLabel": "Passer un test oral",
+        "modeOralTestDescription": "Testez vos connaissances avec des questions-réponses orales",
+        "topicLabelInterview": "Sujet de l'entretien",
+        "topicLabelOralTest": "Sujet du test",
+        "topicLabelDoubt": "Quel est votre doute ?",
+        "topicPlaceholderInterview": "ex. Structures de données, React, Machine Learning",
+        "topicPlaceholderOralTest": "ex. Photosynthèse, lois de Newton, algèbre",
+        "topicPlaceholderDoubt": "ex. Je suis confus à propos de la récursivité",
+        "topicHelperOptional": "Facultatif — ou commencez simplement à parler",
+        "topicHelperRecommended": "Recommandé — aide à générer de meilleures questions",
+        "languageLabel": "Langue",
+        "languageEn": "Anglais",
+        "languageHi": "Hindi",
+        "languageBn": "Bengali",
+        "languageTa": "Tamoul",
+        "languageTe": "Télougou",
+        "languageKn": "Kannada",
+        "languageMl": "Malayalam",
+        "languageMr": "Marathi",
+        "languageGu": "Goujarati",
+        "languagePa": "Pendjabi",
+        "languageOr": "Odia",
+        "cancel": "Annuler",
+        "start": "Démarrer l'appel",
+        "topicHelperEditable": "Tiré de ce que vous étudiez — modifiez-le si vous préférez un autre sujet"
+    },
+    "latexToolbar": {
+        "groupArithmetic": "Arithmétique",
+        "groupRelations": "Relations",
+        "groupCalculus": "Calcul",
+        "groupGreek": "Grec",
+        "groupOther": "Autre"
+    },
+    "useChatbot": {
+        "initErrorNetwork": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter au serveur. Veuillez vérifier votre connexion réseau.",
+        "initErrorNotFound": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. Le point de terminaison du service IA est introuvable. Veuillez vérifier la configuration.",
+        "initErrorAuth": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. L'authentification a échoué. Veuillez réessayer de vous connecter.",
+        "initErrorGeneric": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter en ce moment (Erreur : {{errorMessage}}). Comment puis-je vous aider ?",
+        "initErrorFallback": "Bonjour ! Je suis {{assistantName}}, votre assistant IA. J'ai du mal à me connecter en ce moment. Comment puis-je vous aider ?",
+        "processingFailed": "Désolé, une erreur s'est produite lors du traitement de votre demande. Veuillez réessayer.",
+        "quizSubmitFailed": "Désolé, je n'ai pas pu soumettre votre quiz. Veuillez réessayer."
+    }
+}

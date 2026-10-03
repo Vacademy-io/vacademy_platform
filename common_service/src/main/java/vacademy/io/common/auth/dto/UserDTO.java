@@ -66,6 +66,13 @@ public class UserDTO {
     @Size(max = 10, message = "Preferred locale must not exceed 10 characters")
     private String preferredLocale;
 
+    // Author metadata (serialized as author_subtitle / author_description).
+    // Set from the Add Course -> Add Authors flow; surfaced on catalogue and
+    // course-detail instructor lists. Optional - null when not set.
+    @Size(max = 255, message = "Author subtitle must not exceed 255 characters")
+    private String authorSubtitle;
+    private String authorDescription;
+
     public UserDTO(User user) {
         this.id = user.getId();
         this.username = user.getUsername();
@@ -84,6 +91,8 @@ public class UserDTO {
         this.isParent=user.getIsParent();
         this.linkedParentId=user.getLinkedParentId();
         this.preferredLocale = user.getPreferredLocale();
+        this.authorSubtitle = user.getAuthorSubtitle();
+        this.authorDescription = user.getAuthorDescription();
     }
 
     public UserDTO(User user, UserDTO userDTO) {
@@ -105,6 +114,8 @@ public class UserDTO {
         this.isParent=user.getIsParent();
         this.linkedParentId=user.getLinkedParentId();
         this.preferredLocale = user.getPreferredLocale();
+        this.authorSubtitle = user.getAuthorSubtitle();
+        this.authorDescription = user.getAuthorDescription();
 
     }
 }

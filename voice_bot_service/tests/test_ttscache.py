@@ -1157,6 +1157,37 @@ async def test_a_cached_sentence_is_heard_at_60_percent_of_its_audio_and_said_on
     assert before == 30, f"text after {before} of {n_audio} chunks — want 60 % (30)"
 
 
+async def test_a_cached_question_keeps_its_text_behind_the_whole_clip(monkeypatch, tmp_path):
+    """Replay corpus, 2026-10-02: placing the cached OPENING's text at 60 % made a
+    "हाँ" that cut it at 61-79 % read as the answer to its question — which starts
+    at 66 % and was never heard. A clip ending in a question keeps pipecat's own
+    text frame, after the last chunk, exactly as before; nothing is armed to drop."""
+    from pipecat.frames.frames import TTSTextFrame
+    opening = ("नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से। आपने live classes की "
+               "inquiry की थी। क्या मैं जान सकती हूँ कि किससे बात कर रही हूँ?")
+    tts = _install_queue_tts(monkeypatch, tmp_path, [(opening, 1000)])
+    await _speak(tts, opening, "ctx-open", append_to_context=False)
+    kinds = _kinds(tts.queue)
+    texts = [f for _, f in tts.queue if isinstance(f, TTSTextFrame)]
+    assert len(texts) == 1, kinds
+    assert not getattr(texts[0], "_vacademy_cached_text", False), "the cache placed a question's text"
+    assert "TTSAudioRawFrame" not in kinds[kinds.index("TTSTextFrame"):], "text before the clip ended"
+    await _speak(tts, "Kuch aur poochhna hai?", "ctx-open")
+    assert [f.text for c, f in tts.queue if isinstance(f, TTSTextFrame)][-1] == "Kuch aur poochhna hai?", \
+        "a drop was left armed"
+
+
+def test_ends_in_question():
+    f = ttscache.ends_in_question
+    assert f("क्या मैं जान सकती हूँ कि किससे बात कर रही हूँ?")
+    assert f("Is this Raman? ")
+    assert f('He asked "really?"')
+    assert f("कौन-सा time ठीक रहेगा？")
+    assert not f("Hello, is this Raman? I am Aarushi from Vacademy.")
+    assert not f("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है।")
+    assert not f("")
+
+
 async def test_a_live_sentence_keeps_pipecats_text_frame(monkeypatch, tmp_path):
     """The drop is armed only by a cache HIT: a miss (and every live sentence
     after a hit) keeps the base class's TTSTextFrame — the live path is the

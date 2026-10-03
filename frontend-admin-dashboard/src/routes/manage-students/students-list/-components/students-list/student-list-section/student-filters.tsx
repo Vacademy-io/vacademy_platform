@@ -19,6 +19,9 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { CaretDown } from '@phosphor-icons/react';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
 import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
 import {
@@ -257,30 +260,49 @@ export const StudentFilters = ({
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
                                 {filter.kind === 'DATE_RANGE' ? (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm text-neutral-600">
-                                            {filter.title}
-                                        </span>
-                                        <DateRangeFilter
-                                            onChange={(result) =>
-                                                onFilterChange(
-                                                    filter.id,
-                                                    result
-                                                        ? [
-                                                              {
-                                                                  id: `from:${result.startDate}`,
-                                                                  label: result.startDate,
-                                                              },
-                                                              {
-                                                                  id: `to:${result.endDate}`,
-                                                                  label: result.endDate,
-                                                              },
-                                                          ]
-                                                        : []
-                                                )
-                                            }
-                                        />
-                                    </div>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                aria-label={`Filter by ${filter.title}`}
+                                                className={cn(
+                                                    'h-10 justify-between gap-2',
+                                                    dateRangeLabel(columnFilters, filter.id) &&
+                                                        'border-primary-300 bg-primary-50'
+                                                )}
+                                            >
+                                                <span className="truncate text-sm font-normal">
+                                                    {dateRangeLabel(columnFilters, filter.id)
+                                                        ? `${filter.title} · ${dateRangeLabel(columnFilters, filter.id)}`
+                                                        : filter.title}
+                                                </span>
+                                                <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent align="start" className="w-auto">
+                                            <DateRangeFilter
+                                                onChange={(result) =>
+                                                    onFilterChange(
+                                                        filter.id,
+                                                        result
+                                                            ? [
+                                                                  {
+                                                                      id: `from:${result.startDate}`,
+                                                                      label: result.startDate,
+                                                                  },
+                                                                  {
+                                                                      id: `to:${result.endDate}`,
+                                                                      label: result.endDate,
+                                                                  },
+                                                              ]
+                                                            : []
+                                                    )
+                                                }
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
                                 ) : filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
                                     <CustomFieldRangeFilter
                                         fieldId={filter.customFieldId}
@@ -396,3 +418,14 @@ export const StudentFilters = ({
         </div>
     );
 };
+
+/** "03/10/2026 - 17/10/2026" for the chip label, or '' when nothing is picked. */
+function dateRangeLabel(
+    columnFilters: { id: string; value: { id: string; label: string }[] }[],
+    filterId: string
+): string {
+    const values = columnFilters.find((f) => f.id === filterId)?.value ?? [];
+    const from = values.find((v) => v.id.startsWith('from:'))?.label;
+    const to = values.find((v) => v.id.startsWith('to:'))?.label;
+    return from && to ? `${from} - ${to}` : '';
+}

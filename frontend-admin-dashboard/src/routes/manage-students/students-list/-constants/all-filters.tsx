@@ -92,6 +92,7 @@ export const GetFilterData = (
                       title: 'Membership',
                       filterList: [
                           { id: 'TRIAL', label: 'Trial' },
+                          { id: 'TRIAL_ENDED', label: 'Trial ended' },
                           { id: 'PAID', label: 'Paid' },
                       ],
                   },

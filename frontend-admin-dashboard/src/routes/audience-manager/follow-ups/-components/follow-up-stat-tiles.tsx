@@ -104,8 +104,10 @@ export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTile
                     >
                         <Icon weight="fill" className={cn('size-7 shrink-0', TONE_ICON[tone])} />
                         <div className="min-w-0 flex-1">
+                            {/* Grouped: these used to top out at the 200 rows the page had
+                                fetched, so four digits never came up. They do now. */}
                             <p className="text-3xl font-semibold leading-none text-neutral-900">
-                                {count}
+                                {count.toLocaleString()}
                             </p>
                             <p className="mt-1.5 text-sm font-medium text-neutral-700">{label}</p>
                             <p className="text-xs text-neutral-500">{caption}</p>

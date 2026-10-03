@@ -7,12 +7,12 @@
     "subline": {
         "teamAllCaughtUp": "Team is all caught up",
         "selfAllCaughtUp": "You're all caught up",
-        "tasksDueToday_admin_one": "Team has {{count}} task due today",
-        "tasksDueToday_admin_other": "Team has {{count}} tasks due today",
-        "tasksDueToday_user_one": "You have {{count}} task due today",
-        "tasksDueToday_user_other": "You have {{count}} tasks due today",
-        "overdueSuffix_one": " · {{count}} overdue",
-        "overdueSuffix_other": " · {{count}} overdue"
+        "tasksDueToday_admin_one": "Team has {{count, number}} task due today",
+        "tasksDueToday_admin_other": "Team has {{count, number}} tasks due today",
+        "tasksDueToday_user_one": "You have {{count, number}} task due today",
+        "tasksDueToday_user_other": "You have {{count, number}} tasks due today",
+        "overdueSuffix_one": " · {{count, number}} overdue",
+        "overdueSuffix_other": " · {{count, number}} overdue"
     },
     "tabs": {
         "list": "List",
@@ -51,8 +51,8 @@
             "default": "No follow-ups"
         },
         "description": {
-            "overdueNudge_one": "You have {{count}} overdue task — switch to \"Pending\" above.",
-            "overdueNudge_other": "You have {{count}} overdue tasks — switch to \"Pending\" above.",
+            "overdueNudge_one": "You have {{count, number}} overdue task — switch to \"Pending\" above.",
+            "overdueNudge_other": "You have {{count, number}} overdue tasks — switch to \"Pending\" above.",
             "upcomingNudge": "Switch to \"Upcoming\" above to see what's due next.",
             "teamAllCaughtUp": "The team is all caught up on follow-ups for this view.",
             "selfAllCaughtUp": "You have no pending follow-ups in this view."

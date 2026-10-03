@@ -7,12 +7,12 @@
     "subline": {
         "teamAllCaughtUp": "टीम पूरी तरह अप-टू-डेट है",
         "selfAllCaughtUp": "आप पूरी तरह अप-टू-डेट हैं",
-        "tasksDueToday_admin_one": "टीम के पास आज {{count}} कार्य देय है",
-        "tasksDueToday_admin_other": "टीम के पास आज {{count}} कार्य देय हैं",
-        "tasksDueToday_user_one": "आपके पास आज {{count}} कार्य देय है",
-        "tasksDueToday_user_other": "आपके पास आज {{count}} कार्य देय हैं",
-        "overdueSuffix_one": " · {{count}} विलंबित",
-        "overdueSuffix_other": " · {{count}} विलंबित"
+        "tasksDueToday_admin_one": "टीम के पास आज {{count, number}} कार्य देय है",
+        "tasksDueToday_admin_other": "टीम के पास आज {{count, number}} कार्य देय हैं",
+        "tasksDueToday_user_one": "आपके पास आज {{count, number}} कार्य देय है",
+        "tasksDueToday_user_other": "आपके पास आज {{count, number}} कार्य देय हैं",
+        "overdueSuffix_one": " · {{count, number}} विलंबित",
+        "overdueSuffix_other": " · {{count, number}} विलंबित"
     },
     "tabs": {
         "list": "सूची",
@@ -51,8 +51,8 @@
             "default": "कोई फॉलो-अप नहीं है"
         },
         "description": {
-            "overdueNudge_one": "आपका {{count}} कार्य विलंबित है — ऊपर \"लंबित\" पर स्विच करें।",
-            "overdueNudge_other": "आपके {{count}} कार्य विलंबित हैं — ऊपर \"लंबित\" पर स्विच करें।",
+            "overdueNudge_one": "आपका {{count, number}} कार्य विलंबित है — ऊपर \"लंबित\" पर स्विच करें।",
+            "overdueNudge_other": "आपके {{count, number}} कार्य विलंबित हैं — ऊपर \"लंबित\" पर स्विच करें।",
             "upcomingNudge": "आगे क्या देय है यह देखने के लिए ऊपर \"आगामी\" पर स्विच करें।",
             "teamAllCaughtUp": "टीम इस दृश्य के सभी फॉलो-अप पूरे कर चुकी है।",
             "selfAllCaughtUp": "इस दृश्य में आपका कोई लंबित फॉलो-अप नहीं है।"

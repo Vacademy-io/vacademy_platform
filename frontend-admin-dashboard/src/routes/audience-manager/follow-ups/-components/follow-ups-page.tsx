@@ -557,7 +557,7 @@ const FollowUpsContent = () => {
                     <div className="flex items-center gap-1 text-body text-muted-foreground">
                         {t('showing.prefix')}{' '}
                         <span className="font-semibold text-card-foreground">
-                            {countsLoading ? '…' : counts[bucket]}
+                            {countsLoading ? '…' : counts[bucket].toLocaleString()}
                         </span>{' '}
                         {t('showing.suffix', {
                             count: counts[bucket],

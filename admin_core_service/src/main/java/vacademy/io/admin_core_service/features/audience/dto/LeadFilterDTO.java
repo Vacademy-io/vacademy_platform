@@ -78,6 +78,16 @@ public class LeadFilterDTO {
      */
     private String leadStatusExcludeId;
 
+    /**
+     * Follow-ups page. {@code followUpPending} narrows to leads carrying an OPEN, scheduled
+     * follow-up; the two bounds then slice that into the page's buckets. The caller sends the
+     * window because "today" is the USER's day — computing it from NOW() here would put an
+     * Asia/Calcutta counsellor in the wrong bucket for five and a half hours every night.
+     */
+    private Boolean followUpPending;
+    private Timestamp followUpFrom;
+    private Timestamp followUpTo;
+
     // ── Status Filters ──
     private java.util.List<String> overallStatuses;    // ENQUIRY, APPLICATION, ADMITTED, etc.
     private java.util.List<String> enquiryStatuses;     // ACTIVE, CONVERTED, etc.

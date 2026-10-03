@@ -33,14 +33,9 @@ import {
     type LeadActionHandlers,
     type LeadTableExtraColumn,
 } from '@/components/shared/leads';
+import { LeadPagination } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
-import {
-    bucketCounts,
-    effectiveDueMs,
-    filterToBucket,
-    isPendingFollowUp,
-    type FollowUpBucket,
-} from './follow-up-buckets';
+import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
 
@@ -67,7 +62,20 @@ const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 // Fetch a generous page so bucket classification on the client has enough rows
 // without a paged round-trip. v2 will swap this for a server-side follow-up
 // endpoint with accurate global counts.
-const FETCH_PAGE_SIZE = 200;
+const PAGE_SIZE = 20;
+// The calendar view can jump to any day in the bucket, so it takes the bucket whole.
+const CALENDAR_FETCH_SIZE = 500;
+const EMPTY_COUNTS: Record<FollowUpBucket, number> = {
+    overdue: 0,
+    today: 0,
+    upcoming: 0,
+    all: 0,
+};
+/** Bucket window as the API's snake-case params. */
+const toWindowParams = (b: FollowUpBucket, now: Date = new Date()) => {
+    const w = bucketWindow(b, now);
+    return { follow_up_from: w.from, follow_up_to: w.to };
+};
 // Hidden on this surface to keep triage focused — easy to surface again in v2.
 const HIDDEN_COLUMNS = new Set(['score', 'source']);
 // Static cache keys every mutation on this page must refresh.
@@ -167,30 +175,74 @@ const FollowUpsContent = () => {
                 : counsellorFilter
             : currentUserId || undefined;
 
-    const { data, isLoading, error } = useQuery({
-        queryKey: ['follow-ups', instituteId, effectiveCounsellorId],
-        queryFn: () =>
-            fetchRecentLeads({
-                institute_id: instituteId ?? '',
-                assigned_counselor_id: effectiveCounsellorId,
-                // A converted lead is no longer a pending follow-up.
-                conversion_status_filter: 'EXCLUDE_CONVERTED',
-                page: 0,
-                size: FETCH_PAGE_SIZE,
-            }),
+    const [page, setPage] = useState(0);
+    useEffect(() => setPage(0), [bucket, effectiveCounsellorId]);
+
+    /** One request shape for every bucket; only the window moves. */
+    const baseFilter = useMemo(
+        () => ({
+            institute_id: instituteId ?? '',
+            assigned_counselor_id: effectiveCounsellorId,
+            // A converted lead is no longer a pending follow-up.
+            conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
+            follow_up_pending: true,
+        }),
+        [instituteId, effectiveCounsellorId]
+    );
+
+    // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used
+    // to count the 200 rows it had fetched, which for a real institute meant the tiles read
+    // 200 / 0 / 0 / 200 no matter what the pipeline actually held.
+    const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
+        queryKey: ['follow-ups-counts', instituteId, effectiveCounsellorId],
+        queryFn: async () => {
+            const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
+            const now = new Date();
+            const results = await Promise.all(
+                buckets.map((b) =>
+                    fetchRecentLeads({ ...baseFilter, ...toWindowParams(b, now), page: 0, size: 1 })
+                )
+            );
+            return buckets.reduce(
+                (acc, b, i) => ({ ...acc, [b]: results[i]?.totalElements ?? 0 }),
+                { ...EMPTY_COUNTS }
+            );
+        },
         enabled: !!instituteId,
         staleTime: 30 * 1000,
     });
 
+    const { data, isLoading, error } = useQuery({
+        queryKey: [
+            'follow-ups',
+            instituteId,
+            effectiveCounsellorId,
+            bucket,
+            page,
+            view,
+        ],
+        queryFn: () =>
+            fetchRecentLeads({
+                ...baseFilter,
+                ...toWindowParams(bucket),
+                page: view === 'calendar' ? 0 : page,
+                // The calendar lets the user jump to any day, so it needs the whole bucket
+                // rather than one page of it.
+                size: view === 'calendar' ? CALENDAR_FETCH_SIZE : PAGE_SIZE,
+            }),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+    const totalPages = data?.totalPages ?? 0;
+
     // Build VMs, filter to pending follow-ups, classify into buckets, sort by
     // soonest-due so the top of the list is always the most urgent task.
-    const allVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
-    const pendingVms = useMemo(() => allVms.filter(isPendingFollowUp), [allVms]);
-    const counts = useMemo(() => bucketCounts(pendingVms), [pendingVms]);
-    const bucketVms = useMemo(() => filterToBucket(pendingVms, bucket), [pendingVms, bucket]);
+    // The server has already narrowed to the bucket, so there is nothing left to classify
+    // here — only the soonest-due ordering the page has always used.
+    const pendingVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
     const sortedVms = useMemo(
-        () => [...bucketVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
-        [bucketVms]
+        () => [...pendingVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
+        [pendingVms]
     );
 
     // Profiles + notes for the visible vms. On the calendar view the user can
@@ -343,9 +395,7 @@ const FollowUpsContent = () => {
                   count: counts.today,
                   context: isAdmin ? 'admin' : 'user',
               })}${
-                  counts.overdue > 0
-                      ? t('subline.overdueSuffix', { count: counts.overdue })
-                      : ''
+                  counts.overdue > 0 ? t('subline.overdueSuffix', { count: counts.overdue }) : ''
               }`;
 
     return (
@@ -404,9 +454,11 @@ const FollowUpsContent = () => {
             {view === 'list' && (
                 <div className="flex items-center justify-end gap-1 text-body text-muted-foreground">
                     {t('showing.prefix')}{' '}
-                    <span className="font-semibold text-card-foreground">{sortedVms.length}</span>{' '}
+                    <span className="font-semibold text-card-foreground">
+                        {countsLoading ? '…' : counts[bucket]}
+                    </span>{' '}
                     {t('showing.suffix', {
-                        count: sortedVms.length,
+                        count: counts[bucket],
                         context: bucket === 'all' ? undefined : bucket,
                     })}
                 </div>
@@ -419,7 +471,18 @@ const FollowUpsContent = () => {
                 open={isSidebarOpen}
                 onOpenChange={setIsSidebarOpen}
             >
-                <div className="min-w-0 flex-1">{viewBody}</div>
+                <div className="min-w-0 flex-1">
+                    {viewBody}
+                    {view === 'list' && totalPages > 1 && (
+                        <div className="mt-3">
+                            <LeadPagination
+                                currentPage={page}
+                                totalPages={totalPages}
+                                onPageChange={setPage}
+                            />
+                        </div>
+                    )}
+                </div>
                 <StudentSidebar
                     selectedTab="overview"
                     examType="EXAM"

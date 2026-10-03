@@ -64,7 +64,6 @@ import { useFollowUpsViewState } from './use-follow-ups-view-state';
  * first page.
  */
 
-const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 const PAGE_SIZE = 20;
 // Matches Recent Leads. Both pages hit the same endpoint, so keeping the pacing
 // identical keeps the load a keystroke puts on the server predictable.
@@ -116,9 +115,9 @@ const FollowUpsContent = () => {
         setMonthStr,
         selectedDateStr,
         setSelectedDateStr,
-        counsellorFilter,
-        setCounsellorFilter,
-    } = useFollowUpsViewState(ALL_COUNSELLORS_VALUE);
+        counsellorFilters,
+        setCounsellorFilters,
+    } = useFollowUpsViewState();
 
     // ── Role detection ───────────────────────────────────────────────────────
     // ADMIN sees the whole team + a counsellor filter; anyone else (counsellor,
@@ -174,11 +173,13 @@ const FollowUpsContent = () => {
     // Admins and scoped counsellors rely on the backend's hierarchy RBAC when
     // no explicit counsellor is picked (a scoped manager sees own + reports).
     // Any other role keeps the old client-side lock to their own follow-ups.
+    // Several ids go as one comma-separated value, which is how the lead query
+    // has always taken this filter (Recent Leads does the same).
     const effectiveCounsellorId =
         isAdmin || isScopedCounsellor
-            ? counsellorFilter === ALL_COUNSELLORS_VALUE
-                ? undefined
-                : counsellorFilter
+            ? counsellorFilters.length > 0
+                ? counsellorFilters.join(',')
+                : undefined
             : currentUserId || undefined;
 
     // Search runs on the server with the rest of the filter, so it searches every
@@ -483,14 +484,8 @@ const FollowUpsContent = () => {
                 </div>
                 {canFilterCounsellors && (
                     <CounsellorFilter
-                        values={
-                            counsellorFilter === ALL_COUNSELLORS_VALUE ? [] : [counsellorFilter]
-                        }
-                        onChange={(vals) =>
-                            setCounsellorFilter(
-                                vals.length > 0 ? vals[vals.length - 1]! : ALL_COUNSELLORS_VALUE
-                            )
-                        }
+                        values={counsellorFilters}
+                        onChange={setCounsellorFilters}
                         options={counsellorOptions}
                         isLoading={counsellorOptionsLoading}
                     />

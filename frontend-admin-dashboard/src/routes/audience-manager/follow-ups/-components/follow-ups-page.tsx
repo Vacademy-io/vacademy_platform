@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
+import { CalendarBlank, DownloadSimple, ListBullets, MagnifyingGlass } from '@phosphor-icons/react';
 import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { cn } from '@/lib/utils';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -30,17 +31,16 @@ import {
     usePlaceCall,
     useUpdateLeadTier,
     recentLeadToVM,
+    startBackgroundExport,
+    useIsExporting,
     type LeadActionHandlers,
     type LeadTableExtraColumn,
 } from '@/components/shared/leads';
+import { MyButton } from '@/components/design-system/button';
+import { Input } from '@/components/ui/input';
+import { LeadPagination } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
-import {
-    bucketCounts,
-    effectiveDueMs,
-    filterToBucket,
-    isPendingFollowUp,
-    type FollowUpBucket,
-} from './follow-up-buckets';
+import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
 
@@ -48,28 +48,42 @@ import { useFollowUpsViewState } from './use-follow-ups-view-state';
  * Follow-ups — at-a-glance task list of leads needing counsellor action.
  *
  * **Deliberately minimal toolbar.** A counsellor on shift should land here and
- * instantly see today's workload — three big bucket cards (Pending / Today /
- * Upcoming / All) drive everything. No search, tier, status, audience, date or
- * column controls live here on purpose; that's the Recent Leads / Lead List
- * job. The single additional control is the **counsellor filter** (admin
- * only) so a manager can drill into one rep's queue.
+ * instantly see today's workload — four big bucket cards (Pending / Today /
+ * Upcoming / All) drive everything. No tier, status, audience, date or column
+ * controls live here on purpose; that's the Recent Leads / Lead List job. The
+ * toolbar holds only what a queue needs: a name/phone/email search, an export
+ * of the current view, and — for admins — the **counsellor filter** so a
+ * manager can drill into one rep's queue.
  *
  * Counsellors are server-locked to their own assignment via
  * `assigned_counselor_id = currentUserId`; admins can switch with the filter.
  *
- * UI-only: data comes from the existing `POST /audience/leads` endpoint.
- * Bucket classification + the "pending follow-up" filter run client-side on
- * the fetched page. When a backend follow-up endpoint with accurate counts
- * ships later, swap-in is trivial because the bucket vocabulary doesn't change.
+ * Data comes from `POST /audience/leads` with `follow_up_pending` plus the
+ * bucket's due window, so the server does the bucketing: the four card counts
+ * are `totalElements` of four `size:1` probes and the list is one real page.
+ * Nothing is classified client-side, which is why the counts survive past the
+ * first page.
  */
 
-const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
-// Fetch a generous page so bucket classification on the client has enough rows
-// without a paged round-trip. v2 will swap this for a server-side follow-up
-// endpoint with accurate global counts.
-const FETCH_PAGE_SIZE = 200;
-// Hidden on this surface to keep triage focused — easy to surface again in v2.
-const HIDDEN_COLUMNS = new Set(['score', 'source']);
+const PAGE_SIZE = 20;
+// Matches Recent Leads. Both pages hit the same endpoint, so keeping the pacing
+// identical keeps the load a keystroke puts on the server predictable.
+const SEARCH_DEBOUNCE_MS = 500;
+// The calendar view can jump to any day in the bucket, so it takes the bucket whole.
+const CALENDAR_FETCH_SIZE = 500;
+const EMPTY_COUNTS: Record<FollowUpBucket, number> = {
+    overdue: 0,
+    today: 0,
+    upcoming: 0,
+    all: 0,
+};
+/** Bucket window as the API's snake-case params. */
+const toWindowParams = (b: FollowUpBucket, now: Date = new Date()) => {
+    const w = bucketWindow(b, now);
+    return { follow_up_from: w.from, follow_up_to: w.to };
+};
+// Hidden on this surface to keep triage focused.
+const HIDDEN_COLUMNS = new Set(['score']);
 // Static cache keys every mutation on this page must refresh.
 const INVALIDATE_KEYS: string[][] = [['follow-ups'], ['lead-profiles-batch']];
 
@@ -102,9 +116,9 @@ const FollowUpsContent = () => {
         setMonthStr,
         selectedDateStr,
         setSelectedDateStr,
-        counsellorFilter,
-        setCounsellorFilter,
-    } = useFollowUpsViewState(ALL_COUNSELLORS_VALUE);
+        counsellorFilters,
+        setCounsellorFilters,
+    } = useFollowUpsViewState();
 
     // ── Role detection ───────────────────────────────────────────────────────
     // ADMIN sees the whole team + a counsellor filter; anyone else (counsellor,
@@ -160,37 +174,92 @@ const FollowUpsContent = () => {
     // Admins and scoped counsellors rely on the backend's hierarchy RBAC when
     // no explicit counsellor is picked (a scoped manager sees own + reports).
     // Any other role keeps the old client-side lock to their own follow-ups.
+    // Several ids go as one comma-separated value, which is how the lead query
+    // has always taken this filter (Recent Leads does the same).
     const effectiveCounsellorId =
         isAdmin || isScopedCounsellor
-            ? counsellorFilter === ALL_COUNSELLORS_VALUE
-                ? undefined
-                : counsellorFilter
+            ? counsellorFilters.length > 0
+                ? counsellorFilters.join(',')
+                : undefined
             : currentUserId || undefined;
 
-    const { data, isLoading, error } = useQuery({
-        queryKey: ['follow-ups', instituteId, effectiveCounsellorId],
-        queryFn: () =>
-            fetchRecentLeads({
-                institute_id: instituteId ?? '',
-                assigned_counselor_id: effectiveCounsellorId,
-                // A converted lead is no longer a pending follow-up.
-                conversion_status_filter: 'EXCLUDE_CONVERTED',
-                page: 0,
-                size: FETCH_PAGE_SIZE,
-            }),
+    // Search runs on the server with the rest of the filter, so it searches every
+    // follow-up rather than whatever happened to be on screen. Debounced rather
+    // than button-driven, same as Recent Leads — a queue is scanned, not queried.
+    const [searchInput, setSearchInput] = useState('');
+    const [appliedSearch, setAppliedSearch] = useState('');
+    const [page, setPage] = useState(0);
+    useEffect(() => {
+        const trimmed = searchInput.trim();
+        if (trimmed === appliedSearch) return;
+        const timer = window.setTimeout(() => setAppliedSearch(trimmed), SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [searchInput, appliedSearch]);
+    useEffect(() => setPage(0), [bucket, appliedSearch, effectiveCounsellorId]);
+
+    /** One request shape for every bucket; only the window moves. */
+    const baseFilter = useMemo(
+        () => ({
+            institute_id: instituteId ?? '',
+            assigned_counselor_id: effectiveCounsellorId,
+            // A converted lead is no longer a pending follow-up.
+            conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
+            search_query: appliedSearch || undefined,
+            follow_up_pending: true,
+        }),
+        [instituteId, effectiveCounsellorId, appliedSearch]
+    );
+
+    // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used
+    // to count the 200 rows it had fetched, which for a real institute meant the tiles read
+    // 200 / 0 / 0 / 200 no matter what the pipeline actually held.
+    //
+    // Keyed under the same ['follow-ups', …] root as the list so that completing a
+    // follow-up — every caller invalidates exactly ['follow-ups'] — moves the tiles
+    // too. A sibling 'follow-ups-counts' root would not have been matched.
+    const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
+        queryKey: ['follow-ups', 'counts', baseFilter],
+        queryFn: async () => {
+            const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
+            const now = new Date();
+            const results = await Promise.all(
+                buckets.map((b) =>
+                    fetchRecentLeads({ ...baseFilter, ...toWindowParams(b, now), page: 0, size: 1 })
+                )
+            );
+            return buckets.reduce(
+                (acc, b, i) => ({ ...acc, [b]: results[i]?.totalElements ?? 0 }),
+                { ...EMPTY_COUNTS }
+            );
+        },
         enabled: !!instituteId,
         staleTime: 30 * 1000,
     });
 
+    const { data, isLoading, error } = useQuery({
+        queryKey: ['follow-ups', 'list', baseFilter, bucket, page, view],
+        queryFn: () =>
+            fetchRecentLeads({
+                ...baseFilter,
+                ...toWindowParams(bucket),
+                page: view === 'calendar' ? 0 : page,
+                // The calendar lets the user jump to any day, so it needs the whole bucket
+                // rather than one page of it.
+                size: view === 'calendar' ? CALENDAR_FETCH_SIZE : PAGE_SIZE,
+            }),
+        enabled: !!instituteId,
+        staleTime: 30 * 1000,
+    });
+    const totalPages = data?.totalPages ?? 0;
+
     // Build VMs, filter to pending follow-ups, classify into buckets, sort by
     // soonest-due so the top of the list is always the most urgent task.
-    const allVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
-    const pendingVms = useMemo(() => allVms.filter(isPendingFollowUp), [allVms]);
-    const counts = useMemo(() => bucketCounts(pendingVms), [pendingVms]);
-    const bucketVms = useMemo(() => filterToBucket(pendingVms, bucket), [pendingVms, bucket]);
+    // The server has already narrowed to the bucket, so there is nothing left to classify
+    // here — only the soonest-due ordering the page has always used.
+    const pendingVms = useMemo(() => (data?.content ?? []).map(recentLeadToVM), [data]);
     const sortedVms = useMemo(
-        () => [...bucketVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
-        [bucketVms]
+        () => [...pendingVms].sort((a, b) => effectiveDueMs(a) - effectiveDueMs(b)),
+        [pendingVms]
     );
 
     // Profiles + notes for the visible vms. On the calendar view the user can
@@ -325,13 +394,65 @@ const FollowUpsContent = () => {
                 extraColumns={extraColumns}
                 emptyState={
                     <LeadEmptyState
-                        title={buildEmptyTitle(t, isAdmin, bucket, counts)}
-                        description={buildEmptyDescription(t, isAdmin, bucket, counts)}
+                        title={buildEmptyTitle(t, isAdmin, bucket, counts, appliedSearch)}
+                        description={buildEmptyDescription(
+                            t,
+                            isAdmin,
+                            bucket,
+                            counts,
+                            appliedSearch
+                        )}
                     />
                 }
             />
         );
     }
+
+    // Export walks the CURRENT bucket page by page rather than dumping the table, so what
+    // lands in the CSV is what the filter says — not the twenty rows on screen. The walk
+    // runs in the background and paces itself; see background-export.ts for why.
+    const isExporting = useIsExporting('follow-ups');
+    const handleExport = () => {
+        const window = toWindowParams(bucket);
+        startBackgroundExport({
+            key: 'follow-ups',
+            fileName: `follow-ups_${bucket}_${new Date().toISOString().slice(0, 10)}.csv`,
+            header: [
+                t('export.columns.name'),
+                t('export.columns.email'),
+                t('export.columns.phone'),
+                t('export.columns.source'),
+                t('export.columns.status'),
+                t('export.columns.dueAt'),
+            ],
+            fetchPage: (page, size) => fetchRecentLeads({ ...baseFilter, ...window, page, size }),
+            toRow: (lead) => {
+                const vm = recentLeadToVM(lead);
+                return [
+                    vm.name,
+                    vm.email,
+                    vm.phone,
+                    vm.audience,
+                    vm.leadStatus ?? '',
+                    vm.followUpDueAt ?? vm.tatDueAt ?? '',
+                ];
+            },
+            labels: {
+                progress: (done, total) =>
+                    total > 0
+                        ? t('export.progress', {
+                              done: done.toLocaleString(),
+                              total: total.toLocaleString(),
+                          })
+                        : t('export.running'),
+                done: (count) => t('export.done', { count }),
+                failed: t('export.failed'),
+                alreadyRunning: t('export.alreadyRunning'),
+                truncated: (count) => t('export.truncated', { count }),
+                partial: (count) => t('export.partial', { count }),
+            },
+        });
+    };
 
     // Subline copy (counts-aware so a counsellor sees workload immediately).
     const subline =
@@ -343,72 +464,104 @@ const FollowUpsContent = () => {
                   count: counts.today,
                   context: isAdmin ? 'admin' : 'user',
               })}${
-                  counts.overdue > 0
-                      ? t('subline.overdueSuffix', { count: counts.overdue })
-                      : ''
+                  counts.overdue > 0 ? t('subline.overdueSuffix', { count: counts.overdue }) : ''
               }`;
 
     return (
         <div className="flex w-full flex-col gap-4">
-            {/* Heading row + (admin) counsellor filter */}
+            {/* Heading row: who/what on the left, the two things you can DO on the right. */}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-semibold text-neutral-900">
+                    <h1 className="text-h1 font-semibold text-card-foreground">
                         {canFilterCounsellors ? t('heading.team') : t('heading.mine')}
                     </h1>
+                    <p className="mt-0.5 text-body text-muted-foreground">{t('heading.blurb')}</p>
                     <p
-                        className={`mt-0.5 text-sm ${
-                            counts.overdue > 0 ? 'text-danger-600' : 'text-neutral-500'
-                        }`}
+                        className={cn(
+                            'mt-1 text-body',
+                            counts.overdue > 0 ? 'text-danger-600' : 'text-muted-foreground'
+                        )}
                     >
                         {subline} · {format(new Date(), 'EEEE, MMM d')}
                     </p>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        disabled={isExporting || counts[bucket] === 0}
+                        onClick={handleExport}
+                    >
+                        <DownloadSimple className="size-4" />
+                        {isExporting ? t('export.running') : t('export.action')}
+                    </MyButton>
+                </div>
+            </div>
+
+            {/* Bucket cards — the dominant element */}
+            <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
+
+            {/* View toggle on the left, counsellor filter on the right — this row
+                renders in both views, which the search toolbar below does not. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <Tabs
+                    value={view}
+                    onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+                >
+                    <TabsList className="h-11 gap-1 rounded-xl border border-neutral-200 bg-card p-1">
+                        <TabsTrigger
+                            value="list"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <ListBullets className="size-4" />
+                            {t('tabs.list')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="calendar"
+                            className="h-9 gap-1.5 rounded-lg px-4 text-body data-[state=active]:bg-primary-500 data-[state=active]:text-neutral-50 data-[state=active]:shadow-none"
+                        >
+                            <CalendarBlank className="size-4" />
+                            {t('tabs.calendar')}
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
                 {canFilterCounsellors && (
                     <CounsellorFilter
-                        values={
-                            counsellorFilter === ALL_COUNSELLORS_VALUE ? [] : [counsellorFilter]
-                        }
-                        onChange={(vals) =>
-                            setCounsellorFilter(
-                                vals.length > 0 ? vals[vals.length - 1]! : ALL_COUNSELLORS_VALUE
-                            )
-                        }
+                        values={counsellorFilters}
+                        onChange={setCounsellorFilters}
                         options={counsellorOptions}
                         isLoading={counsellorOptionsLoading}
                     />
                 )}
             </div>
 
-            {/* Bucket cards — the dominant element */}
-            <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
-
-            {/* View toggle: List | Calendar */}
-            <Tabs
-                value={view}
-                onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
-            >
-                <TabsList>
-                    <TabsTrigger value="list" className="gap-1.5">
-                        <ListBullets className="size-4" />
-                        {t('tabs.list')}
-                    </TabsTrigger>
-                    <TabsTrigger value="calendar" className="gap-1.5">
-                        <CalendarBlank className="size-4" />
-                        {t('tabs.calendar')}
-                    </TabsTrigger>
-                </TabsList>
-            </Tabs>
-
-            {/* Showing N {bucket} — list view only */}
+            {/* Search on the left, count + export on the right — list view only.
+                Same row shape as Recent Leads so the two queues read alike. */}
             {view === 'list' && (
-                <div className="flex items-center justify-end gap-1 text-body text-muted-foreground">
-                    {t('showing.prefix')}{' '}
-                    <span className="font-semibold text-card-foreground">{sortedVms.length}</span>{' '}
-                    {t('showing.suffix', {
-                        count: sortedVms.length,
-                        context: bucket === 'all' ? undefined : bucket,
-                    })}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder={t('search.placeholder')}
+                            className="h-10 w-full pl-8"
+                            aria-label={t('search.placeholder')}
+                        />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <p className="text-body text-muted-foreground">
+                            {t('showing.prefix')}{' '}
+                            <span className="font-semibold text-card-foreground">
+                                {countsLoading ? '…' : counts[bucket].toLocaleString()}
+                            </span>{' '}
+                            {t('showing.suffix', {
+                                count: counts[bucket],
+                                context: bucket === 'all' ? undefined : bucket,
+                            })}
+                        </p>
+                    </div>
                 </div>
             )}
 
@@ -419,7 +572,18 @@ const FollowUpsContent = () => {
                 open={isSidebarOpen}
                 onOpenChange={setIsSidebarOpen}
             >
-                <div className="min-w-0 flex-1">{viewBody}</div>
+                <div className="min-w-0 flex-1">
+                    {viewBody}
+                    {view === 'list' && totalPages > 1 && (
+                        <div className="mt-3">
+                            <LeadPagination
+                                currentPage={page}
+                                totalPages={totalPages}
+                                onPageChange={setPage}
+                            />
+                        </div>
+                    )}
+                </div>
                 <StudentSidebar
                     selectedTab="overview"
                     examType="EXAM"
@@ -462,8 +626,12 @@ const buildEmptyTitle = (
     t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
-    counts: Record<FollowUpBucket, number>
+    counts: Record<FollowUpBucket, number>,
+    search: string
 ): string => {
+    // The search narrows the counts too, so without this branch a search that
+    // matches nothing reports the whole team as caught up.
+    if (search) return t('empty.title.noMatches');
     if (counts.all === 0)
         return isAdmin ? t('empty.title.teamAllCaughtUp') : t('empty.title.selfAllCaughtUp');
     if (bucket === 'overdue') return t('empty.title.noOverdue');
@@ -476,8 +644,10 @@ const buildEmptyDescription = (
     t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
-    counts: Record<FollowUpBucket, number>
+    counts: Record<FollowUpBucket, number>,
+    search: string
 ): string => {
+    if (search) return t('empty.description.noMatches', { query: search });
     // When the active bucket is empty but other buckets have items, nudge the
     // user to switch — that's what the cards above are for.
     if (bucket === 'today' && counts.overdue > 0) {

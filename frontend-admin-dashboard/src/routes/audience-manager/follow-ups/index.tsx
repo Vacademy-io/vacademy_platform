@@ -5,7 +5,7 @@ import { z } from 'zod';
 //   view       — which sub-view is active (list = default, calendar = month grid).
 //   date       — selected day in the calendar grid (yyyy-MM-dd local).
 //   month      — month being viewed in the calendar grid (yyyy-MM local).
-//   counsellor — admin-only filter; userId or omitted = all counsellors.
+//   counsellor — admin-only filter; comma-separated userIds, omitted = all counsellors.
 const FollowUpsSearchSchema = z.object({
     view: z.enum(['list', 'calendar']).optional(),
     date: z

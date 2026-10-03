@@ -57,5 +57,8 @@
     "dayPanel": {
         "emptyTitle": "لا شيء في هذا اليوم",
         "emptyDescription": "اختر يومًا آخر من التقويم أعلاه."
+    },
+    "pill": {
+        "openTooltip": "فتح {{name}}"
     }
 }

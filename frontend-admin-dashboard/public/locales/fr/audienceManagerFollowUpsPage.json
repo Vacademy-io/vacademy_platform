@@ -2,20 +2,21 @@
     "navHeading": "Suivis",
     "heading": {
         "team": "Suivis",
-        "mine": "Mes suivis"
+        "mine": "Mes suivis",
+        "blurb": "Gérez et suivez tous vos suivis de conseil au même endroit."
     },
     "subline": {
         "teamAllCaughtUp": "L'équipe est à jour",
         "selfAllCaughtUp": "Vous êtes à jour",
-        "tasksDueToday_admin_one": "L'équipe a {{count}} tâche à faire aujourd'hui",
-        "tasksDueToday_admin_many": "L'équipe a {{count}} tâche à faire aujourd'hui",
-        "tasksDueToday_admin_other": "L'équipe a {{count}} tâches à faire aujourd'hui",
-        "tasksDueToday_user_one": "Vous avez {{count}} tâche à faire aujourd'hui",
-        "tasksDueToday_user_many": "Vous avez {{count}} tâche à faire aujourd'hui",
-        "tasksDueToday_user_other": "Vous avez {{count}} tâches à faire aujourd'hui",
-        "overdueSuffix_one": " · {{count}} en retard",
-        "overdueSuffix_many": " · {{count}} en retard",
-        "overdueSuffix_other": " · {{count}} en retard"
+        "tasksDueToday_admin_one": "L'équipe a {{count, number}} tâche à faire aujourd'hui",
+        "tasksDueToday_admin_many": "L'équipe a {{count, number}} tâche à faire aujourd'hui",
+        "tasksDueToday_admin_other": "L'équipe a {{count, number}} tâches à faire aujourd'hui",
+        "tasksDueToday_user_one": "Vous avez {{count, number}} tâche à faire aujourd'hui",
+        "tasksDueToday_user_many": "Vous avez {{count, number}} tâche à faire aujourd'hui",
+        "tasksDueToday_user_other": "Vous avez {{count, number}} tâches à faire aujourd'hui",
+        "overdueSuffix_one": " · {{count, number}} en retard",
+        "overdueSuffix_many": " · {{count, number}} en retard",
+        "overdueSuffix_other": " · {{count, number}} en retard"
     },
     "tabs": {
         "list": "Liste",
@@ -55,15 +56,44 @@
             "noOverdue": "Aucun suivi en retard",
             "nothingToday": "Rien à faire aujourd'hui",
             "noUpcoming": "Aucun suivi à venir dans les 7 prochains jours",
-            "default": "Aucun suivi"
+            "default": "Aucun suivi",
+            "noMatches": "Aucun suivi ne correspond à votre recherche"
         },
         "description": {
-            "overdueNudge_one": "Vous avez {{count}} tâche en retard — basculez sur « En attente » ci-dessus.",
-            "overdueNudge_many": "Vous avez {{count}} tâche en retard — basculez sur « En attente » ci-dessus.",
-            "overdueNudge_other": "Vous avez {{count}} tâches en retard — basculez sur « En attente » ci-dessus.",
+            "overdueNudge_one": "Vous avez {{count, number}} tâche en retard — basculez sur « En attente » ci-dessus.",
+            "overdueNudge_many": "Vous avez {{count, number}} tâche en retard — basculez sur « En attente » ci-dessus.",
+            "overdueNudge_other": "Vous avez {{count, number}} tâches en retard — basculez sur « En attente » ci-dessus.",
             "upcomingNudge": "Basculez sur « À venir » ci-dessus pour voir ce qui arrive ensuite.",
             "teamAllCaughtUp": "L'équipe est à jour sur tous les suivis de cette vue.",
-            "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue."
+            "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue.",
+            "noMatches": "Rien ne correspond à « {{query}} ». Effacez la recherche pour voir toute la file."
         }
+    },
+    "search": {
+        "placeholder": "Rechercher nom, téléphone ou e-mail…"
+    },
+    "export": {
+        "action": "Exporter",
+        "running": "Export en cours…",
+        "failed": "Impossible d'exporter les relances. Réessayez.",
+        "columns": {
+            "name": "Nom du lead",
+            "email": "E-mail",
+            "phone": "Téléphone",
+            "source": "Source",
+            "status": "Statut",
+            "dueAt": "Échéance"
+        },
+        "progress": "Export des suivis… {{done}} sur {{total}}",
+        "done_one": "{{count}} suivi exporté",
+        "done_other": "{{count, number}} suivis exportés",
+        "alreadyRunning": "Un export est déjà en cours — le fichier sera téléchargé à la fin.",
+        "truncated_other": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_other": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste.",
+        "truncated_one": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_one": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste.",
+        "done_many": "{{count, number}} suivis exportés",
+        "truncated_many": "Les {{count, number}} premiers suivis ont été exportés. Affinez le filtre pour obtenir le reste.",
+        "partial_many": "L'export s'est interrompu. Les {{count, number}} suivis déjà récupérés ont été téléchargés — relancez pour le reste."
     }
 }

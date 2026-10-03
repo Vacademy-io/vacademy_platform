@@ -86,6 +86,12 @@ export interface RecentLeadsRequest {
     lead_status_id?: string;
     /** Status keys to EXCLUDE, comma separated. Mutually exclusive with lead_status_id. */
     lead_status_exclude_id?: string;
+    /** Follow-ups page: only leads carrying an OPEN, scheduled follow-up… */
+    follow_up_pending?: boolean;
+    /** …and, optionally, only those whose follow-up falls in this window. The caller sends
+     *  it because "today" is the user's day, not the server's. */
+    follow_up_from?: string;
+    follow_up_to?: string;
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';

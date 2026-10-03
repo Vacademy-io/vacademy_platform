@@ -391,8 +391,14 @@ const FollowUpsContent = () => {
                 extraColumns={extraColumns}
                 emptyState={
                     <LeadEmptyState
-                        title={buildEmptyTitle(t, isAdmin, bucket, counts)}
-                        description={buildEmptyDescription(t, isAdmin, bucket, counts)}
+                        title={buildEmptyTitle(t, isAdmin, bucket, counts, appliedSearch)}
+                        description={buildEmptyDescription(
+                            t,
+                            isAdmin,
+                            bucket,
+                            counts,
+                            appliedSearch
+                        )}
                     />
                 }
             />
@@ -622,8 +628,12 @@ const buildEmptyTitle = (
     t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
-    counts: Record<FollowUpBucket, number>
+    counts: Record<FollowUpBucket, number>,
+    search: string
 ): string => {
+    // The search narrows the counts too, so without this branch a search that
+    // matches nothing reports the whole team as caught up.
+    if (search) return t('empty.title.noMatches');
     if (counts.all === 0)
         return isAdmin ? t('empty.title.teamAllCaughtUp') : t('empty.title.selfAllCaughtUp');
     if (bucket === 'overdue') return t('empty.title.noOverdue');
@@ -636,8 +646,10 @@ const buildEmptyDescription = (
     t: TFunction,
     isAdmin: boolean,
     bucket: FollowUpBucket,
-    counts: Record<FollowUpBucket, number>
+    counts: Record<FollowUpBucket, number>,
+    search: string
 ): string => {
+    if (search) return t('empty.description.noMatches', { query: search });
     // When the active bucket is empty but other buckets have items, nudge the
     // user to switch — that's what the cards above are for.
     if (bucket === 'today' && counts.overdue > 0) {

@@ -48,14 +48,16 @@
             "noOverdue": "No overdue follow-ups",
             "nothingToday": "Nothing due today",
             "noUpcoming": "No upcoming follow-ups in the next 7 days",
-            "default": "No follow-ups"
+            "default": "No follow-ups",
+            "noMatches": "No follow-ups match your search"
         },
         "description": {
             "overdueNudge_one": "You have {{count, number}} overdue task — switch to \"Pending\" above.",
             "overdueNudge_other": "You have {{count, number}} overdue tasks — switch to \"Pending\" above.",
             "upcomingNudge": "Switch to \"Upcoming\" above to see what's due next.",
             "teamAllCaughtUp": "The team is all caught up on follow-ups for this view.",
-            "selfAllCaughtUp": "You have no pending follow-ups in this view."
+            "selfAllCaughtUp": "You have no pending follow-ups in this view.",
+            "noMatches": "Nothing matched “{{query}}”. Clear the search to see the whole queue."
         }
     },
     "search": {

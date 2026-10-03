@@ -55,7 +55,8 @@
             "noOverdue": "Aucun suivi en retard",
             "nothingToday": "Rien à faire aujourd'hui",
             "noUpcoming": "Aucun suivi à venir dans les 7 prochains jours",
-            "default": "Aucun suivi"
+            "default": "Aucun suivi",
+            "noMatches": "Aucun suivi ne correspond à votre recherche"
         },
         "description": {
             "overdueNudge_one": "Vous avez {{count, number}} tâche en retard — basculez sur « En attente » ci-dessus.",
@@ -63,7 +64,8 @@
             "overdueNudge_other": "Vous avez {{count, number}} tâches en retard — basculez sur « En attente » ci-dessus.",
             "upcomingNudge": "Basculez sur « À venir » ci-dessus pour voir ce qui arrive ensuite.",
             "teamAllCaughtUp": "L'équipe est à jour sur tous les suivis de cette vue.",
-            "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue."
+            "selfAllCaughtUp": "Vous n'avez aucun suivi en attente dans cette vue.",
+            "noMatches": "Rien ne correspond à « {{query}} ». Effacez la recherche pour voir toute la file."
         }
     },
     "search": {

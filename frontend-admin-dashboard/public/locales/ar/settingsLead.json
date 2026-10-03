@@ -75,6 +75,8 @@
         "leadStatusPlaceholder": "مثل الإجراء",
         "campaignTypeLabel": "اسم \"نوع الحملة\"",
         "campaignTypePlaceholder": "مثال: Source",
+        "leadSourceLabel": "اسم \"مصدر العميل\"",
+        "leadSourcePlaceholder": "مثال: Label",
         "hint": "يُستخدم في رؤوس جدول العملاء والفلاتر والعرض الجانبي وهذه الإعدادات. احفظ بالزر أدناه."
     }
 }

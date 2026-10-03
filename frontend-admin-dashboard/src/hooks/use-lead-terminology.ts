@@ -19,12 +19,15 @@ export interface LeadTerminology {
     leadStatus: string;
     /** Label for the audience's channel attribute (default "Campaign type"). */
     campaignType: string;
+    /** Label for the audience LIST a lead arrived on (default "Lead source"). */
+    leadSource: string;
     isLoading: boolean;
 }
 
 export const DEFAULT_TIER_LABEL = 'Tier';
 export const DEFAULT_LEAD_STATUS_LABEL = 'Lead status';
 export const DEFAULT_CAMPAIGN_TYPE_LABEL = 'Campaign type';
+export const DEFAULT_LEAD_SOURCE_LABEL = 'Lead source';
 
 export function useLeadTerminology(options?: { skip?: boolean }): LeadTerminology {
     const { labels, isLoading } = useLeadSettings(options);
@@ -38,8 +41,11 @@ export function useLeadTerminology(options?: { skip?: boolean }): LeadTerminolog
             campaignType:
                 labels?.campaignType?.trim() ||
                 t('campaignType', { defaultValue: DEFAULT_CAMPAIGN_TYPE_LABEL }),
+            leadSource:
+                labels?.leadSource?.trim() ||
+                t('leadSource', { defaultValue: DEFAULT_LEAD_SOURCE_LABEL }),
             isLoading,
         }),
-        [labels?.tier, labels?.leadStatus, labels?.campaignType, isLoading, t]
+        [labels?.tier, labels?.leadStatus, labels?.campaignType, labels?.leadSource, isLoading, t]
     );
 }

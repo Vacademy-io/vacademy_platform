@@ -1,5 +1,6 @@
 {
     "tier": "Niveau",
     "leadStatus": "Statut du lead",
-    "campaignType": "Type de campagne"
+    "campaignType": "Type de campagne",
+    "leadSource": "Source du lead"
 }

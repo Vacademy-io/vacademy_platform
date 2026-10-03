@@ -75,6 +75,8 @@
         "leadStatusPlaceholder": "p. ex. Action",
         "campaignTypeLabel": "Nom pour « Type de campagne »",
         "campaignTypePlaceholder": "ex. Source",
+        "leadSourceLabel": "Nom pour « Source du lead »",
+        "leadSourcePlaceholder": "ex. Label",
         "hint": "Utilisé dans les en-têtes du tableau des leads, les filtres, la vue latérale et ces réglages. Enregistrez avec le bouton ci-dessous."
     }
 }

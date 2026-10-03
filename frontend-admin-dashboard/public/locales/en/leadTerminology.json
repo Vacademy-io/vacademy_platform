@@ -1,5 +1,6 @@
 {
     "tier": "Tier",
     "leadStatus": "Lead status",
-    "campaignType": "Campaign type"
+    "campaignType": "Campaign type",
+    "leadSource": "Lead source"
 }

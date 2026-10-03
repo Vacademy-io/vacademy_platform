@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
+import { CalendarBlank, DownloadSimple, ListBullets, MagnifyingGlass } from '@phosphor-icons/react';
 import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -46,26 +46,28 @@ import { useFollowUpsViewState } from './use-follow-ups-view-state';
  * Follow-ups — at-a-glance task list of leads needing counsellor action.
  *
  * **Deliberately minimal toolbar.** A counsellor on shift should land here and
- * instantly see today's workload — three big bucket cards (Pending / Today /
- * Upcoming / All) drive everything. No search, tier, status, audience, date or
- * column controls live here on purpose; that's the Recent Leads / Lead List
- * job. The single additional control is the **counsellor filter** (admin
- * only) so a manager can drill into one rep's queue.
+ * instantly see today's workload — four big bucket cards (Pending / Today /
+ * Upcoming / All) drive everything. No tier, status, audience, date or column
+ * controls live here on purpose; that's the Recent Leads / Lead List job. The
+ * toolbar holds only what a queue needs: a name/phone/email search, an export
+ * of the current view, and — for admins — the **counsellor filter** so a
+ * manager can drill into one rep's queue.
  *
  * Counsellors are server-locked to their own assignment via
  * `assigned_counselor_id = currentUserId`; admins can switch with the filter.
  *
- * UI-only: data comes from the existing `POST /audience/leads` endpoint.
- * Bucket classification + the "pending follow-up" filter run client-side on
- * the fetched page. When a backend follow-up endpoint with accurate counts
- * ships later, swap-in is trivial because the bucket vocabulary doesn't change.
+ * Data comes from `POST /audience/leads` with `follow_up_pending` plus the
+ * bucket's due window, so the server does the bucketing: the four card counts
+ * are `totalElements` of four `size:1` probes and the list is one real page.
+ * Nothing is classified client-side, which is why the counts survive past the
+ * first page.
  */
 
 const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
-// Fetch a generous page so bucket classification on the client has enough rows
-// without a paged round-trip. v2 will swap this for a server-side follow-up
-// endpoint with accurate global counts.
 const PAGE_SIZE = 20;
+// Matches Recent Leads. Both pages hit the same endpoint, so keeping the pacing
+// identical keeps the load a keystroke puts on the server predictable.
+const SEARCH_DEBOUNCE_MS = 500;
 // The calendar view can jump to any day in the bucket, so it takes the bucket whole.
 const CALENDAR_FETCH_SIZE = 500;
 const EMPTY_COUNTS: Record<FollowUpBucket, number> = {
@@ -179,10 +181,17 @@ const FollowUpsContent = () => {
             : currentUserId || undefined;
 
     // Search runs on the server with the rest of the filter, so it searches every
-    // follow-up rather than whatever happened to be on screen.
+    // follow-up rather than whatever happened to be on screen. Debounced rather
+    // than button-driven, same as Recent Leads — a queue is scanned, not queried.
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [page, setPage] = useState(0);
+    useEffect(() => {
+        const trimmed = searchInput.trim();
+        if (trimmed === appliedSearch) return;
+        const timer = window.setTimeout(() => setAppliedSearch(trimmed), SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [searchInput, appliedSearch]);
     useEffect(() => setPage(0), [bucket, appliedSearch, effectiveCounsellorId]);
 
     /** One request shape for every bucket; only the window moves. */
@@ -513,56 +522,41 @@ const FollowUpsContent = () => {
                 </TabsList>
             </Tabs>
 
-            {/* Search + export, then the count — list view only */}
+            {/* Search on the left, count + export on the right — list view only.
+                Same row shape as Recent Leads so the two queues read alike. */}
             {view === 'list' && (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                         <Input
+                            type="text"
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') setAppliedSearch(searchInput.trim());
-                            }}
                             placeholder={t('search.placeholder')}
-                            className="h-9 w-64"
+                            className="h-10 w-full pl-8"
+                            aria-label={t('search.placeholder')}
                         />
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            onClick={() => setAppliedSearch(searchInput.trim())}
-                        >
-                            {t('search.action')}
-                        </MyButton>
-                        {appliedSearch && (
-                            <MyButton
-                                buttonType="text"
-                                scale="small"
-                                onClick={() => {
-                                    setSearchInput('');
-                                    setAppliedSearch('');
-                                }}
-                            >
-                                {t('search.clear')}
-                            </MyButton>
-                        )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <p className="text-body text-muted-foreground">
+                            {t('showing.prefix')}{' '}
+                            <span className="font-semibold text-card-foreground">
+                                {countsLoading ? '…' : counts[bucket].toLocaleString()}
+                            </span>{' '}
+                            {t('showing.suffix', {
+                                count: counts[bucket],
+                                context: bucket === 'all' ? undefined : bucket,
+                            })}
+                        </p>
                         <MyButton
                             buttonType="secondary"
                             scale="small"
                             disabled={isExporting || counts[bucket] === 0}
                             onClick={handleExport}
                         >
+                            <DownloadSimple className="size-4" />
                             {isExporting ? t('export.running') : t('export.action')}
                         </MyButton>
-                    </div>
-                    <div className="flex items-center gap-1 text-body text-muted-foreground">
-                        {t('showing.prefix')}{' '}
-                        <span className="font-semibold text-card-foreground">
-                            {countsLoading ? '…' : counts[bucket].toLocaleString()}
-                        </span>{' '}
-                        {t('showing.suffix', {
-                            count: counts[bucket],
-                            context: bucket === 'all' ? undefined : bucket,
-                        })}
                     </div>
                 </div>
             )}

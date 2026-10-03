@@ -59,9 +59,7 @@
         }
     },
     "search": {
-        "placeholder": "Search name, phone or email…",
-        "action": "Search",
-        "clear": "Clear"
+        "placeholder": "Search name, phone or email…"
     },
     "export": {
         "action": "Export",

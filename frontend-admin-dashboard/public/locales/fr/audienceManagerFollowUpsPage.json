@@ -67,9 +67,7 @@
         }
     },
     "search": {
-        "placeholder": "Rechercher nom, téléphone ou e-mail…",
-        "action": "Rechercher",
-        "clear": "Effacer"
+        "placeholder": "Rechercher nom, téléphone ou e-mail…"
     },
     "export": {
         "action": "Exporter",

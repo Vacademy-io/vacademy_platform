@@ -70,5 +70,18 @@
         "placeholder": "Rechercher nom, téléphone ou e-mail…",
         "action": "Rechercher",
         "clear": "Effacer"
+    },
+    "export": {
+        "action": "Exporter",
+        "running": "Export en cours…",
+        "failed": "Impossible d'exporter les relances. Réessayez.",
+        "columns": {
+            "name": "Nom du lead",
+            "email": "E-mail",
+            "phone": "Téléphone",
+            "source": "Source",
+            "status": "Statut",
+            "dueAt": "Échéance"
+        }
     }
 }

@@ -62,5 +62,18 @@
         "placeholder": "Search name, phone or email…",
         "action": "Search",
         "clear": "Clear"
+    },
+    "export": {
+        "action": "Export",
+        "running": "Exporting…",
+        "failed": "Could not export the follow-ups. Please try again.",
+        "columns": {
+            "name": "Lead name",
+            "email": "Email",
+            "phone": "Phone",
+            "source": "Source",
+            "status": "Status",
+            "dueAt": "Due at"
+        }
     }
 }

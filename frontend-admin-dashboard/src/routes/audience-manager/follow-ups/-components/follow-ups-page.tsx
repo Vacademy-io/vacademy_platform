@@ -33,6 +33,7 @@ import {
     type LeadActionHandlers,
     type LeadTableExtraColumn,
 } from '@/components/shared/leads';
+import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { LeadPagination } from '@/components/shared/leads';
@@ -393,6 +394,64 @@ const FollowUpsContent = () => {
         );
     }
 
+    // Export walks the CURRENT bucket page by page rather than dumping the table, so what
+    // lands in the CSV is what the filter says — not the twenty rows on screen.
+    const [isExporting, setIsExporting] = useState(false);
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const rows: ReturnType<typeof recentLeadToVM>[] = [];
+            const window = toWindowParams(bucket);
+            for (let p = 0; p < 200; p += 1) {
+                const res = await fetchRecentLeads({
+                    ...baseFilter,
+                    ...window,
+                    page: p,
+                    size: 200,
+                });
+                rows.push(...(res?.content ?? []).map(recentLeadToVM));
+                if (p + 1 >= (res?.totalPages ?? 0)) break;
+            }
+            const header = [
+                t('export.columns.name'),
+                t('export.columns.email'),
+                t('export.columns.phone'),
+                t('export.columns.source'),
+                t('export.columns.status'),
+                t('export.columns.dueAt'),
+            ];
+            const csvSafe = (v: unknown) => {
+                const str = v === undefined || v === null ? '' : String(v);
+                return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+            };
+            const body = rows.map((vm) =>
+                [
+                    vm.name,
+                    vm.email,
+                    vm.phone,
+                    vm.audience,
+                    vm.leadStatus ?? '',
+                    vm.followUpDueAt ?? vm.tatDueAt ?? '',
+                ]
+                    .map(csvSafe)
+                    .join(',')
+            );
+            const blob = new Blob([[header.join(','), ...body].join('\n')], {
+                type: 'text/csv;charset=utf-8;',
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `follow-ups_${bucket}_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            toast.error(t('export.failed'));
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     // Subline copy (counts-aware so a counsellor sees workload immediately).
     const subline =
         counts.today === 0 && counts.overdue === 0
@@ -490,6 +549,14 @@ const FollowUpsContent = () => {
                                 {t('search.clear')}
                             </MyButton>
                         )}
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            disabled={isExporting || counts[bucket] === 0}
+                            onClick={handleExport}
+                        >
+                            {isExporting ? t('export.running') : t('export.action')}
+                        </MyButton>
                     </div>
                     <div className="flex items-center gap-1 text-body text-muted-foreground">
                         {t('showing.prefix')}{' '}

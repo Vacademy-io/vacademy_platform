@@ -13,11 +13,15 @@ import type {
     ListCustomFieldSurfaceControls,
     ListUtmFilterControls,
     ListUtmFilterDimension,
+    ListBuiltInFilter,
+    ListBuiltInFilterControls,
 } from '@/types/display-settings';
 import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
 import { Link } from '@tanstack/react-router';
-import { Megaphone } from '@phosphor-icons/react';
+import { Funnel, Megaphone } from '@phosphor-icons/react';
 import { UTM_FILTER_DIMENSIONS, CORE_UTM_FILTER_DIMENSIONS } from '@/services/utm-list-filters';
+import { LIST_BUILT_IN_FILTERS } from '@/types/display-settings';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 interface ListCustomFieldControlsCardProps {
     /** The unified per-surface controls from the display-settings blob. */
@@ -41,6 +45,10 @@ interface ListCustomFieldControlsCardProps {
      *  custom-field rows of the selected surface. */
     utmValue?: ListUtmFilterControls | undefined;
     onUtmChange?: (next: ListUtmFilterControls) => void;
+    /** The surface's built-in filters (counsellor / campaign type / audience).
+     *  Optional for the same reason as the UTM pair above. */
+    builtInValue?: ListBuiltInFilterControls | undefined;
+    onBuiltInChange?: (next: ListBuiltInFilterControls) => void;
 }
 
 const buildSurfaces = (
@@ -70,10 +78,13 @@ export const ListCustomFieldControlsCard = ({
     hideHeading = false,
     utmValue,
     onUtmChange,
+    builtInValue,
+    onBuiltInChange,
 }: ListCustomFieldControlsCardProps) => {
     const { t } = useTranslation('settingsListCustomFieldControlsCard');
     const { t: tUtm } = useTranslation('utmListFilters');
     const utm = useUtmBuilderEnabled();
+    const terminology = useLeadTerminology();
     const instituteId = getCurrentInstituteId();
     const { data: fields, isLoading } = useCustomFieldSetup(instituteId ?? undefined);
     const [surface, setSurface] = useState<ListCustomFieldSurface>(initialSurface ?? 'LEADS');
@@ -150,6 +161,27 @@ export const ListCustomFieldControlsCard = ({
         setUtmSurface({ dimensions: UTM_FILTER_DIMENSIONS.filter((x) => next.has(x)) });
     };
 
+    // ── Built-in filters for this surface ─────────────────────────────
+    // Named from Lead Settings, so an institute that calls the campaign type
+    // "Source" sees "Source" here and on the filter bar alike.
+    const builtInHidden = builtInValue?.[surface]?.hidden ?? [];
+    const builtInLabel = (f: ListBuiltInFilter) =>
+        f === 'campaignType'
+            ? terminology.campaignType
+            : f === 'audience'
+              ? terminology.leadSource
+              : t('builtIn.counsellor');
+    const toggleBuiltIn = (f: ListBuiltInFilter, on: boolean) => {
+        if (!onBuiltInChange) return;
+        const next = new Set(builtInHidden);
+        if (on) next.delete(f);
+        else next.add(f);
+        onBuiltInChange({
+            ...(builtInValue ?? {}),
+            [surface]: { hidden: LIST_BUILT_IN_FILTERS.filter((x) => next.has(x)) },
+        });
+    };
+
     return (
         <Card>
             {!hideHeading && (
@@ -175,6 +207,38 @@ export const ListCustomFieldControlsCard = ({
                     <p className="mt-2 text-xs text-muted-foreground">
                         {t('appliesTo', { pages: surfaceMeta.pages })}
                     </p>
+                )}
+                {onBuiltInChange && (
+                    <div className="mt-4 rounded-lg border border-border bg-neutral-50/60 p-4">
+                        <div className="flex min-w-0 flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                                <Funnel className="size-4 text-neutral-500" />
+                                <span className="text-sm font-semibold text-neutral-800">
+                                    {t('builtIn.title')}
+                                </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('builtIn.description')}
+                            </p>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2">
+                            {LIST_BUILT_IN_FILTERS.map((f) => (
+                                <div key={f} className="flex items-center justify-between gap-4">
+                                    <Label
+                                        htmlFor={`list-built-in-${surface}-${f}`}
+                                        className="cursor-pointer text-sm text-neutral-700"
+                                    >
+                                        {builtInLabel(f)}
+                                    </Label>
+                                    <Switch
+                                        id={`list-built-in-${surface}-${f}`}
+                                        checked={!builtInHidden.includes(f)}
+                                        onCheckedChange={(on) => toggleBuiltIn(f, on)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
                 {onUtmChange && (
                     <div className="mt-4 rounded-lg border border-border bg-neutral-50/60 p-4">

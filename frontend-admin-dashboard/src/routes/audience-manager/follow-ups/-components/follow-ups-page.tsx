@@ -28,6 +28,8 @@ import {
     resolveLeadAudienceIds,
 } from '../../list/-utils/campaign-types';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { useListBuiltInFilterControls } from '@/components/shared/leads/use-list-built-in-filter-controls';
 import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
 import { toUtmFiltersPayload } from '@/components/shared/leads/utm-filter-encoding';
 import type { UtmFilterDimension, UtmFilterSelection } from '@/services/utm-list-filters';
@@ -207,6 +209,9 @@ const FollowUpsContent = () => {
     // Same wiring as Recent Leads: picking Sources narrows which Labels the second
     // dropdown offers, and the request carries the resolved audience ids.
     const terminology = useLeadTerminology();
+    // Admins switch individual filters off from the gear below; a hidden filter
+    // must also stop filtering, or it would narrow the list invisibly.
+    const { isVisible: filterVisible } = useListBuiltInFilterControls('LEADS');
     const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>([]);
     const [audienceFilters, setAudienceFilters] = useState<string[]>([]);
@@ -246,14 +251,22 @@ const FollowUpsContent = () => {
         () => filterByCampaignTypes(audienceOptions, campaignTypeFilters),
         [audienceOptions, campaignTypeFilters]
     );
+    const activeCampaignTypes = useMemo(
+        () => (filterVisible('campaignType') ? campaignTypeFilters : []),
+        [filterVisible, campaignTypeFilters]
+    );
+    const activeAudiences = useMemo(
+        () => (filterVisible('audience') ? audienceFilters : []),
+        [filterVisible, audienceFilters]
+    );
     const resolvedAudienceIds = useMemo(
-        () => resolveLeadAudienceIds(audienceFilters, campaignTypeFilters, audienceOptions),
-        [audienceFilters, campaignTypeFilters, audienceOptions]
+        () => resolveLeadAudienceIds(activeAudiences, activeCampaignTypes, audienceOptions),
+        [activeAudiences, activeCampaignTypes, audienceOptions]
     );
     // null means "no audience has these Sources". Sending no ids would mean "every
     // lead", which is the opposite of what was asked — so the queries stand down.
     const waitingForTypeAudiences =
-        campaignTypeFilters.length > 0 && audiencesQuery.data === undefined;
+        activeCampaignTypes.length > 0 && audiencesQuery.data === undefined;
     const noTypeAudiences = !waitingForTypeAudiences && resolvedAudienceIds === null;
     // One id goes to the per-campaign query, several to the institute-wide one.
     // Strictly either/or — sending both is ambiguous server-side.
@@ -617,7 +630,7 @@ const FollowUpsContent = () => {
             {/* Filters. On their own row rather than in the search toolbar below,
                 because that toolbar is list-view only and these apply to both. */}
             <div className="flex flex-wrap items-center gap-2">
-                {canFilterCounsellors && (
+                {canFilterCounsellors && filterVisible('counsellor') && (
                     <CounsellorFilter
                         values={counsellorFilters}
                         onChange={setCounsellorFilters}
@@ -625,36 +638,41 @@ const FollowUpsContent = () => {
                         isLoading={counsellorOptionsLoading}
                     />
                 )}
-                <MultiSelectFilter
-                    label={t('filters.campaignType', { term: terminology.campaignType })}
-                    icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
-                    options={campaignTypeOptions}
-                    selected={campaignTypeFilters}
-                    onChange={(vals) => {
-                        setCampaignTypeFilters(vals);
-                        // The Labels on offer just changed; drop any that no
-                        // longer belong to a selected Source.
-                        setAudienceFilters([]);
-                    }}
-                    widthClass="w-48"
-                />
-                <MultiSelectFilter
-                    label={t('filters.audience', { term: terminology.leadSource })}
-                    icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
-                    options={typeAudienceOptions.map((opt) => ({
-                        value: opt.id,
-                        label: opt.name,
-                    }))}
-                    selected={audienceFilters}
-                    onChange={setAudienceFilters}
-                    widthClass="w-48"
-                />
+                {filterVisible('campaignType') && (
+                    <MultiSelectFilter
+                        label={t('filters.campaignType', { term: terminology.campaignType })}
+                        icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
+                        options={campaignTypeOptions}
+                        selected={campaignTypeFilters}
+                        onChange={(vals) => {
+                            setCampaignTypeFilters(vals);
+                            // The Labels on offer just changed; drop any that no
+                            // longer belong to a selected Source.
+                            setAudienceFilters([]);
+                        }}
+                        widthClass="w-48"
+                    />
+                )}
+                {filterVisible('audience') && (
+                    <MultiSelectFilter
+                        label={t('filters.audience', { term: terminology.leadSource })}
+                        icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
+                        options={typeAudienceOptions.map((opt) => ({
+                            value: opt.id,
+                            label: opt.name,
+                        }))}
+                        selected={audienceFilters}
+                        onChange={setAudienceFilters}
+                        widthClass="w-48"
+                    />
+                )}
                 <UtmFilterControls
                     surface="LEADS"
                     instituteId={instituteId ?? ''}
                     selection={utmFilters}
                     onChange={setUtmFilter}
                 />
+                <ManageListFiltersLink surface="LEADS" />
             </div>
 
             {/* Search on the left, count + export on the right — list view only.

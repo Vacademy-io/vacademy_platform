@@ -2310,6 +2310,13 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                             listUtmFilterControls: next,
                         }))
                     }
+                    builtInValue={settings.listBuiltInFilterControls}
+                    onBuiltInChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            listBuiltInFilterControls: next,
+                        }))
+                    }
                 />
             </div>
 

@@ -1,7 +1,14 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CalendarBlank, DownloadSimple, ListBullets, MagnifyingGlass } from '@phosphor-icons/react';
+import {
+    CalendarBlank,
+    DownloadSimple,
+    Folders,
+    ListBullets,
+    MagnifyingGlass,
+    Megaphone,
+} from '@phosphor-icons/react';
 import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -13,6 +20,18 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { getCurrentInstituteId, getUserRoleForInstitute } from '@/lib/auth/instituteUtils';
 import { getUserId } from '@/utils/userDetails';
 import { fetchRecentLeads } from '../../list/-services/get-recent-leads';
+import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
+import {
+    buildCampaignTypeFilterOptions,
+    buildDefaultCampaignTypeOptions,
+    filterByCampaignTypes,
+    resolveLeadAudienceIds,
+} from '../../list/-utils/campaign-types';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import { UtmFilterControls } from '@/components/shared/leads/utm-filter-controls';
+import { toUtmFiltersPayload } from '@/components/shared/leads/utm-filter-encoding';
+import type { UtmFilterDimension, UtmFilterSelection } from '@/services/utm-list-filters';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -183,6 +202,69 @@ const FollowUpsContent = () => {
                 : undefined
             : currentUserId || undefined;
 
+    // Source (the institute's name for campaign type) and Label (its name for the
+    // audience) are two different things to the client, and neither is a UTM tag.
+    // Same wiring as Recent Leads: picking Sources narrows which Labels the second
+    // dropdown offers, and the request carries the resolved audience ids.
+    const terminology = useLeadTerminology();
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
+    const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>([]);
+    const [audienceFilters, setAudienceFilters] = useState<string[]>([]);
+    const [utmFilters, setUtmFilters] = useState<UtmFilterSelection>({});
+    const setUtmFilter = (dimension: UtmFilterDimension, values: string[]) =>
+        setUtmFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[dimension];
+            else next[dimension] = values;
+            return next;
+        });
+    const utmFiltersPayload = useMemo(() => toUtmFiltersPayload(utmFilters), [utmFilters]);
+
+    const audiencesQuery = useQuery(
+        handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
+    );
+    const audienceOptions = useMemo(
+        () =>
+            (audiencesQuery.data?.content ?? [])
+                .map((c) => ({
+                    id: c.id || c.campaign_id || c.audience_id || '',
+                    name: c.campaign_name || t('filters.audienceUntitled'),
+                    campaignType: c.campaign_type,
+                }))
+                .filter((opt) => opt.id !== ''),
+        [audiencesQuery.data, t]
+    );
+    const campaignTypeOptions = useMemo(
+        () =>
+            buildCampaignTypeFilterOptions(buildDefaultCampaignTypeOptions(tCampaignType), [
+                ...audienceOptions.map((opt) => opt.campaignType),
+                ...campaignTypeFilters,
+            ]),
+        [tCampaignType, audienceOptions, campaignTypeFilters]
+    );
+    const typeAudienceOptions = useMemo(
+        () => filterByCampaignTypes(audienceOptions, campaignTypeFilters),
+        [audienceOptions, campaignTypeFilters]
+    );
+    const resolvedAudienceIds = useMemo(
+        () => resolveLeadAudienceIds(audienceFilters, campaignTypeFilters, audienceOptions),
+        [audienceFilters, campaignTypeFilters, audienceOptions]
+    );
+    // null means "no audience has these Sources". Sending no ids would mean "every
+    // lead", which is the opposite of what was asked — so the queries stand down.
+    const waitingForTypeAudiences =
+        campaignTypeFilters.length > 0 && audiencesQuery.data === undefined;
+    const noTypeAudiences = !waitingForTypeAudiences && resolvedAudienceIds === null;
+    // One id goes to the per-campaign query, several to the institute-wide one.
+    // Strictly either/or — sending both is ambiguous server-side.
+    const audienceParams = useMemo(() => {
+        const ids = resolvedAudienceIds ?? [];
+        return {
+            audience_id: ids.length === 1 ? ids[0] : undefined,
+            audience_ids: ids.length > 1 ? ids : undefined,
+        };
+    }, [resolvedAudienceIds]);
+
     // Search runs on the server with the rest of the filter, so it searches every
     // follow-up rather than whatever happened to be on screen. Debounced rather
     // than button-driven, same as Recent Leads — a queue is scanned, not queried.
@@ -195,7 +277,10 @@ const FollowUpsContent = () => {
         const timer = window.setTimeout(() => setAppliedSearch(trimmed), SEARCH_DEBOUNCE_MS);
         return () => window.clearTimeout(timer);
     }, [searchInput, appliedSearch]);
-    useEffect(() => setPage(0), [bucket, appliedSearch, effectiveCounsellorId]);
+    useEffect(
+        () => setPage(0),
+        [bucket, appliedSearch, effectiveCounsellorId, audienceParams, utmFiltersPayload]
+    );
 
     /** One request shape for every bucket; only the window moves. */
     const baseFilter = useMemo(
@@ -206,8 +291,10 @@ const FollowUpsContent = () => {
             conversion_status_filter: 'EXCLUDE_CONVERTED' as const,
             search_query: appliedSearch || undefined,
             follow_up_pending: true,
+            ...audienceParams,
+            utm_filters: utmFiltersPayload,
         }),
-        [instituteId, effectiveCounsellorId, appliedSearch]
+        [instituteId, effectiveCounsellorId, appliedSearch, audienceParams, utmFiltersPayload]
     );
 
     // Tile counts: one cheap request per bucket, size 1, read totalElements. The page used
@@ -232,7 +319,7 @@ const FollowUpsContent = () => {
                 { ...EMPTY_COUNTS }
             );
         },
-        enabled: !!instituteId,
+        enabled: !!instituteId && !noTypeAudiences,
         staleTime: 30 * 1000,
     });
 
@@ -247,7 +334,7 @@ const FollowUpsContent = () => {
                 // rather than one page of it.
                 size: view === 'calendar' ? CALENDAR_FETCH_SIZE : PAGE_SIZE,
             }),
-        enabled: !!instituteId,
+        enabled: !!instituteId && !noTypeAudiences,
         staleTime: 30 * 1000,
     });
     const totalPages = data?.totalPages ?? 0;
@@ -525,6 +612,11 @@ const FollowUpsContent = () => {
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
+            </div>
+
+            {/* Filters. On their own row rather than in the search toolbar below,
+                because that toolbar is list-view only and these apply to both. */}
+            <div className="flex flex-wrap items-center gap-2">
                 {canFilterCounsellors && (
                     <CounsellorFilter
                         values={counsellorFilters}
@@ -533,6 +625,36 @@ const FollowUpsContent = () => {
                         isLoading={counsellorOptionsLoading}
                     />
                 )}
+                <MultiSelectFilter
+                    label={t('filters.campaignType', { term: terminology.campaignType })}
+                    icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
+                    options={campaignTypeOptions}
+                    selected={campaignTypeFilters}
+                    onChange={(vals) => {
+                        setCampaignTypeFilters(vals);
+                        // The Labels on offer just changed; drop any that no
+                        // longer belong to a selected Source.
+                        setAudienceFilters([]);
+                    }}
+                    widthClass="w-48"
+                />
+                <MultiSelectFilter
+                    label={t('filters.audience', { term: terminology.leadSource })}
+                    icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
+                    options={typeAudienceOptions.map((opt) => ({
+                        value: opt.id,
+                        label: opt.name,
+                    }))}
+                    selected={audienceFilters}
+                    onChange={setAudienceFilters}
+                    widthClass="w-48"
+                />
+                <UtmFilterControls
+                    surface="LEADS"
+                    instituteId={instituteId ?? ''}
+                    selection={utmFilters}
+                    onChange={setUtmFilter}
+                />
             </div>
 
             {/* Search on the left, count + export on the right — list view only.

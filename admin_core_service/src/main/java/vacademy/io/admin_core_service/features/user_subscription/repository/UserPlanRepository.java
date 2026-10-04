@@ -341,6 +341,45 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                 @Param("now") java.util.Date now);
 
         /**
+         * The same question for an institute that identifies learners by PHONE: has anyone on
+         * this NUMBER already consumed a trial here, whatever account they used?
+         *
+         * <p>Matching on user_id alone is not enough where the number is the identity. The same
+         * person routinely accumulates accounts — at SuchBliss four numbers already hold
+         * consumed trials under more than one account, one of them across fourteen — so a
+         * second free trial is available to anyone who signs up again. Compared on the last
+         * ten digits of the digits-only number because stored values mix 918130434435, bare
+         * ten-digit and non-Indian forms.
+         *
+         * <p>A learner whose own number is missing or shorter than ten digits matches nothing
+         * and keeps their trial: an unidentifiable person must not be charged full price.
+         */
+        @Query(value = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    JOIN student s ON s.user_id = up.user_id
+                    WHERE ei.institute_id = :instituteId
+                      AND up.id <> :currentPlanId
+                      AND up.is_trial = true
+                      AND up.end_date IS NOT NULL
+                      AND up.end_date < :now
+                      AND length(regexp_replace(coalesce(s.mobile_number, ''), '[^0-9]', '', 'g')) >= 10
+                      AND right(regexp_replace(s.mobile_number, '[^0-9]', '', 'g'), 10) = (
+                            SELECT right(regexp_replace(me.mobile_number, '[^0-9]', '', 'g'), 10)
+                            FROM student me
+                            WHERE me.user_id = :userId
+                              AND length(regexp_replace(coalesce(me.mobile_number, ''), '[^0-9]', '', 'g')) >= 10
+                            LIMIT 1)
+                )
+                """, nativeQuery = true)
+        boolean hasConsumedTrialByPhone(@Param("userId") String userId,
+                @Param("instituteId") String instituteId,
+                @Param("currentPlanId") String currentPlanId,
+                @Param("now") java.util.Date now);
+
+        /**
          * As {@link #findDueForRenewal} but restricted to institutes that have authorised the
          * charge sweep (PAYMENT_SETTING.autopayChargeSchedulerEnabled). The sweep is a single
          * platform-wide cron, so without this scoping every institute with an armed plan is

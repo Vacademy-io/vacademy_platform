@@ -72,6 +72,9 @@ public class UserPlanService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.service.PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
     @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
@@ -224,8 +227,17 @@ public class UserPlanService {
      */
     private boolean hasConsumedTrial(UserPlan userPlan, EnrollInvite enrollInvite) {
         try {
+            String instituteId = enrollInvite.getInstituteId();
+            java.util.Date now = new java.util.Date();
+            // Where the phone number IS the identity (SuchBliss), the question is whether this
+            // NUMBER has had a trial, not this account: signing up again is precisely how a
+            // second free trial gets taken.
+            if (phoneIdentifierInviteSubmissionGuard.usesPhoneIdentifier(instituteId)) {
+                return userPlanRepository.hasConsumedTrialByPhone(
+                        userPlan.getUserId(), instituteId, userPlan.getId(), now);
+            }
             return userPlanRepository.hasConsumedTrialAtInstitute(
-                    userPlan.getUserId(), enrollInvite.getInstituteId(), userPlan.getId(), new java.util.Date());
+                    userPlan.getUserId(), instituteId, userPlan.getId(), now);
         } catch (Exception e) {
             logger.warn("Could not check trial history for user {}: {}", userPlan.getUserId(), e.getMessage());
             return false;

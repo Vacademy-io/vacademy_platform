@@ -88,4 +88,11 @@ public interface PackageDetailV2Projection {
     Integer getAvailableSlots();
     
     Integer getMaxSeats();
+
+    /**
+     * The package's raw course_setting, selected only when it mentions COMING_SOON (null
+     * otherwise). Parsed server-side; never sent to the client as-is because the same blob
+     * carries LMS/Moodle connection settings.
+     */
+    String getComingSoonSettingJson();
 }

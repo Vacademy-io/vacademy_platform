@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ public class OpenPackageService {
 
         @Autowired
         private AuthService authService;
+
+        @Autowired
+        private ObjectMapper objectMapper;
 
         public List<String> getDistinctCatalogTags(String instituteId) {
                 if (!StringUtils.hasText(instituteId)) {
@@ -390,7 +394,9 @@ public class OpenPackageService {
                                         EnrollInviteAvailabilityUtil.compute(
                                                 projection.getEnrollInviteStatus(),
                                                 projection.getEnrollInviteStartDate(),
-                                                projection.getEnrollInviteEndDate()));
+                                                projection.getEnrollInviteEndDate()),
+                                        ComingSoonDTO.fromCourseSetting(
+                                                projection.getComingSoonSettingJson(), objectMapper));
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

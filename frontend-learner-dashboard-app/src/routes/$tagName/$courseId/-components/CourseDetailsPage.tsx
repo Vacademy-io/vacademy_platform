@@ -21,6 +21,12 @@ import {
 } from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
+import { AudienceFormModal } from "../../-components/AudienceFormModal";
+import {
+  type ComingSoonInfo,
+  formatLaunchDate,
+  readComingSoon,
+} from "../../-utils/coming-soon";
 import {
   Dialog,
   DialogContent,
@@ -523,6 +529,8 @@ interface CourseData {
   // "unavailable" message (from the invite's setting_json). Drive the closed-state UI.
   enrollInviteAvailability?: string;
   unavailableMessageHtml?: string;
+  /** Set while the admin has the course on Coming Soon: every enrol CTA becomes "Notify me". */
+  comingSoon?: ComingSoonInfo | null;
   levelId?: string;
   courseId?: string;
   course_banner_media_id?: string;
@@ -546,7 +554,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   available_slots,
   productPageCode,
 }) => {
-  const { t } = useTranslation("coursePlayerB");
+  const { t, i18n } = useTranslation("coursePlayerB");
   // Institute terminology must be seeded before the first paint — see
   // institute-naming-seed.ts.
   const namingReady = useInstituteNamingSettings(instituteId);
@@ -671,6 +679,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
   // Shown when a learner tries to enroll through an expired / not-yet-started / deactivated invite.
   const [showUnavailableDialog, setShowUnavailableDialog] = useState(false);
+  // "Notify me" form for a Coming Soon course.
+  const [showNotifyForm, setShowNotifyForm] = useState(false);
 
   // Fetch catalogue data for header and footer
   useEffect(() => {
@@ -1092,6 +1102,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
           enrollInviteAvailability: fetchedInviteAvailability,
           unavailableMessageHtml: extractUnavailableMessageHtml(fetchedInviteSettingJson),
+          comingSoon: readComingSoon(courseResponse.coming_soon),
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
           course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
@@ -1282,6 +1293,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const isEnrollmentClosed = inviteAvailability !== "AVAILABLE";
   const unavailableMessageHtml = courseData.unavailableMessageHtml ?? "";
 
+  const comingSoon = courseData.comingSoon ?? null;
+  const comingSoonCta = comingSoon ? comingSoon.buttonText || t("comingSoon.notifyMe") : null;
+  const comingSoonLaunch = formatLaunchDate(comingSoon?.launchDate, i18n.language);
+  const comingSoonHint = comingSoonLaunch
+    ? t("comingSoon.launchingOnHint", { date: comingSoonLaunch })
+    : t("comingSoon.notifyHint");
+
   /**
    * Every enroll CTA on this page (desktop sidebar, inline card, mobile bar)
    * routes through here so the three never drift apart.
@@ -1292,6 +1310,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
    * behaviour: payment dialog when payment is on, lead form when it is off.
    */
   const handleEnrollClick = () => {
+    // Coming Soon → nothing to buy yet; collect interest instead. Checked
+    // before the invite window because such a course often has no invite.
+    if (comingSoon) {
+      if (comingSoon.audienceId) setShowNotifyForm(true);
+      return;
+    }
+
     // Invite expired / not-yet-started / deactivated → show the admin message.
     if (isEnrollmentClosed) {
       setShowUnavailableDialog(true);
@@ -1567,17 +1592,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
-                        {catalogueData?.globalSettings?.payment?.enabled !==
-                        false
-                          ? courseData.price === 0
-                            ? t("courseDetails.enrollForFree")
-                            : t("courseDetails.enrollNow")
-                          : t("courseDetails.getStarted")}
+                        {comingSoonCta ??
+                          (catalogueData?.globalSettings?.payment?.enabled !==
+                          false
+                            ? courseData.price === 0
+                              ? t("courseDetails.enrollForFree")
+                              : t("courseDetails.enrollNow")
+                            : t("courseDetails.getStarted"))}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        {t("courseDetails.clickToRegister", {
-                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
-                        })}
+                        {comingSoon
+                          ? comingSoonHint
+                          : t("courseDetails.clickToRegister", {
+                              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                            })}
                       </p>
                     </div>
                   </div>
@@ -1695,12 +1723,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
-                        {t("courseDetails.enrollNow")}
+                        {comingSoonCta ?? t("courseDetails.enrollNow")}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        {t("courseDetails.clickToRegister", {
-                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
-                        })}
+                        {comingSoon
+                          ? comingSoonHint
+                          : t("courseDetails.clickToRegister", {
+                              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                            })}
                       </p>
                     </div>
                   </div>
@@ -1728,6 +1758,17 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             tagName={tagName}
           />
         )}
+
+      {/* Coming Soon → "Notify me" lead form (the course's own audience list) */}
+      {comingSoon?.audienceId && (
+        <AudienceFormModal
+          isOpen={showNotifyForm}
+          onClose={() => setShowNotifyForm(false)}
+          audienceId={comingSoon.audienceId}
+          title={t("comingSoon.notifyTitle", { title: courseData.title })}
+          instituteId={instituteId}
+        />
+      )}
 
       {/* Enrollment unavailable (expired / not-yet-started / deactivated invite) */}
       <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
@@ -1922,11 +1963,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
-                {catalogueData?.globalSettings?.payment?.enabled !== false
-                  ? courseData.price === 0
-                    ? t("courseDetails.enrollForFree")
-                    : t("courseDetails.enrollNow")
-                  : t("courseDetails.getStarted")}
+                {comingSoonCta ??
+                  (catalogueData?.globalSettings?.payment?.enabled !== false
+                    ? courseData.price === 0
+                      ? t("courseDetails.enrollForFree")
+                      : t("courseDetails.enrollNow")
+                    : t("courseDetails.getStarted"))}
               </button>
               <span className="text-xs text-catalogue-text-secondary text-center">{t("courseDetails.forNewUsers")}</span>
             </div>

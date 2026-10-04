@@ -398,5 +398,14 @@
         "tags": "Tags",
         "copyLink": "Copy link",
         "linkCopied": "Link copied"
+    },
+    "comingSoon": {
+        "ribbon": "Coming soon",
+        "notifyMe": "Notify me",
+        "viewDetails": "View details",
+        "launchingOn": "Launching {{date}}",
+        "launchingOnHint": "Launching {{date}}. Leave your details and we'll tell you the moment it's live.",
+        "notifyHint": "Leave your details and we'll tell you the moment it's live.",
+        "notifyTitle": "Get notified when {{title}} launches"
     }
 }

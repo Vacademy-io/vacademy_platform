@@ -418,5 +418,14 @@
         "tags": "الوسوم",
         "copyLink": "نسخ الرابط",
         "linkCopied": "تم نسخ الرابط"
+    },
+    "comingSoon": {
+        "ribbon": "قريبًا",
+        "notifyMe": "أبلغني",
+        "viewDetails": "عرض التفاصيل",
+        "launchingOn": "الإطلاق في {{date}}",
+        "launchingOnHint": "الإطلاق في {{date}}. اترك بياناتك وسنخبرك فور توفره.",
+        "notifyHint": "اترك بياناتك وسنخبرك فور توفره.",
+        "notifyTitle": "احصل على إشعار عند إطلاق {{title}}"
     }
 }

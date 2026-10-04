@@ -46,6 +46,12 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
 import { resolveCoursePageRoute } from "../../-utils/course-page-routing";
+import {
+  formatLaunchDate,
+  openComingSoonForm,
+  readComingSoon,
+} from "../../-utils/coming-soon";
+import { ComingSoonRibbon } from "./ComingSoonRibbon";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -480,7 +486,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   tagName,
   globalSettings,
 }) => {
-  const { t } = useTranslation("coursePlayerB");
+  const { t, i18n } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const {
     addItem,
@@ -1518,6 +1524,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   SystemTerms.Course,
                 );
                 const levelLabel = displayLevelName(course.level);
+                // Coming Soon: ribbon, launch date in place of the price, no
+                // cart, and the CTA opens the course's notify form. The card
+                // itself still opens the details page.
+                const comingSoon = readComingSoon(course.coming_soon);
+                const launchLabel = formatLaunchDate(
+                  comingSoon?.launchDate,
+                  i18n.language,
+                );
 
                 // Determine whether the course has a real image to display
                 const hasRealImage =
@@ -1590,11 +1604,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             elevated={course.elevatedPrice}
                           />
                         </div>
+                        {/* End corner, so it never collides with the offer badge */}
+                        {comingSoon && (
+                          <div className="absolute top-3 end-3">
+                            <ComingSoonRibbon info={comingSoon} />
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* ── Card body ── */}
                     <div className="flex flex-col flex-1 p-5 gap-2">
+                      {comingSoon && !displayImage && (
+                        <ComingSoonRibbon info={comingSoon} className="self-start" />
+                      )}
                       {/* Category label */}
                       {category && (
                         <span
@@ -1645,7 +1668,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         </div>
 
                         {/* Right: price (or closed/opens-soon when the invite window is not open) */}
-                        {displayPrice &&
+                        {comingSoon ? (
+                          <span className="shrink-0 text-xs font-semibold text-primary-500">
+                            {launchLabel
+                              ? t("comingSoon.launchingOn", { date: launchLabel })
+                              : t("comingSoon.ribbon")}
+                          </span>
+                        ) : displayPrice &&
                           globalSettings?.payment?.enabled !== false &&
                           (() => {
                             const availability = resolveInviteAvailability(
@@ -1684,7 +1713,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       </div>
 
                       {/* Cart controls */}
-                      {shouldShowCartControls && (
+                      {shouldShowCartControls && !comingSoon && (
                         <div
                           className="mt-1"
                           onClick={(e) => e.stopPropagation()}
@@ -1707,13 +1736,37 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (
+                            comingSoon &&
+                            openComingSoonForm(
+                              comingSoon,
+                              t("comingSoon.notifyTitle", { title: course.title }),
+                            )
+                          ) {
+                            return;
+                          }
                           handleCourseClick(course);
                         }}
                         className="catalogue-btn catalogue-btn-primary mt-2 w-full"
-                        aria-label={t("courseCatalog.viewCourse", { course: courseTerm })}
                       >
-                        {t("courseCatalog.viewCourse", { course: courseTerm })}
+                        {comingSoon
+                          ? comingSoon.buttonText || t("comingSoon.notifyMe")
+                          : t("courseCatalog.viewCourse", { course: courseTerm })}
                       </button>
+                      {/* The primary CTA opens the form, so keep a keyboard
+                          path to the details page the card click leads to. */}
+                      {comingSoon && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCourseClick(course);
+                          }}
+                          className="catalogue-btn catalogue-btn-secondary w-full"
+                        >
+                          {t("comingSoon.viewDetails")}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

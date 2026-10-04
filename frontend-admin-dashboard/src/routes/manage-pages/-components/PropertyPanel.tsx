@@ -5770,6 +5770,11 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             label: 'Hand-picked',
             hint: `Exactly the ${courseLower} IDs you list, in that order.`,
         },
+        {
+            id: 'comingSoon',
+            label: 'Coming soon',
+            hint: `Every ${courseLower} switched to Coming Soon (on the ${courseLower} page). They show a ribbon and a Notify me button that collects leads; a ${courseLower} drops out of this strip by itself once it goes live.`,
+        },
     ];
     const source = props.source || 'newest';
 

@@ -55,6 +55,7 @@ import { useTranslation } from 'react-i18next';
 import i18next from 'i18next';
 import { TranslateCourseDialog } from './translate-course-dialog';
 import { OfflineSettingsDialog } from './OfflineSettingsDialog';
+import { ComingSoonButton } from './ComingSoonDialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CourseDetailsFormValues, buildCourseDetailsSchema } from './course-details-schema';
@@ -1551,6 +1552,16 @@ export const CourseDetailsPage = () => {
                                                     packageId={effectiveCourseId}
                                                 />
                                             </>
+                                        )}
+                                        {canEdit && effectiveCourseId && (
+                                            <ComingSoonButton
+                                                packageId={effectiveCourseId}
+                                                courseName={form.getValues('courseData')?.title ?? ''}
+                                                publishedToCatalogue={
+                                                    form.getValues('courseData')
+                                                        ?.isCoursePublishedToCatalaouge === true
+                                                }
+                                            />
                                         )}
                                         {coursePage?.showAdvancedCourseIds === true && (
                                             <AdvancedIdsMenu

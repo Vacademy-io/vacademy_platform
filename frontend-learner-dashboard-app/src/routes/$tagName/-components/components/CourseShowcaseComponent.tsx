@@ -9,6 +9,13 @@ import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { cn } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import {
+    type ComingSoonInfo,
+    formatLaunchDate,
+    openComingSoonForm,
+    readComingSoon,
+} from "../../-utils/coming-soon";
+import { ComingSoonRibbon } from "./ComingSoonRibbon";
 
 /**
  * A CURATED strip of courses — "new", "on sale", one tag, or a hand-picked
@@ -21,8 +28,9 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
  * exactly, including reader-mode hiding and the FREE ribbon.
  */
 
-/** Where the strip's courses come from. */
-export type CourseShowcaseSource = "newest" | "onSale" | "tag" | "picked";
+/** Where the strip's courses come from. "comingSoon" = every course the admin
+ *  has switched to Coming Soon, newest first. */
+export type CourseShowcaseSource = "newest" | "onSale" | "tag" | "picked" | "comingSoon";
 
 /** Ribbon palette. Every class here is a real built utility — an invented
  *  colour name compiles fine and renders an unstyled pill. */
@@ -47,6 +55,7 @@ interface ShowcaseCourse {
     level?: string;
     enrollInviteId?: string;
     packageSessionId?: string;
+    comingSoon: ComingSoonInfo | null;
 }
 
 export interface CourseShowcaseProps {
@@ -124,7 +133,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     instituteId,
     tagName,
 }) => {
-    const { t } = useTranslation("coursePlayerB");
+    const { t, i18n } = useTranslation("coursePlayerB");
     const navigate = useNavigate();
     const [courses, setCourses] = useState<ShowcaseCourse[]>([]);
     const [loading, setLoading] = useState(true);
@@ -180,6 +189,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                         level: c.level_name,
                         enrollInviteId: c.enroll_invite_id,
                         packageSessionId: c.package_session_id,
+                        comingSoon: readComingSoon(c.coming_soon),
                     })),
                 );
             })
@@ -201,6 +211,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
             list = want
                 ? list.filter((c) => c.tags.some((x) => x.toLowerCase() === want))
                 : [];
+        } else if (source === "comingSoon") {
+            list = list.filter((c) => c.comingSoon);
         } else if (source === "picked") {
             const order = (courseIds || []).filter(Boolean);
             const byId = new Map(list.map((c) => [c.id, c]));
@@ -264,6 +276,17 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                               />
                           ))
                         : shown.map((c) => {
+                              if (c.comingSoon) {
+                                  return (
+                                      <ComingSoonShowcaseCard
+                                          key={c.id}
+                                          course={c}
+                                          info={c.comingSoon}
+                                          locale={i18n.language}
+                                          onOpen={() => openCourse(c)}
+                                      />
+                                  );
+                              }
                               const override = courseBadges?.[c.id];
                               const ribbon = (override?.text ?? badgeText ?? "").trim();
                               const tone = override?.tone ?? badgeTone;
@@ -321,6 +344,69 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                 </div>
             </div>
         </section>
+    );
+};
+
+/**
+ * A Coming Soon course in the strip. Not one big <button> like the regular
+ * card: it needs two actions — the card opens the details page, "Notify me"
+ * opens the course's lead form — and buttons cannot nest.
+ */
+const ComingSoonShowcaseCard: React.FC<{
+    course: ShowcaseCourse;
+    info: ComingSoonInfo;
+    locale?: string;
+    onOpen: () => void;
+}> = ({ course, info, locale, onOpen }) => {
+    const { t } = useTranslation("coursePlayerB");
+    const launchLabel = formatLaunchDate(info.launchDate, locale);
+    return (
+        <div
+            onClick={onOpen}
+            className="group flex cursor-pointer flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated text-start shadow-sm transition-transform duration-300 ease-out hover:-translate-y-1"
+        >
+            <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-muted">
+                <ShowcaseImage fileId={course.thumbnailId} alt={course.title} />
+                <div className="absolute end-3 top-3">
+                    <ComingSoonRibbon info={info} />
+                </div>
+            </div>
+            <div className="flex flex-1 flex-col gap-2 p-5">
+                <h3 className="text-base font-semibold text-catalogue-text-primary">{course.title}</h3>
+                {course.description && (
+                    <p className="line-clamp-2 text-sm text-catalogue-text-muted">{course.description}</p>
+                )}
+                <div className="mt-auto flex flex-col gap-2 pt-3">
+                    <span className="text-sm font-semibold text-primary-500">
+                        {launchLabel
+                            ? t("comingSoon.launchingOn", { date: launchLabel })
+                            : t("comingSoon.ribbon")}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (!openComingSoonForm(info, t("comingSoon.notifyTitle", { title: course.title }))) {
+                                onOpen();
+                            }
+                        }}
+                        className="catalogue-btn catalogue-btn-primary w-full justify-center"
+                    >
+                        {info.buttonText || t("comingSoon.notifyMe")}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onOpen();
+                        }}
+                        className="catalogue-btn catalogue-btn-secondary w-full justify-center"
+                    >
+                        {t("comingSoon.viewDetails")}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };
 

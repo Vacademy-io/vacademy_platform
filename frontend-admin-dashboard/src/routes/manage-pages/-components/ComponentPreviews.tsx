@@ -1745,6 +1745,7 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
             const across = props.layout === 'grid' ? 4 : 3;
             const sourceLabel: Record<string, string> = {
                 newest: 'Newest', onSale: 'On sale', tag: `Tag: ${props.tag || '—'}`, picked: 'Hand-picked',
+                comingSoon: 'Coming soon',
             };
             return (
                 <div className="bg-catalogue-bg-elevated px-8 py-6">

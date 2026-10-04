@@ -180,7 +180,7 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         props: {
             title: 'New courses',
             subtitle: '',
-            // 'newest' | 'onSale' | 'tag' | 'picked' — what fills the strip.
+            // 'newest' | 'onSale' | 'tag' | 'picked' | 'comingSoon' — what fills the strip.
             source: 'newest',
             tag: '',
             courseIds: [],

@@ -403,5 +403,14 @@
         "tags": "Étiquettes",
         "copyLink": "Copier le lien",
         "linkCopied": "Lien copié"
+    },
+    "comingSoon": {
+        "ribbon": "Bientôt disponible",
+        "notifyMe": "Me prévenir",
+        "viewDetails": "Voir les détails",
+        "launchingOn": "Lancement le {{date}}",
+        "launchingOnHint": "Lancement le {{date}}. Laissez vos coordonnées, nous vous préviendrons dès l'ouverture.",
+        "notifyHint": "Laissez vos coordonnées, nous vous préviendrons dès l'ouverture.",
+        "notifyTitle": "Être prévenu du lancement de {{title}}"
     }
 }

@@ -77,7 +77,12 @@ public class PhoneIdentifierInviteSubmissionGuard {
         }
     }
 
-    private boolean usesPhoneIdentifier(String instituteId) {
+    /**
+     * Whether the institute identifies learners by phone number
+     * (USER_IDENTIFIER = PHONE). Public because the trial-reuse rule needs the same answer,
+     * and two copies of "how do we identify a person here" is how they drift apart.
+     */
+    public boolean usesPhoneIdentifier(String instituteId) {
         Object setting = instituteSettingService.getSettingByInstituteIdAndKey(
                 instituteId, USER_IDENTIFIER_SETTING);
         if (setting instanceof Map<?, ?> map) {

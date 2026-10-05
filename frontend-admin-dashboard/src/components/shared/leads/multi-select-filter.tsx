@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CaretDown, Check, PlusCircle } from '@phosphor-icons/react';
+import { CaretDown, Check, Lock, PlusCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ChipsWrapper } from '@/components/design-system/chips';
@@ -69,6 +69,8 @@ interface MultiSelectFilterProps {
      *  Without this the lock only survived "Clear all" — the dropdown stayed open for
      *  business, so a sub-tab called "Untouched Leads" could be turned into all leads. */
     locked?: boolean;
+    /** Shown inside a locked popover so the dead controls explain themselves. */
+    lockedHint?: string;
 }
 
 /**
@@ -88,6 +90,7 @@ export function MultiSelectFilter({
     variant = 'button',
     exclude,
     locked = false,
+    lockedHint = 'Fixed by this tab',
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const { isCompact } = useCompactMode();
@@ -178,14 +181,19 @@ export function MultiSelectFilter({
                         className={cn(
                             'h-10 justify-between',
                             widthClass,
-                            count > 0 && 'border-primary-300 bg-primary-50'
+                            count > 0 && 'border-primary-300 bg-primary-50',
+                            locked && 'cursor-default bg-neutral-50 text-neutral-500'
                         )}
                     >
                         <span className="flex min-w-0 items-center gap-1.5">
                             {icon}
                             <span className="truncate text-sm font-normal">{triggerLabel}</span>
                         </span>
-                        <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                        {locked ? (
+                            <Lock className="size-4 shrink-0 text-neutral-400" weight="fill" />
+                        ) : (
+                            <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                        )}
                     </Button>
                 )}
             </PopoverTrigger>
@@ -196,14 +204,24 @@ export function MultiSelectFilter({
                 className={cn('p-0', options.some((opt) => opt.sublabel) ? 'w-64' : 'w-56')}
             >
                 <Command>
-                    <CommandInput placeholder={placeholder} className="h-9" />
+                    {locked ? (
+                        <p className="flex items-center gap-1.5 border-b border-neutral-100 px-3 py-2 text-caption text-neutral-500">
+                            <Lock className="size-3.5 shrink-0" weight="fill" />
+                            {lockedHint}
+                        </p>
+                    ) : (
+                        <CommandInput placeholder={placeholder} className="h-9" />
+                    )}
                     <CommandList className="max-h-64 overflow-y-auto">
                         <CommandEmpty>No options found.</CommandEmpty>
                         {exclude && (
                             <CommandItem
                                 value="__exclude__"
                                 onSelect={() => !locked && exclude.onChange(!exclude.value)}
-                                className="cursor-pointer gap-2 text-neutral-600"
+                                className={cn(
+                                    'gap-2 text-neutral-600',
+                                    locked ? 'cursor-default opacity-60' : 'cursor-pointer'
+                                )}
                             >
                                 <span
                                     className={cn(
@@ -218,7 +236,7 @@ export function MultiSelectFilter({
                                 {exclude.label}
                             </CommandItem>
                         )}
-                        {count > 0 && (
+                        {count > 0 && !locked && (
                             <CommandItem
                                 value="__clear__"
                                 onSelect={() => onChange([])}
@@ -235,7 +253,9 @@ export function MultiSelectFilter({
                                         opt.sublabel ? `${opt.label} ${opt.sublabel}` : opt.label
                                     }
                                     onSelect={() => toggle(opt.value, opt.clearAll)}
-                                    className="cursor-pointer"
+                                    className={cn(
+                                        locked ? 'cursor-default opacity-60' : 'cursor-pointer'
+                                    )}
                                 >
                                     {/* A real box, not a tick that fades to nothing: with only
                                         the tick, an unticked row showed blank space and the whole

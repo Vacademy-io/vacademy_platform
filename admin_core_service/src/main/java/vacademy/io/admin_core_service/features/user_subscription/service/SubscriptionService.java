@@ -83,6 +83,7 @@ public class SubscriptionService {
     public List<SubscriptionDTO> listSubscriptions(String userId, String instituteId) {
         List<UserPlan> plans = userPlanRepository.findAllByUserIdAndInstituteIdAndStatusIn(
                 userId, instituteId, VISIBLE_STATUSES);
+        plans = collapseUnfinishedSignups(plans);
         // Read the institute's gateways ONCE for the whole list, not once per plan: this is
         // the learner's entire membership list and the mapping is the same for every row.
         List<VendorInfo> activeGateways = institutePaymentGatewayMappingService
@@ -185,7 +186,15 @@ public class SubscriptionService {
         // while the institute has only eWay configured, so most of the non-eWay ones could
         // never have completed.
         VendorInfo renewalGateway = resolveRenewalGateway(plan, activeGateways);
-        boolean canRenewManually = renewalDue && renewalGateway != null;
+        // ...and only on a plan that was genuinely a membership. Every abandoned or failed
+        // first checkout leaves its own plan row behind (one learner produced four in seven
+        // minutes), and those rows satisfy every condition above — lapsed, no live mandate,
+        // PAYMENT_FAILED — so the page offered "pay to continue" on a dead signup attempt.
+        // Renewing one takes the money and extends access that was never granted: on
+        // 2026-10-04 a learner paid Rs 7,200 against such a row and ended up enrolled in
+        // nothing. A renewal extends an existing membership, so require one to exist.
+        boolean everAMembership = everWasAMembership(plan);
+        boolean canRenewManually = everAMembership && renewalDue && renewalGateway != null;
         String currency = mandate != null && mandate.getCurrency() != null
                 ? mandate.getCurrency()
                 : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
@@ -209,6 +218,10 @@ public class SubscriptionService {
                 .planPrice(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getActualPrice() : null)
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
+                .canCompleteEnrollment(!everAMembership)
+                .enrollInviteCode(plan.getEnrollInvite() != null
+                        ? plan.getEnrollInvite().getInviteCode()
+                        : null)
                 .instantRenewal(renewalGateway != null && isStoredTokenGateway(renewalGateway.getVendor()))
                 .renewalVendor(renewalGateway != null ? renewalGateway.getVendor() : null)
                 .autopayDefault(autopayDefaultOnRenewal(instituteId))
@@ -252,6 +265,60 @@ public class SubscriptionService {
     }
 
     /**
+     * One unfinished signup, not several memberships. Each abandoned or failed checkout attempt
+     * leaves its own plan row — one learner produced four inside seven minutes, and every one of
+     * them lands in a VISIBLE_STATUSES state. Listing them all would show the learner four
+     * identical "complete your enrollment" cards for a single thing they never finished. Keep
+     * the most recent attempt (the one they were last on) and drop the older ones; real
+     * memberships are never collapsed, however many there are.
+     */
+    private List<UserPlan> collapseUnfinishedSignups(List<UserPlan> plans) {
+        List<UserPlan> unfinished = plans.stream().filter(p -> !everWasAMembership(p)).toList();
+        if (unfinished.isEmpty()) {
+            return plans;
+        }
+        boolean hasRealMembership = unfinished.size() < plans.size();
+        if (hasRealMembership) {
+            // They have an actual membership in the list, so the action they need is on THAT
+            // row — "pay to continue" when it has lapsed. Keeping the leftover signup rows
+            // would sit a "complete your enrollment" card next to it and invite the learner to
+            // start a second membership. It is also what would otherwise happen the moment
+            // they DO complete one: the dead row outlives the enrolment and keeps asking.
+            return plans.stream().filter(this::everWasAMembership).toList();
+        }
+        if (unfinished.size() == 1) {
+            return plans;
+        }
+        // No membership at all — show the one unfinished signup they were last on. Each retried
+        // checkout leaves its own row (one learner produced four inside seven minutes), and
+        // listing them all would show four identical cards for one thing never finished.
+        UserPlan newest = unfinished.stream()
+                .max(Comparator.comparing(UserPlan::getCreatedAt,
+                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                .orElse(null);
+        log.info("Collapsing {} unfinished signup rows for the subscriptions list, keeping {}",
+                unfinished.size(), newest != null ? newest.getId() : null);
+        final UserPlan keep = newest;
+        return plans.stream().filter(p -> p == keep).toList();
+    }
+
+    /**
+     * Whether this plan row ever represented a real membership, as opposed to an abandoned or
+     * failed checkout attempt. Two independent pieces of evidence, either of which is enough:
+     * an enrolment was created against it at some point (any status, since a trial's mappings
+     * are revoked when it ends), or a payment on it succeeded.
+     *
+     * <p>Verified against production before being made a gate: all eight SuchBliss learners
+     * who have successfully used "pay to continue" satisfy it, so the button stays exactly
+     * where it works today.
+     */
+    private boolean everWasAMembership(UserPlan plan) {
+        return mappingRepository.existsByUserPlanId(plan.getId())
+                || paymentLogRepository.existsByUserPlanIdAndPaymentStatus(
+                        plan.getId(), PaymentStatusEnum.PAID.name());
+    }
+
+    /**
      * Start a MANUAL RENEWAL payment for the learner's existing plan ("pay to
      * continue"). Amount/vendor are SERVER-derived from the plan (never trusted
      * from the client). With {@code withAutopay} (allowed only when the invite
@@ -275,6 +342,16 @@ public class SubscriptionService {
         }
         if (plan.getEnrollInvite() == null) {
             throw new VacademyException("Subscription has no enrollment invite — cannot build payment");
+        }
+        // The UI stops offering this (toDto.canRenewManually), but the UI is not the gate: a
+        // stale tab, a bookmarked link or a direct API call reaches here regardless, and this
+        // is where the money is actually taken. Refuse to renew a plan that was never a
+        // membership and send the learner to finish enrolling instead — paying here would
+        // extend access that does not exist, which is how one learner's Rs 7,200 bought her a
+        // plan running to 2027 with no batch, no class links and no WhatsApp.
+        if (!everWasAMembership(plan)) {
+            throw new VacademyException("This membership was never activated — please complete "
+                    + "your enrollment instead of renewing");
         }
         // A booked downgrade takes effect at exactly this renewal, so the learner must be
         // quoted the plan they are moving TO — billing them the old price here would take

@@ -112,6 +112,8 @@
         "paymentReceivedToastBody": "Your membership is being reactivated — this takes a few seconds.",
         "paymentNotCompletedToast": "Payment not completed",
         "changePlan": "Change plan",
+        "completeEnrollmentPrompt": "This membership was never activated — your sign-up was not completed. Finish enrolling to start attending.",
+        "completeEnrollmentCta": "Complete your enrollment",
         "changePlanTitle": "Change your plan",
         "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
         "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",

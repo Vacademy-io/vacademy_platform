@@ -544,6 +544,8 @@
       "autopayCheckbox": "Activer aussi le prélèvement automatique pour les prochains renouvellements — une seule validation paie maintenant et met en place le prélèvement automatique, sans paiement manuel supplémentaire.",
       "startingPayment": "Lancement du paiement...",
       "payToContinue": "Payer {{amount}} pour continuer",
+      "completeEnrollmentPrompt": "Votre inscription à cet abonnement n'a jamais été finalisée, il n'y a donc rien à renouveler. Terminez votre inscription et vos {{liveClasses}} commencent immédiatement.",
+      "completeEnrollmentCta": "Finaliser mon inscription",
       "toast": {
         "startFailedTitle": "Impossible de lancer le paiement",
         "genericRetry": "Veuillez réessayer dans un instant.",

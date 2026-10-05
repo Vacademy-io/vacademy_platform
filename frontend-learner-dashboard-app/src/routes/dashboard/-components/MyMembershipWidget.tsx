@@ -387,6 +387,35 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                 </div>
                             )}
 
+                            {/* Never a membership — an abandoned or failed first checkout. There
+                                is no access to extend, so the way forward is to finish enrolling,
+                                not to renew (the server refuses a renewal here). */}
+                            {sub.can_complete_enrollment && sub.enroll_invite_code && instituteId && (
+                                <div className="space-y-2.5 rounded-lg border border-warning-200 bg-warning-50 p-3">
+                                    <p className="text-caption text-foreground">
+                                        {t("membership.completeEnrollmentPrompt")}
+                                    </p>
+                                    <div className="flex justify-end">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-1.5"
+                                            onClick={() =>
+                                                window.location.assign(
+                                                    `/learner-invitation-response?instituteId=${encodeURIComponent(
+                                                        instituteId,
+                                                    )}&inviteCode=${encodeURIComponent(
+                                                        sub.enroll_invite_code ?? "",
+                                                    )}`,
+                                                )
+                                            }
+                                        >
+                                            {t("membership.completeEnrollmentCta")}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Pay-to-continue: offered whenever autopay won't charge this plan */}
                             {canRenew && (
                                 <div className="space-y-2.5 rounded-lg border border-primary-100 bg-primary-50 p-3">

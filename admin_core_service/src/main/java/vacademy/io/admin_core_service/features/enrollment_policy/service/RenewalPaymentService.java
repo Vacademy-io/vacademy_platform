@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.enrollment_policy.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,6 +52,15 @@ public class RenewalPaymentService {
     private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final RenewalGracePolicy gracePolicy;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
+
+    /**
+     * Lazy because UserPlanService reaches back into this service's neighbourhood (renewal,
+     * plan change, enrolment all call one another) and eager injection closes a bean cycle at
+     * startup. Only used by the enrolment safety net in handleSuccessfulRenewal.
+     */
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService userPlanService;
 
     /** Same dunning ceiling as RenewalChargeService (policy override not yet snapshotted). */
     private static final int MAX_RENEWAL_ATTEMPTS = 3;
@@ -355,6 +366,20 @@ public class RenewalPaymentService {
                 mapping.setExpiryDate(newEndDate);
                 mappingRepository.save(mapping);
                 log.info("REACTIVATED mapping {} (expiry {})", mapping.getId(), newEndDate);
+            }
+
+            // Nothing to extend and nothing to reactivate means this plan holds no access at
+            // all, yet money just landed on it. Extending zero rows used to "succeed" in
+            // silence: the plan read ACTIVE until 2027 while the learner sat in no batch, got
+            // no class links and appeared in no member list (Nitika Maheshwari, 2026-10-04,
+            // Rs 7,200). Enrol instead. ensureEnrollmentExists is idempotent, never throws,
+            // and runs the same INVITED -> ACTIVE shift the first-payment path runs, which
+            // also fires the enrollment workflow — so the learner gets the member message and
+            // the next class batch picks them up without anyone intervening by hand.
+            if (activeMappings.isEmpty() && inactiveMappings.isEmpty()) {
+                log.warn("Renewal paid on plan {} which holds no mapping at all — enrolling the "
+                        + "learner now instead of extending nothing", userPlan.getId());
+                userPlanService.ensureEnrollmentExists(userPlan);
             }
 
             // Send success notification

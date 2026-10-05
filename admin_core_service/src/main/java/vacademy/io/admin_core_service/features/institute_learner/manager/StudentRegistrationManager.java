@@ -1191,6 +1191,15 @@ public class StudentRegistrationManager {
 
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
                                           Institute subOrg) {
+        triggerEnrollmentWorkflow(instituteId, userDTO, packageSessionId, subOrg, null);
+    }
+
+    /**
+     * Same, with the plan the enrollment belongs to, so the event can say whether this is a
+     * TRIAL or a PAID membership. Prefer this overload wherever a plan is known.
+     */
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
+                                          Institute subOrg, String userPlanId) {
         // Validate and gather context UP-FRONT while we still have references.
         // The actual workflow firing is deferred until after the parent transaction
         // commits (see below) — if it errored later, we still want the validation
@@ -1225,6 +1234,34 @@ public class StudentRegistrationManager {
                     LmsExistingUserEditPolicyService.CONTEXT_KEY, instituteId, pkg.getId(), e.getMessage());
         }
         contextData.put(LmsExistingUserEditPolicyService.CONTEXT_KEY, mayEditExistingLmsUser);
+
+        // Trial or paid? This event carried no membership shape at all, so a workflow on it
+        // could not tell a trial joiner from a paying member — the same greeting, and the same
+        // 14-day trial drip, fired for both. Both of the happy flows end here: a first-time
+        // signup that lands on a trial, and a returning member (cancelled or renewal-failed)
+        // who pays to continue and must go straight to the regular classes. The shape has to
+        // travel with the event for those two to be addressable at all.
+        //
+        // Gate workflow conditions on membershipType ('TRIAL' / 'PAID'). UNKNOWN means no plan
+        // was resolvable (admin direct enrolment, bulk assignment, free courses) and must
+        // never be read as either one.
+        String membershipType = "UNKNOWN";
+        boolean isTrialMembership = false;
+        if (StringUtils.hasText(userPlanId)) {
+            try {
+                UserPlan plan = userPlanService.findById(userPlanId);
+                if (plan != null) {
+                    isTrialMembership = Boolean.TRUE.equals(plan.getIsTrial());
+                    membershipType = isTrialMembership ? "TRIAL" : "PAID";
+                }
+            } catch (Exception e) {
+                log.warn("Could not resolve the membership shape for plan {} — the enrollment "
+                        + "workflow context will say UNKNOWN: {}", userPlanId, e.getMessage());
+            }
+        }
+        contextData.put("userPlanId", userPlanId);
+        contextData.put("isTrial", isTrialMembership);
+        contextData.put("membershipType", membershipType);
 
         final String eventName = WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name();
         final String finalInstituteId = instituteId;

@@ -681,7 +681,7 @@ public class UserPlanService {
      *
      * <p>Never throws: a payment must not fail because the enrollment repair did.
      */
-    private void ensureEnrollmentExists(UserPlan userPlan) {
+    public void ensureEnrollmentExists(UserPlan userPlan) {
         try {
             EnrollInvite enrollInvite = userPlan.getEnrollInvite();
             if (enrollInvite == null) {
@@ -709,13 +709,13 @@ public class UserPlanService {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
-            // Already ACTIVE does NOT mean already enrolled. A plan can reach ACTIVE before
-            // any money lands — Nitika Maheshwari's annual plan was created ACTIVE on 31 Aug
-            // — and when her Rs 7,200 finally succeeded on 4 Oct this method returned here,
-            // skipping the enrollment shift below. The payment was recorded, the plan ran to
-            // 2027, and she held no ACTIVE mapping at all: a paying member who appeared in no
-            // batch and received no class links. Re-activation is indeed not wanted; the
-            // enrollment still has to exist.
+            // Already ACTIVE does NOT mean already enrolled. Nitika Maheshwari's annual plan
+            // reached ACTIVE through the RENEWAL path — handleSuccessfulRenewal activates and
+            // extends whichever plan the money was paid against — minutes before this method
+            // ran on the very same payment, so this early return skipped the enrollment shift
+            // below. Her Rs 7,200 was recorded, the plan ran to 2027, and she held no ACTIVE
+            // mapping at all: a paying member in no batch, receiving no class links.
+            // Re-activation is indeed not wanted here; the enrollment still has to exist.
             logger.info("UserPlan {} already ACTIVE — verifying the enrollment exists", userPlan.getId());
             ensureEnrollmentExists(userPlan);
             return;
@@ -1458,7 +1458,14 @@ public class UserPlanService {
                 List.of(LearnerSessionStatusEnum.ACTIVE.name()));
 
         if (mappings.isEmpty()) {
-            logger.warn("No active mappings found for expired plan ID={}. Nothing to transfer.", expiredPlan.getId());
+            // Promoting a plan while transferring nothing leaves an ACTIVE plan with no
+            // enrolment behind it — the learner pays (or already paid) and sits in no batch.
+            // It happens whenever the expired plan's mappings were already revoked, which is
+            // the normal end of a trial. Enrol against the promoted plan instead of returning
+            // empty-handed.
+            logger.warn("No active mappings to transfer from expired plan ID={} — enrolling the "
+                    + "promoted plan {} directly", expiredPlan.getId(), stackedPlan.getId());
+            ensureEnrollmentExists(stackedPlan);
             return;
         }
 

@@ -200,7 +200,21 @@ public class AuthService {
                 && StringUtils.hasText(registerRequest.getMobileNumber());
 
         if (usePhoneAsIdentifier) {
-            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            // Prefer the account that ALREADY belongs to this institute, exactly as phone
+            // login does (AuthManager ~L731). A number routinely fronts several accounts —
+            // at SuchBliss one number has fourteen — and resolving blind-latest here sent the
+            // enrolment to an account the learner was not signed into: login picked the one
+            // holding a role here, enrolment created the plan on the newest one, and the
+            // learner's own dashboard stayed empty while their membership lived elsewhere.
+            // Identity resolution has to agree between logging in and enrolling, or the two
+            // halves of the same person drift apart.
+            if (StringUtils.hasText(instituteId)) {
+                optionalUser = userRepository.findLatestUserByMobileNumberAndInstitute(
+                        registerRequest.getMobileNumber(), instituteId);
+            }
+            if (optionalUser.isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
         }
 
         if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
@@ -492,7 +506,21 @@ public class AuthService {
                 && StringUtils.hasText(registerRequest.getMobileNumber());
 
         if (usePhoneAsIdentifier) {
-            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            // Prefer the account that ALREADY belongs to this institute, exactly as phone
+            // login does (AuthManager ~L731). A number routinely fronts several accounts —
+            // at SuchBliss one number has fourteen — and resolving blind-latest here sent the
+            // enrolment to an account the learner was not signed into: login picked the one
+            // holding a role here, enrolment created the plan on the newest one, and the
+            // learner's own dashboard stayed empty while their membership lived elsewhere.
+            // Identity resolution has to agree between logging in and enrolling, or the two
+            // halves of the same person drift apart.
+            if (StringUtils.hasText(instituteId)) {
+                optionalUser = userRepository.findLatestUserByMobileNumberAndInstitute(
+                        registerRequest.getMobileNumber(), instituteId);
+            }
+            if (optionalUser.isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
         }
 
         if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {

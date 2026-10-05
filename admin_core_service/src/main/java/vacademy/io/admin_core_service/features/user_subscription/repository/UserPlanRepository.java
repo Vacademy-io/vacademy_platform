@@ -25,6 +25,28 @@ import java.time.LocalDateTime;
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
 
     /**
+     * Integrity check: plans that took money and are ACTIVE, whose learner holds no ACTIVE
+     * enrolment anywhere in that plan's institute. Paid access that was never granted.
+     *
+     * <p>Scoped to the institute rather than to the plan's own mappings on purpose — access
+     * legitimately moves between plan rows (plan change, abandoned-sibling reconciliation),
+     * so "this plan has no mapping" alone is noisy, while "this learner is enrolled in
+     * nothing here" is the condition that actually hurts a paying member.
+     */
+    @Query(value = """
+            SELECT up.* FROM user_plan up
+            JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+            WHERE up.status = 'ACTIVE'
+              AND EXISTS (SELECT 1 FROM payment_log pl
+                          WHERE pl.user_plan_id = up.id AND pl.payment_status = 'PAID')
+              AND NOT EXISTS (SELECT 1 FROM student_session_institute_group_mapping m
+                              WHERE m.user_id = up.user_id
+                                AND m.institute_id = ei.institute_id
+                                AND m.status = 'ACTIVE')
+            """, nativeQuery = true)
+    List<UserPlan> findPaidActivePlansWithoutEnrollment();
+
+    /**
      * (userPlanId, currency) for a batch of plans, read straight off the joined
      * payment_plan row. Deliberately a projection rather than walking
      * {@code UserPlan.getPaymentPlan()}: that association is LAZY, so touching it from a
@@ -316,12 +338,19 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         /**
          * Whether this learner has already CONSUMED a free trial at this institute.
          *
-         * <p>"Consumed" means a previous trial plan whose window has elapsed — not merely
-         * that a trial row exists. A learner who retries checkout creates several trial plans
-         * in a few minutes (Nitika Maheshwari made four in seven), and those must not count
-         * against them: their end_date is still ahead, so they are the same trial, not a
-         * second one. Once the window has passed, the trial was had, whether or not it ever
-         * converted.
+         * <p>"Consumed" means a previous trial that actually DELIVERED something — its window
+         * has elapsed AND it either carried an enrolment or took a payment. Two separate traps
+         * sit here, and both have bitten:
+         * <ul>
+         *   <li>A learner who retries checkout creates several trial plan rows in a few minutes
+         *       (Nitika Maheshwari made four in seven). Rows whose window is still ahead are
+         *       the same trial, not a second one — hence the end_date test.</li>
+         *   <li>An ABANDONED row's window elapses too. Counting it would tell a learner who
+         *       never completed a checkout, never got access and never attended a class that
+         *       they had already used their free trial, and charge them full price for their
+         *       first visit. The mapping/payment test is what keeps "abandoned, came back three
+         *       weeks later" on the trial path, which is the intended happy flow.</li>
+         * </ul>
          *
          * <p>Scoped to the institute rather than the invite: an institute offers one free
          * trial, and hopping to a different invite is exactly how a second one gets taken.
@@ -334,6 +363,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   AND up.endDate IS NOT NULL
                   AND up.endDate < :now
                   AND up.enrollInvite.instituteId = :instituteId
+                  AND (EXISTS (SELECT 1 FROM StudentSessionInstituteGroupMapping m
+                               WHERE m.userPlanId = up.id)
+                       OR EXISTS (SELECT 1 FROM PaymentLog pl
+                                  WHERE pl.userPlan.id = up.id AND pl.paymentStatus = 'PAID'))
                 """)
         boolean hasConsumedTrialAtInstitute(@Param("userId") String userId,
                 @Param("instituteId") String instituteId,
@@ -351,6 +384,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * ten digits of the digits-only number because stored values mix 918130434435, bare
          * ten-digit and non-Indian forms.
          *
+         * <p>Same "actually delivered" rule as the user-id variant: an elapsed ABANDONED row
+         * does not burn the trial, or a learner who never completed their first checkout would
+         * be charged full price for a class they have never attended.
+         *
          * <p>A learner whose own number is missing or shorter than ten digits matches nothing
          * and keeps their trial: an unidentifiable person must not be charged full price.
          */
@@ -365,6 +402,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                       AND up.is_trial = true
                       AND up.end_date IS NOT NULL
                       AND up.end_date < :now
+                      AND (EXISTS (SELECT 1 FROM student_session_institute_group_mapping m
+                                   WHERE m.user_plan_id = up.id)
+                           OR EXISTS (SELECT 1 FROM payment_log pl
+                                      WHERE pl.user_plan_id = up.id AND pl.payment_status = 'PAID'))
                       AND length(regexp_replace(coalesce(s.mobile_number, ''), '[^0-9]', '', 'g')) >= 10
                       AND right(regexp_replace(s.mobile_number, '[^0-9]', '', 'g'), 10) = (
                             SELECT right(regexp_replace(me.mobile_number, '[^0-9]', '', 'g'), 10)

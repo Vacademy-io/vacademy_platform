@@ -128,6 +128,8 @@
         "paymentReceivedToastBody": "يتم إعادة تفعيل عضويتك — يستغرق ذلك بضع ثوانٍ.",
         "paymentNotCompletedToast": "لم تكتمل عملية الدفع",
         "changePlan": "Change plan",
+        "completeEnrollmentPrompt": "لم يتم تنشيط هذه العضوية — لم يكتمل تسجيلك. أكمل التسجيل لتبدأ الحضور.",
+        "completeEnrollmentCta": "أكمل تسجيلك",
         "changePlanTitle": "Change your plan",
         "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
         "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",

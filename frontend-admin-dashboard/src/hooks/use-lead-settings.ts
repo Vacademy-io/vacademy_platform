@@ -112,6 +112,9 @@ export interface LeadSettingsConfig {
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
+    /** The three dropdowns a counsellor fills when logging a follow-up. Off for
+     *  every institute until one turns it on and supplies its own wording. */
+    followUpFields: FollowUpFieldsConfig;
     customStatuses: CustomLeadStatus[];
 
     /**
@@ -121,6 +124,21 @@ export interface LeadSettingsConfig {
      * useLeadTerminology() so every surface agrees.
      */
     labels?: LeadTerminologyLabels;
+}
+
+/**
+ * Student response / follow-up mode / next action — what a counsellor records
+ * when they log a follow-up.
+ *
+ * The options are the institute's own words, not an enum, because every institute
+ * runs a different script. Empty list = that one dropdown is not shown, so an
+ * institute can enable just the two it cares about.
+ */
+export interface FollowUpFieldsConfig {
+    enabled: boolean;
+    studentResponses: string[];
+    followUpModes: string[];
+    nextActions: string[];
 }
 
 export interface LeadTerminologyLabels {
@@ -146,6 +164,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
+    followUpFields: { enabled: false, studentResponses: [], followUpModes: [], nextActions: [] },
     tatReminder: {
         enabled: false,
         tatHours: 24,
@@ -210,6 +229,10 @@ export function mergeLeadSettings(
         },
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        followUpFields: {
+            ...LEAD_SETTINGS_DEFAULTS.followUpFields,
+            ...(saved.followUpFields ?? {}),
+        },
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
     };
 }

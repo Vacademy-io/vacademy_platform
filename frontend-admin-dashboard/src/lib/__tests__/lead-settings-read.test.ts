@@ -69,3 +69,25 @@ describe('mergeLeadSettings', () => {
         );
     });
 });
+
+describe('follow-up fields config', () => {
+    it('is off with empty lists for an institute that has never configured it', () => {
+        expect(mergeLeadSettings({}).followUpFields).toEqual({
+            enabled: false,
+            studentResponses: [],
+            followUpModes: [],
+            nextActions: [],
+        });
+    });
+
+    it('keeps the saved lists and fills in any the institute left out', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { enabled: true, studentResponses: ['Interested'] },
+        } as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.enabled).toBe(true);
+        expect(merged.followUpFields.studentResponses).toEqual(['Interested']);
+        // Not saved → still an empty list, not undefined: the form maps over these.
+        expect(merged.followUpFields.followUpModes).toEqual([]);
+        expect(merged.followUpFields.nextActions).toEqual([]);
+    });
+});

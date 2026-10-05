@@ -179,15 +179,19 @@ public class LeadFollowupService {
      * Paged, because unlike the pending set this one only grows.
      */
     public Page<LeadFollowupDto> completed(CustomUserDetails user, String instituteId,
-                                           String counsellorUserId, Pageable pageable) {
-        Pageable sorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
-                Sort.by(Sort.Direction.DESC, "closedAt"));
+                                           String counsellorUserId, String search,
+                                           Timestamp closedFrom, Timestamp closedTo,
+                                           Pageable pageable) {
+        // ORDER BY lives in the query, so the Pageable stays unsorted.
+        Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
         if (instituteId == null || instituteId.isBlank()) {
             return hydrate(leadFollowupRepository
-                    .findByCreatedByAndIsClosedTrue(user.getUserId(), sorted));
+                    .findByCreatedByAndIsClosedTrue(user.getUserId(), paged));
         }
 
+        // Empty CSV means "every counsellor in the institute" to the query.
+        String createdByCsv = "";
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user);
         if (counsellorUserId != null && !counsellorUserId.isBlank()) {
             if (scoped && !user.getUserId().equals(counsellorUserId)
@@ -195,18 +199,38 @@ public class LeadFollowupService {
                             .contains(counsellorUserId)) {
                 throw new VacademyException("You don't have access to this counsellor's follow-ups");
             }
-            return hydrate(leadFollowupRepository
-                    .findByInstituteIdAndCreatedByInAndIsClosedTrue(
-                            instituteId, List.of(counsellorUserId), sorted));
+            createdByCsv = counsellorUserId;
+        } else if (scoped) {
+            List<String> ids = counsellorScopeService.scopedCounsellorUserIds(
+                    instituteId, user.getUserId());
+            // An empty CSV means "no restriction" to the query, so a scoped caller
+            // with no resolved reports must still be pinned to their own id rather
+            // than widened to the institute.
+            createdByCsv = ids == null || ids.isEmpty()
+                    ? user.getUserId()
+                    : String.join(",", ids);
         }
-        if (scoped) {
-            return hydrate(leadFollowupRepository
-                    .findByInstituteIdAndCreatedByInAndIsClosedTrue(
-                            instituteId,
-                            counsellorScopeService.scopedCounsellorUserIds(instituteId, user.getUserId()),
-                            sorted));
+
+        // A lead whose name lives on its auth user has nothing in parent_name, so
+        // searching audience_response alone would never find it. Same gap the leads
+        // query closes, closed the same way.
+        String searchUserIdsCsv = null;
+        if (search != null && !search.isBlank()) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(search, null);
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                log.warn("auth-service user search failed for completed follow-ups query='{}': {}",
+                        search, e.getMessage());
+            }
         }
-        return hydrate(leadFollowupRepository.findByInstituteIdAndIsClosedTrue(instituteId, sorted));
+
+        return hydrate(leadFollowupRepository.findCompleted(
+                instituteId, createdByCsv, closedFrom, closedTo,
+                search == null || search.isBlank() ? null : search.trim(),
+                searchUserIdsCsv, paged));
     }
 
     /** Map a page of entities through the same lead-name hydration the lists use. */

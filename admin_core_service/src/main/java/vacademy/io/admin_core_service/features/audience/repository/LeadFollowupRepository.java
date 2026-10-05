@@ -36,12 +36,65 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
      * the latter decides who may see it; closed_by rides along on the DTO for
      * display.
      */
-    Page<LeadFollowup> findByInstituteIdAndIsClosedTrue(String instituteId, Pageable pageable);
-
-    Page<LeadFollowup> findByInstituteIdAndCreatedByInAndIsClosedTrue(
-            String instituteId, List<String> createdBy, Pageable pageable);
-
     Page<LeadFollowup> findByCreatedByAndIsClosedTrue(String createdBy, Pageable pageable);
+
+    /*
+     * Completed follow-ups for the Completed tile, with the two controls that
+     * list needs: a closed_at window and a lead search.
+     *
+     * The search mirrors the leads query exactly, auth-service user ids
+     * included. A lead whose identity lives on its auth user carries nothing in
+     * ar.parent_name, so name search without searchUserIdsCsv finds nothing for
+     * it, which is a bug this codebase has already been bitten by.
+     *
+     * No semicolon anywhere in the string: Hibernate appends its own limit
+     * clause to a paged native query and a stray one makes it a runtime error.
+     */
+    @Query(value = """
+            SELECT f.* FROM lead_followup f
+            LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            WHERE f.institute_id = :instituteId
+              AND f.is_closed = TRUE
+              AND (COALESCE(:createdByCsv, '') = ''
+                   OR f.created_by = ANY(STRING_TO_ARRAY(:createdByCsv, ',')))
+              AND (CAST(:closedFrom AS timestamp) IS NULL
+                   OR f.closed_at >= CAST(:closedFrom AS timestamp))
+              AND (CAST(:closedTo AS timestamp) IS NULL
+                   OR f.closed_at < CAST(:closedTo AS timestamp))
+              AND (COALESCE(:searchQuery, '') = ''
+                   OR LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
+                   OR (COALESCE(:searchUserIdsCsv, '') <> ''
+                       AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+            ORDER BY f.closed_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM lead_followup f
+            LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            WHERE f.institute_id = :instituteId
+              AND f.is_closed = TRUE
+              AND (COALESCE(:createdByCsv, '') = ''
+                   OR f.created_by = ANY(STRING_TO_ARRAY(:createdByCsv, ',')))
+              AND (CAST(:closedFrom AS timestamp) IS NULL
+                   OR f.closed_at >= CAST(:closedFrom AS timestamp))
+              AND (CAST(:closedTo AS timestamp) IS NULL
+                   OR f.closed_at < CAST(:closedTo AS timestamp))
+              AND (COALESCE(:searchQuery, '') = ''
+                   OR LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
+                   OR (COALESCE(:searchUserIdsCsv, '') <> ''
+                       AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+            """,
+            nativeQuery = true)
+    Page<LeadFollowup> findCompleted(@Param("instituteId") String instituteId,
+                                     @Param("createdByCsv") String createdByCsv,
+                                     @Param("closedFrom") Timestamp closedFrom,
+                                     @Param("closedTo") Timestamp closedTo,
+                                     @Param("searchQuery") String searchQuery,
+                                     @Param("searchUserIdsCsv") String searchUserIdsCsv,
+                                     Pageable pageable);
 
     /**
      * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.

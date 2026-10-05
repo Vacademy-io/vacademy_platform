@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_HIDE_MODE_CHANGE_BUTTON?: string;
   readonly VITE_CASHFREE_SANDBOX?: string;
+  /** https origin of the YouTube embed bridge (functions/embed/[videoId].ts). */
+  readonly VITE_YOUTUBE_BRIDGE_ORIGIN?: string;
 }
 
 interface ImportMeta {

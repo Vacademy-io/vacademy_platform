@@ -28,7 +28,9 @@
         "suffix_today_one": "आज देय फॉलो-अप",
         "suffix_today_other": "आज देय फॉलो-अप",
         "suffix_upcoming_one": "आगामी फॉलो-अप",
-        "suffix_upcoming_other": "आगामी फॉलो-अप"
+        "suffix_upcoming_other": "आगामी फॉलो-अप",
+        "suffix_completed_one": "पूर्ण फ़ॉलो-अप",
+        "suffix_completed_other": "पूर्ण फ़ॉलो-अप"
     },
     "table": {
         "actionHeader": "कार्रवाई"
@@ -89,5 +91,12 @@
         "campaignType": "सभी {{term}}",
         "audience": "सभी {{term}}",
         "audienceUntitled": "अनाम ऑडियंस"
+    },
+    "completedRange": {
+        "preset_one": "आज",
+        "preset_other": "पिछले {{count}} दिन",
+        "custom": "कस्टम अवधि",
+        "from": "कब से",
+        "to": "कब तक"
     }
 }

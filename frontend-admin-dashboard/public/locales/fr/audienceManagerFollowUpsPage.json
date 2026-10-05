@@ -35,7 +35,9 @@
         "suffix_today_other": "suivis à faire aujourd'hui",
         "suffix_upcoming_one": "suivi à venir",
         "suffix_upcoming_many": "suivi à venir",
-        "suffix_upcoming_other": "suivis à venir"
+        "suffix_upcoming_other": "suivis à venir",
+        "suffix_completed_one": "suivis terminés",
+        "suffix_completed_other": "suivis terminés"
     },
     "table": {
         "actionHeader": "Action"
@@ -100,5 +102,13 @@
         "campaignType": "Tous : {{term}}",
         "audience": "Tous : {{term}}",
         "audienceUntitled": "Audience sans titre"
+    },
+    "completedRange": {
+        "preset_one": "Aujourd'hui",
+        "preset_other": "{{count}} derniers jours",
+        "custom": "Plage personnalisée",
+        "from": "Date de début",
+        "to": "Date de fin",
+        "preset_many": "{{count}} derniers jours"
     }
 }

@@ -65,9 +65,22 @@ import {
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { LeadPagination } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
 import { CompletedFollowUpsTable } from './completed-follow-ups-table';
+import {
+    COMPLETED_CUSTOM_RANGE,
+    COMPLETED_DEFAULT_RANGE,
+    COMPLETED_RANGE_PRESETS,
+    completedWindow,
+} from './completed-range';
 import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
@@ -289,6 +302,27 @@ const FollowUpsContent = () => {
     // Search runs on the server with the rest of the filter, so it searches every
     // follow-up rather than whatever happened to be on screen. Debounced rather
     // than button-driven, same as Recent Leads — a queue is scanned, not queried.
+    // Completed tile controls. Its own search and window because it queries a
+    // different endpoint — the lead filters above do not apply to follow-up events.
+    const [completedRange, setCompletedRange] = useState(COMPLETED_DEFAULT_RANGE);
+    const [completedFrom, setCompletedFrom] = useState('');
+    const [completedTo, setCompletedTo] = useState('');
+    const [completedSearchInput, setCompletedSearchInput] = useState('');
+    const [completedSearch, setCompletedSearch] = useState('');
+    useEffect(() => {
+        const trimmed = completedSearchInput.trim();
+        if (trimmed === completedSearch) return;
+        const timer = window.setTimeout(() => setCompletedSearch(trimmed), SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [completedSearchInput, completedSearch]);
+    const completedParams = useMemo(
+        () => ({
+            search: completedSearch || undefined,
+            ...completedWindow(completedRange, completedFrom, completedTo),
+        }),
+        [completedSearch, completedRange, completedFrom, completedTo]
+    );
+
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [page, setPage] = useState(0);
@@ -300,7 +334,14 @@ const FollowUpsContent = () => {
     }, [searchInput, appliedSearch]);
     useEffect(
         () => setPage(0),
-        [bucket, appliedSearch, effectiveCounsellorId, audienceParams, utmFiltersPayload]
+        [
+            bucket,
+            appliedSearch,
+            effectiveCounsellorId,
+            audienceParams,
+            utmFiltersPayload,
+            completedParams,
+        ]
     );
 
     /** One request shape for every bucket; only the window moves. */
@@ -326,7 +367,14 @@ const FollowUpsContent = () => {
     // follow-up — every caller invalidates exactly ['follow-ups'] — moves the tiles
     // too. A sibling 'follow-ups-counts' root would not have been matched.
     const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
-        queryKey: ['follow-ups', 'counts', baseFilter, instituteId, effectiveCounsellorId],
+        queryKey: [
+            'follow-ups',
+            'counts',
+            baseFilter,
+            instituteId,
+            effectiveCounsellorId,
+            completedParams,
+        ],
         queryFn: async () => {
             const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
             const now = new Date();
@@ -346,6 +394,7 @@ const FollowUpsContent = () => {
                 fetchCompletedFollowUps({
                     instituteId: instituteId ?? '',
                     counsellorUserId: effectiveCounsellorId,
+                    ...completedParams,
                     page: 0,
                     size: 1,
                 }).catch(() => undefined),
@@ -380,11 +429,19 @@ const FollowUpsContent = () => {
         isLoading: completedLoading,
         error: completedError,
     } = useQuery({
-        queryKey: ['follow-ups', 'completed', instituteId, effectiveCounsellorId, page],
+        queryKey: [
+            'follow-ups',
+            'completed',
+            instituteId,
+            effectiveCounsellorId,
+            completedParams,
+            page,
+        ],
         queryFn: () =>
             fetchCompletedFollowUps({
                 instituteId: instituteId ?? '',
                 counsellorUserId: effectiveCounsellorId,
+                ...completedParams,
                 page,
                 size: PAGE_SIZE,
             }),
@@ -750,6 +807,73 @@ const FollowUpsContent = () => {
 
             {/* Search on the left, count + export on the right — list view only.
                 Same row shape as Recent Leads so the two queues read alike. */}
+            {/* Completed has its own search and window — the lead filters above
+                query leads, and these rows are follow-up events. */}
+            {bucket === 'completed' && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative w-full sm:w-72">
+                            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                type="text"
+                                value={completedSearchInput}
+                                onChange={(e) => setCompletedSearchInput(e.target.value)}
+                                placeholder={t('search.placeholder')}
+                                className="h-10 w-full pl-8"
+                                aria-label={t('search.placeholder')}
+                            />
+                        </div>
+                        <Select value={completedRange} onValueChange={setCompletedRange}>
+                            <SelectTrigger className="h-10 w-44">
+                                <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {COMPLETED_RANGE_PRESETS.map((p) => (
+                                    <SelectItem key={p} value={p}>
+                                        {t('completedRange.preset', { count: Number(p) })}
+                                    </SelectItem>
+                                ))}
+                                <SelectItem value={COMPLETED_CUSTOM_RANGE}>
+                                    {t('completedRange.custom')}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {completedRange === COMPLETED_CUSTOM_RANGE && (
+                            <div className="flex items-center gap-1.5">
+                                <Input
+                                    type="date"
+                                    value={completedFrom}
+                                    onChange={(e) => setCompletedFrom(e.target.value)}
+                                    className="h-10 w-40"
+                                    aria-label={t('completedRange.from')}
+                                />
+                                <span className="text-caption text-muted-foreground">→</span>
+                                <Input
+                                    type="date"
+                                    value={completedTo}
+                                    onChange={(e) => setCompletedTo(e.target.value)}
+                                    className="h-10 w-40"
+                                    aria-label={t('completedRange.to')}
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <p className="text-body text-muted-foreground">
+                        {t('showing.prefix')}{' '}
+                        <span className="font-semibold text-card-foreground">
+                            {completedLoading
+                                ? '…'
+                                : (completedPage?.totalElements ?? 0).toLocaleString()}
+                        </span>{' '}
+                        {t('showing.suffix', {
+                            count: completedPage?.totalElements ?? 0,
+                            context: 'completed',
+                        })}
+                    </p>
+                </div>
+            )}
+
             {view === 'list' && bucket !== 'completed' && (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="relative w-full sm:w-80">

@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { useEffect } from "react";
 
 import {
   FormControl,
@@ -16,8 +17,31 @@ import {
   phoneFieldHasInput,
   usePreferredPhoneCountries,
 } from "@/hooks/use-preferred-phone-countries";
-import { phoneValidateRule } from "@/lib/phone-validation";
+import {
+  normalizeStoredPhone,
+  phoneValidateRule,
+  repairedStoredPhone,
+} from "@/lib/phone-validation";
 import { cn } from "@/lib/utils";
+
+/**
+ * Writes a repaired bare number back into the form, so validation and submit
+ * see the same "+91…" value the widget shows instead of the "8712345678" a
+ * prefill put there. Renders nothing.
+ */
+const RepairStoredPhone = ({
+  repaired,
+  onRepair,
+}: {
+  repaired: string | null;
+  onRepair: (value: string) => void;
+}) => {
+  useEffect(() => {
+    if (repaired) onRepair(repaired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repaired]);
+  return null;
+};
 
 interface PhoneInputFieldProps {
   label: string;
@@ -85,8 +109,18 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
       control={control as Control}
       name={name}
       rules={validate ? { validate: phoneValidateRule({ required, label }) } : undefined}
-      render={({ field }) => (
+      render={({ field }) => {
+        const rawValue = (value || field.value) as string | undefined;
+        const displayValue = normalizeStoredPhone(rawValue, effectiveCountry);
+        return (
         <FormItem className="!w-full">
+          <RepairStoredPhone
+            repaired={repairedStoredPhone(rawValue, effectiveCountry)}
+            onRepair={(repaired) => {
+              field.onChange(repaired);
+              if (onChange) onChange(repaired);
+            }}
+          />
           <FormLabel className={labelClassName}>
             {label}
             {required && <span className="text-danger-600"> *</span>}
@@ -109,7 +143,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
               )}
               buttonClass="!rounded-s-md !border-input"
               disabled={disabled}
-              value={value || field.value}
+              value={displayValue}
               countryCodeEditable={false}
               enableAreaCodes={false}
               disableCountryGuess={false}
@@ -118,7 +152,8 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
           </FormControl>
           <FormMessage />
         </FormItem>
-      )}
+        );
+      }}
     />
   );
 };

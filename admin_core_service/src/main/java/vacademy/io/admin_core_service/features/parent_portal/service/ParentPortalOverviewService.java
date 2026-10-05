@@ -132,7 +132,7 @@ public class ParentPortalOverviewService {
             try {
                 List<GroupedSessionsByDateDTO> groups = getLiveSessionService
                         .getLiveAndUpcomingSessionsForUserAndBatch(
-                                primaryBatch, child.childUserId(), 0, null, null, null, caller);
+                                primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
                 int count = groups == null ? 0 : groups.stream()
                         .mapToInt(g -> g.getSessions() == null ? 0 : g.getSessions().size())
                         .sum();

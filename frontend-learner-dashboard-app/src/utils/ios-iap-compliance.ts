@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
+import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { flavorConfig } from "../../flavor.config";
 
 /**
  * App-Store reader-app compliance gate (Apple Guideline 3.1.1 + 4.8).
@@ -97,3 +100,30 @@ export const isAppleStoreBuild = (): boolean =>
  * Mac build complies by offering no third-party login at all.
  */
 export const shouldHideThirdPartyLogin = (): boolean => isMacAppStoreBuild();
+
+/**
+ * Google sign-in on native iOS finishes by redirecting to
+ * https://<learner host>/login/oauth/learner, which only reaches the app if that
+ * host's apple-app-site-association lists the app. Brands whose host does not
+ * set `hideGoogleLoginOnIOS` in flavor.config.ts and lose only the Google
+ * button; Sign in with Apple stays, keyed off the institute's own settings.
+ * Hidden until the bundle id resolves so the button never flashes.
+ */
+export const useHideGoogleLoginOnIOS = (): boolean => {
+  const [hide, setHide] = useState(isIOSNative());
+  useEffect(() => {
+    if (!isIOSNative()) return;
+    let live = true;
+    App.getInfo()
+      .then((info) => {
+        if (live) setHide(flavorConfig[info.id]?.hideGoogleLoginOnIOS === true);
+      })
+      .catch(() => {
+        if (live) setHide(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return hide;
+};

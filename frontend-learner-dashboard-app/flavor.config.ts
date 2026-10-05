@@ -2,6 +2,8 @@ interface FlavorConfig {
   appName: string;
   domain: string;
   subdomain: string;
+  /** iOS only: drop "Continue with Google" (see useHideGoogleLoginOnIOS). */
+  hideGoogleLoginOnIOS?: boolean;
 }
 
 interface FlavorConfigs {
@@ -166,6 +168,7 @@ export const flavorConfig: FlavorConfigs = {
     appName: "Elevate Education",
     domain: "elevateeducation.in",
     subdomain: "student",
+    hideGoogleLoginOnIOS: true,
   },
 
   // Elevate Education Android app

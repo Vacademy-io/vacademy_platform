@@ -1,7 +1,11 @@
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: Google brand logo
 import { ArrowRight } from "@phosphor-icons/react";
-import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
+import {
+  isIOSNative,
+  shouldHideThirdPartyLogin,
+  useHideGoogleLoginOnIOS,
+} from "@/utils/ios-iap-compliance";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import {
   loginWithAppleNative,
@@ -82,6 +86,7 @@ export function ModularDynamicLoginContainer({
     effectiveSettings.providers.google = false;
     effectiveSettings.providers.github = false;
   }
+  const hideGoogleOnIOS = useHideGoogleLoginOnIOS();
 
   // Get enabled providers
   const enabledProviders = Object.entries(effectiveSettings.providers)
@@ -738,7 +743,7 @@ export function ModularDynamicLoginContainer({
           transition={{ delay: 0.2 }}
           className="space-y-2"
         >
-          {effectiveSettings.providers.google && (
+          {effectiveSettings.providers.google && !hideGoogleOnIOS && (
             <motion.button
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
+import {
+  isIOSNative,
+  shouldHideThirdPartyLogin,
+  useHideGoogleLoginOnIOS,
+} from "@/utils/ios-iap-compliance";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -245,6 +249,7 @@ export function LoginForm({
   // divider and the Apple gate below all follow — including on a fresh install,
   // where allowGoogleAuth/allowGithubAuth default to TRUE.
   const hideThirdPartyLogin = shouldHideThirdPartyLogin();
+  const hideGoogleOnIOS = useHideGoogleLoginOnIOS();
   const authProviders = {
     google:
       providersResolved && !hideThirdPartyLogin && providerFlags.allowGoogleAuth,
@@ -1115,7 +1120,7 @@ export function LoginForm({
                       Sign in with Apple as a peer. The Apple button below
                       satisfies that, so Google/GitHub are no longer hidden on
                       iOS. web / Android / Electron are unaffected. */}
-                  {authProviders?.google && (
+                  {authProviders?.google && !hideGoogleOnIOS && (
                     <Button
                       variant="outline"
                       className="w-full relative h-11"

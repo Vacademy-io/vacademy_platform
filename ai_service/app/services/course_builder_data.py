@@ -1,0 +1,485 @@
+"""
+Shared plumbing for the course-builder tools (``courses``, ``course_edit``,
+``course_drip_edit``, ``course_invites_edit``).
+
+Reads are SQL on the shared database, always scoped to the pinned institute
+through ``package_institute`` (the same way ``find_batch`` reads). Writes go to
+admin-core with the caller's own JWT, so the MCP can never do what the admin
+could not do in the dashboard.
+
+No model runs anywhere in this feature: the connected LLM writes the outline and
+every slide, and these tools validate and persist it. See
+docs/ai-course/COURSE_BUILDER_MCP_PLAN.md.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import text
+
+from .assistant_tool_registry import ToolContext, _jwt_headers
+
+logger = logging.getLogger(__name__)
+
+#: Course (package) statuses. Only DRAFT courses are writable by `course_edit`;
+#: drip / invite re-pointing is refused on ACTIVE ones.
+STATUS_DRAFT = "DRAFT"
+STATUS_IN_REVIEW = "IN_REVIEW"
+STATUS_ACTIVE = "ACTIVE"
+
+#: admin-core's placeholder name for hidden structure levels. The learner app
+#: hides subjects / modules / chapters named this.
+DEFAULT_LEVEL_NAME = "DEFAULT"
+
+_MAX_COURSES = 60
+
+
+def err(code: str, **extra: Any) -> Dict[str, Any]:
+    return {"error": code, **extra}
+
+
+def is_error(data: Any) -> bool:
+    return isinstance(data, dict) and bool(data.get("error"))
+
+
+def _settings():
+    from ..config import get_settings
+    return get_settings()
+
+
+# ── admin-core client ────────────────────────────────────────────────────
+
+async def admin_core(
+    ctx: ToolContext,
+    method: str,
+    path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    body: Any = None,
+    timeout: float = 30.0,
+) -> Any:
+    """
+    One JWT call to admin-core. Returns parsed JSON, the bare text of a string
+    response (admin-core answers ids as plain text), or an error dict that
+    carries admin-core's own message so the model can fix its input.
+    """
+    import httpx
+
+    if not ctx.bearer_token:
+        return err("no_auth", message="This action is unavailable right now (no session).")
+    url = f"{_settings().admin_core_service_base_url}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(method, url, params=params, json=body, headers=_jwt_headers(ctx))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course builder %s %s failed: %s", method, path, exc)
+        return err("request_failed", message="admin-core could not be reached.")
+    if resp.status_code >= 300:
+        logger.warning("course builder %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:300])
+        return err("admin_core_rejected", status=resp.status_code, message=_error_message(resp))
+    if not resp.content:
+        return ""
+    try:
+        return resp.json()
+    except ValueError:
+        return resp.text.strip()
+
+
+def _error_message(resp: Any) -> str:
+    try:
+        data = resp.json()
+    except ValueError:
+        return (resp.text or "").strip()[:300]
+    if isinstance(data, dict):
+        for key in ("ex", "message", "error", "responseCode"):
+            if isinstance(data.get(key), str) and data[key].strip():
+                return data[key].strip()[:300]
+    return str(data)[:300]
+
+
+def admin_base(ctx: ToolContext) -> str:
+    """The institute's own admin portal (white-label), else the platform dashboard."""
+    from ..mcp.institute_scope import admin_portal_base
+    return admin_portal_base(ctx.db, ctx.principal.institute_id, _settings().admin_dashboard_url)
+
+
+def course_editor_url(ctx: ToolContext, course_id: str) -> str:
+    return f"{admin_base(ctx)}/study-library/courses/course-details?courseId={course_id}"
+
+
+# ── SQL reads (institute-scoped) ─────────────────────────────────────────
+
+def _rows(ctx: ToolContext, sql: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    try:
+        result = ctx.db.execute(text(sql), params)
+        return [dict(r._mapping) for r in result.fetchall()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course builder query failed: %s", exc)
+        try:
+            ctx.db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return []
+
+
+_LIST_COURSES_SQL = """
+SELECT p.id, p.package_name AS name, p.status, p.course_depth AS depth,
+       p.created_by_user_id, p.created_at,
+       (SELECT COUNT(*) FROM package_session ps
+          JOIN chapter_package_session_mapping cpsm ON cpsm.package_session_id = ps.id AND cpsm.status <> 'DELETED'
+          JOIN chapter_to_slides cts ON cts.chapter_id = cpsm.chapter_id AND cts.status <> 'DELETED'
+         WHERE ps.package_id = p.id AND ps.status = 'ACTIVE') AS slide_count
+FROM package p
+JOIN package_institute pi ON pi.package_id = p.id
+WHERE pi.institute_id = :inst
+  AND p.status IN ('ACTIVE', 'DRAFT', 'IN_REVIEW')
+  {filters}
+ORDER BY p.created_at DESC
+LIMIT :lim
+"""
+
+
+def list_courses(ctx: ToolContext, status: Optional[str] = None, search: Optional[str] = None,
+                 limit: int = 30) -> List[Dict[str, Any]]:
+    # Optional filters are added only when present: an untyped NULL parameter
+    # (":x IS NULL") fails server-side binding under psycopg 3.
+    filters, params = [], {"inst": ctx.principal.institute_id, "lim": max(1, min(int(limit or 30), _MAX_COURSES))}
+    if status:
+        filters.append("AND p.status = :status")
+        params["status"] = status
+    if search:
+        filters.append("AND LOWER(p.package_name) LIKE :q")
+        params["q"] = f"%{search.lower()}%"
+    rows = _rows(ctx, _LIST_COURSES_SQL.format(filters=" ".join(filters)), params)
+    for r in rows:
+        r["slide_count"] = int(r.get("slide_count") or 0)
+    return rows
+
+
+_COURSE_SQL = """
+SELECT p.id, p.package_name AS name, p.status, p.course_depth AS depth,
+       p.created_by_user_id, p.about_the_course, p.why_learn, p.who_should_learn,
+       p.comma_separated_tags AS tags, p.course_preview_image_media_id, p.course_banner_media_id
+FROM package p
+JOIN package_institute pi ON pi.package_id = p.id
+WHERE p.id = :id AND pi.institute_id = :inst AND p.status <> 'DELETED'
+LIMIT 1
+"""
+
+
+def course_row(ctx: ToolContext, course_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The course if it belongs to the pinned institute, else None."""
+    if not course_id:
+        return None
+    rows = _rows(ctx, _COURSE_SQL, {"id": str(course_id), "inst": ctx.principal.institute_id})
+    return rows[0] if rows else None
+
+
+_BATCH_SQL = """
+SELECT ps.id FROM package_session ps
+WHERE ps.package_id = :pkg AND ps.status = 'ACTIVE'
+ORDER BY ps.created_at ASC
+LIMIT 1
+"""
+
+
+def active_batch_id(ctx: ToolContext, course_id: str) -> Optional[str]:
+    rows = _rows(ctx, _BATCH_SQL, {"pkg": course_id})
+    return rows[0]["id"] if rows else None
+
+
+_ENROLLED_SQL = """
+SELECT COUNT(*) AS n FROM student_session_institute_group_mapping
+WHERE package_session_id = :ps AND institute_id = :inst AND status = 'ACTIVE'
+"""
+
+
+def enrolled_count(ctx: ToolContext, package_session_id: Optional[str]) -> int:
+    if not package_session_id:
+        return 0
+    rows = _rows(ctx, _ENROLLED_SQL, {"ps": package_session_id, "inst": ctx.principal.institute_id})
+    return int(rows[0]["n"] or 0) if rows else 0
+
+
+_SUBJECTS_SQL = """
+SELECT s.id, s.subject_name AS name, ss.subject_order AS "order"
+FROM subject_session ss JOIN subject s ON s.id = ss.subject_id
+WHERE ss.session_id = :ps AND COALESCE(s.status, 'ACTIVE') <> 'DELETED'
+ORDER BY ss.subject_order NULLS LAST, s.created_at
+"""
+
+_MODULES_SQL = """
+SELECT smm.subject_id, m.id, m.module_name AS name, smm.module_order AS "order"
+FROM subject_module_mapping smm JOIN modules m ON m.id = smm.module_id
+WHERE smm.subject_id = ANY(:subjects) AND COALESCE(m.status, 'ACTIVE') <> 'DELETED'
+ORDER BY smm.module_order NULLS LAST, smm.created_at
+"""
+
+_CHAPTERS_SQL = """
+SELECT mcm.module_id, c.id, c.chapter_name AS name, cpsm.chapter_order AS "order", cpsm.status
+FROM module_chapter_mapping mcm
+JOIN chapter c ON c.id = mcm.chapter_id
+JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.package_session_id = :ps
+WHERE mcm.module_id = ANY(:modules) AND cpsm.status <> 'DELETED' AND COALESCE(c.status, 'ACTIVE') <> 'DELETED'
+ORDER BY cpsm.chapter_order NULLS LAST, c.created_at
+"""
+
+_SLIDES_SQL = """
+SELECT cts.chapter_id, s.id, s.title, s.source_type AS type, s.source_id, cts.status, cts.slide_order AS "order"
+FROM chapter_to_slides cts JOIN slide s ON s.id = cts.slide_id
+WHERE cts.chapter_id = ANY(:chapters) AND cts.status <> 'DELETED'
+ORDER BY cts.slide_order NULLS LAST, s.created_at
+"""
+
+
+def course_tree(ctx: ToolContext, course_id: str, package_session_id: str) -> List[Dict[str, Any]]:
+    """subjects → modules → chapters → slides for one batch of a course."""
+    subjects = _rows(ctx, _SUBJECTS_SQL, {"ps": package_session_id})
+    if not subjects:
+        return []
+    modules = _rows(ctx, _MODULES_SQL, {"subjects": [s["id"] for s in subjects]})
+    chapters = _rows(ctx, _CHAPTERS_SQL, {"ps": package_session_id, "modules": [m["id"] for m in modules]}) if modules else []
+    slides = _rows(ctx, _SLIDES_SQL, {"chapters": [c["id"] for c in chapters]}) if chapters else []
+
+    slides_by_ch: Dict[str, List[Dict[str, Any]]] = {}
+    for s in slides:
+        slides_by_ch.setdefault(s.pop("chapter_id"), []).append(s)
+    chapters_by_mod: Dict[str, List[Dict[str, Any]]] = {}
+    for c in chapters:
+        c["slides"] = slides_by_ch.get(c["id"], [])
+        chapters_by_mod.setdefault(c.pop("module_id"), []).append(c)
+    modules_by_sub: Dict[str, List[Dict[str, Any]]] = {}
+    for m in modules:
+        m["chapters"] = chapters_by_mod.get(m["id"], [])
+        modules_by_sub.setdefault(m.pop("subject_id"), []).append(m)
+    for s in subjects:
+        s["modules"] = modules_by_sub.get(s["id"], [])
+    return subjects
+
+
+def flatten_chapters(tree: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every chapter with the ids of its parents, in course order."""
+    out = []
+    for s in tree:
+        for m in s.get("modules") or []:
+            for c in m.get("chapters") or []:
+                out.append({**c, "subject_id": s["id"], "module_id": m["id"],
+                            "subject_name": s["name"], "module_name": m["name"]})
+    return out
+
+
+_CHAPTER_CTX_SQL = """
+SELECT c.id AS chapter_id, c.chapter_name, mcm.module_id, smm.subject_id,
+       cpsm.package_session_id, p.id AS course_id, p.status AS course_status, p.course_depth
+FROM chapter c
+JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = c.id AND cpsm.status <> 'DELETED'
+JOIN package_session ps ON ps.id = cpsm.package_session_id
+JOIN package p ON p.id = ps.package_id
+JOIN package_institute pi ON pi.package_id = p.id AND pi.institute_id = :inst
+JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+JOIN subject_module_mapping smm ON smm.module_id = mcm.module_id
+WHERE c.id = :id
+LIMIT 1
+"""
+
+
+def chapter_context(ctx: ToolContext, chapter_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Everything a slide write needs about a chapter of THIS institute, else None."""
+    if not chapter_id:
+        return None
+    rows = _rows(ctx, _CHAPTER_CTX_SQL, {"id": str(chapter_id), "inst": ctx.principal.institute_id})
+    return rows[0] if rows else None
+
+
+_SLIDE_CTX_SQL = """
+SELECT s.id AS slide_id, s.title, s.source_type, s.source_id, s.status AS slide_status,
+       cts.chapter_id, cts.slide_order
+FROM slide s JOIN chapter_to_slides cts ON cts.slide_id = s.id AND cts.status <> 'DELETED'
+WHERE s.id = :id
+LIMIT 1
+"""
+
+
+def slide_context(ctx: ToolContext, slide_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """A slide of THIS institute with its chapter context, else None."""
+    if not slide_id:
+        return None
+    rows = _rows(ctx, _SLIDE_CTX_SQL, {"id": str(slide_id)})
+    if not rows:
+        return None
+    chapter = chapter_context(ctx, rows[0]["chapter_id"])
+    if chapter is None:
+        return None
+    return {**chapter, **rows[0]}
+
+
+_INVITES_SQL = """
+SELECT ei.id, ei.name, ei.status, ei.tag, ei.invite_code, ei.short_url, ei.currency, ei.vendor,
+       ei.start_date, ei.end_date, ei.learner_access_days, ei.created_at,
+       b.id AS link_id, po.id AS payment_option_id, po.name AS payment_option_name, po.type AS payment_type,
+       po.require_approval
+FROM enroll_invite ei
+JOIN package_session_learner_invitation_to_payment_option b
+     ON b.enroll_invite_id = ei.id AND b.status = 'ACTIVE' AND b.package_session_id = :ps
+LEFT JOIN payment_option po ON po.id = b.payment_option_id
+WHERE ei.institute_id = :inst AND ei.status <> 'DELETED'
+ORDER BY ei.created_at DESC
+LIMIT 40
+"""
+
+_PLANS_SQL = """
+SELECT payment_option_id, id, name, actual_price, elevated_price, currency, validity_in_days
+FROM payment_plan
+WHERE payment_option_id = ANY(:ids) AND status = 'ACTIVE'
+ORDER BY validity_in_days NULLS LAST
+"""
+
+
+def invites_for_batch(ctx: ToolContext, package_session_id: str) -> List[Dict[str, Any]]:
+    rows = _rows(ctx, _INVITES_SQL, {"ps": package_session_id, "inst": ctx.principal.institute_id})
+    option_ids = sorted({r["payment_option_id"] for r in rows if r.get("payment_option_id")})
+    plans = _rows(ctx, _PLANS_SQL, {"ids": option_ids}) if option_ids else []
+    plans_by_opt: Dict[str, List[Dict[str, Any]]] = {}
+    for p in plans:
+        plans_by_opt.setdefault(p.pop("payment_option_id"), []).append(p)
+    for r in rows:
+        r["plans"] = plans_by_opt.get(r.get("payment_option_id"), [])
+        r["is_default"] = (r.get("tag") or "") == "DEFAULT"
+    return rows
+
+
+def invite_row(ctx: ToolContext, invite_id: Optional[str], package_session_id: str) -> Optional[Dict[str, Any]]:
+    """An invite of THIS institute linked to the given batch, else None."""
+    if not invite_id:
+        return None
+    for r in invites_for_batch(ctx, package_session_id):
+        if r["id"] == invite_id:
+            return r
+    return None
+
+
+async def payment_vendors(ctx: ToolContext) -> List[Dict[str, str]]:
+    """Active payment gateways of the institute (empty = none configured)."""
+    data = await admin_core(
+        ctx, "GET", "/admin-core-service/open/v1/institute/payment-setting/vendors",
+        params={"instituteId": ctx.principal.institute_id},
+    )
+    return [v for v in data if isinstance(v, dict)] if isinstance(data, list) else []
+
+
+# ── media-service upload (PDF slides need a media file id) ───────────────
+
+async def upload_to_media(ctx: ToolContext, content: bytes, file_name: str, content_type: str) -> Any:
+    """
+    The dashboard's own upload flow with the caller's JWT: presigned URL → PUT →
+    acknowledge. Returns the media file id, or an error dict.
+    """
+    import httpx
+
+    if not ctx.bearer_token:
+        return err("no_auth", message="Uploads are unavailable right now (no session).")
+    base = _settings().media_server_base_url.rstrip("/")
+    headers = _jwt_headers(ctx)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            signed = await client.post(
+                f"{base}/media-service/get-signed-url", headers=headers,
+                json={"file_name": file_name, "file_type": content_type,
+                      "source": "COURSE_BUILDER", "source_id": ctx.principal.institute_id},
+            )
+            if signed.status_code >= 300:
+                return err("upload_failed", message="The media service refused the upload.", status=signed.status_code)
+            data = signed.json() if signed.content else {}
+            file_id, url = data.get("id"), data.get("url")
+            if not file_id or not url:
+                return err("upload_failed", message="The media service returned no upload URL.")
+            put = await client.put(url, content=content, headers={"Content-Type": content_type})
+            if put.status_code >= 300:
+                return err("upload_failed", message="The file could not be stored.", status=put.status_code)
+            ack = await client.post(f"{base}/media-service/acknowledge", headers=headers,
+                                    json={"file_id": file_id, "user_id": ctx.principal.user_id})
+            if ack.status_code >= 300:
+                logger.warning("media acknowledge for %s -> %s", file_id, ack.status_code)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course builder media upload failed: %s", exc)
+        return err("upload_failed", message="The media service could not be reached.")
+    return file_id
+
+
+async def fetch_public_file(url: str, *, max_bytes: int, allowed_types: Dict[str, str]) -> Any:
+    """
+    Download a public https file (SSRF-guarded like the website importer).
+    Returns (bytes, content_type, ext) or an error dict.
+    """
+    import httpx
+
+    if not str(url or "").lower().startswith("https://"):
+        return err("bad_request", message="Only public https URLs can be imported.")
+    from ..routers.page_builder import _is_public_http_host
+    if not _is_public_http_host(url):
+        return err("bad_request", message="That address is not a public website.")
+    try:
+        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True, max_redirects=3) as client:
+            resp = await client.get(url, headers={"User-Agent": "VacademyCourseImport/1.0"})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("course import fetch failed for %s: %s", url, exc)
+        return err("fetch_failed", message="The file could not be downloaded.")
+    if resp.status_code != 200 or not resp.content:
+        return err("fetch_failed", message=f"The file could not be downloaded (HTTP {resp.status_code}).")
+    if len(resp.content) > max_bytes:
+        return err("too_large", message=f"Files over {max_bytes // 1_000_000} MB cannot be imported.")
+    ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if ctype not in allowed_types and resp.content[:5] == b"%PDF-" and "application/pdf" in allowed_types:
+        ctype = "application/pdf"  # servers often send octet-stream for PDFs
+    ext = allowed_types.get(ctype)
+    if not ext:
+        return err("wrong_type", message=f"Unsupported content type '{ctype or 'unknown'}'.")
+    return resp.content, ctype, ext
+
+
+# ── course settings (drip lives here) ────────────────────────────────────
+
+COURSE_SETTING_KEY = "COURSE_SETTING"
+COURSE_SETTING_NAME = "Course Creation Configuration"
+
+
+async def load_course_settings(ctx: ToolContext) -> Any:
+    """The institute's COURSE_SETTING data ({} when never saved), or an error dict."""
+    data = await admin_core(
+        ctx, "GET", "/admin-core-service/institute/setting/v1/data",
+        params={"instituteId": ctx.principal.institute_id, "settingKey": COURSE_SETTING_KEY},
+    )
+    if is_error(data):
+        # Never-saved setting answers 4xx on some deployments — treat as empty,
+        # but a 5xx / auth failure must not be mistaken for "no settings".
+        if data.get("status") in (400, 404):
+            return {}
+        return data
+    if data in ("", None):
+        return {}
+    if isinstance(data, str):
+        import json
+        try:
+            data = json.loads(data)
+        except ValueError:
+            return err("bad_setting", message="The institute's course settings could not be read.")
+    return data if isinstance(data, dict) else {}
+
+
+async def save_course_settings(ctx: ToolContext, data: Dict[str, Any]) -> Any:
+    """Save the FULL COURSE_SETTING data (admin-core replaces it wholesale)."""
+    return await admin_core(
+        ctx, "POST", "/admin-core-service/institute/setting/v1/save-setting",
+        params={"instituteId": ctx.principal.institute_id, "settingKey": COURSE_SETTING_KEY},
+        body={"setting_name": COURSE_SETTING_NAME, "setting_data": data},
+    )
+
+
+__all__ = [
+    "STATUS_DRAFT", "STATUS_IN_REVIEW", "STATUS_ACTIVE", "DEFAULT_LEVEL_NAME",
+    "err", "is_error", "admin_core", "admin_base", "course_editor_url",
+    "list_courses", "course_row", "active_batch_id", "enrolled_count", "course_tree", "flatten_chapters",
+    "chapter_context", "slide_context", "invites_for_batch", "invite_row", "payment_vendors",
+    "load_course_settings", "save_course_settings",
+]

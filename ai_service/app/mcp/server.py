@@ -85,7 +85,17 @@ SERVER_INSTRUCTIONS = (
     "pages show them. `blog_edit` (when enabled) writes articles as DRAFTS — compose the body as clean HTML "
     "(h2/h3, paragraphs, lists, tables, images only from the institute's media, YouTube/Vimeo embeds), "
     "give it an excerpt and a meta description, save with create, then hand the admin the editor_url to "
-    "review and publish. Never say a post is live; request_publish only reports readiness and the link."
+    "review and publish. Never say a post is live; request_publish only reports readiness and the link.\n"
+    "Courses: YOU write the course — no model runs on the server and no AI credits are used. Call "
+    "courses(action='brief_checklist') and interview the admin, read courses(action='schema') for the outline and "
+    "slide contract, create the DRAFT course with course_edit(create_course), write each slide with "
+    "course_edit(add_slide), run courses(action='review') and fix what it reports, then create the enrolment link "
+    "and its price with course_invites_edit(create_invite) (ask for the price — never assume free or paid), "
+    "optionally set release rules with course_drip_edit, and finish with course_edit(submit_for_review): an admin "
+    "approves it in the dashboard and only then does it go live. Slides are saved as DRAFT unless the admin asks "
+    "for published ones (status='PUBLISHED'); course_edit(publish_slides) publishes DRAFT slides when the admin "
+    "approves them. Never invent video links, image URLs, prices or dates; images come from "
+    "course_edit(import_image)."
 )
 
 

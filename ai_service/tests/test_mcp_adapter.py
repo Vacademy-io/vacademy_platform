@@ -47,6 +47,7 @@ def test_exposed_set_is_the_documented_one():
     assert MCP_EXPOSED_TOOLS == (
         "whoami", "get_institute_overview", "website", "website_edit", "audience_forms", "audience_forms_edit",
         "workflows", "workflows_edit", "blog", "blog_edit",
+        "courses", "course_edit", "course_drip_edit", "course_invites_edit",
     )
 
 

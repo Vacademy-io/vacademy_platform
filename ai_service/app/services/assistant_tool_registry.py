@@ -2379,7 +2379,8 @@ async def execute_tool(
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Feature tools that live in their own modules (website builder, lead forms).
+# Feature tools that live in their own modules (website builder, lead forms,
+# course builder).
 # Each module self-registers into ASSISTANT_TOOLS / GROUP_LABELS when imported,
 # so importing it here is only to make sure that happens. The import is
 # tolerant of the cycle: a test that imports the feature module first will find
@@ -2387,8 +2388,12 @@ async def execute_tool(
 # this one finishes.
 # ──────────────────────────────────────────────────────────────────────────
 def _load_feature_tools() -> None:
-    for module in ("assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
-                   "assistant_tools_workflow", "assistant_tools_blog"):
+    for module in (
+        "assistant_tools_website", "assistant_tools_website_edit", "assistant_tools_audience",
+        "assistant_tools_workflow", "assistant_tools_blog",
+        "assistant_tools_courses", "assistant_tools_course_edit", "assistant_tools_course_drip",
+        "assistant_tools_course_invites",
+    ):
         try:
             __import__(f"{__package__}.{module}")
         except ImportError as exc:  # partially initialised cycle; see above

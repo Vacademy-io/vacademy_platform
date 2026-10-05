@@ -38,6 +38,10 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "workflows_edit",       # WRITE: draft-only — validates and saves DRAFT automations the admin publishes
     "blog",                 # READ:  blog posts, their bodies, and which website pages show them
     "blog_edit",            # WRITE: draft-only — creates/edits DRAFT posts the admin publishes in Manage Pages → Blog
+    "courses",              # READ:  courses, their tree, the authoring contract, review, drip, invites
+    "course_edit",          # WRITE: draft-only — DRAFT courses and DRAFT slides; nothing publishes
+    "course_drip_edit",     # WRITE: drip rules on courses that are not live yet
+    "course_invites_edit",  # WRITE: additive — new invites and new payment plans
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -58,6 +62,10 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
         "draft-only: create forces status=DRAFT (never served publicly); update/discard refuse anything "
         "that is not a DRAFT; request_publish only returns the dashboard link — publishing is an admin click"
     ),
+    "course_edit": "draft-only: creates DRAFT courses and edits only DRAFT courses; slides are DRAFT unless the admin "
+                   "asks to publish them (publish_slides); a course goes live only through dashboard approval",
+    "course_drip_edit": "not-live only: drip rules of DRAFT / IN_REVIEW courses; never flips the institute switches",
+    "course_invites_edit": "additive: creates invites and payment plans; re-pointing / default only on non-live courses",
 }
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves
@@ -73,6 +81,10 @@ MCP_TOOL_GROUP_LABELS: Dict[str, str] = {
     "workflows_edits": "Automations: draft",
     "blog": "Blog: view",
     "blog_edits": "Blog: draft posts",
+    "courses": "Courses: view",
+    "course_edits": "Courses: build drafts",
+    "course_drip_edits": "Courses: drip rules",
+    "course_invite_edits": "Courses: invite links & payment plans",
 }
 
 #: One plain sentence per group for the settings page. The registry's tool
@@ -116,6 +128,24 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "Let the connected AI app write blog posts by conversation and save them as DRAFTS in Manage Pages → "
         "Blog. A draft is never shown on the website until you open it and press Publish; published posts "
         "cannot be changed or removed from here. Uses no AI credits."
+    ),
+    "courses": (
+        "See courses: their chapters and slides, slide content, drip rules, invite links and prices, and a "
+        "quality check of a course before it is submitted."
+    ),
+    "course_edits": (
+        "Let the connected AI app build courses — outline, reading pages, YouTube videos, PDFs, quizzes, "
+        "questions and assignments — and publish slides when you ask it to. Courses are saved as DRAFT and go "
+        "live only when an admin approves them in the dashboard. The AI app writes the content itself, so it "
+        "uses no AI credits."
+    ),
+    "course_drip_edits": (
+        "Let the connected AI app set content release (drip) rules on courses that are not live yet. Never "
+        "changes the institute-wide drip switches."
+    ),
+    "course_invite_edits": (
+        "Let the connected AI app create invite links and payment plans for courses. It only creates — "
+        "existing invites and plans are never edited or removed."
     ),
 }
 

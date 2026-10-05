@@ -27,6 +27,10 @@ settings tab has one toggle per feature to manage per role:
 | `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
 | `blog` | READ | `blog` | `list` (posts of any status, categories, where they are shown), `get` (one post with its HTML body, SEO, public URLs), `placements` (website pages carrying a Blog section) |
 | `blog_edit` | WRITE (drafts only, no model, no credits) | `blog_edits` | `create` (always a DRAFT, `source=MCP`, body nh3-cleaned with the article profile), `update` / `discard` (refuse anything that is not a DRAFT), `request_publish` (readiness audit + the dashboard link; never publishes) |
+| `courses` | READ | `courses` | `list`, `get`, `get_slide`, `schema`, `brief_checklist`, `review`, `drip`, `invites`, `get_invite`, `payment_setup` |
+| `course_edit` | WRITE (DRAFT only, no model, no credits) | `course_edits` | `create_course`, `add_chapter`, `add_slide`, `update_slide`, `reorder`, `import_image`, `import_pdf`, `discard_slide`, `publish_slides`, `submit_for_review` |
+| `course_drip_edit` | WRITE (non-live courses only) | `course_drip_edits` | `set_rules`, `schedule`, `remove_rules` |
+| `course_invites_edit` | WRITE (additive only) | `course_invite_edits` | `create_invite`, `create_payment_plan`, `make_default` |
 
 The allow-list is `MCP_EXPOSED_TOOLS` in `app/mcp/constants.py`. A tool in the
 Assistant registry is **not** reachable over MCP unless it is named there — so
@@ -37,6 +41,13 @@ in `website_data.py`, page summaries and the publish-check port in
 `catalogue_summary.py`); the designs are in
 `docs/ai-page-builder/WEBSITE_BUILDER_MCP_PLAN.md` and
 `docs/WORKFLOW_AI_ASSIST_DESIGN.md` (§14, the MCP path).
+The course builder lives in
+`assistant_tools_courses.py`, `assistant_tools_course_edit.py`,
+`assistant_tools_course_drip.py` and `assistant_tools_course_invites.py`, with
+SQL reads + the admin-core client in `course_builder_data.py` and the pure
+contract / validators / slide payloads in `course_content.py`; its design is in
+`docs/ai-course/COURSE_BUILDER_MCP_PLAN.md`. Like the website tools, no model runs
+server-side: the connected LLM writes the course, the tools validate and save.
 
 **One model, not two.** The connected AI app is the only LLM: it interviews the
 admin (`website(brief_checklist)`), reads the component contract
@@ -125,7 +136,15 @@ posts are rows in `catalogue_blog_post` (not page JSON), `create` forces
 refuse anything else, and publishing is a click in Manage Pages → Blog.
 `audience_forms_edit` is
 allowed on the other safe property: it only **adds** (a campaign, a field, a
-test lead) and never changes or removes what exists. `MCP_ALLOWED_WRITE_TOOLS`
+test lead) and never changes or removes what exists.
+`course_edit` creates DRAFT courses (off the catalogue)
+and only edits DRAFT courses; slides are DRAFT unless the admin asks for
+published ones, and `publish_slides` publishes DRAFT slides only on the admin's
+request — going live is `submit_for_review` plus an admin's approval in the
+dashboard. `course_drip_edit` only touches courses that are not ACTIVE and never
+flips the institute-wide drip switches. `course_invites_edit` only creates
+invites and payment plans; re-pointing an invite or making it the default is
+refused once the course is ACTIVE. `MCP_ALLOWED_WRITE_TOOLS`
 names each allowed write tool with the property that makes it safe, and
 `tests/test_mcp_adapter.py` refuses any other write tool. Write groups are off for every role until an admin
 enables them.
@@ -312,7 +331,7 @@ cd ai_service
 python -m pytest tests/test_mcp_access.py tests/test_mcp_adapter.py \
                  tests/test_mcp_oauth.py tests/test_mcp_clients.py tests/test_mcp_institute_scope.py \
                  tests/test_website_tools.py tests/test_website_edit_tool.py \
-                 tests/test_workflow_tools.py tests/test_institute_setting_reader.py -q
+                 tests/test_workflow_tools.py tests/test_course_tools.py tests/test_institute_setting_reader.py -q
 ```
 
 These cover the gates, the exposed-tool containment, the redirect-URI policy and

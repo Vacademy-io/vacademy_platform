@@ -74,6 +74,20 @@ export function useFollowUpFields() {
         missingRequired,
         /** Spread into the CREATE_LEAD_FOLLOWUP body. Empty when the block is off. */
         payload: followUpFields.enabled ? followUpFieldsPayload(values) : {},
+        /**
+         * Is the student-response dropdown worth showing outside a follow-up?
+         * Notes are timeline events, so only this one field travels with them.
+         */
+        studentResponseVisible:
+            followUpFields.enabled && followUpFields.studentResponses.length > 0,
+        /**
+         * Merge into a timeline event's `metadata`. The column is free-form jsonb,
+         * so the student's response rides along with a note without a schema change.
+         */
+        noteMetadata: () =>
+            followUpFields.enabled && values.studentResponse
+                ? { student_response: values.studentResponse }
+                : undefined,
     };
 }
 
@@ -92,6 +106,18 @@ export function useFollowUpNotesRequired(): boolean {
 interface FollowUpFieldsProps {
     values: FollowUpFieldValues;
     onChange: (next: FollowUpFieldValues) => void;
+    /**
+     * Render only these, in this order. Used by the Note tab, which asks for the
+     * student's response alone — mode and next action describe a follow-up, and
+     * a note isn't one.
+     */
+    only?: (keyof FollowUpFieldValues)[];
+    /**
+     * Override the institute's mandatory setting. The Note tab passes false: that
+     * setting is about not letting a follow-up through without its answers, and
+     * applying it to notes would block every quick jotting.
+     */
+    required?: boolean;
     /** Pass false inside a Dialog/Sheet — a portalled list can't be scrolled there. */
     portal?: boolean;
     className?: string;
@@ -106,12 +132,14 @@ interface FollowUpFieldsProps {
 export function FollowUpFields({
     values,
     onChange,
+    only,
+    required: requiredOverride,
     portal = true,
     className,
     disabled = false,
 }: FollowUpFieldsProps) {
     const { followUpFields } = useLeadSettings();
-    const required = followUpFields.fieldsRequired;
+    const required = requiredOverride ?? followUpFields.fieldsRequired;
     if (!followUpFields.enabled) return null;
 
     const fields: { key: keyof FollowUpFieldValues; label: string; options: string[] }[] = [
@@ -123,7 +151,9 @@ export function FollowUpFields({
         { key: 'followUpMode', label: 'Follow-up mode', options: followUpFields.followUpModes },
         { key: 'nextAction', label: 'Next follow-up action', options: followUpFields.nextActions },
     ];
-    const shown = fields.filter((f) => f.options.length > 0);
+    const shown = fields
+        .filter((f) => f.options.length > 0)
+        .filter((f) => !only || only.includes(f.key));
     if (shown.length === 0) return null;
 
     return (

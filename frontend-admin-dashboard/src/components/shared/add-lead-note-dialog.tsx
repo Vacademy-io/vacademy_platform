@@ -130,7 +130,12 @@ export const AddLeadNoteDialog = ({
                 title: label,
                 description: noteText.trim(),
                 student_user_id: userId,
-                metadata: callMeta,
+                // metadata_json is free-form, so the student's response rides along
+                // with a note (or a call log) without a schema change.
+                metadata:
+                    callMeta || followUpFields.noteMetadata()
+                        ? { ...(callMeta ?? {}), ...(followUpFields.noteMetadata() ?? {}) }
+                        : undefined,
             });
             return response.data;
         },
@@ -268,6 +273,21 @@ export const AddLeadNoteDialog = ({
                         <FollowUpFields
                             values={followUpFields.values}
                             onChange={followUpFields.setValues}
+                            portal={false}
+                        />
+                    )}
+
+                    {/* The student's response also belongs on a plain note — "spoke to
+                        them, they want a callback" is the same answer whether or not a
+                        follow-up is being booked. Not made mandatory here: the
+                        institute's setting is about follow-ups, and blocking every
+                        quick jotting on a dropdown would be its own problem. */}
+                    {!isFollowUp && followUpFields.studentResponseVisible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            only={['studentResponse']}
+                            required={false}
                             portal={false}
                         />
                     )}

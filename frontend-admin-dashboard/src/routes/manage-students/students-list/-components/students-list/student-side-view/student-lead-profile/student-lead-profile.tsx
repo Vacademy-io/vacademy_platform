@@ -14,6 +14,7 @@ import {
     CREATE_TIMELINE_EVENT,
     CREATE_LEAD_FOLLOWUP,
 } from '@/constants/urls';
+import { FollowUpFields, useFollowUpFields } from '@/components/shared/leads/follow-up-fields';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
@@ -762,6 +763,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
+    const followUpFields = useFollowUpFields();
     const queryClient = useQueryClient();
     const noteActionTypes = buildNoteActionTypes(t);
 
@@ -784,6 +786,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
         setNoteText('');
         setCallActivity(null);
         setScheduleTime('');
+        followUpFields.reset();
         setIsExpanded(false);
     }
 
@@ -793,6 +796,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 audience_response_id: audienceResponseId,
                 schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
                 content: noteText.trim() || null,
+                ...followUpFields.payload,
             }),
         onSuccess: () => {
             toast.success(t('addNote.followUpScheduled'));
@@ -898,6 +902,12 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                             className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-800 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                         />
                     </div>
+                    {followUpFields.visible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                        />
+                    )}
                     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2">
                         <RichTextEditor
                             value={noteText}

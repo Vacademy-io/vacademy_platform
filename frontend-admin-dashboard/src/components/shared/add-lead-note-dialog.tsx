@@ -14,6 +14,7 @@ import { cn, parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
+import { FollowUpFields, useFollowUpFields } from '@/components/shared/leads/follow-up-fields';
 import { CallRecordingInput } from '@/components/shared/lead-calls/CallRecordingInput';
 import {
     type CallActivity,
@@ -89,6 +90,7 @@ export const AddLeadNoteDialog = ({
     const queryClient = useQueryClient();
 
     const isFollowUp = actionType === 'FOLLOW_UP';
+    const followUpFields = useFollowUpFields();
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
     const isNoteEmpty = !parseHtmlToString(noteText).trim();
@@ -107,6 +109,7 @@ export const AddLeadNoteDialog = ({
         setActionType('NOTE');
         setCallActivity(null);
         setScheduleTime('');
+        followUpFields.reset();
     };
 
     const createNoteMutation = useMutation({
@@ -145,6 +148,7 @@ export const AddLeadNoteDialog = ({
                 audience_response_id: audienceResponseId,
                 schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
                 content: noteText.trim() || null,
+                ...followUpFields.payload,
             }),
         onSuccess: () => {
             toast.success('Follow-up scheduled');
@@ -247,6 +251,17 @@ export const AddLeadNoteDialog = ({
                                 </p>
                             )}
                         </div>
+                    )}
+
+                    {/* Institute-configured response / mode / next-action dropdowns.
+                        portal={false}: this is inside a Dialog, where a portalled
+                        list can't be scrolled. */}
+                    {isFollowUp && followUpFields.visible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            portal={false}
+                        />
                     )}
 
                     {/* Writing surface — note body (for FOLLOW_UP it's an optional reminder). */}

@@ -46,6 +46,7 @@ import { LeadStatusChip } from '@/components/shared/lead-status-chip';
 import { cn } from '@/lib/utils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
+import { FollowUpFields, useFollowUpFields } from './follow-up-fields';
 import {
     fetchLeadStatuses,
     setLeadStatusForLead,
@@ -246,6 +247,7 @@ function PostCallDispositionSheet({
     const terminology = useLeadTerminology();
     const [note, setNote] = useState('');
     const [followUpAt, setFollowUpAt] = useState('');
+    const followUpFields = useFollowUpFields();
     const [statusPickerOpen, setStatusPickerOpen] = useState(false);
     // null = untouched (keep the lead's current status — nothing is posted).
     const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
@@ -344,6 +346,7 @@ function PostCallDispositionSheet({
                     audience_response_id: payload.responseId,
                     schedule_time: new Date(followUpAt).toISOString(),
                     content: noteTrimmed || null,
+                    ...followUpFields.payload,
                 });
                 doneRef.current.followUp = true;
             }
@@ -538,6 +541,17 @@ function PostCallDispositionSheet({
                                 );
                             })}
                         </div>
+                        {/* Institute-configured response / mode / next-action dropdowns.
+                            Only once a time is set — they describe the follow-up being
+                            scheduled, so they'd be answering about nothing before that. */}
+                        {followUpAt && followUpFields.visible && (
+                            <FollowUpFields
+                                values={followUpFields.values}
+                                onChange={followUpFields.setValues}
+                                portal={false}
+                                className="pt-1"
+                            />
+                        )}
                     </div>
                 </div>
 

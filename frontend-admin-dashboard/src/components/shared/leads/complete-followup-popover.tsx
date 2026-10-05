@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEAD_FOLLOWUPS, CLOSE_LEAD_FOLLOWUP, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
+import { FollowUpFields, useFollowUpFields } from './follow-up-fields';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -87,6 +88,7 @@ export function CompleteFollowUpPopover({
     const [scheduleNext, setScheduleNext] = useState(false);
     const [nextTime, setNextTime] = useState('');
     const [nextContent, setNextContent] = useState('');
+    const followUpFields = useFollowUpFields();
     // Only meaningful when followupId is unknown and several are open.
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const queryClient = useQueryClient();
@@ -114,6 +116,7 @@ export function CompleteFollowUpPopover({
         setScheduleNext(false);
         setNextTime('');
         setNextContent('');
+        followUpFields.reset();
         setSelectedId(null);
     };
 
@@ -129,6 +132,7 @@ export function CompleteFollowUpPopover({
                 audience_response_id: audienceResponseId,
                 schedule_time: new Date(nextTime).toISOString(),
                 content: nextContent || null,
+                ...followUpFields.payload,
             }),
         onSuccess: () => {
             toast.success('Next follow-up scheduled');
@@ -265,6 +269,13 @@ export function CompleteFollowUpPopover({
                                     rows={2}
                                     className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                                 />
+                                {followUpFields.visible && (
+                                    <FollowUpFields
+                                        values={followUpFields.values}
+                                        onChange={followUpFields.setValues}
+                                        portal={false}
+                                    />
+                                )}
                             </div>
                         )}
                         {scheduleNext && onScheduleNext && (

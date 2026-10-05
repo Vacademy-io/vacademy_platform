@@ -700,7 +700,7 @@ export default function PreviousSessionCard({
                             </div>
                         </div>
 
-                        {reportResponse && reportResponse.length > 0 ? (
+                        {reportResponse ? (
                             <AttendanceMarkingTable
                                 data={reportResponse}
                                 sessionId={session.session_id}

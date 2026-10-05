@@ -14,6 +14,7 @@ import {
     Smiley,
     ChartBar,
     DownloadSimple,
+    UsersThree,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
@@ -437,6 +438,19 @@ export function AttendanceMarkingTable({
             <ArrowDown size={12} className="text-gray-700" />
         );
     };
+
+    // An empty report means nobody resolves to this class (batch deleted or
+    // emptied, no individual learners, no guests). Say so — a header row with
+    // "Total: 0" over an empty table reads as a broken page.
+    if (data.length === 0) {
+        return (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center">
+                <UsersThree size={28} className="text-gray-400" />
+                <div className="text-sm font-medium text-gray-700">{t('emptyTitle')}</div>
+                <p className="max-w-md text-xs text-gray-500">{t('emptyHint')}</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-3">

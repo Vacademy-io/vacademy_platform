@@ -49,6 +49,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
 import { format, addMinutes, isAfter, isBefore, parseISO } from 'date-fns';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { MyButton } from '@/components/design-system/button';
 import { useLiveSessionStore } from '../schedule/-store/sessionIdstore';
 import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
@@ -482,6 +483,64 @@ function ViewLiveSession() {
             }))
             .sort((a, b) => a.date.localeCompare(b.date));
     }, [sessionData]);
+
+    /**
+     * Occurrences of a recurring session whose attendance can be opened: every
+     * class that has STARTED, judged in the session's own timezone, newest first.
+     *
+     * Deliberately separate from the `status` above (browser clock, used by the
+     * recording sync and host buttons). Waiting for `past` hid an offline class's
+     * register until the class had ended, and an IST class viewed from London
+     * turned `past` 4.5 hours late. Not opened before the start: saving notifies
+     * the learner, so an early "absent" would land before the class even began.
+     */
+    const attendanceOccurrences = useMemo(() => {
+        const tz = sessionData?.schedule?.timezone;
+        const now = new Date();
+        const startOf = (date: string, time: string): Date => {
+            const local = `${date}T${time}`;
+            if (tz) {
+                try {
+                    // An unknown zone string yields Invalid Date rather than throwing.
+                    const zoned = fromZonedTime(local, tz);
+                    if (!isNaN(zoned.getTime())) return zoned;
+                } catch {
+                    // Fall through to the browser's clock.
+                }
+            }
+            return new Date(local);
+        };
+        let today = format(now, 'yyyy-MM-dd');
+        if (tz) {
+            try {
+                today = formatInTimeZone(now, tz, 'yyyy-MM-dd');
+            } catch {
+                // Same fallback as above.
+            }
+        }
+        return groupedSchedules
+            .flatMap((day) =>
+                day.sessions.map((s) => ({
+                    id: s.id,
+                    date: day.date,
+                    time: s.time,
+                    duration: s.duration,
+                    start: startOf(day.date, s.time),
+                    isToday: day.date === today,
+                }))
+            )
+            .filter((occ) => !isNaN(occ.start.getTime()) && occ.start <= now)
+            .sort((a, b) => b.start.getTime() - a.start.getTime());
+    }, [groupedSchedules, sessionData]);
+    const [showAllAttendanceDates, setShowAllAttendanceDates] = useState(false);
+    /** First occurrence not yet started, for the empty-picker hint. */
+    const nextAttendanceDate = useMemo(() => {
+        const opened = new Set(attendanceOccurrences.map((o) => o.id));
+        for (const day of groupedSchedules) {
+            if (day.sessions.some((s) => !opened.has(s.id))) return day.date;
+        }
+        return null;
+    }, [groupedSchedules, attendanceOccurrences]);
 
     /**
      * A one-time session has exactly one occurrence, so its attendance needs no
@@ -1332,37 +1391,55 @@ function ViewLiveSession() {
                                 {isRecurring ? (
                                     <div className="space-y-3">
                                         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                            {groupedSchedules
-                                                .filter(day => day.sessions.some(s => s.status === 'past'))
-                                                .slice(0, 12)
-                                                .map((day) => {
-                                                    const firstSession = day.sessions[0];
-                                                    if (!firstSession) return null;
-                                                    const isSelected = selectedScheduleForAttendance === firstSession.id;
-                                                    return (
-                                                        <button
-                                                            key={firstSession.id}
-                                                            onClick={() => handleViewAttendance(firstSession.id)}
-                                                            className={cn(
-                                                                "flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-all hover:bg-muted/50",
-                                                                isSelected && "border-primary bg-primary/5"
-                                                            )}
-                                                        >
-                                                            <div>
-                                                                <div className="font-medium">
-                                                                    {format(new Date(day.date), 'MMM d, yyyy')}
-                                                                </div>
-                                                                <div className="text-xs text-muted-foreground">
-                                                                    {firstSession.time} · {firstSession.duration} mins
-                                                                </div>
+                                            {(showAllAttendanceDates
+                                                ? attendanceOccurrences
+                                                : attendanceOccurrences.slice(0, 12)
+                                            ).map((occ) => {
+                                                const isSelected = selectedScheduleForAttendance === occ.id;
+                                                return (
+                                                    <button
+                                                        key={occ.id}
+                                                        onClick={() => handleViewAttendance(occ.id)}
+                                                        className={cn(
+                                                            "flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-all hover:bg-muted/50",
+                                                            isSelected && "border-primary bg-primary/5"
+                                                        )}
+                                                    >
+                                                        <div>
+                                                            <div className="flex items-center gap-2 font-medium">
+                                                                {format(parseISO(occ.date), 'MMM d, yyyy')}
+                                                                {occ.isToday && (
+                                                                    <Badge variant="secondary" className="text-xs">
+                                                                        Today
+                                                                    </Badge>
+                                                                )}
                                                             </div>
-                                                            <Users className="size-4 text-muted-foreground" />
-                                                        </button>
-                                                    );
-                                                })}
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {occ.time} · {occ.duration} mins
+                                                            </div>
+                                                        </div>
+                                                        <Users className="size-4 text-muted-foreground" />
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
-                                        {groupedSchedules.filter(day => day.sessions.some(s => s.status === 'past')).length === 0 && (
-                                            <p className="text-sm text-muted-foreground">No past sessions yet.</p>
+                                        {attendanceOccurrences.length > 12 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAllAttendanceDates((v) => !v)}
+                                                className="text-sm font-medium text-primary hover:underline"
+                                            >
+                                                {showAllAttendanceDates
+                                                    ? 'Show recent dates only'
+                                                    : `Show all ${attendanceOccurrences.length} dates`}
+                                            </button>
+                                        )}
+                                        {attendanceOccurrences.length === 0 && (
+                                            <p className="text-sm text-muted-foreground">
+                                                {nextAttendanceDate
+                                                    ? `Attendance opens when the first class starts (${format(parseISO(nextAttendanceDate), 'MMM d, yyyy')}).`
+                                                    : 'No classes scheduled yet.'}
+                                            </p>
                                         )}
                                     </div>
                                 ) : null}
@@ -1397,7 +1474,7 @@ function ViewLiveSession() {
                                         >
                                             {showAttendanceDetail
                                                 ? 'Hide detailed attendance'
-                                                : 'View detailed attendance →'}
+                                                : 'Mark / view detailed attendance →'}
                                         </button>
                                     </div>
                                 )}

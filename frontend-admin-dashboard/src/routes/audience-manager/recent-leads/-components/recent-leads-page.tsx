@@ -347,6 +347,17 @@ const RecentLeadsContent = ({
     /** The route's value for a pinned filter, or the cleared value when it is not pinned. */
     const clearedOr = (param: string, cleared: string) =>
         isLocked(param) ? pinnedEntryRef.current[param] ?? cleared : cleared;
+    /**
+     * Like {@link clearedOr}, but the tab's entry value wins even when the filter
+     * is NOT locked.
+     *
+     * Used for the date window. A sub-tab that opens on "All time" should go back
+     * to All time when the user clears, not to the 30-day default it never showed
+     * them — that default is for someone arriving at Recent Leads cold. Locking
+     * the filter would also achieve it, at the cost of not being able to look at
+     * a narrower window at all.
+     */
+    const entryOr = (param: string, fallback: string) => pinnedEntryRef.current[param] ?? fallback;
     const clearedOrList = (param: string): string[] => {
         if (!isLocked(param)) return [];
         const v = pinnedEntryRef.current[param];
@@ -1078,9 +1089,9 @@ const RecentLeadsContent = ({
         );
         setCustomFieldFilters({});
         setUtmFilters({});
-        setRangeDays(clearedOr('range', DEFAULT_RANGE_DAYS));
-        setCustomFrom(clearedOr('from', ''));
-        setCustomTo(clearedOr('to', ''));
+        setRangeDays(entryOr('range', DEFAULT_RANGE_DAYS));
+        setCustomFrom(entryOr('from', ''));
+        setCustomTo(entryOr('to', ''));
         setCalledWindow(clearedOr('calledWithin', ''));
         setWorkedWindow(clearedOr('workedWithin', ''));
         setPage(0);

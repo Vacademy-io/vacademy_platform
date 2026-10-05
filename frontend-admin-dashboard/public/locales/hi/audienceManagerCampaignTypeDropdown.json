@@ -8,5 +8,7 @@
     "addCustomType": "कस्टम पूछताछ प्रकार जोड़ें",
     "customInputPlaceholder": "{{term}} दर्ज करें",
     "cancel": "रद्द करें",
-    "save": "सहेजें"
+    "save": "सहेजें",
+    "searchPlaceholder": "खोजें…",
+    "noMatches": "“{{query}}” से कुछ मेल नहीं खाया"
 }

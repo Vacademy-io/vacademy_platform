@@ -584,6 +584,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'call-log',
             },
             {
+                subItem: sidebarT('sidebar:leadLookup'),
+                subItemLink: '/audience-manager/lead-lookup',
+                subItemId: 'lead-lookup',
+            },
+            {
                 subItem: sidebarT('sidebar:onboarding'),
                 subItemLink: '/audience-manager/onboarding',
                 subItemId: 'onboarding',

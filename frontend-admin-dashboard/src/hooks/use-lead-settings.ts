@@ -115,6 +115,8 @@ export interface LeadSettingsConfig {
     /** The three dropdowns a counsellor fills when logging a follow-up. Off for
      *  every institute until one turns it on and supplies its own wording. */
     followUpFields: FollowUpFieldsConfig;
+    /** The "is this number already ours?" lookup. Off, and blank, until configured. */
+    leadLookup: LeadLookupConfig;
     customStatuses: CustomLeadStatus[];
 
     /**
@@ -151,6 +153,51 @@ export interface FollowUpFieldsConfig {
     notesRequired: boolean;
 }
 
+/**
+ * Lead lookup — what a counsellor may learn about a lead that isn't theirs.
+ *
+ * A counsellor only sees their own leads, so searching a colleague's lead finds
+ * nothing and they call it as a fresh one. This answers for a single exact phone
+ * or email instead of widening the list.
+ *
+ * Every field starts hidden and the institute ticks what it is willing to share.
+ * ADMIN-role users are never masked by this — the backend gives them every field,
+ * since they aren't scoped out of lead data anywhere else either.
+ */
+export interface LeadLookupConfig {
+    enabled: boolean;
+    fields: LeadLookupFields;
+    /**
+     * Which custom field holds the course. Matched by id so a rename doesn't
+     * break it. Blank = the course line is simply not shown; there is no sensible
+     * guess, and destination_package_session_id is unset at the institutes that
+     * collect the course as a form answer.
+     */
+    courseFieldId: string;
+}
+
+export interface LeadLookupFields {
+    name: boolean;
+    email: boolean;
+    phone: boolean;
+    counsellor: boolean;
+    source: boolean;
+    campaign: boolean;
+    status: boolean;
+    course: boolean;
+}
+
+export const LEAD_LOOKUP_FIELD_KEYS: (keyof LeadLookupFields)[] = [
+    'name',
+    'email',
+    'phone',
+    'counsellor',
+    'source',
+    'campaign',
+    'status',
+    'course',
+];
+
 export interface LeadTerminologyLabels {
     tier?: string;
     leadStatus?: string;
@@ -180,6 +227,20 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         followUpModes: [],
         nextActions: [],
         notesRequired: false,
+    },
+    leadLookup: {
+        enabled: false,
+        fields: {
+            name: false,
+            email: false,
+            phone: false,
+            counsellor: false,
+            source: false,
+            campaign: false,
+            status: false,
+            course: false,
+        },
+        courseFieldId: '',
     },
     tatReminder: {
         enabled: false,
@@ -252,6 +313,27 @@ export function normaliseFollowUpFields(
     };
 }
 
+/**
+ * Coerce the lookup config. Same reason as {@link normaliseFollowUpFields}: this
+ * is hand-written into institutes.setting_json during onboarding, and a missing
+ * `fields` object would make every `fields.name` read throw.
+ */
+export function normaliseLeadLookup(
+    saved: Partial<LeadLookupConfig> | undefined
+): LeadLookupConfig {
+    const savedFields = (saved?.fields ?? {}) as Partial<LeadLookupFields>;
+    const fields = {} as LeadLookupFields;
+    for (const key of LEAD_LOOKUP_FIELD_KEYS) {
+        // Only a real boolean true shares a field — a stray "true" string must not.
+        fields[key] = savedFields[key] === true;
+    }
+    return {
+        enabled: saved?.enabled === true,
+        fields,
+        courseFieldId: typeof saved?.courseFieldId === 'string' ? saved.courseFieldId : '',
+    };
+}
+
 /** Merge saved config over the defaults, keeping nested groups whole. */
 export function mergeLeadSettings(
     saved: Partial<LeadSettingsConfig> | undefined
@@ -268,6 +350,7 @@ export function mergeLeadSettings(
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
         followUpFields: normaliseFollowUpFields(saved.followUpFields),
+        leadLookup: normaliseLeadLookup(saved.leadLookup),
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
     };
 }

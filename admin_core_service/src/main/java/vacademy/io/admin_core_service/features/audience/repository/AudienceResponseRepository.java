@@ -2543,5 +2543,77 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("stage") String stage,
                         @Param("assigneeId") String assigneeId,
                         @Param("dueAt") Timestamp dueAt);
-}
 
+        /**
+         * Lead lookup — "is this phone / email already ours?".
+         *
+         * Institute-wide on purpose: the whole point is to answer for a lead the
+         * caller cannot otherwise see. Matching mirrors the dedup check so the two
+         * never disagree — phone on the last 10 digits (tolerates a country-code
+         * prefix, which most stored numbers lack), email case- and space-insensitive.
+         *
+         * Unlike the dedup check this does NOT skip OPTED_OUT leads: a counsellor
+         * about to dial someone who opted out is exactly who needs telling.
+         * Duplicates are still skipped, since they point at the same person.
+         *
+         * Course comes from a custom field, not destination_package_session_id —
+         * that column is unset on every lead for the institutes using this, because
+         * the course is collected as a form answer. Which field is per-institute
+         * config, matched on the field's id (stable across renames); a null id
+         * leaves the column null rather than guessing.
+         *
+         * Newest first: a repeat enquiry should answer with its current owner.
+         */
+        @Query(value = """
+                            SELECT ar.parent_name            AS lead_name,
+                                   ar.parent_email           AS lead_email,
+                                   ar.parent_mobile          AS lead_mobile,
+                                   ulp.assigned_counselor_name AS counsellor_name,
+                                   a.campaign_type           AS campaign_type,
+                                   a.campaign_name           AS campaign_name,
+                                   ls.label                  AS status_label,
+                                   course.value              AS course_value,
+                                   ar.overall_status         AS overall_status
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                   ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+                            LEFT JOIN LATERAL (
+                                   SELECT cfv.value FROM custom_field_values cfv
+                                   WHERE cfv.source_id = ar.id
+                                     AND CAST(:courseFieldId AS text) IS NOT NULL
+                                     AND cfv.custom_field_id = CAST(:courseFieldId AS text)
+                                   LIMIT 1) course ON true
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                              AND (
+                                   (CAST(:last10 AS text) IS NOT NULL
+                                    AND ar.parent_mobile IS NOT NULL
+                                    AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = CAST(:last10 AS text))
+                                OR (CAST(:email AS text) IS NOT NULL
+                                    AND ar.parent_email IS NOT NULL
+                                    AND LOWER(TRIM(ar.parent_email)) = LOWER(TRIM(CAST(:email AS text))))
+                              )
+                            ORDER BY ar.submitted_at DESC NULLS LAST, ar.created_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        java.util.Optional<LeadLookupRow> lookupByPhoneOrEmail(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10,
+                        @Param("email") String email,
+                        @Param("courseFieldId") String courseFieldId);
+
+        /** Projection for {@link #lookupByPhoneOrEmail}. */
+        interface LeadLookupRow {
+                String getLeadName();
+                String getLeadEmail();
+                String getLeadMobile();
+                String getCounsellorName();
+                String getCampaignType();
+                String getCampaignName();
+                String getStatusLabel();
+                String getCourseValue();
+                String getOverallStatus();
+        }
+}

@@ -149,3 +149,32 @@ describe('notesRequired', () => {
         expect(merged.followUpFields.notesRequired).toBe(false);
     });
 });
+
+describe('lead lookup config', () => {
+    it('is off and shares nothing for an institute that never configured it', () => {
+        const { leadLookup } = mergeLeadSettings({});
+        expect(leadLookup.enabled).toBe(false);
+        expect(Object.values(leadLookup.fields).every((v) => v === false)).toBe(true);
+        expect(leadLookup.courseFieldId).toBe('');
+    });
+
+    it('survives a hand-written setting_json', () => {
+        // Written straight into institutes.setting_json during onboarding — a
+        // missing fields object must not make every fields.name read throw.
+        const { leadLookup } = mergeLeadSettings({
+            leadLookup: { enabled: true },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(leadLookup.fields.name).toBe(false);
+        expect(leadLookup.fields.counsellor).toBe(false);
+        expect(leadLookup.courseFieldId).toBe('');
+    });
+
+    it('only a real boolean true shares a field', () => {
+        const { leadLookup } = mergeLeadSettings({
+            leadLookup: { enabled: 'true', fields: { name: 'true', counsellor: true } },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(leadLookup.enabled).toBe(false);
+        expect(leadLookup.fields.name).toBe(false);
+        expect(leadLookup.fields.counsellor).toBe(true);
+    });
+});

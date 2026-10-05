@@ -116,6 +116,8 @@
         "paymentReceivedToastBody": "Votre abonnement est en cours de réactivation — cela prend quelques secondes.",
         "paymentNotCompletedToast": "Paiement non finalisé",
         "changePlan": "Change plan",
+        "completeEnrollmentPrompt": "Cet abonnement n'a jamais été activé — votre inscription n'a pas été finalisée. Terminez-la pour commencer à participer.",
+        "completeEnrollmentCta": "Finaliser mon inscription",
         "changePlanTitle": "Change your plan",
         "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
         "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",

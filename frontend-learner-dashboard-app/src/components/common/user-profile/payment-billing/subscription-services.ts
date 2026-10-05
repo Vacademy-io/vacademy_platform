@@ -31,6 +31,15 @@ export interface Subscription {
   plan_price?: number | null;
   vendor_id?: string | null;
   can_renew_manually?: boolean;
+  /**
+   * This plan row was never a membership — an abandoned or failed first checkout. The server
+   * refuses to renew it (a renewal extends existing access, and there is none), so offer
+   * "complete your enrollment" instead and route back through the invite checkout, where a
+   * fresh access window is computed. Mutually exclusive with can_renew_manually.
+   */
+  can_complete_enrollment?: boolean;
+  /** Invite code behind the plan, for building that enrollment link. */
+  enroll_invite_code?: string | null;
   /** Invite has autopay configured — gates the "enable auto-pay" option. */
   autopay_available?: boolean;
   /**

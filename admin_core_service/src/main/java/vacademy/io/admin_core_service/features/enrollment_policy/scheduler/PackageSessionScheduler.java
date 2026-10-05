@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -80,6 +81,39 @@ public class PackageSessionScheduler {
             log.error("[PackageSessionRenew] Institute-gated enrolment-policy scan failed", e);
         }
         log.info("[PackageSessionRenew] Scan finished.");
+    }
+
+    // ─── Paid-but-not-enrolled integrity check ─────────────────────────────
+    //
+    // A learner whose plan is ACTIVE and who has paid must hold an enrolment. When that
+    // stops being true, nothing visibly breaks on our side: the plan reads ACTIVE, the
+    // payment reads PAID, finance reconciles — and the learner quietly sits in no batch,
+    // receives no class links and shows in no member list. That is exactly how 2026-10-04
+    // went unnoticed until the client reported it (one learner, Rs 7,200, 22 hours).
+    //
+    // The write-side holes are closed (enrolment, renewal and stacked-promotion paths all
+    // ensure the enrolment now), so this is a net for the paths we have not thought of.
+    // Deliberately report-only: it logs at ERROR so the condition surfaces the next morning
+    // without a scheduler silently mutating learner access.
+
+    /** Runs daily at 04:30, right after the enrolment-policy sweep. */
+    @Scheduled(cron = "0 30 4 * * ?")
+    @SchedulerLock(name = "PaidWithoutEnrollmentCheck", lockAtMostFor = "PT20M", lockAtLeastFor = "PT1M")
+    public void reportPaidPlansWithoutEnrollment() {
+        try {
+            List<UserPlan> orphans = userPlanRepository.findPaidActivePlansWithoutEnrollment();
+            if (orphans.isEmpty()) {
+                log.info("[PaidWithoutEnrollment] Clean — every paid ACTIVE plan has an enrolment");
+                return;
+            }
+            log.error("[PaidWithoutEnrollment] {} paid ACTIVE plan(s) hold NO enrolment — the learner "
+                    + "paid and has no access: {}", orphans.size(),
+                    orphans.stream()
+                            .map(p -> p.getId() + " (user " + p.getUserId() + ")")
+                            .collect(Collectors.joining(", ")));
+        } catch (Exception e) {
+            log.error("[PaidWithoutEnrollment] Integrity check failed", e);
+        }
     }
 
     // ─── Membership-expiry workflow trigger ────────────────────────────────

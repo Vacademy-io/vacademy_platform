@@ -49,6 +49,22 @@ public class SubscriptionDTO {
     private boolean canRenewManually;
 
     /**
+     * This plan row was never a membership: no enrolment was ever created against it and no
+     * payment ever succeeded on it — an abandoned or failed first checkout. Renewal is
+     * refused for it (a renewal extends existing access, and there is none), so the client
+     * offers "complete your enrolment" instead, routing back through the invite checkout
+     * where a fresh access window is computed. Mutually exclusive with canRenewManually.
+     */
+    private boolean canCompleteEnrollment;
+
+    /**
+     * The invite code behind this plan, so the client can build that enrolment link
+     * ({@code /learner-invitation-response?instituteId=...&inviteCode=...}). Only needed
+     * alongside canCompleteEnrollment, but always populated when the invite is known.
+     */
+    private String enrollInviteCode;
+
+    /**
      * True when this plan's gateway takes card details inline (eWay) rather than handing off
      * to a hosted checkout. The renewal then runs in two calls -- REQUIRES_CARD, then the
      * charge -- and settles synchronously, with no mandate to register, which is why the

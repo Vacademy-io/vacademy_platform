@@ -627,6 +627,14 @@ public interface StudentSessionInstituteGroupMappingRepository
 
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
 
+  /**
+   * Whether this plan EVER carried an enrolment, in any status (ACTIVE, INACTIVE, DELETED).
+   * Distinguishes a real membership from an abandoned checkout: the self-service renewal
+   * surface uses it to refuse "pay to continue" on a plan row that was never a membership
+   * (see SubscriptionService.everWasAMembership).
+   */
+  boolean existsByUserPlanId(String userPlanId);
+
   long countByPackageSessionIdAndStatus(String packageSessionId, String status);
 
   @Query(value = """

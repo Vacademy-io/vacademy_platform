@@ -591,6 +591,8 @@
       "autopayCheckbox": "Also enable auto-pay for future renewals — one approval pays now and sets up automatic deduction, no more manual payments.",
       "startingPayment": "Starting payment...",
       "payToContinue": "Pay {{amount}} to continue",
+      "completeEnrollmentPrompt": "Your sign-up for this membership was never completed, so there is nothing to renew yet. Finish enrolling and your {{liveClasses}} start right away.",
+      "completeEnrollmentCta": "Complete your enrollment",
       "toast": {
         "startFailedTitle": "Couldn't start the payment",
         "genericRetry": "Please try again in a moment.",

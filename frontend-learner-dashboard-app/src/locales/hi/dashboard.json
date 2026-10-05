@@ -112,6 +112,8 @@
         "paymentReceivedToastBody": "आपकी सदस्यता फिर से सक्रिय की जा रही है — इसमें कुछ सेकंड लगेंगे।",
         "paymentNotCompletedToast": "भुगतान पूरा नहीं हुआ",
         "changePlan": "Change plan",
+        "completeEnrollmentPrompt": "यह सदस्यता कभी सक्रिय नहीं हुई — आपका साइन अप पूरा नहीं हुआ था। कक्षाएँ शुरू करने के लिए नामांकन पूरा करें।",
+        "completeEnrollmentCta": "अपना नामांकन पूरा करें",
         "changePlanTitle": "Change your plan",
         "changePlanSubtitle": "You're on {{plan}}. Pick what you'd like to move to.",
         "changePlanSubtitleNoPlan": "Pick the plan you'd like to move to.",

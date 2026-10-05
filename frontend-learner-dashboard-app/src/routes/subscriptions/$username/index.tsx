@@ -549,6 +549,39 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               </div>
             )}
 
+            {/* Never a membership (abandoned or failed first checkout): there is nothing to
+                renew, so send the learner back through the invite checkout to finish signing
+                up. Paying here would extend access that was never granted — the server
+                refuses it too (SubscriptionService.initiateRenewalPayment). */}
+            {sub.can_complete_enrollment && sub.enroll_invite_code && (
+              <div className="space-y-3 rounded-lg border border-warning-200 bg-warning-50 p-3">
+                <div className="flex items-start gap-2 text-sm text-gray-700">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {t("subscriptions.manage.completeEnrollmentPrompt", { liveClasses })}
+                  </span>
+                </div>
+                <div className="flex justify-end">
+                  <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="primary"
+                    layoutVariant="default"
+                    onClick={() =>
+                      window.location.assign(
+                        `/learner-invitation-response?instituteId=${encodeURIComponent(
+                          instituteId,
+                        )}&inviteCode=${encodeURIComponent(sub.enroll_invite_code ?? "")}`,
+                      )
+                    }
+                  >
+                    <CreditCard className="me-1.5 size-4" />
+                    {t("subscriptions.manage.completeEnrollmentCta")}
+                  </MyButton>
+                </div>
+              </div>
+            )}
+
             {sub.can_renew_manually && sub.plan_price != null && (
               <div className="space-y-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
                 <div className="text-sm text-gray-700">

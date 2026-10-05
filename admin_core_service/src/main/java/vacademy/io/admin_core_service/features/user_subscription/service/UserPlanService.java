@@ -67,6 +67,9 @@ public class UserPlanService {
     private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+
+    @Autowired
     @Lazy
     public LearnerBatchEnrollService learnerBatchEnrollService;
 
@@ -667,12 +670,59 @@ public class UserPlanService {
         return true;
     }
 
+    /**
+     * Makes sure an already-ACTIVE plan actually has the enrollment its learner paid for.
+     *
+     * <p>Idempotent by construction: it does nothing when an ACTIVE membership already exists
+     * for the invite's package sessions, and otherwise performs the same INVITED -> ACTIVE
+     * shift the normal first-payment path performs. Safe to run on every payment for an
+     * ACTIVE plan, which is the point — the alternative is trusting that the plan's status
+     * tells you whether the learner is enrolled, and it does not.
+     *
+     * <p>Never throws: a payment must not fail because the enrollment repair did.
+     */
+    private void ensureEnrollmentExists(UserPlan userPlan) {
+        try {
+            EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+            if (enrollInvite == null) {
+                return;
+            }
+            List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
+                    .findPackageSessionsOfEnrollInvite(enrollInvite);
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return;
+            }
+            if (studentSessionInstituteGroupMappingRepository
+                    .existsActiveMembership(userPlan.getUserId(), packageSessionIds)) {
+                return;
+            }
+            logger.warn("UserPlan {} is ACTIVE but its learner {} holds no ACTIVE membership in {} — "
+                    + "enrolling now", userPlan.getId(), userPlan.getUserId(), packageSessionIds);
+            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                    packageSessionIds, userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
+        } catch (Exception e) {
+            logger.error("Could not verify or repair the enrollment for plan {}", userPlan.getId(), e);
+        }
+    }
+
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
-        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
-                || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
-            logger.info("UserPlan already ACTIVE or pending . Skipping re-activation.");
+        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            // Already ACTIVE does NOT mean already enrolled. A plan can reach ACTIVE before
+            // any money lands — Nitika Maheshwari's annual plan was created ACTIVE on 31 Aug
+            // — and when her Rs 7,200 finally succeeded on 4 Oct this method returned here,
+            // skipping the enrollment shift below. The payment was recorded, the plan ran to
+            // 2027, and she held no ACTIVE mapping at all: a paying member who appeared in no
+            // batch and received no class links. Re-activation is indeed not wanted; the
+            // enrollment still has to exist.
+            logger.info("UserPlan {} already ACTIVE — verifying the enrollment exists", userPlan.getId());
+            ensureEnrollmentExists(userPlan);
+            return;
+        }
+        if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            // A stacked plan is enrolled when it is promoted, not now.
+            logger.info("UserPlan {} is stacked (PENDING) — enrollment happens on promotion", userPlan.getId());
             return;
         }
 

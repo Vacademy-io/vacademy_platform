@@ -834,7 +834,12 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 title: label,
                 description: noteText.trim(),
                 student_user_id: userId,
-                metadata: callMeta,
+                // metadata_json is free-form, so the student's response rides along
+                // with a note (or a call log) without a schema change.
+                metadata:
+                    callMeta || followUpFields.noteMetadata()
+                        ? { ...(callMeta ?? {}), ...(followUpFields.noteMetadata() ?? {}) }
+                        : undefined,
             });
         },
         onSuccess: () => {
@@ -949,22 +954,38 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                     )}
                 </div>
             ) : (
-                <div
-                    className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                            e.preventDefault();
-                            if (canSubmit) handleSubmit();
-                        }
-                    }}
-                >
-                    <RichTextEditor
-                        value={noteText}
-                        onChange={setNoteText}
-                        placeholder={t('addNote.notePlaceholder')}
-                        minHeight={64}
-                        minimalToolbar
-                    />
+                <div className="flex flex-col gap-2">
+                    {/* The student's response also belongs on a plain note — "spoke to
+                        them, they want a callback" is the same answer whether or not a
+                        follow-up is being booked. Not mandatory here: the institute's
+                        setting is about follow-ups, and blocking every quick jotting on
+                        a dropdown would be its own problem. */}
+                    {followUpFields.studentResponseVisible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            only={['studentResponse']}
+                            required={false}
+                            portal={false}
+                        />
+                    )}
+                    <div
+                        className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                if (canSubmit) handleSubmit();
+                            }
+                        }}
+                    >
+                        <RichTextEditor
+                            value={noteText}
+                            onChange={setNoteText}
+                            placeholder={t('addNote.notePlaceholder')}
+                            minHeight={64}
+                            minimalToolbar
+                        />
+                    </div>
                 </div>
             )}
 

@@ -17,6 +17,7 @@ public class NotificationConstant {
      */
     public static final String ANNOUNCEMENT_MULTIPLE = "/notification-service/v1/announcements/admin/multiple";
 
-    /** Where the bell reads from, and where an alert is switched off again. */
-    public static final String USER_MESSAGES = "/notification-service/v1/user-messages";
+    /** Service-to-service: switch off the system alerts raised about one entity. */
+    public static final String SYSTEM_ALERT_DEACTIVATE_BY_ENTITY =
+            "/notification-service/internal/v1/system-alerts/deactivate-by-entity";
 }

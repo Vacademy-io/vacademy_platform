@@ -487,8 +487,7 @@ public class NotificationService {
             return;
         }
         try {
-            String route = NotificationConstant.USER_MESSAGES
-                    + "/system-alerts/deactivate-by-entity"
+            String route = NotificationConstant.SYSTEM_ALERT_DEACTIVATE_BY_ENTITY
                     + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
                     + "&entity=" + java.net.URLEncoder.encode(entity, java.nio.charset.StandardCharsets.UTF_8)
                     + "&entityId=" + java.net.URLEncoder.encode(entityId, java.nio.charset.StandardCharsets.UTF_8);

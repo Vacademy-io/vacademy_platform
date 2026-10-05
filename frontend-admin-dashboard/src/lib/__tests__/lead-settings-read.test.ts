@@ -83,11 +83,45 @@ describe('follow-up fields config', () => {
     it('keeps the saved lists and fills in any the institute left out', () => {
         const merged = mergeLeadSettings({
             followUpFields: { enabled: true, studentResponses: ['Interested'] },
-        } as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
         expect(merged.followUpFields.enabled).toBe(true);
         expect(merged.followUpFields.studentResponses).toEqual(['Interested']);
         // Not saved → still an empty list, not undefined: the form maps over these.
         expect(merged.followUpFields.followUpModes).toEqual([]);
         expect(merged.followUpFields.nextActions).toEqual([]);
+    });
+});
+
+describe('follow-up fields config survives a hand-edited setting_json', () => {
+    // This subtree is written straight into institutes.setting_json when an
+    // institute is onboarded, so the parse has to tolerate anything.
+    const cases: [string, unknown][] = [
+        ['null lists', { enabled: true, studentResponses: null, followUpModes: null }],
+        ['a string where a list belongs', { enabled: true, nextActions: 'Call Back' }],
+        ['enabled as the string "true"', { enabled: 'true', studentResponses: ['A'] }],
+        ['the whole block null', null],
+    ];
+    it.each(cases)('does not throw on %s', (_label, followUpFields) => {
+        const merged = mergeLeadSettings({
+            followUpFields,
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(Array.isArray(merged.followUpFields.studentResponses)).toBe(true);
+        expect(Array.isArray(merged.followUpFields.followUpModes)).toBe(true);
+        expect(Array.isArray(merged.followUpFields.nextActions)).toBe(true);
+        expect(typeof merged.followUpFields.enabled).toBe('boolean');
+    });
+
+    it('drops non-string entries rather than rendering them', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { enabled: true, studentResponses: ['Call Back', 42, null, 'Busy'] },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.studentResponses).toEqual(['Call Back', 'Busy']);
+    });
+
+    it('only a real boolean true turns the block on', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { enabled: 'true', studentResponses: ['A'] },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.enabled).toBe(false);
     });
 });

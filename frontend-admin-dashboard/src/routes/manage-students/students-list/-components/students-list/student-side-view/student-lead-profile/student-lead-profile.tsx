@@ -906,6 +906,9 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                         <FollowUpFields
                             values={followUpFields.values}
                             onChange={followUpFields.setValues}
+                            // student-profile-overlay renders this inside a Dialog, and
+                            // react-remove-scroll kills the wheel on a portalled list there.
+                            portal={false}
                         />
                     )}
                     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2">

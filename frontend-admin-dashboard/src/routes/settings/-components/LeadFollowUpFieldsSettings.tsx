@@ -28,7 +28,11 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchLeadSettingRawData } from '@/hooks/use-lead-report-settings';
-import { LEAD_SETTINGS_DEFAULTS, type FollowUpFieldsConfig } from '@/hooks/use-lead-settings';
+import {
+    LEAD_SETTINGS_DEFAULTS,
+    normaliseFollowUpFields,
+    type FollowUpFieldsConfig,
+} from '@/hooks/use-lead-settings';
 
 const SETTING_KEY = 'LEAD_SETTING';
 const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
@@ -60,8 +64,11 @@ const LISTS: { key: ListKey; title: string; hint: string }[] = [
 async function fetchFollowUpFields(): Promise<FollowUpFieldsConfig> {
     try {
         const raw = await fetchLeadSettingRawData();
-        const saved = raw['followUpFields'] as Partial<FollowUpFieldsConfig> | undefined;
-        return { ...LEAD_SETTINGS_DEFAULTS.followUpFields, ...(saved ?? {}) };
+        // Same coercion the readers use — this editor is exactly where a
+        // hand-written setting_json gets opened, so it must not choke on one.
+        return normaliseFollowUpFields(
+            raw['followUpFields'] as Partial<FollowUpFieldsConfig> | undefined
+        );
     } catch {
         return LEAD_SETTINGS_DEFAULTS.followUpFields;
     }
@@ -132,9 +139,14 @@ function OptionListEditor({
         onChange(next);
         setPasteText('');
         setPasting(false);
-        toast.success(
-            added > 0 ? `Added ${added} option${added === 1 ? '' : 's'}` : 'Nothing new to add'
-        );
+        if (next.length >= MAX_OPTIONS) {
+            // normalise() caps the list; say so rather than letting the tail vanish.
+            toast.warning(`${title} is capped at ${MAX_OPTIONS} options — the rest were dropped`);
+        } else {
+            toast.success(
+                added > 0 ? `Added ${added} option${added === 1 ? '' : 's'}` : 'Nothing new to add'
+            );
+        }
     };
 
     return (

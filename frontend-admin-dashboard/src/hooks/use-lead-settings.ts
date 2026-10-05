@@ -214,6 +214,27 @@ export function extractLeadSettingData(
     return undefined;
 }
 
+/**
+ * Coerce the three option lists to arrays of strings.
+ *
+ * This subtree gets hand-written into institutes.setting_json when a new institute
+ * is onboarded, so a stray null or a string where a list belongs is a live
+ * possibility — and `.length` on it would take down every follow-up form and the
+ * whole Completed tab, for a config the UI never validated.
+ */
+export function normaliseFollowUpFields(
+    saved: Partial<FollowUpFieldsConfig> | undefined
+): FollowUpFieldsConfig {
+    const list = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+    return {
+        enabled: saved?.enabled === true,
+        studentResponses: list(saved?.studentResponses),
+        followUpModes: list(saved?.followUpModes),
+        nextActions: list(saved?.nextActions),
+    };
+}
+
 /** Merge saved config over the defaults, keeping nested groups whole. */
 export function mergeLeadSettings(
     saved: Partial<LeadSettingsConfig> | undefined
@@ -229,10 +250,7 @@ export function mergeLeadSettings(
         },
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
-        followUpFields: {
-            ...LEAD_SETTINGS_DEFAULTS.followUpFields,
-            ...(saved.followUpFields ?? {}),
-        },
+        followUpFields: normaliseFollowUpFields(saved.followUpFields),
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
     };
 }

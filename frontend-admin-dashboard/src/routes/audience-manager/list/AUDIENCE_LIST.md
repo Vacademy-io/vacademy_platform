@@ -200,7 +200,9 @@ Dropdown actions:
 
 Driven by `useAudienceCampaignForm` (RHF + Zod). Loads custom fields via `getCampaignCustomFieldsAsync()` (or from `useGetCampaignById` when editing). Submits through `useCreateAudienceCampaign` or `useUpdateAudienceCampaign` depending on mode.
 
-Below the custom-fields card it renders **Post Submit Configuration** (§13) — the audience-list twin of the enroll invite's "Post Form Fill Configuration" card.
+Below the custom-fields card it renders **Form Heading & Text** (`components/audience/FormTextEditor.tsx`), then **Post Submit Configuration** (§13) — the audience-list twin of the enroll invite's "Post Form Fill Configuration" card.
+
+**Form Heading & Text** edits the words at the top of the public form: the page heading (blank = the list's own name; rich text via `RichTextEditor` in `minimalToolbar` mode) and the form card's heading + sub-heading (sub-heading is rich text too), each block with its own left / center / right alignment (`headingAlign`, `formHeaderAlign`). It is always shown, unlike the **Form Appearance** card, which only appears once an institute turns it on in Settings → Lead Settings → Forms. Both cards edit the same `formAppearance` value inside `setting_json`, so there is one save path, and the heading fields live only in Form Heading & Text, never in both cards. `headline` and `formSubtitle` hold plain text OR sanitized HTML: values saved before rich text existed still render as plain text, and an emptied editor (`<p></p>`) falls back to the default wording. Both are capped at 5,000 chars, not the 500 used for labels, so a cut never lands inside a tag. Any new key must be added in four places: the admin service, the learner `form-appearance.ts` (the two DEFAULT objects must match), **and** `formAppearanceSchema` in `-schema/AudienceCampaignSchema.ts`. That last one is a strict `z.object`, so a key missing there is silently dropped on save.
 
 ### Leads table — `CampaignUsersTable`
 

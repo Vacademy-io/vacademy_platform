@@ -65,6 +65,10 @@ interface MultiSelectFilterProps {
      * list nine statuses to mean "not New" — and from breaking when a tenth is added.
      */
     exclude?: { value: boolean; onChange: (next: boolean) => void; label: string };
+    /** Pinned by the route (see pinned-filters.ts): show the value, refuse to change it.
+     *  Without this the lock only survived "Clear all" — the dropdown stayed open for
+     *  business, so a sub-tab called "Untouched Leads" could be turned into all leads. */
+    locked?: boolean;
 }
 
 /**
@@ -83,11 +87,14 @@ export function MultiSelectFilter({
     showSelectedLabel = false,
     variant = 'button',
     exclude,
+    locked = false,
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const { isCompact } = useCompactMode();
 
     const toggle = (value: string, clearAll: boolean | undefined) => {
+        // The route owns this filter; the popover is a read-only view of it.
+        if (locked) return;
         if (clearAll) {
             // "All" option — clear every selection
             onChange([]);
@@ -195,7 +202,7 @@ export function MultiSelectFilter({
                         {exclude && (
                             <CommandItem
                                 value="__exclude__"
-                                onSelect={() => exclude.onChange(!exclude.value)}
+                                onSelect={() => !locked && exclude.onChange(!exclude.value)}
                                 className="cursor-pointer gap-2 text-neutral-600"
                             >
                                 <span

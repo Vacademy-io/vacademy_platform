@@ -223,39 +223,51 @@ public class LearnerBatchEnrollService {
      */
     @Transactional
     public boolean reviveLapsedEnrollment(List<String> packageSessionIds, String userId, UserPlan userPlan) {
-        List<StudentSessionInstituteGroupMapping> rows = studentSessionRepository
-                .findByUserIdAndPackageSession_IdInOrderByCreatedAtDesc(userId, packageSessionIds);
-        if (rows.isEmpty()) {
-            log.error("Cannot revive an enrollment for user {} on plan {}: no mapping has ever existed "
-                    + "in package sessions {}", userId, userPlan.getId(), packageSessionIds);
-            return false;
-        }
-        StudentSessionInstituteGroupMapping revived = rows.get(0);
-        log.warn("Reviving lapsed mapping {} (was {}) for user {} onto paid plan {}",
-                revived.getId(), revived.getStatus(), userId, userPlan.getId());
-        revived.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
-        revived.setUserPlanId(userPlan.getId());
-        revived.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
-        if (userPlan.getEndDate() != null) {
-            revived.setExpiryDate(userPlan.getEndDate());
-        }
-        studentSessionRepository.save(revived);
-
-        try {
-            UserDTO userDTO = authService.getUsersFromAuthServiceWithPasswordByUserId(userId);
-            String instituteId = revived.getInstitute() != null ? revived.getInstitute().getId() : null;
-            String packageSessionId = revived.getPackageSession() != null
-                    ? revived.getPackageSession().getId()
-                    : null;
-            if (instituteId != null && packageSessionId != null) {
-                studentRegistrationManager.triggerEnrollmentWorkflow(instituteId, userDTO, packageSessionId,
-                        revived.getSubOrg(), userPlan.getId());
+        int revivedCount = 0;
+        for (String packageSessionId : packageSessionIds) {
+            StudentSessionInstituteGroupMapping revived = studentSessionRepository
+                    .findLatestForUserInPackageSession(userId, packageSessionId)
+                    .orElse(null);
+            if (revived == null) {
+                log.error("Cannot revive an enrollment for user {} on plan {}: no mapping has ever existed "
+                        + "in package session {}", userId, userPlan.getId(), packageSessionId);
+                continue;
             }
-        } catch (Exception e) {
-            log.error("Revived mapping {} but could not fire the enrollment workflow: {}",
-                    revived.getId(), e.getMessage(), e);
+            if (LearnerSessionStatusEnum.ACTIVE.name().equals(revived.getStatus())
+                    && !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(revived.getType())
+                    && !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(revived.getType())) {
+                // Already a live membership in this session — leave it alone. Matches what
+                // existsActiveMembership counts, so the repair never fights the check that sent
+                // it here.
+                continue;
+            }
+            log.warn("Reviving lapsed mapping {} (was status={} type={}) for user {} onto paid plan {}",
+                    revived.getId(), revived.getStatus(), revived.getType(), userId, userPlan.getId());
+            revived.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
+            revived.setUserPlanId(userPlan.getId());
+            revived.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
+            if (userPlan.getEndDate() != null) {
+                revived.setExpiryDate(userPlan.getEndDate());
+            }
+            studentSessionRepository.save(revived);
+            revivedCount++;
+
+            try {
+                UserDTO userDTO = authService.getUsersFromAuthServiceWithPasswordByUserId(userId);
+                String instituteId = revived.getInstitute() != null ? revived.getInstitute().getId() : null;
+                String revivedSessionId = revived.getPackageSession() != null
+                        ? revived.getPackageSession().getId()
+                        : packageSessionId;
+                if (instituteId != null && revivedSessionId != null) {
+                    studentRegistrationManager.triggerEnrollmentWorkflow(instituteId, userDTO, revivedSessionId,
+                            revived.getSubOrg(), userPlan.getId());
+                }
+            } catch (Exception e) {
+                log.error("Revived mapping {} but could not fire the enrollment workflow: {}",
+                        revived.getId(), e.getMessage(), e);
+            }
         }
-        return true;
+        return revivedCount > 0;
     }
 
     public int shiftLearnerFromPendingForApprovalToActivePackageSessions(List<String> packageSessionIds, String userId,

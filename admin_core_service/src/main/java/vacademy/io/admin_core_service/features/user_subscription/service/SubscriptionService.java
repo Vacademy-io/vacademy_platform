@@ -313,7 +313,13 @@ public class SubscriptionService {
      * where it works today.
      */
     private boolean everWasAMembership(UserPlan plan) {
-        return mappingRepository.existsByUserPlanId(plan.getId())
+        // existsRealEnrollmentForPlan, NOT "has any mapping": reaching the payment step stamps
+        // the plan onto an INVITED row and an ABANDONED_CART row, so every abandoned checkout
+        // carries mappings. Reading those as membership would leave the renewal button on a dead
+        // signup and hide the complete-your-enrollment card from exactly the rows that need it.
+        // Nitika's plan slipped the earlier version only because her Rs 1 failed before any row
+        // was stamped -- the shape the system produces today would have sailed through.
+        return mappingRepository.existsRealEnrollmentForPlan(plan.getId())
                 || paymentLogRepository.existsByUserPlanIdAndPaymentStatus(
                         plan.getId(), PaymentStatusEnum.PAID.name());
     }

@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CaretDown, CaretUp, Check, Plus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import {
+    buildCampaignTypeFilterOptions,
     buildDefaultCampaignTypeOptions,
     type CampaignTypeOption,
 } from '../../-utils/campaign-types';
+import { handleFetchCampaignsList } from '../../-services/get-campaigns-list';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 interface CampaignTypeDropdownProps {
@@ -76,6 +80,23 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
             setOptions((prev) => [...prev, { value, label: value }]);
         }
     }, [value, options]);
+
+    // The five built-in types are not what an institute actually uses. I2CAN's
+    // leads carry nineteen of their own, every one already saved on an audience,
+    // and this dropdown offered none of them — so creating a list meant retyping
+    // a type that existed, and a typo made a twentieth.
+    //
+    // Skipped when the caller supplies its own list (the enquiry form does).
+    const instituteId = getCurrentInstituteId();
+    const { data: audiences } = useQuery({
+        ...handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 }),
+        enabled: !initialOptions && Boolean(instituteId),
+    });
+    useEffect(() => {
+        if (initialOptions || !audiences?.content) return;
+        const saved = audiences.content.map((c) => c.campaign_type);
+        setOptions((prev) => buildCampaignTypeFilterOptions(prev, saved));
+    }, [initialOptions, audiences]);
 
     const handleSelect = (optionValue: string) => {
         onChange(optionValue);
@@ -199,12 +220,9 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                 </div>
             )}
 
-            {error && (
-                <span className="mt-1 block text-sm text-red-500">{error}</span>
-            )}
+            {error && <span className="mt-1 block text-sm text-red-500">{error}</span>}
         </div>
     );
 };
 
 export default CampaignTypeDropdown;
-

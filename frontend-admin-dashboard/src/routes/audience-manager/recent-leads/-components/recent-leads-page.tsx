@@ -1073,6 +1073,7 @@ const RecentLeadsContent = ({
         setPage(0);
     };
     const setDateRange = (value: string) => {
+        if (isLocked('range')) return;
         setPage(0);
         setRangeDays(value);
         if (value === CUSTOM_DATE_VALUE) {
@@ -1088,6 +1089,7 @@ const RecentLeadsContent = ({
     };
     const setCounsellor = (values: string[]) => {
         setPage(0);
+        if (isLocked('counsellor')) return;
         setCounsellorFilters(values);
     };
     const setTier = (values: string[]) => {
@@ -1812,7 +1814,11 @@ const RecentLeadsContent = ({
                         onChange={setUtmFilter}
                     />
                     <ManageListFiltersLink surface="LEADS" />
-                    <Select value={rangeDays} onValueChange={setDateRange}>
+                    <Select
+                        value={rangeDays}
+                        onValueChange={setDateRange}
+                        disabled={isLocked('range')}
+                    >
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
                             <SelectValue />

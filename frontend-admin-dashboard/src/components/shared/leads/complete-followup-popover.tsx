@@ -172,7 +172,8 @@ export function CompleteFollowUpPopover({
         !isBusy &&
         !!effectiveFollowupId &&
         (!needsInlineSchedule || !!nextTime) &&
-        !nextNoteMissing;
+        !nextNoteMissing &&
+        !(needsInlineSchedule && followUpFields.missingRequired);
 
     const isResolving = !followupId && followupsQuery.isLoading;
     const hasNoneOpen = !followupId && !followupsQuery.isLoading && openFollowups.length === 0;
@@ -282,8 +283,14 @@ export function CompleteFollowUpPopover({
                                     className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                                 />
                                 {nextNoteMissing && (
-                                    <p className="text-caption text-warning-600">
+                                    <p className="text-caption text-danger-600">
                                         Your institute requires a note on every follow-up.
+                                    </p>
+                                )}
+                                {followUpFields.missingRequired && (
+                                    <p className="text-caption text-danger-600">
+                                        Answer every field marked * before scheduling this
+                                        follow-up.
                                     </p>
                                 )}
                                 {followUpFields.visible && (

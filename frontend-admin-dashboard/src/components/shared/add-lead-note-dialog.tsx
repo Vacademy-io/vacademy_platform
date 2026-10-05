@@ -106,7 +106,10 @@ export const AddLeadNoteDialog = ({
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId && (!notesRequired || !isNoteEmpty)
+        ? !!scheduleTime &&
+          !!audienceResponseId &&
+          (!notesRequired || !isNoteEmpty) &&
+          !followUpFields.missingRequired
         : !isNoteEmpty || callMeta !== undefined;
 
     const resetState = () => {
@@ -251,8 +254,8 @@ export const AddLeadNoteDialog = ({
                             />
                             {!audienceResponseId && (
                                 <p className="text-xs text-warning-600">
-                                    No campaign response linked — follow-up cannot be scheduled
-                                    from here.
+                                    No campaign response linked — follow-up cannot be scheduled from
+                                    here.
                                 </p>
                             )}
                         </div>
@@ -294,8 +297,13 @@ export const AddLeadNoteDialog = ({
                             minimalToolbar
                         />
                     </div>
+                    {isFollowUp && followUpFields.missingRequired && (
+                        <p className="text-xs text-danger-600">
+                            Answer every field marked * before scheduling this follow-up.
+                        </p>
+                    )}
                     {isFollowUp && notesRequired && isNoteEmpty && (
-                        <p className="text-xs text-warning-600">
+                        <p className="text-xs text-danger-600">
                             Your institute requires a note on every follow-up.
                         </p>
                     )}
@@ -325,11 +333,7 @@ export const AddLeadNoteDialog = ({
                             disabled={isPending || !canSubmit}
                             className="disabled:bg-neutral-200 disabled:text-neutral-500 disabled:opacity-100"
                         >
-                            {isPending
-                                ? 'Saving…'
-                                : isFollowUp
-                                  ? 'Schedule Follow-up'
-                                  : 'Add note'}
+                            {isPending ? 'Saving…' : isFollowUp ? 'Schedule Follow-up' : 'Add note'}
                         </Button>
                     </div>
                 </DialogFooter>

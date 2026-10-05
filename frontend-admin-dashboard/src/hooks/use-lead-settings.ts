@@ -151,6 +151,16 @@ export interface FollowUpFieldsConfig {
      * block a counsellor mid-task.
      */
     notesRequired: boolean;
+    /**
+     * Refuse to save a follow-up until every dropdown the institute configured
+     * has an answer.
+     *
+     * Separate from {@link notesRequired} — an institute can demand the
+     * structured answers without demanding prose, or the other way round. Off by
+     * default: these fields went out optional, and flipping them to mandatory
+     * retroactively would block a counsellor mid-call.
+     */
+    fieldsRequired: boolean;
 }
 
 /**
@@ -227,6 +237,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
         followUpModes: [],
         nextActions: [],
         notesRequired: false,
+        fieldsRequired: false,
     },
     leadLookup: {
         enabled: false,
@@ -310,6 +321,7 @@ export function normaliseFollowUpFields(
         followUpModes: list(saved?.followUpModes),
         nextActions: list(saved?.nextActions),
         notesRequired: saved?.notesRequired === true,
+        fieldsRequired: saved?.fieldsRequired === true,
     };
 }
 

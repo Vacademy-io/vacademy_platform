@@ -56,11 +56,22 @@ export function useFollowUpFields() {
         followUpFields.studentResponses.length > 0 ||
         followUpFields.followUpModes.length > 0 ||
         followUpFields.nextActions.length > 0;
+    const visible = followUpFields.enabled && hasAnyList;
+    // Only a dropdown that is actually rendered can be required — an institute
+    // that configured two lists must not be blocked on a third it never shows.
+    const missingRequired =
+        visible &&
+        followUpFields.fieldsRequired &&
+        ((followUpFields.studentResponses.length > 0 && !values.studentResponse) ||
+            (followUpFields.followUpModes.length > 0 && !values.followUpMode) ||
+            (followUpFields.nextActions.length > 0 && !values.nextAction));
     return {
         values,
         setValues,
         reset,
-        visible: followUpFields.enabled && hasAnyList,
+        visible,
+        /** True while a required dropdown is still unanswered — gate submit on this. */
+        missingRequired,
         /** Spread into the CREATE_LEAD_FOLLOWUP body. Empty when the block is off. */
         payload: followUpFields.enabled ? followUpFieldsPayload(values) : {},
     };
@@ -100,6 +111,7 @@ export function FollowUpFields({
     disabled = false,
 }: FollowUpFieldsProps) {
     const { followUpFields } = useLeadSettings();
+    const required = followUpFields.fieldsRequired;
     if (!followUpFields.enabled) return null;
 
     const fields: { key: keyof FollowUpFieldValues; label: string; options: string[] }[] = [
@@ -120,7 +132,10 @@ export function FollowUpFields({
                 <div key={key} className="space-y-1.5">
                     {/* No htmlFor: SearchableSelect's trigger is a combobox button,
                         not a form control with an id to point at. */}
-                    <Label className="text-sm font-medium">{label}</Label>
+                    <Label className="text-sm font-medium">
+                        {label}
+                        {required && <span className="ml-0.5 text-danger-500">*</span>}
+                    </Label>
                     <SearchableSelect
                         options={options.map((o) => ({ label: o, value: o }))}
                         value={values[key]}

@@ -702,6 +702,25 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * True when the user is an enrolled learner of the institute -- at least one
+   * ACTIVE mapping that came from a completed enrolment (same membership rule
+   * as existsActiveMembership: ABANDONED_CART / PAYMENT_FAILED rows grant
+   * nothing). Gates the "unassigned public live classes" broadcast.
+   */
+  @Query(value = """
+      SELECT EXISTS (
+          SELECT 1 FROM student_session_institute_group_mapping m
+          WHERE m.user_id = :userId
+            AND m.institute_id = :instituteId
+            AND m.status = 'ACTIVE'
+            AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      )
+      """, nativeQuery = true)
+  boolean existsActiveLearnerInInstitute(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   // -------------------------------------------------------------------------
   // Unique Methods from 'autonation-fixes'
   // -------------------------------------------------------------------------

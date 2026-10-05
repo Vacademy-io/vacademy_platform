@@ -174,7 +174,7 @@ public class ParentAssistantService {
         if (primaryBatch != null) {
             try {
                 List<GroupedSessionsByDateDTO> groups = getLiveSessionService
-                        .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), 0, null, null, null, caller);
+                        .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), child.instituteId(), 0, null, null, null, caller);
                 if (groups != null && !groups.isEmpty()) {
                     sb.append("Upcoming classes:\n");
                     groups.stream().limit(6).forEach(g -> {

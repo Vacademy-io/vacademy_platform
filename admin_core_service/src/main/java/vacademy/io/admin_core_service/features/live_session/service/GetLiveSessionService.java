@@ -54,6 +54,9 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionInstructorService instructorService;
 
+    @Autowired
+    private LearnerPublicSessionVisibilityService publicSessionVisibilityService;
+
         private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(java.util.Date date, List<LiveSessionListDTO> sessions) {
                 String defaultLink = null;
                 String defaultName = null;
@@ -372,15 +375,25 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
+    // instituteId is in the key because it can change which institute's
+    // unassigned public classes are added when no batchId is sent.
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #instituteId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
-            String batchId, String userId, int page, Integer size, String startDate, String endDate, CustomUserDetails user) {
+            String batchId, String userId, String instituteId, int page, Integer size, String startDate,
+            String endDate, CustomUserDetails user) {
         // Calculate offset for pagination (only if size is provided)
         Integer offset = (size != null) ? page * size : null;
-        
-        // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
-        List<LiveSessionRepository.LiveSessionListProjection> projections = 
-                sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
+
+        String broadcastInstituteId = publicSessionVisibilityService.resolveBroadcastInstituteId(
+                batchId, instituteId, userId, user != null ? user.getUserId() : null);
+
+        // Optimized: Single query that fetches both batch and user sessions with database-level deduplication.
+        // Institutes that opted in also get their unassigned public classes (see LearnerPublicSessionVisibilityService).
+        List<LiveSessionRepository.LiveSessionListProjection> projections = broadcastInstituteId != null
+                ? sessionRepository.findUpcomingSessionsForUserAndBatchIncludingUnassignedPublic(
+                        batchId, userId, broadcastInstituteId, startDate, endDate, offset, size)
+                : sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(
+                        batchId, userId, startDate, endDate, offset, size);
 
         // Map projections to DTOs
         List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> {

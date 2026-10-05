@@ -71,6 +71,7 @@ public class LearnerPastSessionService {
     private final PackageSessionRepository packageSessionRepository;
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
     private final LiveSessionInstructorService instructorService;
+    private final LearnerPublicSessionVisibilityService publicSessionVisibilityService;
     private final ObjectMapper objectMapper;
 
     public LearnerPastSessionsResponseDTO getPastSessions(String batchId, String userId, String instituteId,
@@ -91,8 +92,13 @@ public class LearnerPastSessionService {
         }
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<LiveSessionRepository.LearnerPastSessionProjection> pageResult = liveSessionRepository
-                .findPastSessionsForUserAndBatch(batchId, userId, startDate, endDate, pageable);
+        // Opted-in institutes also list their unassigned public classes to enrolled learners.
+        boolean includeUnassignedPublic = flags.showUnassignedPublicSessions()
+                && publicSessionVisibilityService.isEnrolledLearner(resolvedInstituteId, userId);
+        Page<LiveSessionRepository.LearnerPastSessionProjection> pageResult = includeUnassignedPublic
+                ? liveSessionRepository.findPastSessionsForUserAndBatchIncludingUnassignedPublic(
+                        batchId, userId, resolvedInstituteId, startDate, endDate, pageable)
+                : liveSessionRepository.findPastSessionsForUserAndBatch(batchId, userId, startDate, endDate, pageable);
 
         List<LiveSessionRepository.LearnerPastSessionProjection> projections = pageResult.getContent();
 

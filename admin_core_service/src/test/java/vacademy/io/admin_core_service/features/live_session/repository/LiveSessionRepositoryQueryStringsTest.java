@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.repository;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.SpelQueryContext;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -20,7 +21,9 @@ class LiveSessionRepositoryQueryStringsTest {
 
     @Test
     void liveSessionQueryStringsParse() {
-        for (Class<?> repo : List.of(SessionGuestRegistrationRepository.class, LiveSessionLogsRepository.class, LiveSessionParticipantRepository.class)) {
+        for (Class<?> repo : List.of(SessionGuestRegistrationRepository.class, LiveSessionLogsRepository.class,
+                LiveSessionParticipantRepository.class, LiveSessionRepository.class,
+                StudentSessionInstituteGroupMappingRepository.class)) {
             for (Method m : repo.getDeclaredMethods()) {
                 Query q = m.getAnnotation(Query.class);
                 if (q == null) continue;

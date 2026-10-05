@@ -36,6 +36,27 @@ import java.util.stream.Collectors;
 @Service
 public class DistinctUserAudienceService {
 
+    /**
+     * The search split into %token% patterns for LIKE ALL, pipe-separated.
+     *
+     * Names here are routinely stored jammed together ("DrBhagyshriRajput") while people
+     * type them spaced and in any order, and half a contact's identity can sit on the name
+     * and half on the email ("Dr Manish" / manishbachhav27.mb@...). A single substring match
+     * found neither. Requiring every token somewhere in the name+email text finds both.
+     *
+     * Pipe is the separator because STRING_TO_ARRAY needs one and a pipe in a typed name is
+     * far-fetched; any that appear are dropped rather than splitting the token.
+     */
+    private static String searchTokensCsv(String nameSearch) {
+        if (nameSearch == null || nameSearch.isBlank()) return null;
+        String[] parts = nameSearch.toLowerCase().replace('|', ' ').trim().split("\\s+");
+        List<String> tokens = new ArrayList<>();
+        for (String part : parts) {
+            if (!part.isBlank()) tokens.add("%" + part + "%");
+        }
+        return tokens.isEmpty() ? null : String.join("|", tokens);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(DistinctUserAudienceService.class);
 
     @Autowired
@@ -164,6 +185,7 @@ public class DistinctUserAudienceService {
                 includeInstituteUsers ? request.getPaymentStatuses() : null,
                 includeInstituteUsers ? request.getSubOrgUserTypes() : null,
                 nameSearch,
+                searchTokensCsv(nameSearch),
                 genders,
                 effectiveAudienceIds,
                 cfResolution.matchedIdsCsv(),

@@ -16,4 +16,7 @@ public class NotificationConstant {
      * This path is open for inter-service calls (see AnnouncementSecurityConfig).
      */
     public static final String ANNOUNCEMENT_MULTIPLE = "/notification-service/v1/announcements/admin/multiple";
+
+    /** Where the bell reads from, and where an alert is switched off again. */
+    public static final String USER_MESSAGES = "/notification-service/v1/user-messages";
 }

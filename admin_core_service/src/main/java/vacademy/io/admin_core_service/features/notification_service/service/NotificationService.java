@@ -397,6 +397,19 @@ public class NotificationService {
             String instituteId, List<String> userIds, String title, String body,
             String createdBy, String createdByName, String createdByRole,
             Map<String, Object> alertSettings) {
+        createSystemAlertAnnouncement(instituteId, userIds, title, body, createdBy,
+                createdByName, createdByRole, alertSettings, null, null);
+    }
+
+    /**
+     * As above, but tagging the announcement with what it is ABOUT so it can be
+     * found and switched off later — a lead-assignment alert that must stay on
+     * the bell until the counsellor has actually worked that lead.
+     */
+    public void createSystemAlertAnnouncement(
+            String instituteId, List<String> userIds, String title, String body,
+            String createdBy, String createdByName, String createdByRole,
+            Map<String, Object> alertSettings, String entity, String entityId) {
         if (instituteId == null || instituteId.isEmpty()) return;
         if (userIds == null || userIds.isEmpty()) return;
 
@@ -438,6 +451,10 @@ public class NotificationService {
         payload.put("instituteId", instituteId);
         payload.put("createdBy", createdBy != null && !createdBy.isEmpty() ? createdBy : "system");
         payload.put("createdByName", createdByName != null ? createdByName : "System");
+        if (entity != null && !entity.isBlank() && entityId != null && !entityId.isBlank()) {
+            payload.put("entity", entity);
+            payload.put("entityId", entityId);
+        }
         payload.put("createdByRole", createdByRole != null ? createdByRole : "ADMIN");
         payload.put("recipients", recipients);
         payload.put("modes", List.of(mode));
@@ -452,6 +469,34 @@ public class NotificationService {
         } catch (Exception e) {
             log.warn("System alert announcement dispatch failed (institute={}, users={}): {}",
                     instituteId, recipients.size(), e.getMessage());
+        }
+    }
+
+    /**
+     * Switch off the still-active system alerts raised about one entity.
+     *
+     * The lead-assignment bell is not dismissible on purpose — it is meant to
+     * stay until the counsellor works the lead — so this is the only way it
+     * comes down. Best-effort like every other call here: a notification-service
+     * blip must never fail the activity that triggered it.
+     */
+    public void deactivateSystemAlertsForEntity(String instituteId, String entity, String entityId) {
+        if (instituteId == null || instituteId.isBlank()
+                || entity == null || entity.isBlank()
+                || entityId == null || entityId.isBlank()) {
+            return;
+        }
+        try {
+            String route = NotificationConstant.USER_MESSAGES
+                    + "/system-alerts/deactivate-by-entity"
+                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&entity=" + java.net.URLEncoder.encode(entity, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&entityId=" + java.net.URLEncoder.encode(entityId, java.nio.charset.StandardCharsets.UTF_8);
+            internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.PUT.name(), notificationServerBaseUrl, route, null);
+        } catch (Exception e) {
+            log.warn("Could not clear system alerts for {} {} (institute={}): {}",
+                    entity, entityId, instituteId, e.getMessage());
         }
     }
 

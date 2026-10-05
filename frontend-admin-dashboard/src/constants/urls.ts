@@ -449,6 +449,7 @@ export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
 export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
 // Caller's own open follow-ups (no instituteId → backend scopes to created_by=caller).
 export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
+export const COMPLETED_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/completed`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
@@ -1455,9 +1456,12 @@ export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profil
 export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
 export const MENTORSHIP_MY_BOOKING_PAGE = `${MENTORSHIP_BASE}/my-booking-page`;
 export const MENTORSHIP_REQUESTS = `${MENTORSHIP_BASE}/requests`;
-export const MENTORSHIP_REQUEST_APPROVE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/approve`;
-export const MENTORSHIP_REQUEST_DECLINE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/decline`;
-export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
+export const MENTORSHIP_REQUEST_APPROVE = (id: string) =>
+    `${MENTORSHIP_BASE}/requests/${id}/approve`;
+export const MENTORSHIP_REQUEST_DECLINE = (id: string) =>
+    `${MENTORSHIP_BASE}/requests/${id}/decline`;
+export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
 export const MENTORSHIP_SESSIONS = `${MENTORSHIP_BASE}/sessions`;
 export const MENTORSHIP_SESSION_STATS = `${MENTORSHIP_BASE}/sessions/stats`;
 export const MENTORSHIP_MY_SESSIONS_AWAITING = `${MENTORSHIP_BASE}/my-sessions/awaiting-review`;
@@ -1469,7 +1473,8 @@ export const MENTORSHIP_MY_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/my-sessions/
 export const MENTORSHIP_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/sessions/schedule`;
 export const MENTORSHIP_MY_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/my-sessions/schedule`;
 export const MENTORSHIP_MENTOR_MENTEES = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/mentees`;
-export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/availability`;
+export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/availability`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1907,9 +1912,11 @@ export const HR_PAYROLL_ADJUSTMENT_BY_ID = (id: string) => `${HR_BASE}/payroll/a
 export const HR_PAYROLL_FNF_PREPARE = `${HR_BASE}/payroll/fnf/prepare`;
 export const HR_PAYROLL_LOANS = `${HR_BASE}/payroll/loans`;
 export const HR_PAYROLL_LOAN_APPROVE = (id: string) => `${HR_BASE}/payroll/loans/${id}/approve`;
-export const HR_PAYROLL_LOAN_REPAYMENTS = (id: string) => `${HR_BASE}/payroll/loans/${id}/repayments`;
+export const HR_PAYROLL_LOAN_REPAYMENTS = (id: string) =>
+    `${HR_BASE}/payroll/loans/${id}/repayments`;
 export const HR_REIMBURSEMENTS = `${HR_BASE}/payroll/reimbursements`;
-export const HR_REIMBURSEMENT_ACTION = (id: string) => `${HR_BASE}/payroll/reimbursements/${id}/action`;
+export const HR_REIMBURSEMENT_ACTION = (id: string) =>
+    `${HR_BASE}/payroll/reimbursements/${id}/action`;
 
 // Payslips & bank export
 export const HR_PAYSLIPS_GENERATE = `${HR_BASE}/payslips/generate`;
@@ -1917,7 +1924,8 @@ export const HR_PAYSLIPS = `${HR_BASE}/payslips`;
 export const HR_PAYSLIP_DOWNLOAD = (id: string) => `${HR_BASE}/payslips/${id}/download`;
 export const HR_PAYSLIPS_EMAIL = `${HR_BASE}/payslips/email`;
 export const HR_BANK_EXPORT = `${HR_BASE}/reports/bank-export`;
-export const HR_BANK_EXPORT_DOWNLOAD = (id: string) => `${HR_BASE}/reports/bank-export/${id}/download`;
+export const HR_BANK_EXPORT_DOWNLOAD = (id: string) =>
+    `${HR_BASE}/reports/bank-export/${id}/download`;
 export const HR_REPORT_PAYROLL_SUMMARY = `${HR_BASE}/reports/payroll-summary`;
 
 // Attendance

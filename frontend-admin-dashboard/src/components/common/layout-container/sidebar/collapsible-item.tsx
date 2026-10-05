@@ -10,7 +10,7 @@ import { LockKey } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { getCategoryColors } from './sidebar-colors';
 import { recordRecentTab } from './recent-tabs-store';
-import { parseSidebarLink } from './helper';
+import { parseSidebarLink, isSidebarLinkActive, sidebarLinkSpecificity } from './helper';
 
 export const CollapsibleItem = ({
     icon,
@@ -27,17 +27,19 @@ export const CollapsibleItem = ({
     const colors = getCategoryColors(category as 'CRM' | 'LMS' | 'AI');
 
     const currentRoute = router.state.location.pathname;
+    const currentSearch = router.state.location.search as Record<string, unknown> | undefined;
 
     const isSubLinkActive = (link: string) =>
-        currentRoute === link || currentRoute.startsWith(link + '/');
+        isSidebarLinkActive(link, currentRoute, currentSearch);
 
-    // Most-specific match wins: pick the subItem whose link is the longest prefix of currentRoute
+    // Most-specific match wins. Specificity counts the link's own query params
+    // first, so ?bucket=all beats the bare path it shares.
     const activeSubLink = (() => {
         const matches =
             subItems?.filter((item) => item.subItemLink && isSubLinkActive(item.subItemLink)) ?? [];
         if (!matches.length) return null;
         return matches.reduce((a, b) =>
-            (a.subItemLink?.length ?? 0) >= (b.subItemLink?.length ?? 0) ? a : b
+            sidebarLinkSpecificity(a.subItemLink) >= sidebarLinkSpecificity(b.subItemLink) ? a : b
         ).subItemLink;
     })();
 

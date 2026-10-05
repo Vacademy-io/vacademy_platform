@@ -1783,7 +1783,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR s.full_name ILIKE '%' || :nameSearch || '%'
               OR s.email ILIKE '%' || :nameSearch || '%'
               OR (
-                  :nameSearch ~ '[0-9]'
+                  :nameSearch ~ '^[0-9+()./ -]+$'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
               )
             )
@@ -1821,7 +1821,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR (COALESCE(:searchUserIdsCsv, '') != ''
                   AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ',')))
               OR (
-                  :nameSearch ~ '[0-9]'
+                  :nameSearch ~ '^[0-9+()./ -]+$'
                   AND (
                       REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
                       OR REGEXP_REPLACE(ar.parent_mobile, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
@@ -1883,7 +1883,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR s.full_name ILIKE '%' || :nameSearch || '%'
               OR s.email ILIKE '%' || :nameSearch || '%'
               OR (
-                  :nameSearch ~ '[0-9]'
+                  :nameSearch ~ '^[0-9+()./ -]+$'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
               )
             )
@@ -1920,7 +1920,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR (COALESCE(:searchUserIdsCsv, '') != ''
                   AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ',')))
               OR (
-                  :nameSearch ~ '[0-9]'
+                  :nameSearch ~ '^[0-9+()./ -]+$'
                   AND (
                       REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
                       OR REGEXP_REPLACE(ar.parent_mobile, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'

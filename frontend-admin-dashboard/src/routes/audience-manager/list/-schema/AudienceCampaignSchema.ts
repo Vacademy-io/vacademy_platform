@@ -104,11 +104,15 @@ const formAppearanceSchema = z.object({
     coverImageUrl: z.string().catch(''),
     eyebrow: z.string().catch(''),
     headline: z.string().catch(''),
+    headingAlign: z.enum(['left', 'center', 'right']).catch(DEFAULT_FORM_APPEARANCE.headingAlign),
     subheadline: z.string().catch(''),
     showDescription: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showDescription),
     showObjective: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showObjective),
     formTitle: z.string().catch(''),
     formSubtitle: z.string().catch(''),
+    formHeaderAlign: z
+        .enum(['left', 'center', 'right'])
+        .catch(DEFAULT_FORM_APPEARANCE.formHeaderAlign),
     submitLabel: z.string().catch(''),
     showRequiredLegend: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showRequiredLegend),
     showProgress: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showProgress),

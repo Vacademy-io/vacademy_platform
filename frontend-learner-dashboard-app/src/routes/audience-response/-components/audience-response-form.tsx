@@ -48,6 +48,8 @@ import { PostSubmitArtwork } from "./post-submit-artwork";
 import {
   AUDIENCE_FORM_HOOKS,
   parseAudienceFormAppearance,
+  resolveFormSubtitle,
+  resolveFormSubtitleHtml,
   resolveHeroHtml,
   sanitizeCustomCss,
 } from "../-utils/form-appearance";
@@ -58,6 +60,7 @@ import {
   FORM_CARD_CLASS,
   FORM_CARD_VARIANT,
   FORM_RICH_TEXT_CLASS,
+  FORM_TEXT_ALIGN_CLASS,
   FORM_WIDTH_CLASS,
 } from "../-utils/form-appearance-styles";
 import { AudienceFormHero } from "./audience-form-hero";
@@ -408,6 +411,12 @@ const AudienceResponseForm = ({
     [appearance.customCss]
   );
   const heroHtml = useMemo(() => resolveHeroHtml(appearance), [appearance]);
+  // Card sub-heading: the admin's rich text, else their plain text, else the
+  // translated default.
+  const formSubtitleHtml = useMemo(
+    () => resolveFormSubtitleHtml(appearance),
+    [appearance]
+  );
 
   const cardVariant = FORM_CARD_VARIANT[appearance.cardStyle];
   const cardClass = FORM_CARD_CLASS[appearance.cardStyle];
@@ -631,15 +640,28 @@ const AudienceResponseForm = ({
       className={cn(AUDIENCE_FORM_HOOKS.card, "flex flex-col gap-section", cardClass)}
       id="response-form-card"
     >
-      <div className={cn(AUDIENCE_FORM_HOOKS.cardHeader, "flex flex-col gap-2")}>
+      <div
+        className={cn(
+          AUDIENCE_FORM_HOOKS.cardHeader,
+          "flex flex-col gap-2",
+          FORM_TEXT_ALIGN_CLASS[appearance.formHeaderAlign]
+        )}
+      >
         <h2 className="text-h3 font-semibold text-foreground">
           {appearance.formTitle.trim() ||
             t("audienceResponse.form.details.title")}
         </h2>
-        <p className="text-body text-muted-foreground">
-          {appearance.formSubtitle.trim() ||
-            t("audienceResponse.form.details.subtitle")}
-        </p>
+        {formSubtitleHtml ? (
+          <div
+            className={cn("text-body text-muted-foreground", FORM_RICH_TEXT_CLASS)}
+            dangerouslySetInnerHTML={{ __html: formSubtitleHtml }}
+          />
+        ) : (
+          <p className="text-body text-muted-foreground">
+            {resolveFormSubtitle(appearance) ||
+              t("audienceResponse.form.details.subtitle")}
+          </p>
+        )}
 
         {appearance.showProgress && requiredProgress && (
           <div className="mt-2 flex flex-col gap-1.5">

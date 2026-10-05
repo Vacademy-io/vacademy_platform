@@ -86,7 +86,28 @@ describe('normalizeFormAppearance', () => {
     });
 
     it('caps a runaway string rather than storing it', () => {
-        expect(normalizeFormAppearance({ headline: 'x'.repeat(5000) }).headline).toHaveLength(500);
+        const normalized = normalizeFormAppearance({
+            eyebrow: 'x'.repeat(5000),
+            headline: 'x'.repeat(9000),
+            formSubtitle: 'x'.repeat(9000),
+        });
+        expect(normalized.eyebrow).toHaveLength(500);
+        // Rich-text fields get the learner's larger cap — markup is longer
+        // than its words, and a cut at 500 would split a tag.
+        expect(normalized.headline).toHaveLength(5000);
+        expect(normalized.formSubtitle).toHaveLength(5000);
+    });
+
+    it('keeps a rich-text heading intact and reads the alignments', () => {
+        const headline = `<p><strong>${'Fill this form '.repeat(40)}</strong></p>`;
+        const normalized = normalizeFormAppearance({
+            headline,
+            headingAlign: 'center',
+            formHeaderAlign: 'sideways',
+        });
+        expect(normalized.headline).toBe(headline);
+        expect(normalized.headingAlign).toBe('center');
+        expect(normalized.formHeaderAlign).toBe('left');
     });
 
     it('keeps blank highlight rows — the admin is still typing into them', () => {
@@ -194,6 +215,9 @@ describe('isDefaultFormAppearance', () => {
         ['layout', { layout: 'split' as const }],
         ['accent', { accent: 'info' as const }],
         ['formTitle', { formTitle: 'Your details' }],
+        ['headline', { headline: '<p>Fill this form</p>' }],
+        ['headingAlign', { headingAlign: 'center' as const }],
+        ['formHeaderAlign', { formHeaderAlign: 'right' as const }],
         ['showObjective', { showObjective: false }],
         ['showProgress', { showProgress: true }],
     ])('is false once %s is customised', (_label, changes) => {

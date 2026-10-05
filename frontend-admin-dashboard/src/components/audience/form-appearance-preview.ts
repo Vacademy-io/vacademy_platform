@@ -176,6 +176,34 @@ const sanitizeCss = (css: string): string => {
         .trim();
 };
 
+const HTML_TAG = /<[a-z][^>]*>/i;
+
+/**
+ * Sanitized HTML for a plain-or-rich field (`headline`, `formSubtitle`), or
+ * null when it should render as text instead: plain text, or an editor that
+ * holds no visible words (`<p></p>`). Mirrors the learner's
+ * `resolveRichTextHtml`, so an emptied editor previews the default copy just
+ * as the live page will.
+ */
+const richTextHtml = (value: string): string | null => {
+    if (!HTML_TAG.test(value)) return null;
+    const html = sanitizeHtml(value);
+    const words = html
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .trim();
+    return words ? html : null;
+};
+
+/** The plain-text form of a plain-or-rich field, "" for an emptied editor. */
+const plainText = (value: string): string => (HTML_TAG.test(value) ? '' : value.trim());
+
+const SELF_ALIGN: Record<AudienceFormAppearance['headingAlign'], string> = {
+    left: 'flex-start',
+    center: 'center',
+    right: 'flex-end',
+};
+
 const ACCENT_VAR: Record<AudienceFormAppearance['accent'], string> = {
     primary: '--primary-500',
     success: '--success-600',
@@ -230,7 +258,20 @@ export const buildFormAppearancePreview = (
               : 'none';
     const cardBorder = config.cardStyle === 'flat' ? 'transparent' : border;
 
-    const headline = escapeHtml(config.headline.trim() || context.campaignName || 'Your campaign');
+    // Same tags as the live page: a plain heading is an <h1>, rich text is a
+    // <div role="heading"> (the editor's <p> cannot sit inside an <h1>). An
+    // admin's Custom CSS aimed at `h1` must preview the way it will render.
+    const headlineRich = richTextHtml(config.headline);
+    const headlineHtml = headlineRich
+        ? `<div class="h1" role="heading" aria-level="1">${headlineRich}</div>`
+        : `<h1>${escapeHtml(plainText(config.headline) || context.campaignName || 'Your campaign')}</h1>`;
+    const subtitleRich = richTextHtml(config.formSubtitle);
+    const subtitleHtml = subtitleRich
+        ? `<div class="sub">${subtitleRich}</div>`
+        : `<p>${escapeHtml(
+              plainText(config.formSubtitle) ||
+                  'This information will be used to contact you about the campaign.'
+          )}</p>`;
     const introSource = config.subheadline.trim() || context.campaignDescription.trim();
     const intro = config.showDescription && introSource ? sanitizeHtml(introSource) : '';
     const objective = config.showObjective ? escapeHtml(context.campaignObjective.trim()) : '';
@@ -253,7 +294,7 @@ export const buildFormAppearancePreview = (
         : `<div class="vac-af-hero">
               ${config.coverImageUrl.trim() ? `<div class="cover"></div>` : ''}
               ${eyebrow ? `<span class="eyebrow">${eyebrow}</span>` : ''}
-              <h1>${headline}</h1>
+              ${headlineHtml}
               ${intro ? `<div class="intro">${intro}</div>` : ''}
               ${
                   objective
@@ -287,10 +328,7 @@ export const buildFormAppearancePreview = (
     const cardHtml = `<div class="vac-af-card">
         <div class="vac-af-card-header">
             <h2>${escapeHtml(config.formTitle.trim() || 'Please fill in your details')}</h2>
-            <p>${escapeHtml(
-                config.formSubtitle.trim() ||
-                    'This information will be used to contact you about the campaign.'
-            )}</p>
+            ${subtitleHtml}
             ${progressHtml}
             ${legendHtml}
         </div>
@@ -328,20 +366,25 @@ ${themeRoot()}
   .stack { display:flex; flex-direction:column; gap:1.5rem; }
   .split { display:grid; grid-template-columns:5fr 7fr; gap:1.5rem; align-items:start; }
   @media (max-width:640px){ .split { grid-template-columns:1fr; } }
-  .vac-af-hero { display:flex; flex-direction:column; gap:.75rem; }
+  .vac-af-hero { display:flex; flex-direction:column; gap:.75rem;
+                 text-align:${config.headingAlign}; }
   .cover { height:6rem; border-radius:.75rem; background:${border}; }
-  .eyebrow { align-self:flex-start; background:${brandSoft}; color:${accent}; border-radius:999px;
+  .eyebrow { align-self:${SELF_ALIGN[config.headingAlign]}; background:${brandSoft}; color:${accent}; border-radius:999px;
              padding:.25rem .75rem; font-size:.75rem; font-weight:600; letter-spacing:.06em;
              text-transform:uppercase; }
-  h1 { font-size:1.75rem; line-height:1.2; margin:0; font-weight:600; }
+  h1, .h1 { font-size:1.75rem; line-height:1.2; margin:0; font-weight:600; }
+  .h1 p, .sub p { margin:0 0 .5rem; }
+  .h1 p:last-child, .sub p:last-child { margin-bottom:0; }
+  .h1 ul, .h1 ol, .sub ul, .sub ol { list-style-position:inside; padding-left:0; margin:0; }
   .intro { color:${mutedText}; font-size:1rem; line-height:1.6; }
   .intro p { margin:0 0 .5rem; }
-  .objective { display:flex; flex-direction:column; gap:.25rem; border:1px solid ${border};
+  .objective { text-align:left; display:flex; flex-direction:column; gap:.25rem; border:1px solid ${border};
                background:${surface}; border-radius:.5rem; padding:1rem; }
   .obj-label { margin:0; font-size:.75rem; font-weight:600; letter-spacing:.06em;
                text-transform:uppercase; color:${mutedText}; }
   .objective p:last-child { margin:0; font-size:.875rem; }
-  .hl { list-style:none; display:flex; flex-wrap:wrap; gap:.5rem; padding:0; margin:0; }
+  .hl { list-style:none; display:flex; flex-wrap:wrap; gap:.5rem; padding:0; margin:0;
+        justify-content:${SELF_ALIGN[config.headingAlign]}; }
   .hl li { display:flex; align-items:center; gap:.5rem; border:1px solid ${border};
            background:${surface}; border-radius:999px; padding:.375rem .75rem; font-size:.75rem; }
   .hl-i { color:${accent}; }
@@ -349,9 +392,11 @@ ${themeRoot()}
                  border:1px solid ${cardBorder}; border-radius:.5rem; box-shadow:${cardShadow};
                  padding:1.5rem; display:flex; flex-direction:column; gap:1.5rem; }
   .hero-card { gap:.75rem; }
-  .vac-af-card-header { display:flex; flex-direction:column; gap:.5rem; }
+  .vac-af-card-header { display:flex; flex-direction:column; gap:.5rem;
+                        text-align:${config.formHeaderAlign}; }
   .vac-af-card-header h2 { margin:0; font-size:1.25rem; font-weight:600; }
-  .vac-af-card-header p { margin:0; font-size:.875rem; color:${mutedText}; }
+  .vac-af-card-header > p, .vac-af-card-header .sub { margin:0; font-size:.875rem;
+                                                      color:${mutedText}; }
   .meter { display:flex; flex-direction:column; gap:.375rem; margin-top:.25rem; }
   .meter-row { display:flex; justify-content:space-between; font-size:.75rem; color:${mutedText}; }
   .meter-track { height:.375rem; border-radius:999px; background:${mutedSurface}; overflow:hidden; }

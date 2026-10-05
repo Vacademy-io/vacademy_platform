@@ -7,7 +7,10 @@ import {
   DEFAULT_FORM_APPEARANCE,
   MAX_FORM_HIGHLIGHTS,
   parseAudienceFormAppearance,
+  resolveFormSubtitle,
+  resolveFormSubtitleHtml,
   resolveHeadline,
+  resolveHeadlineHtml,
   resolveHeroBodyHtml,
   resolveHeroHtml,
   sanitizeCustomCss,
@@ -92,8 +95,12 @@ describe("parseAudienceFormAppearance — a public form must always render", () 
   });
 
   it("caps a runaway string rather than rendering it", () => {
-    const parsed = parseAudienceFormAppearance(wrap({ headline: "x".repeat(5000) }));
-    expect(parsed.headline).toHaveLength(500);
+    const parsed = parseAudienceFormAppearance(
+      wrap({ eyebrow: "x".repeat(5000), headline: "x".repeat(9000) })
+    );
+    expect(parsed.eyebrow).toHaveLength(500);
+    // Rich-text fields get a larger cap: markup is longer than its words.
+    expect(parsed.headline).toHaveLength(5000);
   });
 });
 
@@ -175,6 +182,54 @@ describe("resolveHeadline", () => {
 
   it("survives a campaign with no name", () => {
     expect(resolveHeadline(DEFAULT_FORM_APPEARANCE, null)).toBe("");
+  });
+});
+
+describe("rich-text heading and sub-heading", () => {
+  it("renders a rich headline as sanitized HTML and strips it for the text form", () => {
+    const appearance = {
+      ...DEFAULT_FORM_APPEARANCE,
+      headline: '<p>Join <strong>us</strong></p><script>alert(1)</script>',
+    };
+    const html = resolveHeadlineHtml(appearance);
+    expect(html).toContain("<strong>us</strong>");
+    expect(html).not.toContain("script");
+    expect(resolveHeadline(appearance, "Summer Intake")).toBe("Join us");
+  });
+
+  it("treats an emptied editor as unset, so the campaign name comes back", () => {
+    const appearance = { ...DEFAULT_FORM_APPEARANCE, headline: "<p></p>" };
+    expect(resolveHeadlineHtml(appearance)).toBe("");
+    expect(resolveHeadline(appearance, "Summer Intake")).toBe("Summer Intake");
+  });
+
+  it("keeps a plain headline on the text path, untouched", () => {
+    const appearance = { ...DEFAULT_FORM_APPEARANCE, headline: "Ages <5 & >3" };
+    expect(resolveHeadlineHtml(appearance)).toBe("");
+    expect(resolveHeadline(appearance, "x")).toBe("Ages <5 & >3");
+  });
+
+  it("does the same for the form sub-heading", () => {
+    const rich = { ...DEFAULT_FORM_APPEARANCE, formSubtitle: "<p>We <em>reply</em> fast</p>" };
+    expect(resolveFormSubtitleHtml(rich)).toContain("<em>reply</em>");
+    const blank = { ...DEFAULT_FORM_APPEARANCE, formSubtitle: "<p><br></p>" };
+    expect(resolveFormSubtitleHtml(blank)).toBe("");
+    expect(resolveFormSubtitle(blank)).toBe("");
+    const plain = { ...DEFAULT_FORM_APPEARANCE, formSubtitle: " Call us " };
+    expect(resolveFormSubtitle(plain)).toBe("Call us");
+  });
+
+  it("does not cut a long rich headline at the 500-character label cap", () => {
+    const long = `<p>${"word ".repeat(150)}</p>`;
+    expect(parseAudienceFormAppearance(wrap({ headline: long })).headline).toBe(long);
+  });
+
+  it("parses alignment and rejects unknown values", () => {
+    const parsed = parseAudienceFormAppearance(
+      wrap({ headingAlign: "center", formHeaderAlign: "justify" })
+    );
+    expect(parsed.headingAlign).toBe("center");
+    expect(parsed.formHeaderAlign).toBe("left");
   });
 });
 

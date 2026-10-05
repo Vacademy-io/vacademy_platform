@@ -45,7 +45,7 @@
             "label": "جميع حالات SLA"
         },
         "audience": {
-            "label": "جميع الجماهير",
+            "label": "كل {{term}}",
             "untitled": "جمهور بلا عنوان"
         },
         "campaignType": {

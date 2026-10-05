@@ -41,7 +41,7 @@
             "label": "All SLA states"
         },
         "audience": {
-            "label": "All audiences",
+            "label": "All {{term}}",
             "untitled": "Untitled audience"
         },
         "campaignType": {

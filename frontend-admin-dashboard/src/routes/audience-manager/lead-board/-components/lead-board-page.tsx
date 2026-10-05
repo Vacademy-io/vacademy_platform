@@ -632,7 +632,7 @@ const LeadBoardContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label={t('filters.audience.label')}
+                        label={t('filters.audience.label', { term: terminology.leadSource })}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
                         options={audienceOptions.map((opt) => ({
                             value: opt.id,

@@ -1646,6 +1646,7 @@ const RecentLeadsContent = ({
                             }))}
                             selected={tierFilters}
                             onChange={setTier}
+                            locked={isLocked('tier')}
                             widthClass="w-36"
                         />
                     )}
@@ -1671,6 +1672,7 @@ const RecentLeadsContent = ({
                         ]}
                         selected={leadStatusFilters}
                         onChange={handleLeadStatusChange}
+                        locked={isLocked('status')}
                         widthClass="w-44"
                         exclude={{
                             value: statusExclude,
@@ -1690,6 +1692,7 @@ const RecentLeadsContent = ({
                                 .map((o) => ({ value: o.value, label: o.label }))}
                             selected={slaFilters}
                             onChange={setSla}
+                            locked={isLocked('sla')}
                             widthClass="w-44"
                         />
                     )}
@@ -1708,10 +1711,11 @@ const RecentLeadsContent = ({
                         options={campaignTypeOptions}
                         selected={campaignTypeFilters}
                         onChange={handleCampaignTypeChange}
+                        locked={isLocked('campaignType')}
                         widthClass="w-48"
                     />
                     <MultiSelectFilter
-                        label={t('filters.audience.label')}
+                        label={t('filters.audience.label', { term: terminology.leadSource })}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
                         options={typeAudienceOptions.map((opt) => ({
                             value: opt.id,
@@ -1719,6 +1723,7 @@ const RecentLeadsContent = ({
                         }))}
                         selected={audienceFilters}
                         onChange={handleAudienceChange}
+                        locked={isLocked('audience')}
                         widthClass="w-44"
                     />
                     <CallHistoryFilter

@@ -42,7 +42,7 @@
             "label": "Tous les états SLA"
         },
         "audience": {
-            "label": "Toutes les audiences",
+            "label": "Tous : {{term}}",
             "untitled": "Audience sans titre"
         },
         "campaignType": {

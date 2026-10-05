@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.audience.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +25,23 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
     /** Manager view: pending follow-ups owned by anyone in the caller's hierarchy scope. */
     List<LeadFollowup> findByInstituteIdAndCreatedByInAndIsClosedFalseOrderByScheduleTimeAsc(
             String instituteId, List<String> createdBy);
+
+    /*
+     * Completed follow-ups. Paged, unlike their pending counterparts above: the
+     * closed set only ever grows, so an institute a year in would otherwise be
+     * handing the browser every follow-up it has ever finished.
+     *
+     * Scoped on created_by to match the pending queries exactly. Who CLOSED a
+     * follow-up is a different question from whose follow-up it is, and only
+     * the latter decides who may see it; closed_by rides along on the DTO for
+     * display.
+     */
+    Page<LeadFollowup> findByInstituteIdAndIsClosedTrue(String instituteId, Pageable pageable);
+
+    Page<LeadFollowup> findByInstituteIdAndCreatedByInAndIsClosedTrue(
+            String instituteId, List<String> createdBy, Pageable pageable);
+
+    Page<LeadFollowup> findByCreatedByAndIsClosedTrue(String createdBy, Pageable pageable);
 
     /**
      * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.

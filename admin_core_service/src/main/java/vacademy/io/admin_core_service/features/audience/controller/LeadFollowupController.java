@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.audience.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
@@ -50,6 +52,23 @@ public class LeadFollowupController {
             @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(leadFollowupService.myPending(user, instituteId, counsellorUserId));
+    }
+
+    /**
+     * Completed follow-ups, newest first — what the Follow-ups page's
+     * "Completed" tile lists. Same scoping as {@link #myPending}, but paged:
+     * the closed set only grows.
+     */
+    @GetMapping("/completed")
+    public ResponseEntity<Page<LeadFollowupDto>> completed(
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(
+                leadFollowupService.completed(user, instituteId, counsellorUserId,
+                        PageRequest.of(page, size)));
     }
 
     @PutMapping("/{id}")

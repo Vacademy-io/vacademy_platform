@@ -14,7 +14,11 @@
         },
         "all": {
             "label": "सभी",
-            "caption": "सभी फ़ॉलो-अप"
+            "caption": "सभी लंबित"
+        },
+        "completed": {
+            "label": "पूर्ण",
+            "caption": "हो चुके"
         }
     }
 }

@@ -5,7 +5,10 @@
         "wasDue": "كان مستحقًا",
         "completedAt": "اكتمل في",
         "completedBy": "أكمله",
-        "outcome": "النتيجة"
+        "outcome": "النتيجة",
+        "studentResponse": "رد الطالب",
+        "followUpMode": "الوسيلة",
+        "nextAction": "الإجراء التالي"
     },
     "empty": {
         "title": "لا توجد متابعات مكتملة",

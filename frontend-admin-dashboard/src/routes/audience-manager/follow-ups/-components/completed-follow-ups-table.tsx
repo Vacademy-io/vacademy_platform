@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { LeadAvatar } from '@/components/shared/leads/lead-avatar';
 import { LeadEmptyState } from '@/components/shared/leads';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 import type { CompletedFollowUp } from '../-services/get-completed-follow-ups';
 
 /**
@@ -37,6 +38,20 @@ export function CompletedFollowUpsTable({
     counsellorName,
 }: CompletedFollowUpsTableProps) {
     const { t } = useTranslation('audienceManagerFollowUpsCompletedTable');
+    const { followUpFields } = useLeadSettings();
+
+    /**
+     * What the counsellor recorded on the call — shown only for institutes that
+     * configured these fields, and only the ones they actually configured. An
+     * institute with the block off sees exactly the six columns it saw before.
+     */
+    const extraColumns = (
+        [
+            ['studentResponse', 'student_response', followUpFields.studentResponses],
+            ['followUpMode', 'follow_up_mode', followUpFields.followUpModes],
+            ['nextAction', 'next_action', followUpFields.nextActions],
+        ] as const
+    ).filter(([, , options]) => followUpFields.enabled && options.length > 0);
 
     if (isLoading) return <DashboardLoader />;
     if (rows.length === 0) {
@@ -50,16 +65,15 @@ export function CompletedFollowUpsTable({
             <table className="w-full text-sm">
                 <thead className="bg-neutral-50">
                     <tr>
-                        {(
-                            [
-                                'lead',
-                                'contact',
-                                'wasDue',
-                                'completedAt',
-                                'completedBy',
-                                'outcome',
-                            ] as const
-                        ).map((k) => (
+                        {[
+                            'lead',
+                            'contact',
+                            'wasDue',
+                            'completedAt',
+                            'completedBy',
+                            'outcome',
+                            ...extraColumns.map(([headerKey]) => headerKey),
+                        ].map((k) => (
                             <th
                                 key={k}
                                 className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold text-neutral-500"
@@ -99,6 +113,13 @@ export function CompletedFollowUpsTable({
                                     {row.closer_reason || '—'}
                                 </span>
                             </td>
+                            {extraColumns.map(([headerKey, field]) => (
+                                <td key={headerKey} className="max-w-xs px-4 py-3 text-neutral-500">
+                                    <span className="block truncate" title={row[field] ?? ''}>
+                                        {row[field] || '—'}
+                                    </span>
+                                </td>
+                            ))}
                         </tr>
                     ))}
                 </tbody>

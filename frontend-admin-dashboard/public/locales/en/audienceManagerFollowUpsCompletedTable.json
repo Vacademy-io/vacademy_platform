@@ -5,7 +5,10 @@
         "wasDue": "Was due",
         "completedAt": "Completed at",
         "completedBy": "Completed by",
-        "outcome": "Outcome"
+        "outcome": "Outcome",
+        "studentResponse": "Student response",
+        "followUpMode": "Mode",
+        "nextAction": "Next action"
     },
     "empty": {
         "title": "No completed follow-ups",

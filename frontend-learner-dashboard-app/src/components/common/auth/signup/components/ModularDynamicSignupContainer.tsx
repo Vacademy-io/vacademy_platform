@@ -1,10 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  isIOSNative,
-  shouldHideThirdPartyLogin,
-  useHideGoogleLoginOnIOS,
-} from "@/utils/ios-iap-compliance";
+import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -121,7 +117,6 @@ export function ModularDynamicSignupContainer({
     effectiveSettings.providers.google = false;
     effectiveSettings.providers.github = false;
   }
-  const hideGoogleOnIOS = useHideGoogleLoginOnIOS();
 
   // Check for OAuth signup data from login flow on mount
   useEffect(() => {
@@ -970,7 +965,7 @@ export function ModularDynamicSignupContainer({
       {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
       <SignupStep delay={0.2}>
         <div className="space-y-2 mb-6">
-          {effectiveSettings.providers.google && !hideGoogleOnIOS && (
+          {effectiveSettings.providers.google && (
             <motion.button
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}

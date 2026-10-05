@@ -1,4 +1,11 @@
-import { Warning, Sun, CalendarBlank, ListChecks, CaretRight } from '@phosphor-icons/react';
+import {
+    Warning,
+    Sun,
+    CalendarBlank,
+    ListChecks,
+    CheckCircle,
+    CaretRight,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
@@ -26,7 +33,7 @@ interface TileSpec {
     label: string;
     caption: string;
     Icon: typeof Warning;
-    tone: 'danger' | 'warning' | 'info' | 'neutral';
+    tone: 'danger' | 'warning' | 'info' | 'neutral' | 'success';
 }
 
 const buildTiles = (t: TFunction): TileSpec[] => [
@@ -58,6 +65,13 @@ const buildTiles = (t: TFunction): TileSpec[] => [
         Icon: ListChecks,
         tone: 'neutral',
     },
+    {
+        bucket: 'completed',
+        label: t('tiles.completed.label'),
+        caption: t('tiles.completed.caption'),
+        Icon: CheckCircle,
+        tone: 'success',
+    },
 ];
 
 // Token-only tone palette — no raw hex.
@@ -66,18 +80,21 @@ const TONE_BG: Record<TileSpec['tone'], string> = {
     warning: 'bg-warning-50',
     info: 'bg-info-50',
     neutral: 'bg-neutral-50',
+    success: 'bg-success-50',
 };
 const TONE_ICON: Record<TileSpec['tone'], string> = {
     danger: 'text-danger-500',
     warning: 'text-warning-500',
     info: 'text-info-500',
     neutral: 'text-neutral-500',
+    success: 'text-success-500',
 };
 const TONE_BORDER: Record<TileSpec['tone'], string> = {
     danger: 'border-danger-200',
     warning: 'border-warning-200',
     info: 'border-info-200',
     neutral: 'border-neutral-200',
+    success: 'border-success-200',
 };
 
 export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTilesProps) {

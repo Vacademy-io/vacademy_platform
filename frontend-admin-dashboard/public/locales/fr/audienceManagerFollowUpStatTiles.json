@@ -14,7 +14,11 @@
         },
         "all": {
             "label": "Toutes",
-            "caption": "Tous les suivis"
+            "caption": "Tous en attente"
+        },
+        "completed": {
+            "label": "Terminés",
+            "caption": "Déjà faits"
         }
     }
 }

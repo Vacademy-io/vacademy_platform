@@ -19,7 +19,11 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId, getUserRoleForInstitute } from '@/lib/auth/instituteUtils';
 import { getUserId } from '@/utils/userDetails';
-import { fetchRecentLeads } from '../../list/-services/get-recent-leads';
+import {
+    fetchAudienceLeadByResponseId,
+    fetchRecentLeads,
+} from '../../list/-services/get-recent-leads';
+import { fetchCompletedFollowUps } from '../-services/get-completed-follow-ups';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
 import {
     buildCampaignTypeFilterOptions,
@@ -51,16 +55,19 @@ import {
     LeadTable,
     usePlaceCall,
     useUpdateLeadTier,
+    mapRecentLeadToStudent,
     recentLeadToVM,
     startBackgroundExport,
     useIsExporting,
     type LeadActionHandlers,
     type LeadTableExtraColumn,
 } from '@/components/shared/leads';
+import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { LeadPagination } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
+import { CompletedFollowUpsTable } from './completed-follow-ups-table';
 import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
@@ -93,6 +100,7 @@ const SEARCH_DEBOUNCE_MS = 500;
 // The calendar view can jump to any day in the bucket, so it takes the bucket whole.
 const CALENDAR_FETCH_SIZE = 500;
 const EMPTY_COUNTS: Record<FollowUpBucket, number> = {
+    completed: 0,
     overdue: 0,
     today: 0,
     upcoming: 0,
@@ -318,18 +326,33 @@ const FollowUpsContent = () => {
     // follow-up — every caller invalidates exactly ['follow-ups'] — moves the tiles
     // too. A sibling 'follow-ups-counts' root would not have been matched.
     const { data: counts = EMPTY_COUNTS, isLoading: countsLoading } = useQuery({
-        queryKey: ['follow-ups', 'counts', baseFilter],
+        queryKey: ['follow-ups', 'counts', baseFilter, instituteId, effectiveCounsellorId],
         queryFn: async () => {
             const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
             const now = new Date();
-            const results = await Promise.all(
-                buckets.map((b) =>
-                    fetchRecentLeads({ ...baseFilter, ...toWindowParams(b, now), page: 0, size: 1 })
-                )
-            );
+            // Completed comes from the follow-up endpoint, not the leads one — it
+            // counts events, and a lead can have several.
+            const [results, completed] = await Promise.all([
+                Promise.all(
+                    buckets.map((b) =>
+                        fetchRecentLeads({
+                            ...baseFilter,
+                            ...toWindowParams(b, now),
+                            page: 0,
+                            size: 1,
+                        })
+                    )
+                ),
+                fetchCompletedFollowUps({
+                    instituteId: instituteId ?? '',
+                    counsellorUserId: effectiveCounsellorId,
+                    page: 0,
+                    size: 1,
+                }).catch(() => undefined),
+            ]);
             return buckets.reduce(
                 (acc, b, i) => ({ ...acc, [b]: results[i]?.totalElements ?? 0 }),
-                { ...EMPTY_COUNTS }
+                { ...EMPTY_COUNTS, completed: completed?.totalElements ?? 0 }
             );
         },
         enabled: !!instituteId && !noTypeAudiences,
@@ -347,10 +370,30 @@ const FollowUpsContent = () => {
                 // rather than one page of it.
                 size: view === 'calendar' ? CALENDAR_FETCH_SIZE : PAGE_SIZE,
             }),
-        enabled: !!instituteId && !noTypeAudiences,
+        enabled: !!instituteId && !noTypeAudiences && bucket !== 'completed',
         staleTime: 30 * 1000,
     });
-    const totalPages = data?.totalPages ?? 0;
+
+    // Completed follow-ups: its own endpoint, its own paging, same counsellor scope.
+    const {
+        data: completedPage,
+        isLoading: completedLoading,
+        error: completedError,
+    } = useQuery({
+        queryKey: ['follow-ups', 'completed', instituteId, effectiveCounsellorId, page],
+        queryFn: () =>
+            fetchCompletedFollowUps({
+                instituteId: instituteId ?? '',
+                counsellorUserId: effectiveCounsellorId,
+                page,
+                size: PAGE_SIZE,
+            }),
+        enabled: !!instituteId && bucket === 'completed',
+        staleTime: 30 * 1000,
+    });
+
+    const totalPages =
+        bucket === 'completed' ? completedPage?.totalPages ?? 0 : data?.totalPages ?? 0;
 
     // Build VMs, filter to pending follow-ups, classify into buckets, sort by
     // soonest-due so the top of the list is always the most urgent task.
@@ -450,7 +493,36 @@ const FollowUpsContent = () => {
     // Pre-compute the view body so the JSX below is a single expression instead
     // of a nested ternary (which CodeFactor / SonarJS flag as complexity).
     let viewBody: ReactNode;
-    if (view === 'calendar') {
+    if (bucket === 'completed') {
+        // Rows here are follow-ups, not leads, so none of LeadTable applies.
+        viewBody = completedError ? (
+            <LeadEmptyState
+                title={t('errors.loadFailedTitle')}
+                description={t('errors.loadFailedDescription')}
+            />
+        ) : (
+            <CompletedFollowUpsTable
+                rows={completedPage?.content ?? []}
+                isLoading={completedLoading}
+                onOpenLead={(row) => {
+                    if (!row.audience_response_id) return;
+                    // Fetch the real lead rather than stubbing one: the side
+                    // sheet's Lead Profile tab reads custom-field answers off it.
+                    void fetchAudienceLeadByResponseId(row.audience_response_id)
+                        .then((lead) => {
+                            setSelectedStudent(mapRecentLeadToStudent(lead), {
+                                openOverlay: false,
+                            });
+                            setIsSidebarOpen(true);
+                        })
+                        .catch(() => toast.error(t('errors.loadFailedTitle')));
+                }}
+                counsellorName={(userId) =>
+                    counsellorOptions.find((o) => o.id === userId)?.full_name ?? '—'
+                }
+            />
+        );
+    } else if (view === 'calendar') {
         viewBody = (
             <FollowUpsCalendarView
                 vms={pendingVms}
@@ -589,7 +661,7 @@ const FollowUpsContent = () => {
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
-                        disabled={isExporting || counts[bucket] === 0}
+                        disabled={isExporting || counts[bucket] === 0 || bucket === 'completed'}
                         onClick={handleExport}
                     >
                         <DownloadSimple className="size-4" />
@@ -607,6 +679,7 @@ const FollowUpsContent = () => {
                 <Tabs
                     value={view}
                     onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+                    className={bucket === 'completed' ? 'invisible' : undefined}
                 >
                     <TabsList className="h-11 gap-1 rounded-xl border border-neutral-200 bg-card p-1">
                         <TabsTrigger
@@ -677,7 +750,7 @@ const FollowUpsContent = () => {
 
             {/* Search on the left, count + export on the right — list view only.
                 Same row shape as Recent Leads so the two queues read alike. */}
-            {view === 'list' && (
+            {view === 'list' && bucket !== 'completed' && (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="relative w-full sm:w-80">
                         <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />

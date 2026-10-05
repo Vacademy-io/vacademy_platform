@@ -58,7 +58,8 @@
         "followUpScheduled": "Relance planifiée",
         "followUpFailed": "Échec de la planification de la relance",
         "noteAdded": "Note ajoutée",
-        "noteFailed": "Échec de l'ajout de la note"
+        "noteFailed": "Échec de l'ajout de la note",
+        "noteRequired": "Votre établissement exige une note sur chaque relance."
     },
     "audiences": {
         "linkedCampaigns": "Campagnes liées",

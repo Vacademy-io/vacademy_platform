@@ -5,7 +5,10 @@
         "wasDue": "कब देय था",
         "completedAt": "कब पूरा हुआ",
         "completedBy": "किसने किया",
-        "outcome": "परिणाम"
+        "outcome": "परिणाम",
+        "studentResponse": "छात्र की प्रतिक्रिया",
+        "followUpMode": "माध्यम",
+        "nextAction": "अगली कार्रवाई"
     },
     "empty": {
         "title": "कोई पूर्ण फ़ॉलो-अप नहीं",

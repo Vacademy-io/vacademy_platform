@@ -14,6 +14,11 @@ import {
     CREATE_TIMELINE_EVENT,
     CREATE_LEAD_FOLLOWUP,
 } from '@/constants/urls';
+import {
+    FollowUpFields,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from '@/components/shared/leads/follow-up-fields';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
@@ -762,6 +767,8 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
+    const followUpFields = useFollowUpFields();
+    const notesRequired = useFollowUpNotesRequired();
     const queryClient = useQueryClient();
     const noteActionTypes = buildNoteActionTypes(t);
 
@@ -774,16 +781,19 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
 
-    // For Follow Up the schedule time is mandatory; content is optional.
+    // For Follow Up the schedule time is mandatory; the note is optional unless
+    // the institute requires one on every follow-up.
     const isFollowUp = actionType === 'FOLLOW_UP';
+    const followUpNoteMissing = isFollowUp && notesRequired && isNoteEmpty;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId
+        ? !!scheduleTime && !!audienceResponseId && !followUpNoteMissing
         : !isNoteEmpty || callMeta !== undefined;
 
     function resetForm() {
         setNoteText('');
         setCallActivity(null);
         setScheduleTime('');
+        followUpFields.reset();
         setIsExpanded(false);
     }
 
@@ -793,6 +803,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 audience_response_id: audienceResponseId,
                 schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
                 content: noteText.trim() || null,
+                ...followUpFields.payload,
             }),
         onSuccess: () => {
             toast.success(t('addNote.followUpScheduled'));
@@ -898,6 +909,15 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                             className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-800 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                         />
                     </div>
+                    {followUpFields.visible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            // student-profile-overlay renders this inside a Dialog, and
+                            // react-remove-scroll kills the wheel on a portalled list there.
+                            portal={false}
+                        />
+                    )}
                     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2">
                         <RichTextEditor
                             value={noteText}
@@ -907,6 +927,9 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                             minimalToolbar
                         />
                     </div>
+                    {followUpNoteMissing && (
+                        <p className="text-caption text-warning-600">{t('addNote.noteRequired')}</p>
+                    )}
                     {!audienceResponseId && (
                         <p className="text-caption text-amber-600">
                             {t('addNote.noResponseLinked')}

@@ -19,6 +19,11 @@ export interface CompletedFollowUp {
     closed_by: string | null;
     closer_reason: string | null;
     content: string | null;
+    /** Only populated for institutes that turned the follow-up fields on
+     *  (Settings -> Lead settings -> Follow-up fields); null everywhere else. */
+    student_response: string | null;
+    follow_up_mode: string | null;
+    next_action: string | null;
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;

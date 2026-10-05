@@ -112,6 +112,9 @@ export interface LeadSettingsConfig {
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
+    /** The three dropdowns a counsellor fills when logging a follow-up. Off for
+     *  every institute until one turns it on and supplies its own wording. */
+    followUpFields: FollowUpFieldsConfig;
     customStatuses: CustomLeadStatus[];
 
     /**
@@ -121,6 +124,31 @@ export interface LeadSettingsConfig {
      * useLeadTerminology() so every surface agrees.
      */
     labels?: LeadTerminologyLabels;
+}
+
+/**
+ * Student response / follow-up mode / next action — what a counsellor records
+ * when they log a follow-up.
+ *
+ * The options are the institute's own words, not an enum, because every institute
+ * runs a different script. Empty list = that one dropdown is not shown, so an
+ * institute can enable just the two it cares about.
+ */
+export interface FollowUpFieldsConfig {
+    /** Gates the three dropdowns below. Does NOT gate {@link notesRequired}. */
+    enabled: boolean;
+    studentResponses: string[];
+    followUpModes: string[];
+    nextActions: string[];
+    /**
+     * Refuse to save a follow-up with an empty note.
+     *
+     * Independent of {@link enabled}: an institute can insist on a written note
+     * without adopting the dropdowns, or the other way round. Off by default —
+     * the note has always been optional and turning it on retroactively would
+     * block a counsellor mid-task.
+     */
+    notesRequired: boolean;
 }
 
 export interface LeadTerminologyLabels {
@@ -146,6 +174,13 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
+    followUpFields: {
+        enabled: false,
+        studentResponses: [],
+        followUpModes: [],
+        nextActions: [],
+        notesRequired: false,
+    },
     tatReminder: {
         enabled: false,
         tatHours: 24,
@@ -195,6 +230,28 @@ export function extractLeadSettingData(
     return undefined;
 }
 
+/**
+ * Coerce the three option lists to arrays of strings.
+ *
+ * This subtree gets hand-written into institutes.setting_json when a new institute
+ * is onboarded, so a stray null or a string where a list belongs is a live
+ * possibility — and `.length` on it would take down every follow-up form and the
+ * whole Completed tab, for a config the UI never validated.
+ */
+export function normaliseFollowUpFields(
+    saved: Partial<FollowUpFieldsConfig> | undefined
+): FollowUpFieldsConfig {
+    const list = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+    return {
+        enabled: saved?.enabled === true,
+        studentResponses: list(saved?.studentResponses),
+        followUpModes: list(saved?.followUpModes),
+        nextActions: list(saved?.nextActions),
+        notesRequired: saved?.notesRequired === true,
+    };
+}
+
 /** Merge saved config over the defaults, keeping nested groups whole. */
 export function mergeLeadSettings(
     saved: Partial<LeadSettingsConfig> | undefined
@@ -210,6 +267,7 @@ export function mergeLeadSettings(
         },
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        followUpFields: normaliseFollowUpFields(saved.followUpFields),
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
     };
 }

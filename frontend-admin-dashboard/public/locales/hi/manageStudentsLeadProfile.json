@@ -58,7 +58,8 @@
         "followUpScheduled": "फ़ॉलो-अप शेड्यूल किया गया",
         "followUpFailed": "फ़ॉलो-अप शेड्यूल करने में विफल",
         "noteAdded": "नोट जोड़ा गया",
-        "noteFailed": "नोट जोड़ने में विफल"
+        "noteFailed": "नोट जोड़ने में विफल",
+        "noteRequired": "आपका संस्थान हर फ़ॉलो-अप पर नोट अनिवार्य करता है।"
     },
     "audiences": {
         "linkedCampaigns": "लिंक किए गए कैंपेन",

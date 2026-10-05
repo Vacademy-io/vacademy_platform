@@ -22,6 +22,9 @@ public class LeadFollowupDto {
     private String status;
     private Boolean isClosed;
     private String content;
+    private String studentResponse;
+    private String followUpMode;
+    private String nextAction;
     private String closerReason;
     private String closedBy;
     private Timestamp closedAt;
@@ -47,6 +50,9 @@ public class LeadFollowupDto {
                 .status(f.getStatus())
                 .isClosed(f.getIsClosed())
                 .content(f.getContent())
+                .studentResponse(f.getStudentResponse())
+                .followUpMode(f.getFollowUpMode())
+                .nextAction(f.getNextAction())
                 .closerReason(f.getCloserReason())
                 .closedBy(f.getClosedBy())
                 .closedAt(f.getClosedAt())

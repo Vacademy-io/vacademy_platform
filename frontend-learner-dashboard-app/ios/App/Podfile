@@ -103,6 +103,10 @@ target 'Sreedhar TTS' do
   capacitor_pods
 end
 
+target 'Elevate Education' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

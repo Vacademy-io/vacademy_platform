@@ -8,5 +8,7 @@
     "addCustomType": "Ajouter un type de demande personnalisé",
     "customInputPlaceholder": "Saisir {{term}}",
     "cancel": "Annuler",
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "searchPlaceholder": "Rechercher…",
+    "noMatches": "Aucun résultat pour « {{query}} »"
 }

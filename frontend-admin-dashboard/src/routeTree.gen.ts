@@ -133,6 +133,7 @@ import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audien
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
 import { Route as AudienceManagerOnboardingIndexRouteImport } from "./routes/audience-manager/onboarding/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
+import { Route as AudienceManagerLeadLookupIndexRouteImport } from "./routes/audience-manager/lead-lookup/index"
 import { Route as AudienceManagerLeadBoardIndexRouteImport } from "./routes/audience-manager/lead-board/index"
 import { Route as AudienceManagerFollowUpsIndexRouteImport } from "./routes/audience-manager/follow-ups/index"
 import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audience-manager/call-log/index"
@@ -1174,6 +1175,16 @@ const AudienceManagerListIndexRoute =
   } as any).lazy(() =>
     import("./routes/audience-manager/list/index.lazy").then((d) => d.Route),
   )
+const AudienceManagerLeadLookupIndexRoute =
+  AudienceManagerLeadLookupIndexRouteImport.update({
+    id: "/audience-manager/lead-lookup/",
+    path: "/audience-manager/lead-lookup/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/lead-lookup/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AudienceManagerLeadBoardIndexRoute =
   AudienceManagerLeadBoardIndexRouteImport.update({
     id: "/audience-manager/lead-board/",
@@ -2153,6 +2164,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/lead-board/": typeof AudienceManagerLeadBoardIndexRoute
+  "/audience-manager/lead-lookup/": typeof AudienceManagerLeadLookupIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
@@ -2389,6 +2401,7 @@ export interface FileRoutesByTo {
   "/audience-manager/call-log": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/lead-board": typeof AudienceManagerLeadBoardIndexRoute
+  "/audience-manager/lead-lookup": typeof AudienceManagerLeadLookupIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
   "/audience-manager/onboarding": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
@@ -2627,6 +2640,7 @@ export interface FileRoutesById {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/lead-board/": typeof AudienceManagerLeadBoardIndexRoute
+  "/audience-manager/lead-lookup/": typeof AudienceManagerLeadLookupIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
@@ -2866,6 +2880,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/lead-board/"
+    | "/audience-manager/lead-lookup/"
     | "/audience-manager/list/"
     | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
@@ -3102,6 +3117,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log"
     | "/audience-manager/follow-ups"
     | "/audience-manager/lead-board"
+    | "/audience-manager/lead-lookup"
     | "/audience-manager/list"
     | "/audience-manager/onboarding"
     | "/audience-manager/recent-leads"
@@ -3339,6 +3355,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/lead-board/"
+    | "/audience-manager/lead-lookup/"
     | "/audience-manager/list/"
     | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
@@ -3576,6 +3593,7 @@ export interface RootRouteChildren {
   AudienceManagerCallLogIndexRoute: typeof AudienceManagerCallLogIndexRoute
   AudienceManagerFollowUpsIndexRoute: typeof AudienceManagerFollowUpsIndexRoute
   AudienceManagerLeadBoardIndexRoute: typeof AudienceManagerLeadBoardIndexRoute
+  AudienceManagerLeadLookupIndexRoute: typeof AudienceManagerLeadLookupIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
   AudienceManagerOnboardingIndexRoute: typeof AudienceManagerOnboardingIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
@@ -4605,6 +4623,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AudienceManagerListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/lead-lookup/": {
+      id: "/audience-manager/lead-lookup/"
+      path: "/audience-manager/lead-lookup"
+      fullPath: "/audience-manager/lead-lookup/"
+      preLoaderRoute: typeof AudienceManagerLeadLookupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/lead-board/": {
       id: "/audience-manager/lead-board/"
       path: "/audience-manager/lead-board"
@@ -5479,6 +5504,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerCallLogIndexRoute: AudienceManagerCallLogIndexRoute,
   AudienceManagerFollowUpsIndexRoute: AudienceManagerFollowUpsIndexRoute,
   AudienceManagerLeadBoardIndexRoute: AudienceManagerLeadBoardIndexRoute,
+  AudienceManagerLeadLookupIndexRoute: AudienceManagerLeadLookupIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
   AudienceManagerOnboardingIndexRoute: AudienceManagerOnboardingIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,

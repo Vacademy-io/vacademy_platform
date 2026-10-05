@@ -1728,7 +1728,7 @@ public class AudienceService {
         // Bell notification to the new owner — mirrors the pool auto-assign
         // alert so a bulk-imported lead owner hears about their lead too.
         // Best-effort inside the notifier; never fails the import row.
-        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName);
+        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName, leadUserId);
     }
 
     /**
@@ -2688,6 +2688,9 @@ public class AudienceService {
                     String campaignName = audienceId != null
                             ? audienceRepository.findById(audienceId).map(Audience::getCampaignName).orElse(null)
                             : null;
+                    // Left as an ordinary dismissible alert: an enquiry is not a lead
+                    // user, so there is no id here that a timeline event would ever
+                    // match, and a correlation that never clears is worse than none.
                     leadAssignmentNotifier.notifyAssigned(instituteId, finalCounsellorId, null, campaignName);
                 } catch (Exception e) {
                     logger.warn("Failed to notify counsellor {} for enquiry {}: {}",

@@ -668,7 +668,7 @@ public class AudienceController {
         try {
             // Bell notification to the counsellor — manual assignment should
             // light up the bell exactly like pool auto-assignment does.
-            leadAssignmentNotifier.notifyAssigned(instituteId, counselorId, null, null);
+            leadAssignmentNotifier.notifyAssigned(instituteId, counselorId, null, null, userId);
         } catch (Exception e) {
             // best-effort — don't fail the assignment if notification fails
         }

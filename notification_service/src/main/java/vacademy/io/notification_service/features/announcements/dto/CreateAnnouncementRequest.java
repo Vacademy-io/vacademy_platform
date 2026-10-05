@@ -40,6 +40,10 @@ public class CreateAnnouncementRequest {
     
     @Size(max = 50, message = "Timezone must not exceed 50 characters")
     private String timezone;
+
+    /** Optional correlation: what this announcement is about ("LEAD") and which one. */
+    private String entity;
+    private String entityId;
     
     // Recipients (Inclusions)
     @NotEmpty(message = "At least one recipient is required")

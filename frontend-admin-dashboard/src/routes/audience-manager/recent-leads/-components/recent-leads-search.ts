@@ -32,49 +32,58 @@ export const ALL_DATE_VALUE = 'ALL';
 export const CUSTOM_DATE_VALUE = 'CUSTOM';
 export const DEFAULT_RANGE_DAYS = '30';
 
+/**
+ * A search param that is conceptually a string but must survive arriving as a number.
+ *
+ * TanStack Router JSON-parses every search value, so a hand-written URL — which is
+ * exactly what an institute's sidebar sub-tab is — turns `?statusExclude=1` into the
+ * NUMBER 1. A plain `z.string()` then rejects it, and because validateSearch runs during
+ * route matching the whole page dies on the error boundary before it renders anything.
+ * That is what "Processed (Touched) Leads" was doing. `range=7`, `calledWithin=24` and
+ * `calledCount=3` were all one sub-tab away from the same crash.
+ *
+ * The app's own navigations were unaffected: the router JSON-stringifies what it writes,
+ * so its values come back quoted and already strings.
+ */
+const looseString = z.union([z.string(), z.number()]).transform(String);
+
 export const RecentLeadsSearchSchema = z.object({
     /** Lead-status filter — comma-separated status_keys or sentinels (ALL_ACTIVE / ALL_CONVERTED). */
-    status: z.string().optional(),
+    status: looseString.optional(),
     /** Tier filter — comma-separated HOT/WARM/COLD values. */
-    tier: z.string().optional(),
+    tier: looseString.optional(),
     /** SLA filter — comma-separated SLA stage values. */
-    sla: z.string().optional(),
+    sla: looseString.optional(),
     /** Assigned counsellor userIds — comma-separated, may include __UNASSIGNED__. */
-    counsellor: z.string().optional(),
+    counsellor: looseString.optional(),
     /** Audience (campaign) ids — comma-separated. */
-    audience: z.string().optional(),
+    audience: looseString.optional(),
     /** Campaign types — comma-separated audience.campaign_type values. Narrows the
      *  audience dropdown and the leads to audiences of these types. */
-    campaignType: z.string().optional(),
+    campaignType: looseString.optional(),
     /** Free-text search query (applied, not the live input). */
-    search: z.string().optional(),
+    search: looseString.optional(),
     /** Date-range preset — '1' | '7' | '15' | '30' | 'ALL' | 'CUSTOM'. */
-    range: z.string().optional(),
+    range: looseString.optional(),
     /** Custom-range start (yyyy-MM-dd) — only meaningful when range=CUSTOM. */
-    from: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional(),
+    from: looseString.pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
     /** Custom-range end (yyyy-MM-dd) — only meaningful when range=CUSTOM. */
-    to: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional(),
+    to: looseString.pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
     /** Lead source type — WEBSITE / META / GOOGLE / ORGANIC / … (LeadFilterDTO.sourceType). */
-    source: z.string().optional(),
+    source: looseString.optional(),
     /** Call-history filter — NOT_CALLED / CALLED / CALLED_ONCE / CALLED_TWICE_PLUS /
      *  CALLED_N_TIMES / CALLED_N_PLUS_TIMES / AI_CALLED / MANUAL_CALLED. */
-    called: z.string().optional(),
+    called: looseString.optional(),
     /** Attempt count N for called=CALLED_N_TIMES / CALLED_N_PLUS_TIMES. Kept as a
      *  string like every other param here; the page clamps it to 1–99 on read. */
-    calledCount: z.string().optional(),
+    calledCount: looseString.optional(),
     /** "Called within the last N hours" — preset hour-count ('24' | '168' | '360' |
      *  '720'). Rolling from now, unlike `range`, which buckets by calendar day.
      *  Bounds the last CALL on the lead, not its submission. */
-    calledWithin: z.string().optional(),
+    calledWithin: looseString.optional(),
     /** "Worked within the last N hours" — same presets as calledWithin, but bounds the
      *  last timeline activity of any kind (note, status change, logged call). */
-    workedWithin: z.string().optional(),
+    workedWithin: looseString.optional(),
     /** Explicit from–to for `calledWithin` / `workedWithin` when they hold 'CUSTOM'
      *  (yyyy-mm-dd, same shape as `from`/`to`). Both ends are inclusive calendar days,
      *  unlike the rolling presets. */
@@ -82,22 +91,22 @@ export const RecentLeadsSearchSchema = z.object({
      *  survive "Clear all" and render read-only, so a sidebar sub-tab keeps meaning
      *  what its label says. Absent = nothing pinned, i.e. the old behaviour. */
     /** When '1', the picked statuses mean "everything EXCEPT these". */
-    statusExclude: z.string().optional(),
-    lock: z.string().optional(),
-    calledFrom: z.string().optional(),
-    calledTo: z.string().optional(),
-    workedFrom: z.string().optional(),
-    workedTo: z.string().optional(),
+    statusExclude: looseString.optional(),
+    lock: looseString.optional(),
+    calledFrom: looseString.optional(),
+    calledTo: looseString.optional(),
+    workedFrom: looseString.optional(),
+    workedTo: looseString.optional(),
     /** Campaign (UTM) filters — comma-separated values per dimension. Only
      *  honoured while the institute's UTM setting is on (the controls that
      *  read them render nothing otherwise). The Reports Center's UTM tab
      *  drills through with these. */
-    utmSource: z.string().optional(),
-    utmMedium: z.string().optional(),
-    utmCampaign: z.string().optional(),
-    utmContent: z.string().optional(),
-    utmTerm: z.string().optional(),
-    utmChannel: z.string().optional(),
+    utmSource: looseString.optional(),
+    utmMedium: looseString.optional(),
+    utmCampaign: looseString.optional(),
+    utmContent: looseString.optional(),
+    utmTerm: looseString.optional(),
+    utmChannel: looseString.optional(),
 });
 
 /** URL param per UTM dimension — shared by the page and its drill-through links. */

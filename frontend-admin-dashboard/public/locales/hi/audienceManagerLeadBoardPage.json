@@ -29,7 +29,7 @@
             "label": "सभी SLA स्थितियां"
         },
         "audience": {
-            "label": "सभी ऑडियंस",
+            "label": "सभी {{term}}",
             "untitled": "अनाम ऑडियंस"
         },
         "callHistory": {

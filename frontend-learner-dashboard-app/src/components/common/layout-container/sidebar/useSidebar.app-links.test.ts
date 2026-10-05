@@ -29,6 +29,11 @@ vi.mock("@/services/domain-routing", () => ({
   getCachedInstituteBranding: () => null,
 }));
 
+const appleStore = { build: false };
+vi.mock("@/utils/ios-iap-compliance", () => ({
+  isAppleStoreBuild: () => appleStore.build,
+}));
+
 const { default: useStore } = await import("./useSidebar");
 
 const DETAILS = {
@@ -43,6 +48,7 @@ const DETAILS = {
 
 describe("useSidebar app/portal links", () => {
   beforeEach(() => {
+    appleStore.build = false;
     for (const key of Object.keys(prefs)) delete prefs[key];
     useStore.setState({
       playStoreAppLink: null,
@@ -104,5 +110,18 @@ describe("useSidebar app/portal links", () => {
     const state = useStore.getState();
     expect(state.playStoreAppLink).toBeNull();
     expect(state.macAppLink).toBeNull();
+  });
+
+  // Apple 2.3.10: no other platforms inside an app on Apple's stores.
+  it("drops the Google Play and Windows links in the iOS / Mac App Store builds", () => {
+    appleStore.build = true;
+    useStore.getState().setAppLinks(DETAILS);
+
+    const state = useStore.getState();
+    expect(state.playStoreAppLink).toBeNull();
+    expect(state.windowsAppLink).toBeNull();
+    expect(state.appStoreAppLink).toBe(DETAILS.appStoreAppLink);
+    expect(state.macAppLink).toBe(DETAILS.macAppLink);
+    expect(state.learnerPortalUrl).toBe("https://learner.shikshanation.com");
   });
 });

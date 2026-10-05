@@ -3,6 +3,7 @@ import { sideBarStateType } from "../../../../types/layout-container-types";
 import { Preferences } from "@capacitor/preferences";
 import { getPublicUrl } from "@/services/upload_file";
 import { getCachedInstituteBranding } from "@/services/domain-routing";
+import { isAppleStoreBuild } from "@/utils/ios-iap-compliance";
 
 interface StoreState {
   sideBarState: sideBarStateType;
@@ -113,10 +114,15 @@ const isCurrentHost = (url: string | null): boolean => {
  */
 const readAppLinksFromDetails = (details: Record<string, unknown> | null) => {
   const learnerPortalUrl = toExternalUrl(details?.learnerPortalUrl);
+  // Apple Guideline 2.3.10: an app on Apple's stores may not show other
+  // platforms, so the iOS app and the Mac App Store build drop the Google Play
+  // and Windows links. Both "Apps & Portals" and the dashboard's getApp widget
+  // read from here, so this one place covers both.
+  const appleStore = isAppleStoreBuild();
   return {
-    playStoreAppLink: toExternalUrl(details?.playStoreAppLink),
+    playStoreAppLink: appleStore ? null : toExternalUrl(details?.playStoreAppLink),
     appStoreAppLink: toExternalUrl(details?.appStoreAppLink),
-    windowsAppLink: toExternalUrl(details?.windowsAppLink),
+    windowsAppLink: appleStore ? null : toExternalUrl(details?.windowsAppLink),
     macAppLink: toExternalUrl(details?.macAppLink),
     // On the web portal this would just link back to the current page; it earns
     // its place only in the native/desktop shells.

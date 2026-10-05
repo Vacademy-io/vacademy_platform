@@ -18,6 +18,8 @@
 
 /** Search-param names that may be pinned. Anything else in `lock` is ignored. */
 export const LOCKABLE_PARAMS = [
+    // Follow-ups: which bucket tile the sub-tab opens on, and stays on.
+    'bucket',
     'range',
     'from',
     'to',

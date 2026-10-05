@@ -37,12 +37,14 @@
  *     "cardStyle": "elevated",     // glass | elevated | outlined | flat
  *     "coverImageUrl": "https://…/banner.png",
  *     "eyebrow": "Admissions 2026",
- *     "headline": "Talk to our team",
+ *     "headline": "<p>Talk to <strong>our team</strong></p>",
+ *     "headingAlign": "left",      // left | center | right
  *     "subheadline": "<p>Rich text is allowed and sanitized.</p>",
  *     "showDescription": true,
  *     "showObjective": true,
  *     "formTitle": "Your details",
- *     "formSubtitle": "We only use this to get back to you.",
+ *     "formSubtitle": "<p>We only use this to get back to you.</p>",
+ *     "formHeaderAlign": "left",   // left | center | right
  *     "submitLabel": "Request a callback",
  *     "showRequiredLegend": false,
  *     "showProgress": false,
@@ -53,6 +55,10 @@
  *   }
  * }
  * ```
+ *
+ * `headline` and `formSubtitle` take plain text OR rich text (sanitized HTML from
+ * the admin's editor); plain values saved before rich text existed render
+ * exactly as they did.
  *
  * `icon` is one of sparkle | shield | clock | check | users | chat. An
  * unrecognised value anywhere falls back to the default rather than breaking
@@ -84,6 +90,7 @@ export type AudienceFormHighlightIcon =
   | "check"
   | "users"
   | "chat";
+export type AudienceFormTextAlign = "left" | "center" | "right";
 
 export interface AudienceFormHighlight {
   id: string;
@@ -104,15 +111,24 @@ export interface AudienceFormAppearance {
   coverImageUrl: string;
   /** Small label above the headline (e.g. "Admissions 2026"). Blank hides it. */
   eyebrow: string;
-  /** Overrides `campaign_name` as the page's h1. Blank keeps the campaign name. */
+  /**
+   * Overrides `campaign_name` as the page's h1. Plain text or rich text
+   * (sanitized at render). Blank — including an empty editor's `<p></p>` —
+   * keeps the campaign name.
+   */
   headline: string;
+  /** Alignment of the heading block: eyebrow, headline, intro, highlights. */
+  headingAlign: AudienceFormTextAlign;
   /** Overrides the campaign `description` HTML. Blank keeps the description. */
   subheadline: string;
   showDescription: boolean;
   showObjective: boolean;
   /** Overrides the "Please fill in your details" card heading. */
   formTitle: string;
+  /** Overrides the line under the card heading. Plain text or rich text. */
   formSubtitle: string;
+  /** Alignment of the form card's heading + sub-heading. */
+  formHeaderAlign: AudienceFormTextAlign;
   /** Overrides the submit button label. */
   submitLabel: string;
   /** "* Required field" line under the form header. Off by default. */
@@ -151,11 +167,13 @@ export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
   coverImageUrl: "",
   eyebrow: "",
   headline: "",
+  headingAlign: "left",
   subheadline: "",
   showDescription: true,
   showObjective: true,
   formTitle: "",
   formSubtitle: "",
+  formHeaderAlign: "left",
   submitLabel: "",
   // Both off: every required field already carries a red asterisk, so the
   // legend restates it, and a meter over a five-field form is noise. Left as
@@ -191,6 +209,7 @@ const CARD_STYLES: readonly AudienceFormCardStyle[] = [
   "outlined",
   "flat",
 ];
+const TEXT_ALIGNS: readonly AudienceFormTextAlign[] = ["left", "center", "right"];
 const HIGHLIGHT_ICONS: readonly AudienceFormHighlightIcon[] = [
   "sparkle",
   "shield",
@@ -203,8 +222,17 @@ const HIGHLIGHT_ICONS: readonly AudienceFormHighlightIcon[] = [
 /** Longest single string we will render from the blob, per field. */
 const MAX_TEXT = 500;
 
+/**
+ * Cap for the fields that may hold rich text. Markup is far longer than the
+ * words it wraps, and slicing it at MAX_TEXT would cut a tag in half.
+ */
+const MAX_RICH_TEXT = 5000;
+
 const toStr = (value: unknown, fallback: string): string =>
   typeof value === "string" ? value.slice(0, MAX_TEXT) : fallback;
+
+const toRichText = (value: unknown, fallback: string): string =>
+  typeof value === "string" ? value.slice(0, MAX_RICH_TEXT) : fallback;
 
 const toBool = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
@@ -276,12 +304,14 @@ export const parseAudienceFormAppearance = (
     cardStyle: toEnum(src.cardStyle, CARD_STYLES, d.cardStyle),
     coverImageUrl: toImageUrl(src.coverImageUrl),
     eyebrow: toStr(src.eyebrow, d.eyebrow),
-    headline: toStr(src.headline, d.headline),
+    headline: toRichText(src.headline, d.headline),
+    headingAlign: toEnum(src.headingAlign, TEXT_ALIGNS, d.headingAlign),
     subheadline: toStr(src.subheadline, d.subheadline),
     showDescription: toBool(src.showDescription, d.showDescription),
     showObjective: toBool(src.showObjective, d.showObjective),
     formTitle: toStr(src.formTitle, d.formTitle),
-    formSubtitle: toStr(src.formSubtitle, d.formSubtitle),
+    formSubtitle: toRichText(src.formSubtitle, d.formSubtitle),
+    formHeaderAlign: toEnum(src.formHeaderAlign, TEXT_ALIGNS, d.formHeaderAlign),
     submitLabel: toStr(src.submitLabel, d.submitLabel),
     showRequiredLegend: toBool(src.showRequiredLegend, d.showRequiredLegend),
     showProgress: toBool(src.showProgress, d.showProgress),
@@ -379,8 +409,67 @@ export const resolveHeroBodyHtml = (
   return sanitizePostSubmitHtml(source);
 };
 
-/** The page's h1 — the admin's override, else the campaign's own name. */
+// ─── Plain-or-rich text fields ───────────────────────────────────────────────
+
+const HTML_TAG = /<[a-z][^>]*>/i;
+
+/**
+ * The words in a plain-or-rich value, with markup and entities flattened.
+ * Plain text is only trimmed, so "Ages <5 & >3" survives as typed.
+ */
+const richTextToPlain = (value: string): string => {
+  if (!HTML_TAG.test(value)) return value.trim();
+  // Flatten the SANITIZED markup: a raw <script> or <style> body is text to a
+  // tag-stripping regex, and would surface as words in the heading.
+  return sanitizePostSubmitHtml(value)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+/**
+ * Sanitized HTML for a plain-or-rich field, or "" when the value is plain text
+ * (render it as text) or has no visible words — an emptied editor saves
+ * `<p></p>`, and that must fall back to the default copy, not render nothing.
+ */
+export const resolveRichTextHtml = (value: string): string => {
+  if (!HTML_TAG.test(value) || !richTextToPlain(value)) return "";
+  return sanitizePostSubmitHtml(value);
+};
+
+/**
+ * The page's h1 as plain text — the admin's override, else the campaign's own
+ * name. A rich-text override comes back with its markup stripped; render
+ * `resolveHeadlineHtml` instead when it is non-empty.
+ */
 export const resolveHeadline = (
   appearance: AudienceFormAppearance,
   campaignName?: string | null
-): string => appearance.headline.trim() || (campaignName ?? "").trim();
+): string =>
+  richTextToPlain(appearance.headline) || (campaignName ?? "").trim();
+
+/** The admin's rich-text headline, sanitized. "" for plain text or blank. */
+export const resolveHeadlineHtml = (appearance: AudienceFormAppearance): string =>
+  resolveRichTextHtml(appearance.headline);
+
+
+/**
+ * The form card's sub-heading as plain text, "" when unset (the caller then
+ * shows the translated default). Render `resolveFormSubtitleHtml` instead when
+ * that is non-empty.
+ */
+export const resolveFormSubtitle = (appearance: AudienceFormAppearance): string =>
+  richTextToPlain(appearance.formSubtitle);
+
+/** The admin's rich-text sub-heading, sanitized. "" for plain text or blank. */
+export const resolveFormSubtitleHtml = (
+  appearance: AudienceFormAppearance
+): string => resolveRichTextHtml(appearance.formSubtitle);

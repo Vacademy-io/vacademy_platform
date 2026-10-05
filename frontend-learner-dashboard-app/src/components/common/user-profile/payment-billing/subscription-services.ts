@@ -62,8 +62,11 @@ export interface Subscription {
 }
 
 /**
- * A downgrade the learner booked but which has not landed yet. Shown on the card because
- * otherwise "you're on Monthly" quietly stops being true at the next renewal.
+ * A plan change that is open but has not landed yet: either booked for the end of the
+ * cycle (SCHEDULED) or waiting on a checkout the learner has not paid (PENDING_PAYMENT).
+ * Shown on the card because otherwise "you're on Monthly" quietly stops being true at the
+ * next renewal -- and because an unpaid one used to be invisible while still blocking a
+ * second attempt, leaving the learner with no way forward.
  */
 export interface ScheduledPlanChange {
   change_request_id: string;
@@ -72,7 +75,20 @@ export interface ScheduledPlanChange {
   to_plan_price?: number | null;
   currency?: string | null;
   effective_from?: string | null;
+  /** SCHEDULED | PENDING_PAYMENT. Branch on this, not on which fields are set. */
+  status?: string | null;
+  /** What is still owed on a PENDING_PAYMENT change. Null for a scheduled one. */
+  amount_due_now?: number | null;
 }
+
+/**
+ * True for a change whose checkout was opened and abandoned. The copy and the actions
+ * differ completely from a booked change: this one needs finishing or dropping, and there
+ * is no date on which it would apply by itself.
+ */
+export const isPlanChangeAwaitingPayment = (
+  change?: ScheduledPlanChange | null
+): boolean => change?.status === "PENDING_PAYMENT";
 
 /**
  * One plan the learner may switch to, already priced for them right now — mirrors the
@@ -94,8 +110,12 @@ export interface PlanChangeTarget {
   direction: string;
   /** IMMEDIATE | END_OF_CYCLE */
   effective_type: string;
-  /** Unused value of the current plan, credited against this plan's price. */
+  /** The current plan's price, allowed against this plan's price. Zero when nothing is traded in. */
   proration_credit?: number | null;
+  /** True when the current plan was traded in, so amount_due_now is the price DIFFERENCE. */
+  trade_in_applied?: boolean;
+  /** Days this change adds to the access window. */
+  extension_days?: number | null;
   /** What the learner pays now. 0 for a scheduled downgrade. */
   amount_due_now?: number | null;
   effective_from?: string | null;
@@ -295,7 +315,7 @@ export const requestPlanChange = async (
   return response.data;
 };
 
-/** Call off a downgrade booked for the end of the cycle. */
+/** Call off an open change: a booked downgrade, or a checkout that was never paid. */
 export const cancelScheduledPlanChange = async (
   instituteId: string,
   userPlanId: string

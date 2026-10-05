@@ -193,8 +193,8 @@ public class SubscriptionService {
         // Renewing one takes the money and extends access that was never granted: on
         // 2026-10-04 a learner paid Rs 7,200 against such a row and ended up enrolled in
         // nothing. A renewal extends an existing membership, so require one to exist.
-        boolean everAMembership = everWasAMembership(plan);
-        boolean canRenewManually = everAMembership && renewalDue && renewalGateway != null;
+        boolean unfinishedSignup = isUnfinishedSignup(plan);
+        boolean canRenewManually = !unfinishedSignup && renewalDue && renewalGateway != null;
         String currency = mandate != null && mandate.getCurrency() != null
                 ? mandate.getCurrency()
                 : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
@@ -218,7 +218,7 @@ public class SubscriptionService {
                 .planPrice(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getActualPrice() : null)
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
-                .canCompleteEnrollment(!everAMembership)
+                .canCompleteEnrollment(unfinishedSignup)
                 .enrollInviteCode(plan.getEnrollInvite() != null
                         ? plan.getEnrollInvite().getInviteCode()
                         : null)
@@ -273,7 +273,7 @@ public class SubscriptionService {
      * memberships are never collapsed, however many there are.
      */
     private List<UserPlan> collapseUnfinishedSignups(List<UserPlan> plans) {
-        List<UserPlan> unfinished = plans.stream().filter(p -> !everWasAMembership(p)).toList();
+        List<UserPlan> unfinished = plans.stream().filter(this::isUnfinishedSignup).toList();
         if (unfinished.isEmpty()) {
             return plans;
         }
@@ -284,7 +284,7 @@ public class SubscriptionService {
             // would sit a "complete your enrollment" card next to it and invite the learner to
             // start a second membership. It is also what would otherwise happen the moment
             // they DO complete one: the dead row outlives the enrolment and keeps asking.
-            return plans.stream().filter(this::everWasAMembership).toList();
+            return plans.stream().filter(p -> !isUnfinishedSignup(p)).toList();
         }
         if (unfinished.size() == 1) {
             return plans;
@@ -319,6 +319,24 @@ public class SubscriptionService {
     }
 
     /**
+     * An unfinished checkout: a plan that never became a membership AND still sits in one of the
+     * two states an incomplete checkout lands in.
+     *
+     * <p>The status test is the safety belt. "No mapping and no paid log" on its own also
+     * describes legacy members created by direct-SQL migration (the MYCPD import brought in 939,
+     * with no payment_log rows), and refusing THOSE learners a renewal would break paying members
+     * at other institutes to fix a SuchBliss bug. A genuine abandoned or refused checkout is
+     * PENDING_FOR_PAYMENT or PAYMENT_FAILED — the Nitika row was PAYMENT_FAILED — while a
+     * migrated or lapsed member is CANCELED or EXPIRED and keeps its button whatever its
+     * paperwork looks like.
+     */
+    private boolean isUnfinishedSignup(UserPlan plan) {
+        boolean neverStartedState = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(plan.getStatus())
+                || UserPlanStatusEnum.PAYMENT_FAILED.name().equals(plan.getStatus());
+        return neverStartedState && !everWasAMembership(plan);
+    }
+
+    /**
      * Start a MANUAL RENEWAL payment for the learner's existing plan ("pay to
      * continue"). Amount/vendor are SERVER-derived from the plan (never trusted
      * from the client). With {@code withAutopay} (allowed only when the invite
@@ -349,7 +367,7 @@ public class SubscriptionService {
         // membership and send the learner to finish enrolling instead — paying here would
         // extend access that does not exist, which is how one learner's Rs 7,200 bought her a
         // plan running to 2027 with no batch, no class links and no WhatsApp.
-        if (!everWasAMembership(plan)) {
+        if (isUnfinishedSignup(plan)) {
             throw new VacademyException("This membership was never activated — please complete "
                     + "your enrollment instead of renewing");
         }

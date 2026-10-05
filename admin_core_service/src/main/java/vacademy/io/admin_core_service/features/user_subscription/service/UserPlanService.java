@@ -698,8 +698,18 @@ public class UserPlanService {
             }
             logger.warn("UserPlan {} is ACTIVE but its learner {} holds no ACTIVE membership in {} — "
                     + "enrolling now", userPlan.getId(), userPlan.getUserId(), packageSessionIds);
-            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+            int shifted = learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
                     packageSessionIds, userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
+            if (shifted == 0) {
+                // The shift only PROMOTES rows that already sit in INVITED or ABANDONED_CART. A
+                // learner whose trial ran and was revoked has neither, so this repair used to
+                // shift nothing and return as though the enrollment now existed — the exact
+                // silent no-op it was written to prevent. Revive their lapsed row instead.
+                logger.warn("Nothing to shift for plan {} — reviving the learner's lapsed enrollment",
+                        userPlan.getId());
+                learnerBatchEnrollService.reviveLapsedEnrollment(
+                        packageSessionIds, userPlan.getUserId(), userPlan);
+            }
         } catch (Exception e) {
             logger.error("Could not verify or repair the enrollment for plan {}", userPlan.getId(), e);
         }

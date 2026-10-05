@@ -11,6 +11,9 @@
  * mistakes from reaching visitors.
  */
 
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+
 export type CheckSeverity = 'error' | 'warning';
 
 export interface PublishIssue {
@@ -114,7 +117,7 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
             if (c?.type === 'productPageOffer' && !String(p.productPageCode || '').trim()) {
                 issues.push({
                     severity: 'error',
-                    title: 'A course section has no product page selected',
+                    title: `A ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} section has no product page selected`,
                     fix: 'Pick a product page in its properties, or remove the section. It is hidden from visitors as-is.',
                     ...cctx,
                 });

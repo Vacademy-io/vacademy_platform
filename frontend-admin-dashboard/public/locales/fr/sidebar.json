@@ -117,6 +117,7 @@
     "scheduleAnnouncement": "Programmer une annonce",
     "liveSessionDashboard": "Tableau de bord : {{term}}",
     "scheduledLiveSessions": "{{term}} programmées",
+    "assessmentDashboard": "Tableau de bord des évaluations",
     "scheduledTests": "Tests programmés",
     "sessions": "Sessions",
     "settings": "Paramètres",

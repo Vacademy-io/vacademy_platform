@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from . import admin_core
 from .ambience import build_ambience_mixer
 from .bot import CallOutcome, run_bot
-from . import ttscache, ttswarm
+from . import memory, ttscache, ttswarm
 from .config import get_settings
 from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
@@ -78,6 +78,13 @@ async def lifespan(app: FastAPI):
             logger.info("lifespan: LLM provider pre-warmed")
         except Exception:
             logger.exception("lifespan: LLM pre-warm failed (non-fatal)")
+        # The heavy imports are in: freeze them out of every future collection
+        # (see app/memory.py) — but only while no call is live.
+        if _active_calls == 0:
+            try:
+                memory.freeze_startup()
+            except Exception:
+                logger.exception("lifespan: gc freeze failed (non-fatal)")
 
     # Background on purpose: pre-warm and the spool sweeper must not delay
     # startup (the probe window) or block /answer for live traffic.
@@ -604,6 +611,70 @@ async def _smallest_tts_wav(text: str, voice: str, model: str, pace: float,
     return buf.getvalue()
 
 
+async def _navana_tts_wav(text: str, voice: str, lang: str, pace: float | None) -> bytes:
+    """One-shot Navana synthesis (POST /tts/bytes) -> WAV bytes. The response is
+    headerless PCM; X-Sample-Rate says its rate."""
+    import io
+    import wave
+    s = get_settings()
+    body = {"text": text, "lang": lang, "voice": (voice or s.navana_tts_voice).strip(),
+            "output_format": "24000:pcm16"}
+    if pace is not None:          # the audition's slider; the cache renders at the live default
+        body["speed"] = max(0.5, min(2.0, pace))
+    # One key per request from the same pool as the live sockets (a render
+    # holds a Navana stream too); a capacity refusal moves on to the next key.
+    from .providers import NAVANA_KEYS, _Lease
+    lease, tried = _Lease(), set()
+    while True:
+        key = NAVANA_KEYS.acquire(lease, exclude=tried)
+        if key is None:
+            logger.warning("preview: navana — every key refused (%d tried)", len(tried))
+            return b""
+        try:
+            async with app.state.http_session.post(
+                    "https://tts.navana.ai/tts/bytes", json=body,
+                    headers={"X-API-Key": key},
+                    timeout=aiohttp.ClientTimeout(total=60)) as r:
+                if r.status != 200:
+                    detail = (await r.text())[:200]
+                    if r.status == 429 or "concurrency" in detail.lower():
+                        NAVANA_KEYS.refused(key)
+                        tried.add(key)
+                        continue
+                    if r.status in (401, 402, 403):
+                        # A bad / revoked / out-of-credit key: rest it as the live
+                        # sockets do and try the next — at load 0 it would
+                        # otherwise be picked first for every render.
+                        logger.warning("preview: navana key #%d of %d refused %s — resting it "
+                                       "%.0f s: %s", NAVANA_KEYS.index(key),
+                                       len(NAVANA_KEYS.keys()), r.status,
+                                       NAVANA_KEYS.BAD_KEY_SECS, detail)
+                        NAVANA_KEYS.refused(key, NAVANA_KEYS.BAD_KEY_SECS)
+                        tried.add(key)
+                        continue
+                    logger.warning("preview: navana %s %s (key #%d)", r.status, detail,
+                                   NAVANA_KEYS.index(key))
+                    return b""
+                rate = int(r.headers.get("X-Sample-Rate") or 24000)
+                pcm = await r.read()
+        except Exception:
+            logger.exception("preview: navana tts failed voice=%s (key #%d)", voice,
+                             NAVANA_KEYS.index(key))
+            return b""
+        finally:
+            NAVANA_KEYS.release(lease, key)
+        break
+    if not pcm:
+        return b""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 @router.get("/preview.mp3")
 async def preview(
     text: str = Query(..., max_length=300),
@@ -680,6 +751,28 @@ async def preview(
         path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
         if not os.path.exists(path):
             raw = await _smallest_tts_wav(text, voice, sm_model, pace, language)
+            if not raw:
+                return Response(status_code=502)
+            if not _cache_write(path, raw):
+                return Response(content=raw, media_type="audio/wav")
+            await _evict_tts_cache_async()
+        return _serve_audio(path, "audio/wav")
+
+    if engine.startswith("navana") or engine.startswith("bodhi"):
+        # Navana audition through its non-streaming endpoint (the live call
+        # streams; same voices, same language rule). Raw PCM → WAV, as Smallest.
+        from .providers import navana_keys
+        if not navana_keys(s.navana_api_key):
+            logger.warning("preview: navana requested but NAVANA_API_KEY unset")
+            return Response(status_code=503)
+        from .providers import navana_language
+        nv_lang = navana_language(lang)
+        key = hashlib.sha1(f"pv|navana|{voice}|{pace}|{nv_lang}|{text}".encode("utf-8")).hexdigest()
+        path = os.path.join(s.tts_cache_dir, f"pv-{key}.wav")
+        if not os.path.exists(path):
+            # No speed: the live call's stream cannot send one, so an audition
+            # at another speed would lie about what ships.
+            raw = await _navana_tts_wav(text, voice, nv_lang, None)
             if not raw:
                 return Response(status_code=502)
             if not _cache_write(path, raw):
@@ -1145,6 +1238,22 @@ async def ws_endpoint(websocket: WebSocket):
             _inflight_handshakes -= 1
         if _active_slot:
             _active_calls -= 1
+            # Free this call now rather than at the interpreter's next full
+            # collection (app/memory.py). Scheduled, not inline: until this
+            # handler returns, its own locals still reference the pipeline — and
+            # pipecat's TurnTrackingObserver keeps a turn-end timer (2.5 s after
+            # the bot's last audio) that holds it too. 3 s clears both.
+            try:
+                asyncio.get_running_loop().call_later(3.0, _reclaim_after_call, corr)
+            except Exception:
+                logger.exception("ws: could not schedule memory reclaim corr=%s", corr)
+
+
+def _reclaim_after_call(corr: str) -> None:
+    try:
+        memory.reclaim(idle=_active_calls == 0 and _inflight_handshakes == 0, corr=corr or "")
+    except Exception:
+        logger.exception("memory: reclaim failed corr=%s", corr)
 
 
 app.include_router(router)

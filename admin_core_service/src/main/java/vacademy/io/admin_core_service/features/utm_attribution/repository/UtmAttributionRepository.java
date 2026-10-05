@@ -13,6 +13,23 @@ import java.util.List;
 public interface UtmAttributionRepository extends JpaRepository<UtmAttribution, String> {
 
     /**
+     * Latest UTM row per user for a page of leads, so the leads table can show where a
+     * lead was tagged from without a query per row. DISTINCT ON keeps the most recent
+     * row when a user was tagged more than once.
+     */
+    @Query(value = """
+                SELECT DISTINCT ON (u.user_id)
+                       u.user_id, u.utm_source, u.utm_campaign
+                  FROM utm_attribution u
+                 WHERE u.institute_id = :instituteId
+                   AND u.user_id IN (:userIds)
+                 ORDER BY u.user_id, u.created_at DESC
+            """, nativeQuery = true)
+    List<Object[]> findLatestForUsers(@Param("instituteId") String instituteId,
+                                      @Param("userIds") java.util.Collection<String> userIds);
+
+
+    /**
      * Every touch for one person, oldest first.
      *
      * Matches on user_id OR the contact details, because three of the six

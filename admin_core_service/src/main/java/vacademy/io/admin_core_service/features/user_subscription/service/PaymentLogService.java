@@ -17,9 +17,15 @@ import vacademy.io.admin_core_service.features.notification_service.service.Paym
 import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogSummaryResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentStatusTotalProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentForecastResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentProgressProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.MonthDueLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UpcomingMonthProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
@@ -64,7 +70,10 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.time.ZoneId;
 import java.util.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 import org.springframework.util.CollectionUtils;
@@ -106,6 +115,9 @@ public class PaymentLogService {
 
     @Autowired
     private UserPlanRepository userPlanRepository;
+
+    @Autowired
+    private PaymentPlanDatesLoader paymentPlanDatesLoader;
 
     /**
      * How far ahead the Upcoming card looks. Obligations falling due inside this window are
@@ -1234,6 +1246,9 @@ public class PaymentLogService {
                 .learnersUpcoming(
                         row != null && row.getLearnersUpcoming() != null ? row.getLearnersUpcoming() : 0L)
                 .planCount(row != null && row.getPlanCount() != null ? row.getPlanCount() : 0L)
+                .instalmentPlanCount(
+                        row != null && row.getInstalmentPlanCount() != null ? row.getInstalmentPlanCount() : 0L)
+                .livePlanCount(row != null && row.getLivePlanCount() != null ? row.getLivePlanCount() : 0L)
                 .activatedWithoutPaymentCount(
                         row != null && row.getActivatedWithoutPaymentCount() != null
                                 ? row.getActivatedWithoutPaymentCount()
@@ -1315,9 +1330,22 @@ public class PaymentLogService {
      */
     public Page<OutstandingLearnerDTO> getOutstandingLearners(
             BillingSummaryRequestDTO request, int pageNo, int pageSize, boolean includeNotYetDue) {
+        return getOutstandingLearners(request, pageNo, pageSize, includeNotYetDue, null);
+    }
+
+    /**
+     * @param dueMonth optional yyyy-MM. When given, returns only the learners with something
+     *                 falling due in that month (one month of the instalment forecast), each with
+     *                 {@code monthAmount}; {@code includeNotYetDue} is then irrelevant. Blank keeps
+     *                 the Due / Outstanding lists exactly as they were.
+     */
+    public Page<OutstandingLearnerDTO> getOutstandingLearners(
+            BillingSummaryRequestDTO request, int pageNo, int pageSize, boolean includeNotYetDue,
+            String dueMonth) {
         if (!StringUtils.hasText(request.getInstituteId())) {
             throw new VacademyException("institute_id is required");
         }
+        YearMonth month = parseDueMonth(dueMonth);
         LocalDateTime startDate = request.getStartDateInUtc() != null
                 ? request.getStartDateInUtc()
                 : LocalDateTime.of(1970, 1, 1, 0, 0);
@@ -1327,13 +1355,26 @@ public class PaymentLogService {
         boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
 
         List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
-        Page<? extends OutstandingLearnerProjection> page = includeNotYetDue
-                ? userPlanRepository.findLearnersWithBalance(
-                        request.getInstituteId(), startDate, endDate, noPackageSessions,
-                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize))
-                : userPlanRepository.findOutstandingLearners(
-                        request.getInstituteId(), startDate, endDate, noPackageSessions,
-                        packageSessionIds, upcomingDays, PageRequest.of(pageNo, pageSize));
+        String search = StringUtils.hasText(request.getSearchString()) ? request.getSearchString().trim() : "";
+        boolean noSearch = search.isEmpty();
+        String phoneDigits = phoneSearchDigits(search);
+        Page<? extends OutstandingLearnerProjection> page;
+        if (month != null) {
+            page = userPlanRepository.findLearnersDueInMonth(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, month.atDay(1), month.plusMonths(1).atDay(1),
+                    noSearch, search, phoneDigits, PageRequest.of(pageNo, pageSize));
+        } else if (includeNotYetDue) {
+            page = userPlanRepository.findLearnersWithBalance(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, noSearch, search, phoneDigits,
+                    PageRequest.of(pageNo, pageSize));
+        } else {
+            page = userPlanRepository.findOutstandingLearners(
+                    request.getInstituteId(), startDate, endDate, noPackageSessions,
+                    packageSessionIds, upcomingDays, noSearch, search, phoneDigits,
+                    PageRequest.of(pageNo, pageSize));
+        }
 
         // Names/emails/phones live in the auth service, so resolve the page's learners in one call
         // rather than per row.
@@ -1354,6 +1395,7 @@ public class PaymentLogService {
             return OutstandingLearnerDTO.builder()
                     .outstanding(balance != null ? balance.getOutstanding() : null)
                     .nextDueAmount(balance != null ? balance.getNextDueAmount() : null)
+                    .monthAmount(row instanceof MonthDueLearnerProjection m ? m.getMonthAmount() : null)
                     .userId(row.getUserId())
                     .fullName(user != null ? user.getFullName() : null)
                     .email(user != null ? user.getEmail() : null)
@@ -1376,11 +1418,115 @@ public class PaymentLogService {
         return new PageImpl<>(content, PageRequest.of(pageNo, pageSize), page.getTotalElements());
     }
 
-    public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
-            PaymentLogFilterRequestDTO filterDTO,
-            int pageNo,
-            int pageSize) {
+    /** yyyy-MM, or null when blank. Anything else is a bad request, not "no filter". */
+    private static YearMonth parseDueMonth(String dueMonth) {
+        if (!StringUtils.hasText(dueMonth)) {
+            return null;
+        }
+        try {
+            return YearMonth.parse(dueMonth.trim());
+        } catch (DateTimeParseException e) {
+            throw new VacademyException("due_month must be yyyy-MM");
+        }
+    }
 
+    /**
+     * How far an institute's instalment plans have got, and when the rest comes in, month by month.
+     * Same window and course scope as {@link #getBillingSummary}, and built on the same obligation
+     * rules, so the months add up to its {@code upcomingAll}.
+     *
+     * Read-only and only asked for by instalment institutes; the Collected / Due / Upcoming figures
+     * and their lists are untouched by it.
+     */
+    public InstalmentForecastResponseDTO getInstalmentForecast(BillingSummaryRequestDTO request) {
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noPackageSessions = CollectionUtils.isEmpty(request.getPackageSessionIds());
+        List<String> packageSessionIds = noPackageSessions ? List.of("__none__") : request.getPackageSessionIds();
+
+        InstalmentProgressProjection progress = userPlanRepository.getInstalmentProgress(
+                request.getInstituteId(), startDate, endDate, noPackageSessions, packageSessionIds,
+                upcomingDays);
+        List<UpcomingMonthProjection> monthRows = userPlanRepository.getUpcomingByMonth(
+                request.getInstituteId(), startDate, endDate, noPackageSessions, packageSessionIds,
+                upcomingDays);
+
+        double overdue = progress != null && progress.getOverdue() != null ? progress.getOverdue() : 0d;
+        double outstanding = progress != null && progress.getOutstanding() != null ? progress.getOutstanding() : 0d;
+
+        List<InstalmentForecastResponseDTO.Month> months = monthRows.stream()
+                .map(row -> InstalmentForecastResponseDTO.Month.builder()
+                        .month(row.getMonthStart() != null ? YearMonth.from(row.getMonthStart()).toString() : null)
+                        .amount(row.getAmount() != null ? row.getAmount() : 0d)
+                        .learners(row.getLearners() != null ? row.getLearners() : 0L)
+                        .dues(row.getDues() != null ? row.getDues() : 0L)
+                        .firstDueOn(row.getFirstDueOn())
+                        .build())
+                .toList();
+
+        return InstalmentForecastResponseDTO.builder()
+                .instalmentBilled(progress != null && progress.getBilled() != null ? progress.getBilled() : 0d)
+                .instalmentPaid(progress != null && progress.getPaid() != null ? progress.getPaid() : 0d)
+                .instalmentOverdue(overdue)
+                .instalmentToCome(Math.max(outstanding - overdue, 0d))
+                .instalmentPlans(progress != null && progress.getPlans() != null ? progress.getPlans() : 0L)
+                .instalmentLearners(
+                        progress != null && progress.getLearners() != null ? progress.getLearners() : 0L)
+                .months(months)
+                .build();
+    }
+
+    /**
+     * Everything the combined payment query needs, resolved once from a filter set.
+     *
+     * <p>The list and the summary must see the same rows, so they read their bind values from
+     * here rather than each deriving them — a filter fixed in one place is fixed for both.</p>
+     */
+    private record ResolvedPaymentFilters(
+            String instituteId, LocalDateTime startDate, LocalDateTime endDate,
+            List<String> paymentStatusesBound, boolean noPaymentStatusFilter,
+            List<String> userPlanStatusesBound, boolean noUserPlanStatusFilter,
+            List<String> sourcesBound, boolean noSourceFilter,
+            List<String> enrollInviteIdsBound, boolean noEnrollInviteFilter,
+            List<String> packageSessionIdsBound, boolean noPackageSessionFilter,
+            String userId, boolean includeInvoiceLogs,
+            boolean noPaymentTypeFilter, boolean typeSubOrgAdmin, boolean typeSubOrgLearner,
+            boolean typeLiveClass, boolean typeCourse, boolean typeCpo,
+            boolean typeEnrollInvite, boolean typeUserInvoice,
+            boolean noSearchFilter, boolean noSearchUserIds,
+            List<String> searchUserIdsBound, boolean searchNumeric, String searchString,
+            String searchPhoneDigits,
+            List<String> paymentPlanNamesBound, boolean noPaymentPlanFilter,
+            boolean noBucketFilter, boolean bucketPaid, boolean bucketPending,
+            boolean bucketAbandoned, boolean bucketFailed) {
+    }
+
+    /**
+     * The digits of a search that reads as a phone number, for matching {@code student.mobile_number}
+     * whatever way either side is formatted — "+91 95886-97989" and "919588697989" are the same
+     * learner. Longer than ten digits keeps the last ten, so a country code on one side only still
+     * matches. Anything else (a name, an email, a short amount such as "500") returns "" and the
+     * phone match is skipped: a 3-digit fragment would pull in every learner whose number contains it.
+     */
+    static String phoneSearchDigits(String search) {
+        if (search == null || !search.matches("[+0-9()\\s-]+")) {
+            return "";
+        }
+        String digits = search.replaceAll("[^0-9]", "");
+        if (digits.length() < 5) {
+            return "";
+        }
+        return digits.length() > 10 ? digits.substring(digits.length() - 10) : digits;
+    }
+
+    private ResolvedPaymentFilters resolvePaymentFilters(PaymentLogFilterRequestDTO filterDTO) {
         validateFilter(filterDTO);
 
         List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
@@ -1427,8 +1573,17 @@ public class PaymentLogService {
         List<String> enrollInviteIdsBound = noEnrollInviteFilter ? SENTINEL : enrollInviteIds;
         List<String> packageSessionIdsBound = noPackageSessionFilter ? SENTINEL : packageSessionIds;
 
-        // Free-text search: resolve name/email/phone to a set of user IDs via the auth service, and
-        // match the amount directly on payment_log. A payment matches if its user OR amount matches.
+        // Free-text search: name/email/phone match the learner's student row inside the query, and
+        // also resolve through the auth service; the amount matches directly on payment_log. A
+        // payment matches if any of them does.
+        String statusBucket = StringUtils.hasText(filterDTO.getStatusBucket())
+                ? filterDTO.getStatusBucket().trim().toLowerCase()
+                : "total";
+        boolean noBucketFilter = "total".equals(statusBucket);
+
+        List<String> paymentPlanNames = safeList(filterDTO.getPaymentPlanNames());
+        boolean noPaymentPlanFilter = paymentPlanNames.isEmpty();
+
         String searchString = StringUtils.hasText(filterDTO.getSearchString())
                 ? filterDTO.getSearchString().trim()
                 : null;
@@ -1436,45 +1591,105 @@ public class PaymentLogService {
         List<String> searchUserIds = Collections.emptyList();
         boolean searchNumeric = false;
         if (!noSearchFilter) {
+            // The auth lookup only finds users holding a role in this institute. Learners loaded
+            // by a migration often hold none (I2CAN: 0 of 4,450 paying learners), so on its own
+            // it matched nobody -- the student-row match in the query is what finds them.
             searchUserIds = authService.searchUserIdsByQuery(searchString, filterDTO.getInstituteId());
             searchNumeric = searchString.matches("[0-9]+(\\.[0-9]+)?");
         }
         boolean noSearchUserIds = searchUserIds.isEmpty();
         List<String> searchUserIdsBound = noSearchUserIds ? SENTINEL : searchUserIds;
 
+        return new ResolvedPaymentFilters(
+                filterDTO.getInstituteId(), startDate, endDate,
+                paymentStatusesBound, noPaymentStatusFilter,
+                userPlanStatusesBound, noUserPlanStatusFilter,
+                sourcesBound, noSourceFilter,
+                enrollInviteIdsBound, noEnrollInviteFilter,
+                packageSessionIdsBound, noPackageSessionFilter,
+                userId, includeInvoiceLogs,
+                noPaymentTypeFilter, typeSubOrgAdmin, typeSubOrgLearner,
+                typeLiveClass, typeCourse, typeCpo,
+                typeEnrollInvite, typeUserInvoice,
+                noSearchFilter, noSearchUserIds,
+                searchUserIdsBound, searchNumeric, searchString,
+                phoneSearchDigits(searchString),
+                noPaymentPlanFilter ? List.of("") : paymentPlanNames, noPaymentPlanFilter,
+                noBucketFilter, "paid".equals(statusBucket), "pending".equals(statusBucket),
+                "abandoned".equals(statusBucket), "failed".equals(statusBucket));
+    }
+
+    /**
+     * Per-status counts and totals for every row the list would return under the same filters.
+     * Lets Manage Payments show tiles and tab counts for the whole set while the table itself
+     * fetches one page at a time.
+     */
+    public PaymentLogSummaryResponseDTO getPaymentLogSummary(PaymentLogFilterRequestDTO filterDTO) {
+        ResolvedPaymentFilters f = resolvePaymentFilters(filterDTO);
+        List<PaymentStatusTotalProjection> rows = paymentLogRepository.aggregateCombinedPaymentLogs(
+                f.instituteId(), f.startDate(), f.endDate(),
+                f.paymentStatusesBound(), f.noPaymentStatusFilter(),
+                f.userPlanStatusesBound(), f.noUserPlanStatusFilter(),
+                f.sourcesBound(), f.noSourceFilter(),
+                f.enrollInviteIdsBound(), f.noEnrollInviteFilter(),
+                f.packageSessionIdsBound(), f.noPackageSessionFilter(),
+                f.userId(), f.includeInvoiceLogs(), f.includeInvoiceLogs(),
+                f.noPaymentTypeFilter(), f.typeSubOrgAdmin(), f.typeSubOrgLearner(),
+                f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
+                f.typeEnrollInvite(), f.typeUserInvoice(),
+                f.noSearchFilter(), f.noSearchUserIds(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(), f.searchPhoneDigits(),
+                f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours);
+
+        List<PaymentLogSummaryResponseDTO.StatusTotal> totals = rows.stream()
+                .map(r -> PaymentLogSummaryResponseDTO.StatusTotal.builder()
+                        .status(r.getStatus())
+                        .currency(r.getCurrency())
+                        .dueEligible(r.getDueEligible())
+                        .count(r.getRowCount())
+                        .amount(r.getTotalAmount() == null ? 0d : r.getTotalAmount())
+                        .build())
+                .collect(Collectors.toList());
+        return PaymentLogSummaryResponseDTO.builder()
+                // Cancelled/voided money was never collected and is no longer owed, so it sits in
+                // no tile — the headline totals leave it out too, exactly as the cards do.
+                .totalCount(totals.stream().filter(t -> !"CANCELLED".equals(t.getStatus()))
+                        .mapToLong(PaymentLogSummaryResponseDTO.StatusTotal::getCount).sum())
+                .totalAmount(totals.stream().filter(t -> !"CANCELLED".equals(t.getStatus()))
+                        .mapToDouble(PaymentLogSummaryResponseDTO.StatusTotal::getAmount).sum())
+                .statusTotals(totals)
+                // The plan picker lists every plan the institute has, not just the plans surviving
+                // the current filters — otherwise selecting one plan would empty the dropdown.
+                .paymentPlanNames(paymentLogRepository.findDistinctPaymentPlanNames(f.instituteId()))
+                .build();
+    }
+
+    public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
+            PaymentLogFilterRequestDTO filterDTO,
+            int pageNo,
+            int pageSize) {
+
+        ResolvedPaymentFilters f = resolvePaymentFilters(filterDTO);
+
         // Use unsorted pageable — ORDER BY is hardcoded in the native query (created_at DESC)
         Pageable pageable = PageRequest.of(pageNo, pageSize);
 
         Page<CombinedPaymentRowProjection> idsPage = paymentLogRepository.findCombinedPaymentLogIdsPaginated(
-                filterDTO.getInstituteId(),
-                startDate,
-                endDate,
-                paymentStatusesBound,
-                noPaymentStatusFilter,
-                userPlanStatusesBound,
-                noUserPlanStatusFilter,
-                sourcesBound,
-                noSourceFilter,
-                enrollInviteIdsBound,
-                noEnrollInviteFilter,
-                packageSessionIdsBound,
-                noPackageSessionFilter,
-                userId,
-                includeInvoiceLogs,
-                includeInvoiceLogs,
-                noPaymentTypeFilter,
-                typeSubOrgAdmin,
-                typeSubOrgLearner,
-                typeLiveClass,
-                typeCourse,
-                typeCpo,
-                typeEnrollInvite,
-                typeUserInvoice,
-                noSearchFilter,
-                noSearchUserIds,
-                searchUserIdsBound,
-                searchNumeric,
-                searchString,
+                f.instituteId(), f.startDate(), f.endDate(),
+                f.paymentStatusesBound(), f.noPaymentStatusFilter(),
+                f.userPlanStatusesBound(), f.noUserPlanStatusFilter(),
+                f.sourcesBound(), f.noSourceFilter(),
+                f.enrollInviteIdsBound(), f.noEnrollInviteFilter(),
+                f.packageSessionIdsBound(), f.noPackageSessionFilter(),
+                f.userId(), f.includeInvoiceLogs(), f.includeInvoiceLogs(),
+                f.noPaymentTypeFilter(), f.typeSubOrgAdmin(), f.typeSubOrgLearner(),
+                f.typeLiveClass(), f.typeCourse(), f.typeCpo(),
+                f.typeEnrollInvite(), f.typeUserInvoice(),
+                f.noSearchFilter(), f.noSearchUserIds(),
+                f.searchUserIdsBound(), f.searchNumeric(), f.searchString(), f.searchPhoneDigits(),
+                f.paymentPlanNamesBound(), f.noPaymentPlanFilter(), abandonedAfterHours,
+                f.noBucketFilter(), f.bucketPaid(), f.bucketPending(),
+                f.bucketAbandoned(), f.bucketFailed(),
                 pageable);
 
         List<CombinedPaymentRowProjection> rows = idsPage.getContent();
@@ -1509,6 +1724,9 @@ public class PaymentLogService {
         Map<String, PaymentLogWithUserPlanDTO> byRowId = new HashMap<>();
         paymentLogs.forEach(pl -> byRowId.put(pl.getId(), mapEntityToDTO(pl, userMap, instituteMap)));
         unpaidInvoices.forEach(inv -> byRowId.put(inv.getId(), mapUnpaidInvoiceToDTO(inv, userMap)));
+        if (Boolean.TRUE.equals(filterDTO.getIncludePlanDates())) {
+            attachPlanDates(byRowId.values());
+        }
 
         // Emit in the order the query established (created_at DESC across both arms).
         List<PaymentLogWithUserPlanDTO> content = rows.stream()
@@ -1517,6 +1735,49 @@ public class PaymentLogService {
                 .collect(Collectors.toList());
 
         return new PageImpl<>(content, pageable, idsPage.getTotalElements());
+    }
+
+    /**
+     * Fills the optional Enrollment Date / Next Due Date columns for one page of rows, with a single
+     * query over the page's plans ({@link UserPlanRepository#findPlanDates}). Only called when the
+     * request asks for them. The query runs in its own transaction ({@link PaymentPlanDatesLoader}),
+     * so a failure is logged and the page is returned without the two columns instead of failing
+     * the whole list. Unpaid invoice rows get their due date in {@link #mapUnpaidInvoiceToDTO}.
+     */
+    private void attachPlanDates(Collection<PaymentLogWithUserPlanDTO> rows) {
+        List<String> planIds = rows.stream()
+                .map(PaymentLogWithUserPlanDTO::getUserPlan)
+                .filter(Objects::nonNull)
+                .map(UserPlanDTO::getId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (planIds.isEmpty()) {
+            return;
+        }
+        Map<String, PaymentPlanDatesLoader.PlanDates> byPlan;
+        try {
+            byPlan = paymentPlanDatesLoader.load(planIds);
+        } catch (Exception e) {
+            log.warn("Could not load enrolment / next-due dates for the payment list: {}", e.getMessage());
+            return;
+        }
+        for (PaymentLogWithUserPlanDTO row : rows) {
+            if (row.getUserPlan() == null) continue;
+            PaymentPlanDatesLoader.PlanDates d = byPlan.get(row.getUserPlan().getId());
+            if (d == null) continue;
+            row.setEnrolledDate(d.enrolledDate());
+            if (d.nextInstalmentDue() != null) {
+                row.setNextDueOn(d.nextInstalmentDue().toString());
+            } else if (d.renewalDue() != null) {
+                row.setNextDueOn(utcInstant(d.renewalDue()));
+            }
+        }
+    }
+
+    /** A stored UTC timestamp as an ISO instant, so the client can show it in the admin's zone. */
+    private static String utcInstant(LocalDateTime utc) {
+        return utc.atOffset(java.time.ZoneOffset.UTC).toInstant().toString();
     }
 
     // -------------------- Helper Methods --------------------
@@ -1606,6 +1867,11 @@ public class PaymentLogService {
                 .userPlan(null)
                 .currentPaymentStatus(voided ? "CANCELLED" : "NOT_INITIATED")
                 .user(userMap.get(invoice.getUserId()))
+                // Still owed unless voided (or somehow already paid). The UTC calendar day, exactly
+                // as the Due tab reads an invoice's due date.
+                .nextDueOn(voided || "PAID".equalsIgnoreCase(invoice.getStatus()) || invoice.getDueDate() == null
+                        ? null
+                        : invoice.getDueDate().toLocalDate().toString())
                 .invoice(PaymentLogInvoiceDTO.builder()
                         .paymentLogId(invoice.getId())
                         .invoiceId(invoice.getId())

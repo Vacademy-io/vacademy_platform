@@ -129,7 +129,12 @@ def test_the_llm_timeout_scales_with_the_token_budget():
     src = open(path).read()
     assert "urlopen(request, timeout=180)" not in src, "flat timeout is back"
     assert "_req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))" in src
-    assert "urlopen(request, timeout=_req_timeout)" in src
+    # The scaled timeout must reach the network call. The request now opens
+    # through _open_chat (gateway failover), so follow it there: both the
+    # routed attempt and the OpenRouter retry must use it, not a constant.
+    assert "model_to_use, _req_timeout) as response:" in src
+    open_chat = src[src.index("    def _open_chat("):src.index("    def chat(")]
+    assert open_chat.count("timeout=timeout") == 2, "both attempts must use the scaled timeout"
 
     budget = lambda mt: max(180, min(900, 120 + int(mt * 0.05)))
     assert budget(500) == 180        # small utility prompt keeps a tight timeout

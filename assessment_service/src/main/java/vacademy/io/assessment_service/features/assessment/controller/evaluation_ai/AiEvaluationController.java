@@ -59,6 +59,7 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @RequestParam String assessmentId,
                         @RequestBody AdoptQuestionsRequest request) {
+                accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(retrofitService.adoptQuestions(user, instituteId, assessmentId, request));
         }
 
@@ -67,6 +68,7 @@ public class AiEvaluationController {
                         @RequestAttribute("user") CustomUserDetails user,
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @RequestBody AiEvaluationTriggerRequest request) {
+                accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(aiEvaluationService.triggerEvaluation(request, user, instituteId));
         }
 
@@ -81,6 +83,8 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @RequestParam String assessmentId) {
                 accessValidator.requireInstituteMembership(user, instituteId);
+                // Staff only: these return every student's AI marks and feedback.
+                accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(progressService.listProcessesForAssessment(assessmentId, instituteId));
         }
 
@@ -93,6 +97,7 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @PathVariable String processId) {
                 accessValidator.requireProcessAccess(user, instituteId, processId);
+                accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(progressService.getEvaluationProgress(processId));
         }
 
@@ -105,6 +110,7 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @PathVariable String processId) {
                 accessValidator.requireProcessAccess(user, instituteId, processId);
+                accessValidator.requireStaffRole(user);
                 return ResponseEntity.ok(progressService.getCompletedQuestions(processId));
         }
 
@@ -117,6 +123,7 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @PathVariable String processId) {
                 accessValidator.requireProcessAccess(user, instituteId, processId);
+                accessValidator.requireStaffRole(user);
                 progressService.stopEvaluationProcess(processId);
                 return ResponseEntity.ok("Evaluation process stopped successfully");
         }
@@ -133,6 +140,7 @@ public class AiEvaluationController {
                         @PathVariable String questionId,
                         @RequestBody QuestionOverrideRequest request) {
                 accessValidator.requireProcessAccess(user, instituteId, processId);
+                accessValidator.requireStaffRole(user);
                 reviewService.overrideQuestion(processId, questionId, request.getMarksAwarded(),
                                 request.getFeedback(), user.getUserId());
                 return ResponseEntity.ok("Question evaluation updated");

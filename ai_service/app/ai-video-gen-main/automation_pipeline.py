@@ -230,6 +230,49 @@ class PipelineCancelled(Exception):
 
 
 try:
+    from video_llm_reasoning import reasoning_for as _reasoning_for
+except ImportError:  # pragma: no cover - module sits next to this file
+    def _reasoning_for(model):  # type: ignore[misc]
+        return None
+
+_ROUTER_IMPORT_WARNED = False
+
+
+def _llm_router():
+    """The llm_router module, or None where there is none (the render worker).
+
+    ai-service runs as `uvicorn ai_service.main:app` from /app, so its package
+    is `ai_service.app` and a bare `app.` import raises ModuleNotFoundError.
+    This client used to import the router only as `app.services.llm_router` and
+    swallow the ImportError, so every video LLM call went to OpenRouter even with
+    a route configured — from 2026-09-27, when GLM was routed to Isoquant, until
+    2026-10-01, with nothing in any log to say so.
+
+    The production name is tried first. When neither resolves, that is expected
+    in the render worker (no ai_service package at all); inside ai-service it
+    means routing is off, so it is said out loud, once.
+    """
+    global _ROUTER_IMPORT_WARNED
+    import importlib
+    import importlib.util
+
+    errors = []
+    for name in ("ai_service.app.services.llm_router", "app.services.llm_router"):
+        try:
+            return importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001 - any failure means "no router here"
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
+    try:
+        inside_ai_service = importlib.util.find_spec("ai_service") is not None
+    except Exception:  # noqa: BLE001
+        inside_ai_service = False
+    if inside_ai_service and not _ROUTER_IMPORT_WARNED:
+        _ROUTER_IMPORT_WARNED = True
+        print(f"⚠️ llm_router could not be imported inside ai-service — video LLM calls "
+              f"stay on OpenRouter ({'; '.join(errors)})")
+    return None
+
+try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
 except ImportError:
@@ -1621,6 +1664,9 @@ class OpenRouterClient:
         # fails over to the configured fallback instead of burning the whole
         # retry budget on one model.
         self.use_case_fallback_chain: list[str] = []
+        # The admin's default model for video (`ai_model_defaults.default_model_id`).
+        # A call that names no model uses this before the recommended list.
+        self.use_case_default_model: Optional[str] = None
         try:
             # These modules live in the `ai_service.app` package, but this file is
             # loaded flat via sys.path (the dir name is hyphenated), so a bare
@@ -1643,6 +1689,8 @@ class OpenRouterClient:
                 _free_mid = getattr(_free, "model_id", None) if _free else None
                 if _free_mid:
                     models.append(_free_mid)
+            _dm = getattr(getattr(resp, "default_model", None), "model_id", None)
+            self.use_case_default_model = _dm or None
             # Build the always-on fallback chain (deduped; order fallback → default → free).
             for _m in (
                 getattr(resp, "fallback_model", None),
@@ -1655,6 +1703,113 @@ class OpenRouterClient:
         except Exception as e:
             print(f"Warning: Failed to load model chain from registry: {e}")
         return models
+
+    def _user_default_model(self) -> Optional[str]:
+        """The video-wide model the user chose, or None.
+
+        `model_overrides.default` (or the legacy `model=` field) is stamped by the
+        stage resolver on every user-overridable stage with source "user_default",
+        so any such entry carries it.
+        """
+        for entry in (self.stage_model_map or {}).values():
+            if isinstance(entry, tuple) and len(entry) > 1 and entry[1] == "user_default" and entry[0]:
+                return entry[0]
+        return None
+
+    def _select_models(self, model: Optional[str]) -> Tuple[List[str], str]:
+        """Models to try for one call, in order, and the provenance of the first.
+
+        explicit `model=`  >  the stage's routed model  >  the model the user
+        chose  >  the registry's default for video  >  the registry's
+        recommended list  >  this client's default — then the use-case
+        fallback chain, so a dead model fails over instead of failing the run.
+
+        The user's choice and the registry default used to sit BELOW the
+        recommended list. That list is a catalogue ordering, not a routing
+        preference, and it starts with x-ai/grok-4.6 — so every call that named
+        no model and ran outside a mapped stage went to Grok, on a run whose
+        user had picked z-ai/glm-5.3-flash and whose registry default for
+        video is also z-ai/glm-5.3-flash. Nothing in the video pipeline sets
+        the stage for its main calls, so that was most unnamed calls.
+        """
+        source = ""
+        if model:
+            models_to_try = [model]
+        else:
+            stage_routed: Optional[str] = None
+            if self.stage_model_map:
+                _canonical = _normalize_stage_to_taxonomy(_llm_stage.get())
+                if _canonical:
+                    _entry = self.stage_model_map.get(_canonical)
+                    if isinstance(_entry, tuple) and len(_entry) == 2:
+                        stage_routed, source = _entry[0], (_entry[1] or "matrix")
+                    elif isinstance(_entry, str) and _entry:
+                        # Legacy flat-string callers — source unknown.
+                        stage_routed, source = _entry, "matrix"
+            user_default = self._user_default_model()
+            registry_default = getattr(self, "use_case_default_model", None)
+            if stage_routed:
+                models_to_try = [stage_routed]
+            elif user_default:
+                models_to_try, source = [user_default], "user_default"
+            elif registry_default:
+                models_to_try, source = [registry_default], "use_case_default"
+            elif self.model_chain:
+                models_to_try = list(self.model_chain)
+            else:
+                models_to_try = [self.default_model]
+
+        # Always allow failing over to the use-case fallback chain (from
+        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
+        # A single dead/empty model (explicit OR stage-routed) then fails over to
+        # the configured fallback instead of the retry decorator re-hitting the
+        # same broken model 4× and failing the whole run.
+        for _fb in getattr(self, "use_case_fallback_chain", []):
+            if _fb and _fb not in models_to_try:
+                models_to_try = models_to_try + [_fb]
+        return models_to_try, source
+
+    def _open_chat(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        wire: Dict[str, Any],
+        openrouter_payload: Dict[str, Any],
+        route: Optional[Any],
+        model: str,
+        timeout: float,
+    ):
+        """Open one chat completion, failing over from a routed gateway.
+
+        `route` is the llm_router ChatRoute when the model is routed off
+        OpenRouter (e.g. GLM to Isoquant), else None. A gateway that is down,
+        refuses the key, rate-limits or times out is retried ONCE on OpenRouter
+        with the SAME model and marked failed for its cooldown.
+
+        Without this, a gateway outage raised straight into chat()'s model
+        loop, which moved on to the NEXT model in the chain - so an Isoquant
+        blip silently turned a GLM video into a Gemini one, at Gemini prices.
+        A 400 is the request's own fault and is not retried: OpenRouter would
+        reject it too.
+        """
+        def _req(u: str, h: Dict[str, str], w: Dict[str, Any]) -> urllib.request.Request:
+            return urllib.request.Request(u, data=json.dumps(w).encode("utf-8"), headers=h, method="POST")
+
+        try:
+            return urllib.request.urlopen(_req(url, headers, wire), timeout=timeout)
+        except Exception as exc:
+            router = _llm_router() if route is not None else None
+            if router is None:
+                raise
+            status = getattr(exc, "code", None)
+            if not router.should_fail_over(route, status):
+                raise
+            router.mark_router_failed(route.router)
+            print(
+                f"   ↪ {route.label} failed for {model} at stage '{_llm_stage.get()}' "
+                f"({status or type(exc).__name__}) — retrying the same model on OpenRouter"
+            )
+            return urllib.request.urlopen(_req(self.base_url, self.headers, openrouter_payload), timeout=timeout)
 
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))
     def chat(
@@ -1670,36 +1825,7 @@ class OpenRouterClient:
         # caller's `_llm_stage` ContextVar maps to a taxonomy entry that has a
         # row in `self.stage_model_map`, use that model. Stamps `_source` on
         # the cost event so forensics can attribute the choice.
-        _stage_routed_source = ""
-        if model:
-            models_to_try = [model]
-        else:
-            stage_routed: Optional[str] = None
-            if self.stage_model_map:
-                _runtime_stage = _llm_stage.get()
-                _canonical = _normalize_stage_to_taxonomy(_runtime_stage)
-                if _canonical:
-                    _entry = self.stage_model_map.get(_canonical)
-                    if isinstance(_entry, tuple) and len(_entry) == 2:
-                        stage_routed, _stage_routed_source = _entry[0], (_entry[1] or "matrix")
-                    elif isinstance(_entry, str) and _entry:
-                        # Legacy flat-string callers — source unknown.
-                        stage_routed, _stage_routed_source = _entry, "matrix"
-            if stage_routed:
-                models_to_try = [stage_routed]
-            elif self.model_chain:
-                models_to_try = self.model_chain
-            else:
-                models_to_try = [self.default_model]
-
-        # Always allow failing over to the use-case fallback chain (from
-        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
-        # A single dead/empty model (explicit OR stage-routed) then fails over to
-        # the configured fallback instead of the retry decorator re-hitting the
-        # same broken model 4× and failing the whole run.
-        for _fb in getattr(self, "use_case_fallback_chain", []):
-            if _fb and _fb not in models_to_try:
-                models_to_try = models_to_try + [_fb]
+        models_to_try, _stage_routed_source = self._select_models(model)
 
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
@@ -1744,19 +1870,33 @@ class OpenRouterClient:
                     }
                     if response_format is not None:
                         payload["response_format"] = response_format
-                    _url, _headers, _wire = self.base_url, self.headers, payload
-                    try:
-                        from app.services.llm_router import route_chat as _route_chat
-                        _routed = _route_chat(payload, self.api_key)
-                        if not _routed[3].is_default:
-                            _url, _headers, _wire = _routed[0], _routed[1], _routed[2]
-                    except ImportError:
-                        pass  # outside the ai_service app (render worker): OpenRouter
-                    request = urllib.request.Request(
-                        _url,
-                        data=json.dumps(_wire).encode("utf-8"),
-                        headers=_headers,
-                        method="POST",
+                    # A reasoning-mandatory model (GLM 5.x) sent no reasoning
+                    # setting thinks at its own heavy default — 8x the reasoning
+                    # tokens of an explicit "high" for the same complete plan.
+                    # See video_llm_reasoning.py for the measurement.
+                    _reasoning = _reasoning_for(model_to_use)
+                    if _reasoning:
+                        payload["reasoning"] = _reasoning
+                    _url, _headers, _wire, _route = self.base_url, self.headers, payload, None
+                    _router = _llm_router()
+                    if _router is not None:
+                        try:
+                            _routed = _router.route_chat(payload, self.api_key)
+                            if not _routed[3].is_default:
+                                _url, _headers, _wire, _route = _routed[0], _routed[1], _routed[2], _routed[3]
+                        except Exception as _route_err:  # noqa: BLE001
+                            # A routing fault must never take generation down:
+                            # this call simply stays on OpenRouter.
+                            print(f"   ⚠️ routing {model_to_use} failed ({_route_err}) — using OpenRouter")
+                    # Say where each call actually went. The router fell back to
+                    # OpenRouter silently for four days; a line per call is the
+                    # cheapest way to make that visible next time.
+                    print(
+                        f"   ⇢ {model_to_use} via "
+                        f"{_route.label if _route is not None else 'OpenRouter'}"
+                        f"{(' reasoning_effort=' + str(_wire['reasoning_effort'])) if _wire.get('reasoning_effort') else ''}"
+                        f"{(' reasoning=' + str((_wire.get('reasoning') or {}).get('effort'))) if _wire.get('reasoning') else ''}"
+                        f" stage='{_llm_stage.get()}'"
                     )
                     _t_start = time.perf_counter()
                     # A flat 180s was sized for a fast non-reasoning model. A
@@ -1769,7 +1909,8 @@ class OpenRouterClient:
                     # small utility prompt keeps a tight timeout, a big
                     # generation gets room to finish.
                     _req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))
-                    with urllib.request.urlopen(request, timeout=_req_timeout) as response:
+                    with self._open_chat(_url, _headers, _wire, payload, _route,
+                                         model_to_use, _req_timeout) as response:
                         raw = response.read().decode("utf-8")
                         # Parse JSON response and return content
                         data = json.loads(raw)
@@ -14639,6 +14780,12 @@ class VideoGenerationPipeline:
             # (premium+ set concept_model); free/standard skip it to avoid the ~2x
             # ShotPlanner cost of a corrective re-plan on the cheapest tiers.
             enforce_concept=bool(tier_config.get("concept_model")),
+            # The plan is the largest single response in a run, and the prompt
+            # behind it can run to hundreds of thousands of tokens. Starting at
+            # the 16k default meant a length cut-off re-sent that whole prompt
+            # to buy a bigger budget. max_tokens is a ceiling, not a charge, so
+            # starting higher costs nothing unless the room is actually used.
+            max_tokens=32000,
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],
@@ -14707,7 +14854,15 @@ class VideoGenerationPipeline:
         if tier_config.get("edit_choreographer_enabled"):
             try:
                 from edit_choreographer import choreograph_transitions
-                _ec_model = tier_config.get("concept_model") or shot_planner_model
+                # An explicit user model choice beats the tier's frontier pick —
+                # the rule hero-shot escalation already follows ("escalate over
+                # neither"). Reading concept_model directly sent a run whose user
+                # chose z-ai/glm-5.3-flash to anthropic/claude-opus-4-8 here.
+                _ec_model = (
+                    self.script_client._user_default_model()
+                    or tier_config.get("concept_model")
+                    or shot_planner_model
+                )
                 _ec_map, _ec_usage = choreograph_transitions(
                     shot_plan_dict["shots"],
                     llm_chat=self.script_client.chat,
@@ -14771,6 +14926,9 @@ class VideoGenerationPipeline:
                 )
                 _di_model = (
                     self._resolve_stage_model("design_identity")
+                    # same rule as the edit choreographer: the user's choice
+                    # beats the tier's frontier concept model
+                    or self.script_client._user_default_model()
                     or tier_config.get("concept_model")
                     or shot_planner_model
                 )

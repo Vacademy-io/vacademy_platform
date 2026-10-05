@@ -15,6 +15,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { applyTabBranding } from "@/utils/branding";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
+import { notifyNamingSettingsUpdated } from "@/components/common/layout-container/sidebar/utils";
 import { upsertInstituteDetails } from "@/services/institute-settings-cache";
 
 export interface DomainRoutingState {
@@ -234,6 +235,8 @@ export const useDomainRouting = () => {
         }
         if (seed.length > 0) {
           localStorage.setItem(NAMING_SETTINGS_KEY, JSON.stringify(seed));
+          // Terms feed the translation catalogs too (i18n/naming-terms.ts).
+          notifyNamingSettingsUpdated();
         }
       } catch (error) {
         console.error("[Domain Routing] Error seeding naming settings:", error);

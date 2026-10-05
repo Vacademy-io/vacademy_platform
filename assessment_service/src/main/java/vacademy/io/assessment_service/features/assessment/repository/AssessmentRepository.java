@@ -27,7 +27,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "a.created_at, a.updated_at, " +
             "(SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations, " +
             "(SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids, " +
-            "aim.subject_id, aim.assessment_url " +
+            "aim.subject_id, aim.assessment_url, a.source " +
             "FROM public.assessment a " +
             "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
@@ -43,7 +43,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes) " +
             "AND a.status <> 'DELETED' " +
             "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
-            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)" +
+            "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
+            "AND (:checkSources IS NULL OR (CASE WHEN a.source = 'API' THEN 'API' ELSE 'DASHBOARD' END) IN :sources) " +
             "GROUP BY a.id, aim.subject_id, aim.assessment_url", // Group by necessary columns to ensure distinct results
             countQuery = "SELECT COUNT(DISTINCT a.id) FROM public.assessment a " +
                     "LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id " +
@@ -60,7 +61,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                     "AND a.status <> 'DELETED' " +
                     "AND (:evaluationTypes IS NULL OR a.evaluation_type IN :evaluationTypes) " +
                     "AND (:assessmentModes IS NULL OR a.play_mode IN :assessmentModes)" +
-                    "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes)",
+                    "AND (:assessmentTypes IS NULL OR a.assessment_type IN :assessmentTypes) " +
+                    "AND (:checkSources IS NULL OR (CASE WHEN a.source = 'API' THEN 'API' ELSE 'DASHBOARD' END) IN :sources)",
             nativeQuery = true)
     Page<Object[]> filterAssessments(@Param("name") String name,
                                      @Param("checkBatches") Boolean checkBatches,
@@ -76,6 +78,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                                      @Param("instituteIds") List<String> instituteIds,
                                      @Param("evaluationTypes") List<String> evaluationType,
                                      @Param("assessmentTypes") List<String> assessmentType,
+                                     @Param("checkSources") Boolean checkSources,
+                                     @Param("sources") List<String> sources,
                                      Pageable pageable);
 
 
@@ -87,7 +91,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                    a.created_at, a.updated_at,\s
                    (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
                    (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
-                   aim.subject_id, aim.assessment_url\s
+                   aim.subject_id, aim.assessment_url, a.source\s
             FROM public.assessment a\s
             LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
             LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
@@ -113,7 +117,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                    a.created_at, a.updated_at,\s
                    (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
                    (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
-                   aim.subject_id, aim.assessment_url\s
+                   aim.subject_id, aim.assessment_url, a.source\s
             FROM public.assessment a\s
             LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
             LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
@@ -144,7 +148,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                            a.created_at, a.updated_at,\s
                            (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
                            (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
-                           aim.subject_id, aim.assessment_url\s
+                           aim.subject_id, aim.assessment_url, a.source\s
                     FROM public.assessment a\s
                     LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
                     LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
@@ -170,7 +174,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                            a.created_at, a.updated_at,\s
                            (SELECT COUNT(*) FROM public.assessment_user_registration ur WHERE ur.assessment_id = a.id) AS user_registrations,\s
                            (SELECT ARRAY_AGG(abr.batch_id) FROM public.assessment_batch_registration abr WHERE abr.assessment_id = a.id) AS batch_ids,\s
-                           aim.subject_id, aim.assessment_url\s
+                           aim.subject_id, aim.assessment_url, a.source\s
                     FROM public.assessment a\s
                     LEFT JOIN public.assessment_batch_registration abr ON a.id = abr.assessment_id\s
                     LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id\s
@@ -344,7 +348,10 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     @Query("SELECT a FROM Assessment a " +
             "WHERE TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) > 0 " +
             "AND TIMESTAMPDIFF(MINUTE, CURRENT_TIMESTAMP, a.boundStartTime) <= :timeFrameInMinutes " +
-            "AND a.status IN :statuses")
+            "AND a.status IN :statuses " +
+            // Partner-API exams have no learners to remind (spec 12 item 4). IS NULL first:
+            // a plain <> would also drop every dashboard exam, whose source is NULL.
+            "AND (a.source IS NULL OR a.source <> 'API')")
     List<Assessment> findAssessmentsStartingWithinTimeFrame(
             @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
             @Param("statuses") List<String> statuses
@@ -353,7 +360,8 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
     @Query("SELECT a FROM Assessment a " +
             "WHERE TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) > 0 " +
             "AND TIMESTAMPDIFF(MINUTE, a.boundStartTime, CURRENT_TIMESTAMP) <= :timeFrameInMinutes " +
-            "AND a.status IN :statusList")
+            "AND a.status IN :statusList " +
+            "AND (a.source IS NULL OR a.source <> 'API')")
     List<Assessment> findRecentlyStartedAssessments(
             @Param("timeFrameInMinutes") Integer timeFrameInMinutes,
             @Param("statusList") List<String> statusList);

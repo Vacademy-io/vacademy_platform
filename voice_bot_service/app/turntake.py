@@ -59,6 +59,12 @@ _BACKCHANNEL_WORDS = frozenset({
     "अच्छा", "अच्छे", "अछा", "ठीक", "है", "ओके", "सही", "बिल्कुल", "बिलकुल",
     "बढ़िया", "बढिया", "बहुत",
     "बोलिए", "बोलो", "बताइए", "बताओ", "सर", "मैम", "मैडम", "भैया", "ओ", "के",
+    "बोल", "बोलें", "बोलिये",
+    # Marathi "yes" — and how the STT writes some callers' "हाँ". Call 8208166f
+    # (2026-10-01): "हो।" then "हो नमस्ते।" each cut the opening ~1.3 s in and
+    # restarted it; the caller heard "नमस्ते जी, मैं श्रेया" three times in 4 s
+    # and never why we called.
+    "हो", "होय", "बरोबर", "आहे", "ho", "hoy",
     # Romanized Hindi / Hinglish
     "haan", "haa", "han", "ha", "hn", "hm", "hmm", "hmmm", "mm", "mhm", "mhmm",
     "ji", "jee", "jii", "achha", "accha", "acha", "achcha", "thik", "theek",
@@ -328,6 +334,21 @@ _END_PHRASES = (
     "jarurat nahi", "nahi chahiye", "interest nahi", "mat karo call", "call mat",
 )
 _BYE_WORDS = frozenset({"bye", "goodbye", "byebye", "bbye", "tata", "alvida"})
+# The same asks as Sarvam writes them — Devanagari, often mixed with English.
+# Call f1368e22 (2026-10-01): "काट कर रख दो", "cut करो", "call cut कर दो" (and
+# "phone रख दो" / "काट दो" in the same family) matched nothing above, and the bot
+# talked for another 4.5 minutes. Imperatives only ("मार्क्स कट गए" is not a
+# request), and "रहने दो" stays OUT — it means "leave that topic".
+_END_RE_HI = re.compile(
+    r"(call|कॉल|phone|फोन|फ़ोन)\s*(cut|कट|काट)"
+    r"|(cut|कट)\s*(करो|कर\s*दो|कर\s*दीजिए|कर\s*दें|कीजिए)"
+    r"|काट\s*(कर\s*)?(रख\s*)?(दो|दीजिए|दिजिए|दें)"
+    r"|(phone|फोन|फ़ोन|call|कॉल)\s*(रख\s*(दो|दीजिए|दिजिए|दें)|रखो|रखिए)"
+    r"|(call|कॉल|phone|फोन|फ़ोन)\s*(बंद|band)\s*(करो|कर\s*दो|कीजिए|कर\s*दीजिए)"
+    r"|मत\s*(call|कॉल|phone|फोन|फ़ोन)\s*(करो|करना|कीजिए)"
+    r"|(call|कॉल|phone|फोन|फ़ोन)\s*मत\s*(करो|करना|कीजिए)"
+    r"|(ग़लत|गलत|रॉन्ग)\s*(नंबर|number)"
+    r"|(ज़रूरत|जरूरत|interest|इंटरेस्ट|रुचि)\s*नहीं|नहीं\s*चाहिए", re.I)
 
 
 _FAREWELL_RE = re.compile(
@@ -367,7 +388,7 @@ def caller_wants_to_end(text: str) -> bool:
     t = " ".join((text or "").casefold().split())
     if not t:
         return False
-    if any(p in t for p in _END_PHRASES):
+    if any(p in t for p in _END_PHRASES) or _END_RE_HI.search(t):
         return True
     ws = _words(t)
     return bool(ws) and (ws[-1] in _BYE_WORDS or (len(ws) <= 4 and bool(set(ws) & _BYE_WORDS)))
@@ -522,6 +543,34 @@ def is_question(text: str) -> bool:
     return any(w in _QUESTION_WORDS for w in _words(t))
 
 
+_BUSY_PHRASES = (
+    "busy", "बिज़ी", "बिजी", "व्यस्त", "time नहीं", "टाइम नहीं", "समय नहीं", "वक्त नहीं", "वक़्त नहीं",
+    "बाद में", "baad me", "baad mein", "later", "अभी नहीं", "abhi nahi", "not now", "driving",
+    "drive कर", "गाड़ी चला", "गाडी चला", "bike चला", "बाइक चला", "meeting में", "in a meeting",
+    "free नहीं", "फ्री नहीं", "urgency", "urgent",
+)
+
+
+def caller_is_busy(text: str) -> bool:
+    """"अभी time नहीं है madam" / "I'm driving" / "बाद में call करना" — a real
+    answer that wants a call-back, not a pickup "hello". Call 1f2b97ab
+    (2026-10-01): said twice over the opening, and both times the opening
+    started again from "नमस्ते जी"; they hung up at 15 s."""
+    t = " ".join((text or "").casefold().split())
+    return bool(t) and not t.startswith("[") and any(p in t for p in _BUSY_PHRASES)
+
+
+# Measured on live openings (2026-10-01): Shreya's 168 key chars play in
+# 12.4 s, Aarushi's 41 in 3.0 s — ~13.6/s. 12/s makes the estimate a little
+# LONGER than the audio, so "heard half of it" needs a little more time.
+_OPENING_KEY_CHARS_PER_SEC = 12.0
+
+
+def opening_expected_secs(opening: str) -> float:
+    """Roughly how long the scripted opening plays, from its text."""
+    return len(spoken_key(opening)) / _OPENING_KEY_CHARS_PER_SEC
+
+
 def takes_over_opening(text: str) -> bool:
     """Before our opening has been heard, does THIS utterance earn a model
     reply instead? Only a question to us, a refusal, or our own cue does.
@@ -534,7 +583,7 @@ def takes_over_opening(text: str) -> bool:
         return False
     if t.startswith("["):
         return True                    # our own steering cue
-    if caller_asks_who(t) or caller_wants_to_end(t):
+    if caller_asks_who(t) or caller_wants_to_end(t) or caller_is_busy(t):
         return True
     if is_audio_check(t) or caller_checking_presence(t):
         return False                   # "Hello?" — the opening IS the answer
@@ -601,6 +650,12 @@ def could_not_hear_us(text: str) -> bool:
     return any(abs(i - j) <= 3 for i in heard for j in negs)
 
 
+_WHAT_TO_SAY = re.compile(
+    r"(क्या\s*(बोलूं|बोलूँ|बोलू|बताऊं|बताऊँ|बताऊ|बताना\s*है|बोलना\s*है|पूछ\s*रही|पूछा))"
+    r"|(kya\s*(bolu|boloon|bataun|batau|batana\s*hai|bolna\s*hai))"
+    r"|(what\s*(should|do)\s*i\s*(say|tell))|(what\s*did\s*you\s*ask)")
+
+
 def caller_asked_to_repeat(text: str) -> bool:
     """Did the caller ASK us to say it again? Then repeating is correct."""
     ws = set(_words(text))
@@ -621,6 +676,12 @@ def caller_asked_to_repeat(text: str) -> bool:
     # "समझ"/"सुनाई" are NOT here any more: bare, they also match "समझ गया सर"
     # (I DID understand), which is the opposite request — could_not_hear_us
     # above reads the negation instead. "phir"/"फिर" ("फिर से बोलिए") stays.
+    # "क्या बोलूं?" / "क्या बताऊँ?" / "what should I say?" — they did not
+    # catch WHAT we asked, so the question again is the reply. Call 3ad7f590
+    # (2026-09-30): read as a question to answer, the model re-introduced
+    # itself instead of re-asking the child's name and class.
+    if len(ws) <= 5 and _WHAT_TO_SAY.search(t):
+        return True
     return bool(ws & {"repeat", "dobara", "dubara", "दोबारा"}) or (
         len(ws) <= 5 and bool(ws & {"phir", "फिर"}))
 
@@ -688,8 +749,11 @@ def spoken_key(text: str) -> str:
 # repeat however it is phrased.
 _QUESTION_TOPICS = (
     ("child_name", ("naam", "नाम", "name")),
-    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
+    # marks BEFORE klass: "पिछली class में कितने marks आए थे?" is the marks
+    # question, and filing it under klass made the gate treat it as a re-ask
+    # of the class question (call 22062aac, 2026-09-29).
     ("marks", ("marks", "मार्क्स", "score", "स्कोर", "percent", "परसेंट", "%")),
+    ("klass", ("class", "क्लास", "kaksha", "कक्षा", "grade")),
     ("weak_subject", ("subject", "सब्जेक्ट", "dikkat", "दिक्कत", "weak", "kamzor")),
     ("fees", ("fees", "फीस", "fee", "price", "cost", "kitni hai")),
     # BEFORE quiz_link: "Is this number on WhatsApp?" shares the word with the
@@ -738,6 +802,16 @@ _ECHO_STOPWORDS = frozenset({
     "is", "are", "was", "were", "the", "a", "an", "in", "at", "of", "to", "for",
     "and", "so", "has", "have", "had", "you", "your", "i", "it", "its", "that",
     "this", "he", "she", "his", "her", "their", "got", "get", "with", "on",
+})
+# A tag that only asks the caller to CONFIRM what came before it ("सही है?",
+# "right?"). Once the read-back in front of it is trimmed, it confirms nothing:
+# call a6849d85 (2026-09-30) took an order — "quantity पांच।" — and the bot's
+# "पांच pieces, सही है?" reached the caller as a bare "सही है?", who said
+# "Hello." after 3.6 s of silence. Reading an order back IS the next step.
+_CONFIRM_TAGS = frozenset({
+    "सही", "ठीक", "ना", "न", "नहीं", "पक्का", "correct", "right", "ok", "okay",
+    "ओके", "confirm", "sure", "yes", "na", "sahi", "theek", "thik", "haina", "hai",
+    "hain", "है", "हैं", "ये", "यह", "yeh", "ye", "that",
 })
 # Leading connectives left dangling once the parroting in front of them is gone.
 _LEADING_CONNECTORS = frozenset({"तो", "और", "अब", "so", "and", "then", "now", "ok",
@@ -842,6 +916,9 @@ def strip_echo_opener(sentence: str, caller_text: str, bot_question: str = "",
     out = ", ".join(t.strip() for t in tail if t.strip()).strip()
     # A tail that cannot stand on its own is worse than the parroting.
     if len(_words(out)) < 3 and "?" not in out:
+        return sentence
+    # A bare confirmation tag asks about the words just trimmed: keep the read-back.
+    if all(w in _CONFIRM_TAGS or w in _ECHO_STOPWORDS for w in _words(out)):
         return sentence
     if out[:1].islower() and text[:1].isupper():
         out = out[0].upper() + out[1:]

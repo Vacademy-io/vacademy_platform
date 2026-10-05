@@ -2009,11 +2009,13 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             playsInline
                             preload="auto"
                             controlsList={allowVideoDownload ? undefined : "nodownload"}
-                            // The native OfflineMedia responders (iOS scheme
-                            // handler / Android localhost server) don't send
-                            // Access-Control-Allow-Origin — crossOrigin would
-                            // make some WebViews refuse to play the stream.
-                            crossOrigin={isOfflineSource ? undefined : "anonymous"}
+                            // No crossOrigin: nothing reads the frames (no canvas,
+                            // no tracks), and CORS mode only adds ways to fail —
+                            // the native OfflineMedia responders send no
+                            // Access-Control-Allow-Origin, and Google Meet
+                            // recordings on CloudFront fail WebKit's CORS check
+                            // ("Video source not supported" on iOS) while
+                            // playing fine as a plain media request.
                         >
                             <source src={actualVideoUrl} type="video/mp4" />
                             <source src={actualVideoUrl} type="video/webm" />

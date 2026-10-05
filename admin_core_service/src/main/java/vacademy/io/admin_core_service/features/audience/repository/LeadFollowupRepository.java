@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.audience.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +25,76 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
     /** Manager view: pending follow-ups owned by anyone in the caller's hierarchy scope. */
     List<LeadFollowup> findByInstituteIdAndCreatedByInAndIsClosedFalseOrderByScheduleTimeAsc(
             String instituteId, List<String> createdBy);
+
+    /*
+     * Completed follow-ups. Paged, unlike their pending counterparts above: the
+     * closed set only ever grows, so an institute a year in would otherwise be
+     * handing the browser every follow-up it has ever finished.
+     *
+     * Scoped on created_by to match the pending queries exactly. Who CLOSED a
+     * follow-up is a different question from whose follow-up it is, and only
+     * the latter decides who may see it; closed_by rides along on the DTO for
+     * display.
+     */
+    Page<LeadFollowup> findByCreatedByAndIsClosedTrue(String createdBy, Pageable pageable);
+
+    /*
+     * Completed follow-ups for the Completed tile, with the two controls that
+     * list needs: a closed_at window and a lead search.
+     *
+     * The search mirrors the leads query exactly, auth-service user ids
+     * included. A lead whose identity lives on its auth user carries nothing in
+     * ar.parent_name, so name search without searchUserIdsCsv finds nothing for
+     * it, which is a bug this codebase has already been bitten by.
+     *
+     * No semicolon anywhere in the string: Hibernate appends its own limit
+     * clause to a paged native query and a stray one makes it a runtime error.
+     */
+    @Query(value = """
+            SELECT f.* FROM lead_followup f
+            LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            WHERE f.institute_id = :instituteId
+              AND f.is_closed = TRUE
+              AND (COALESCE(:createdByCsv, '') = ''
+                   OR f.created_by = ANY(STRING_TO_ARRAY(:createdByCsv, ',')))
+              AND (CAST(:closedFrom AS timestamp) IS NULL
+                   OR f.closed_at >= CAST(:closedFrom AS timestamp))
+              AND (CAST(:closedTo AS timestamp) IS NULL
+                   OR f.closed_at < CAST(:closedTo AS timestamp))
+              AND (COALESCE(:searchQuery, '') = ''
+                   OR LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
+                   OR (COALESCE(:searchUserIdsCsv, '') <> ''
+                       AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+            ORDER BY f.closed_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM lead_followup f
+            LEFT JOIN audience_response ar ON ar.id = f.audience_response_id
+            WHERE f.institute_id = :instituteId
+              AND f.is_closed = TRUE
+              AND (COALESCE(:createdByCsv, '') = ''
+                   OR f.created_by = ANY(STRING_TO_ARRAY(:createdByCsv, ',')))
+              AND (CAST(:closedFrom AS timestamp) IS NULL
+                   OR f.closed_at >= CAST(:closedFrom AS timestamp))
+              AND (CAST(:closedTo AS timestamp) IS NULL
+                   OR f.closed_at < CAST(:closedTo AS timestamp))
+              AND (COALESCE(:searchQuery, '') = ''
+                   OR LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%'))
+                   OR ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%')
+                   OR (COALESCE(:searchUserIdsCsv, '') <> ''
+                       AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+            """,
+            nativeQuery = true)
+    Page<LeadFollowup> findCompleted(@Param("instituteId") String instituteId,
+                                     @Param("createdByCsv") String createdByCsv,
+                                     @Param("closedFrom") Timestamp closedFrom,
+                                     @Param("closedTo") Timestamp closedTo,
+                                     @Param("searchQuery") String searchQuery,
+                                     @Param("searchUserIdsCsv") String searchUserIdsCsv,
+                                     Pageable pageable);
 
     /**
      * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.
@@ -67,4 +139,34 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
     @Query("UPDATE LeadFollowup lf SET lf.status = 'OVERDUE' " +
            "WHERE lf.id = :id AND lf.status = 'ONGOING' AND lf.isClosed = false")
     int claimOverdueTransition(@Param("id") String id);
+
+    /**
+     * Undo a claim whose emission then failed, so the next scan retries it.
+     *
+     * <p>The claim has to happen BEFORE the emit (it is what makes the one-fire guarantee
+     * hold across replicas), which means a failed emit would otherwise leave the row
+     * advanced with nothing sent — and since the status only ever moves forward, that
+     * follow-up's reminder would be lost permanently rather than retried. One transient
+     * auth-service or workflow blip silently costs a counsellor their reminder.</p>
+     *
+     * <p>Retrying is safe: the workflow emission is idempotent per follow-up id
+     * (eventId = the row id under EVENT_BASED dedup), so a re-run cannot double-fire the
+     * workflow. Only the baseline bell alert can repeat, which is the right trade against
+     * dropping it entirely.</p>
+     *
+     * <p>Guarded on the expected current status so a release can never drag a row
+     * backwards past a transition another replica legitimately made in the meantime.</p>
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE LeadFollowup lf SET lf.status = 'PENDING' " +
+           "WHERE lf.id = :id AND lf.status = 'ONGOING' AND lf.isClosed = false")
+    int releaseDueTransition(@Param("id") String id);
+
+    /** Overdue twin of {@link #releaseDueTransition}. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE LeadFollowup lf SET lf.status = 'ONGOING' " +
+           "WHERE lf.id = :id AND lf.status = 'OVERDUE' AND lf.isClosed = false")
+    int releaseOverdueTransition(@Param("id") String id);
 }

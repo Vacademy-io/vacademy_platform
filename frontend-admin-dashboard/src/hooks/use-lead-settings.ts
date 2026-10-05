@@ -95,6 +95,20 @@ export interface LeadSettingsConfig {
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
 
+    /**
+     * When true, the unfiltered "All leads" view (Recent Leads + Lead List) hides
+     * converted leads. They stay reachable through the "Enrolled / Converted" option,
+     * the institute's CONVERTED status and the Lead Board. Off by default.
+     */
+    hideConvertedInAllLeads: boolean;
+    /**
+     * Whether the built-in "Enrolled / Converted" option is offered in the Lead Status
+     * filter. It is NOT a lead_status row — it filters on conversion_status, which is why
+     * it needs its own flag rather than the per-status show_in_filter toggle. Institutes
+     * that keep their own CONVERTED status see two near-identical options without this.
+     */
+    showConvertedFilterOption: boolean;
+
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
@@ -112,6 +126,10 @@ export interface LeadSettingsConfig {
 export interface LeadTerminologyLabels {
     tier?: string;
     leadStatus?: string;
+    /** What this institute calls the audience's channel (default "Campaign type"; many say "Source"). */
+    campaignType?: string;
+    /** What this institute calls the audience a lead came in through (default "Audience"; I2CAN says "Label"). */
+    leadSource?: string;
 }
 
 export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
@@ -126,6 +144,8 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    hideConvertedInAllLeads: false,
+    showConvertedFilterOption: true,
     tatReminder: {
         enabled: false,
         tatHours: 24,

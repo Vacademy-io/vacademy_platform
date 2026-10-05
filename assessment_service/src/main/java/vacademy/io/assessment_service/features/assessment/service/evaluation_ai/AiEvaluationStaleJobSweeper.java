@@ -65,30 +65,33 @@ public class AiEvaluationStaleJobSweeper {
             return;
         }
         Date now = new Date();
-        int requeued = 0, failed = 0;
+        int requeued = 0, failed = 0, moved = 0;
+        // Guarded per-row updates, not a saveAll of what was read: a complete
+        // callback (or a fresh heartbeat) landing between the read and the write
+        // must win, not be turned back into PENDING or FAILED (gate G6).
         for (AiEvaluationProcess process : silent) {
+            String id = process.getId();
+            String status = process.getStatus();
             int retries = process.getRetryCount() == null ? 0 : process.getRetryCount();
             if (retries < maxRequeues) {
-                process.setStatus("PENDING");
-                process.setCurrentStep("REQUEUED");
-                process.setRetryCount(retries + 1);
-                process.setClaimedBy(null);
-                process.setClaimedAt(null);
-                process.setAiServiceJobId(null);
-                process.setErrorMessage("No response from the AI service for " + staleTimeoutMinutes
-                        + " min; queued again (attempt " + (retries + 2) + ").");
-                requeued++;
+                String message = "No response from the AI service for " + staleTimeoutMinutes
+                        + " min; queued again (attempt " + (retries + 2) + ").";
+                if (processRepository.sweepRequeue(id, status, cutoff, retries + 1, message, now) > 0) {
+                    requeued++;
+                } else {
+                    moved++;
+                }
             } else {
-                process.setStatus("FAILED");
-                process.setCurrentStep("TIMED_OUT");
-                process.setErrorMessage("Evaluation timed out " + (retries + 1)
-                        + " times with no response from the AI service. Please retry.");
-                process.setCompletedAt(now);
-                failed++;
+                String message = "Evaluation timed out " + (retries + 1)
+                        + " times with no response from the AI service. Please retry.";
+                if (processRepository.sweepFail(id, status, cutoff, message, now) > 0) {
+                    failed++;
+                } else {
+                    moved++;
+                }
             }
         }
-        log.warn("[ai-eval-sweeper] {} silent evaluation(s): {} queued again, {} failed (no heartbeat for > {} min)",
-                silent.size(), requeued, failed, staleTimeoutMinutes);
-        processRepository.saveAll(silent);
+        log.warn("[ai-eval-sweeper] {} silent evaluation(s): {} queued again, {} failed, {} moved on meanwhile "
+                + "(no heartbeat for > {} min)", silent.size(), requeued, failed, moved, staleTimeoutMinutes);
     }
 }

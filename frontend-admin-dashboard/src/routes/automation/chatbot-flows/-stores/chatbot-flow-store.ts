@@ -16,6 +16,7 @@ import {
     ChatbotFlowEdgeDTO,
     ChatbotFlowSettings,
     ChatbotNodeType,
+    CRM_LEAD_CHECK_BRANCHES,
     NODE_TYPE_REGISTRY,
 } from '@/types/chatbot-flow/chatbot-flow-types';
 
@@ -108,6 +109,18 @@ export const useChatbotFlowStore = create<ChatbotFlowBuilderState>((set, get) =>
                     const branch = branches.find((b) => b.id === connection.sourceHandle);
                     if (branch) {
                         label = branch.label || connection.sourceHandle;
+                        conditionConfig = { branchId: branch.id };
+                    }
+                }
+            } else if (connection.sourceHandle) {
+                // CRM_LEAD_CHECK: fixed NEW / EXISTING outputs, same branchId contract as CONDITION
+                const sourceNode = state.nodes.find((n) => n.id === connection.source);
+                if (sourceNode?.data?.nodeType === 'CRM_LEAD_CHECK') {
+                    const branch = CRM_LEAD_CHECK_BRANCHES.find(
+                        (b) => b.id === connection.sourceHandle
+                    );
+                    if (branch) {
+                        label = branch.label;
                         conditionConfig = { branchId: branch.id };
                     }
                 }

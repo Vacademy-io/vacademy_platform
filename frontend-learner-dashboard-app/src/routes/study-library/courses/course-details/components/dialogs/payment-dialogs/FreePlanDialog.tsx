@@ -202,11 +202,11 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
             {/* Course Info */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Course Information</CardTitle>
+                <CardTitle className="text-lg">{getTerminology(ContentTerms.Course, SystemTerms.Course)} Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Course:</span>
+                  <span className="text-sm text-gray-600">{getTerminology(ContentTerms.Course, SystemTerms.Course)}:</span>
                   <span className="font-medium">{courseTitle}</span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -286,7 +286,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                                     return [
                                       <div key="default" className="flex items-center space-x-2">
                                         <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                        <span className="text-sm text-gray-700">Basic course access</span>
+                                        <span className="text-sm text-gray-700">Basic {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} access</span>
                                       </div>
                                     ];
                                   }
@@ -294,7 +294,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                               ) : (
                                 <div className="flex items-center space-x-2">
                                   <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                  <span className="text-sm text-gray-700">Basic course access</span>
+                                  <span className="text-sm text-gray-700">Basic {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} access</span>
                                 </div>
                               )}
                             </div>

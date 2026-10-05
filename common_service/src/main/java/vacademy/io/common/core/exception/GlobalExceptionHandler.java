@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
+import vacademy.io.common.exceptions.AccessRevokedException;
 import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.InvalidRequestException;
@@ -99,6 +100,17 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(status).body(new StatusErrorInfo(
                 req.getRequestURL().toString(), reason, reason, String.valueOf(status.value()), new Date()));
+    }
+
+    /**
+     * A switched-off team member's open tab keeps calling in; that is expected, not an error,
+     * so it is logged at info and answered 403 with the code other services match on.
+     */
+    @ExceptionHandler(AccessRevokedException.class)
+    public ResponseEntity<ErrorInfo> handleAccessRevoked(HttpServletRequest req, AccessRevokedException ex) {
+        log.info("Access revoked: {}", ex.getLocalizedMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorInfo(req.getRequestURL().toString(),
+                ex.getLocalizedMessage(), AccessRevokedException.CODE, new Date()));
     }
 
     @ExceptionHandler(VacademyException.class)

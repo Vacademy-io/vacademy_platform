@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import vacademy.io.admin_core_service.features.engagement.controller.EngagementExceptionAdvice;
 import vacademy.io.admin_core_service.features.engagement.controller.EngagementLearnerController;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementFeedDTO;
+import vacademy.io.admin_core_service.features.engagement.dto.EngagementHistoryDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementItemDTO;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitRequest;
 import vacademy.io.admin_core_service.features.engagement.dto.EngagementSubmitResponse;
@@ -772,6 +773,83 @@ class EngagementLearnerServiceFeedTest {
             List<String> names = new ArrayList<>();
             for (Iterator<String> it = node.fieldNames(); it.hasNext(); ) names.add(it.next());
             return names;
+        }
+    }
+
+    // ── fixes from the 2026-09-28 end-to-end pass ───────────────────────────
+
+    @Nested
+    @DisplayName("2026-09-28 E2E pass")
+    class EndToEndPass {
+
+        @Test
+        @DisplayName("a task whose day was removed can't be opened or submitted")
+        void deletedDayIsGone() {
+            EngagementSlot day = daySlot("gone", TODAY);
+            mcq("q", day);
+            day.setStatus("DELETED");
+
+            assertThrows(VacademyException.class, () -> service.getItem("q", INST, USER));
+            EngagementSubmitRequest req = new EngagementSubmitRequest();
+            req.setSelectedOptionId("b");
+            assertThrows(VacademyException.class, () -> service.submit("q", INST, USER, req));
+        }
+
+        @Test
+        @DisplayName("an option id the question doesn't have is refused, not graded as a wrong answer")
+        void unknownOptionRefused() {
+            mcq("q", daySlot("today", TODAY));
+            EngagementSubmitRequest req = new EngagementSubmitRequest();
+            req.setSelectedOptionId("zzz");
+
+            EngagementRejectedException ex = assertThrows(EngagementRejectedException.class,
+                    () -> service.submit("q", INST, USER, req));
+            assertEquals(EngagementRejectedException.ANSWER_REQUIRED, ex.getReasonCode());
+        }
+
+        @Test
+        @DisplayName("a retried submit after the window closed still answers alreadyCompleted")
+        void retryAfterCloseIsIdempotent() {
+            EngagementSlot morning = slot("morning", TODAY, null, LocalTime.of(7, 0), LocalTime.of(9, 0));
+            EngagementItem q = mcq("q", morning);
+            q.setMissPolicy("EXPIRES");
+            completed(q, NOW.minusHours(2), "{\"selectedOptionId\":\"b\"}");
+            EngagementSubmitRequest req = new EngagementSubmitRequest();
+            req.setSelectedOptionId("b");
+
+            EngagementSubmitResponse resp = service.submit("q", INST, USER, req);
+
+            assertTrue(Boolean.TRUE.equals(resp.getAlreadyCompleted()));
+        }
+
+        @Test
+        @DisplayName("history hides a recurring question's key while a later run is still to come")
+        void historyHidesKeyUntilLastRun() {
+            // Runs yesterday..tomorrow at 12:00-13:00; it is 10:00, so today's run is ahead.
+            EngagementSlot daily = slot("daily", TODAY.minusDays(1), TODAY.plusDays(1),
+                    LocalTime.of(12, 0), LocalTime.of(13, 0));
+            mcq("q", daily).setMissPolicy("EXPIRES");
+
+            EngagementHistoryDTO history = service.getHistory(INST, USER, 7);
+
+            EngagementItemDTO missed = history.getItems().stream()
+                    .filter(d -> "q".equals(d.getId())).findFirst().orElseThrow();
+            assertEquals("MISSED", missed.getHistoryStatus());
+            assertFalse(missed.getPayloadJson().contains("correctOptionId"), missed.getPayloadJson());
+            assertNull(missed.getCorrectOptionId());
+        }
+
+        @Test
+        @DisplayName("once the last run is over, the missed question's key is shown")
+        void historyShowsKeyAfterLastRun() {
+            EngagementSlot once = slot("once", TODAY.minusDays(1), null, LocalTime.of(12, 0), LocalTime.of(13, 0));
+            mcq("q", once).setMissPolicy("EXPIRES");
+
+            EngagementHistoryDTO history = service.getHistory(INST, USER, 7);
+
+            EngagementItemDTO missed = history.getItems().stream()
+                    .filter(d -> "q".equals(d.getId())).findFirst().orElseThrow();
+            assertTrue(missed.getPayloadJson().contains("correctOptionId"), missed.getPayloadJson());
         }
     }
 }

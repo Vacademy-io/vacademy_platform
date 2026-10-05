@@ -1,6 +1,9 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
+import {
+    getYouTubeEmbedOrigin,
+    routeYouTubeEmbedThroughBridge,
+} from "@/utils/youtube-embed";
 
 interface YouTubeEmbedPlayerProps {
     url: string;
@@ -43,7 +46,9 @@ function convertToYouTubeEmbedUrl(url: string): string {
     });
 
     // Use youtube-nocookie.com for privacy-enhanced mode (less branding)
-    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+    return routeYouTubeEmbedThroughBridge(
+        `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`,
+    );
 }
 
 export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({

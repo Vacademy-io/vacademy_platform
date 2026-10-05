@@ -29,6 +29,7 @@ import {
 } from '@/types/assessments/assessment-revaluate-question-wise';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 export function AssessmentGlobalLevelRevaluateQuestionWise() {
     const { t } = useTranslation('assessmentGlobalRevaluateQuestionWise');
@@ -219,9 +220,10 @@ export function AssessmentGlobalLevelRevaluateQuestionWise() {
                                                 <TableCell>{index + 1}</TableCell>
                                                 <TableCell
                                                     dangerouslySetInnerHTML={{
-                                                        __html:
+                                                        __html: sanitizeRichHtml(
                                                             question.assessment_question_preview_dto
-                                                                .questionName || '',
+                                                                .questionName
+                                                        ),
                                                     }}
                                                 />
                                                 <TableCell>

@@ -221,7 +221,9 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
     let sessions: FormattedSession[] = [];
 
     if (!hasLevels && !hasSessions) {
-        const allUsers = formData.instructors;
+        // The authors the admin picked. `instructors` is the whole staff list the
+        // picker offers, and sending it made every staff member an author.
+        const allUsers = formData.selectedInstructors;
 
         sessions = [
             {
@@ -341,8 +343,8 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
     // the course fell back to showing its creator. Mirror them at the top
     // level, which is the field that path actually reads.
     const defaultAuthors =
-        !hasLevels && !hasSessions && Array.isArray(formData.instructors)
-            ? formData.instructors.map(mapUser)
+        !hasLevels && !hasSessions && Array.isArray(formData.selectedInstructors)
+            ? formData.selectedInstructors.map(mapUser)
             : undefined;
 
     return {

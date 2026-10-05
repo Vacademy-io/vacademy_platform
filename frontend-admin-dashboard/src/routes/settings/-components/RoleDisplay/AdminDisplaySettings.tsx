@@ -43,6 +43,7 @@ import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
+import { LiveClassActionsCard } from './LiveClassActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1392,6 +1393,11 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                 settings={settings.assessmentPage}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
             />
+            <LiveClassActionsCard
+                settings={settings.liveClassActions}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, liveClassActions: next }))}
+                defaultAllowDeletePastSessions={true}
+            />
             </section>
 
             <section id="grp-layout" className="space-y-6">
@@ -2302,6 +2308,13 @@ export default function AdminDisplaySettings({ onDirtyChange }: RoleDisplayPanel
                         updateSettings((prev) => ({
                             ...prev,
                             listUtmFilterControls: next,
+                        }))
+                    }
+                    builtInValue={settings.listBuiltInFilterControls}
+                    onBuiltInChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            listBuiltInFilterControls: next,
                         }))
                     }
                 />

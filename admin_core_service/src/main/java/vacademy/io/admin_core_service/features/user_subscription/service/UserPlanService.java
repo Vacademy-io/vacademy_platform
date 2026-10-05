@@ -67,11 +67,17 @@ public class UserPlanService {
     private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
+
+    @Autowired
     @Lazy
     public LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.service.PhoneIdentifierInviteSubmissionGuard phoneIdentifierInviteSubmissionGuard;
     @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
@@ -194,6 +200,17 @@ public class UserPlanService {
                     .readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
             if (ap.path("ENABLED").asBoolean(false)) {
                 Integer trialDays = ap.has("TRIAL_DAYS") ? ap.get("TRIAL_DAYS").asInt(0) : null;
+                // One free trial per learner per institute. Someone who already had one and
+                // comes back through the invite form enrolls as a paying member: no trial
+                // window, and SubscriptionPaymentOptionOperation then charges the plan price
+                // at checkout instead of the Rs 1 mandate authorisation, because that branch
+                // keys off is_trial. Nothing else has to know about the rule.
+                if (trialDays != null && trialDays > 0 && hasConsumedTrial(userPlan, enrollInvite)) {
+                    logger.info("UserPlan {}: learner {} already used their trial at institute {} — "
+                            + "enrolling as a paying member, full price at checkout",
+                            userPlan.getId(), userPlan.getUserId(), enrollInvite.getInstituteId());
+                    trialDays = 0;
+                }
                 // Optional: hold the trial clock until the day the programme actually
                 // starts (e.g. "MONDAY" for an institute whose classes begin on Mondays).
                 // Absent → the trial starts at enrollment, as before.
@@ -203,6 +220,30 @@ public class UserPlanService {
             }
         } catch (Exception e) {
             logger.warn("Could not apply autopay for plan {}: {}", userPlan.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Whether this learner has already consumed a trial at the invite's institute. Any
+     * failure is treated as "no" — a lookup problem must not silently charge someone the
+     * full price when the institute meant to give them a trial.
+     */
+    private boolean hasConsumedTrial(UserPlan userPlan, EnrollInvite enrollInvite) {
+        try {
+            String instituteId = enrollInvite.getInstituteId();
+            java.util.Date now = new java.util.Date();
+            // Where the phone number IS the identity (SuchBliss), the question is whether this
+            // NUMBER has had a trial, not this account: signing up again is precisely how a
+            // second free trial gets taken.
+            if (phoneIdentifierInviteSubmissionGuard.usesPhoneIdentifier(instituteId)) {
+                return userPlanRepository.hasConsumedTrialByPhone(
+                        userPlan.getUserId(), instituteId, userPlan.getId(), now);
+            }
+            return userPlanRepository.hasConsumedTrialAtInstitute(
+                    userPlan.getUserId(), instituteId, userPlan.getId(), now);
+        } catch (Exception e) {
+            logger.warn("Could not check trial history for user {}: {}", userPlan.getUserId(), e.getMessage());
+            return false;
         }
     }
 
@@ -629,12 +670,69 @@ public class UserPlanService {
         return true;
     }
 
+    /**
+     * Makes sure an already-ACTIVE plan actually has the enrollment its learner paid for.
+     *
+     * <p>Idempotent by construction: it does nothing when an ACTIVE membership already exists
+     * for the invite's package sessions, and otherwise performs the same INVITED -> ACTIVE
+     * shift the normal first-payment path performs. Safe to run on every payment for an
+     * ACTIVE plan, which is the point — the alternative is trusting that the plan's status
+     * tells you whether the learner is enrolled, and it does not.
+     *
+     * <p>Never throws: a payment must not fail because the enrollment repair did.
+     */
+    public void ensureEnrollmentExists(UserPlan userPlan) {
+        try {
+            EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+            if (enrollInvite == null) {
+                return;
+            }
+            List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
+                    .findPackageSessionsOfEnrollInvite(enrollInvite);
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                return;
+            }
+            if (studentSessionInstituteGroupMappingRepository
+                    .existsActiveMembership(userPlan.getUserId(), packageSessionIds)) {
+                return;
+            }
+            logger.warn("UserPlan {} is ACTIVE but its learner {} holds no ACTIVE membership in {} — "
+                    + "enrolling now", userPlan.getId(), userPlan.getUserId(), packageSessionIds);
+            int shifted = learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                    packageSessionIds, userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
+            if (shifted == 0) {
+                // The shift only PROMOTES rows that already sit in INVITED or ABANDONED_CART. A
+                // learner whose trial ran and was revoked has neither, so this repair used to
+                // shift nothing and return as though the enrollment now existed — the exact
+                // silent no-op it was written to prevent. Revive their lapsed row instead.
+                logger.warn("Nothing to shift for plan {} — reviving the learner's lapsed enrollment",
+                        userPlan.getId());
+                learnerBatchEnrollService.reviveLapsedEnrollment(
+                        packageSessionIds, userPlan.getUserId(), userPlan);
+            }
+        } catch (Exception e) {
+            logger.error("Could not verify or repair the enrollment for plan {}", userPlan.getId(), e);
+        }
+    }
+
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
-        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
-                || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
-            logger.info("UserPlan already ACTIVE or pending . Skipping re-activation.");
+        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            // Already ACTIVE does NOT mean already enrolled. Nitika Maheshwari's annual plan
+            // reached ACTIVE through the RENEWAL path — handleSuccessfulRenewal activates and
+            // extends whichever plan the money was paid against — minutes before this method
+            // ran on the very same payment, so this early return skipped the enrollment shift
+            // below. Her Rs 7,200 was recorded, the plan ran to 2027, and she held no ACTIVE
+            // mapping at all: a paying member in no batch, receiving no class links.
+            // Re-activation is indeed not wanted here; the enrollment still has to exist.
+            logger.info("UserPlan {} already ACTIVE — verifying the enrollment exists", userPlan.getId());
+            ensureEnrollmentExists(userPlan);
+            return;
+        }
+        if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            // A stacked plan is enrolled when it is promoted, not now.
+            logger.info("UserPlan {} is stacked (PENDING) — enrollment happens on promotion", userPlan.getId());
             return;
         }
 
@@ -1370,7 +1468,14 @@ public class UserPlanService {
                 List.of(LearnerSessionStatusEnum.ACTIVE.name()));
 
         if (mappings.isEmpty()) {
-            logger.warn("No active mappings found for expired plan ID={}. Nothing to transfer.", expiredPlan.getId());
+            // Promoting a plan while transferring nothing leaves an ACTIVE plan with no
+            // enrolment behind it — the learner pays (or already paid) and sits in no batch.
+            // It happens whenever the expired plan's mappings were already revoked, which is
+            // the normal end of a trial. Enrol against the promoted plan instead of returning
+            // empty-handed.
+            logger.warn("No active mappings to transfer from expired plan ID={} — enrolling the "
+                    + "promoted plan {} directly", expiredPlan.getId(), stackedPlan.getId());
+            ensureEnrollmentExists(stackedPlan);
             return;
         }
 

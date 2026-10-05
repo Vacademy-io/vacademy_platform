@@ -25,6 +25,7 @@ import vacademy.io.assessment_service.features.assessment.repository.SectionRepo
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.bulk_entry_services.QuestionAssessmentSectionMappingService;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
@@ -77,6 +78,10 @@ public class AiEvaluationRetrofitService {
                 accessValidator.requireInstituteMembership(user, instituteId);
                 Assessment assessment = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId)
                                 .orElseThrow(() -> new VacademyException("Assessment not found"));
+                // A partner-API exam's questions are owned by the API and frozen once open (spec 7.1).
+                if (ApiCandidatePolicy.isApiExam(assessment)) {
+                        throw new VacademyException("This exam is managed by the API; change its questions through the API.");
+                }
 
                 List<AdoptQuestionsRequest.AdoptedQuestion> incoming = request != null && request.getQuestions() != null
                                 ? request.getQuestions()

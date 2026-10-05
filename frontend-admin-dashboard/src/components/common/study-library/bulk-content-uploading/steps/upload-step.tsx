@@ -161,7 +161,11 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                 <span className="flex flex-col">
                     <span className="text-subtitle text-neutral-700">Skip duplicate titles</span>
                     <span className="text-caption text-neutral-500">
-                        Don’t re-create a slide whose title already exists in the target chapter
+                        Don’t re-create a slide whose title already exists in the target{' '}
+                        {getTerminology(
+                            ContentTerms.Chapters,
+                            SystemTerms.Chapters
+                        ).toLocaleLowerCase()}
                     </span>
                 </span>
                 <Switch
@@ -234,8 +238,8 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                             <UploadSimple className="size-4" />
                             <span>
                                 {mode === 'csv'
-                                    ? 'A bulkcontent.csv inside maps each file to a chapter'
-                                    : 'Folder names become your course structure'}
+                                    ? `A bulkcontent.csv inside maps each file to a ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}`
+                                    : `Folder names become your ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} structure`}
                             </span>
                         </div>
                     </div>
@@ -299,11 +303,20 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                                         <label className="flex items-center justify-between gap-4">
                                             <span className="flex flex-col">
                                                 <span className="text-caption font-medium text-neutral-700">
-                                                    Choose specific courses for the template
+                                                    Choose specific{' '}
+                                                    {getTerminologyPlural(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    ).toLocaleLowerCase()}{' '}
+                                                    for the template
                                                 </span>
                                                 <span className="text-caption text-neutral-500">
                                                     Off = template includes all{' '}
-                                                    {templateCourseOptions.length} courses
+                                                    {templateCourseOptions.length}{' '}
+                                                    {getTerminologyPlural(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    ).toLocaleLowerCase()}
                                                 </span>
                                             </span>
                                             <Switch
@@ -316,7 +329,7 @@ export const UploadStep = ({ onZipSelected, onManifestCsvSelected }: UploadStepP
                                                 options={templateCourseOptions}
                                                 selected={templateCourseIds}
                                                 onChange={setTemplateCourseIds}
-                                                placeholder="Search & select courses…"
+                                                placeholder={`Search & select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}…`}
                                             />
                                         )}
                                     </div>

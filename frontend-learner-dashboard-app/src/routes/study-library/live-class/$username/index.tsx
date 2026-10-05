@@ -3,9 +3,9 @@ import { AuthPageBranding } from "@/components/common/institute-branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getTokenFromStorage,
-  getDecodedAccessTokenFromStorage,
 } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { getInstituteId } from "@/constants/helper";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -172,9 +172,9 @@ function RouteComponent() {
    */
   const handleNavigateToSession = useCallback(
     async (session: SessionDetails, isInWaitingRoom: boolean) => {
-      const instituteId = Object.keys(
-        (await getDecodedAccessTokenFromStorage())?.authorities ?? {}
-      )[0];
+      // The institute the learner is logged into (selectedInstituteId), not the
+      // token's first key — for a learner in two institutes that is arbitrary.
+      const instituteId = await getInstituteId();
       if (instituteId) {
         const disclaimer = await getLiveClassDisclaimer(
           instituteId,

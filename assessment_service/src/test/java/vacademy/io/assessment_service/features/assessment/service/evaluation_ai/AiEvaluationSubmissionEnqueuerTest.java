@@ -103,6 +103,15 @@ class AiEvaluationSubmissionEnqueuerTest {
         }
 
         @Test
+        void aReleasedResultIsNeverQueued() {
+                StudentAttempt released = attempt("attempt-released");
+                released.setReportReleaseStatus("RELEASED");
+
+                assertNull(enqueuer.enqueueIfEnabled(released, assessment(true)));
+                verify(repository, never()).save(any(AiEvaluationProcess.class));
+        }
+
+        @Test
         void queuesWhenTheAssessmentOptedIn() {
                 String processId = enqueuer.enqueueIfEnabled(attempt("attempt-1"), assessment(true));
 
@@ -185,5 +194,43 @@ class AiEvaluationSubmissionEnqueuerTest {
                 assertThat(enqueuer.enqueueIfEnabled(null, assessment(true))).isNull();
                 assertThat(enqueuer.enqueueIfEnabled(attempt("attempt-1"), null)).isNull();
                 verify(repository, never()).save(any(AiEvaluationProcess.class));
+        }
+
+        @Test
+        void aQueuedCopyCarriesItsInstituteAndTheCopyLane() {
+                StudentAttempt copy = attempt("attempt-1");
+                vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration reg =
+                                new vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration();
+                reg.setInstituteId("inst-1");
+                copy.setRegistration(reg);
+
+                enqueuer.enqueueIfEnabled(copy, assessment(true));
+
+                org.mockito.ArgumentCaptor<AiEvaluationProcess> captor =
+                                org.mockito.ArgumentCaptor.forClass(AiEvaluationProcess.class);
+                verify(repository).save(captor.capture());
+                assertThat(captor.getValue().getInstituteId()).isEqualTo("inst-1");
+                assertThat(captor.getValue().getLane()).isEqualTo("COPY");
+        }
+
+        @Test
+        void aQueuedOnlineEssayGoesToTheTypedLane() {
+                StudentAttempt online = new StudentAttempt();
+                online.setId("attempt-essay");
+                online.setAttemptData("{\"sections\":[]}");
+                when(mappingRepository.existsQuestionOfTypesInAssessment("assessment-1", List.of("LONG_ANSWER")))
+                                .thenReturn(true);
+
+                enqueuer.enqueueIfEnabled(online, assessment(true));
+
+                org.mockito.ArgumentCaptor<AiEvaluationProcess> captor =
+                                org.mockito.ArgumentCaptor.forClass(AiEvaluationProcess.class);
+                verify(repository).save(captor.capture());
+                assertThat(captor.getValue().getLane()).isEqualTo("TYPED");
+        }
+
+        @Test
+        void aClaimedRowCountsAsInFlightSoASubmitRetryDoesNotQueueAgain() {
+                assertThat(AiEvaluationSubmissionEnqueuer.ACTIVE_STATUSES).contains("PENDING", "DISPATCHED");
         }
 }

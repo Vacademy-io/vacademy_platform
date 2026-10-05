@@ -78,7 +78,17 @@
         "pendingStatus": "Pending",
         "failedGradeMessage": "AI could not grade this — needs your review",
         "editedBadge": "Edited",
-        "needsReviewBadge": "Needs review"
+        "needsReviewBadge": "Needs review",
+        "reviewMeta": {
+            "reviewedViaApiBy": "Reviewed via API by {{reviewer}}",
+            "reviewedViaApi": "Reviewed via API",
+            "reviewedBy": "Reviewed by {{reviewer}}",
+            "reviewed": "Reviewed",
+            "approvedViaApiBy": "Approved via API by {{reviewer}}",
+            "approvedViaApi": "Approved via API",
+            "approvedBy": "Approved by {{reviewer}}",
+            "approved": "Approved"
+        }
     },
     "teacherReview": {
         "failedTitle": "This question was not graded automatically.",

@@ -26,6 +26,13 @@
             "studentsTable": "Students table (Manage Students)"
         }
     },
+    "allLeadsCard": {
+        "title": "All Leads View",
+        "description": "Choose whether converted leads appear in the unfiltered \"All leads\" view of Recent Leads and lead lists. You can still see them by picking \"Enrolled / Converted\" or your converted status in the Lead Status filter, or on the Lead Board.",
+        "hideConverted": "Hide converted leads from All leads",
+        "showConvertedFilter": "Offer \"Enrolled / Converted\" in the Lead Status filter",
+        "showConvertedFilterHint": "This is the built-in option that finds leads enrolled into a course. Turn it off if your own converted status already covers it — most institutes have one, and the two sit next to each other looking almost identical."
+    },
     "weightsCard": {
         "title": "Scoring Weights",
         "description": "Each factor contributes its weight percentage to the final score (0–100). Weights must sum to exactly 100.",
@@ -66,6 +73,8 @@
         "tierPlaceholder": "e.g. Interest Level",
         "leadStatusLabel": "Name for \"Lead status\"",
         "leadStatusPlaceholder": "e.g. Action Label",
+        "campaignTypeLabel": "Name for \"Campaign type\"",
+        "campaignTypePlaceholder": "e.g. Source",
         "hint": "Used in the leads table headers, filters, lead side-view and these settings. Save with the button below."
     }
 }

@@ -8,11 +8,11 @@ from typing import Any, Dict, List, Sequence
 
 SHEETS: Dict[str, Sequence[str]] = {
     "learners": ("user_id", "name", "courses", "sessions", "minutes", "attempts", "avg_score", "weak_attempts",
-                 "last_active", "note"),
+                 "activeness", "last_active", "note"),
     "concepts": ("concept", "topic", "slide", "course", "attempts", "learners", "avg_score", "weak_attempts",
                  "weak_learners", "cleared_learners", "misconceptions", "concept_id", "slide_id"),
     "courses": ("package_id", "course", "sessions", "learners", "minutes", "attempts", "avg_score", "weak_attempts",
-                "last_active"),
+                "activeness", "last_active"),
 }
 
 

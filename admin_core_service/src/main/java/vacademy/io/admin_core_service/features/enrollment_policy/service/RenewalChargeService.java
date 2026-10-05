@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo;
+import vacademy.io.admin_core_service.features.user_subscription.util.TrialStartResolver;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
@@ -65,7 +66,19 @@ public class RenewalChargeService {
      */
     private static final int MAX_CHARGE_LEAD_DAYS = 3;
 
-    public void processDueRenewals() {
+    /**
+     * Charges every armed plan that is due, for the institutes that have authorised it.
+     *
+     * <p>{@code instituteIds} is required and must be non-empty: the caller resolves who has
+     * opted in. There is deliberately no unscoped overload -- the sweep is one platform-wide
+     * cron, so an unscoped call means "charge every institute at once", which is never what
+     * anyone wants to be one refactor away from.
+     */
+    public void processDueRenewals(List<String> instituteIds) {
+        if (instituteIds == null || instituteIds.isEmpty()) {
+            log.info("[RenewalCharge] No institutes have authorised the autopay charge sweep — nothing to do");
+            return;
+        }
         Date now = new Date();
         // next_charge_at carries the enrollment's time-of-day, so a plan due "today" at
         // 15:00 would be missed by this morning's run and only charge tomorrow. Sweep the
@@ -74,7 +87,14 @@ public class RenewalChargeService {
         // Fetch out to the widest lead any invite may configure, then let each plan's own
         // invite decide whether it is due yet (see isDueWithLead). Invites without
         // CHARGE_LEAD_DAYS keep the exact behaviour they had: due on the date itself.
-        List<UserPlan> due = userPlanRepository.findDueForRenewal(endOfDay(plusDays(now, MAX_CHARGE_LEAD_DAYS)));
+        // The prefilter runs before any plan -- and so any invite timezone -- is known, so it
+        // is cut a full day wide of the widest lead. End of day in one fixed zone would be
+        // too early for any institute behind it (end of day in UTC-5 is 04:59 UTC the next
+        // morning) and silently drop those plans from the sweep. isDueWithLead then decides
+        // precisely, in each invite's own zone.
+        List<UserPlan> due = userPlanRepository.findDueForRenewalForInstitutes(
+                endOfDay(plusDays(now, MAX_CHARGE_LEAD_DAYS + 1), java.time.ZoneOffset.UTC),
+                instituteIds);
         due = due.stream().filter(plan -> isDueWithLead(plan, now)).toList();
         if (due.isEmpty()) {
             log.info("[RenewalCharge] No autopay plans due");
@@ -146,11 +166,12 @@ public class RenewalChargeService {
         if (months == null || months <= 0 || plan.getStartDate() == null) {
             return false;
         }
-        java.time.LocalDate start = plan.getStartDate().toInstant()
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        // The invite's zone, not the pod's: an IST-midnight start_date read as the previous
+        // day under UTC, moving the whole fixed term a day earlier.
+        java.time.ZoneId zone = billingZone(plan.getEnrollInvite());
+        java.time.LocalDate start = plan.getStartDate().toInstant().atZone(zone).toLocalDate();
         java.time.LocalDate termEnd = start.plusMonths(months);
-        java.time.LocalDate today = now.toInstant()
-                .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        java.time.LocalDate today = now.toInstant().atZone(zone).toLocalDate();
         // On/after the term-end date the next cycle would fall outside the paid term.
         return !today.isBefore(termEnd);
     }
@@ -191,7 +212,8 @@ public class RenewalChargeService {
             return false;
         }
         int lead = resolveChargeLeadDays(plan.getEnrollInvite());
-        return !plan.getNextChargeAt().after(endOfDay(plusDays(now, lead)));
+        return !plan.getNextChargeAt().after(
+                endOfDay(plusDays(now, lead), billingZone(plan.getEnrollInvite())));
     }
 
     private int resolveChargeLeadDays(EnrollInvite invite) {
@@ -209,15 +231,22 @@ public class RenewalChargeService {
         return cal.getTime();
     }
 
-    /** Last instant of the given day, so "due today" means due by this run. */
-    private static Date endOfDay(Date date) {
-        java.util.Calendar cal = java.util.Calendar.getInstance();
-        cal.setTime(date);
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 23);
-        cal.set(java.util.Calendar.MINUTE, 59);
-        cal.set(java.util.Calendar.SECOND, 59);
-        cal.set(java.util.Calendar.MILLISECOND, 999);
-        return cal.getTime();
+    /**
+     * Last instant of the given day IN THE INVITE'S BILLING ZONE, so "due today" means due
+     * by this run.
+     *
+     * <p>Built with Calendar.getInstance() this was the last instant of the day in the POD's
+     * zone — 23:59:59 UTC, i.e. 05:29 the next morning in Asia/Kolkata. A charge stored at
+     * IST midnight of the day after the lead window (18:30 UTC) therefore fell inside it and
+     * got presented a day early. 20 SuchBliss plans hold exactly such a next_charge_at.
+     */
+    private static Date endOfDay(Date date, java.time.ZoneId zone) {
+        return Date.from(date.toInstant().atZone(zone).toLocalDate()
+                .atTime(java.time.LocalTime.MAX).atZone(zone).toInstant());
+    }
+
+    private static java.time.ZoneId billingZone(EnrollInvite invite) {
+        return TrialStartResolver.zoneFromInvite(invite != null ? invite.getSettingJson() : null);
     }
 
     private enum Outcome { CHARGED, FAILED, SKIPPED }

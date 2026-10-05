@@ -98,6 +98,55 @@ public class InstituteAccessValidator {
         }
     }
 
+    /**
+     * Institute ADMIN only, with NO root-user bypass -- for endpoints that mint credentials
+     * or spend credits on the institute's behalf (e.g. AI-calling API keys). The root flag
+     * cannot be trusted here: learners and invited staff are created as root users, so the
+     * bypass in {@link #validateUserAccess} would let any learner act on any institute.
+     *
+     * <p>Membership is the non-root test of {@code validateUserAccess} (a non-empty
+     * authorities list with the clientId header equal to {@code instituteId}); on top of
+     * that the caller must hold the ADMIN role there (a STUDENT or TEACHER is refused). A
+     * real institute admin always passes: the dashboard sends the clientId header and
+     * auth_service puts the ADMIN role name into the authorities for that institute.
+     */
+    public void requireInstituteAdmin(CustomUserDetails user, String instituteId) {
+        requireMemberWithoutRootBypass(user, instituteId);
+        if (!hasAdminAuthority(user)) {
+            throw new ForbiddenException("Access denied: institute admin role required");
+        }
+    }
+
+    /**
+     * Institute STAFF only, with NO root-user bypass -- for endpoints that spend the
+     * institute's credits but that any staff member may use, not just admins (placing AI
+     * calls from the leads UI, bulk AI campaigns, the AI call queue). Same staff test as
+     * {@link #requireStaffAccess}; membership as in {@link #requireInstituteAdmin}.
+     */
+    public void requireInstituteStaff(CustomUserDetails user, String instituteId) {
+        requireMemberWithoutRootBypass(user, instituteId);
+        requireStaffAuthorities(user);
+    }
+
+    /**
+     * The non-root membership test of {@link #validateUserAccess}, without its root bypass.
+     * Only the authorities path is used: in this service the principal is rebuilt from
+     * auth_service's payload and its JPA roles set is always null, and the authorities are
+     * minted for the clientId-header institute only, so they prove membership of exactly that one.
+     */
+    private void requireMemberWithoutRootBypass(CustomUserDetails user, String instituteId) {
+        if (user == null) {
+            throw new VacademyException("User authentication required");
+        }
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("Institute ID is required");
+        }
+        if (user.getAuthorities() == null || user.getAuthorities().isEmpty()
+                || !instituteId.equals(currentClientIdHeader())) {
+            throw new ForbiddenException("Access denied: user does not belong to institute " + instituteId);
+        }
+    }
+
     /** Authority names that identify institute staff. */
     private static final Set<String> STAFF_ROLE_NAMES = Set.of("ADMIN", "TEACHER", "EVALUATOR", "MENTOR");
 
@@ -135,7 +184,10 @@ public class InstituteAccessValidator {
             return;
         }
         validateUserAccess(user, instituteId);
+        requireStaffAuthorities(user);
+    }
 
+    private static void requireStaffAuthorities(CustomUserDetails user) {
         Set<String> authorities = new HashSet<>();
         if (user.getAuthorities() != null) {
             for (GrantedAuthority authority : user.getAuthorities()) {
@@ -168,6 +220,10 @@ public class InstituteAccessValidator {
     public boolean isInstituteAdmin(CustomUserDetails user) {
         if (user == null) return false;
         if (user.isRootUser()) return true;
+        return hasAdminAuthority(user);
+    }
+
+    private static boolean hasAdminAuthority(CustomUserDetails user) {
         return user.getAuthorities() != null && user.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority() != null && a.getAuthority().equalsIgnoreCase("ADMIN"));
     }

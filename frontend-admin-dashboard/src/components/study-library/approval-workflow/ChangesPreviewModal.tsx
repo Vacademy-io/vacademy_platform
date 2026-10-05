@@ -18,6 +18,11 @@ import { GET_SLIDES } from '@/constants/urls';
 import { fetchModulesWithChapters } from '@/routes/study-library/courses/-services/getModulesWithChapters';
 import { fetchCourseStudyLibraryDetails } from '@/routes/study-library/courses/-services/getStudyLibraryDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface ChangesPreviewModalProps {
     isOpen: boolean;
@@ -53,6 +58,10 @@ export function ChangesPreviewModal({
     const { studyLibraryData } = useStudyLibraryStore();
     const { items: chapterSlides } = useContentStore();
     const { getPackageSessionId } = useInstituteDetailsStore();
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const chapterTerm = getTerminology(ContentTerms.Chapters, SystemTerms.Chapters);
+    const chaptersTerm = getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters);
     const [changesSummary, setChangesSummary] = useState<ChangesSummary | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -212,7 +221,7 @@ export function ChangesPreviewModal({
                     if (c?.chapter?.id) {
                         chapters.push({
                             id: c.chapter.id,
-                            name: c.chapter.chapter_name || 'Untitled Chapter',
+                            name: c.chapter.chapter_name || `Untitled ${chapterTerm}`,
                         });
                     }
                 });
@@ -258,7 +267,7 @@ export function ChangesPreviewModal({
             if (newCount + updatedCount > 0) {
                 byChapter.push({
                     chapterId: id,
-                    chapterName: chaptersMap.get(id) || 'Untitled Chapter',
+                    chapterName: chaptersMap.get(id) || `Untitled ${chapterTerm}`,
                     newCount,
                     updatedCount,
                 });
@@ -347,7 +356,8 @@ export function ChangesPreviewModal({
                         Review Changes Before Submission
                     </DialogTitle>
                     <DialogDescription>
-                        Review the changes you've made before submitting this course for approval.
+                        Review the changes you've made before submitting this{' '}
+                        {courseTerm.toLocaleLowerCase()} for approval.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -373,11 +383,14 @@ export function ChangesPreviewModal({
                                     variant={changesSummary.isNewCourse ? 'default' : 'secondary'}
                                     className="text-xs"
                                 >
-                                    {changesSummary.isNewCourse ? 'New Course' : 'Course Update'}
+                                    {changesSummary.isNewCourse
+                                        ? `New ${courseTerm}`
+                                        : `${courseTerm} Update`}
                                 </Badge>
                                 {!changesSummary.isNewCourse && (
                                     <span className="text-xs text-gray-500">
-                                        Based on original course: {changesSummary.originalCourseId}
+                                        Based on original {courseTerm.toLocaleLowerCase()}:{' '}
+                                        {changesSummary.originalCourseId}
                                     </span>
                                 )}
                             </div>
@@ -390,7 +403,10 @@ export function ChangesPreviewModal({
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2 text-sm">
                                             <Plus size={14} className="text-green-600" />
-                                            <span>New course with all content</span>
+                                            <span>
+                                                New {courseTerm.toLocaleLowerCase()} with all
+                                                content
+                                            </span>
                                         </div>
                                         <div className="ml-6 space-y-1 text-xs text-gray-600">
                                             <div>
@@ -403,7 +419,7 @@ export function ChangesPreviewModal({
                                             </div>
                                             <div>
                                                 • {changesSummary.changesDetected.newChapters}{' '}
-                                                chapters
+                                                {chaptersTerm.toLocaleLowerCase()}
                                             </div>
                                             <div>
                                                 • {changesSummary.changesDetected.totalSlides}{' '}
@@ -453,8 +469,8 @@ export function ChangesPreviewModal({
                                             <div className="flex items-center gap-2 text-sm">
                                                 <Plus size={14} className="text-green-600" />
                                                 <span>
-                                                    {changesSummary.changesDetected.newChapters} new
-                                                    chapters
+                                                    {changesSummary.changesDetected.newChapters} new{' '}
+                                                    {chaptersTerm.toLocaleLowerCase()}
                                                 </span>
                                             </div>
                                         )}
@@ -466,11 +482,12 @@ export function ChangesPreviewModal({
                             {chapterSlideChanges.hasAny && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                                     <h4 className="mb-2 font-medium text-amber-900">
-                                        Slides you modified in this chapter
+                                        Slides you modified in this{' '}
+                                        {chapterTerm.toLocaleLowerCase()}
                                     </h4>
                                     <p className="mb-3 text-sm text-amber-800">
-                                        This is what will be sent for admin review from your current
-                                        chapter.
+                                        This is what will be sent for admin review from your current{' '}
+                                        {chapterTerm.toLocaleLowerCase()}.
                                     </p>
                                     <div className="mb-3 flex gap-3 text-xs text-amber-900">
                                         <span className="rounded bg-white/70 px-2 py-1">
@@ -514,7 +531,8 @@ export function ChangesPreviewModal({
                             {courseWide && (
                                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                                     <h4 className="mb-2 font-medium text-indigo-900">
-                                        Course-wide changes (all chapters)
+                                        {courseTerm}-wide changes (all{' '}
+                                        {chaptersTerm.toLocaleLowerCase()})
                                     </h4>
                                     <div className="mb-3 flex gap-3 text-xs text-indigo-900">
                                         <span className="rounded bg-white/70 px-2 py-1">
@@ -524,7 +542,7 @@ export function ChangesPreviewModal({
                                             Updated: {courseWide.totals.updatedSlides}
                                         </span>
                                         <span className="rounded bg-white/70 px-2 py-1">
-                                            Chapters affected:{' '}
+                                            {chaptersTerm} affected:{' '}
                                             {courseWide.totals.chaptersWithChanges}
                                         </span>
                                     </div>
@@ -533,7 +551,7 @@ export function ChangesPreviewModal({
                                             <table className="w-full text-left text-sm">
                                                 <thead className="sticky top-0 bg-indigo-100 text-xs text-indigo-900">
                                                     <tr>
-                                                        <th className="px-2 py-1">Chapter</th>
+                                                        <th className="px-2 py-1">{chapterTerm}</th>
                                                         <th className="px-2 py-1">New</th>
                                                         <th className="px-2 py-1">Updated</th>
                                                     </tr>
@@ -560,7 +578,8 @@ export function ChangesPreviewModal({
                                         </div>
                                     ) : (
                                         <p className="text-sm text-indigo-800">
-                                            No changes detected across other chapters.
+                                            No changes detected across other{' '}
+                                            {chaptersTerm.toLocaleLowerCase()}.
                                         </p>
                                     )}
                                 </div>
@@ -573,16 +592,27 @@ export function ChangesPreviewModal({
                                 </h4>
                                 {requireApproval ? (
                                     <ul className="space-y-1 text-sm text-blue-800">
-                                        <li>• Your course will be submitted for admin review</li>
+                                        <li>
+                                            • Your {courseTerm.toLocaleLowerCase()} will be
+                                            submitted for admin review
+                                        </li>
                                         <li>• You'll receive notifications about the review status</li>
-                                        <li>• You can track progress in "Courses In Review"</li>
+                                        <li>
+                                            • You can track progress in "{coursesTerm} In Review"
+                                        </li>
                                         <li>• You can withdraw and make changes if needed</li>
                                     </ul>
                                 ) : (
                                     <ul className="space-y-1 text-sm text-blue-800">
-                                        <li>• Your course will be published immediately</li>
+                                        <li>
+                                            • Your {courseTerm.toLocaleLowerCase()} will be
+                                            published immediately
+                                        </li>
                                         <li>• Learners can be enrolled as soon as it is live</li>
-                                        <li>• It will show as Published under "Authored Courses"</li>
+                                        <li>
+                                            • It will show as Published under "Authored{' '}
+                                            {coursesTerm}"
+                                        </li>
                                     </ul>
                                 )}
                             </div>

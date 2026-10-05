@@ -85,6 +85,12 @@ data:
   MCP_ISSUER_URL: {{ .Values.services.ai_service.mcp.issuerUrl | default (printf "%s/ai-service/mcp" (trimSuffix "/" .Values.env.aiServicePublicUrl)) | quote }}
   ADMIN_DASHBOARD_URL: {{ .Values.env.adminDashboardUrl | quote }}
 
+  # --- Platform staff: ai-service (global writes: /super-admin/v1, credit rate,
+  # credit grants, model registry, per-institute pricing) and the Java services'
+  # SuperAdminAuthUtil (admin-core /super-admin/v1, incl. Evaluation API access
+  # and keys). Comma-separated auth user ids; blank = nobody.
+  SUPER_ADMIN_USER_IDS: {{ .Values.env.superAdminUserIds | default "" | quote }}
+
   # --- Whisper (ai forced-alignment) ---
   WHISPER_CPU_THREADS: {{ .Values.services.ai_service.whisper.cpuThreads | quote }}
   WHISPER_NUM_WORKERS: {{ .Values.services.ai_service.whisper.numWorkers | quote }}

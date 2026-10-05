@@ -39,7 +39,8 @@ class AiEvaluationServicePlaceholderGuardTest {
                                 mock(AiEvaluationAsyncService.class),
                                 mock(AiEvaluationCancellationService.class),
                                 mock(EvaluationAccessValidator.class),
-                                mappings, mock(QuestionWiseMarksRepository.class));
+                                mappings, mock(QuestionWiseMarksRepository.class), mock(TypedAnswerEvaluation.class),
+                                mock(vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate.class));
         }
 
         private static Assessment assessment() {

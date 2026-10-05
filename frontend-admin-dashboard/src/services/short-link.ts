@@ -19,6 +19,8 @@ export const SHORT_LINK_SOURCE = {
      * whichever form was shortened first decide where the other one's code lands.
      */
     ENQUIRY_CAMPAIGN: 'ENQUIRY_CAMPAIGN',
+    /** A platform training video (Assist Dock → Training). sourceId = training_video id. */
+    TRAINING_VIDEO: 'TRAINING_VIDEO',
 } as const;
 
 export interface GetOrCreateShortLinkRequest {

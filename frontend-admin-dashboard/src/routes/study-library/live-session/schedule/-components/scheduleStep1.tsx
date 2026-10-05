@@ -1048,6 +1048,10 @@ export default function ScheduleStep1() {
     // account, "Google Meet" stays a paste-a-link option.
     const googleMeetAccountIdWatch = useWatch({ control, name: 'googleMeetAccountId' });
     const isMeetWithAccount = isMeetPlatform && !!googleMeetAccountIdWatch;
+    // Platforms that create each occurrence's meeting themselves — a per-session link box
+    // there is meaningless (same condition that disables the top-level link field).
+    const isAutoLinkPlatform =
+        isZohoPlatform || isBbbPlatform || isZoomWithAccount || isMeetWithAccount;
 
     // In edit mode, if the existing session's platform was later disallowed in
     // settings, splice it back into the option list so the select doesn't
@@ -3318,7 +3322,14 @@ export default function ScheduleStep1() {
                                                         </div>
 
                                                         {/* Session Details Grid */}
-                                                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                                        <div
+                                                            className={cn(
+                                                                'grid grid-cols-1 gap-3',
+                                                                isAutoLinkPlatform
+                                                                    ? 'lg:grid-cols-2'
+                                                                    : 'lg:grid-cols-3'
+                                                            )}
+                                                        >
                                                             {/* Start Time */}
                                                             <div className="space-y-2">
                                                                 <Label className="text-sm font-medium text-gray-700">
@@ -3455,55 +3466,60 @@ export default function ScheduleStep1() {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Live Class Link */}
-                                                            <div className="space-y-2">
-                                                                <Label className="text-sm font-medium text-gray-700">
-                                                                    {t('link.liveClassLink')}
-                                                                </Label>
-                                                                <FormField
-                                                                    control={control}
-                                                                    name={`recurringSchedule.${dayIndex}.sessions.${sessionIndex}.link`}
-                                                                    render={({ field }) => (
-                                                                        <FormItem>
-                                                                            <FormControl>
-                                                                                <LiveClassLinkField
-                                                                                    value={
-                                                                                        field.value ||
-                                                                                        ''
-                                                                                    }
-                                                                                    onChange={
-                                                                                        field.onChange
-                                                                                    }
-                                                                                    onApplyWithScope={(
-                                                                                        scope
-                                                                                    ) => {
-                                                                                        applyLinkWithScope(
-                                                                                            scope,
-                                                                                            dayIndex,
-                                                                                            sessionIndex
-                                                                                        );
-                                                                                    }}
-                                                                                    isEdit={
-                                                                                        isEdit ||
-                                                                                        false
-                                                                                    }
-                                                                                    dayName={
-                                                                                        dayField.day
-                                                                                            .charAt(
-                                                                                                0
+                                                            {/* Live Class Link — hidden when the platform creates the
+                                                                meeting itself. The form value is left untouched so the
+                                                                saved payload is unchanged (clearing it would send "" and
+                                                                wipe the provisioned links on an edit). */}
+                                                            {!isAutoLinkPlatform && (
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-sm font-medium text-gray-700">
+                                                                        {t('link.liveClassLink')}
+                                                                    </Label>
+                                                                    <FormField
+                                                                        control={control}
+                                                                        name={`recurringSchedule.${dayIndex}.sessions.${sessionIndex}.link`}
+                                                                        render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormControl>
+                                                                                    <LiveClassLinkField
+                                                                                        value={
+                                                                                            field.value ||
+                                                                                            ''
+                                                                                        }
+                                                                                        onChange={
+                                                                                            field.onChange
+                                                                                        }
+                                                                                        onApplyWithScope={(
+                                                                                            scope
+                                                                                        ) => {
+                                                                                            applyLinkWithScope(
+                                                                                                scope,
+                                                                                                dayIndex,
+                                                                                                sessionIndex
+                                                                                            );
+                                                                                        }}
+                                                                                        isEdit={
+                                                                                            isEdit ||
+                                                                                            false
+                                                                                        }
+                                                                                        dayName={
+                                                                                            dayField.day
+                                                                                                .charAt(
+                                                                                                    0
+                                                                                                )
+                                                                                                .toUpperCase() +
+                                                                                            dayField.day.slice(
+                                                                                                1
                                                                                             )
-                                                                                            .toUpperCase() +
-                                                                                        dayField.day.slice(
-                                                                                            1
-                                                                                        )
-                                                                                    }
-                                                                                />
-                                                                            </FormControl>
-                                                                            <FormMessage className="text-sm text-red-500" />
-                                                                        </FormItem>
-                                                                    )}
-                                                                />
-                                                            </div>
+                                                                                        }
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormMessage className="text-sm text-red-500" />
+                                                                            </FormItem>
+                                                                        )}
+                                                                    />
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         {/* Session Options */}
                                                         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-4">

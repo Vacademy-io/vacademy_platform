@@ -45,11 +45,19 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     
     long countByAnnouncementIdAndMediumType(String announcementId, MediumType mediumType);
     
-    // Paginated queries for batch processing (memory optimization)
-    Page<RecipientMessage> findByAnnouncementIdAndStatusAndMediumType(
-        String announcementId, 
-        MessageStatus status, 
+    /**
+     * Next batch of a delivery, keyset-paged by id: pass the last id of the previous batch ("" for the first).
+     *
+     * <p>Do not page this by page number. Every batch moves its rows out of the status being queried, so
+     * page N+1 of the shrinking set skips a whole page of rows: a 3,113-recipient email sent 1,613 and left
+     * 1,500 PENDING. Keyset paging also stops rows that go back to PENDING (throttled sends) from being
+     * picked up again in the same run.
+     */
+    List<RecipientMessage> findByAnnouncementIdAndStatusAndMediumTypeAndIdGreaterThanOrderByIdAsc(
+        String announcementId,
+        MessageStatus status,
         MediumType mediumType,
+        String afterId,
         Pageable pageable
     );
     

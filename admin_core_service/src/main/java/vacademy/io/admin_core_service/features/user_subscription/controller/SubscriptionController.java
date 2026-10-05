@@ -40,6 +40,28 @@ public class SubscriptionController {
      * mandateMethod (upi | card) picks how that mandate is authorised, exactly
      * like the enrol form; when omitted the learner's existing mandate method is
      * reused, defaulting to UPI.
+     *
+     * <p>Three response shapes, and the client branches on response_data rather
+     * than assuming:
+     * <ul>
+     *   <li>CHECKOUT gateway (Razorpay): order coordinates to open;</li>
+     *   <li>CARD-ON-FILE gateway (eWay), first call: {@code paymentStatus:
+     *       REQUIRES_CARD} and nothing charged -- the client collects a card and
+     *       calls again with it. This is returned EVERY time, including for a
+     *       learner who already has a card saved: see {@code card} below;</li>
+     *   <li>CARD-ON-FILE gateway, second call carrying {@code card}: charged and
+     *       confirmed inline, {@code paymentStatus: PAID}, nothing to open.</li>
+     * </ul>
+     * The withAutopay/mandateMethod pair is meaningless for a stored-token gateway --
+     * there is no mandate to register, so the token on file is what future cycles
+     * charge ({@code instant_renewal} on the list response flags this).
+     *
+     * <p>{@code card} is the eWay eCrypt payload, sent on the second call. It is
+     * required even when the learner has a card saved: a renewal that charges a stored
+     * card the moment the button is pressed gives them no chance to confirm and no sight
+     * of which card is billed. The entered card REPLACES the stored one and is what gets
+     * charged. Its card fields are the ONLY thing read -- a customerId in the body is
+     * ignored, since honouring one would let a caller charge somebody else's stored card.
      */
     @PostMapping("/{userPlanId}/renew-payment")
     public ResponseEntity<vacademy.io.common.payment.dto.PaymentResponseDTO> renewPayment(
@@ -50,6 +72,23 @@ public class SubscriptionController {
             @RequestParam(required = false) String mandateMethod) {
         return ResponseEntity.ok(subscriptionService.initiateRenewalPayment(
                 user, instituteId, userPlanId, withAutopay, mandateMethod));
+    }
+
+    /**
+     * Finishes a renewal the learner paid for on the gateway's hosted page, after it
+     * redirects them back. The result is read from the GATEWAY, never from the redirect's
+     * query string -- that URL is in the learner's hands, so trusting it would let anyone
+     * mark their own renewal paid. Idempotent: a refresh of the return page cannot extend
+     * the membership twice.
+     */
+    @PostMapping("/{userPlanId}/renew-complete")
+    public ResponseEntity<vacademy.io.common.payment.dto.PaymentResponseDTO> completeRenewal(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String instituteId,
+            @PathVariable String userPlanId,
+            @RequestParam String orderId) {
+        return ResponseEntity.ok(subscriptionService.completeHostedRenewal(
+                user, instituteId, userPlanId, orderId));
     }
 
     /**

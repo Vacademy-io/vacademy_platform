@@ -54,4 +54,17 @@ public class FlowExecutionContext {
      * learner actually received instead of a bare "Template: name" line.
      */
     private Map<String, Object> lastTemplateSend;
+    /**
+     * True when the engine is handing the user's reply to the node the session was waiting on
+     * (CONDITION / AI_RESPONSE / ASK_FIELD), false when the node is being reached by traversal.
+     * ASK_FIELD reads it to tell "send the question" apart from "this is the answer".
+     */
+    @Builder.Default
+    private boolean replyToWaitingNode = false;
+    /**
+     * Text a CRM node (CRM_LEAD_CHECK / ASK_FIELD / SAVE_TO_CRM) just sent, for the Inbox row.
+     * These nodes build their message at run time, so the engine cannot read it off the node
+     * config. Read-and-cleared by the engine; null means the node sent nothing this time.
+     */
+    private String lastSentBody;
 }

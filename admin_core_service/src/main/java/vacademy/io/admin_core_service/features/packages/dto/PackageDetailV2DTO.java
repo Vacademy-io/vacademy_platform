@@ -58,4 +58,7 @@ public class PackageDetailV2DTO {
      * Drives the catalogue card's "Enrollment closed" / "Opens soon" badge.
      */
     private String enrollInviteAvailability;
+
+    /** Null unless the course is switched to "Coming Soon" (see {@link ComingSoonDTO}). */
+    private ComingSoonDTO comingSoon;
 }

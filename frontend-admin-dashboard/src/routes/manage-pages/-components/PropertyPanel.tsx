@@ -7,7 +7,10 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     Plus,
@@ -5750,11 +5753,28 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const courseLower = courseTerm.toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const coursesLower = coursesTerm.toLocaleLowerCase();
     const SOURCES: Array<{ id: string; label: string; hint: string }> = [
-        { id: 'newest', label: 'Newest', hint: 'The most recently created courses.' },
-        { id: 'onSale', label: 'On sale', hint: 'Only courses with a discount (a struck-through price).' },
-        { id: 'tag', label: 'By tag', hint: 'Courses carrying the tag you type below.' },
-        { id: 'picked', label: 'Hand-picked', hint: 'Exactly the course IDs you list, in that order.' },
+        { id: 'newest', label: 'Newest', hint: `The most recently created ${coursesLower}.` },
+        {
+            id: 'onSale',
+            label: 'On sale',
+            hint: `Only ${coursesLower} with a discount (a struck-through price).`,
+        },
+        { id: 'tag', label: 'By tag', hint: `${coursesTerm} carrying the tag you type below.` },
+        {
+            id: 'picked',
+            label: 'Hand-picked',
+            hint: `Exactly the ${courseLower} IDs you list, in that order.`,
+        },
+        {
+            id: 'comingSoon',
+            label: 'Coming soon',
+            hint: `Every ${courseLower} switched to Coming Soon (on the ${courseLower} page). They show a ribbon and a Notify me button that collects leads; a ${courseLower} drops out of this strip by itself once it goes live.`,
+        },
     ];
     const source = props.source || 'newest';
 
@@ -5772,7 +5792,7 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div>
-                <Label className="text-xs">Which courses</Label>
+                <Label className="text-xs">Which {coursesLower}</Label>
                 <div className="mt-1 flex flex-wrap gap-1">
                     {SOURCES.map((s) => (
                         <button key={s.id} onClick={() => updateProp('source', s.id)}
@@ -5792,14 +5812,14 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                     <Input value={props.tag || ''} placeholder="e.g. 2 year old"
                         onChange={(e) => updateProp('tag', e.target.value)} />
                     <p className="text-caption text-gray-400">
-                        Must match the course&apos;s tag exactly (capitalisation is ignored).
+                        Must match the {courseLower}&apos;s tag exactly (capitalisation is ignored).
                     </p>
                 </div>
             )}
 
             {source === 'picked' && (
                 <div className="space-y-2">
-                    <Label className="text-xs">Courses</Label>
+                    <Label className="text-xs">{coursesTerm}</Label>
                     {(props.courseIds || []).map((id: string, i: number) => {
                         const badges = props.courseBadges || {};
                         const setId = (next: string) => {
@@ -5822,8 +5842,11 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                         return (
                             <div key={i} className="space-y-1 rounded border border-gray-100 p-2">
                                 <div className="flex gap-1">
-                                    <Input value={id} placeholder="course id"
-                                        onChange={(e) => setId(e.target.value.trim())} />
+                                    <Input
+                                        value={id}
+                                        placeholder={`${courseLower} id`}
+                                        onChange={(e) => setId(e.target.value.trim())}
+                                    />
                                     <button
                                         onClick={() => {
                                             const ids = (props.courseIds || []).filter((_: string, j: number) => j !== i);
@@ -5838,8 +5861,11 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                     </button>
                                 </div>
                                 <div className="flex gap-1">
-                                    <Input value={badges[id]?.text || ''} placeholder="ribbon for this course (optional)"
-                                        onChange={(e) => setBadge({ text: e.target.value })} />
+                                    <Input
+                                        value={badges[id]?.text || ''}
+                                        placeholder={`ribbon for this ${courseLower} (optional)`}
+                                        onChange={(e) => setBadge({ text: e.target.value })}
+                                    />
                                     <select value={badges[id]?.tone || 'hot'}
                                         onChange={(e) => setBadge({ tone: e.target.value })}
                                         className="rounded border border-gray-200 px-1 text-caption text-gray-600">
@@ -5854,10 +5880,11 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                     })}
                     <Button size="sm" variant="outline"
                         onClick={() => updateProp('courseIds', [...(props.courseIds || []), ''])}>
-                        Add a course
+                        Add a {courseLower}
                     </Button>
                     <p className="text-caption text-gray-400">
-                        Shown in this order. A per-course ribbon overrides the section ribbon below.
+                        Shown in this order. A per-{courseLower} ribbon overrides the section ribbon
+                        below.
                     </p>
                 </div>
             )}
@@ -5933,7 +5960,7 @@ const CourseShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <p className="rounded bg-gray-50 px-2 py-1.5 text-caption text-gray-500">
-                Prices, discount badges and images come live from the course catalogue —
+                Prices, discount badges and images come live from the {courseLower} catalogue —
                 nothing to keep in sync here. An empty result hides the whole section.
             </p>
         </div>

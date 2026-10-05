@@ -294,6 +294,15 @@ class Settings:
     # Key is env-only (NEVER in code) — the one pasted in chat on 2026-08-13
     # must be treated as compromised and rotated, same as the Smallest key above.
     deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY"))
+    # Navana (Bodhi) TTS — Indian-language voices, one voice id across ten
+    # languages. Streams over wss://tts.navana.ai/v1 through their own Pipecat
+    # service (bodhi-api-sdk). NOTE the account default of TWO concurrent
+    # connections, and a live call holds one for its whole duration: ask Navana
+    # to raise it before putting more than two concurrent calls on this engine.
+    # Several keys (separate accounts) comma-separated — "k1,k2" — add 2 streams
+    # each: providers.NAVANA_KEYS gives every connection the least-loaded key.
+    navana_api_key: str = field(default_factory=lambda: _env("NAVANA_API_KEY") or _env("BODHI_API_KEY"))
+    navana_tts_voice: str = field(default_factory=lambda: _env("NAVANA_TTS_VOICE", "bhavana"))
     deepgram_tts_voice: str = field(
         default_factory=lambda: _env("DEEPGRAM_TTS_VOICE", "aura-2-asteria-en"))
     # Aura-2 emits 24 kHz linear16; the transport resamples to 8 kHz for Plivo.
@@ -726,6 +735,26 @@ class Settings:
         default_factory=lambda: _env("EDGE_TTS_VOICE", "hi-IN-SwaraNeural"))
     vertex_thinking_budget: int = field(
         default_factory=lambda: int(_env("VERTEX_THINKING_BUDGET", "0")))
+    # Single-flight replies, step 3 (2026-10-01): "is a reply in progress?" also
+    # counts a run that passed and is still composing (NoRepeatGate's run ledger)
+    # and is measured from the reply's own audio START. 0 = the old test.
+    reply_ledger: bool = field(default_factory=lambda: _env("REPLY_LEDGER", "1") == "1")
+    # Single-flight step 4: while the caller's turn is still FORMING (words in
+    # the user aggregator, not yet pushed) a run waits for it, and an absorb-
+    # class "हाँ" joins it instead of firing a cue run of its own. The cap is
+    # pipecat's 5 s user-turn stop timeout + 0.5 s.
+    run_forming_hold: bool = field(default_factory=lambda: _env("RUN_FORMING_HOLD", "1") == "1")
+    # Single-flight step 2: a waterfall primary retires on its first failed
+    # request — a request queued behind the failure is dropped, not run beside
+    # the fallback's re-run (providers.with_retire).
+    llm_retire_primary: bool = field(default_factory=lambda: _env("LLM_RETIRE_PRIMARY", "1") == "1")
+    # Single-flight step 5: the bot's OWN runs (next-step cues, the noise
+    # re-ask, the lost-resume cue) pass one door — RunGuard drops them when a
+    # reply is already on its way or the call is ending, holds them while the
+    # caller's turn forms; the idle handler does not nudge over a pending reply.
+    cue_one_door: bool = field(default_factory=lambda: _env("CUE_ONE_DOOR", "1") == "1")
+    forming_hold_cap_secs: float = field(
+        default_factory=lambda: float(_env("FORMING_HOLD_CAP_SECS", "5.5")))
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     # FloorGate: a reply whose first audio is ready while the caller is talking

@@ -57,6 +57,7 @@ import {
     type QuestionScoreMarker,
 } from './-components/PdfAnnotationOverlay';
 import { RubricChangedBadge } from './-components/RubricChangedBadge';
+import { parseReviewMeta, type ReviewAttribution } from './-utils/review-meta';
 import { getLayoutMap } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 
 export const Route = createFileRoute('/assessment/evaluation-ai/$attemptId/$processId/')({
@@ -708,6 +709,14 @@ function RouteComponent() {
     );
 }
 
+/** i18n key for a review_meta attribution line (spec §12: "Reviewed via API by T-0042 (Mrs. Iyer)"). */
+const reviewAttributionKey = (a: ReviewAttribution): string => {
+    const action = a.kind === 'approved' ? 'approved' : 'reviewed';
+    const channel = a.viaApi ? 'ViaApi' : '';
+    const named = a.reviewer ? 'By' : '';
+    return `question.reviewMeta.${action}${channel}${named}`;
+};
+
 interface QuestionCardProps {
     question: any;
     processId: string;
@@ -769,6 +778,9 @@ function QuestionCard({
     // Use question.max_marks if available, otherwise fall back to questionDetails
     const maxMarks = question.max_marks ?? maxMarksFromQuestionDetails;
 
+    // Partner reviewer recorded by an API override/approve (plain text, escaped by React).
+    const reviewAttribution = parseReviewMeta(question.review_meta, question.edited_by);
+
     return (
         <Card
             className={cn(
@@ -818,8 +830,19 @@ function QuestionCard({
                             </div>
                             {isCompleted && (
                                 <p className="text-caption text-neutral-500">
-                                    {question.is_edited ? t('question.reviewedPrefix') : ''}
+                                    {/* "Reviewed by you" is wrong when the override came
+                                        through the API; that reviewer is named below. */}
+                                    {question.is_edited && reviewAttribution?.kind !== 'reviewed'
+                                        ? t('question.reviewedPrefix')
+                                        : ''}
                                     {t('question.completedAt', { time: completedTime })}
+                                </p>
+                            )}
+                            {reviewAttribution && (
+                                <p className="text-caption font-medium text-primary-600">
+                                    {t(reviewAttributionKey(reviewAttribution), {
+                                        reviewer: reviewAttribution.reviewer,
+                                    })}
                                 </p>
                             )}
                             {isFailed && (

@@ -42,7 +42,8 @@ class AiEvaluationServiceQuestionRowsTest {
                 marks = mock(QuestionWiseMarksRepository.class);
                 service = new AiEvaluationService(mock(AiEvaluationProcessRepository.class),
                                 mock(AiEvaluationAsyncService.class), mock(AiEvaluationCancellationService.class),
-                                mock(EvaluationAccessValidator.class), mappings, marks);
+                                mock(EvaluationAccessValidator.class), mappings, marks, mock(TypedAnswerEvaluation.class),
+                                mock(vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate.class));
         }
 
         private static StudentAttempt attempt() {

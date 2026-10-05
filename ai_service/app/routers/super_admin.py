@@ -15,8 +15,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..db import db_dependency
-from ..core.security import get_current_user
+from ..core.security import get_current_user, is_platform_staff
 from ..schemas.auth import CustomUserDetails
 from ..schemas.super_admin import (
     AiSettingEntry,
@@ -53,17 +54,17 @@ router = APIRouter(prefix="/super-admin/v1", tags=["Super Admin"])
 
 
 def _require_super_admin(user: Optional[CustomUserDetails]):
-    """Raise 403 if user is not a super admin."""
-    if not user:
-        raise HTTPException(status_code=403, detail="Super admin access required")
-    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
-    if user.is_root_user:
-        return
-    # Fallback: check roles list for ROOT_ADMIN or ADMIN
-    roles = user.roles if hasattr(user, "roles") else []
-    if isinstance(roles, str):
-        roles = [r.strip() for r in roles.split(",")]
-    if "ROOT_ADMIN" not in roles and "ADMIN" not in [r.upper() for r in roles]:
+    """Raise 403 unless the user's id is on the platform-staff allowlist
+    (SUPER_ADMIN_USER_IDS, see core.security.is_platform_staff).
+
+    is_root_user and the ADMIN role are NOT staff signals: is_root_user is set for
+    ordinary institute admins and learners, and ADMIN is an institute role, so
+    either one let any institute admin rewrite global settings such as the tool
+    rate card. Fails closed: with SUPER_ADMIN_USER_IDS unset, nobody passes.
+    """
+    if not is_platform_staff(user):
+        if not (get_settings().super_admin_user_ids or "").strip():
+            logger.warning("SUPER_ADMIN_USER_IDS is not set; refusing super-admin request")
         raise HTTPException(status_code=403, detail="Super admin access required")
 
 
@@ -625,6 +626,8 @@ TOOL_LABELS = {
     "tutor_avatar_minute": "Live AI Tutor: teacher avatar (premium), per lesson minute on top of the live minute",
     "tutor_voice_clone": "Live AI Tutor: clone a teacher's voice (one-time, per voice)",
     "tutor_avatar_create": "Live AI Tutor: create a custom teacher avatar (one-time, per avatar)",
+    "copy_check_evaluation": "AI evaluation — dashboard (per question)",
+    "copy_check_evaluation_api": "AI evaluation — API partners (fixed price)",
 }
 
 
@@ -633,6 +636,27 @@ class ToolPricingUpdate(BaseModel):
     per_unit_credits: Optional[float] = None
     params: Optional[dict] = None
     is_active: Optional[bool] = None
+    # Required (spec 10.5): written to ai_tool_pricing_history with the change.
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class InstituteToolPricingUpdate(BaseModel):
+    """A per-institute price (spec 10.7). Null fields inherit the global rate."""
+    flat_base_credits: Optional[float] = Field(None, ge=0, le=10000)
+    per_unit_credits: Optional[float] = Field(None, ge=0, le=10000)
+    params: Optional[dict] = None
+    no_token_overage: bool = False
+    reason: str = Field(..., max_length=2000, description="Contract reference; required")
+
+
+def _pricing_call(fn, *args, **kwargs):
+    """Run a tool_pricing_admin call, mapping its refusals to HTTP errors."""
+    from ..services.tool_pricing_admin import PricingAdminError
+
+    try:
+        return fn(*args, **kwargs)
+    except PricingAdminError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
 @router.get("/tool-pricing", summary="Every tool's credit rate (ai_tool_pricing merged with code defaults)")
@@ -643,10 +667,13 @@ def super_tool_pricing(
     _require_super_admin(current_user)
     from ..services.tool_cost_estimator import DEFAULT_TOOL_PRICING, ToolCostEstimator
 
+    from ..services.tool_pricing_admin import override_counts
+
     db_rows = {r[0]: r for r in db.execute(text(
         "SELECT tool_key, is_active, updated_at FROM ai_tool_pricing"
     )).fetchall()}
     merged = ToolCostEstimator(db).get_tool_pricing()
+    counts = override_counts(db)
     tools = []
     for key, row in sorted(merged.items()):
         tools.append({
@@ -661,6 +688,7 @@ def super_tool_pricing(
             "is_active": bool(db_rows[key][1]) if key in db_rows else True,
             "updated_at": db_rows[key][2].isoformat() if key in db_rows and db_rows[key][2] else None,
             "has_default": key in DEFAULT_TOOL_PRICING,
+            "override_count": counts.get(key, 0),
         })
     return {"tools": tools}
 
@@ -674,7 +702,11 @@ def super_put_tool_pricing(
 ):
     _require_super_admin(current_user)
     from ..services.tool_cost_estimator import ToolCostEstimator
+    from ..services.tool_pricing_admin import rate_view, record_global_change
 
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required: say why this rate changes")
     current = ToolCostEstimator(db).get_tool_pricing(tool_key).get(tool_key)
     if current is None:
         raise HTTPException(status_code=404, detail=f"Unknown tool {tool_key}")
@@ -695,10 +727,102 @@ def super_put_tool_pricing(
             updated_at = now()
     """), {"k": tool_key, "rt": current["request_type"], "flat": flat, "per": per_unit,
            "unit": current["unit_field"], "params": json.dumps(params), "active": is_active})
+    record_global_change(
+        db, tool_key,
+        old={**rate_view(current), "rate_source": current.get("rate_source")},
+        new={"flat": flat, "per_unit": per_unit, "unit_field": current["unit_field"],
+             "params": params, "is_active": is_active},
+        actor=str(current_user.user_id), reason=reason,
+    )
     db.commit()
-    logger.info("tool pricing %s set by %s: flat=%s per_unit=%s", tool_key, current_user.user_id, flat, per_unit)
+    logger.info("tool pricing %s set by %s: flat=%s per_unit=%s (%s)",
+                tool_key, current_user.user_id, flat, per_unit, reason)
     tools = super_tool_pricing(db=db, current_user=current_user)["tools"]
     return next(t for t in tools if t["tool_key"] == tool_key)
+
+
+# ── Per-institute prices (spec 10.2, 10.7) ──────────────────────────────────
+# A partner's contract price is an institute_tool_pricing row on that tool key
+# (for the evaluation API: copy_check_evaluation_api). Append-only: an edit
+# closes the open row and inserts a new one; DELETE ends it (back to global).
+
+
+@router.get("/tool-pricing/history", summary="Global rate edits and per-institute override rows, newest first")
+def super_tool_pricing_history(
+    tool_key: Optional[str] = Query(None),
+    institute_id: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services import tool_pricing_admin
+
+    return tool_pricing_admin.history(db, tool_key=tool_key, institute_id=institute_id, limit=limit)
+
+
+@router.get("/tool-pricing/overrides", summary="Institutes with an active price override")
+def super_tool_pricing_overrides(
+    tool_key: Optional[str] = Query(None),
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services import tool_pricing_admin
+
+    return {"overrides": tool_pricing_admin.active_overrides(db, tool_key=tool_key)}
+
+
+@router.get("/institutes/{institute_id}/tool-pricing",
+            summary="One institute's rate card: global, its override and the effective price per tool")
+def super_institute_tool_pricing(
+    institute_id: str,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services import tool_pricing_admin
+
+    return {"institute_id": institute_id,
+            "tools": tool_pricing_admin.list_institute_pricing(db, institute_id, TOOL_LABELS)}
+
+
+@router.put("/institutes/{institute_id}/tool-pricing/{tool_key}",
+            summary="Set an institute's own price for a tool (applies to the next request)")
+def super_put_institute_tool_pricing(
+    institute_id: str,
+    tool_key: str,
+    body: InstituteToolPricingUpdate,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services import tool_pricing_admin
+
+    return _pricing_call(
+        tool_pricing_admin.set_override, db, institute_id, tool_key,
+        flat_base_credits=body.flat_base_credits, per_unit_credits=body.per_unit_credits,
+        params=body.params, no_token_overage=body.no_token_overage,
+        reason=body.reason, actor=str(current_user.user_id),
+    )
+
+
+@router.delete("/institutes/{institute_id}/tool-pricing/{tool_key}",
+               summary="End an institute's price override (it reverts to the global price)")
+def super_delete_institute_tool_pricing(
+    institute_id: str,
+    tool_key: str,
+    reason: Optional[str] = Query(None, max_length=2000),
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services import tool_pricing_admin
+
+    return _pricing_call(
+        tool_pricing_admin.end_override, db, institute_id, tool_key,
+        reason=reason, actor=str(current_user.user_id),
+    )
 
 
 # ── Live AI Tutor asset registry (stock + per-institute voices and avatars) ──

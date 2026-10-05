@@ -203,8 +203,15 @@ export const AddCourseForm = ({
         !isEdit && isAdmin && courseSettings?.permissions?.allowPaymentOptionChange !== false;
 
     const steps = showPaymentStep ? [1, 2, 3] : [1, 2];
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    // Labels follow the institute's naming settings (main's 65f6d9fa3d), which landed on
+    // the two inline headers this refactor collapsed into renderHeader.
     const stepLabel =
-        step === 1 ? 'Course Details' : step === 2 ? 'Course Structure' : 'Payment & Enrolment';
+        step === 1
+            ? `${courseTerm} Details`
+            : step === 2
+              ? `${courseTerm} Structure`
+              : 'Payment & Enrolment';
 
     // When editing, refresh form data whenever initialCourseData changes
     // (e.g. after a successful update or switching to a different course).
@@ -347,7 +354,6 @@ export const AddCourseForm = ({
         customFieldsDirty = false
     ) => {
         setIsCreating(true);
-        const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
         const newSubject: SubjectType = {
             id: '', // Let backend assign ID
             subject_name: 'DEFAULT',
@@ -525,7 +531,7 @@ export const AddCourseForm = ({
                                 );
                                 if (!packageSessionId) {
                                     throw new Error(
-                                        'Package session ID not found for the created course'
+                                        `Package session ID not found for the created ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`
                                     );
                                 }
                             }

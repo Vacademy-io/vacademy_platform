@@ -774,8 +774,9 @@ def test_only_a_client_that_asks_gets_its_opening_held():
     assert not client_holds_opening({"type": "auth", "token": "t"})
     assert not client_holds_opening({"type": "auth", "token": "t", "hold": "yes"})
     assert not client_holds_opening({})
-    # The cap is short enough that a broken client still gets its lesson quickly.
-    assert 5 <= BEGIN_WAIT_SECONDS <= 10
+    # The server's cap must outlast the client's 25 s wait for the face, or it
+    # opens the lesson over a face that is still loading (voice before avatar).
+    assert 25 < BEGIN_WAIT_SECONDS <= 40
 
 
 def test_before_the_opening_a_lesson_message_opens_and_is_dropped_but_begin_and_pings_pass():

@@ -97,5 +97,8 @@
         "noFields": "Cette étape n'a aucun champ associé.",
         "untitledField": "Champ sans titre",
         "notAnswered": "Sans réponse"
+    },
+    "noAccess": {
+        "hint": "Votre rôle n'a pas accès à l'intégration pour cet établissement."
     }
 }

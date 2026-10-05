@@ -20,8 +20,8 @@ import re
 from typing import Any, Optional
 
 from ..chat_llm_client import ChatLLMClient
-from .prompt_builder import GRADING_SYSTEM, build_grading_prompt
-from .typed_answers import TYPED_GRADING_SYSTEM, build_typed_grading_prompt
+from .prompt_builder import build_grading_prompt, grading_system_for
+from .typed_answers import build_typed_grading_prompt, typed_grading_system
 from .validator import coerce_confidence
 
 logger = logging.getLogger(__name__)
@@ -108,8 +108,12 @@ class CopyCheckGrader:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         token_budget: int = FAIL_TOKENS_PER_COPY,
+        exam_context: Optional[dict[str, Any]] = None,
     ):
         self.llm = llm
+        # {"level","subject",...} from the grade request: picks the grading
+        # persona (T0.25). Absent = the constant "school teacher" prompt.
+        self.exam_context = exam_context or {}
         self.institute_id = institute_id
         self.user_id = user_id
         self.token_budget = max(int(token_budget or 0), FAIL_TOKENS_PER_COPY)
@@ -119,6 +123,13 @@ class CopyCheckGrader:
         self._prompt_tokens = 0
         self._completion_tokens = 0
         self._escalations_used = 0
+
+    def _system_for(self, question: dict[str, Any], typed: bool) -> str:
+        """System prompt for this question: the question's own subject (Java
+        sends it per question) or the paper's, at the paper's level."""
+        subject = question.get("subject") or self.exam_context.get("subject")
+        level = self.exam_context.get("level")
+        return typed_grading_system(subject, level) if typed else grading_system_for(subject, level)
 
     def add_tokens(self, n: int) -> None:
         """External counter for non-grading calls (e.g. criteria generation
@@ -221,7 +232,7 @@ class CopyCheckGrader:
             page_ids=page_ids,
         )
         messages = [
-            {"role": "system", "content": GRADING_SYSTEM},
+            {"role": "system", "content": self._system_for(question, typed=False)},
             {"role": "user", "content": prompt},
         ]
         return await self._complete(messages, question, model)
@@ -254,7 +265,7 @@ class CopyCheckGrader:
                 f"copy-check token budget exhausted: {self._tokens_used} >= {self.token_budget}"
             )
         messages = [
-            {"role": "system", "content": TYPED_GRADING_SYSTEM},
+            {"role": "system", "content": self._system_for(question, typed=True)},
             {"role": "user", "content": build_typed_grading_prompt(question, rubric)},
         ]
         return await self._complete(messages, question, model)

@@ -79,7 +79,17 @@
         "pendingStatus": "En attente",
         "failedGradeMessage": "L'IA n'a pas pu noter cette question — relecture nécessaire",
         "editedBadge": "Modifié",
-        "needsReviewBadge": "Relecture nécessaire"
+        "needsReviewBadge": "Relecture nécessaire",
+        "reviewMeta": {
+            "reviewedViaApiBy": "Revu via l'API par {{reviewer}}",
+            "reviewedViaApi": "Revu via l'API",
+            "reviewedBy": "Revu par {{reviewer}}",
+            "reviewed": "Revu",
+            "approvedViaApiBy": "Approuvé via l'API par {{reviewer}}",
+            "approvedViaApi": "Approuvé via l'API",
+            "approvedBy": "Approuvé par {{reviewer}}",
+            "approved": "Approuvé"
+        }
     },
     "teacherReview": {
         "failedTitle": "Cette question n'a pas été notée automatiquement.",

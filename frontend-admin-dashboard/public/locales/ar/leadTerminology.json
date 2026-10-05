@@ -1,4 +1,5 @@
 {
     "tier": "المستوى",
-    "leadStatus": "حالة العميل"
+    "leadStatus": "حالة العميل",
+    "campaignType": "نوع الحملة"
 }

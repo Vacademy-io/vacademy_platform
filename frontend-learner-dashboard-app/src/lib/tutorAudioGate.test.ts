@@ -13,6 +13,12 @@ describe("decideBegin", () => {
     expect(decideBegin({ ...base, painted: true })).toBe("wait");
     expect(decideBegin({ ...base, painted: true, activated: true })).toBe("now");
   });
+  it("keeps waiting for a face that is still on its way (the voice must not arrive first)", () => {
+    // Prod: the face paints 6-9 s after the tap. The old 6 s cap started the voice early.
+    expect(decideBegin({ ...base, sinceReadyMs: 9000 })).toBe("wait");
+    expect(decideBegin({ ...base, painted: true, sinceReadyMs: 9000 })).toBe("wait");
+    expect(decideBegin({ ...base, painted: true, activated: true, sinceReadyMs: 9000 })).toBe("now");
+  });
   it("never holds the lesson past the cap", () => {
     expect(decideBegin({ ...base, sinceReadyMs: BEGIN_CAP_MS - 1 })).toBe("wait");
     expect(decideBegin({ ...base, sinceReadyMs: BEGIN_CAP_MS })).toBe("now");

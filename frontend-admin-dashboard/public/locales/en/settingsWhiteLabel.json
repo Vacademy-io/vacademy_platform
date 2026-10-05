@@ -230,5 +230,96 @@
         "copied": "DNS record copied",
         "copyFailed": "Could not copy — select the values manually",
         "platformNote": "The record alone does nothing: the platform team must also add this host to the ingress and register the domain for this institute. Register the domain before the record is live and short links will break instead of falling back to u.vacademy.io."
+    },
+    "googleSignIn": {
+        "title": "Google sign-in branding",
+        "description": "Show your brand's name, instead of vacademy.io, on Google's \"Continue with Google\" screen. You create the OAuth client in your own Google Cloud project and paste it here.",
+        "status": {
+            "notSet": "Not set up",
+            "active": "Active",
+            "paused": "Paused"
+        },
+        "loading": "Loading Google sign-in settings…",
+        "loadFailed": "Could not load Google sign-in settings",
+        "notSetHint": "Until this is set up, Google shows vacademy.io to your learners on the sign-in screen.",
+        "redirectUriLabel": "Authorized redirect URI (add this to your Google OAuth client)",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyFailed": "Could not copy. Select the text and copy it manually.",
+        "clientIdLabel": "Client ID",
+        "clientIdPlaceholder": "1234567890-abc123.apps.googleusercontent.com",
+        "clientIdInvalid": "A Google client ID ends with .apps.googleusercontent.com",
+        "clientSecretLabel": "Client secret",
+        "clientSecretPlaceholder": "GOCSPX-…",
+        "clientSecretKeepPlaceholder": "Saved. Leave blank to keep the current secret",
+        "clientSecretHint": "Stored encrypted. It is never shown again after saving.",
+        "enabledLabel": "Use this client for Google sign-in",
+        "enabledHint": "Turn off to go back to the default (vacademy.io) screen without deleting your settings.",
+        "beforeSaveWarning": "Save only after your app is Published and Google has verified it (Verification Center shows \"Verified\"). Otherwise learners see \"Access blocked\", or Google still shows vacademy.io.",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Saved. It takes effect within 5 minutes.",
+        "saveFailed": "Could not save the Google client",
+        "remove": "Remove",
+        "removeConfirm": "Google sign-in goes back to the default vacademy.io screen. You can add the client again at any time.",
+        "removed": "Removed. Google sign-in is back to the default.",
+        "removeFailed": "Could not remove the Google client",
+        "lastUpdated": "Last updated {{date}}",
+        "guideTitle": "Step-by-step setup guide",
+        "guideIntro": "About 30 minutes of work, then 2–3 working days for Google's review. You need a Google account, access to your domain's DNS, and a public website for your brand.",
+        "downloadPdf": "Download the PDF guide (with screenshots)",
+        "privacyFallback": "your privacy policy URL (https://<your learner portal>/privacy-policy)",
+        "guide": {
+            "project": {
+                "title": "Create a Google Cloud project",
+                "body": "Open console.cloud.google.com/projectcreate, name it after your brand and click Create. Check that the new project is selected at the top of the page."
+            },
+            "owner": {
+                "title": "Add Vacademy as a project Owner",
+                "body": "IAM & Admin → IAM → Grant access → {{account}} → Role: Basic → Owner → Save. Google sign-in finishes on vacademy.io, and Google only verifies your app when a project owner has verified that domain."
+            },
+            "consent": {
+                "title": "Start the OAuth consent screen",
+                "body": "APIs & Services → OAuth consent screen → Get started. App name: your brand exactly as written on your website. Audience: External. Add your contact email, accept the policy, then Create."
+            },
+            "branding": {
+                "title": "Fill in Branding",
+                "body": "Logo: square, 120×120 px. Home page: your public website. Privacy policy: {{privacyUrl}}. Authorized domains: your website's domain and vacademy.io. Then Save."
+            },
+            "scopes": {
+                "title": "Add the three sign-in scopes",
+                "body": "Data Access → Add or remove scopes → tick only userinfo.email, userinfo.profile and openid → Update → Save. Any other scope makes Google's review take weeks."
+            },
+            "client": {
+                "title": "Create the OAuth client",
+                "body": "Clients → Create client → Web application → Authorized redirect URIs → add {{redirectUri}} → Create. Download the JSON straight away: Google shows the secret only once."
+            },
+            "domain": {
+                "title": "Verify your domain",
+                "body": "Google Search Console → Add property → Domain → your domain. Add the TXT record it gives you at your DNS provider, then click Verify. DNS can take up to an hour."
+            },
+            "footer": {
+                "title": "Link the privacy policy from your website",
+                "body": "Add a footer link on your home page to {{privacyUrl}}. Google rejects apps whose home page does not link to the privacy policy."
+            },
+            "publish": {
+                "title": "Publish the app",
+                "body": "Audience → Publish app → Confirm. The status changes to \"In production\"."
+            },
+            "verify": {
+                "title": "Submit for verification",
+                "body": "Verification Center → submit for brand verification. Google usually replies by email within 2–3 working days. Answer any questions quickly."
+            },
+            "save": {
+                "title": "Paste the client here",
+                "body": "When Verification Center shows \"Verified\", paste the Client ID and Client secret above and click Save. Then try \"Continue with Google\" on your learner portal: Google should show your brand's name."
+            }
+        },
+        "validation": {
+            "clientIdRequired": "Enter the Client ID from your Google OAuth client",
+            "clientSecretRequired": "Enter the Client secret from your Google OAuth client"
+        },
+        "removeTitle": "Remove your Google client?",
+        "cancel": "Cancel"
     }
 }

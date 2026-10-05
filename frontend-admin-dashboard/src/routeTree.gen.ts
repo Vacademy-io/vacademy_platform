@@ -40,7 +40,6 @@ import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insig
 import { Route as KnowledgeBaseIndexRouteImport } from "./routes/knowledge-base/index"
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
 import { Route as InstitutePulseIndexRouteImport } from "./routes/institute-pulse/index"
-import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
 import { Route as EngagementIndexRouteImport } from "./routes/engagement/index"
 import { Route as EngagementEnginesIndexRouteImport } from "./routes/engagement-engines/index"
@@ -111,9 +110,6 @@ import { Route as FinancialManagementManageFinancesIndexRouteImport } from "./ro
 import { Route as FinancialManagementFeePlansIndexRouteImport } from "./routes/financial-management/fee-plans/index"
 import { Route as FinancialManagementCollectionDashboardIndexRouteImport } from "./routes/financial-management/collection-dashboard/index"
 import { Route as FinancialManagementAdjustmentApprovalsIndexRouteImport } from "./routes/financial-management/adjustment-approvals/index"
-import { Route as EvaluatorAiStudentsIndexRouteImport } from "./routes/evaluator-ai/students/index"
-import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluator-ai/evaluation/index"
-import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
 import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluation/evaluations/index"
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
 import { Route as ErpPeopleIndexRouteImport } from "./routes/erp/people/index"
@@ -143,6 +139,7 @@ import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audien
 import { Route as AudienceManagerAiIntelligenceIndexRouteImport } from "./routes/audience-manager/ai-intelligence/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
 import { Route as AssessmentEvaluationAiIndexRouteImport } from "./routes/assessment/evaluation-ai/index"
+import { Route as AssessmentDashboardIndexRouteImport } from "./routes/assessment/dashboard/index"
 import { Route as AssessmentAssessmentListIndexRouteImport } from "./routes/assessment/assessment-list/index"
 import { Route as AnnouncementScheduleIndexRouteImport } from "./routes/announcement/schedule/index"
 import { Route as AnnouncementHistoryIndexRouteImport } from "./routes/announcement/history/index"
@@ -187,8 +184,6 @@ import { Route as StudyLibraryAiCopilotCourseOutlineIndexRouteImport } from "./r
 import { Route as PlanningPlanningCreateIndexRouteImport } from "./routes/planning/planning/create/index"
 import { Route as PlanningActivityLogsCreateIndexRouteImport } from "./routes/planning/activity-logs/create/index"
 import { Route as MentorshipMentorsMentorIdIndexRouteImport } from "./routes/mentorship/mentors/$mentorId/index"
-import { Route as EvaluatorAiEvaluationStudentSummaryIndexRouteImport } from "./routes/evaluator-ai/evaluation/student-summary/index"
-import { Route as EvaluatorAiAssessmentCreateAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/create-assessment/index"
 import { Route as ErpPeopleStaffBridgeIndexRouteImport } from "./routes/erp/people/staff-bridge/index"
 import { Route as ErpPeopleOrgIndexRouteImport } from "./routes/erp/people/org/index"
 import { Route as ErpPeopleEmployeeIdIndexRouteImport } from "./routes/erp/people/$employeeId/index"
@@ -459,13 +454,6 @@ const InstitutePulseIndexRoute = InstitutePulseIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/institute-pulse/index.lazy").then((d) => d.Route),
-)
-const EvaluatorAiIndexRoute = EvaluatorAiIndexRouteImport.update({
-  id: "/evaluator-ai/",
-  path: "/evaluator-ai/",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import("./routes/evaluator-ai/index.lazy").then((d) => d.Route),
 )
 const EvaluationIndexRoute = EvaluationIndexRouteImport.update({
   id: "/evaluation/",
@@ -998,30 +986,6 @@ const FinancialManagementAdjustmentApprovalsIndexRoute =
       "./routes/financial-management/adjustment-approvals/index.lazy"
     ).then((d) => d.Route),
   )
-const EvaluatorAiStudentsIndexRoute =
-  EvaluatorAiStudentsIndexRouteImport.update({
-    id: "/evaluator-ai/students/",
-    path: "/evaluator-ai/students/",
-    getParentRoute: () => rootRouteImport,
-  } as any).lazy(() =>
-    import("./routes/evaluator-ai/students/index.lazy").then((d) => d.Route),
-  )
-const EvaluatorAiEvaluationIndexRoute =
-  EvaluatorAiEvaluationIndexRouteImport.update({
-    id: "/evaluator-ai/evaluation/",
-    path: "/evaluator-ai/evaluation/",
-    getParentRoute: () => rootRouteImport,
-  } as any).lazy(() =>
-    import("./routes/evaluator-ai/evaluation/index.lazy").then((d) => d.Route),
-  )
-const EvaluatorAiAssessmentIndexRoute =
-  EvaluatorAiAssessmentIndexRouteImport.update({
-    id: "/evaluator-ai/assessment/",
-    path: "/evaluator-ai/assessment/",
-    getParentRoute: () => rootRouteImport,
-  } as any).lazy(() =>
-    import("./routes/evaluator-ai/assessment/index.lazy").then((d) => d.Route),
-  )
 const EvaluationEvaluationsIndexRoute =
   EvaluationEvaluationsIndexRouteImport.update({
     id: "/evaluation/evaluations/",
@@ -1264,6 +1228,12 @@ const AssessmentEvaluationAiIndexRoute =
   AssessmentEvaluationAiIndexRouteImport.update({
     id: "/assessment/evaluation-ai/",
     path: "/assessment/evaluation-ai/",
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AssessmentDashboardIndexRoute =
+  AssessmentDashboardIndexRouteImport.update({
+    id: "/assessment/dashboard/",
+    path: "/assessment/dashboard/",
     getParentRoute: () => rootRouteImport,
   } as any)
 const AssessmentAssessmentListIndexRoute =
@@ -1602,18 +1572,6 @@ const MentorshipMentorsMentorIdIndexRoute =
       (d) => d.Route,
     ),
   )
-const EvaluatorAiEvaluationStudentSummaryIndexRoute =
-  EvaluatorAiEvaluationStudentSummaryIndexRouteImport.update({
-    id: "/evaluator-ai/evaluation/student-summary/",
-    path: "/evaluator-ai/evaluation/student-summary/",
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const EvaluatorAiAssessmentCreateAssessmentIndexRoute =
-  EvaluatorAiAssessmentCreateAssessmentIndexRouteImport.update({
-    id: "/evaluator-ai/assessment/create-assessment/",
-    path: "/evaluator-ai/assessment/create-assessment/",
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ErpPeopleStaffBridgeIndexRoute =
   ErpPeopleStaffBridgeIndexRouteImport.update({
     id: "/erp/people/staff-bridge/",
@@ -2134,7 +2092,6 @@ export interface FileRoutesByFullPath {
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/engagement/": typeof EngagementIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
-  "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
@@ -2189,6 +2146,7 @@ export interface FileRoutesByFullPath {
   "/announcement/history/": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule/": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard/": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2218,9 +2176,6 @@ export interface FileRoutesByFullPath {
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
-  "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
-  "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
-  "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
   "/financial-management/adjustment-approvals/": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
@@ -2305,8 +2260,6 @@ export interface FileRoutesByFullPath {
   "/erp/people/$employeeId/": typeof ErpPeopleEmployeeIdIndexRoute
   "/erp/people/org/": typeof ErpPeopleOrgIndexRoute
   "/erp/people/staff-bridge/": typeof ErpPeopleStaffBridgeIndexRoute
-  "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
-  "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create/": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
@@ -2375,7 +2328,6 @@ export interface FileRoutesByTo {
   "/engagement-engines": typeof EngagementEnginesIndexRoute
   "/engagement": typeof EngagementIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
-  "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/institute-pulse": typeof InstitutePulseIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
   "/knowledge-base": typeof KnowledgeBaseIndexRoute
@@ -2430,6 +2382,7 @@ export interface FileRoutesByTo {
   "/announcement/history": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2459,9 +2412,6 @@ export interface FileRoutesByTo {
   "/erp/people": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations": typeof EvaluationEvaluationsIndexRoute
-  "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
-  "/evaluator-ai/evaluation": typeof EvaluatorAiEvaluationIndexRoute
-  "/evaluator-ai/students": typeof EvaluatorAiStudentsIndexRoute
   "/financial-management/adjustment-approvals": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans": typeof FinancialManagementFeePlansIndexRoute
@@ -2546,8 +2496,6 @@ export interface FileRoutesByTo {
   "/erp/people/$employeeId": typeof ErpPeopleEmployeeIdIndexRoute
   "/erp/people/org": typeof ErpPeopleOrgIndexRoute
   "/erp/people/staff-bridge": typeof ErpPeopleStaffBridgeIndexRoute
-  "/evaluator-ai/assessment/create-assessment": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
-  "/evaluator-ai/evaluation/student-summary": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create": typeof PlanningPlanningCreateIndexRoute
@@ -2618,7 +2566,6 @@ export interface FileRoutesById {
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/engagement/": typeof EngagementIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
-  "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/knowledge-base/": typeof KnowledgeBaseIndexRoute
@@ -2673,6 +2620,7 @@ export interface FileRoutesById {
   "/announcement/history/": typeof AnnouncementHistoryIndexRoute
   "/announcement/schedule/": typeof AnnouncementScheduleIndexRoute
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
+  "/assessment/dashboard/": typeof AssessmentDashboardIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
@@ -2702,9 +2650,6 @@ export interface FileRoutesById {
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
-  "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
-  "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
-  "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
   "/financial-management/adjustment-approvals/": typeof FinancialManagementAdjustmentApprovalsIndexRoute
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
@@ -2789,8 +2734,6 @@ export interface FileRoutesById {
   "/erp/people/$employeeId/": typeof ErpPeopleEmployeeIdIndexRoute
   "/erp/people/org/": typeof ErpPeopleOrgIndexRoute
   "/erp/people/staff-bridge/": typeof ErpPeopleStaffBridgeIndexRoute
-  "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
-  "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create/": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
@@ -2862,7 +2805,6 @@ export interface FileRouteTypes {
     | "/engagement-engines/"
     | "/engagement/"
     | "/evaluation/"
-    | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
     | "/knowledge-base/"
@@ -2917,6 +2859,7 @@ export interface FileRouteTypes {
     | "/announcement/history/"
     | "/announcement/schedule/"
     | "/assessment/assessment-list/"
+    | "/assessment/dashboard/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/ai-intelligence/"
@@ -2946,9 +2889,6 @@ export interface FileRouteTypes {
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
-    | "/evaluator-ai/assessment/"
-    | "/evaluator-ai/evaluation/"
-    | "/evaluator-ai/students/"
     | "/financial-management/adjustment-approvals/"
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
@@ -3033,8 +2973,6 @@ export interface FileRouteTypes {
     | "/erp/people/$employeeId/"
     | "/erp/people/org/"
     | "/erp/people/staff-bridge/"
-    | "/evaluator-ai/assessment/create-assessment/"
-    | "/evaluator-ai/evaluation/student-summary/"
     | "/mentorship/mentors/$mentorId/"
     | "/planning/activity-logs/create/"
     | "/planning/planning/create/"
@@ -3103,7 +3041,6 @@ export interface FileRouteTypes {
     | "/engagement-engines"
     | "/engagement"
     | "/evaluation"
-    | "/evaluator-ai"
     | "/institute-pulse"
     | "/instructor-copilot"
     | "/knowledge-base"
@@ -3158,6 +3095,7 @@ export interface FileRouteTypes {
     | "/announcement/history"
     | "/announcement/schedule"
     | "/assessment/assessment-list"
+    | "/assessment/dashboard"
     | "/assessment/evaluation-ai"
     | "/assessment/question-papers"
     | "/audience-manager/ai-intelligence"
@@ -3187,9 +3125,6 @@ export interface FileRouteTypes {
     | "/erp/people"
     | "/evaluation/evaluation-tool"
     | "/evaluation/evaluations"
-    | "/evaluator-ai/assessment"
-    | "/evaluator-ai/evaluation"
-    | "/evaluator-ai/students"
     | "/financial-management/adjustment-approvals"
     | "/financial-management/collection-dashboard"
     | "/financial-management/fee-plans"
@@ -3274,8 +3209,6 @@ export interface FileRouteTypes {
     | "/erp/people/$employeeId"
     | "/erp/people/org"
     | "/erp/people/staff-bridge"
-    | "/evaluator-ai/assessment/create-assessment"
-    | "/evaluator-ai/evaluation/student-summary"
     | "/mentorship/mentors/$mentorId"
     | "/planning/activity-logs/create"
     | "/planning/planning/create"
@@ -3345,7 +3278,6 @@ export interface FileRouteTypes {
     | "/engagement-engines/"
     | "/engagement/"
     | "/evaluation/"
-    | "/evaluator-ai/"
     | "/institute-pulse/"
     | "/instructor-copilot/"
     | "/knowledge-base/"
@@ -3400,6 +3332,7 @@ export interface FileRouteTypes {
     | "/announcement/history/"
     | "/announcement/schedule/"
     | "/assessment/assessment-list/"
+    | "/assessment/dashboard/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
     | "/audience-manager/ai-intelligence/"
@@ -3429,9 +3362,6 @@ export interface FileRouteTypes {
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
-    | "/evaluator-ai/assessment/"
-    | "/evaluator-ai/evaluation/"
-    | "/evaluator-ai/students/"
     | "/financial-management/adjustment-approvals/"
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
@@ -3516,8 +3446,6 @@ export interface FileRouteTypes {
     | "/erp/people/$employeeId/"
     | "/erp/people/org/"
     | "/erp/people/staff-bridge/"
-    | "/evaluator-ai/assessment/create-assessment/"
-    | "/evaluator-ai/evaluation/student-summary/"
     | "/mentorship/mentors/$mentorId/"
     | "/planning/activity-logs/create/"
     | "/planning/planning/create/"
@@ -3588,7 +3516,6 @@ export interface RootRouteChildren {
   EngagementEnginesIndexRoute: typeof EngagementEnginesIndexRoute
   EngagementIndexRoute: typeof EngagementIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
-  EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
   KnowledgeBaseIndexRoute: typeof KnowledgeBaseIndexRoute
@@ -3642,6 +3569,7 @@ export interface RootRouteChildren {
   AnnouncementHistoryIndexRoute: typeof AnnouncementHistoryIndexRoute
   AnnouncementScheduleIndexRoute: typeof AnnouncementScheduleIndexRoute
   AssessmentAssessmentListIndexRoute: typeof AssessmentAssessmentListIndexRoute
+  AssessmentDashboardIndexRoute: typeof AssessmentDashboardIndexRoute
   AssessmentEvaluationAiIndexRoute: typeof AssessmentEvaluationAiIndexRoute
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
   AudienceManagerAiIntelligenceIndexRoute: typeof AudienceManagerAiIntelligenceIndexRoute
@@ -3671,9 +3599,6 @@ export interface RootRouteChildren {
   ErpPeopleIndexRoute: typeof ErpPeopleIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
   EvaluationEvaluationsIndexRoute: typeof EvaluationEvaluationsIndexRoute
-  EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
-  EvaluatorAiEvaluationIndexRoute: typeof EvaluatorAiEvaluationIndexRoute
-  EvaluatorAiStudentsIndexRoute: typeof EvaluatorAiStudentsIndexRoute
   FinancialManagementAdjustmentApprovalsIndexRoute: typeof FinancialManagementAdjustmentApprovalsIndexRoute
   FinancialManagementCollectionDashboardIndexRoute: typeof FinancialManagementCollectionDashboardIndexRoute
   FinancialManagementFeePlansIndexRoute: typeof FinancialManagementFeePlansIndexRoute
@@ -3758,8 +3683,6 @@ export interface RootRouteChildren {
   ErpPeopleEmployeeIdIndexRoute: typeof ErpPeopleEmployeeIdIndexRoute
   ErpPeopleOrgIndexRoute: typeof ErpPeopleOrgIndexRoute
   ErpPeopleStaffBridgeIndexRoute: typeof ErpPeopleStaffBridgeIndexRoute
-  EvaluatorAiAssessmentCreateAssessmentIndexRoute: typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
-  EvaluatorAiEvaluationStudentSummaryIndexRoute: typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   MentorshipMentorsMentorIdIndexRoute: typeof MentorshipMentorsMentorIdIndexRoute
   PlanningActivityLogsCreateIndexRoute: typeof PlanningActivityLogsCreateIndexRoute
   PlanningPlanningCreateIndexRoute: typeof PlanningPlanningCreateIndexRoute
@@ -4029,13 +3952,6 @@ declare module "@tanstack/react-router" {
       path: "/institute-pulse"
       fullPath: "/institute-pulse/"
       preLoaderRoute: typeof InstitutePulseIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/evaluator-ai/": {
-      id: "/evaluator-ai/"
-      path: "/evaluator-ai"
-      fullPath: "/evaluator-ai/"
-      preLoaderRoute: typeof EvaluatorAiIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/evaluation/": {
@@ -4528,27 +4444,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof FinancialManagementAdjustmentApprovalsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/evaluator-ai/students/": {
-      id: "/evaluator-ai/students/"
-      path: "/evaluator-ai/students"
-      fullPath: "/evaluator-ai/students/"
-      preLoaderRoute: typeof EvaluatorAiStudentsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/evaluator-ai/evaluation/": {
-      id: "/evaluator-ai/evaluation/"
-      path: "/evaluator-ai/evaluation"
-      fullPath: "/evaluator-ai/evaluation/"
-      preLoaderRoute: typeof EvaluatorAiEvaluationIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/evaluator-ai/assessment/": {
-      id: "/evaluator-ai/assessment/"
-      path: "/evaluator-ai/assessment"
-      fullPath: "/evaluator-ai/assessment/"
-      preLoaderRoute: typeof EvaluatorAiAssessmentIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/evaluation/evaluations/": {
       id: "/evaluation/evaluations/"
       path: "/evaluation/evaluations"
@@ -4750,6 +4645,13 @@ declare module "@tanstack/react-router" {
       path: "/assessment/evaluation-ai"
       fullPath: "/assessment/evaluation-ai/"
       preLoaderRoute: typeof AssessmentEvaluationAiIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/assessment/dashboard/": {
+      id: "/assessment/dashboard/"
+      path: "/assessment/dashboard"
+      fullPath: "/assessment/dashboard/"
+      preLoaderRoute: typeof AssessmentDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/assessment/assessment-list/": {
@@ -5058,20 +4960,6 @@ declare module "@tanstack/react-router" {
       path: "/mentorship/mentors/$mentorId"
       fullPath: "/mentorship/mentors/$mentorId/"
       preLoaderRoute: typeof MentorshipMentorsMentorIdIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/evaluator-ai/evaluation/student-summary/": {
-      id: "/evaluator-ai/evaluation/student-summary/"
-      path: "/evaluator-ai/evaluation/student-summary"
-      fullPath: "/evaluator-ai/evaluation/student-summary/"
-      preLoaderRoute: typeof EvaluatorAiEvaluationStudentSummaryIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/evaluator-ai/assessment/create-assessment/": {
-      id: "/evaluator-ai/assessment/create-assessment/"
-      path: "/evaluator-ai/assessment/create-assessment"
-      fullPath: "/evaluator-ai/assessment/create-assessment/"
-      preLoaderRoute: typeof EvaluatorAiAssessmentCreateAssessmentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/erp/people/staff-bridge/": {
@@ -5526,7 +5414,6 @@ const rootRouteChildren: RootRouteChildren = {
   EngagementEnginesIndexRoute: EngagementEnginesIndexRoute,
   EngagementIndexRoute: EngagementIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
-  EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstitutePulseIndexRoute: InstitutePulseIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
   KnowledgeBaseIndexRoute: KnowledgeBaseIndexRoute,
@@ -5584,6 +5471,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnnouncementHistoryIndexRoute: AnnouncementHistoryIndexRoute,
   AnnouncementScheduleIndexRoute: AnnouncementScheduleIndexRoute,
   AssessmentAssessmentListIndexRoute: AssessmentAssessmentListIndexRoute,
+  AssessmentDashboardIndexRoute: AssessmentDashboardIndexRoute,
   AssessmentEvaluationAiIndexRoute: AssessmentEvaluationAiIndexRoute,
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
   AudienceManagerAiIntelligenceIndexRoute:
@@ -5617,9 +5505,6 @@ const rootRouteChildren: RootRouteChildren = {
   ErpPeopleIndexRoute: ErpPeopleIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
   EvaluationEvaluationsIndexRoute: EvaluationEvaluationsIndexRoute,
-  EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
-  EvaluatorAiEvaluationIndexRoute: EvaluatorAiEvaluationIndexRoute,
-  EvaluatorAiStudentsIndexRoute: EvaluatorAiStudentsIndexRoute,
   FinancialManagementAdjustmentApprovalsIndexRoute:
     FinancialManagementAdjustmentApprovalsIndexRoute,
   FinancialManagementCollectionDashboardIndexRoute:
@@ -5723,10 +5608,6 @@ const rootRouteChildren: RootRouteChildren = {
   ErpPeopleEmployeeIdIndexRoute: ErpPeopleEmployeeIdIndexRoute,
   ErpPeopleOrgIndexRoute: ErpPeopleOrgIndexRoute,
   ErpPeopleStaffBridgeIndexRoute: ErpPeopleStaffBridgeIndexRoute,
-  EvaluatorAiAssessmentCreateAssessmentIndexRoute:
-    EvaluatorAiAssessmentCreateAssessmentIndexRoute,
-  EvaluatorAiEvaluationStudentSummaryIndexRoute:
-    EvaluatorAiEvaluationStudentSummaryIndexRoute,
   MentorshipMentorsMentorIdIndexRoute: MentorshipMentorsMentorIdIndexRoute,
   PlanningActivityLogsCreateIndexRoute: PlanningActivityLogsCreateIndexRoute,
   PlanningPlanningCreateIndexRoute: PlanningPlanningCreateIndexRoute,

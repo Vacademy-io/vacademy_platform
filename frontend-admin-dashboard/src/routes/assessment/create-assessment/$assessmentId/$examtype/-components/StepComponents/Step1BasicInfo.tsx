@@ -43,14 +43,39 @@ import { CaretLeft } from '@phosphor-icons/react';
 import { useParams } from '@tanstack/react-router';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { convertCapitalToTitleCase } from '@/lib/utils';
+import { cn, convertCapitalToTitleCase } from '@/lib/utils';
 import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_PROCTORING_FORM, proctoringFormFromWire } from '@/types/assessments/proctoring';
 import { ProctoringSettingsCard } from './-components/ProctoringSettingsCard';
+import { isApiSourced } from '../../../../../assessment-list/-utils.ts/assessment-source';
 
 // convertDateFormat lives in -utils/helper; Step 3 still imports it from here.
 export { convertDateFormat } from '../../-utils/helper';
+
+/** One result-type radio card; `locked` = the exam is managed by the AI Evaluation API. */
+const resultTypeOptionClass = (selected: boolean, locked: boolean) =>
+    cn(
+        'flex gap-3 rounded-lg border p-4 transition-colors',
+        locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+        selected
+            ? 'border-primary-400 bg-primary-50'
+            : cn(
+                  'border-neutral-200 bg-white',
+                  !locked && 'hover:border-primary-200 hover:bg-primary-50/40'
+              )
+    );
+
+/** Shown above the result type of an exam created through the AI Evaluation API (spec §12). */
+const ManagedByApiNote = () => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
+    return (
+        <p className="flex items-center gap-1.5 text-xs text-neutral-500">
+            <Info className="size-3.5 shrink-0 text-primary-500" />
+            {t('attemptSettingsSection.resultEvaluationType.managedByApi')}
+        </p>
+    );
+};
 
 const SectionCard = ({
     icon: Icon,
@@ -875,6 +900,11 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
         }
     }, [assessmentDetails, currentStep, instituteDetails?.subjects, assessmentId]);
 
+    // Exams created through the AI Evaluation API keep their result type (Manual):
+    // the API owns release (finalize), and the server refuses a change for
+    // source = 'API'. Absent on older payloads, so dashboard exams are unaffected.
+    const isApiManaged = isApiSourced(assessmentDetails[currentStep]?.saved_data?.source);
+
     if (isLoading || handleSubmitStep1Form.status === 'pending') return <DashboardLoader />;
 
     return (
@@ -1132,6 +1162,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 {t('attemptSettingsSection.resultEvaluationType.label')}
                                 <span className="ml-0.5 text-danger-500">*</span>
                             </p>
+                            {isApiManaged && <ManagedByApiNote />}
                             <FormField
                                 control={form.control}
                                 name="resultType"
@@ -1141,6 +1172,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                             <RadioGroup
                                                 value={field.value}
                                                 onValueChange={field.onChange}
+                                                disabled={isApiManaged}
                                                 className="flex flex-col gap-3"
                                             >
                                                 {[
@@ -1194,11 +1226,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                     .map((option) => (
                                                     <label
                                                         key={option.value}
-                                                        className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
-                                                            field.value === option.value
-                                                                ? 'border-primary-400 bg-primary-50'
-                                                                : 'border-neutral-200 bg-white hover:border-primary-200 hover:bg-primary-50/40'
-                                                        }`}
+                                                        className={resultTypeOptionClass(field.value === option.value, isApiManaged)}
                                                     >
                                                         <RadioGroupItem
                                                             value={option.value}

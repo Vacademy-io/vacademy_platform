@@ -1,0 +1,15 @@
+{
+    "headers": {
+        "lead": "Lead",
+        "contact": "Contact",
+        "wasDue": "Was due",
+        "completedAt": "Completed at",
+        "completedBy": "Completed by",
+        "outcome": "Outcome"
+    },
+    "empty": {
+        "title": "No completed follow-ups",
+        "description": "Follow-ups appear here once a counsellor marks them complete."
+    },
+    "unnamedLead": "Unnamed lead"
+}

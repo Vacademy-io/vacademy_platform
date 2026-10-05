@@ -59,8 +59,12 @@ public class TriggerContextKeyRegistry {
                 // list with "run destination automations" ticked): leadSource = "LEAD_MOVED".
                 "leadSource", "fromAudienceId"));
         // StudentRegistrationManager ~L1200. `packageSessionIds` is a single id string despite the name.
+        // membershipType is 'TRIAL' | 'PAID' | 'UNKNOWN' (no plan resolvable — admin/bulk/free
+        // enrolment), and isTrial is false for UNKNOWN too, so conditions that must distinguish
+        // the two happy flows gate on membershipType, not on isTrial being falsy.
         AUDITED.put(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(), Set.of(
-                "user", "packageSessionIds", "subOrg", "packageId", "packageName", "lmsEditExistingUser"));
+                "user", "packageSessionIds", "subOrg", "packageId", "packageName", "lmsEditExistingUser",
+                "userPlanId", "isTrial", "membershipType"));
         // Step1Service ~L85 / LiveSessionWorkflowAsyncHelper ~L55.
         AUDITED.put(WorkflowTriggerEvent.LIVE_SESSION_CREATE.name(), Set.of(
                 "liveSession", "createdBy"));

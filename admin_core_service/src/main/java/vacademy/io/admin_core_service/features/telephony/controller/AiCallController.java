@@ -59,9 +59,10 @@ public class AiCallController {
             @RequestBody AiCallRequestDTO req,
             @RequestAttribute("user") CustomUserDetails user) {
         // Guard: this places a PAID AI call charged to req.instituteId — verify the caller
-        // belongs to that institute (else a member of one tenant could spend another's
-        // credits / dial another's lead by passing a foreign instituteId).
-        instituteAccessValidator.validateUserAccess(user, req.getInstituteId());
+        // is staff of that institute (else a member of one tenant could spend another's
+        // credits / dial another's lead by passing a foreign instituteId). No root bypass:
+        // learners are root users too.
+        instituteAccessValidator.requireInstituteStaff(user, req.getInstituteId());
         String actorUserId = user == null ? null : user.getUserId();
 
         if (!queueEnabled) {

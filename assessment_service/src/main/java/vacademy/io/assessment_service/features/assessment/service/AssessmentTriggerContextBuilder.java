@@ -68,6 +68,9 @@ public class AssessmentTriggerContextBuilder {
         put(ctx, "evaluationType", assessment.getEvaluationType());
         put(ctx, "assessmentStatus", assessment.getStatus());
         put(ctx, "resultType", assessment.getResultType());
+        // "API" for exams created through the partner API, so an institute that opted in to
+        // workflow events on them can branch (spec 12 item 7). Absent for dashboard exams.
+        put(ctx, "assessmentSource", assessment.getSource());
         put(ctx, "boundStartTime", iso(assessment.getBoundStartTime()));
         put(ctx, "boundEndTime", iso(assessment.getBoundEndTime()));
         put(ctx, "durationMinutes", assessment.getDuration());

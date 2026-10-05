@@ -43,6 +43,7 @@ import {
     countryCodeToFlag,
 } from '../-utils/countries';
 import PhoneCountryGeoModeField from './PhoneCountryGeoModeField';
+import GoogleSignInBrandingCard from './GoogleSignInBrandingCard';
 import {
     DEFAULT_PHONE_COUNTRY_GEO_MODE,
     PHONE_COUNTRY_GEO_MODES,
@@ -1520,6 +1521,9 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
             {/* ── Short link DNS record (to forward to the customer) ── */}
             <ShortLinkDnsCard domains={shortLinkDomains} />
+
+            {/* ── Brand name on Google's "Continue with Google" screen ── */}
+            <GoogleSignInBrandingCard learnerPortalUrl={status?.learner_portal_url ?? null} />
 
             {/* ── Setup / Update Form ── */}
             <Card>

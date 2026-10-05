@@ -18,7 +18,8 @@
         "walkInNote": "Note de visite",
         "followupScheduled": "Relance planifiée",
         "statusChange": "Statut modifié",
-        "fallback": "Événement"
+        "fallback": "Événement",
+        "reEnquiry": "Nouvelle prise de contact"
     },
     "statusChangeMeta": {
         "previous": "Précédent"

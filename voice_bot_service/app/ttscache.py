@@ -103,7 +103,7 @@ _TRAILING = "\"'’”)]》」»"
 #
 # rumik is listed here for now although we own its sender loop and could inject
 # in-order there; vendor_inflight is correct for it too, just more conservative.
-_ASYNC_ARRIVAL_ENGINES = frozenset({"sarvam", "smallest", "rumik"})
+_ASYNC_ARRIVAL_ENGINES = frozenset({"sarvam", "smallest", "rumik", "navana"})
 
 
 def per_sentence_contexts(tts) -> bool:
@@ -322,6 +322,11 @@ def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
     parts = (salt, (engine or "").lower(), model or "", voice or "",
              _num(pace), _num(temperature), str(sample_rate),
              term_map_version or "", text)
+    if (engine or "").lower() == "navana":
+        # One Navana voice id speaks ten languages: the same text in Hindi and
+        # in Marathi is different audio, so the language is part of identity.
+        from .providers import navana_language
+        parts += ("language-v1", navana_language(language))
     if (engine or "").lower() == "smallest":
         from .speech_language import smallest_language_code
         # A new namespace: pre-language blobs may contain the wrong speech.
@@ -1206,6 +1211,9 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     engine_l = (engine or "").strip().lower()
     from .speech_language import smallest_language_code
     render_language = smallest_language_code(language) if engine_l == "smallest" else ""
+    if engine_l == "navana":
+        from .providers import navana_language
+        render_language = navana_language(language)
     async_arrival = is_async_arrival(engine_l)
     original = tts.run_tts
     # Resolved ONCE per call, not per sentence: the allowlist cannot change
@@ -1439,7 +1447,52 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                             text_frame.will_be_spoken = True
                             yield text_frame
 
-                    if own_stop:
+                    if own_stop and engine_l == "navana" and per_sentence_contexts(tts):
+                        # Navana's shape: push_text_frames on (pipecat appends
+                        # the TTSTextFrame AFTER run_tts returns) and
+                        # push_stop_frames off (the SDK's receive loop brackets
+                        # and our seq routing closes each live sentence). A stop
+                        # yielded here landed BEFORE the text frame — the
+                        # sentence vanished from the played transcript — and
+                        # nothing closed the context, so the next sentence
+                        # waited out pipecat's 3 s idle timeout (sim
+                        # navana_cached_live_cached: a 2.74 s hole). Mirror the
+                        # live path instead: after the blob's playout, stop,
+                        # then close — by then the base class's text frame is
+                        # already in the queue ahead of the stop.
+                        # Until the blob has PLAYED (measured from the first
+                        # chunk, not from the end of the paced emission), and
+                        # with keep-alives: pipecat closes a context after 3 s
+                        # with no new frame, and with push_stop_frames off it
+                        # then pushes no stop at all — so a long cached sentence
+                        # (all queued in ~half its length) timed out, its stop
+                        # never went out and its text was never committed (sim
+                        # navana_cached_then_live: a 9.2 s sentence missing from
+                        # the played transcript).
+                        hold = max(0.0, entry.duration_ms / 1000.0
+                                   - (time.monotonic() - emit_t0) - 0.05)
+
+                        async def _finish_after_playout(cid=context_id, secs=hold):
+                            refresh = getattr(tts, "_refresh_audio_context", None)
+                            left = secs
+                            while left > 0:
+                                step = min(1.0, left)
+                                await asyncio.sleep(step)
+                                left -= step
+                                if refresh is not None and left > 0:
+                                    try:
+                                        refresh(cid)
+                                    except Exception:
+                                        pass
+                            try:
+                                if tts.audio_context_available(cid):
+                                    await tts.append_to_audio_context(
+                                        cid, TTSStoppedFrame(context_id=cid))
+                                    await tts.remove_audio_context(cid)
+                            except Exception:
+                                logger.exception("tts-cache: navana context close failed")
+                        asyncio.get_running_loop().create_task(_finish_after_playout())
+                    elif own_stop:
                         yield TTSStoppedFrame(context_id=context_id)
                     elif per_sentence_contexts(tts) and own_text:
                         # CLOSE OUR OWN CONTEXT. With one context per sentence the

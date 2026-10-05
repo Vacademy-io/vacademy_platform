@@ -23,11 +23,18 @@ import type {
   AudienceFormAppearance,
   AudienceFormHighlightIcon,
 } from "../-utils/form-appearance";
-import { resolveHeroBodyHtml, resolveHeadline } from "../-utils/form-appearance";
+import {
+  resolveHeadline,
+  resolveHeadlineHtml,
+  resolveHeroBodyHtml,
+} from "../-utils/form-appearance";
 import {
   FORM_ACCENT_SOFT_CLASS,
   FORM_ACCENT_TEXT_CLASS,
+  FORM_JUSTIFY_CLASS,
   FORM_RICH_TEXT_CLASS,
+  FORM_SELF_ALIGN_CLASS,
+  FORM_TEXT_ALIGN_CLASS,
 } from "../-utils/form-appearance-styles";
 
 const HIGHLIGHT_ICON_COMPONENTS: Record<AudienceFormHighlightIcon, Icon> = {
@@ -56,7 +63,11 @@ export const AudienceFormHero = ({
   objectiveLabel,
   className,
 }: AudienceFormHeroProps) => {
+  // Rich text from the admin's editor wins; otherwise the plain override, else
+  // the campaign's own name — which is all this page showed before.
+  const headlineHtml = resolveHeadlineHtml(appearance);
   const headline = resolveHeadline(appearance, campaignName);
+  const align = appearance.headingAlign;
   const bodyHtml = resolveHeroBodyHtml(appearance, campaignDescription);
   const objective = appearance.showObjective
     ? (campaignObjective ?? "").trim()
@@ -67,7 +78,9 @@ export const AudienceFormHero = ({
   const eyebrow = appearance.eyebrow.trim();
 
   return (
-    <header className={cn("flex flex-col gap-4", className)}>
+    <header
+      className={cn("flex flex-col gap-4", FORM_TEXT_ALIGN_CLASS[align], className)}
+    >
       {appearance.coverImageUrl && (
         <img
           src={appearance.coverImageUrl}
@@ -85,6 +98,7 @@ export const AudienceFormHero = ({
         <span
           className={cn(
             "inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-caption font-semibold uppercase tracking-wide-08",
+            FORM_SELF_ALIGN_CLASS[align],
             FORM_ACCENT_SOFT_CLASS[appearance.accent]
           )}
         >
@@ -93,10 +107,25 @@ export const AudienceFormHero = ({
         </span>
       )}
 
-      {headline && (
-        <h1 className="text-h2 font-semibold text-foreground sm:text-h1">
-          {headline}
-        </h1>
+      {headlineHtml ? (
+        // A <div role="heading">, not an <h1>: the editor wraps its text in
+        // <p>, and a <p> inside an <h1> is invalid markup the browser
+        // re-parents out of the heading.
+        <div
+          role="heading"
+          aria-level={1}
+          className={cn(
+            "text-h2 font-semibold text-foreground sm:text-h1",
+            FORM_RICH_TEXT_CLASS
+          )}
+          dangerouslySetInnerHTML={{ __html: headlineHtml }}
+        />
+      ) : (
+        headline && (
+          <h1 className="text-h2 font-semibold text-foreground sm:text-h1">
+            {headline}
+          </h1>
+        )
       )}
 
       {bodyHtml && (
@@ -110,7 +139,10 @@ export const AudienceFormHero = ({
       )}
 
       {objective && (
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-card">
+        // text-start: a boxed icon + label row reads wrong centred, whatever
+        // alignment the heading above it uses. Logical, not text-left, so an
+        // RTL page keeps its natural edge.
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-card text-start">
           {/* Muted, not accent-coloured: the brand colour on this page belongs
               to the submit button. A second coloured element next to it reads
               as a second call to action. */}
@@ -129,7 +161,7 @@ export const AudienceFormHero = ({
       )}
 
       {appearance.highlights.length > 0 && (
-        <ul className="flex flex-wrap gap-stack">
+        <ul className={cn("flex flex-wrap gap-stack", FORM_JUSTIFY_CLASS[align])}>
           {appearance.highlights.map((highlight) => {
             const HighlightIcon = HIGHLIGHT_ICON_COMPONENTS[highlight.icon];
             return (

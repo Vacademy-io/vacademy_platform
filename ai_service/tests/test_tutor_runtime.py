@@ -143,3 +143,18 @@ def test_voice_nudge_explains_how_to_answer_in_both_languages():
         with_hint = p.tpl("nudge_voice_hint", lang, hint="Think of your morning.")
         assert "Answer" in with_hint and "Think of your morning." in with_hint
         assert "Answer" in p.tpl("nudge_voice_open", lang)
+
+
+def test_activeness_report_is_clamped_to_numbers():
+    from app.services.tutor.runtime.session_service import clean_activeness
+    assert clean_activeness({"avg": "x"}) is None
+    assert clean_activeness({}) is None
+    out = clean_activeness({"avg": 140, "parts": {"attention": -5, "listening": "72.6", "answering": None, "evil": 9},
+                            "seconds": 10 ** 9, "away_count": "3", "note": "<script>"})
+    assert out == {"avg": 100, "attention": 0, "listening": 73, "seconds": 6 * 3600, "away_count": 3, "away_seconds": 0}
+
+
+def test_away_and_welcome_back_lines_exist_in_both_languages():
+    from app.services.tutor.runtime import prompts
+    for key in ("away", "welcome_back"):
+        assert prompts.tpl(key, "en") and prompts.tpl(key, "hi") != prompts.tpl(key, "en")

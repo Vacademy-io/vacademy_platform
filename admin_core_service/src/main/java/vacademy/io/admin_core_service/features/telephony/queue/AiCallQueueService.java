@@ -255,6 +255,24 @@ public class AiCallQueueService {
      * provider. Matches {@code AiCallService}'s own 30-second duplicate window, which
      * keys on institute + user + provider.
      */
+    /**
+     * Is a call for this subject still waiting to dial (QUEUED or DISPATCHING)?
+     *
+     * <p>Asked by the CALL_AI workflow node before it counts a retry. The node enqueues
+     * and then sleeps on a timer, but the dial is asynchronous and can lag arbitrarily —
+     * the queue may be paused, out of credits, outside calling hours, or simply deep. If
+     * the node counted those as attempts it would exhaust its retries against calls that
+     * never happened and declare a lead unreachable while its call was still queued.
+     */
+    public boolean hasCallWaiting(String instituteId, String provider, String subjectKey) {
+        if (isBlank(instituteId) || isBlank(subjectKey)) return false;
+        String effectiveProvider = isBlank(provider)
+                ? settingsService.get(instituteId).getProvider() : provider;
+        if (isBlank(effectiveProvider)) effectiveProvider = ProviderType.AAVTAAR;
+        return repository.findPendingByDedupeKey(
+                dedupeKey(instituteId, effectiveProvider, subjectKey)).isPresent();
+    }
+
     private String subjectKey(AiCallRequestDTO req) {
         String key = firstNonBlank(req.getUserId(), req.getSubjectId(), req.getResponseId(),
                 req.getPhoneNumber());
@@ -694,6 +712,41 @@ public class AiCallQueueService {
             if (body.getPaused() != null) lane.setPaused(body.getPaused());
         }
         laneRepository.save(lane);
+        return laneView(instituteId);
+    }
+
+    /**
+     * Hold or release one institute's queue.
+     *
+     * <p>Pausing writes a single flag. Nothing is cancelled, re-timed or removed: the
+     * rows keep their status, their order and their place in the campaign, the drain
+     * job simply steps over the lane ({@code Snapshot#isPaused}), and the TTL sweep
+     * leaves them alone. Resuming lets the very next tick pick them up.
+     *
+     * <p>On resume the expiries are pushed forward by the time held, so a lead queued
+     * before a two-day pause still gets the TTL it had when it was frozen rather than
+     * expiring the moment the queue restarts.
+     */
+    @Transactional
+    public LaneView setQueuePaused(String instituteId, boolean paused) {
+        AiCallLane lane = laneRepository.findById(instituteId)
+                .orElseGet(() -> AiCallLane.builder().instituteId(instituteId).weight(1).build());
+        boolean was = lane.isPaused();
+        if (was == paused) {
+            log.info("ai-call queue: institute {} already {}", instituteId, paused ? "paused" : "running");
+            return laneView(instituteId);
+        }
+        if (!paused && lane.getUpdatedAt() != null) {
+            long held = Math.max(0, Duration.between(lane.getUpdatedAt(), Instant.now()).getSeconds());
+            if (held > 0) {
+                int moved = repository.extendExpiryAfterPause(instituteId, held);
+                log.info("ai-call queue: resumed institute {} after {}s — extended expiry on {} held call(s)",
+                        instituteId, held, moved);
+            }
+        }
+        lane.setPaused(paused);
+        laneRepository.save(lane);
+        log.info("ai-call queue: institute {} {}", instituteId, paused ? "PAUSED (queue held)" : "RESUMED");
         return laneView(instituteId);
     }
 

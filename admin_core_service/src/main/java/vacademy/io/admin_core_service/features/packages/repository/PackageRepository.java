@@ -3057,7 +3057,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ) AS facultyUserIds,
                     ps.available_slots AS availableSlots,
                     ps.max_seats AS maxSeats,
-                    p.created_by_user_id AS createdByUserId
+                    p.created_by_user_id AS createdByUserId,
+                    CASE WHEN p.course_setting LIKE '%COMING_SOON%' THEN p.course_setting END AS comingSoonSettingJson
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
@@ -3315,7 +3316,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     payment_info.currency AS currency,
                     ps.available_slots AS availableSlots,
                     ps.max_seats AS maxSeats,
-                    p.created_by_user_id AS createdByUserId
+                    p.created_by_user_id AS createdByUserId,
+                    CASE WHEN p.course_setting LIKE '%COMING_SOON%' THEN p.course_setting END AS comingSoonSettingJson
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id

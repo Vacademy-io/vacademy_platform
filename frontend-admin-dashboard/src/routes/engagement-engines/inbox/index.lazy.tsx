@@ -29,6 +29,8 @@ function buildFilters(t: TFunction): { label: string; statuses: string }[] {
         { label: t('filters.sent'), statuses: 'SENT' },
         { label: t('filters.failed'), statuses: 'FAILED' },
         { label: t('filters.handled'), statuses: 'DONE,DISMISSED' },
+        // What a dry run would have sent: SIMULATED rows, never dispatched.
+        { label: t('filters.dryRun'), statuses: 'SIMULATED' },
     ];
 }
 
@@ -56,6 +58,13 @@ function TaskInboxPage() {
 
     const action = useTaskAction();
     const tasks = data?.content ?? [];
+
+    // Handling the last task on a later page leaves that page empty, and with one page left the
+    // pager hides, so the inbox read "Nothing here" while tasks remained on page 1.
+    const totalPages = data?.totalPages ?? 0;
+    useEffect(() => {
+        if (page > 0 && data && page >= totalPages) setPage(Math.max(0, totalPages - 1));
+    }, [data, page, totalPages]);
 
     return (
         <LayoutContainer>
@@ -180,10 +189,15 @@ function TaskCard({
         : '—';
     const isReply = task.kind === 'REPLY';
     const isAutoSend = task.kind === 'SEND';
+    // A proactive WhatsApp goes out only as an approved template; without one the backend refuses
+    // every send, edited or not, so offering "Review & send" was a dead end.
+    const needsTemplate =
+        task.channel === 'WHATSAPP' && task.kind !== 'REPLY' && !task.templateName;
     const canSend =
         (task.status === 'OPEN' || task.status === 'ACKED') &&
         !!task.channel &&
-        task.channel !== 'AI_CALL';
+        task.channel !== 'AI_CALL' &&
+        !needsTemplate;
     const canHandle = task.status === 'OPEN' || task.status === 'ACKED';
 
     return (
@@ -215,6 +229,15 @@ function TaskCard({
                 <p className="mt-2 rounded bg-danger-50 p-2 text-caption text-danger-600">
                     {task.errorMessage}
                 </p>
+            )}
+            {/* Why an open task is here or couldn't be sent (out of credits, autonomy off, no contact). */}
+            {canHandle && task.errorMessage && (
+                <p className="mt-2 rounded bg-warning-50 p-2 text-caption text-warning-700">
+                    {task.errorMessage}
+                </p>
+            )}
+            {canHandle && needsTemplate && (
+                <p className="mt-2 text-caption text-neutral-500">{t('needsTemplate')}</p>
             )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2">

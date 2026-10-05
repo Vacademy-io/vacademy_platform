@@ -426,6 +426,13 @@ class InternalChargeToolRequest(BaseModel):
     user_role: Optional[str] = Field(None, description="ADMIN|TEACHER|LEARNER|SYSTEM|UNVERIFIED")
     subject_user_id: Optional[str] = Field(None, description="Who the work was about, when != actor")
     idempotency_key: Optional[str] = Field(None, description="Dedup key, e.g. 'transcription:{extractionId}'")
+    rate_snapshot: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Rate quoted at enqueue {tool_key, flat_base_credits, per_unit_credits, unit_field, "
+            "params, rate_source}; when it names this tool_key it replaces the current rate"
+        ),
+    )
 
 
 class InternalChargeToolResponse(BaseModel):

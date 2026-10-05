@@ -39,6 +39,14 @@ public class BillingSummaryResponseDTO {
     /** Live enrolments in the window. */
     private Long planCount;
     /**
+     * The institute's fee model: live instalment (CPO) plans, and all live plans, across the whole
+     * institute. Lets the screen tell an instalment institute from one that sells one-time courses
+     * and has a handful of instalment plans. Deliberately NOT scoped to the date window or course
+     * filter (unlike {@link #planCount}), so the screen keeps its shape while the admin filters.
+     */
+    private Long instalmentPlanCount;
+    private Long livePlanCount;
+    /**
      * Live, priced one-time plans with no payment recorded against them — activated by an admin.
      * Might be an offline payment nobody recorded or a free grant, so it is reported, not billed.
      */

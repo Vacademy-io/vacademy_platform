@@ -32,6 +32,14 @@
             "instructionPrefix": "— appuyez sur",
             "applyLabel": "Appliquer",
             "instructionSuffix": "pour mettre à jour la liste."
+        },
+        "source": {
+            "label": "Source",
+            "options": {
+                "DASHBOARD": "Tableau de bord",
+                "API": "API"
+            },
+            "emptyOnPage": "Aucune évaluation de cette source sur cette page. Essayez une autre page ou effacez le filtre Source."
         }
     },
     "dialogs": {

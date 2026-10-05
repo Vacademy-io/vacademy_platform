@@ -6,6 +6,8 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner.dto.v2.LearnerPackageSessionEnrollmentItemDTO;
 import vacademy.io.admin_core_service.features.learner.dto.v2.MultiPackageLearnerEnrollRequestDTO;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
+import vacademy.io.admin_core_service.features.course_settings.service.LeadConversionPolicyService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -43,6 +45,33 @@ public class MultiPackageLearnerEnrollService {
 
     @Autowired
     private UserLeadProfileService userLeadProfileService;
+
+    @Autowired
+    private LeadConversionPolicyService leadConversionPolicyService;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
+    /**
+     * Courses (packages) behind the enrolled package sessions, for the conversion-policy lookup.
+     * A session whose package can't be resolved is simply left out — the policy service then
+     * falls back to the institute default, i.e. today's convert-on-enrollment behaviour.
+     */
+    private List<String> resolvePackageIds(List<LearnerPackageSessionEnrollmentItemDTO> items) {
+        List<String> packageSessionIds = items.stream()
+                .map(LearnerPackageSessionEnrollmentItemDTO::getPackageSessionId)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (packageSessionIds.isEmpty()) {
+            return List.of();
+        }
+        return packageSessionRepository.findAllById(packageSessionIds).stream()
+                .map(ps -> ps.getPackageEntity() != null ? ps.getPackageEntity().getId() : null)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
 
     @Transactional
     public LearnerEnrollResponseDTO enrollMultiPackage(MultiPackageLearnerEnrollRequestDTO request) {
@@ -247,12 +276,16 @@ public class MultiPackageLearnerEnrollService {
             paymentLogService.addChildLogsToPayment(mainPaymentLogId, childPaymentLogIds);
         }
 
-        // 4. Auto-mark conversion if this user came in as a lead.
+        // 4. Auto-mark conversion if this user came in as a lead — unless every course in this
+        // enrollment opted out of counting as a conversion (a free course / trial / lead magnet
+        // keeps the lead open). See LeadConversionPolicyService; defaults to converting.
         // Best-effort: failures here must not roll back the enrollment.
         try {
             String enrolledUserId = enrolledUser != null ? enrolledUser.getId() : null;
             String instituteId = request.getInstituteId();
-            if (StringUtils.hasText(enrolledUserId) && StringUtils.hasText(instituteId)) {
+            if (StringUtils.hasText(enrolledUserId) && StringUtils.hasText(instituteId)
+                    && leadConversionPolicyService.anyCountsAsConversion(
+                            instituteId, resolvePackageIds(items))) {
                 boolean converted = userLeadProfileService.markConvertedIfExists(enrolledUserId, instituteId);
                 if (converted) {
                     log.info("Auto-marked lead as CONVERTED on enrollment: userId={}, instituteId={}",

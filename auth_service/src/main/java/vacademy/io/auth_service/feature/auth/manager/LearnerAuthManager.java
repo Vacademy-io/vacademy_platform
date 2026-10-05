@@ -48,6 +48,7 @@ import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.auth.service.OAuth2VendorToUserDetailService;
+import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
@@ -548,9 +549,12 @@ public class LearnerAuthManager {
                                         List<String> permissions = userPermissionRepository.findByUserId(user.getId())
                                                         .stream()
                                                         .map(UserPermission::getPermissionId).toList();
+                                        // Echo the (still valid) refresh token: the learner app stores
+                                        // response.refreshToken, and a missing one would wipe its copy.
                                         return JwtResponseDto.builder()
                                                         .accessToken(jwtService.generateToken(user,
                                                                         user.getRoles().stream().toList(), permissions))
+                                                        .refreshToken(refreshTokenRequestDTO.getToken())
                                                         .build();
                                 })
                                 .orElseThrow(() -> new ExpiredTokenException(
@@ -654,6 +658,14 @@ public class LearnerAuthManager {
         public UserWithJwtDTO generateTokenForUserByUserId(String userId, String instituteId) {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+                // The minted token carries ALL of the user's roles and passes the super-admin
+                // allowlist, so a platform staff account enrolled as a learner somewhere must
+                // never get one from this path.
+                if (SuperAdminAuthUtil.isSuperAdminUserId(user.getId())) {
+                        throw new VacademyException(HttpStatus.FORBIDDEN,
+                                        "Cannot generate a learner token for a platform staff account");
+                }
 
                 Optional<UserRole> userRole = userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
                                 userId,

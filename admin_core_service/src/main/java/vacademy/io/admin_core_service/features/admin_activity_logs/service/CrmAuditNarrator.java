@@ -274,6 +274,7 @@ public class CrmAuditNarrator {
                         snapshot.put("display_order", status.getDisplayOrder());
                         snapshot.put("is_default", status.getIsDefault());
                         snapshot.put("is_active", status.getIsActive());
+                        snapshot.put("show_in_filter", status.getShowInFilter());
                         return snapshot;
                     })
                     .orElse(null);

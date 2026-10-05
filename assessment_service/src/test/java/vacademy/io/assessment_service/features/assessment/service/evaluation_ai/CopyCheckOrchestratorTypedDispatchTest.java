@@ -23,6 +23,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,7 +54,8 @@ class CopyCheckOrchestratorTypedDispatchTest {
                 AiQuestionEvaluationService tracking = mock(AiQuestionEvaluationService.class);
                 service = new CopyCheckOrchestratorService(processes, marks, tracking,
                                 mock(EvaluationUtilityService.class), client, json,
-                                mock(OptionRepository.class), mappings, typed);
+                                mock(OptionRepository.class), mappings, typed, new NoopTransactionManager(),
+                                mock(vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate.class), null);
 
                 Assessment assessment = new Assessment();
                 assessment.setId("assessment-1");
@@ -66,7 +68,19 @@ class CopyCheckOrchestratorTypedDispatchTest {
                 process.setStudentAttempt(attempt);
                 process.setAssessment(assessment);
                 process.setClaimedBy("pod-a");
+                process.setStatus("DISPATCHED");
                 when(processes.findById("process-1")).thenReturn(Optional.of(process));
+                // The guarded start: DISPATCHED -> PROCESSING for the claim holder.
+                when(processes.beginDispatch(eq("process-1"), eq("pod-a"), any())).thenAnswer(i -> {
+                        process.setStatus("PROCESSING");
+                        return 1;
+                });
+                when(processes.handBackClaim(eq("process-1"), eq("pod-a"), any())).thenAnswer(i -> {
+                        process.setStatus("PENDING");
+                        process.setClaimedBy(null);
+                        process.setClaimedAt(null);
+                        return 1;
+                });
                 when(processes.save(any(AiEvaluationProcess.class))).thenAnswer(i -> i.getArgument(0));
                 when(tracking.createQuestionEvaluation(any(), any(), anyInt())).thenReturn(null);
         }
@@ -90,7 +104,7 @@ class CopyCheckOrchestratorTypedDispatchTest {
                 when(marks.findByStudentAttemptIdWithQuestionDetails("attempt-1")).thenReturn(rows);
                 when(client.submitGrade(any())).thenReturn("job-1");
 
-                service.dispatch("process-1", "attempt-1", null);
+                service.dispatch("process-1", "attempt-1", null, "pod-a");
 
                 ArgumentCaptor<CopyCheckGradeRequestDto> sent = ArgumentCaptor.forClass(CopyCheckGradeRequestDto.class);
                 verify(client).submitGrade(sent.capture());
@@ -111,7 +125,7 @@ class CopyCheckOrchestratorTypedDispatchTest {
                 when(marks.findByStudentAttemptId("attempt-1")).thenReturn(rows);
                 when(marks.findByStudentAttemptIdWithQuestionDetails("attempt-1")).thenReturn(rows);
 
-                service.dispatch("process-1", "attempt-1", null);
+                service.dispatch("process-1", "attempt-1", null, "pod-a");
 
                 verify(client, never()).submitGrade(any());
                 assertThat(process.getStatus()).isEqualTo("FAILED");
@@ -121,18 +135,22 @@ class CopyCheckOrchestratorTypedDispatchTest {
         void aJustSubmittedAttemptWhoseMarksAreNotWrittenYetIsHandedBack() {
                 when(marks.findByStudentAttemptId("attempt-1")).thenReturn(List.of());
 
-                service.dispatch("process-1", "attempt-1", null);
+                service.dispatch("process-1", "attempt-1", null, "pod-a");
 
                 verify(client, never()).submitGrade(any());
+                verify(processes).handBackClaim(eq("process-1"), eq("pod-a"), any());
+                verify(processes, never()).beginDispatch(any(), any(), any());
                 assertThat(process.getClaimedBy()).isNull();
-                assertThat(process.getStatus()).isNotEqualTo("FAILED");
+                // Back to PENDING (11.2): a DISPATCHED row nobody owns would wait
+                // for the sweeper's stale timeout.
+                assertThat(process.getStatus()).isEqualTo("PENDING");
         }
 
         @Test
         void aManualUploadAssessmentWithoutAFileStillFailsAsBefore() {
                 process.getAssessment().setEvaluationType("MANUAL");
 
-                service.dispatch("process-1", "attempt-1", null);
+                service.dispatch("process-1", "attempt-1", null, "pod-a");
 
                 verify(client, never()).submitGrade(any());
                 assertThat(process.getStatus()).isEqualTo("FAILED");

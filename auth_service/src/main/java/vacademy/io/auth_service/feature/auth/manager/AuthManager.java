@@ -28,6 +28,7 @@ import vacademy.io.auth_service.feature.notification.service.NotificationService
 import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
+import vacademy.io.common.auth.service.UserRoleService;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserPermissionRepository;
 import vacademy.io.common.auth.repository.UserRepository;
@@ -224,18 +225,24 @@ public class AuthManager {
             User user = userOptional.get();
 
             List<UserRole> allUserRoles = userRoleRepository.findByUser(user);
-            Optional<UserRole> nonStudentRole = allUserRoles.stream()
-                    .filter(ur -> List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name())
-                            .contains(ur.getStatus()))
+            List<UserRole> eligibleStaffRoles = allUserRoles.stream()
+                    .filter(UserRoleService::grantsAccess)
                     .filter(ur -> ur.getRole() != null && ur.getRole().getName() != null
                             && !AuthConstants.STUDENT_ROLE.equals(ur.getRole().getName()))
-                    .findFirst();
+                    .toList();
+            // Prefer the institute being signed into, so its invite is the one accepted.
+            String requestedInstituteId = authRequestDTO.getInstituteId();
+            Optional<UserRole> nonStudentRole = eligibleStaffRoles.stream()
+                    .filter(ur -> requestedInstituteId != null
+                            && requestedInstituteId.equals(ur.getInstituteId()))
+                    .findFirst()
+                    .or(() -> eligibleStaffRoles.stream().findFirst());
 
-            // mark as accepted invitation based on Institute for the first eligible
-            // non-student role
+            // Accept the pending invitation in that institute. Only INVITED rows move: the
+            // old blanket update also re-activated roles an admin had disabled or deleted,
+            // so "Disable access" was undone by the member's next sign-in.
             if (nonStudentRole.isPresent()) {
-                userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(
-                        UserRoleStatus.ACTIVE.name(),
+                userRoleRepository.activateInvitedRolesByInstituteIdAndUserId(
                         nonStudentRole.get().getInstituteId(),
                         List.of(user.getId()));
             } else {
@@ -263,6 +270,14 @@ public class AuthManager {
                 .map(refreshTokenService::verifyExpiration).map(RefreshToken::getUserInfo).map(userInfo -> {
 
                     List<UserRole> userRoles = userRoleRepository.findByUser(userInfo);
+                    // Access revoked everywhere (disabled / removed from every team and
+                    // enrolment): stop renewing, so an already signed-in session ends too.
+                    // Users with no role rows at all keep the old behaviour — that is not a
+                    // revocation, and some live sessions (e.g. role-less accounts) depend on it.
+                    if (!userRoles.isEmpty() && userRoles.stream().noneMatch(UserRoleService::grantsAccess)) {
+                        throw new ExpiredTokenException(
+                                "Your access has been removed. Please contact your institute.");
+                    }
                     List<String> userPermissions = userPermissionRepository.findByUserId(userInfo.getId()).stream()
                             .map(UserPermission::getPermissionId).toList();
                     // Generate new access token

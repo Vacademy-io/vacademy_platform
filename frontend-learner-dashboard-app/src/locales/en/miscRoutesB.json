@@ -591,6 +591,8 @@
       "autopayCheckbox": "Also enable auto-pay for future renewals — one approval pays now and sets up automatic deduction, no more manual payments.",
       "startingPayment": "Starting payment...",
       "payToContinue": "Pay {{amount}} to continue",
+      "completeEnrollmentPrompt": "Your sign-up for this membership was never completed, so there is nothing to renew yet. Finish enrolling and your {{liveClasses}} start right away.",
+      "completeEnrollmentCta": "Complete your enrollment",
       "toast": {
         "startFailedTitle": "Couldn't start the payment",
         "genericRetry": "Please try again in a moment.",
@@ -610,7 +612,24 @@
       },
       "changePlan": "Change plan",
       "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
-      "planChangeCancelScheduled": "Cancel this change"
+      "planChangeCancelScheduled": "Cancel this change",
+      "cardDialog": {
+        "title": "Add a card to continue",
+        "description": "We don't have a card saved for this membership yet. Enter one to pay now — we'll save it securely so future renewals are one tap.",
+        "loadingForm": "Loading secure card form..."
+      },
+      "autopayDefaultNotice": "Future renewals will be charged automatically to this card. You can stop auto-pay any time from this page."
+    },
+    "paymentReturn": {
+      "confirmingTitle": "Confirming your payment…",
+      "confirmingBody": "Please don't close this page — we're checking with the payment provider.",
+      "paidTitle": "Payment received!",
+      "paidBody": "Your membership has been renewed. It may take a few seconds to show everywhere.",
+      "failedTitle": "Payment not completed",
+      "failedBody": "Nothing has been charged. You can try again from your membership page.",
+      "cancelled": "You cancelled the payment. Nothing has been charged.",
+      "missingReference": "We couldn't tell which payment this was. Please try again from your membership page.",
+      "backToMembership": "Back to my membership"
     }
   },
   "termsAndConditions": {

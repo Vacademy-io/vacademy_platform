@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -91,6 +93,9 @@ public class AiServiceCreditClient {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = webClient.post()
                     .uri("/credits/v1/estimate-tool")
+                    // Harmless while the endpoint is open; required once ai_service
+                    // gates it with _require_user_or_internal (no JWT to forward here).
+                    .header("X-Internal-Service-Token", internalToken)
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(Map.class)
@@ -106,6 +111,91 @@ public class AiServiceCreditClient {
             log.warn("Could not estimate AI report credits for institute {}: {}", instituteId, e.getMessage());
             return new CreditEstimate(null, null, null);
         }
+    }
+
+    /**
+     * One tool quote for the AI-evaluation credit gate
+     * ({@code AiEvaluationCreditGate}, AI_EVALUATION_PUBLIC_API.md 10.6).
+     *
+     * <p>Unlike {@link CreditEstimate}, an unreachable credit service is reported,
+     * not hidden: {@code reachable == false} for any transport error, timeout,
+     * 401/403, 4xx or 5xx, so the caller decides whether to fail open (dashboard)
+     * or closed (partner API).
+     *
+     * @param credits        the parametric quote for one run; null when unknown
+     * @param currentBalance the institute's balance; null when ai_service has no
+     *                       balance row for it
+     * @param rateSnapshot   the rate the quote was made at, as ai_service returned it
+     *                       ({@code tool_key}, {@code unit_field} and, once ai_service
+     *                       sends them, {@code flat_base_credits}, {@code per_unit_credits},
+     *                       {@code params}, {@code rate_source}); never null
+     */
+    public record ToolEstimate(boolean reachable, BigDecimal credits, BigDecimal currentBalance, Boolean sufficient,
+                               Map<String, Object> rateSnapshot, String error) {
+        public static ToolEstimate unreachable(String error) {
+            return new ToolEstimate(false, null, null, null, Map.of(), error);
+        }
+    }
+
+    /** {@link #estimate(String, Map, String, Duration)} with the default 10 s budget. */
+    public ToolEstimate estimate(String toolKey, Map<String, Object> params, String instituteId) {
+        return estimate(toolKey, params, instituteId, Duration.ofSeconds(10));
+    }
+
+    /**
+     * Quote one run of {@code toolKey} for an institute and read its balance.
+     * Read-only; never deducts. The institute id lets ai_service resolve the
+     * institute's own price (override, then global row, then code default).
+     */
+    public ToolEstimate estimate(String toolKey, Map<String, Object> params, String instituteId, Duration timeout) {
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("tool_key", toolKey);
+            body.put("params", params != null ? params : Map.of());
+            body.put("institute_id", instituteId);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = webClient.post()
+                    .uri("/credits/v1/estimate-tool")
+                    .header("X-Internal-Service-Token", internalToken)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block(timeout != null ? timeout : Duration.ofSeconds(10));
+            return toToolEstimate(toolKey, response);
+        } catch (Exception e) {
+            log.warn("AI credit estimate for tool {} (institute {}) failed: {}", toolKey, instituteId, e.getMessage());
+            return ToolEstimate.unreachable(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    /** The estimate-tool response as a {@link ToolEstimate}; package-private for tests. */
+    @SuppressWarnings("unchecked")
+    static ToolEstimate toToolEstimate(String toolKey, Map<String, Object> response) {
+        if (response == null) {
+            return ToolEstimate.unreachable("empty response from estimate-tool");
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("tool_key", response.get("tool_key") != null ? response.get("tool_key") : toolKey);
+        if (response.get("unit_field") != null) snapshot.put("unit_field", response.get("unit_field"));
+        // The rate itself: a nested rate_snapshot when ai_service sends one (C4 shape),
+        // else whichever top-level rate fields it returns.
+        if (response.get("rate_snapshot") instanceof Map<?, ?> nested) {
+            ((Map<String, Object>) nested).forEach((k, v) -> {
+                if (v != null) snapshot.put(k, v);
+            });
+        } else {
+            for (String key : List.of("flat_base_credits", "per_unit_credits", "rate_source")) {
+                if (response.get(key) != null) snapshot.put(key, response.get(key));
+            }
+            if (response.get("pricing_params") instanceof Map<?, ?> pricing) snapshot.put("params", pricing);
+        }
+        return new ToolEstimate(true,
+                toDecimal(response.get("estimated_credits")),
+                toDecimal(response.get("current_balance")),
+                response.get("sufficient") instanceof Boolean b ? b : null,
+                snapshot,
+                null);
     }
 
     /**

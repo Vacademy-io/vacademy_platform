@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.audience.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
@@ -11,6 +13,8 @@ import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadFollowupRe
 import vacademy.io.admin_core_service.features.audience.service.LeadFollowupService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -50,6 +54,33 @@ public class LeadFollowupController {
             @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(leadFollowupService.myPending(user, instituteId, counsellorUserId));
+    }
+
+    /**
+     * Completed follow-ups, newest first — what the Follow-ups page's
+     * "Completed" tile lists. Same scoping as {@link #myPending}, but paged:
+     * the closed set only grows.
+     */
+    @GetMapping("/completed")
+    public ResponseEntity<Page<LeadFollowupDto>> completed(
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "closedFrom", required = false) String closedFrom,
+            @RequestParam(value = "closedTo", required = false) String closedTo,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(
+                leadFollowupService.completed(user, instituteId, counsellorUserId, search,
+                        toTimestamp(closedFrom), toTimestamp(closedTo),
+                        PageRequest.of(page, size)));
+    }
+
+    /** ISO-8601 instant from the browser, or null when the range is open-ended. */
+    private static Timestamp toTimestamp(String iso) {
+        if (iso == null || iso.isBlank()) return null;
+        return Timestamp.from(Instant.parse(iso));
     }
 
     @PutMapping("/{id}")

@@ -94,10 +94,21 @@ public interface EngagementPlanRepository extends JpaRepository<EngagementPlan, 
     List<Object[]> countLearnersBySlotsGroupedByPlan(@Param("slotIds") List<String> slotIds);
 
     /**
+     * When an enrollment started, as an instant a plan's zone turns into the right local day.
+     * enrolled_date is a bare date (the server's UTC date at enrollment): read as midnight
+     * UTC it lands on the previous evening west of UTC, so Day 1 came a day early in the
+     * Americas. When the row was created on that same date, created_at is the real moment;
+     * otherwise the date was set on purpose and noon UTC keeps it on that calendar day in
+     * every zone from UTC-12 to UTC+11.
+     */
+    String JOINED_AT = "MIN(CASE WHEN m.enrolled_date IS NULL OR m.enrolled_date = CAST(m.created_at AS date) " +
+            "THEN m.created_at ELSE CAST(m.enrolled_date AS timestamp) + INTERVAL '12 hours' END)";
+
+    /**
      * A learner's join date per batch (enrollment date, else when the enrollment row was
      * created), for RELATIVE plans. Rows: [packageSessionId, Timestamp joinedAt].
      */
-    @Query(value = "SELECT m.package_session_id, MIN(COALESCE(m.enrolled_date, m.created_at)) " +
+    @Query(value = "SELECT m.package_session_id, " + JOINED_AT + " " +
             "FROM student_session_institute_group_mapping m " +
             "WHERE m.user_id = :userId AND m.package_session_id IN (:packageSessionIds) " +
             "AND m.status = 'ACTIVE' GROUP BY m.package_session_id", nativeQuery = true)
@@ -105,7 +116,7 @@ public interface EngagementPlanRepository extends JpaRepository<EngagementPlan, 
                                         @Param("packageSessionIds") List<String> packageSessionIds);
 
     /** Every active learner's join date in one batch. Rows: [userId, Timestamp joinedAt]. */
-    @Query(value = "SELECT m.user_id, MIN(COALESCE(m.enrolled_date, m.created_at)) " +
+    @Query(value = "SELECT m.user_id, " + JOINED_AT + " " +
             "FROM student_session_institute_group_mapping m " +
             "WHERE m.package_session_id = :packageSessionId AND m.status = 'ACTIVE' " +
             "AND m.user_id IS NOT NULL GROUP BY m.user_id", nativeQuery = true)
@@ -113,4 +124,15 @@ public interface EngagementPlanRepository extends JpaRepository<EngagementPlan, 
 
     @Query("SELECT p FROM EngagementPlan p WHERE p.status = 'PUBLISHED' AND p.scheduleMode = 'RELATIVE'")
     List<EngagementPlan> findAllPublishedRelative();
+
+    /**
+     * Non-zero when the batch's course is linked to the institute. A plan's roster, tracking
+     * and pushes all key off the batch alone, so a plan must never be created on a batch
+     * of another institute.
+     */
+    @Query(value = "SELECT COUNT(*) FROM package_session ps " +
+            "JOIN package_institute pi ON pi.package_id = ps.package_id " +
+            "WHERE ps.id = :packageSessionId AND pi.institute_id = :instituteId", nativeQuery = true)
+    long countBatchInInstitute(@Param("packageSessionId") String packageSessionId,
+                               @Param("instituteId") String instituteId);
 }

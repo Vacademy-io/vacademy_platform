@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  * ambiguous, and Spring fell back to {@code SimpleAsyncTaskExecutor}
  * (unbounded thread-per-call) with a startup warning. Rather than leave the
  * platform default to that fallback, we pin it explicitly: a modest bounded
- * pool serving the release flow, AI-evaluation pipeline and other
+ * pool serving the release flow and other
  * unqualified {@code @Async} methods. Runtime-verified 2026-08-03.
  *
  * <p>Core 1 / max 1 on the export executor is deliberate, not a

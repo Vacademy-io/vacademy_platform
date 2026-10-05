@@ -21,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { fetchPaginatedBatches } from '@/routes/admin-package-management/-services/package-service';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const PAGE_SIZE = 20;
 /** "Select all in course" reads a course's batches in pages of this size… */
@@ -56,7 +58,10 @@ export function batchSubLabel(b: PackageSessionDTO): string {
  * same rule as the server's EngagementPlanService.batchLabel, so a plan card and this
  * picker name a batch the same way.
  */
-export function batchLabel(b: PackageSessionDTO, fallback = 'Course'): string {
+export function batchLabel(
+    b: PackageSessionDTO,
+    fallback = getTerminology(ContentTerms.Course, SystemTerms.Course)
+): string {
     const own = b.name?.trim();
     if (own) return own;
     const course = b.package_dto?.package_name?.trim();

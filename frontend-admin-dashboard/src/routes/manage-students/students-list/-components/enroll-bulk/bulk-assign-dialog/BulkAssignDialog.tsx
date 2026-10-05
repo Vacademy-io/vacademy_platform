@@ -46,6 +46,14 @@ interface BulkAssignDialogProps {
     onSuccess?: () => void;
     /** When provided, pre-selects this course/batch in Step 2 */
     initialPackageSessionId?: string;
+    /**
+     * Opens the wizard for ONE learner who is already known — the lead/student side view
+     * knows exactly who it is, so Step 1 has nothing to ask and is dropped. Everything
+     * after it (invite, CPO instalments, discount, preview) is the same wizard, which is
+     * the point: the side view used to run a thinner copy of this flow that had no
+     * instalment or discount editing at all.
+     */
+    initialLearner?: { userId: string; email: string; name: string };
 }
 
 /**
@@ -54,7 +62,13 @@ interface BulkAssignDialogProps {
  */
 type StepKey = 'learners' | 'courses' | 'config' | 'suborg' | 'preview';
 
-export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackageSessionId }: BulkAssignDialogProps) => {
+export const BulkAssignDialog = ({
+    open,
+    onOpenChange,
+    onSuccess,
+    initialPackageSessionId,
+    initialLearner,
+}: BulkAssignDialogProps) => {
     const { t } = useTranslation('manageStudentsBulkAssignDialog');
     const { getPackageWiseLevels, instituteDetails } = useInstituteDetailsStore();
     const { enrollmentNotifications } = useCourseSettings();
@@ -109,7 +123,8 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
     const needsSubOrgStep = selectedPackageSessions.some((ps) => ps.isOrgAssociated);
 
     const stepKeys: StepKey[] = [
-        'learners',
+        // Nothing to pick when the caller already named the learner.
+        ...(initialLearner ? [] : (['learners'] as StepKey[])),
         'courses',
         'config',
         ...(needsSubOrgStep ? (['suborg'] as StepKey[]) : []),
@@ -129,6 +144,24 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
     const STEPS = stepKeys.map((key) => stepLabels[key]);
     const currentStep: StepKey = stepKeys[step] ?? 'learners';
     const previewIndex = stepKeys.length - 1;
+
+    // Seed the single known learner so the wizard opens straight on the course step.
+    // Keyed on the VALUES, not the object: callers build this inline, so depending on
+    // identity would re-seed on every render and never settle.
+    const seedUserId = initialLearner?.userId;
+    const seedEmail = initialLearner?.email;
+    const seedName = initialLearner?.name;
+    useEffect(() => {
+        if (!open || !seedUserId) return;
+        setSelectedLearners([
+            {
+                type: 'existing',
+                userId: seedUserId,
+                email: seedEmail ?? '',
+                name: seedName ?? '',
+            },
+        ]);
+    }, [open, seedUserId, seedEmail, seedName]);
 
     // Pre-select course when dialog opens with an initialPackageSessionId
     useEffect(() => {

@@ -173,7 +173,9 @@ const commitScope = async (
     } catch (error) {
         // Without the default chain nothing in this scope can be created.
         const message =
-            error instanceof Error ? error.message : 'Could not prepare the course structure';
+            error instanceof Error
+                ? error.message
+                : `Could not prepare the ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} structure`;
         for (const item of scopedItems()) {
             if (item.status === 'pending') {
                 state().markItem(item.id, 'blocked', { error: message });
@@ -554,7 +556,9 @@ const runCsvCommit = async (deps: CommitDeps, shared: SharedRunResources): Promi
                 }
             } catch (error) {
                 const message =
-                    error instanceof Error ? error.message : 'Failed to upload this chapter';
+                    error instanceof Error
+                        ? error.message
+                        : `Failed to upload this ${getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLocaleLowerCase()}`;
                 for (const item of chapterItems) {
                     if (state().items[item.id]?.status === 'pending') {
                         state().markItem(item.id, 'blocked', { error: message });
@@ -638,7 +642,9 @@ export const runCommit = async (deps: CommitDeps): Promise<void> => {
             );
         } catch (error) {
             const message =
-                error instanceof Error ? error.message : 'Upload failed for this course';
+                error instanceof Error
+                    ? error.message
+                    : `Upload failed for this ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`;
             for (const item of Object.values(state().items)) {
                 if (item.sectionId === section.id && item.status === 'pending') {
                     state().markItem(item.id, 'blocked', { error: message });

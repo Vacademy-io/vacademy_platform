@@ -68,6 +68,18 @@ public class UserPlanController {
     }
 
     /**
+     * Per-status counts and totals for the same rows {@code POST /payment-logs} would list under
+     * the same filters. Manage Payments reads its tiles and tab counts from here so the table can
+     * page normally instead of pulling every row into the browser to add them up.
+     */
+    @PostMapping("/payment-logs/summary")
+    public ResponseEntity<PaymentLogSummaryResponseDTO> getPaymentLogSummary(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody PaymentLogFilterRequestDTO filterDTO) {
+        return ResponseEntity.ok(paymentLogService.getPaymentLogSummary(filterDTO));
+    }
+
+    /**
      * Aggregated PAID collection total + per-day series for an institute, optionally
      * scoped to one sub-org, over a UTC date window. Powers the dashboard "amount
      * collected (last 3/7/24 days / all)" panels. Omit dates for all-time.
@@ -98,6 +110,9 @@ public class UserPlanController {
      * <p>{@code includeNotYetDue=true} returns the "Outstanding" list instead: every learner with
      * a balance still to collect, whatever its due date, soonest next instalment first. Defaults
      * to false, so existing callers keep the Due list unchanged.
+     *
+     * <p>{@code dueMonth=yyyy-MM} narrows to the learners with something falling due in that month
+     * (one bar of the instalment forecast). Omitted, the lists are exactly as before.
      */
     @PostMapping("/payment-logs/outstanding-learners")
     public ResponseEntity<Page<OutstandingLearnerDTO>> getOutstandingLearners(
@@ -105,9 +120,21 @@ public class UserPlanController {
             @RequestBody BillingSummaryRequestDTO request,
             @RequestParam(value = "pageNo", defaultValue = "0") int pageNo,
             @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
-            @RequestParam(value = "includeNotYetDue", defaultValue = "false") boolean includeNotYetDue) {
-        return ResponseEntity.ok(
-                paymentLogService.getOutstandingLearners(request, pageNo, pageSize, includeNotYetDue));
+            @RequestParam(value = "includeNotYetDue", defaultValue = "false") boolean includeNotYetDue,
+            @RequestParam(value = "dueMonth", required = false) String dueMonth) {
+        return ResponseEntity.ok(paymentLogService.getOutstandingLearners(
+                request, pageNo, pageSize, includeNotYetDue, dueMonth));
+    }
+
+    /**
+     * Instalment fee progress (billed / paid / overdue / to come, instalment plans only) and the
+     * Upcoming card split by month. Same body as billing-summary; read-only.
+     */
+    @PostMapping("/payment-logs/instalment-forecast")
+    public ResponseEntity<InstalmentForecastResponseDTO> getInstalmentForecast(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody BillingSummaryRequestDTO request) {
+        return ResponseEntity.ok(paymentLogService.getInstalmentForecast(request));
     }
 
     /**

@@ -56,6 +56,7 @@ import {
 import { PlanOverviewDialog } from './PlanOverviewDialog';
 import { ItemTrackingDialog } from './ItemTrackingDialog';
 import { PlanComposerDialog } from './PlanComposerDialog';
+import { serverMessageOf } from './composer/use-composer-save';
 import { DuplicatePlanDialog } from './DuplicatePlanDialog';
 import { PlanDaySchedule } from './list/PlanDaySchedule';
 
@@ -76,9 +77,8 @@ const STATUS_TONE: Record<PlanStatus, StatusType> = {
 
 /** The server's own message when it sent one, else the caller's fallback. */
 function errorMessage(e: unknown, fallback: string): string {
-    return (
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
-    );
+    // A VacademyException body carries its text in `ex`, not `message`.
+    return serverMessageOf(e) ?? fallback;
 }
 
 type MenuAction =

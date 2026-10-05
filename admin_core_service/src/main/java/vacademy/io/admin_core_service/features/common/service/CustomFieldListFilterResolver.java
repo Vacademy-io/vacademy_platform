@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.util.CustomFieldValueSql;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -263,7 +264,7 @@ public class CustomFieldListFilterResolver {
                     sql.append("GTE".equals(operator) ? " >= " : " <= ").append(String.format(boundParam, 0));
                 }
             }
-            default -> sql.append("cfv.value IN (:values)");
+            default -> sql.append(CustomFieldValueSql.matchesAnyOf("cfv.value", "values"));
         }
 
         Query query = entityManager.createNativeQuery(sql.toString());

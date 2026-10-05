@@ -8,15 +8,19 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import vacademy.io.assessment_service.features.assessment.client.AiServiceCopyCheckClient;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.CopyCheckGradeRequestDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
-import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCharge;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.question_core.entity.Option;
@@ -52,39 +56,146 @@ public class CopyCheckOrchestratorService {
     private final OptionRepository optionRepository;
     private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
     private final TypedAnswerEvaluation typedAnswerEvaluation;
+    private final PlatformTransactionManager transactionManager;
+    private final AiEvaluationCreditGate creditGate;
+    private final CopyCheckGradeRequestEnricher gradeRequestEnricher;
 
     @Value("${media.service.baseurl}")
     private String mediaServiceUrl;
 
+    /**
+     * Partner API answer sheets live in media's private eval-api prefix, which the
+     * anonymous get-public-url route refuses (G12); they are read through a short signed
+     * GET instead. Optional so unit tests that build this class by hand keep working.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vacademy.io.assessment_service.features.assessment.client.EvalApiStorageClient evalApiStorageClient;
+
+    /** Long enough for render_worker to fetch the sheet after a busy queue. */
+    static final int EVAL_API_URL_SECONDS = 3600;
+
     @Value("${assessment.copy-check.callback-base-url:http://assessment-service:8074/assessment-service}")
     private String callbackBaseUrl;
 
-    @Transactional
-    public void dispatch(String processId, String attemptId, String preferredModel) {
+    /**
+     * Send one claimed evaluation to ai_service (gate G6).
+     *
+     * <ol>
+     *   <li>A just-submitted online attempt whose marks rows are not written yet is
+     *       handed back: DISPATCHED -> PENDING, claim cleared, under the claim guard,
+     *       so the next tick takes it instead of the sweeper's stale timeout.</li>
+     *   <li>Still DISPATCHED under our claim, nothing sent yet: a result released while
+     *       the copy waited, or a balance that no longer covers the copy's quote (10.6),
+     *       fails it here - unbilled. An API copy whose credit check cannot be made goes
+     *       back to the queue.</li>
+     *   <li>Guarded start, own transaction: DISPATCHED -> PROCESSING only while the
+     *       row is still claimed by {@code claimToken}. 0 rows = another pod got
+     *       there first, a teacher cancelled it, or the sweeper took it back: stop.</li>
+     *   <li>Build the payload and the tracking rows in one short transaction.</li>
+     *   <li>Call ai_service OUTSIDE any transaction - it used to pin a pooled
+     *       connection for up to ~93 s - then record the job id with a one-row
+     *       update. A 429 (every grading slot busy) puts the row back to PENDING for
+     *       the next tick; any other failure fails the process as before.</li>
+     * </ol>
+     */
+    public void dispatch(String processId, String attemptId, String preferredModel, String claimToken) {
+        DispatchFacts facts = inNewTransaction(() -> {
+            AiEvaluationProcess process = processRepository.findById(processId).orElse(null);
+            if (process == null) {
+                log.error("[copy-check] process {} not found", processId);
+                return null;
+            }
+            boolean awaiting = awaitingSubmitMarks(process, attemptId);
+            return new DispatchFacts(awaiting,
+                    AiEvaluationService.isReleased(process.getStudentAttempt()),
+                    extractInstituteId(process),
+                    process.getQuotedCredits(),
+                    process.getRateSnapshot(),
+                    process.getApiKeyId() != null && !process.getApiKeyId().isBlank(),
+                    awaiting || process.getQuotedCredits() != null ? null : dashboardCharge(process, attemptId));
+        });
+        if (facts == null) {
+            return;
+        }
+        if (facts.awaitingMarks()) {
+            // An online attempt's question rows are written by the async marks job
+            // that runs on submit; the poller can get here first. Hand the job back
+            // unclaimed (and PENDING - a DISPATCHED row nobody owns would wait for the
+            // sweeper) and the next tick picks it up once the rows exist.
+            int handedBack = inNewTransaction(() -> processRepository.handBackClaim(processId, claimToken, new Date()));
+            log.info("[copy-check] attempt {} has no question rows yet; process {} requeued ({} row)",
+                    attemptId, processId, handedBack);
+            return;
+        }
+        if (facts.released()) {
+            // The callback would refuse to write these marks anyway; refuse before the
+            // run is paid for (G8).
+            int failed = inNewTransaction(() -> processRepository.failClaimed(processId, claimToken, "RESULT_RELEASED",
+                    "result_released: the attempt's result was released while this check waited; not run, not billed",
+                    new Date()));
+            log.info("[copy-check] attempt {} was released while process {} waited; not dispatched ({} row)",
+                    attemptId, processId, failed);
+            return;
+        }
+        if (!passesCreditCheck(processId, claimToken, facts)) {
+            return;
+        }
+
+        int started = inNewTransaction(() -> processRepository.beginDispatch(processId, claimToken, new Date()));
+        if (started == 0) {
+            log.info("[copy-check] process {} is no longer DISPATCHED under claim {}; not dispatching it again",
+                    processId, claimToken);
+            return;
+        }
+
+        CopyCheckGradeRequestDto request = inNewTransaction(() -> prepareRequest(processId, attemptId, preferredModel));
+        if (request == null) {
+            return;
+        }
+
+        String jobId;
+        try {
+            jobId = aiServiceClient.submitGrade(request);
+        } catch (AiServiceCopyCheckClient.AiServiceBusyException busy) {
+            int requeued = inNewTransaction(() -> processRepository.requeueBusy(processId, claimToken, new Date()));
+            log.info("[copy-check] ai_service busy (429) for process {}; back to the queue ({} row)", processId, requeued);
+            return;
+        } catch (Exception e) {
+            log.error("[copy-check] failed to submit grade for process {}", processId, e);
+            String message = truncate("ai_service submit failed: " + e.getMessage());
+            inNewTransaction(() -> {
+                processRepository.findById(processId).ifPresent(process -> failProcess(process, message));
+                return null;
+            });
+            return;
+        }
+        inNewTransaction(() -> processRepository.recordSubmitted(processId, jobId, new Date()));
+        log.info("[copy-check] dispatched process={} attempt={} → ai_service job_id={}",
+                processId, attemptId, jobId);
+    }
+
+    /**
+     * The grade request for a process that has just moved to PROCESSING, with its
+     * tracking rows written; null (process failed or no longer ours) when there is
+     * nothing to send. Runs inside the caller's transaction.
+     */
+    CopyCheckGradeRequestDto prepareRequest(String processId, String attemptId, String preferredModel) {
         AiEvaluationProcess process = processRepository.findById(processId).orElse(null);
         if (process == null) {
             log.error("[copy-check] process {} not found", processId);
-            return;
+            return null;
         }
-        if (awaitingSubmitMarks(process, attemptId)) {
-            // An online attempt's question rows are written by the async marks job
-            // that runs on submit; the poller can get here first. Hand the job back
-            // unclaimed and the next tick picks it up once the rows exist.
-            process.setClaimedBy(null);
-            process.setClaimedAt(null);
-            processRepository.save(process);
-            log.info("[copy-check] attempt {} has no question rows yet; process {} requeued", attemptId, processId);
-            return;
+        if (!AiEvaluationStatusEnum.PROCESSING.name().equals(process.getStatus())) {
+            // Cancelled (or swept) between the guarded start and here.
+            log.info("[copy-check] process {} is {} after dispatch started; not sending it", processId,
+                    process.getStatus());
+            return null;
         }
-        process.setStatus(AiEvaluationStatusEnum.PROCESSING.name());
-        process.setCurrentStep("DISPATCHED");
-        process.setStartedAt(new Date());
-        processRepository.save(process);
 
         String attemptData = process.getStudentAttempt() != null ? process.getStudentAttempt().getAttemptData() : null;
         if (attemptData == null) {
             failProcess(process, "attempt_data missing — nothing to grade");
-            return;
+            return null;
         }
         // No uploaded sheet = an online attempt: grade the typed written answers.
         boolean typed = typedAnswerEvaluation.isTypedAttempt(process.getStudentAttempt(), assessmentOf(process));
@@ -93,12 +204,12 @@ public class CopyCheckOrchestratorService {
             String fileId = evaluationUtilityService.extractFileId(attemptData);
             if (fileId == null || fileId.isEmpty()) {
                 failProcess(process, "no file_id on attempt — nothing to grade");
-                return;
+                return null;
             }
-            pdfUrl = getFileUrl(fileId);
+            pdfUrl = answerSheetUrl(process, fileId);
             if (pdfUrl == null) {
                 failProcess(process, "media-service did not return a URL for file_id=" + fileId);
-                return;
+                return null;
             }
         }
 
@@ -111,31 +222,42 @@ public class CopyCheckOrchestratorService {
             if (marksList.isEmpty()) {
                 failProcess(process, "no uploaded answer sheet and no written (long answer) question on attempt "
                         + attemptId + " — nothing for the AI to grade");
-                return;
+                return null;
             }
         }
         if (marksList.isEmpty()) {
             failProcess(process, "no questions found for attempt " + attemptId);
-            return;
+            return null;
         }
         marksList = inPaperOrder(marksList, process.getAssessment());
+
+        // A re-dispatch (sweeper requeue, 429, stale claim) used to insert a second
+        // set of tracking rows next to the first (T0.29). Clear this process's rows
+        // first, except the ones a teacher already edited: those are kept, get no
+        // new row, and count as settled - their callbacks are skipped anyway.
+        java.util.Set<String> keptEdited = aiQuestionEvaluationService.resetForRedispatch(processId);
+        int alreadySettled = (int) marksList.stream()
+                .filter(m -> m.getQuestion() != null && keptEdited.contains(m.getQuestion().getId()))
+                .count();
         process.setQuestionsTotal(marksList.size());
-        process.setQuestionsCompleted(0);
+        process.setQuestionsCompleted(alreadySettled);
         processRepository.save(process);
 
         // Pre-create tracking rows so callbacks can update them by question_id.
-        Map<String, AiQuestionEvaluation> trackingRows = new HashMap<>();
         int qNum = 1;
         for (QuestionWiseMarks marks : marksList) {
-            AiQuestionEvaluation row = aiQuestionEvaluationService.createQuestionEvaluation(
-                    process, marks.getQuestion(), qNum++);
-            trackingRows.put(marks.getQuestion().getId(), row);
+            int number = qNum++;
+            if (marks.getQuestion() != null && keptEdited.contains(marks.getQuestion().getId())) {
+                continue;
+            }
+            aiQuestionEvaluationService.createQuestionEvaluation(process, marks.getQuestion(), number);
         }
 
+        String subject = gradeRequestEnricher != null ? gradeRequestEnricher.subjectFor(process) : null;
         List<CopyCheckGradeRequestDto.QuestionInput> questionPayloads = new ArrayList<>(marksList.size());
         int position = 0;
         for (QuestionWiseMarks marks : marksList) {
-            CopyCheckGradeRequestDto.QuestionInput input = buildQuestionInput(marks, ++position);
+            CopyCheckGradeRequestDto.QuestionInput input = buildQuestionInput(marks, ++position, subject);
             if (typed) {
                 input.setStudentAnswer(typedAnswerEvaluation.typedAnswer(marks));
                 input.setModelAnswer(referenceAnswerFor(marks.getQuestion()));
@@ -154,18 +276,103 @@ public class CopyCheckOrchestratorService {
                 .callbackBaseUrl(callbackBaseUrl)
                 .questions(questionPayloads)
                 .build();
-
-        try {
-            String jobId = aiServiceClient.submitGrade(request);
-            process.setAiServiceJobId(jobId);
-            process.setCurrentStep("AI_SERVICE_SUBMITTED");
-            processRepository.save(process);
-            log.info("[copy-check] dispatched process={} attempt={} → ai_service job_id={}",
-                    processId, attemptId, jobId);
-        } catch (Exception e) {
-            log.error("[copy-check] failed to submit grade for process {}", processId, e);
-            failProcess(process, "ai_service submit failed: " + e.getMessage());
+        if (gradeRequestEnricher != null) {
+            gradeRequestEnricher.enrich(process, request);
         }
+        return request;
+    }
+
+    /** What dispatch reads about a claimed row in its first, short transaction. */
+    record DispatchFacts(boolean awaitingMarks, boolean released, String instituteId, java.math.BigDecimal quotedCredits,
+                         String rateSnapshot, boolean apiTraffic, AiEvaluationCharge fallbackCharge) {
+    }
+
+    /**
+     * The dispatch-time credit look (10.6.2), outside any transaction. False = the
+     * row was failed (insufficient_credits, unbilled) or handed back to the queue
+     * (API copy, credit service unreachable) and must not be sent.
+     */
+    private boolean passesCreditCheck(String processId, String claimToken, DispatchFacts facts) {
+        if (creditGate == null) {
+            return true;
+        }
+        AiEvaluationCreditGate.DispatchCheck check;
+        try {
+            check = creditGate.checkAtDispatch(facts.instituteId(), facts.quotedCredits(), facts.rateSnapshot(),
+                    facts.fallbackCharge(), facts.apiTraffic());
+        } catch (Exception e) {
+            // Never let the second look itself stop a dashboard copy.
+            log.warn("[copy-check] credit re-check failed for process {}: {}", processId, e.getMessage());
+            return true;
+        }
+        if (check == null) {
+            return true;
+        }
+        AiEvaluationCreditGate.Reservation newQuote = check.newQuote();
+        if (newQuote != null && newQuote.quotedCredits() != null && newQuote.rateSnapshotJson() != null) {
+            try {
+                inNewTransaction(() -> processRepository.recordQuote(processId, newQuote.quotedCredits(),
+                        newQuote.rateSnapshotJson(), new Date()));
+            } catch (Exception e) {
+                log.warn("[copy-check] could not store the quote for process {}: {}", processId, e.getMessage());
+            }
+        }
+        switch (check.verdict()) {
+            case INSUFFICIENT -> {
+                String message = "insufficient_credits: this check needs " + plain(check.quoted())
+                        + " AI credits and the institute has " + plain(check.balance())
+                        + (check.creditLimit() != null && check.creditLimit().signum() > 0
+                                ? " (+" + plain(check.creditLimit()) + " credit limit)" : "")
+                        + ". Not run, not billed; top up AI credits and evaluate again.";
+                int failed = inNewTransaction(() -> processRepository.failClaimed(processId, claimToken,
+                        "INSUFFICIENT_CREDITS", message, new Date()));
+                log.info("[copy-check] process {} not dispatched: insufficient credits ({} row)", processId, failed);
+                return false;
+            }
+            case UNAVAILABLE -> {
+                int handedBack = inNewTransaction(() -> processRepository.handBackClaim(processId, claimToken, new Date()));
+                log.warn("[copy-check] process {} back to the queue: credit service unavailable ({} row)",
+                        processId, handedBack);
+                return false;
+            }
+            default -> {
+                return true;
+            }
+        }
+    }
+
+    private static String plain(java.math.BigDecimal value) {
+        return value == null ? "0" : value.stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * How to price a row that was queued without a quote (a learner's submit, or a row
+     * from before the credit check): the dashboard rate per question the AI will grade -
+     * every question row on a copy, only the written ones on an online attempt.
+     * Partner rows are always quoted at accept, so they never need this.
+     */
+    private AiEvaluationCharge dashboardCharge(AiEvaluationProcess process, String attemptId) {
+        if (process.getApiKeyId() != null && !process.getApiKeyId().isBlank()) {
+            return null;
+        }
+        try {
+            boolean typed = typedAnswerEvaluation.isTypedAttempt(process.getStudentAttempt(), assessmentOf(process));
+            List<QuestionWiseMarks> rows = questionWiseMarksRepository.findByStudentAttemptId(attemptId);
+            long count = rows.stream()
+                    .filter(m -> !typed || TypedAnswerEvaluation.isAiGraded(m.getQuestion()))
+                    .count();
+            return AiEvaluationCharge.dashboard((int) count);
+        } catch (Exception e) {
+            log.warn("[copy-check] could not price process {}: {}", process.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** Run {@code work} in a transaction of its own (dispatch has no outer one by design). */
+    private <T> T inNewTransaction(java.util.function.Supplier<T> work) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return template.execute(status -> work.get());
     }
 
     /**
@@ -177,7 +384,7 @@ public class CopyCheckOrchestratorService {
      * The older auto_evaluation_json.options / correctAnswer shapes stay as the
      * fallback for questions created by other tools.
      */
-    private CopyCheckGradeRequestDto.QuestionInput buildQuestionInput(QuestionWiseMarks marks, int position) {
+    CopyCheckGradeRequestDto.QuestionInput buildQuestionInput(QuestionWiseMarks marks, int position, String subject) {
         Question q = marks.getQuestion();
         String[] printed = printedLabel(q);
         double maxMarks = evaluationUtilityService.extractMaxMarksFromSectionMapping(marks, q);
@@ -195,6 +402,7 @@ public class CopyCheckOrchestratorService {
                 .maxMarks(maxMarks)
                 .options(options)
                 .correctAnswer(correctAnswer)
+                .subject(subject)
                 .questionNumber(position)
                 .paperLabel(printed[0] != null ? printed[0] : String.valueOf(position))
                 .section(printed[1] != null ? printed[1]
@@ -358,6 +566,7 @@ public class CopyCheckOrchestratorService {
     }
 
     private String extractInstituteId(AiEvaluationProcess process) {
+        if (process.getInstituteId() != null && !process.getInstituteId().isBlank()) return process.getInstituteId();
         if (process.getStudentAttempt() == null) return null;
         try {
             var registration = process.getStudentAttempt().getRegistration();
@@ -367,7 +576,46 @@ public class CopyCheckOrchestratorService {
         }
     }
 
-    private String getFileUrl(String fileId) {
+    /**
+     * The answer sheet's URL, chosen by where the FILE lives, not by who started the run.
+     * A partner API run reads its sheet through the C3 signed URL. A dashboard run (re-check
+     * from the AI review page, bulk AI check) keeps the public-url route; when that refuses
+     * the file (an API-uploaded sheet in the private eval-api prefix, which media treats as
+     * not found there) it falls back to the C3 signed URL, so teachers can still re-grade
+     * API copies from the dashboard (spec 12).
+     */
+    String answerSheetUrl(AiEvaluationProcess process, String fileId) {
+        if (isApiProcess(process)) {
+            return getEvalApiFileUrl(fileId);
+        }
+        String url = getFileUrl(fileId);
+        if (url != null || evalApiStorageClient == null) {
+            return url;
+        }
+        log.info("[copy-check] public URL refused for fileId={}; trying the eval-api signed URL", fileId);
+        return getEvalApiFileUrl(fileId);
+    }
+
+    private static boolean isApiProcess(AiEvaluationProcess process) {
+        return process.getApiKeyId() != null && !process.getApiKeyId().isBlank();
+    }
+
+    /** Signed GET for a partner API upload (C3); null when media cannot give one. */
+    private String getEvalApiFileUrl(String fileId) {
+        if (evalApiStorageClient == null) {
+            log.error("[copy-check] no eval-api storage client; cannot read API file {}", fileId);
+            return null;
+        }
+        try {
+            return evalApiStorageClient.signedUrl(fileId, EVAL_API_URL_SECONDS).url();
+        } catch (Exception e) {
+            log.error("[copy-check] media-service eval-api signed URL failed for fileId={}: {}", fileId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Media's anonymous public-url route; null on any failure. Package-private for tests. */
+    String getFileUrl(String fileId) {
         try {
             return WebClient.builder()
                     .baseUrl(mediaServiceUrl)

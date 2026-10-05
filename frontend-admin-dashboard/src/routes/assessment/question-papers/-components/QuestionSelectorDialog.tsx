@@ -7,6 +7,7 @@ import { MyInput } from '@/components/design-system/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface QuestionSelectorDialogProps {
     open: boolean;
@@ -256,7 +257,9 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
                                                 <div
                                                     className="line-clamp-2 text-sm leading-relaxed text-neutral-800"
                                                     dangerouslySetInnerHTML={{
-                                                        __html: question.questionName,
+                                                        __html: sanitizeRichHtml(
+                                                            question.questionName
+                                                        ),
                                                     }}
                                                 />
                                             </div>

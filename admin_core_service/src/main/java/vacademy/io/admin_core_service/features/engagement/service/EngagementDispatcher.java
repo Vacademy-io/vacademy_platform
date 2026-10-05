@@ -70,6 +70,11 @@ public class EngagementDispatcher {
             // it now settles to FAILED, which is visible and reopenable.
             EngagementMember member = memberRepository.findById(action.getMemberId())
                     .orElseThrow(() -> new IllegalStateException("member missing for action " + action.getId()));
+            // Consent holds for every send, a human's send-on-behalf included: a task drafted before
+            // the person opted out (or left the audience) must not reach them afterwards.
+            if ("OPTED_OUT".equals(member.getStatus()) || "EXITED".equals(member.getStatus())) {
+                throw new SendRejectedException("This person has opted out or left the audience, so nothing was sent.");
+            }
             Subject subject = contactResolver.resolve(List.of(member)).get(0);
 
             // Resolve the SENT body per channel. A PROACTIVE WhatsApp (kind!=REPLY) is a FIXED

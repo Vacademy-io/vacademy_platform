@@ -15,10 +15,12 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vacademy.io.common.exceptions.AccessRevokedException;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 import vacademy.io.common.auth.service.UserService;
+import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 import vacademy.io.common.core.utils.TextSanitizer;
 import vacademy.io.common.exceptions.ExpiredTokenException;
 import vacademy.io.common.exceptions.VacademyException;
@@ -139,8 +141,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 } catch (Exception lookupFailure) {
                     log.warn("User resolution failed for subject '{}' (institute={}): {}",
                             username, instituteId, lookupFailure.getMessage());
-                    request.setAttribute(AUTH_FAILURE_REASON,
-                            "Token subject could not be matched to a user in this institute. Please log in again.");
+                    // A switched-off team member gets a distinct reason so the client can end
+                    // the session; any other failure (including auth-service being briefly
+                    // unreachable) keeps the old reason and must not log people out.
+                    request.setAttribute(AUTH_FAILURE_REASON, AccessRevokedException.isCause(lookupFailure)
+                            ? AccessRevokedException.CODE
+                            : "Token subject could not be matched to a user in this institute. Please log in again.");
                     // Rethrow rather than calling the chain here: the catch-all below
                     // falls through to the single doFilter at the end of this method.
                     // Calling it from inside the try would run the chain twice whenever
@@ -151,6 +157,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 // Pass User ID with request
                 request.setAttribute("user", userDetails);
+
+                // The token's signed "user" claim (users.id at mint time). userDetails came from a
+                // username lookup; SuperAdminAuthUtil requires the two to agree. Best-effort only.
+                try {
+                    Object tokenUserId = jwtService.extractClaim(jwt, claims -> claims.get("user"));
+                    if (tokenUserId instanceof String) {
+                        request.setAttribute(SuperAdminAuthUtil.JWT_USER_ID_ATTRIBUTE, tokenUserId);
+                    }
+                } catch (Exception ignored) {
+                    // No usable claim: the allowlist alone decides.
+                }
 
                 // Validate the JWT token using user details and JwtService
                 if (jwtService.isTokenValid(jwt, userDetails)) {

@@ -30,6 +30,11 @@ import {
 import { BasketPricingEditor } from './BasketPricingEditor';
 import { CourseFinderEditor } from './CourseFinderEditor';
 import { OffersEditor } from './OffersEditor';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface ProductPageSettingsCardProps {
     settings: ProductPageSettings;
@@ -130,7 +135,11 @@ const STEPS = [
         id: 'CATALOG' as const,
         label: 'Catalog',
         icon: BookOpen,
-        description: 'Browse & select courses',
+        // Getter, not a string: STEPS is module-scope, so the institute's term
+        // must be read at render time, not frozen at import.
+        get description() {
+            return `Browse & select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`;
+        },
         illustration: CatalogIllustration,
         color: 'blue',
     },
@@ -138,7 +147,9 @@ const STEPS = [
         id: 'CART' as const,
         label: 'Cart',
         icon: ShoppingCart,
-        description: 'Review selected courses',
+        get description() {
+            return `Review selected ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`;
+        },
         illustration: CartIllustration,
         color: 'violet',
     },
@@ -253,10 +264,11 @@ export const ProductPageSettingsCard = ({
                     {settings.courseFinder?.enabled && settings.defaultStep !== 'CATALOG' && (
                         <div className="mt-3 rounded-lg border border-warning-300 bg-warning-50 px-3 py-2">
                             <p className="text-xs text-warning-700">
-                                Course Finder is on, so learners still land on{' '}
-                                <strong>Catalog</strong> — the class question has to be asked before
-                                there is anything in the cart. Turn the Course Finder off to use
-                                this landing step.
+                                {getTerminology(ContentTerms.Course, SystemTerms.Course)} Finder is
+                                on, so learners still land on <strong>Catalog</strong> — the class
+                                question has to be asked before there is anything in the cart. Turn
+                                the {getTerminology(ContentTerms.Course, SystemTerms.Course)} Finder
+                                off to use this landing step.
                             </p>
                         </div>
                     )}
@@ -283,8 +295,8 @@ export const ProductPageSettingsCard = ({
                     {
                         icon: ShoppingCart,
                         color: 'text-primary-500 bg-primary-50',
-                        label: 'Course Deselection',
-                        description: 'Learners can remove pre-selected courses',
+                        label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Deselection`,
+                        description: `Learners can remove pre-selected ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`,
                         checked: settings.allowCourseDeselection,
                         onChange: () => update({ allowCourseDeselection: !settings.allowCourseDeselection }),
                     },
@@ -307,7 +319,7 @@ export const ProductPageSettingsCard = ({
                     {
                         icon: Sparkles,
                         color: 'text-violet-500 bg-violet-50',
-                        label: 'Suggested Courses',
+                        label: `Suggested ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
                         description: 'Show "people also buy" upsell in the cart',
                         checked: settings.suggestedCourses.enabled,
                         onChange: () => update({ suggestedCourses: { ...settings.suggestedCourses, enabled: !settings.suggestedCourses.enabled } }),
@@ -353,8 +365,8 @@ export const ProductPageSettingsCard = ({
                     {
                         icon: MagicWand,
                         color: 'text-sky-500 bg-sky-50',
-                        label: 'Course Finder',
-                        description: 'Ask “which class?” first, then show only those courses',
+                        label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Finder`,
+                        description: `Ask “which class?” first, then show only those ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`,
                         checked: settings.courseFinder?.enabled ?? false,
                         panel: settings.courseFinder ? (
                             <CourseFinderEditor
@@ -383,7 +395,7 @@ export const ProductPageSettingsCard = ({
                         icon: Percent,
                         color: 'text-pink-500 bg-pink-50',
                         label: 'Basket Pricing',
-                        description: 'Price by how many courses they pick, not per course',
+                        description: `Price by how many ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} they pick, not per ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`,
                         checked: settings.basketPricing?.enabled ?? false,
                         panel: settings.basketPricing ? (
                             <BasketPricingEditor
@@ -492,7 +504,12 @@ export const ProductPageSettingsCard = ({
             {settings.suggestedCourses.enabled && (
                 <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm space-y-3">
                     <p className="text-xs text-neutral-500">
-                        Configure how "people also buy" upsell courses appear to learners during checkout.
+                        Configure how "people also buy" upsell{' '}
+                        {getTerminologyPlural(
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                        ).toLocaleLowerCase()}{' '}
+                        appear to learners during checkout.
                     </p>
                     <div>
                         <p className="mb-2 text-xs font-semibold text-violet-700 uppercase tracking-wide">Section Heading</p>

@@ -83,7 +83,8 @@ class CopyIntakeSubmittedTest {
                 mock(AdminOfflineDataEntryManager.class), evaluation,
                 attempts, mock(CopyIntakeNotifier.class), mock(AssessmentAuditClient.class),
                 new ObjectMapper(), mock(TransactionTemplate.class),
-                mock(vacademy.io.assessment_service.features.auth_service.service.AuthService.class));
+                mock(vacademy.io.assessment_service.features.auth_service.service.AuthService.class),
+                mock(vacademy.io.assessment_service.features.assessment.copy_intake.service.InstituteFileOwnership.class));
 
         when(batches.save(any(AiCopyIntakeBatch.class))).thenAnswer(inv -> {
             AiCopyIntakeBatch b = inv.getArgument(0);
@@ -91,7 +92,7 @@ class CopyIntakeSubmittedTest {
             return b;
         });
         when(assessments.findById("a-1")).thenReturn(Optional.of(assessment));
-        when(evaluation.initiateEvaluationForAttempt(any(), any(), anyBoolean(), any()))
+        when(evaluation.initiateEvaluationForAttempt(any(), any(), anyBoolean(), any(), any()))
                 .thenAnswer(inv -> "proc-" + ((StudentAttempt) inv.getArgument(0)).getId());
         when(processes.findByStudentAttempt_IdIn(anyList())).thenReturn(List.of());
 
@@ -179,8 +180,10 @@ class CopyIntakeSubmittedTest {
         assertThat(batch.isNotifyEmail()).isFalse();
         verify(evaluation).requireGradableQuestions(assessment);
         // Queued for the poller (never dispatched at once), attributed to the teacher.
-        verify(evaluation).initiateEvaluationForAttempt(eq(a), eq("m"), eq(true), eq("admin-1"));
-        verify(evaluation).initiateEvaluationForAttempt(eq(b), eq("m"), eq(true), eq("admin-1"));
+        verify(evaluation).initiateEvaluationForAttempt(eq(a), eq("m"), eq(true), eq("admin-1"), any());
+        verify(evaluation).initiateEvaluationForAttempt(eq(b), eq("m"), eq(true), eq("admin-1"), any());
+        // One credit check for the whole batch (10.6), not one per copy.
+        verify(evaluation).reserveDashboardCredits(List.of(a, b));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<AiCopyIntakeItem>> saved = ArgumentCaptor.forClass(List.class);
@@ -206,6 +209,36 @@ class CopyIntakeSubmittedTest {
                 .isInstanceOf(VacademyException.class)
                 .hasMessageContaining("No submitted copies");
         verify(batches, never()).save(any());
-        verify(evaluation, never()).initiateEvaluationForAttempt(any(), anyString(), anyBoolean(), anyString());
+        verify(evaluation, never()).initiateEvaluationForAttempt(any(), anyString(), anyBoolean(), anyString(), any());
+    }
+
+    @Test
+    void aReleasedResultIsNeverOfferedForACheck() {
+        StudentAttempt fresh = attempt("s1", "ENDED", "f1", "Asha");
+        StudentAttempt released = attempt("s2", "ENDED", "f2", "Bala");
+        released.setReportReleaseStatus("RELEASED");
+        when(attempts.getAllParticipantsAttemptForAssessment("a-1")).thenReturn(List.of(fresh, released));
+
+        CopyIntakeDtos.SubmittedPreviewDto p = service.previewSubmitted("a-1", null, true);
+        assertThat(p.getAttemptIds()).containsExactly("s1");
+
+        service.startFromSubmitted(admin, "a-1", "i-1",
+                CopyIntakeDtos.SubmittedRequest.builder().includeChecked(true).build());
+        verify(evaluation, never()).initiateEvaluationForAttempt(eq(released), any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void aCreditShortfallRefusesTheBatchBeforeAnythingIsQueued() {
+        StudentAttempt a = attempt("s1", "ENDED", "f1", "Asha");
+        when(attempts.getAllParticipantsAttemptForAssessment("a-1")).thenReturn(List.of(a));
+        when(evaluation.reserveDashboardCredits(anyList())).thenThrow(
+                new vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.InsufficientCreditsException(
+                        java.math.BigDecimal.valueOf(3), java.math.BigDecimal.ONE, java.math.BigDecimal.ONE,
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO));
+
+        assertThatThrownBy(() -> service.startFromSubmitted(admin, "a-1", "i-1", null))
+                .hasMessageContaining("Not enough AI credits");
+        verify(batches, never()).save(any());
+        verify(evaluation, never()).initiateEvaluationForAttempt(any(), any(), anyBoolean(), any(), any());
     }
 }

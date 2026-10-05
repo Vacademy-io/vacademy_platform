@@ -39,7 +39,6 @@ const PUBLIC_PREFIXES = [
     '/landing',
     '/pricing',
     '/content',
-    '/evaluator-ai',
     '/vim/onboarding',
     '/vim/login',
     '/vim/waitlist',

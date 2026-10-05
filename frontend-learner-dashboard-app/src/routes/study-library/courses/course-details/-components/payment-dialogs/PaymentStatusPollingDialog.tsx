@@ -6,6 +6,8 @@ import { MyButton } from "@/components/design-system/button";
 import { fetchUserPlanStatus } from "@/services/payment-status-api";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface PaymentStatusPollingDialogProps {
   open: boolean;
@@ -361,7 +363,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                     Admin Approval Required
                   </h4>
                   <p className="text-sm text-yellow-800 mb-3">
-                    Your payment was successful and the course requires admin approval.
+                    Your payment was successful and the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} requires admin approval.
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2 text-sm text-yellow-700">
@@ -374,7 +376,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-yellow-700">
                       <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                      <span>Course access will be granted automatically</span>
+                      <span>{getTerminology(ContentTerms.Course, SystemTerms.Course)} access will be granted automatically</span>
                     </div>
                   </div>
                 </div>
@@ -393,7 +395,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                     Ready to Explore!
                   </h4>
                   <p className="text-sm text-green-800">
-                    You can now access the course content and start learning.
+                    You can now access the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} content and start learning.
                   </p>
                 </div>
               </div>
@@ -407,7 +409,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
               onClick={handleClose}
               className="w-full h-12 text-base font-semibold"
             >
-              {approvalRequired ? 'Close' : 'Explore Course'}
+              {approvalRequired ? 'Close' : `Explore ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}
             </MyButton>
           </div>
         </div>

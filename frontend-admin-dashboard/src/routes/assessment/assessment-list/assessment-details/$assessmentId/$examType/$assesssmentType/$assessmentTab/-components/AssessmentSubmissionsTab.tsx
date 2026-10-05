@@ -86,6 +86,12 @@ import {
 } from '@/services/assessment-settings';
 import { DEFAULT_ASSESSMENT_SETTINGS } from '@/types/assessment-settings';
 import { cn } from '@/lib/utils';
+import {
+    createLatestRequestGuard,
+    initialSelectionMode,
+    registrationSourceForMode,
+    selectionModeCorrection,
+} from './submissions-selection-mode';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
@@ -243,12 +249,16 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // How this assessment was actually handed out. An assessment created against batches
     // has no individually pre-registered learners, so "Individual Selection" could only
     // ever show an empty table — offering it is just a dead end the admin has to discover
-    // by clicking. Both counts come from the access step the creation wizard saved.
+    // by clicking. Both counts come from the participants step the creation wizard saved:
+    // step order is basic(0), questions(1), participants(2), access(3)
+    // (AssessmentStatusController). Reading [1] (the questions step) left both counts
+    // undefined, so an individually-registered assessment (e.g. API candidates) sat on an
+    // empty Batch view.
     //
     // Deliberately permissive: only hide a mode when the data positively says it is empty.
     // If either field is missing (older assessments, a projection that omits them) both
     // modes stay available, exactly as before.
-    const accessData = assessmentDetailsData?.[1]?.saved_data;
+    const accessData = assessmentDetailsData?.[2]?.saved_data;
     const preUserCount = accessData?.pre_user_registrations;
     const preBatchCount = accessData?.pre_batch_registrations?.length;
     const hasIndividualRegistrations = preUserCount === undefined || preUserCount > 0;
@@ -259,14 +269,19 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     );
     const [selectedParticipantsTab, setSelectedParticipantsTab] = useState('internal');
     const [selectedTab, setSelectedTab] = useState('Attempted');
-    const [batchSelectionTab, setBatchSelectionTab] = useState('batch');
+    // Start on the mode that has learners (see initialSelectionMode): correcting it after
+    // mount raced the mount fetch below.
+    const [initialMode] = useState(() =>
+        initialSelectionMode(hasBatchRegistrations, hasIndividualRegistrations)
+    );
+    const [batchSelectionTab, setBatchSelectionTab] = useState<string>(initialMode);
     const [page, setPage] = useState(0);
     const [selectedStudent, setSelectedStudent] = useState<StudentTable | null>(null);
     const [selectedFilter, setSelectedFilter] = useState<SelectedSubmissionsFilterInterface>({
         name: '',
         assessment_type: assesssmentType,
         attempt_type: ['ENDED'],
-        registration_source: 'BATCH_PREVIEW_REGISTRATION',
+        registration_source: registrationSourceForMode(initialMode),
         batches: [],
         status: ['ACTIVE'],
         evaluation_status: [],
@@ -284,6 +299,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         last: false,
     });
     const [isParticipantsLoading, setIsParticipantsLoading] = useState(false);
+    // Last request wins: a slower, older participants response must not overwrite a newer one.
+    const [participantsRequestGuard] = useState(createLatestRequestGuard);
     // Rows per page. Every fetch in this file used to hard-code 10; the value now flows
     // from here so the footer selector actually changes the request.
     const [pageSize, setPageSize] = useState(10);
@@ -364,7 +381,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
             pageSize: number;
             selectedFilter: SelectedSubmissionsFilterInterface;
         }) => getAdminParticipants(assessmentId, instituteId, pageNo, pageSize, selectedFilter),
-        onSuccess: async (data) => {
+        onMutate: () => ({ requestToken: participantsRequestGuard.begin() }),
+        onSuccess: async (data, _variables, context) => {
             console.log('submissions data', data);
             // For manual-evaluation assessments, batch-fetch which attempts on
             // this page have a submitted answer sheet and seed the per-attempt
@@ -389,6 +407,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     }
                 }
             }
+            if (context && !participantsRequestGuard.isLatest(context.requestToken)) return;
             setParticipantsData(data);
         },
         onError: (error: unknown) => {
@@ -681,13 +700,16 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // If only one registration mode exists the toggle is hidden, so nothing can move the
     // view off the default 'batch' — an individually-registered assessment would sit on an
     // empty batch table with no visible control to fix it. Snap to whichever mode has data.
+    // The initial mode already accounts for this, so on mount it is a no-op; it only acts
+    // if the registration counts change while the tab is open.
     useEffect(() => {
         if (selectedParticipantsTab !== 'internal') return;
-        if (!hasBatchRegistrations && batchSelectionTab === 'batch') {
-            handleBatchSeletectionTab('individual');
-        } else if (!hasIndividualRegistrations && batchSelectionTab === 'individual') {
-            handleBatchSeletectionTab('batch');
-        }
+        const correction = selectionModeCorrection(
+            batchSelectionTab === 'individual' ? 'individual' : 'batch',
+            hasBatchRegistrations,
+            hasIndividualRegistrations
+        );
+        if (correction) handleBatchSeletectionTab(correction);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasBatchRegistrations, hasIndividualRegistrations, selectedParticipantsTab]);
 
@@ -1144,6 +1166,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     };
 
     useEffect(() => {
+        // Claimed now, not when the timer fires: anything the admin starts during the
+        // debounce is newer and must win over this initial load.
+        const requestToken = participantsRequestGuard.begin();
         const timer = setTimeout(() => {
             const fetchInitialParticipants = async () => {
                 setIsParticipantsLoading(true);
@@ -1155,7 +1180,9 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         pageSize,
                         selectedFilter
                     );
-                    setParticipantsData(attemptedData);
+                    if (participantsRequestGuard.isLatest(requestToken)) {
+                        setParticipantsData(attemptedData);
+                    }
                 } catch (error) {
                     console.log(error);
                 } finally {

@@ -19,6 +19,7 @@ import type {
   AudienceFormAccent,
   AudienceFormBackground,
   AudienceFormCardStyle,
+  AudienceFormTextAlign,
   AudienceFormWidth,
 } from "./form-appearance";
 
@@ -113,3 +114,32 @@ export const FORM_ACCENT_METER_CLASS: Record<AudienceFormAccent, string> = {
  */
 export const FORM_RICH_TEXT_CLASS =
   "[&_a]:text-primary-500 [&_a]:underline [&_h1]:text-h3 [&_h2]:text-h3 [&_h3]:text-title [&_img]:mx-auto [&_img]:max-w-full [&_img]:rounded-lg [&_li]:list-inside [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4";
+
+/**
+ * Alignment of a text block (the heading block, the form card's header).
+ * Three maps because a block mixes three kinds of children: text inherits
+ * `text-align`; a `w-fit` chip in a flex column needs `align-self`; a wrapping
+ * row of chips needs `justify-content`.
+ *
+ * `left` — the default — adds NO class, so an untouched campaign renders the
+ * exact markup it always did. That matters for RTL: the page sets
+ * `dir="rtl"` for Arabic, where the inherited start edge is the right, and a
+ * physical `text-left` would flip every existing Arabic form.
+ */
+export const FORM_TEXT_ALIGN_CLASS: Record<AudienceFormTextAlign, string> = {
+  left: "",
+  center: "text-center",
+  right: "text-right",
+};
+
+export const FORM_SELF_ALIGN_CLASS: Record<AudienceFormTextAlign, string> = {
+  left: "",
+  center: "self-center",
+  right: "self-end",
+};
+
+export const FORM_JUSTIFY_CLASS: Record<AudienceFormTextAlign, string> = {
+  left: "",
+  center: "justify-center",
+  right: "justify-end",
+};

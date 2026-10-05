@@ -40,6 +40,10 @@ import {
   cancelSubscription,
   fetchSubscriptions,
   initiateRenewalPayment,
+  isRenewalAlreadyPaid,
+  isRenewalRedirect,
+  renewalRedirectUrl,
+  renewalResponseData,
   requestPlanChange,
   type PlanChangeResult,
   type PlanChangeTarget,
@@ -223,6 +227,13 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
   // UPI vs card for the re-registered mandate; only read when autopayChoice is on.
   const [mandateMethodChoice, setMandateMethodChoice] = useState<Record<string, MandateMethod>>({});
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+  /**
+   * Whether this renewal should arm autopay: the learner's explicit choice if they made
+   * one, otherwise the institute's default. `??` not `||` — an explicit false must survive.
+   */
+  const autopayWanted = (sub: Subscription) =>
+    autopayChoice[sub.user_plan_id] ?? Boolean(sub.autopay_default);
+
 
   const refetchSoon = () => {
     // The gateway webhook reactivates the plan asynchronously — refetch a few
@@ -253,17 +264,43 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
       } catch {
         // best effort — the backend resolves the customer from the JWT anyway
       }
+      // A stored-token gateway needs no mandate ceremony, so the checkbox is not
+      // rendered for it and there is no method to pick.
       const withAutopay = Boolean(
-        sub.autopay_available && autopayChoice[sub.user_plan_id]
+        sub.autopay_available && !sub.instant_renewal && autopayWanted(sub)
       );
       const response = await initiateRenewalPayment(
         instituteId,
         sub,
         withAutopay,
-        mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
+        sub.instant_renewal
+          ? undefined
+          : mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD
       );
-      const orderDetails =
-        response?.payment_response?.response_data || response?.response_data;
+      // Hosted gateway: nothing charged yet. The learner finishes on the gateway's own card
+      // page and comes back to /subscriptions/payment-return, which confirms the order.
+      // Leave renewingPlanId set — the page is navigating away, and clearing it would flash
+      // the button back to its idle label first.
+      if (isRenewalRedirect(response)) {
+        const url = renewalRedirectUrl(response);
+        if (!url) {
+          throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
+        }
+        window.location.href = url;
+        return;
+      }
+      // Stored-token gateway (eWay): the backend already charged the saved card and
+      // reactivated the membership, so there is no checkout to open. This has to be
+      // checked before the razorpayKeyId test below, or a completed payment would be
+      // reported to the learner as a failure to create the order.
+      if (isRenewalAlreadyPaid(response)) {
+        toast.success(t("subscriptions.manage.toast.paymentReceivedTitle"), {
+          description: t("subscriptions.manage.toast.paymentReceivedDescription"),
+        });
+        refetchSoon();
+        return;
+      }
+      const orderDetails = renewalResponseData(response);
       if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
         throw new Error(t("subscriptions.manage.toast.orderCreationFailed"));
       }
@@ -512,6 +549,39 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
               </div>
             )}
 
+            {/* Never a membership (abandoned or failed first checkout): there is nothing to
+                renew, so send the learner back through the invite checkout to finish signing
+                up. Paying here would extend access that was never granted — the server
+                refuses it too (SubscriptionService.initiateRenewalPayment). */}
+            {sub.can_complete_enrollment && sub.enroll_invite_code && (
+              <div className="space-y-3 rounded-lg border border-warning-200 bg-warning-50 p-3">
+                <div className="flex items-start gap-2 text-sm text-gray-700">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {t("subscriptions.manage.completeEnrollmentPrompt", { liveClasses })}
+                  </span>
+                </div>
+                <div className="flex justify-end">
+                  <MyButton
+                    type="button"
+                    scale="small"
+                    buttonType="primary"
+                    layoutVariant="default"
+                    onClick={() =>
+                      window.location.assign(
+                        `/learner-invitation-response?instituteId=${encodeURIComponent(
+                          instituteId,
+                        )}&inviteCode=${encodeURIComponent(sub.enroll_invite_code ?? "")}`,
+                      )
+                    }
+                  >
+                    <CreditCard className="me-1.5 size-4" />
+                    {t("subscriptions.manage.completeEnrollmentCta")}
+                  </MyButton>
+                </div>
+              </div>
+            )}
+
             {sub.can_renew_manually && sub.plan_price != null && (
               <div className="space-y-3 rounded-lg border border-primary-100 bg-primary-50 p-3">
                 <div className="text-sm text-gray-700">
@@ -528,12 +598,20 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                     </span>
                   )}
                 </div>
-                {sub.autopay_available && (
+                {sub.autopay_available && sub.instant_renewal && autopayWanted(sub) && (
+                  /* No checkbox on a stored-token gateway, so say plainly that this card
+                     will be charged again — arming autopay silently would be wrong. */
+                  <div className="flex items-start gap-2 rounded-lg bg-primary-100 p-2 text-sm text-gray-700">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <span>{t("subscriptions.manage.autopayDefaultNotice")}</span>
+                  </div>
+                )}
+                {sub.autopay_available && !sub.instant_renewal && (
                   <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
                       className="mt-0.5 size-4 accent-primary-500"
-                      checked={Boolean(autopayChoice[sub.user_plan_id])}
+                      checked={autopayWanted(sub)}
                       onChange={(e) =>
                         setAutopayChoice((prev) => ({
                           ...prev,
@@ -546,7 +624,7 @@ function ManageSubscriptions({ instituteId }: { instituteId: string }) {
                     </span>
                   </label>
                 )}
-                {sub.autopay_available && autopayChoice[sub.user_plan_id] && (
+                {sub.autopay_available && !sub.instant_renewal && autopayWanted(sub) && (
                   <MandateMethodPicker
                     value={mandateMethodChoice[sub.user_plan_id] ?? DEFAULT_MANDATE_METHOD}
                     onChange={(method) =>

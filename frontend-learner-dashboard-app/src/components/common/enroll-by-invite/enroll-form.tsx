@@ -201,6 +201,8 @@ const EnrollByInvite = ({
     string | null
   >(null);
   const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
+  // Per-learner, from the form-submit response. True until the backend says otherwise.
+  const [trialAvailable, setTrialAvailable] = useState(true);
 
   // CPO-specific state
   const [cpoUserId, setCpoUserId] = useState<string | null>(null);
@@ -895,6 +897,15 @@ const EnrollByInvite = ({
 
         if (response?.user_id) {
           setSubmittedUserId(response.user_id);
+        }
+        // The invite's TRIAL_DAYS says the invite OFFERS a trial; it says nothing about
+        // whether THIS learner still has one. Someone who already used theirs is charged the
+        // full plan price at checkout, so promising "start your trial for Rs 1" here was the
+        // screen disagreeing with the money. Absent (older backend) = behave as before.
+        if (response?.trial_available === false) {
+          setTrialAvailable(false);
+        } else {
+          setTrialAvailable(true);
         }
         // Attribute HERE, not after payment: the next thing the browser does
         // is leave for the gateway, so a report fired later would be lost on
@@ -2751,7 +2762,7 @@ const EnrollByInvite = ({
       case 2:
         return (
           <>
-          {isAutopay && autopayConfig?.TRIAL_DAYS ? (
+          {isAutopay && autopayConfig?.TRIAL_DAYS && trialAvailable ? (
             <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 p-4 text-center text-sm font-medium text-primary-600">
               {t("autopay.trialBanner", {
                 trialDays: autopayConfig.TRIAL_DAYS,
@@ -2887,7 +2898,7 @@ const EnrollByInvite = ({
             amount={
               paymentType === "CPO"
                 ? cpoPayAmount
-                : isAutopay && autopayConfig?.TRIAL_DAYS
+                : isAutopay && autopayConfig?.TRIAL_DAYS && trialAvailable
                   ? authAmount // free trial: only the mandate authorization is charged now
                   : Math.max(
                       0,

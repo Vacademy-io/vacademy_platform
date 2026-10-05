@@ -65,10 +65,20 @@ VISION_MODEL = "z-ai/glm-5.3-flash"
 MAX_VISION_PAGES = 40
 
 # Page images are resized so the long edge is at most this many pixels before
-# JPEG encoding. 1600px keeps ordinary handwriting legible while holding a
-# page to roughly 1,600 prompt tokens.
-MAX_IMAGE_EDGE = 1600
+# JPEG encoding. 1600px lost small writing: on a real maths copy the MCQ page
+# was read right 10, 8 and 11 times out of 15 answers; at 2400px (the scan's
+# own size) 14, 14 and 13. The image costs about twice the prompt tokens.
+MAX_IMAGE_EDGE = 2400
 JPEG_QUALITY = 80
+
+# A page that comes back "illegible" or nearly empty although the OCR found
+# plenty of writing on it is read once more, re-rendered at RETRY_DPI so a
+# scan stored above 200 DPI gives up its own detail. On a real maths copy a
+# full page of clear working came back "[illegible]" on one run and was read
+# fine on the next; with no retry, every answer on it scored 0.
+RETRY_DPI = 300
+RETRY_IMAGE_EDGE = 3200
+RETRY_MIN_OCR_WORDS = 12
 
 # How many page reads run at once. Three keeps a 13-page copy under a minute
 # without opening a burst of provider connections.
@@ -77,6 +87,11 @@ PAGE_CONCURRENCY = 3
 # Below this many characters per page, averaged across the copy, we do not
 # believe the sheet was read — see `assess_quality`.
 MIN_CHARS_PER_PAGE = 120
+
+# Lines the OCR missed that the vision read may add back per page (see
+# add_unlisted_rows). A real miss is one or two lines; a model that returns
+# dozens is re-transcribing the page, not filling gaps.
+MAX_UNLISTED_PER_PAGE = 8
 
 TRANSCRIBE_SYSTEM = (
     "You transcribe scanned handwritten exam answer sheets. You output the "
@@ -206,13 +221,138 @@ def merge_words_into_rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     return merged
 
 
-def _encode_page(img: Any) -> str:
-    """PIL image -> base64 JPEG data, downscaled to MAX_IMAGE_EDGE."""
+def _norm(text: Any) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def add_unlisted_rows(
+    rows: list[dict[str, Any]],
+    unlisted: Any,
+    page_id: str,
+    page_height: int = 0,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Give each line the vision model saw but the OCR missed a row of its own.
+
+    Returns (rows in top-to-bottom order, texts that got NO row). A row the
+    model left blank directly under `after` is filled first - that OCR box is
+    the line (marked `recovered`). Otherwise the only evidence of where a
+    missed line sits is the model's `after`, so it goes in the gap between
+    that row and the next written one, as wide
+    as its neighbours (the annotator measures the real ink inside that band).
+    A line is left without a row, never forced in, when its anchor is unknown
+    or the gap is too thin to hold a line of writing: a box on top of another
+    line would put a tick on the wrong answer. Its text still reaches the
+    grader through the page prose - see enrich_layout_with_vision.
+    """
+    if not isinstance(unlisted, list) or not unlisted:
+        return rows, []
+    boxed = [r for r in rows if isinstance(r.get("box"), (list, tuple)) and len(r["box"]) == 4]
+    if not boxed:
+        return rows, [str(u.get("text") or "").strip() for u in unlisted
+                      if isinstance(u, dict) and str(u.get("text") or "").strip()]
+    ordered = sorted(boxed, key=lambda r: float(r["box"][1]))
+    heights = sorted(float(r["box"][3]) for r in ordered)
+    line_h = heights[len(heights) // 2]
+    by_id = {r["line_id"]: r for r in ordered}
+    known = {_norm(r.get("text")) for r in rows if (r.get("text") or "").strip()}
+
+    groups: dict[Optional[str], list[dict[str, Any]]] = {}
+    orphans: list[str] = []
+    for item in unlisted[:MAX_UNLISTED_PER_PAGE]:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text or text == "[illegible]" or _norm(text) in known:
+            continue        # nothing to read, or a row the page already has
+        after = item.get("after") or None
+        if after is not None and after not in by_id:
+            orphans.append(text)
+            continue
+        known.add(_norm(text))
+        groups.setdefault(after, []).append({**item, "text": text})
+
+    def blank(r: dict[str, Any]) -> bool:
+        return not (r.get("text") or "").strip()
+
+    added: list[dict[str, Any]] = []
+    for after, items in groups.items():
+        above = by_id.get(after) if after else None
+        following = ordered[ordered.index(above) + 1:] if above is not None else ordered
+        # The model sometimes answers a row it left blank - usually one the
+        # OCR could not read - as an "unlisted" line after the row above it.
+        # That row's box IS the line: fill it rather than invent a box beside
+        # it. A made-up box squeezed into the gap above the real one put
+        # "ans7" and its tick half a line too high, and "ans3", finding no
+        # gap at all, lost its row - its tick went on the answer above.
+        slots = []
+        for r in following:
+            if not blank(r):
+                break
+            slots.append(r)
+        for row, item in zip(slots, items):
+            row["text"] = item["text"]
+            row["printed"] = bool(item.get("printed"))
+            row["conf"] = 0.9
+            row["recovered"] = True
+            row.pop("illegible", None)
+        filled = slots[:len(items)]
+        items = items[len(filled):]
+        if not items:
+            continue
+        if filled:
+            above = filled[-1]
+        # The first written row after the blank run - not a row just filled.
+        rest = following[len(slots):]
+        below = rest[0] if rest else None
+        if above is None and below is None:
+            orphans.extend(i["text"] for i in items)
+            continue
+        if above is not None:
+            top = float(above["box"][1]) + float(above["box"][3])
+        else:
+            top = max(0.0, float(below["box"][1]) - line_h * 1.5 * len(items))
+        if below is not None:
+            bottom = float(below["box"][1])
+        else:
+            bottom = top + line_h * 1.5 * len(items)
+            if page_height:
+                bottom = min(float(page_height), bottom)
+        slot = (bottom - top) / len(items)
+        if slot < line_h * 0.5:
+            logger.info("unlisted line(s) after %s on %s: %.0fpx gap cannot hold %d line(s); "
+                        "kept in the page prose only", after, page_id, bottom - top, len(items))
+            orphans.extend(i["text"] for i in items)
+            continue
+        near = [r for r in (above, below) if r is not None]
+        x0 = min(float(r["box"][0]) for r in near)
+        x1 = max(float(r["box"][0]) + float(r["box"][2]) for r in near)
+        h = min(line_h, slot * 0.9)
+        for n, item in enumerate(items):
+            y = top + slot * n + (slot - h) / 2.0
+            added.append({
+                "line_id": f"{page_id}_u{len(added) + 1}",
+                "text": item["text"],
+                "box": [int(x0), int(y), int(x1 - x0), int(h)],
+                "conf": 0.9,
+                "ocr_text": "",
+                "needs_math_fallback": False,
+                "printed": bool(item.get("printed")),
+                "unlisted": True,
+            })
+    if not added:
+        return rows, orphans
+    merged = rows + added
+    merged.sort(key=lambda r: float((r.get("box") or [0, 0])[1]))
+    return merged, orphans
+
+
+def _encode_page(img: Any, max_edge: int = MAX_IMAGE_EDGE) -> str:
+    """PIL image -> base64 JPEG data, downscaled to `max_edge`."""
     from PIL import Image
 
     longest = max(img.width, img.height)
-    if longest > MAX_IMAGE_EDGE:
-        scale = MAX_IMAGE_EDGE / float(longest)
+    if longest > max_edge:
+        scale = max_edge / float(longest)
         img = img.resize(
             (max(1, int(img.width * scale)), max(1, int(img.height * scale))),
             Image.LANCZOS,
@@ -238,13 +378,14 @@ def _build_page_prompt(rows: list[dict[str, Any]], page_id: str, page_height: in
         return f" (at {top:.0f}% down the page)"
 
     listing = "\n".join(
-        f"[{r['line_id']}]{_pos(r)} {r['text'] or '(no OCR text)'}" for r in rows
+        f"[{r['line_id']}]{_pos(r)} {r['text'] or '(writing the OCR could not read)'}" for r in rows
     )
     return f"""This is page {page_id} of a student's handwritten exam answer sheet.
 
-A machine OCR pass already located every line of writing on the page and
-recorded where each one sits, but its text is unreliable — it was trained on
-printed text, so it mangles handwriting. Its rows, top to bottom, are:
+A machine OCR pass located the lines of writing it could find and recorded
+where each one sits, but its text is unreliable — it was trained on printed
+text, so it mangles handwriting — and it can MISS a line altogether. Its rows,
+top to bottom, are:
 
 {listing}
 
@@ -263,15 +404,39 @@ Rules:
   writing (ruled lines and margins get detected too) — in that case leave the
   extra rows blank rather than shifting your text onto them. Anchoring text to
   the wrong row puts a teacher's tick on the wrong line.
+- A row shown as "(writing the OCR could not read)" is almost always a real
+  line of handwriting at that position — often a short answer. Read it from
+  the image and put its text in THAT row; do not report it under
+  unlisted_lines. Leave it blank only if there is truly no writing there.
+- The row list may also have FEWER rows than there are lines of writing: the
+  OCR sometimes misses a line entirely, typically a short answer line between
+  two listed rows. Never squeeze such a line into a neighbouring row. List it
+  in `unlisted_lines`, with `after` set to the id of the row it sits directly
+  below (null if it is above the first row). A line you leave out is an
+  answer the grader never sees, and the student gets 0 for it.
+- Numbers decide marks, so read every digit, sign and exponent with care. In
+  handwriting 1 and 7, 5 and 6 (and 5 and S), 8 and 9, and a minus sign are
+  easy to confuse; look at the stroke, and at the same number written
+  elsewhere on the page, before you decide. Still write what is there - never
+  what the answer should be.
+- A fraction written stacked (numerator above the bar, denominator below)
+  often spans two listed rows: keep each part on its own row, and write the
+  whole fraction as a/b in page_text, e.g. "= 7/30".
+- A number or word written OVER another, or struck out and rewritten beside
+  or above it: say so in that order - "350 written over 360", "360 struck out,
+  350". The one written last (on top, or not struck out) is the student's
+  final answer. Never give both as if both were the answer.
+- Writing inside a box the student drew around an answer IS the answer:
+  always transcribe it ("x = 5").
 - If a row is genuinely unreadable, set its text to "[illegible]".
 - If a row holds no student writing (a blank, a ruled line, a page number),
   set its text to "".
 - Some rows are the PRINTED question paper rather than the student's answer.
   Transcribe those too, and set "printed": true for them, so the grader does
   not mistake the question for the answer.
-- `page_text` is the whole page as continuous, readable prose (the same
-  content, joined into paragraphs). This is what the grader reads, so it
-  matters most.
+- `page_text` is the whole page as continuous, readable prose — EVERY line of
+  writing on the page, unlisted lines included, in reading order, joined into
+  paragraphs. This is what the grader reads, so it matters most.
 
 Return STRICT JSON only, no prose and no code fences:
 {{
@@ -280,6 +445,10 @@ Return STRICT JSON only, no prose and no code fences:
   "lines": [
     {{"line_id": "<row id from above>", "text": "<verbatim text of that row>",
       "printed": <true|false>}}
+  ],
+  "unlisted_lines": [
+    {{"after": "<row id it sits directly below, or null>",
+      "text": "<verbatim text of the line>", "printed": <true|false>}}
   ]
 }}"""
 
@@ -357,6 +526,43 @@ def assess_quality(layout_map: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _render_page(pdf_path: Path, page_id: Any, dpi: int) -> Any:
+    """One page ("p3") of the PDF as a PIL image at `dpi`, or None."""
+    try:
+        import fitz  # PyMuPDF
+        from PIL import Image
+
+        index = int(str(page_id).lstrip("p")) - 1
+        doc = fitz.open(pdf_path)
+        try:
+            pix = doc[index].get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), alpha=False)
+            if pix.n != 3:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        finally:
+            doc.close()
+    except Exception:
+        logger.debug("re-render of page %s failed", page_id, exc_info=True)
+        return None
+
+
+def _read_chars(result: dict[str, Any]) -> int:
+    """How much the model says it read on a page: its prose, else its rows."""
+    text = (result.get("page_text") or "").strip()
+    if not text:
+        text = " ".join((item.get("text") or "") for item in result.get("lines") or []
+                        if (item.get("text") or "") != "[illegible]")
+    return len(text.strip())
+
+
+def needs_second_read(result: dict[str, Any], ocr_word_count: int) -> bool:
+    """The model found (almost) nothing on a page where the OCR saw real
+    writing: worth one more, sharper look before the page is given up."""
+    if ocr_word_count < RETRY_MIN_OCR_WORDS:
+        return False
+    return result.get("legible") is False or _read_chars(result) < MIN_CHARS_PER_PAGE
+
+
 async def enrich_layout_with_vision(
     pdf_url: str,
     layout_map: dict[str, Any],
@@ -422,12 +628,33 @@ async def enrich_layout_with_vision(
                         page_id, e,
                     )
                     return
+                usages = [usage]
+                if needs_second_read(result, int(page.get("ocr_word_count") or 0)):
+                    # One sharper read before accepting "nothing here".
+                    try:
+                        sharp = await asyncio.get_event_loop().run_in_executor(
+                            None, _render_page, pdf_path, page_id, RETRY_DPI,
+                        )
+                        b64 = await asyncio.get_event_loop().run_in_executor(
+                            None, _encode_page, sharp or img, RETRY_IMAGE_EDGE,
+                        )
+                        retry, retry_usage = await _transcribe_page(
+                            llm, model, page, rows, b64, institute_id,
+                        )
+                        usages.append(retry_usage)
+                        if _read_chars(retry) > _read_chars(result):
+                            logger.info("Vision re-read page %s: %d -> %d chars", page_id,
+                                        _read_chars(result), _read_chars(retry))
+                            result = retry
+                    except Exception as e:
+                        logger.warning("Vision re-read of page %s failed: %s", page_id, e)
 
             if token_sink is not None:
-                try:
-                    token_sink.add_usage(usage)
-                except Exception:
-                    logger.debug("token sink rejected vision usage", exc_info=True)
+                for u in usages:
+                    try:
+                        token_sink.add_usage(u)
+                    except Exception:
+                        logger.debug("token sink rejected vision usage", exc_info=True)
 
             by_id = {r["line_id"]: r for r in rows}
             replaced = 0
@@ -446,6 +673,14 @@ async def enrich_layout_with_vision(
                     row["illegible"] = True
                 else:
                     row["text"] = ""
+            # Lines the OCR never found. Without a row they were invisible:
+            # the model anchored its page prose to the rows too, so a short
+            # answer the detector skipped was graded "not attempted".
+            rows, unplaced = add_unlisted_rows(
+                rows, result.get("unlisted_lines"), page_id, int(page.get("height") or 0),
+            )
+            added = sum(1 for r in rows if r.get("unlisted"))
+            recovered = sum(1 for r in rows if r.get("recovered"))
             # Rows the model found no student writing on are dropped, so they
             # cannot be chosen as annotation targets. Ruled lines, the printed
             # DATE / PAGE NO. box and margin furniture all survive line
@@ -465,12 +700,27 @@ async def enrich_layout_with_vision(
             # line the note would straddle. Cheap to store (tens of boxes per
             # page, not the ~700 word boxes).
             page["ink_boxes"] = [r["box"] for r in rows if r.get("box")]
-            page["vision_text"] = (result.get("page_text") or "").strip()
+            page_text = (result.get("page_text") or "").strip()
+            # The prose is what the grader reads. A recovered line the model
+            # left out of it - or one that found no room for a row - is added
+            # at the end rather than lost.
+            prose = _norm(page_text)
+            missing = [t for t in [r["text"] for r in rows
+                                   if r.get("unlisted") or r.get("recovered")] + unplaced
+                       if _norm(t) not in prose]
+            if missing:
+                page_text = (page_text + "\n" + "\n".join(missing)).strip()
+            page["vision_text"] = page_text
             page["vision_legible"] = bool(result.get("legible", True))
             page["vision_ocr"] = True
+            if added or recovered or unplaced:
+                page["unlisted_rows_added"] = added
+                page["unlisted_rows_recovered"] = recovered
             logger.info(
-                "Vision read page %s: %d/%d rows rewritten, %d chars of page text",
-                page_id, replaced, len(rows), len(page["vision_text"]),
+                "Vision read page %s: %d/%d rows rewritten, %d unlisted line(s): %d into "
+                "a blank row, %d new row(s), %d prose only; %d chars of page text",
+                page_id, replaced, len(rows) - added, recovered + added + len(unplaced),
+                recovered, added, len(unplaced), len(page["vision_text"]),
             )
 
         targets = pages[:MAX_VISION_PAGES]

@@ -9,7 +9,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.AiEvaluationTriggerRequest;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationLane;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
+import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCharge;
+import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository;
 import vacademy.io.assessment_service.features.assessment.entity.QuestionAssessmentSectionMapping;
@@ -17,11 +21,17 @@ import vacademy.io.assessment_service.features.learner_assessment.entity.Questio
 import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.core.exception.VacademyException;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ResultLockGuard;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -30,12 +40,8 @@ public class AiEvaluationService {
 
         // In-flight statuses for trigger idempotency: an attempt already in any of
         // these has a live run, so a re-trigger returns it instead of duplicating.
-        private static final List<String> ACTIVE_STATUSES = List.of(
-                        AiEvaluationStatusEnum.PENDING.name(),
-                        AiEvaluationStatusEnum.STARTED.name(),
-                        AiEvaluationStatusEnum.PROCESSING.name(),
-                        AiEvaluationStatusEnum.EXTRACTING.name(),
-                        AiEvaluationStatusEnum.EVALUATING.name());
+        // Queued (PENDING), claimed (DISPATCHED) and running alike.
+        static final List<String> ACTIVE_STATUSES = AiEvaluationStatusEnum.ACTIVE;
 
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
         private final AiEvaluationAsyncService aiEvaluationAsyncService;
@@ -43,6 +49,12 @@ public class AiEvaluationService {
         private final EvaluationAccessValidator accessValidator;
         private final QuestionAssessmentSectionMappingRepository questionMappingRepository;
         private final QuestionWiseMarksRepository questionWiseMarksRepository;
+        private final TypedAnswerEvaluation typedAnswerEvaluation;
+        private final AiEvaluationCreditGate creditGate;
+
+        /** Finalized-result lock for partner-API exams; null in unit tests. */
+        @org.springframework.beans.factory.annotation.Autowired(required = false)
+        private ResultLockGuard resultLockGuard;
 
         /**
          * The question the slide-level "create assessment" form provisions when a
@@ -64,22 +76,45 @@ public class AiEvaluationService {
                                 request.getPreferredModel());
 
                 List<String> processIds = new ArrayList<>();
+                // One attempt = the teacher's "Evaluate with AI" on a row: dispatched at
+                // once so the page it opens shows progress immediately. A multi-select
+                // goes through the fair queue like a bulk upload (11.2) - it used to
+                // dispatch 50 copies at once past every cap.
+                boolean queueOnly = request.getAttemptIds().size() > 1;
 
+                // Pass 1 checks the whole request before anything is queued, so a refusal
+                // fails it with the reason instead of being swallowed per attempt below.
+                List<StudentAttempt> attempts = new ArrayList<>();
                 for (String attemptId : request.getAttemptIds()) {
-                        // Authorization is intentionally NOT caught below: a request that
-                        // references an attempt outside the caller's institute (or an
-                        // unauthenticated caller) fails the whole batch rather than being
-                        // silently skipped.
+                        // Authorization: a request that references an attempt outside the
+                        // caller's institute (or an unauthenticated caller) fails the whole
+                        // batch rather than being silently skipped.
                         StudentAttempt attempt = accessValidator.requireAttemptAccess(user, instituteId, attemptId);
-                        // Outside the try below on purpose: a test the AI cannot grade must
-                        // fail the request with the reason, not be skipped in silence. An
-                        // attempt with no registration keeps its old fate (skipped inside the try).
+                        // A test the AI cannot grade fails the request with the reason. An
+                        // attempt with no registration keeps its old fate (skipped below).
                         if (attempt.getRegistration() != null) {
                                 requireGradableQuestions(attempt.getRegistration().getAssessment());
                         }
+                        // A released result is frozen: the run would be billed, then discarded (G8).
+                        requireNotReleased(attempt);
+                        // A partner-API exam's released result is finalized (gate G8).
+                        if (resultLockGuard != null) {
+                                resultLockGuard.requireNotFinalizedForApiExam(attempt);
+                        }
+                        attempts.add(attempt);
+                }
+                // One credit check for every copy this request will actually queue, under
+                // the institute's lock until this transaction commits (10.6).
+                Map<String, AiEvaluationCreditGate.Reservation> reserved = reserveDashboardCredits(attempts);
+
+                for (StudentAttempt attempt : attempts) {
+                        String attemptId = attempt.getId();
                         try {
+                                AiEvaluationCreditGate.Reservation reservation = reserved.getOrDefault(attemptId,
+                                                AiEvaluationCreditGate.Reservation.NONE);
                                 String processId = initiateEvaluationForAttempt(attempt, request.getPreferredModel(),
-                                                false, user != null ? user.getUserId() : null);
+                                                queueOnly, user != null ? user.getUserId() : null,
+                                                AiEvaluationEnqueueContext.dashboard().withReservation(reservation));
                                 processIds.add(processId);
                                 log.info("Successfully initiated evaluation for attempt: {} with processId: {}",
                                                 attemptId, processId);
@@ -91,6 +126,117 @@ public class AiEvaluationService {
                 log.info("Completed triggering evaluation for {} attempts, generated {} process IDs",
                                 request.getAttemptIds().size(), processIds.size());
                 return processIds;
+        }
+
+        // ------------------------------------------------------------ release lock (G8)
+
+        static boolean isReleased(StudentAttempt attempt) {
+                return attempt != null
+                                && ReleaseResultStatusEnum.RELEASED.name().equalsIgnoreCase(attempt.getReportReleaseStatus());
+        }
+
+        /** Refuse an AI check on an attempt whose result is already released (T0.33). */
+        public void requireNotReleased(StudentAttempt attempt) {
+                if (isReleased(attempt)) {
+                        throw new ResultReleasedException(RESULT_RELEASED_MESSAGE);
+                }
+        }
+
+        public static final String RESULT_RELEASED_MESSAGE =
+                        "This attempt's result has already been released, so AI evaluation cannot change its marks. "
+                        + "Edit the marks by hand instead.";
+
+        // ------------------------------------------------------------ credits (10.6)
+
+        /**
+         * One dashboard credit check for a set of attempts, inside the caller's
+         * transaction: the copies that will actually be queued (an attempt already
+         * being checked returns its running process instead) are priced per question
+         * and must fit the institute's balance minus what is already committed.
+         *
+         * @return the reservation per attempt id, to be written on each new process row
+         * @throws vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.InsufficientCreditsException
+         *         when they do not fit
+         */
+        public Map<String, AiEvaluationCreditGate.Reservation> reserveDashboardCredits(List<StudentAttempt> attempts) {
+                Map<String, List<StudentAttempt>> byInstitute = new LinkedHashMap<>();
+                Map<String, AiEvaluationCharge> chargeCache = new HashMap<>();
+                Map<String, AiEvaluationCharge> chargeByAttempt = new HashMap<>();
+                for (StudentAttempt attempt : attempts) {
+                        if (attempt == null || attempt.getRegistration() == null
+                                        || attempt.getRegistration().getAssessment() == null) {
+                                continue;
+                        }
+                        if (!aiEvaluationProcessRepository.findActiveByAttemptId(attempt.getId(), ACTIVE_STATUSES)
+                                        .isEmpty()) {
+                                continue;
+                        }
+                        chargeByAttempt.put(attempt.getId(), dashboardCharge(attempt, chargeCache));
+                        byInstitute.computeIfAbsent(attempt.getRegistration().getInstituteId(), k -> new ArrayList<>())
+                                        .add(attempt);
+                }
+                Map<String, AiEvaluationCreditGate.Reservation> out = new HashMap<>();
+                for (Map.Entry<String, List<StudentAttempt>> group : byInstitute.entrySet()) {
+                        List<AiEvaluationCharge> charges = group.getValue().stream()
+                                        .map(a -> chargeByAttempt.get(a.getId())).toList();
+                        List<AiEvaluationCreditGate.Reservation> reservations = creditGate.reserve(group.getKey(),
+                                        charges, BigDecimal.ZERO, AiEvaluationCreditGate.Mode.DASHBOARD);
+                        for (int i = 0; i < group.getValue().size() && i < reservations.size(); i++) {
+                                out.put(group.getValue().get(i).getId(), reservations.get(i));
+                        }
+                }
+                return out;
+        }
+
+        /**
+         * Check that {@code copies} more copies of this paper fit the institute's credits
+         * before a bulk upload starts (nothing is queued yet; each copy is checked again
+         * when it is placed). Must run inside the caller's transaction.
+         */
+        public void requireCreditsForCopies(Assessment assessment, String instituteId, int copies) {
+                if (assessment == null || copies <= 0) {
+                        return;
+                }
+                AiEvaluationCharge charge = AiEvaluationCharge.dashboard(gradableQuestionCount(assessment, false));
+                creditGate.reserve(instituteId, java.util.Collections.nCopies(copies, charge), BigDecimal.ZERO,
+                                AiEvaluationCreditGate.Mode.DASHBOARD);
+        }
+
+        /** The dashboard price of one copy of this attempt: every question the AI will grade. */
+        public AiEvaluationCharge dashboardCharge(StudentAttempt attempt) {
+                return dashboardCharge(attempt, new HashMap<>());
+        }
+
+        private AiEvaluationCharge dashboardCharge(StudentAttempt attempt, Map<String, AiEvaluationCharge> cache) {
+                Assessment assessment = attempt.getRegistration() != null ? attempt.getRegistration().getAssessment() : null;
+                boolean typed = laneFor(attempt, assessment) == AiEvaluationLane.TYPED;
+                String key = (assessment != null ? assessment.getId() : "") + ":" + typed;
+                return cache.computeIfAbsent(key, k -> AiEvaluationCharge.dashboard(gradableQuestionCount(assessment, typed)));
+        }
+
+        /**
+         * Questions the AI grades on this paper: every live question on a copy, only the
+         * written (long-answer) ones on an online attempt - the objective ones were
+         * scored exactly on submit and are not sent (the same rule the dispatcher uses).
+         */
+        int gradableQuestionCount(Assessment assessment, boolean typed) {
+                if (assessment == null) {
+                        return 0;
+                }
+                int count = 0;
+                for (QuestionAssessmentSectionMapping mapping : questionMappingRepository
+                                .getQuestionAssessmentSectionMappingByAssessmentId(assessment.getId())) {
+                        if (mapping.getQuestion() == null || mapping.getSection() == null
+                                        || "DELETED".equalsIgnoreCase(mapping.getStatus())
+                                        || "DELETED".equalsIgnoreCase(mapping.getSection().getStatus())) {
+                                continue;
+                        }
+                        if (typed && !TypedAnswerEvaluation.isAiGraded(mapping.getQuestion())) {
+                                continue;
+                        }
+                        count++;
+                }
+                return count;
         }
 
         private String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel) {
@@ -191,7 +337,30 @@ public class AiEvaluationService {
          */
         public String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel, boolean queueOnly,
                         String triggeredBy) {
+                return initiateEvaluationForAttempt(attempt, preferredModel, queueOnly, triggeredBy,
+                                AiEvaluationEnqueueContext.dashboard());
+        }
+
+        /**
+         * The one enqueue every channel goes through (dashboard trigger, bulk intake,
+         * partner API).
+         *
+         * <ul>
+         *   <li>A released result is refused (T0.33).</li>
+         *   <li>An attempt already being checked returns that process (idempotent).</li>
+         *   <li>Otherwise the copy is priced and checked against the institute's credits
+         *       under the per-institute lock (10.6) - unless {@code context} carries a
+         *       reservation the caller already made in this transaction - and the quote,
+         *       rate snapshot, API key and page count are written on the new row.</li>
+         * </ul>
+         * Must run inside a transaction (the credit lock is transaction-scoped).
+         */
+        public String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel, boolean queueOnly,
+                        String triggeredBy, AiEvaluationEnqueueContext context) {
                 String attemptId = attempt.getId();
+                AiEvaluationEnqueueContext ctx = context != null ? context : AiEvaluationEnqueueContext.dashboard();
+
+                requireNotReleased(attempt);
 
                 // Idempotency: reuse an already-running evaluation for this attempt
                 // instead of spawning a second concurrent (full-cost) run.
@@ -211,19 +380,40 @@ public class AiEvaluationService {
                 process.setStudentAttempt(attempt);
                 // Get assessment from registration instead of assessmentSetMapping (which can
                 // be null)
-                process.setAssessment(attempt.getRegistration().getAssessment());
+                Assessment assessment = attempt.getRegistration().getAssessment();
+                process.setAssessment(assessment);
+                process.setInstituteId(attempt.getRegistration().getInstituteId());
+                process.setLane(laneFor(attempt, assessment).name());
+                AiEvaluationCreditGate.Reservation reservation = ctx.reservation();
+                if (reservation == null) {
+                        AiEvaluationCharge charge = ctx.charge() != null ? ctx.charge() : dashboardCharge(attempt);
+                        List<AiEvaluationCreditGate.Reservation> reserved = creditGate.reserve(process.getInstituteId(),
+                                        List.of(charge), ctx.creditLimit(), ctx.creditMode());
+                        reservation = reserved == null || reserved.isEmpty() ? null : reserved.get(0);
+                }
+                if (reservation != null) {
+                        process.setQuotedCredits(reservation.quotedCredits());
+                        process.setRateSnapshot(reservation.rateSnapshotJson());
+                }
+                process.setApiKeyId(ctx.apiKeyId());
+                process.setPageCount(ctx.pageCount());
                 process.setStatus(AiEvaluationStatusEnum.PENDING.name());
                 process.setStartedAt(new Date());
                 process.setTriggeredBy(triggeredBy);
+                String claimToken = null;
                 if (!queueOnly) {
-                        // The immediate dispatch runs in one transaction, so the row stays a
-                        // visible PENDING for the seconds it takes to build the payload and
-                        // call the AI service. The queue poller claims exactly such rows: on
-                        // 2026-09-20 it dispatched a teacher's check a second time 12 s after
-                        // the first — duplicate tracking rows, every per-question callback
-                        // failing with "2 results". Claiming here keeps the poller off it; a
-                        // stale claim (15 min) still lets it rescue a dispatch that died.
-                        process.setClaimedBy("direct");
+                        // The direct path claims its own row, exactly like the poller does:
+                        // DISPATCHED under a per-run token. The poller only takes PENDING
+                        // rows, so it can never send this check a second time (2026-09-20:
+                        // a teacher's check dispatched twice 12 s apart - duplicate tracking
+                        // rows, every per-question callback failing with "2 results"), and
+                        // the dispatch's guarded start only proceeds under this token. A
+                        // dispatch that dies leaves a silent DISPATCHED row, which the
+                        // sweeper puts back in the queue.
+                        claimToken = "direct-" + UUID.randomUUID().toString().substring(0, 8);
+                        process.setStatus(AiEvaluationStatusEnum.DISPATCHED.name());
+                        process.setCurrentStep("CLAIMED");
+                        process.setClaimedBy(claimToken);
                         process.setClaimedAt(new Date());
                 }
 
@@ -244,17 +434,47 @@ public class AiEvaluationService {
                 // can call findById(processId) before the INSERT becomes visible
                 // to other connections, surfacing as "Process not found" in logs.
                 final String processId = savedProcess.getId();
+                final String token = claimToken;
                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
                         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                                 @Override
                                 public void afterCommit() {
-                                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, preferredModel);
+                                        dispatchNow(processId, attemptId, preferredModel, token);
                                 }
                         });
                 } else {
-                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, preferredModel);
+                        dispatchNow(processId, attemptId, preferredModel, token);
                 }
 
                 return processId;
+        }
+
+        /**
+         * Hand a directly-triggered check to the dispatch executor. If the executor
+         * cannot take it (queue full), the row goes back to the queue - PENDING,
+         * claim cleared - and the poller sends it under the lane caps instead.
+         */
+        private void dispatchNow(String processId, String attemptId, String preferredModel, String claimToken) {
+                try {
+                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, preferredModel, claimToken);
+                } catch (Exception e) {
+                        log.warn("Could not start AI evaluation {} at once ({}); queueing it instead", processId,
+                                        e.getMessage());
+                        try {
+                                aiEvaluationProcessRepository.handBackClaim(processId, claimToken, new Date());
+                        } catch (Exception handBack) {
+                                log.error("Could not queue AI evaluation {}: {}", processId, handBack.getMessage());
+                        }
+                }
+        }
+
+        /** COPY for an uploaded sheet, TYPED for an online attempt's written answers. */
+        private AiEvaluationLane laneFor(StudentAttempt attempt, Assessment assessment) {
+                try {
+                        return AiEvaluationLane.of(typedAnswerEvaluation != null
+                                        && typedAnswerEvaluation.isTypedAttempt(attempt, assessment));
+                } catch (Exception e) {
+                        return AiEvaluationLane.COPY;
+                }
         }
 }

@@ -20,7 +20,7 @@ import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTime
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
-import { getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
+import { getYouTubeBridgeHost, getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
 import YouTube, {
   type YouTubeEvent,
@@ -1165,9 +1165,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // iOS exposes `capacitor://localhost` which YouTube rejects → Error 153.
   const getPlayerOrigin = () => getYouTubeEmbedOrigin();
 
+  // Native iOS loads the player through the https embed bridge (Error 153).
+  const bridgeHost = getYouTubeBridgeHost();
   const opts: YouTubeProps["opts"] = {
     height: "100%",
     width: "100%",
+    ...(bridgeHost ? { host: bridgeHost } : {}),
     playerVars: {
       controls: 0, // Disable YouTube controls
       disablekb: 1, // Disable keyboard controls

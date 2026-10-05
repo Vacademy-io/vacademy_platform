@@ -75,7 +75,8 @@ class AiEvaluationRetrofitServiceTest {
                 evaluationService = new AiEvaluationService(
                                 mock(vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository.class),
                                 mock(AiEvaluationAsyncService.class), mock(AiEvaluationCancellationService.class),
-                                mock(EvaluationAccessValidator.class), mappings, marks);
+                                mock(EvaluationAccessValidator.class), mappings, marks, mock(TypedAnswerEvaluation.class),
+                                mock(vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing.AiEvaluationCreditGate.class));
                 service = new AiEvaluationRetrofitService(assessments, mappings, mappingService, sections, questions,
                                 attempts, marks, evaluationService, mock(EvaluationAccessValidator.class),
                                 new ObjectMapper());

@@ -22,6 +22,8 @@ export { ManageColumnsPopover } from './manage-columns-popover';
 export {
     useLeadColumnPrefs,
     buildLeadColumnToggles,
+    useColumnOrderPrefs,
+    orderColumnIds,
     type LeadColumnToggle,
 } from './use-lead-column-prefs';
 export {
@@ -103,3 +105,8 @@ export {
     type CallOptionsResponse,
     type NumberChoice,
 } from './services/call-options';
+export {
+    startBackgroundExport,
+    useIsExporting,
+    type BackgroundExportSpec,
+} from './background-export';

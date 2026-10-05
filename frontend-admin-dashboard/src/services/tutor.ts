@@ -516,6 +516,9 @@ export interface TutorInsights {
         voice_sessions: number;
         abandoned: number;
         courses: number;
+        /** Session-average activeness 0-100 from the learner's opt-in camera; null when none turned it on. */
+        activeness?: number | null;
+        activeness_sessions?: number;
     };
     courses: Array<{
         package_id: string;
@@ -527,6 +530,8 @@ export interface TutorInsights {
         avg_score: number | null;
         weak_attempts: number;
         last_active: string | null;
+        activeness?: number | null;
+        activeness_sessions?: number;
     }>;
     learners: Array<{
         user_id: string;
@@ -540,6 +545,8 @@ export interface TutorInsights {
         courses: number;
         /** The teacher's latest note about this learner (model-written rolling summary). */
         note: string | null;
+        activeness?: number | null;
+        activeness_sessions?: number;
     }>;
     concepts: Array<{
         concept_id: string;

@@ -1,42 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CaretDown, CaretUp, Check, Plus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
-
-interface CampaignTypeOption {
-    value: string;
-    label: string;
-}
+import {
+    buildDefaultCampaignTypeOptions,
+    type CampaignTypeOption,
+} from '../../-utils/campaign-types';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 interface CampaignTypeDropdownProps {
     value?: string;
     onChange: (value: string) => void;
     error?: string;
     placeholder?: string;
+    /** Overrides the "Enter <term>" hint — the enquiry form reuses this dropdown under its own name. */
+    customInputPlaceholder?: string;
     initialOptions?: CampaignTypeOption[];
 }
-
-// NOTE: `value` is the stable, internal campaign-type key that gets sent to
-// the backend / stored in form state — it must never change with locale.
-// Only `label` (the displayed text) is translated.
-const buildDefaultOptions = (t: TFunction): CampaignTypeOption[] => [
-    { value: 'Website', label: t('optionWebsite') },
-    { value: 'Google Ads', label: t('optionGoogleAds') },
-    { value: 'Social Media', label: t('optionSocialMedia') },
-];
 
 const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
     value = '',
     onChange,
     error,
     placeholder,
+    customInputPlaceholder,
     initialOptions,
 }) => {
     const { t } = useTranslation('audienceManagerCampaignTypeDropdown');
-    const resolvedPlaceholder = placeholder ?? t('placeholder');
+    // What this institute calls the campaign type (Lead Settings → Terminology).
+    // Skipped when the caller names both strings itself (the enquiry form does),
+    // so reusing this dropdown there costs no settings fetch.
+    const { campaignType: term } = useLeadTerminology({
+        skip: Boolean(placeholder && customInputPlaceholder),
+    });
+    const resolvedPlaceholder = placeholder ?? t('placeholder', { term });
+    const resolvedCustomPlaceholder =
+        customInputPlaceholder ?? t('customInputPlaceholder', { term });
     const [isOpen, setIsOpen] = useState(false);
     const [options, setOptions] = useState<CampaignTypeOption[]>(
-        () => initialOptions ?? buildDefaultOptions(t)
+        () => initialOptions ?? buildDefaultCampaignTypeOptions(t)
     );
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [customValue, setCustomValue] = useState('');
@@ -170,7 +171,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                                     type="text"
                                     value={customValue}
                                     onChange={(e) => setCustomValue(e.target.value)}
-                                    placeholder={t('customInputPlaceholder')}
+                                    placeholder={resolvedCustomPlaceholder}
                                     className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                                 />
                                 <div className="flex justify-end gap-2">

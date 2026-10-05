@@ -44,8 +44,9 @@ public class AiEvaluationProgressService {
                                 .orElseThrow(() -> new RuntimeException("Evaluation process not found: " + processId));
 
                 // Get all question evaluations
-                List<AiQuestionEvaluation> questionEvals = questionEvaluationRepository
-                                .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
+                // One row per question (the newest) so a pre-V53 duplicate is not listed twice.
+                List<AiQuestionEvaluation> questionEvals = AiQuestionEvaluationService.newestPerQuestion(
+                                questionEvaluationRepository.findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId()));
 
                 // "Resolved" questions (graded OR failed) carry the rich result DTO
                 // so the review page can render — and let the teacher grade — a
@@ -132,7 +133,7 @@ public class AiEvaluationProgressService {
                 return EvaluationProgressDto.builder()
                                 .attemptId(process.getStudentAttempt().getId())
                                 .evaluationProcessId(process.getId())
-                                .overallStatus(process.getStatus())
+                                .overallStatus(displayStatus(process.getStatus()))
                                 .currentStep(process.getCurrentStep())
                                 .progress(progressInfo)
                                 .completedQuestions(completed)
@@ -194,7 +195,7 @@ public class AiEvaluationProgressService {
                                         .processId(p.getId())
                                         .attemptId(attemptId)
                                         .participantName(participantName)
-                                        .status(p.getStatus())
+                                        .status(displayStatus(p.getStatus()))
                                         .questionsCompleted(p.getQuestionsCompleted())
                                         .questionsTotal(p.getQuestionsTotal())
                                         .needsReviewCount(failedByProcess.getOrDefault(p.getId(), 0L))
@@ -202,6 +203,17 @@ public class AiEvaluationProgressService {
                                         .completedAt(p.getCompletedAt())
                                         .build();
                 }).collect(Collectors.toList());
+        }
+
+        /**
+         * The status the dashboard shows. DISPATCHED (V52) is a claimed row a few
+         * seconds from being sent; the dashboard has always shown such a row as
+         * PENDING (it stayed PENDING while claimed) and has no label for the new
+         * state, so it keeps reading PENDING here.
+         */
+        static String displayStatus(String status) {
+                return AiEvaluationStatusEnum.DISPATCHED.name().equals(status)
+                                ? AiEvaluationStatusEnum.PENDING.name() : status;
         }
 
         /**

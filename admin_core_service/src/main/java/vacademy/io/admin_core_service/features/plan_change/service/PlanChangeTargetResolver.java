@@ -84,8 +84,21 @@ public class PlanChangeTargetResolver {
 
     /** The package sessions this UserPlan currently grants. Empty means nothing to switch. */
     public List<String> activePackageSessionIds(String userPlanId) {
+        List<String> active = packageSessionIds(userPlanId, LearnerSessionStatusEnum.ACTIVE.name());
+        if (!active.isEmpty()) {
+            return active;
+        }
+        // An expired or terminated membership has no ACTIVE mapping -- expiry deactivates
+        // them -- so keying only on ACTIVE left exactly the learners in a recovery state
+        // with no targets, and no "Change plan" on their dashboard, however permissive
+        // CHANGEABLE_STATUSES was. Their INACTIVE rows still name the course they were
+        // enrolled in, which is all this needs; applying a change revives them.
+        return packageSessionIds(userPlanId, LearnerSessionStatusEnum.INACTIVE.name());
+    }
+
+    private List<String> packageSessionIds(String userPlanId, String status) {
         return mappingRepository
-                .findByUserPlanIdAndStatus(userPlanId, LearnerSessionStatusEnum.ACTIVE.name())
+                .findByUserPlanIdAndStatus(userPlanId, status)
                 .stream()
                 .map(StudentSessionInstituteGroupMapping::getPackageSession)
                 .filter(java.util.Objects::nonNull)
@@ -215,7 +228,13 @@ public class PlanChangeTargetResolver {
     private boolean requiresMandateReauth(UserPlan userPlan, PaymentPlan target, MandateInfo mandate,
             boolean crossOption, String targetEnrollInviteId) {
         if (mandate == null || !MandateInfo.STATUS_ACTIVE.equalsIgnoreCase(mandate.getStatus())) {
-            return false; // nothing to break
+            // No usable mandate. Harmless while the plan renews manually, but if the change
+            // leaves auto-pay ARMED -- which it does whenever the target invite has autopay
+            // on, or the learner already had it on -- the plan would carry a charge date
+            // with nothing behind it: the sweep finds no ACTIVE mandate, skips, and the
+            // membership silently never renews. Force the re-registration instead, so the
+            // one approval that pays for the upgrade also arms a mandate at the new price.
+            return willArmAutopay(userPlan, crossOption, targetEnrollInviteId);
         }
         if (mandate.getMaxAmount() != null && target.getActualPrice() > mandate.getMaxAmount()) {
             return true;
@@ -233,8 +252,42 @@ public class PlanChangeTargetResolver {
     }
 
     /**
+     * Whether the plan will have auto-renewal on once the change is applied. Mirrors
+     * {@code PlanChangeService.reapplyAutopay}: a cross-option move re-derives it from the
+     * target invite, a same-option move keeps what the plan already has.
+     */
+    private boolean willArmAutopay(UserPlan userPlan, boolean crossOption, String targetEnrollInviteId) {
+        if (!crossOption || targetEnrollInviteId == null) {
+            return Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled());
+        }
+        return bridgeRepository
+                .findByEnrollInviteIdAndStatusWithPackageSession(targetEnrollInviteId, List.of(StatusEnum.ACTIVE.name()))
+                .stream()
+                .findFirst()
+                .map(b -> b.getEnrollInvite())
+                .filter(java.util.Objects::nonNull)
+                .map(invite -> autopayEnabledOn(invite.getSettingJson()))
+                .orElse(false);
+    }
+
+    /** AUTOPAY_SETTING.ENABLED on an invite's settingJson. False on anything unreadable. */
+    private boolean autopayEnabledOn(String settingJson) {
+        if (!StringUtils.hasText(settingJson)) {
+            return false;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(settingJson)
+                    .path("setting").path("AUTOPAY_SETTING").path("ENABLED").asBoolean(false);
+        } catch (Exception e) {
+            log.warn("Plan change: could not read AUTOPAY_SETTING on target invite: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Vendor of the invite a target is reached through. Read off the bridge rows we already
-     * fetched rather than a second query — callers pass an invite id that came from one.
+     * fetched rather than a second query -- callers pass an invite id that came from one.
      */
     private String targetVendor(String enrollInviteId) {
         return bridgeRepository

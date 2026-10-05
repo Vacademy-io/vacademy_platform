@@ -1,3 +1,4 @@
+import logging
 import os
 from functools import lru_cache
 from typing import Optional
@@ -27,6 +28,11 @@ def _load_env_file() -> None:
 
 
 _load_env_file()
+
+# The platform JWT signing key that used to be hardcoded here (and in
+# common_service JwtService). Kept ONLY as a fallback until JWT_SECRET_KEY is set
+# everywhere; then it goes, and the key is rotated.
+_LEGACY_JWT_SECRET_FALLBACK = "357638792F423F4428472B4B6250655368566D597133743677397A2443264629"
 
 
 class Settings(BaseSettings):
@@ -232,8 +238,11 @@ class Settings(BaseSettings):
     )
 
     # JWT Configuration (Shared with Java services)
-    # Default value works for dev/stage if matching common_service
-    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
+    # Read from JWT_SECRET_KEY (same value as common_service JwtService). The
+    # built-in value is a temporary fallback only — it is public in this repo —
+    # and get_settings() logs a WARNING when JWT_SECRET_KEY is unset or still
+    # equals that public value.
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", _LEGACY_JWT_SECRET_FALLBACK)
     jwt_algorithm: str = "HS256"
     # Voice sockets verify any token they are given. Flip this on once every
     # client ships one, and unauthenticated calls are refused outright.
@@ -247,6 +256,13 @@ class Settings(BaseSettings):
     # MUST be set in production; if unset, the internal endpoints reject all
     # requests (no implicit fallback).
     internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
+
+    # Platform staff allowed on /super-admin/v1/* and the other global writes
+    # (credit rate, credit grants, model registry): comma-separated auth user ids,
+    # compared exactly with the caller's user id. Ids, not usernames: a username
+    # can be renamed by its owner (and case-varied), an id cannot. Same people as
+    # the health-check portal's PORTAL_ALLOWED_USERS. Unset = nobody (fail closed).
+    super_admin_user_ids: Optional[str] = os.getenv("SUPER_ADMIN_USER_IDS")
 
     # ── MCP server (Model Context Protocol) ────────────────────────────────
     # ON by default. The real access control is per-institute
@@ -362,6 +378,17 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if not os.getenv("JWT_SECRET_KEY"):
+        logging.getLogger(__name__).warning(
+            "JWT_SECRET_KEY is not set: verifying tokens with the built-in fallback key, "
+            "which is public. Set JWT_SECRET_KEY to the common_service signing key."
+        )
+    elif settings.jwt_secret_key == _LEGACY_JWT_SECRET_FALLBACK:
+        logging.getLogger(__name__).warning(
+            "JWT_SECRET_KEY equals the legacy key that is public in this repo; rotate it "
+            "(together with common_service)."
+        )
+    return settings
 
 

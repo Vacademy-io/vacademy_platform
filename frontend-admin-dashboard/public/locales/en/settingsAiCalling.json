@@ -110,7 +110,9 @@
         "title": "Counsellor Assignment",
         "description": "How a counsellor is picked when a lead qualifies (or when retries are exhausted).",
         "modeLabel": "Assignment mode",
-        "assignExhausted": "Assign no-answer leads to a human after retries are exhausted"
+        "assignExhausted": "Assign no-answer leads to a human after retries are exhausted",
+        "reassignQualified": "Give qualified leads to this list's pool, even if they already have a counsellor",
+        "reassignQualifiedHint": "Use for lists of previously-worked leads: when the AI books or qualifies one, it goes to the pool instead of staying with whoever last held it. Leads that simply never answered are never moved."
     },
     "save": {
         "saving": "Saving…",

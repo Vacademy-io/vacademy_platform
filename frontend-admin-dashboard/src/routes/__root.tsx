@@ -66,7 +66,6 @@ const publicRoutes = [
     '/login/forgot-password',
     '/login/oauth/redirect',
     '/signup',
-    '/evaluator-ai',
     '/landing',
     '/pricing',
     '/content',

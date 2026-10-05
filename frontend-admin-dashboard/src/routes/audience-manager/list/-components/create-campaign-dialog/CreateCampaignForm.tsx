@@ -47,6 +47,7 @@ import {
     type AudiencePostSubmitConfiguration,
 } from '@/services/audience-post-submit-settings';
 import FormAppearanceEditor from '@/components/audience/FormAppearanceEditor';
+import FormTextEditor from '@/components/audience/FormTextEditor';
 import { AUDIENCE_FORM_SETTINGS_QUERY_KEY } from '@/routes/settings/-components/AudienceFormSettings';
 import {
     applyFormAppearance,
@@ -54,6 +55,7 @@ import {
     parseFormAppearance,
     validateFormAppearance,
 } from '@/services/audience-form-appearance';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -139,6 +141,7 @@ interface CreateCampaignFormProps {
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
     const { t } = useTranslation('audienceManagerCreateCampaignForm');
+    const { campaignType: term } = useLeadTerminology();
     const { t: tUpdateAudienceCampaign } = useTranslation(
         'audienceManagerUseUpdateAudienceCampaign'
     );
@@ -953,7 +956,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        {t('campaignType.label')} <span className="text-red-500">*</span>
+                        {t('campaignType.label', { term })} <span className="text-red-500">*</span>
                     </label>
                     <div className="mt-2">
                         <CampaignTypeDropdown
@@ -1334,6 +1337,38 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 campaignId={editingCampaignId}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
+            />
+
+            {/* Form Heading & Text — the page heading (defaults to this list's
+                name) and the form card's heading + sub-heading, with alignment.
+                Deliberately NOT behind the Form Appearance institute switch:
+                every campaign can reword its own form. Writes into the same
+                `formAppearance` value, so the save path is unchanged. */}
+            <Controller
+                name="formAppearance"
+                control={control}
+                render={({ field }) => (
+                    <FormTextEditor
+                        value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                        onChange={field.onChange}
+                        // Collapsed by default, like the cards around it.
+                        collapsible
+                        previewCampaignName={
+                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
+                        }
+                        previewCampaignDescription={watch('description') || ''}
+                        previewCampaignObjective={watch('campaign_objective') || ''}
+                        previewInstituteName={instituteDetails?.institute_name || 'Your Institute'}
+                        previewFields={(watch('custom_fields') || [])
+                            .filter((customField) => customField?.status !== 'DELETED')
+                            .map((customField) => ({
+                                name: customField?.name || '',
+                                required: Boolean(customField?.isRequired),
+                            }))}
+                        title={t('formText.title')}
+                        description={t('formText.description')}
+                    />
+                )}
             />
 
             {/* Post Submit Configuration — the thank-you screen / redirect the

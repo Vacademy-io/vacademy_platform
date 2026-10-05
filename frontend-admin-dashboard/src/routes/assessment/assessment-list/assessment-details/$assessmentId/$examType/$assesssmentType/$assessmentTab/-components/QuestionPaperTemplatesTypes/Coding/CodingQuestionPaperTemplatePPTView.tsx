@@ -4,6 +4,7 @@ import {
     CodingQuestionConfig,
     makeEmptyQuestion,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/utils/code-editor-types';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 export const CodingQuestionPaperTemplatePPTView = ({
     form,
@@ -25,7 +26,9 @@ export const CodingQuestionPaperTemplatePPTView = ({
                 <div
                     className="prose max-w-none rounded border bg-background p-3"
                     dangerouslySetInnerHTML={{
-                        __html: value.problemHtml || `<i>${t('noProblemStatement')}</i>`,
+                        __html:
+                            sanitizeRichHtml(value.problemHtml) ||
+                            `<i>${t('noProblemStatement')}</i>`,
                     }}
                 />
                 <div className="flex flex-wrap gap-2 text-xs">

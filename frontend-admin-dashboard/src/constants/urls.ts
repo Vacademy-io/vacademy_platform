@@ -449,6 +449,7 @@ export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
 export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
 // Caller's own open follow-ups (no instituteId → backend scopes to created_by=caller).
 export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
+export const COMPLETED_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/completed`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
@@ -477,6 +478,9 @@ export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/fie
 export const COUNSELOR_POOL_BASE = `${BASE_URL}/admin-core-service/v1/counselor-pool`;
 export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
+/** The pool a single lead list feeds — 204 when the list is not attached to one. */
+export const COUNSELOR_POOL_BY_AUDIENCE = (audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/by-audience/${audienceId}`;
 export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
 export const COUNSELOR_POOL_AUDIENCE_ASSIGNMENT = (poolId: string, audienceId: string) =>
@@ -927,16 +931,6 @@ export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get
 // Migrated to ai_service: single-step audio → in-house transcribe → questions.
 export const GET_QUESTIONS_FROM_AUDIO = `${AI_SERVICE_BASE_URL}/ai/get-question-audio/audio-parser/audio-to-questions`;
 
-// Evaluation AI Free tool
-export const CREATE_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/create`;
-export const ADD_QUESTIONS_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/sections`;
-export const GET_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
-
-// Migrated to ai_service (metadata from assessment-service + 2-step LLM via
-// ai_task; model from registry). status/{taskId} maps PROGRESS→PROCESSING.
-export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/evaluate-assessment`;
-export const EVALUATION_TOOL_STATUS = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/status`;
-export const EVALUATION_TOOL_GET_QUESTION = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
 export const GET_QUESTIONS_FROM_TEXT = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/from-text`;
 // Lecture planner + feedback: migrated to ai_service (hard cut). Both kick-offs
 // and result polling are served by ai_service, which resolves the model from the
@@ -985,6 +979,7 @@ export const LIVE_CLASS_DASHBOARD = `${BASE_URL}/admin-core-service/live-session
 export const LIVE_CLASS_DASHBOARD_CLASS_LEARNERS = `${BASE_URL}/admin-core-service/live-session-report/dashboard/class-learners`;
 export const LIVE_CLASS_DASHBOARD_AT_RISK = `${BASE_URL}/admin-core-service/live-session-report/dashboard/at-risk`;
 export const LIVE_CLASS_DASHBOARD_FEEDBACK = `${BASE_URL}/admin-core-service/live-session-report/dashboard/feedback-comments`;
+export const ASSESSMENT_DASHBOARD_INSIGHTS = `${BASE_URL}/assessment-service/assessment/admin/dashboard/insights`;
 export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
 export const CREATE_PROVIDER_MEETINGS_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create-for-session`;
@@ -1461,9 +1456,12 @@ export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profil
 export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
 export const MENTORSHIP_MY_BOOKING_PAGE = `${MENTORSHIP_BASE}/my-booking-page`;
 export const MENTORSHIP_REQUESTS = `${MENTORSHIP_BASE}/requests`;
-export const MENTORSHIP_REQUEST_APPROVE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/approve`;
-export const MENTORSHIP_REQUEST_DECLINE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/decline`;
-export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
+export const MENTORSHIP_REQUEST_APPROVE = (id: string) =>
+    `${MENTORSHIP_BASE}/requests/${id}/approve`;
+export const MENTORSHIP_REQUEST_DECLINE = (id: string) =>
+    `${MENTORSHIP_BASE}/requests/${id}/decline`;
+export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
 export const MENTORSHIP_SESSIONS = `${MENTORSHIP_BASE}/sessions`;
 export const MENTORSHIP_SESSION_STATS = `${MENTORSHIP_BASE}/sessions/stats`;
 export const MENTORSHIP_MY_SESSIONS_AWAITING = `${MENTORSHIP_BASE}/my-sessions/awaiting-review`;
@@ -1475,7 +1473,8 @@ export const MENTORSHIP_MY_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/my-sessions/
 export const MENTORSHIP_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/sessions/schedule`;
 export const MENTORSHIP_MY_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/my-sessions/schedule`;
 export const MENTORSHIP_MENTOR_MENTEES = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/mentees`;
-export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/availability`;
+export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) =>
+    `${MENTORSHIP_BASE}/mentors/${id}/availability`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1500,6 +1499,9 @@ export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1
 export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white-label/v1/setup`;
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
+// The institute's own Google OAuth client, so "Continue with Google" shows the brand's name.
+export const INSTITUTE_OAUTH_CLIENT = (instituteId: string, provider: 'google') =>
+    `${BASE_URL}/auth-service/v1/institutes/${instituteId}/oauth-clients/${provider}`;
 
 // App Registry Status (read-only) — mobile/desktop app registration status for this institute,
 // sourced from the health-check dashboard's App Registration module. Registration itself stays
@@ -1910,9 +1912,11 @@ export const HR_PAYROLL_ADJUSTMENT_BY_ID = (id: string) => `${HR_BASE}/payroll/a
 export const HR_PAYROLL_FNF_PREPARE = `${HR_BASE}/payroll/fnf/prepare`;
 export const HR_PAYROLL_LOANS = `${HR_BASE}/payroll/loans`;
 export const HR_PAYROLL_LOAN_APPROVE = (id: string) => `${HR_BASE}/payroll/loans/${id}/approve`;
-export const HR_PAYROLL_LOAN_REPAYMENTS = (id: string) => `${HR_BASE}/payroll/loans/${id}/repayments`;
+export const HR_PAYROLL_LOAN_REPAYMENTS = (id: string) =>
+    `${HR_BASE}/payroll/loans/${id}/repayments`;
 export const HR_REIMBURSEMENTS = `${HR_BASE}/payroll/reimbursements`;
-export const HR_REIMBURSEMENT_ACTION = (id: string) => `${HR_BASE}/payroll/reimbursements/${id}/action`;
+export const HR_REIMBURSEMENT_ACTION = (id: string) =>
+    `${HR_BASE}/payroll/reimbursements/${id}/action`;
 
 // Payslips & bank export
 export const HR_PAYSLIPS_GENERATE = `${HR_BASE}/payslips/generate`;
@@ -1920,7 +1924,8 @@ export const HR_PAYSLIPS = `${HR_BASE}/payslips`;
 export const HR_PAYSLIP_DOWNLOAD = (id: string) => `${HR_BASE}/payslips/${id}/download`;
 export const HR_PAYSLIPS_EMAIL = `${HR_BASE}/payslips/email`;
 export const HR_BANK_EXPORT = `${HR_BASE}/reports/bank-export`;
-export const HR_BANK_EXPORT_DOWNLOAD = (id: string) => `${HR_BASE}/reports/bank-export/${id}/download`;
+export const HR_BANK_EXPORT_DOWNLOAD = (id: string) =>
+    `${HR_BASE}/reports/bank-export/${id}/download`;
 export const HR_REPORT_PAYROLL_SUMMARY = `${HR_BASE}/reports/payroll-summary`;
 
 // Attendance

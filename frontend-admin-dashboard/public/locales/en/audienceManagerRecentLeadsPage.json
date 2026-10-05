@@ -34,20 +34,32 @@
         "leadStatus": {
             "label": "All leads",
             "active": "Active (not enrolled)",
-            "converted": "Enrolled / Converted"
+            "converted": "Enrolled / Converted",
+            "excludeSelected": "Exclude selected"
         },
         "sla": {
             "label": "All SLA states"
         },
         "audience": {
-            "label": "All audiences",
+            "label": "All {{term}}",
             "untitled": "Untitled audience"
+        },
+        "campaignType": {
+            "label": "All {{term}}"
         },
         "customDate": {
             "setDates": "Set dates",
             "done": "Done",
             "from": "From",
             "to": "To"
+        },
+        "calledWithin": {
+            "placeholder": "Called within",
+            "any": "Called: any time"
+        },
+        "workedWithin": {
+            "placeholder": "Worked within",
+            "any": "Worked: any time"
         }
     },
     "toolbar": {
@@ -62,6 +74,7 @@
     "chips": {
         "search": "Search: {{query}}",
         "audience": "Audience: {{names}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "Tier: {{tiers}}",
         "status": "Status: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -77,7 +90,11 @@
         "statusConverted": "Converted",
         "unassigned": "Unassigned",
         "removeAriaLabel": "Remove {{label}}",
-        "clearAll": "Clear all"
+        "clearAll": "Clear all",
+        "calledWithin": "Called: {{window}}",
+        "workedWithin": "Worked: {{window}}",
+        "pinnedTitle": "Pinned by this tab — it cannot be removed here",
+        "statusExcluded": "Status is not: {{statuses}}"
     },
     "search": {
         "placeholder": "Search leads",
@@ -98,7 +115,8 @@
         "unassignLeads": "Unassign leads",
         "restoreLeads": "Restore leads",
         "deleteLeads": "Delete leads",
-        "moveLeads": "Move to another list"
+        "moveLeads": "Move to another list",
+        "changeStatus": "Change status"
     },
     "emptyState": {
         "errorTitle": "Couldn't load leads",
@@ -117,11 +135,13 @@
             "email": "Email",
             "mobile": "Mobile",
             "audience": "Audience",
+            "campaignType": "{{term}}",
             "leadStatus": "Lead Status",
             "counsellor": "Counsellor",
             "activityNotes": "Activity & Notes",
             "notesCount": "Notes Count",
-            "leadJourney": "Lead Journey (disposition & notes)"
+            "leadJourney": "Lead Journey (disposition & notes)",
+            "utmCampaign": "UTM campaign"
         },
         "notes": {
             "defaultTitle": "Note",
@@ -137,6 +157,12 @@
         "leadRestored_one": "{{count}} lead restored",
         "leadRestored_other": "{{count}} leads restored",
         "restoreFailed": "Failed to restore. Please try again.",
-        "selectAllFailed": "Failed to select all leads"
+        "selectAllFailed": "Failed to select all leads",
+        "bulkStatusUpdated_one": "{{count}} lead moved to {{status}}",
+        "bulkStatusUpdated_other": "{{count}} leads moved to {{status}}",
+        "bulkStatusUnchanged_one": "{{count}} lead was already on that status",
+        "bulkStatusUnchanged_other": "{{count}} leads were already on that status",
+        "bulkStatusPartial": "{{failed}} could not be updated",
+        "bulkStatusFailed": "Failed to change status. Please try again."
     }
 }

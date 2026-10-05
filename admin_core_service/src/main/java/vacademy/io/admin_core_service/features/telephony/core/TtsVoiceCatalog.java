@@ -97,6 +97,14 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_DEEPGRAM = "deepgram";
 
     /**
+     * Navana (Bodhi) — Indian-language voices where ONE voice id speaks all ten
+     * languages (bn en gu hi kn ml mr or ta te). Streams through Navana's own
+     * Pipecat service. Genders are read from the names (Navana publishes none).
+     * Account default: two concurrent connections, held for a whole call.
+     */
+    public static final String MODEL_NAVANA = "navana";
+
+    /**
      * Engine stamped on a NEW agent. Existing agents are untouched — V421 pinned all
      * 17 of them to Sarvam, and they stay there until somebody changes them by hand.
      *
@@ -249,6 +257,63 @@ public final class TtsVoiceCatalog {
             v("aura-2-harmonia-en", "female", MODEL_DEEPGRAM),
             v("aura-2-electra-en", "female", MODEL_DEEPGRAM));
 
+    private static final List<Map<String, String>> NAVANA_VOICES = List.of(
+            v("achu", "male", MODEL_NAVANA),
+            v("anirban", "male", MODEL_NAVANA),
+            v("basava", "male", MODEL_NAVANA),
+            v("basheer", "male", MODEL_NAVANA),
+            v("bijay", "male", MODEL_NAVANA),
+            v("chhotu", "male", MODEL_NAVANA),
+            v("elango", "male", MODEL_NAVANA),
+            v("faizal", "male", MODEL_NAVANA),
+            v("gurdeep", "male", MODEL_NAVANA),
+            v("imran", "male", MODEL_NAVANA),
+            v("kannan", "male", MODEL_NAVANA),
+            v("kishan", "male", MODEL_NAVANA),
+            v("murugan", "male", MODEL_NAVANA),
+            v("savio", "male", MODEL_NAVANA),
+            v("shivanna", "male", MODEL_NAVANA),
+            v("srinu", "male", MODEL_NAVANA),
+            v("sulaiman", "male", MODEL_NAVANA),
+            v("tanaji", "male", MODEL_NAVANA),
+            v("temjen", "male", MODEL_NAVANA),
+            v("vetri", "male", MODEL_NAVANA),
+            v("xavier", "male", MODEL_NAVANA),
+            v("ammu", "female", MODEL_NAVANA),
+            v("ann", "female", MODEL_NAVANA),
+            v("arasi", "female", MODEL_NAVANA),
+            v("ayesha", "female", MODEL_NAVANA),
+            v("bhavana", "female", MODEL_NAVANA),
+            v("bimla", "female", MODEL_NAVANA),
+            v("champa", "female", MODEL_NAVANA),
+            v("falguni", "female", MODEL_NAVANA),
+            v("flavia", "female", MODEL_NAVANA),
+            v("harleen", "female", MODEL_NAVANA),
+            v("ipsita", "female", MODEL_NAVANA),
+            v("jayita", "female", MODEL_NAVANA),
+            v("jessy", "female", MODEL_NAVANA),
+            v("kayal", "female", MODEL_NAVANA),
+            v("mahadevi", "female", MODEL_NAVANA),
+            v("malar", "female", MODEL_NAVANA),
+            v("maria", "female", MODEL_NAVANA),
+            v("merin", "female", MODEL_NAVANA),
+            v("mukta", "female", MODEL_NAVANA),
+            v("nasrin", "female", MODEL_NAVANA),
+            v("nayeema", "female", MODEL_NAVANA),
+            v("netra", "female", MODEL_NAVANA),
+            v("nila", "female", MODEL_NAVANA),
+            v("ponni", "female", MODEL_NAVANA),
+            v("porkavi", "female", MODEL_NAVANA),
+            v("rukhiya", "female", MODEL_NAVANA),
+            v("rukhsana", "female", MODEL_NAVANA),
+            v("selvi", "female", MODEL_NAVANA),
+            v("shabnam", "female", MODEL_NAVANA),
+            v("sharon", "female", MODEL_NAVANA),
+            v("shikha", "female", MODEL_NAVANA),
+            v("vanaja", "female", MODEL_NAVANA),
+            v("yasmin", "female", MODEL_NAVANA),
+            v("zoya", "female", MODEL_NAVANA));
+
     /**
      * Lightning v3.1 <b>Pro</b> voices. Disjoint from the standard palette above —
      * see {@link #MODEL_SMALLEST_PRO}. Must stay in lockstep with bot.py's
@@ -279,6 +344,7 @@ public final class TtsVoiceCatalog {
         BY_MODEL.put(MODEL_SMALLEST, SMALLEST_VOICES);
         BY_MODEL.put(MODEL_SMALLEST_PRO, SMALLEST_PRO_VOICES);
         BY_MODEL.put(MODEL_DEEPGRAM, DEEPGRAM_VOICES);
+        BY_MODEL.put(MODEL_NAVANA, NAVANA_VOICES);
         BY_MODEL.put(MODEL_RUMIK, RUMIK_VOICES);
         BY_MODEL.put(MODEL_SARVAM, SARVAM_VOICES);
     }
@@ -319,6 +385,7 @@ public final class TtsVoiceCatalog {
         if (MODEL_SMALLEST_PRO.equals(m)) return "mandar";
         // English-only engine; Asteria is its clear/confident female voice.
         if (MODEL_DEEPGRAM.equals(m)) return "aura-2-asteria-en";
+        if (MODEL_NAVANA.equals(m)) return "bhavana";
         return "priya";
     }
 
@@ -378,6 +445,7 @@ public final class TtsVoiceCatalog {
         if (m.equals(MODEL_DEEPGRAM) || m.startsWith("deepgram") || m.startsWith("aura")) {
             return MODEL_DEEPGRAM;
         }
+        if (m.equals(MODEL_NAVANA) || m.startsWith("navana") || m.startsWith("bodhi")) return MODEL_NAVANA;
         // Pro FIRST: "smallest_pro" also startsWith("smallest"), so the generic test
         // below would swallow it and run pro voices on the standard model = silence.
         if (m.contains("pro") && (m.startsWith("smallest") || m.startsWith("lightning"))) {
@@ -402,6 +470,8 @@ public final class TtsVoiceCatalog {
                 "Higher-quality Indian voices. Different voice list from v3.1."));
         out.add(model(MODEL_DEEPGRAM, "Deepgram Aura-2 (English only)",
                 "English-only \u2014 no Hindi voice exists. Do not use for a Hinglish agent."));
+        out.add(model(MODEL_NAVANA, "Navana (Bodhi)",
+                "Indian voices; one voice speaks all ten languages. New — audition first."));
         out.add(model(MODEL_RUMIK, "Rumik Silk Mulberry 1.5",
                 "Cheapest, but mispronounces some Hindi words on the phone"));
         out.add(model(MODEL_SARVAM, "Sarvam Bulbul v3", "+4 credits per minute"));

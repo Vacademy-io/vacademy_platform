@@ -258,6 +258,7 @@ function InstalmentRow({
         queryClient.invalidateQueries({ queryKey: ['learner-plan-breakdown'] });
         queryClient.invalidateQueries({ queryKey: ['payment-outstanding-learners'] });
         queryClient.invalidateQueries({ queryKey: ['payment-billing-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['payment-instalment-forecast'] });
         queryClient.invalidateQueries({ queryKey: ['user-account-summary', userId] });
         toast.success(`Instalment ${index + 1} is now due on ${formatDay(draft)}.`);
         setEditing(false);

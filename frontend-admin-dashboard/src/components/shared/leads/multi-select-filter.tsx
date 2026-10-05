@@ -59,6 +59,16 @@ interface MultiSelectFilterProps {
      * Styling only; behaviour is identical.
      */
     variant?: 'button' | 'pill';
+    /**
+     * Turns the selection inside out: "show only these" becomes "show everything except
+     * these". Omit to leave the control exactly as it was. Saves a view from having to
+     * list nine statuses to mean "not New" — and from breaking when a tenth is added.
+     */
+    exclude?: { value: boolean; onChange: (next: boolean) => void; label: string };
+    /** Pinned by the route (see pinned-filters.ts): show the value, refuse to change it.
+     *  Without this the lock only survived "Clear all" — the dropdown stayed open for
+     *  business, so a sub-tab called "Untouched Leads" could be turned into all leads. */
+    locked?: boolean;
 }
 
 /**
@@ -76,11 +86,15 @@ export function MultiSelectFilter({
     widthClass = 'w-44',
     showSelectedLabel = false,
     variant = 'button',
+    exclude,
+    locked = false,
 }: MultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const { isCompact } = useCompactMode();
 
     const toggle = (value: string, clearAll: boolean | undefined) => {
+        // The route owns this filter; the popover is a read-only view of it.
+        if (locked) return;
         if (clearAll) {
             // "All" option — clear every selection
             onChange([]);
@@ -185,6 +199,25 @@ export function MultiSelectFilter({
                     <CommandInput placeholder={placeholder} className="h-9" />
                     <CommandList className="max-h-64 overflow-y-auto">
                         <CommandEmpty>No options found.</CommandEmpty>
+                        {exclude && (
+                            <CommandItem
+                                value="__exclude__"
+                                onSelect={() => !locked && exclude.onChange(!exclude.value)}
+                                className="cursor-pointer gap-2 text-neutral-600"
+                            >
+                                <span
+                                    className={cn(
+                                        'flex size-4 shrink-0 items-center justify-center rounded border',
+                                        exclude.value
+                                            ? 'border-primary-500 bg-primary-500 text-white'
+                                            : 'border-neutral-300'
+                                    )}
+                                >
+                                    {exclude.value && <Check className="size-3" />}
+                                </span>
+                                {exclude.label}
+                            </CommandItem>
+                        )}
                         {count > 0 && (
                             <CommandItem
                                 value="__clear__"
@@ -204,18 +237,27 @@ export function MultiSelectFilter({
                                     onSelect={() => toggle(opt.value, opt.clearAll)}
                                     className="cursor-pointer"
                                 >
-                                    <Check
+                                    {/* A real box, not a tick that fades to nothing: with only
+                                        the tick, an unticked row showed blank space and the whole
+                                        control read as single-select. */}
+                                    <span
                                         className={cn(
-                                            'mr-2 size-4 shrink-0',
-                                            opt.clearAll
-                                                ? count === 0
-                                                    ? 'opacity-100'
-                                                    : 'opacity-0'
-                                                : selected.includes(opt.value)
-                                                  ? 'opacity-100'
-                                                  : 'opacity-0'
+                                            'mr-2 flex size-4 shrink-0 items-center justify-center rounded border',
+                                            (
+                                                opt.clearAll
+                                                    ? count === 0
+                                                    : selected.includes(opt.value)
+                                            )
+                                                ? 'border-primary-500 bg-primary-500 text-white'
+                                                : 'border-neutral-300'
                                         )}
-                                    />
+                                    >
+                                        {(opt.clearAll
+                                            ? count === 0
+                                            : selected.includes(opt.value)) && (
+                                            <Check className="size-3" />
+                                        )}
+                                    </span>
                                     <span className="flex min-w-0 flex-col">
                                         <span className="truncate">{opt.label}</span>
                                         {opt.sublabel && (

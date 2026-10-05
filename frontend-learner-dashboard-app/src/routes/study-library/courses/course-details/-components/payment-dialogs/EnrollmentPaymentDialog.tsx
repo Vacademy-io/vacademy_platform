@@ -55,7 +55,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
         const firstPaymentOption = data.package_session_to_payment_options[0].payment_option;
         setPaymentType(firstPaymentOption.type);
       } else {
-        setError("No payment options available for this course.");
+        setError(`No payment options available for this ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.`);
       }
     } catch (err) {
       setError("Failed to load enrollment options. Please try again.");

@@ -33,6 +33,7 @@ import {
 } from '../-utils/format';
 import { BatchPickerDialog, type BatchOption } from './BatchPickerDialog';
 import { useBatchInfo } from './list/PlanListToolbar';
+import { serverMessageOf } from './composer/use-composer-save';
 
 const TITLE_MAX = 200;
 
@@ -299,9 +300,8 @@ export function DuplicatePlanDialog({
             onDuplicated?.(created);
             onOpenChange(false);
         } catch (e: unknown) {
-            const message = (e as { response?: { data?: { message?: string } } })?.response?.data
-                ?.message;
-            setServerError(message || t('duplicate.error'));
+            // A VacademyException body carries its text in `ex`, not `message`.
+            setServerError(serverMessageOf(e) || t('duplicate.error'));
         } finally {
             setSaving(false);
         }

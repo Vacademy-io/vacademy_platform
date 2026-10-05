@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PackageCourseSettingEditor } from './PackageCourseSettingEditor';
 import { LmsSettingsCard } from './LmsSettingsCard';
 import { LmsExistingUserPolicyCard } from './LmsExistingUserPolicyCard';
+import { LeadConversionCard } from './LeadConversionCard';
 import { CourseWorkflowTriggersCard } from './CourseWorkflowTriggersCard';
 import { SubOrgAssociatedCard } from './SubOrgAssociatedCard';
 
@@ -34,6 +35,7 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
             <Tabs defaultValue="lms" className="w-full">
                 <TabsList>
                     <TabsTrigger value="lms">{t('tabs.lms')}</TabsTrigger>
+                    <TabsTrigger value="leads">{t('tabs.leads')}</TabsTrigger>
                     <TabsTrigger value="workflows">{t('tabs.workflows')}</TabsTrigger>
                     <TabsTrigger value="suborg">{t('tabs.suborg')}</TabsTrigger>
                     <TabsTrigger value="json">{t('tabs.json')}</TabsTrigger>
@@ -51,6 +53,13 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
                         is set up and the form above is collapsed. */}
                     <LmsExistingUserPolicyCard
                         key={`existing-user-${packageId}`}
+                        packageId={packageId}
+                        refreshKey={refreshKey}
+                    />
+                </TabsContent>
+                <TabsContent value="leads" className="mt-4">
+                    <LeadConversionCard
+                        key={`lead-conversion-${packageId}`}
                         packageId={packageId}
                         refreshKey={refreshKey}
                     />

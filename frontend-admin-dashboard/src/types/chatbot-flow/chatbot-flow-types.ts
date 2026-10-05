@@ -7,7 +7,10 @@ export type ChatbotNodeType =
     | 'WORKFLOW_ACTION'
     | 'DELAY'
     | 'HTTP_WEBHOOK'
-    | 'AI_RESPONSE';
+    | 'AI_RESPONSE'
+    | 'CRM_LEAD_CHECK'
+    | 'ASK_FIELD'
+    | 'SAVE_TO_CRM';
 
 export type ChatbotFlowStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 
@@ -106,6 +109,71 @@ export interface ChatbotFlowEdgeDTO {
     conditionLabel?: string;
     conditionConfig?: Record<string, unknown>;
     sortOrder?: number;
+}
+
+// ==================== CRM lead capture nodes ====================
+
+/**
+ * The two outputs of a CRM_LEAD_CHECK node. The engine follows the edge whose
+ * `conditionConfig.branchId` equals the branch the executor returns, so each output handle's id
+ * IS the branchId (the same contract CONDITION branches use). `label` is written to the edge's
+ * conditionLabel when it is drawn.
+ */
+export const CRM_LEAD_CHECK_BRANCHES = [
+    { id: 'NEW', label: 'New lead' },
+    { id: 'EXISTING', label: 'Existing lead' },
+] as const;
+
+export type CrmLeadCheckBranchId = (typeof CRM_LEAD_CHECK_BRANCHES)[number]['id'];
+
+/** CRM_LEAD_CHECK: is this WhatsApp number already a lead anywhere in the institute? */
+export interface CrmLeadCheckConfig {
+    /** Sent to a returning lead. Blank = send nothing. */
+    existingMessage?: string;
+    /** Alert the team when an existing lead messages again. */
+    notifyTeam: boolean;
+}
+
+export type AskFieldSource = 'CUSTOM_FIELD' | 'SYSTEM_FIELD';
+export type AskFieldSystemField = 'full_name' | 'email';
+
+export interface AskFieldOption {
+    value: string;
+    label: string;
+}
+
+/**
+ * ASK_FIELD: ask one question tied to one CRM field, validate the reply, save it on the lead.
+ * fieldName / fieldType / options are snapshots taken when the field is picked, so the engine
+ * can ask and validate without looking the field up again.
+ */
+export interface AskFieldConfig {
+    fieldSource: AskFieldSource;
+    /** The custom field's id — when fieldSource is CUSTOM_FIELD. */
+    customFieldId?: string;
+    /** When fieldSource is SYSTEM_FIELD. */
+    systemField?: AskFieldSystemField;
+    fieldName: string;
+    /** Custom field type (text, dropdown, number, email, ...). full_name => text, email => email. */
+    fieldType: string;
+    /** Choices for dropdown / radio / multi_select; Yes/No for checkbox; empty otherwise. */
+    options: AskFieldOption[];
+    question: string;
+    retryMessage: string;
+    maxRetries: number;
+    allowSkip: boolean;
+    /** Label of the button that opens a WhatsApp list (4-10 choices). */
+    listButtonText?: string;
+}
+
+/** SAVE_TO_CRM: write every collected answer to the lead (creating it if needed). */
+export interface SaveToCrmConfig {
+    /** One of the institute's lead status keys. null = don't change the status. */
+    statusKey: string | null;
+    /** Sent once the lead is saved. Blank = send nothing. */
+    successMessage?: string;
+    /** Fire the institute's AUDIENCE_LEAD_SUBMISSION workflows for a new lead. Default true. */
+    fireWorkflows?: boolean;
 }
 
 // Node type metadata for the palette
@@ -217,5 +285,44 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
             escalateWhenUnsure: true,
             escalationMessage: '',
         },
+    },
+    // ---- CRM: turn a WhatsApp enquiry into a lead ----
+    {
+        type: 'CRM_LEAD_CHECK',
+        label: 'Check CRM Lead',
+        description: 'New or returning lead? Branches on a CRM lookup',
+        color: '#6366f1', // design-lint-ignore: categorical node accent, inline style needs hex
+        icon: '🔎',
+        defaultConfig: {
+            existingMessage: 'Welcome back! Our team will get in touch with you shortly.',
+            notifyTeam: true,
+        },
+    },
+    {
+        type: 'ASK_FIELD',
+        label: 'Ask & Save Field',
+        description: 'Ask one question, save the reply on the lead',
+        color: '#818cf8', // design-lint-ignore: categorical node accent, inline style needs hex
+        icon: '📝',
+        defaultConfig: {
+            fieldSource: 'CUSTOM_FIELD',
+            customFieldId: '',
+            fieldName: '',
+            fieldType: 'text',
+            options: [],
+            question: '',
+            retryMessage: "Sorry, that doesn't look right. Please try again.",
+            maxRetries: 2,
+            allowSkip: false,
+            listButtonText: 'Choose',
+        },
+    },
+    {
+        type: 'SAVE_TO_CRM',
+        label: 'Save Lead to CRM',
+        description: 'Save the collected answers on the CRM lead',
+        color: '#4f46e5', // design-lint-ignore: categorical node accent, inline style needs hex
+        icon: '💾',
+        defaultConfig: { statusKey: null, successMessage: '', fireWorkflows: true },
     },
 ];

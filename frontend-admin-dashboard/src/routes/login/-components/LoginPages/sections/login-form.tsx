@@ -508,10 +508,6 @@ export function LoginForm() {
         navigate({ to: '/signup' });
     };
 
-    // const handleNavigateAiEvaluator = () => {
-    //     navigate({ to: '/evaluator-ai' });
-    // };
-
     const handleSwitchToEmail = () => {
         setAuthMethod('EMAIL');
     };

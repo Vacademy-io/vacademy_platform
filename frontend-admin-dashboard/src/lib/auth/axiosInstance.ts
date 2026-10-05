@@ -296,6 +296,19 @@ authenticatedAxiosInstance.interceptors.response.use(
 
         // Handle 403 Forbidden
         if (response?.status === 403) {
+            // An admin disabled or removed this member ("Disable access" / "Delete member" on
+            // Teams). The backend sends this code only for that case — never for an
+            // auth-service blip — so it is safe to end the session here.
+            if (response?.data?.error === 'ACCESS_REVOKED') {
+                captureForcedLogout('Forced logout: team access revoked', {
+                    level: 'info',
+                    extra: { requestUrl: error.config?.url },
+                });
+                removeCookiesAndLogout();
+                return Promise.reject(
+                    new Error('Your access to this institute has been disabled.')
+                );
+            }
             // Don't log 403 errors as they're expected for some institute details requests.
             //
             // Reject the AxiosError itself rather than a bare Error. A 403 is how the backend says

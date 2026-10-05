@@ -8,6 +8,8 @@ import type {
   ProductPageMappingResponse,
   ProductPageSettings,
 } from "../-types/product-page-types";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 /**
  * "Choose a Plan" tiles, built entirely from the payment plans already
@@ -253,8 +255,8 @@ export const PlanTiles = ({ pageData, settings, primaryColor }: PlanTilesProps) 
 
               <p className="mt-auto text-2xs text-gray-400">
                 {group.mappings.length > 1
-                  ? `${group.mappings.length} courses included`
-                  : "1 course"}
+                  ? `${group.mappings.length} ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} included`
+                  : `1 ${getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}`}
                 {validity > 0 ? ` · ${validity} days access` : ""}
               </p>
             </button>

@@ -544,6 +544,8 @@
       "autopayCheckbox": "Activer aussi le prélèvement automatique pour les prochains renouvellements — une seule validation paie maintenant et met en place le prélèvement automatique, sans paiement manuel supplémentaire.",
       "startingPayment": "Lancement du paiement...",
       "payToContinue": "Payer {{amount}} pour continuer",
+      "completeEnrollmentPrompt": "Votre inscription à cet abonnement n'a jamais été finalisée, il n'y a donc rien à renouveler. Terminez votre inscription et vos {{liveClasses}} commencent immédiatement.",
+      "completeEnrollmentCta": "Finaliser mon inscription",
       "toast": {
         "startFailedTitle": "Impossible de lancer le paiement",
         "genericRetry": "Veuillez réessayer dans un instant.",
@@ -563,7 +565,24 @@
       },
       "changePlan": "Change plan",
       "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
-      "planChangeCancelScheduled": "Cancel this change"
+      "planChangeCancelScheduled": "Cancel this change",
+      "cardDialog": {
+        "title": "Ajoutez une carte pour continuer",
+        "description": "Aucune carte n'est enregistrée pour cet abonnement. Saisissez-en une pour payer maintenant — nous l'enregistrerons en toute sécurité afin que les renouvellements suivants se fassent en un seul geste.",
+        "loadingForm": "Chargement du formulaire de carte sécurisé..."
+      },
+      "autopayDefaultNotice": "Les renouvellements suivants seront prélevés automatiquement sur cette carte. Vous pouvez désactiver le paiement automatique à tout moment depuis cette page."
+    },
+    "paymentReturn": {
+      "confirmingTitle": "Confirmation de votre paiement…",
+      "confirmingBody": "Veuillez ne pas fermer cette page — nous vérifions auprès du prestataire de paiement.",
+      "paidTitle": "Paiement reçu !",
+      "paidBody": "Votre abonnement a été renouvelé. Son affichage partout peut prendre quelques secondes.",
+      "failedTitle": "Paiement non abouti",
+      "failedBody": "Aucun montant n'a été débité. Vous pouvez réessayer depuis votre page d'abonnement.",
+      "cancelled": "Vous avez annulé le paiement. Aucun montant n'a été débité.",
+      "missingReference": "Nous n'avons pas pu identifier ce paiement. Réessayez depuis votre page d'abonnement.",
+      "backToMembership": "Retour à mon abonnement"
     }
   },
   "termsAndConditions": {

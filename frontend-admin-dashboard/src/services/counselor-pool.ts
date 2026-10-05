@@ -18,6 +18,7 @@ import {
     COUNSELOR_POOL_AUDIENCES,
     COUNSELOR_POOL_AUDIENCE_ORDER,
     COUNSELOR_POOL_BASE,
+    COUNSELOR_POOL_BY_AUDIENCE,
     COUNSELOR_POOL_BY_ID,
     COUNSELOR_POOL_COUNSELOR,
     COUNSELOR_POOL_COUNSELORS,
@@ -370,6 +371,27 @@ export const useCounselorPool = (poolId: string | undefined) =>
         queryKey: poolDetailKey(poolId ?? ''),
         queryFn: () => fetchPool(poolId!),
         enabled: !!poolId,
+    });
+
+/**
+ * The pool a lead list feeds, or null when it feeds none.
+ *
+ * A list with no pool is the normal case (only auto-assigned lists have one), so a
+ * 204 is an answer, not an error — it resolves to null and the caller renders nothing.
+ */
+export const fetchPoolForAudience = async (
+    audienceId: string
+): Promise<CounselorPoolDTO | null> => {
+    const res = await authenticatedAxiosInstance.get(COUNSELOR_POOL_BY_AUDIENCE(audienceId));
+    return res.status === 204 || !res.data ? null : (res.data as CounselorPoolDTO);
+};
+
+export const usePoolForAudience = (audienceId: string | undefined) =>
+    useQuery({
+        queryKey: ['counselor-pool-for-audience', audienceId ?? ''],
+        queryFn: () => fetchPoolForAudience(audienceId!),
+        enabled: !!audienceId,
+        staleTime: 60 * 1000,
     });
 
 export const useWeeklySchedule = (poolId: string | undefined) =>

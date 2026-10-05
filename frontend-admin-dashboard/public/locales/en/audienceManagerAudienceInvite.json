@@ -15,6 +15,10 @@
         "allStatus": "All Status",
         "placeholder": "Filter by Status"
     },
+    "typeFilter": {
+        "allTypes": "All {{term}}",
+        "placeholder": "Filter by {{term}}"
+    },
     "toolbar": {
         "searchPlaceholder": "Search {{term}}",
         "searchAriaLabel": "Search {{term}}",

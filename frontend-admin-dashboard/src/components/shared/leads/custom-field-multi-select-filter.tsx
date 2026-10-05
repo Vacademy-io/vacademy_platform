@@ -270,7 +270,9 @@ export function CustomFieldMultiSelectFilter({
                                                 onSelect={() => toggle(value)}
                                                 className="cursor-pointer"
                                             >
-                                                <Check className="mr-2 size-4 opacity-100" />
+                                                <span className="mr-2 flex size-4 shrink-0 items-center justify-center rounded border border-primary-500 bg-primary-500 text-white">
+                                                    <Check className="size-3" />
+                                                </span>
                                                 <span className="truncate italic text-neutral-600">
                                                     {sentinelLabel(value)}
                                                 </span>
@@ -285,7 +287,7 @@ export function CustomFieldMultiSelectFilter({
                                                     onSelect={() => toggle(opt.value)}
                                                     className="cursor-pointer"
                                                 >
-                                                    <Check className="mr-2 size-4 opacity-0" />
+                                                    <span className="mr-2 size-4 shrink-0 rounded border border-neutral-300" />
                                                     <span className="truncate italic text-neutral-600">
                                                         {opt.label}
                                                     </span>

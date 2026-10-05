@@ -773,6 +773,21 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
         return defaultMergeTags;
     }, [templateType]);
 
+    // easy-email's own merge-tag pickers (text toolbar, link/button fields) insert
+    // mergeTagGenerate(<path into mergeTags>), e.g. "Student.Student Name". Its default
+    // wraps that as {{Student.Student Name}}, which no resolver substitutes. Our catalogs
+    // map category → label → canonical tag, so return the tag itself. Split on the first
+    // dot only — labels such as "Receipt / Invoice No." contain dots.
+    const mergeTagGenerate = useCallback(
+        (path: string) => {
+            const dot = path.indexOf('.');
+            const tags: Record<string, Record<string, string> | undefined> = mergeTags;
+            const tag = dot > 0 ? tags[path.slice(0, dot)]?.[path.slice(dot + 1)] : undefined;
+            return tag ?? `{{${path}}}`;
+        },
+        [mergeTags]
+    );
+
     const handleOpenAssets = () => {
         openAssetPicker().then((url) => {
             if (url) {
@@ -790,6 +805,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 autoComplete
                 dashed={false}
                 mergeTags={mergeTags}
+                mergeTagGenerate={mergeTagGenerate}
                 fontList={fontList}
                 onSubmit={onSubmit}
                 onUploadImage={onUploadImage}

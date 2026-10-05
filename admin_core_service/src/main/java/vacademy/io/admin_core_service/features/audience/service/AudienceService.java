@@ -78,6 +78,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.common.exceptions.VacademyException;
@@ -94,6 +95,14 @@ public class AudienceService {
 
     @Autowired
     private AudienceRepository audienceRepository;
+
+    // Repositories only (never CounselorPoolService) — the pool service already
+    // depends on this one, so injecting it back would close a bean cycle.
+    @Autowired
+    private vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository counselorPoolAudienceRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolRepository counselorPoolRepository;
 
 
     @Autowired
@@ -125,6 +134,9 @@ public class AudienceService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.repository.UtmAttributionRepository utmAttributionRepository;
 
     @Autowired
     private AuthService authService;
@@ -461,6 +473,9 @@ public class AudienceService {
                 restrictByList,
                 pageable);
 
+        Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> poolByAudienceId =
+                resolvePoolsForPage(audiences.getContent());
+
         return audiences.map(audience -> AudienceDTO.builder()
                 .id(audience.getId())
                 .instituteId(audience.getInstituteId())
@@ -479,7 +494,60 @@ public class AudienceService {
                 .defaultInitialScore(audience.getDefaultInitialScore())
                 .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
+                .poolId(poolByAudienceId.containsKey(audience.getId())
+                        ? poolByAudienceId.get(audience.getId()).getId() : null)
+                .poolName(poolByAudienceId.containsKey(audience.getId())
+                        ? poolByAudienceId.get(audience.getId()).getName() : null)
                 .build());
+    }
+
+    /**
+     * Which counsellor pool (if any) each audience on this page feeds, so the lead-list
+     * header can say so without the admin going to Pools to find out.
+     *
+     * <p>Two batched queries for the whole page rather than a lookup per row: the campaigns
+     * grid renders 20+ lists at a time and a per-row resolve would be a 40-query N+1.</p>
+     *
+     * <p>Best-effort — a pool-lookup failure returns an empty map and the lists simply render
+     * without the pool chip, rather than failing the campaigns page.</p>
+     */
+    private Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool>
+            resolvePoolsForPage(List<Audience> audiences) {
+        if (audiences == null || audiences.isEmpty()) return Collections.emptyMap();
+        try {
+            List<String> audienceIds = audiences.stream()
+                    .map(Audience::getId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (audienceIds.isEmpty()) return Collections.emptyMap();
+
+            List<vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience> links =
+                    counselorPoolAudienceRepository.findByAudienceIdIn(audienceIds);
+            if (links.isEmpty()) return Collections.emptyMap();
+
+            Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> poolsById =
+                    counselorPoolRepository.findAllById(links.stream()
+                            .map(vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience::getPoolId)
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .collect(Collectors.toList()))
+                    .stream()
+                    .collect(Collectors.toMap(
+                            vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool::getId,
+                            Function.identity(), (a, b) -> a));
+
+            Map<String, vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool> byAudience =
+                    new HashMap<>();
+            for (var link : links) {
+                var pool = poolsById.get(link.getPoolId());
+                if (pool != null) byAudience.put(link.getAudienceId(), pool);
+            }
+            return byAudience;
+        } catch (Exception ex) {
+            logger.warn("Failed to resolve counsellor pools for campaigns page: {}", ex.getMessage());
+            return Collections.emptyMap();
+        }
     }
 
     /** Campaign name used for the auto-provisioned per-institute catalogue lead audience. */
@@ -1088,6 +1156,154 @@ public class AudienceService {
         logger.info("Self-signup lead captured: response={} user={} inst={}",
                 saved.getId(), userId, instituteId);
         return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
+    }
+
+    // ==================== WhatsApp chatbot flow leads ====================
+
+    /** Source type stamped on leads captured by a WhatsApp chatbot flow (also the list's campaign type). */
+    public static final String WHATSAPP_FLOW_SOURCE_TYPE = "WHATSAPP_FLOW";
+    private static final String WHATSAPP_LEADS_AUDIENCE_NAME = "WhatsApp Leads";
+
+    /**
+     * Create a lead for a WhatsApp chatbot conversation in the institute's auto-provisioned
+     * "WhatsApp Leads" list. The caller ({@code WhatsAppFlowLeadService}) has already
+     * established that this phone is not a lead anywhere in the institute and holds the
+     * per-phone lock inside its transaction, so this method does no de-dup of its own.
+     * Same intake steps as the other captured-lead channels: timeline, score, counsellor.
+     */
+    public InboundCallLeadRef createWhatsAppFlowLead(String instituteId, String userId, String phone,
+            String name, String flowId) {
+        Audience audience = getOrCreateWhatsAppLeadsAudience(instituteId);
+        String display = StringUtils.hasText(name) ? name.trim() : phone;
+        AudienceResponse saved = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType(WHATSAPP_FLOW_SOURCE_TYPE)
+                .sourceId(StringUtils.hasText(flowId) ? flowId : WHATSAPP_FLOW_SOURCE_TYPE)
+                .userId(userId)
+                .parentName(display)
+                .parentMobile(truncateForParentMobileColumn(phone))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        try {
+            logLeadSubmitted(saved);
+        } catch (Exception e) {
+            logger.error("WhatsApp flow lead {}: logLeadSubmitted failed: {}", saved.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(saved.getId(), saved.getAudienceId(),
+                    instituteId, saved.getSourceType(), saved.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("WhatsApp flow lead {}: score failed: {}", saved.getId(), e.getMessage());
+        }
+        // Swallows its own failures — assignment must never break intake.
+        autoAssignCounsellorOnIntake(saved, userId, instituteId, null, null, display, audience.getCampaignName());
+
+        logger.info("WhatsApp flow lead captured: response={} user={} inst={} flow={}",
+                saved.getId(), userId, instituteId, flowId);
+        return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
+    }
+
+    /**
+     * Resolve the per-institute "WhatsApp Leads" list, creating it on first use. Found by
+     * campaign type rather than name so a renamed list keeps receiving leads. The create
+     * path takes an institute-wide advisory lock and re-checks, so two first leads arriving
+     * together cannot create two lists. Must run inside a transaction (the lock is
+     * transaction-scoped).
+     */
+    private Audience getOrCreateWhatsAppLeadsAudience(String instituteId) {
+        Optional<Audience> existing = audienceRepository
+                .findFirstByInstituteIdAndCampaignTypeAndStatusOrderByCreatedAtAsc(
+                        instituteId, WHATSAPP_FLOW_SOURCE_TYPE, "ACTIVE");
+        if (existing.isPresent()) return existing.get();
+
+        audienceResponseRepository.acquireTransactionLock("whatsapp-leads-list:" + instituteId);
+        return audienceRepository
+                .findFirstByInstituteIdAndCampaignTypeAndStatusOrderByCreatedAtAsc(
+                        instituteId, WHATSAPP_FLOW_SOURCE_TYPE, "ACTIVE")
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(WHATSAPP_LEADS_AUDIENCE_NAME)
+                            .campaignType(WHATSAPP_FLOW_SOURCE_TYPE)
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from WhatsApp chatbot flows")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned WhatsApp Leads audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Attach a custom field to a lead list's form schema (idempotent) so a value saved
+     * against it shows as a column. Public entry to {@link #ensureAudienceFormField} for the
+     * WhatsApp chatbot capture path.
+     */
+    public void attachFieldToLeadList(String instituteId, String audienceId, String customFieldId, int order) {
+        ensureAudienceFormField(instituteId, audienceId, customFieldId, order);
+    }
+
+    /**
+     * Fire AUDIENCE_LEAD_SUBMISSION for a lead captured by a WhatsApp chatbot flow, once its
+     * answers are saved. The context carries the same keys as the form paths (user, audience,
+     * customFields, responseId, phone …) so existing workflow node configs work unchanged.
+     * No respondent/admin email requests are built: the lead came in over WhatsApp and has
+     * no real email, and the chatbot flow already replied to them.
+     */
+    public void fireLeadSubmissionWorkflow(String responseId) {
+        AudienceResponse response = audienceResponseRepository.findById(responseId).orElse(null);
+        if (response == null) return;
+        Audience audience = audienceRepository.findById(response.getAudienceId()).orElse(null);
+        if (audience == null) return;
+        String instituteId = audience.getInstituteId();
+
+        UserDTO user = UserDTO.builder()
+                .id(response.getUserId())
+                .fullName(response.getParentName())
+                .email(response.getParentEmail())
+                .mobileNumber(response.getParentMobile())
+                .build();
+        AudienceDTO audienceDTO = AudienceDTO.builder()
+                .id(audience.getId())
+                .campaignName(audience.getCampaignName())
+                .instituteId(instituteId)
+                .status(audience.getStatus())
+                .toNotify(audience.getToNotify())
+                .sendRespondentEmail(audience.getSendRespondentEmail())
+                .build();
+        String submissionTime = java.time.ZonedDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z"));
+
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", user);
+        contextData.put("audience", audienceDTO);
+        contextData.put("audienceId", audience.getId());
+        contextData.put("instituteId", instituteId);
+        contextData.put("instituteName",
+                instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
+        contextData.put("customFields", buildCustomFieldMapForEmail(responseId));
+        contextData.put("submissionTime", submissionTime);
+        contextData.put("responseId", responseId);
+        contextData.put("userId", response.getUserId());
+        contextData.put("leadUserId", response.getUserId());
+        contextData.put("phone", response.getParentMobile());
+        contextData.put("parentMobile", response.getParentMobile());
+        contextData.put("campaignName", audience.getCampaignName());
+        contextData.put("sendRespondentEmail", false);
+        contextData.put("respondentEmailRequests", new ArrayList<Map<String, Object>>());
+        contextData.put("adminEmailRequests", new ArrayList<Map<String, Object>>());
+
+        workflowTriggerService.handleTriggerEvents(
+                WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(),
+                audience.getId(),
+                instituteId,
+                contextData);
     }
 
     /**
@@ -3042,6 +3258,10 @@ public class AudienceService {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
                     filterDTO.getLeadStatusId(),
+                    filterDTO.getLeadStatusExcludeId(),
+                    filterDTO.getFollowUpPending(),
+                    filterDTO.getFollowUpFrom(),
+                    filterDTO.getFollowUpTo(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -3064,6 +3284,10 @@ public class AudienceService {
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
                     filterDTO.getSortCustomFieldId(),
+                    filterDTO.getCalledFromLocal(),
+                    filterDTO.getCalledToLocal(),
+                    filterDTO.getActivityFromLocal(),
+                    filterDTO.getActivityToLocal(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -3071,6 +3295,10 @@ public class AudienceService {
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
                 filterDTO.getLeadStatusId(),
+                filterDTO.getLeadStatusExcludeId(),
+                filterDTO.getFollowUpPending(),
+                filterDTO.getFollowUpFrom(),
+                filterDTO.getFollowUpTo(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
@@ -3097,6 +3325,10 @@ public class AudienceService {
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 filterDTO.getSortCustomFieldId(),
+                filterDTO.getCalledFromLocal(),
+                filterDTO.getCalledToLocal(),
+                filterDTO.getActivityFromLocal(),
+                filterDTO.getActivityToLocal(),
                 pageable);
 
         // Resolve the institute for SLA-deadline computation: the filter usually
@@ -3341,9 +3573,27 @@ public class AudienceService {
                 .map(AudienceResponse::getAudienceId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, String> audienceIdToName = audienceIds.isEmpty() ? Collections.emptyMap()
+        // Keep the whole Audience, not just its name: the leads table also shows the
+        // campaign type (the channel a lead came in through), and reusing this one
+        // fetch keeps that free.
+        Map<String, Audience> audienceById = audienceIds.isEmpty() ? Collections.emptyMap()
                 : audienceRepository.findAllById(audienceIds).stream()
-                        .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName, (a, b) -> a));
+                        .collect(Collectors.toMap(Audience::getId, a -> a, (a, b) -> a));
+
+        // Latest UTM tagging per lead — one query for the whole page, not one per row.
+        // Keyed by user_id because that is what utm_attribution carries.
+        Map<String, String[]> utmByUserId = new HashMap<>();
+        if (StringUtils.hasText(instituteId) && !userIds.isEmpty()) {
+            try {
+                for (Object[] row : utmAttributionRepository.findLatestForUsers(instituteId, userIds)) {
+                    utmByUserId.put((String) row[0],
+                            new String[] { (String) row[1], (String) row[2] });
+                }
+            } catch (Exception e) {
+                // UTM is decoration on this screen; never fail the leads list for it.
+                logger.warn("Could not load UTM attribution for the leads page: {}", e.getMessage());
+            }
+        }
 
         return responses.map(response -> {
             // Build custom field values map from batch-fetched data
@@ -3400,7 +3650,14 @@ public class AudienceService {
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
                     .audienceId(response.getAudienceId())
-                    .campaignName(audienceIdToName.get(response.getAudienceId()))
+                    .campaignName(Optional.ofNullable(audienceById.get(response.getAudienceId()))
+                            .map(Audience::getCampaignName).orElse(null))
+                    .campaignType(Optional.ofNullable(audienceById.get(response.getAudienceId()))
+                            .map(Audience::getCampaignType).orElse(null))
+                    .utmSource(Optional.ofNullable(utmByUserId.get(response.getUserId()))
+                            .map(u -> u[0]).orElse(null))
+                    .utmCampaign(Optional.ofNullable(utmByUserId.get(response.getUserId()))
+                            .map(u -> u[1]).orElse(null))
                     .userId(response.getUserId())
                     .studentUserId(response.getStudentUserId())
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)
@@ -3511,6 +3768,7 @@ public class AudienceService {
                 .responseId(response.getId())
                 .audienceId(response.getAudienceId())
                 .campaignName(audience.getCampaignName())
+                .campaignType(audience.getCampaignType())
                 .userId(response.getUserId())
                 .studentUserId(response.getStudentUserId())
                 .user(user)

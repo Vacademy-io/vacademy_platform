@@ -291,6 +291,9 @@ const LeadBoardContent = () => {
 
     // Status catalog → board columns. The picker persists hidden status keys per
     // user, same mechanism as the table's "Manage Column".
+    // Full catalog on purpose: `show_in_filter` governs the FILTER dropdowns only.
+    // The board already has its own per-user column hiding below, and dropping a
+    // column here would strand every lead carrying that status with no way back.
     const { statuses: leadStatusCatalog, isLoading: statusesLoading } = useLeadStatuses();
     const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
         'crm-lead-board:hidden-statuses'
@@ -629,7 +632,7 @@ const LeadBoardContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label={t('filters.audience.label')}
+                        label={t('filters.audience.label', { term: terminology.leadSource })}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
                         options={audienceOptions.map((opt) => ({
                             value: opt.id,

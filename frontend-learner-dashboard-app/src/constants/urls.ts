@@ -99,6 +99,8 @@ export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-se
 
 // Learner self-service subscriptions + autopay mandate (list + cancel)
 export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner/subscription/v1`;
+export const LEARNER_SUBSCRIPTION_RENEW_COMPLETE = (userPlanId: string) =>
+  `${LEARNER_SUBSCRIPTION_LIST}/${userPlanId}/renew-complete`;
 export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
   `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
 
@@ -215,6 +217,11 @@ export const OPEN_STUDENT_DISPLAY_SETTINGS = `${BASE_URL}/admin-core-service/ope
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
+
+// Where a learner should land once their password is set, when their coursework lives on a
+// connected WordPress/LearnDash site rather than in Vacademy. Takes no userId - it answers
+// only for the caller, from their token.
+export const LEARNER_LMS_LANDING = `${BASE_URL}/admin-core-service/learner/lms/v1/landing`;
 
 // User enrollment check API endpoint (expects POST request with empty body)
 export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-details/by-email`;

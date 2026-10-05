@@ -544,6 +544,8 @@
       "autopayCheckbox": "فعّل أيضًا الدفع التلقائي للتجديدات القادمة — موافقة واحدة تدفع الآن وتُفعِّل الخصم التلقائي، دون الحاجة إلى مدفوعات يدوية بعد ذلك.",
       "startingPayment": "جارٍ بدء الدفع...",
       "payToContinue": "ادفع {{amount}} للمتابعة",
+      "completeEnrollmentPrompt": "لم يكتمل تسجيلك في هذه العضوية، لذلك لا يوجد ما يمكن تجديده. أكمل التسجيل وستبدأ {{liveClasses}} على الفور.",
+      "completeEnrollmentCta": "أكمل تسجيلك",
       "toast": {
         "startFailedTitle": "تعذّر بدء عملية الدفع",
         "genericRetry": "يرجى المحاولة مرة أخرى بعد قليل.",
@@ -563,7 +565,24 @@
       },
       "changePlan": "Change plan",
       "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
-      "planChangeCancelScheduled": "Cancel this change"
+      "planChangeCancelScheduled": "Cancel this change",
+      "cardDialog": {
+        "title": "أضف بطاقة للمتابعة",
+        "description": "لا توجد بطاقة محفوظة لهذا الاشتراك. أدخل بطاقة للدفع الآن — سنحفظها بشكل آمن ليصبح التجديد لاحقًا بلمسة واحدة.",
+        "loadingForm": "جارٍ تحميل نموذج البطاقة الآمن..."
+      },
+      "autopayDefaultNotice": "سيتم خصم التجديدات القادمة تلقائيًا من هذه البطاقة. يمكنك إيقاف الدفع التلقائي في أي وقت من هذه الصفحة."
+    },
+    "paymentReturn": {
+      "confirmingTitle": "جارٍ تأكيد عملية الدفع…",
+      "confirmingBody": "من فضلك لا تغلق هذه الصفحة — نحن نتحقق من مزوّد الدفع.",
+      "paidTitle": "تم استلام الدفع!",
+      "paidBody": "تم تجديد اشتراكك. قد يستغرق ظهوره في كل مكان بضع ثوانٍ.",
+      "failedTitle": "لم تكتمل عملية الدفع",
+      "failedBody": "لم يتم خصم أي مبلغ. يمكنك المحاولة مرة أخرى من صفحة اشتراكك.",
+      "cancelled": "لقد ألغيت عملية الدفع. لم يتم خصم أي مبلغ.",
+      "missingReference": "تعذّر علينا تحديد عملية الدفع هذه. يرجى المحاولة من صفحة اشتراكك.",
+      "backToMembership": "العودة إلى اشتراكي"
     }
   },
   "termsAndConditions": {

@@ -35,6 +35,28 @@ public class PaymentSettingService {
      */
     public static final String PLAN_CHANGE_ENABLED_KEY = "planChangeEnabled";
 
+    /**
+     * Flag inside PAYMENT_SETTING.data that makes a manual renewal ("pay to continue") also
+     * arm autopay, without the learner having to ask for it.
+     *
+     * <p>Opt-in, and deliberately so: turning it on means a member who pays one lapsed
+     * invoice is enrolled into recurring billing, so it is the institute's decision to make
+     * explicitly rather than a default anyone inherits. It still only applies to plans whose
+     * invite offers autopay at all.
+     */
+    public static final String AUTOPAY_DEFAULT_ON_RENEWAL_KEY = "autopayDefaultOnManualRenewal";
+
+    /**
+     * Flag inside PAYMENT_SETTING.data that opts an institute into the daily AUTOPAY CHARGE
+     * sweep -- the job that actually presents money to the gateway.
+     *
+     * <p>Separate from {@link #RENEWAL_SCHEDULER_ENABLED_KEY} on purpose. That one opts into
+     * the enrolment-policy scan (notifications, waiting period, expiry), which moves no
+     * money; this one authorises charging cards. An institute that wanted expiry handling
+     * must not silently acquire auto-debit along with it, so the two are asked separately.
+     */
+    public static final String AUTOPAY_CHARGE_SCHEDULER_ENABLED_KEY = "autopayChargeSchedulerEnabled";
+
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
 
@@ -47,6 +69,20 @@ public class PaymentSettingService {
      * with corrupt JSON must never be swept into the scan by accident.
      */
     public List<String> getInstituteIdsWithRenewalSchedulerEnabled() {
+        return getInstituteIdsWithFlag(RENEWAL_SCHEDULER_ENABLED_KEY);
+    }
+
+    /**
+     * Institutes that have explicitly authorised the autopay charge sweep to present money
+     * for them. Absent flag = not authorised, so no institute is auto-charged until someone
+     * turns this on: the sweep itself is platform-wide, and this is the only thing scoping it.
+     */
+    public List<String> getInstituteIdsWithAutopayChargeEnabled() {
+        return getInstituteIdsWithFlag(AUTOPAY_CHARGE_SCHEDULER_ENABLED_KEY);
+    }
+
+    /** Institutes whose PAYMENT_SETTING.data has {@code flagKey} set to true. */
+    private List<String> getInstituteIdsWithFlag(String flagKey) {
         List<String> enabled = new ArrayList<>();
         for (Object[] row : instituteRepository.findIdAndSettingWithPaymentSetting()) {
             String instituteId = (String) row[0];
@@ -57,7 +93,7 @@ public class PaymentSettingService {
                         .path("setting")
                         .path(SettingKeyEnums.PAYMENT_SETTING.name())
                         .path("data")
-                        .path(RENEWAL_SCHEDULER_ENABLED_KEY);
+                        .path(flagKey);
                 if (flag.asBoolean(false)) {
                     enabled.add(instituteId);
                 }
@@ -78,6 +114,17 @@ public class PaymentSettingService {
      */
     public boolean isPlanChangeEnabled(String instituteId) {
         return readFlag(instituteId, PLAN_CHANGE_ENABLED_KEY);
+    }
+
+    /**
+     * Whether a manual renewal should arm autopay by default for this institute.
+     *
+     * <p>Off unless explicitly enabled. Note what "default" means here: it pre-selects the
+     * choice, it does not remove it -- a learner on a checkout gateway still sees the
+     * checkbox and can clear it.
+     */
+    public boolean isAutopayDefaultOnManualRenewal(String instituteId) {
+        return readFlag(instituteId, AUTOPAY_DEFAULT_ON_RENEWAL_KEY);
     }
 
     /** Reads one boolean out of PAYMENT_SETTING.data. False on anything unexpected. */

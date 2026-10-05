@@ -407,6 +407,16 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
     singleScheduleEnabled: true,
 };
 
+// Per-role actions on the live-class list (Live Sessions page).
+export interface LiveClassActionSettings {
+    // "Delete" in the "…" menu of each card on the Past tab. Deleting a past
+    // class takes its attendance, recordings and feedback out of the list, so it
+    // is role-dependent: ON for ADMIN, OFF for teachers and custom roles. Absent
+    // (every blob saved before this flag) falls through to the role's default,
+    // so read sites must resolve `?? isAdmin`, never `?? true`.
+    allowDeletePastSessions?: boolean;
+}
+
 // Per-role control over which roles this role can see/select in the Team tab —
 // in the role-type filter chips and the "Role Type" dropdown of the Invite
 // User dialog. Keys are role names uppercased (matches backend authorities and
@@ -538,6 +548,27 @@ export interface ListUtmFilterSurfaceControls {
 
 export type ListUtmFilterControls = Partial<
     Record<ListCustomFieldSurface, ListUtmFilterSurfaceControls>
+>;
+
+// The filters a list surface ships with, as opposed to custom fields and UTM
+// dimensions. Admins turn these off when a column means nothing to their
+// institute (no counsellors assigned, one audience, …).
+export type ListBuiltInFilter = 'counsellor' | 'campaignType' | 'audience';
+
+export const LIST_BUILT_IN_FILTERS: readonly ListBuiltInFilter[] = [
+    'counsellor',
+    'campaignType',
+    'audience',
+] as const;
+
+export interface ListBuiltInFilterSurfaceControls {
+    // Filters hidden on this surface. ABSENT or empty = all of them show, which
+    // is what every institute got before this existed.
+    hidden?: ListBuiltInFilter[];
+}
+
+export type ListBuiltInFilterControls = Partial<
+    Record<ListCustomFieldSurface, ListBuiltInFilterSurfaceControls>
 >;
 
 export interface DisplaySettingsData {
@@ -715,6 +746,11 @@ export interface DisplaySettingsData {
     //      filters" popup / Display Settings card as the custom-field filters.
     listUtmFilterControls?: ListUtmFilterControls;
 
+    // 12f) The built-in filters (counsellor, campaign type, audience) per list
+    //      surface. Absent = every one of them shows. Edited from the same
+    //      "Manage filters" popup as 12d and 12e.
+    listBuiltInFilterControls?: ListBuiltInFilterControls;
+
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;
 
@@ -729,6 +765,10 @@ export interface DisplaySettingsData {
     //      scheduling for specific roles even if it's institute-enabled.
     //      Both flags default to true so existing institutes are unaffected.
     liveClassScheduling?: LiveClassSchedulingSettings;
+
+    // 13b-ii) Live class list actions (Past tab delete). See
+    //         LiveClassActionSettings — ON for admin, OFF for other roles.
+    liveClassActions?: LiveClassActionSettings;
 
     // 13c) Team tab role-visibility controls. Restricts which roles the
     //      viewing role can see/select in the Team tab's role-type filter and

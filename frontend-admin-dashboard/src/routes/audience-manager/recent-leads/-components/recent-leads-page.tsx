@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { parseLockedParams, searchSignature } from './pinned-filters';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -8,14 +9,15 @@ import type { TFunction } from 'i18next';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import {
-    DownloadSimple,
-    MagnifyingGlass,
-    X,
-    Flame,
+    CalendarBlank,
     CheckCircle,
     Clock,
+    DownloadSimple,
+    Flame,
+    Folders,
+    MagnifyingGlass,
     Megaphone,
-    CalendarBlank,
+    X,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +35,12 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
+import {
+    buildCampaignTypeFilterOptions,
+    buildDefaultCampaignTypeOptions,
+    filterByCampaignTypes,
+    resolveLeadAudienceIds,
+} from '../../list/-utils/campaign-types';
 import { useCustomFieldSetup } from '../../list/-hooks/useCustomFieldSetup';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
@@ -54,7 +62,10 @@ import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter
 import {
     ManageColumnsPopover,
     useLeadColumnPrefs,
+    useColumnOrderPrefs,
+    orderColumnIds,
     buildLeadColumnToggles,
+    type LeadColumnToggle,
 } from '@/components/shared/leads';
 import {
     ExportColumnPickerDialog,
@@ -94,6 +105,12 @@ import {
     BulkAssignCounsellorDialog,
     type BulkAssignMode,
 } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    WorkedWindowFilter,
+    workedWindowFromIso,
+    WORKED_WINDOW_CUSTOM,
+} from '@/components/shared/leads/worked-window-filter';
+import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
@@ -108,6 +125,7 @@ import {
     ArrowsLeftRight,
     CaretDown,
     CircleNotch,
+    Tag,
     Trash,
     UserMinus,
     UserPlus,
@@ -241,21 +259,46 @@ export const RecentLeadsPage = () => {
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">{t('nav.title')}</h1>);
     }, [setNavHeading, t]);
+
+    // Every sidebar sub-tab points at THIS pathname and differs only in its query
+    // string, so moving between them never unmounts the content — its filter state is
+    // seeded from the URL once and then keeps writing itself back, which overwrote the
+    // tab the user just clicked. Remount on an external navigation so the seeding runs
+    // again; `selfWriteRef` holds the signature the content last wrote, so its own
+    // URL updates are not mistaken for one.
+    const urlSearch = useSearch({ from: '/audience-manager/recent-leads/' });
+    const signature = searchSignature(urlSearch as Record<string, unknown>);
+    const selfWriteRef = useRef(signature);
+    const [entryKey, setEntryKey] = useState(0);
+    useEffect(() => {
+        if (signature === selfWriteRef.current) return;
+        selfWriteRef.current = signature;
+        setEntryKey((k) => k + 1);
+    }, [signature]);
+
     return (
         <StudentSidebarProvider>
-            <RecentLeadsContent />
+            <RecentLeadsContent key={entryKey} selfWriteRef={selfWriteRef} />
         </StudentSidebarProvider>
     );
 };
 
-const RecentLeadsContent = () => {
+const RecentLeadsContent = ({
+    selfWriteRef,
+}: {
+    /** Set to the signature of every search object this component writes, so the
+     *  parent can tell those apart from a sub-tab click. */
+    selfWriteRef: React.MutableRefObject<string>;
+}) => {
     const { t } = useTranslation('audienceManagerRecentLeadsPage');
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
     const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
     const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
     // Institute tier catalog (custom tiers + labels + colours) and the institute's
     // own names for "Tier" / "Lead status".
     const tierCatalog = useLeadTiers();
     const terminology = useLeadTerminology();
+    const term = terminology.campaignType;
     const tierLabels: Record<string, string> = useMemo(
         () => Object.fromEntries(tierCatalog.tiers.map((tier) => [tier.tier_key, tier.label])),
         [tierCatalog.tiers]
@@ -270,6 +313,39 @@ const RecentLeadsContent = () => {
     // effect below writes every change back with replace:true — same pattern
     // as the Follow-ups page (use-follow-ups-view-state.ts).
     const urlSearch = useSearch({ from: '/audience-manager/recent-leads/' });
+    // Filters this ROUTE owns (sidebar sub-tabs bake them into their link). They cannot
+    // be removed, and "Clear all" puts them back to the value the route asked for rather
+    // than dropping them — otherwise an "Untouched Leads" tab quietly becomes "all leads".
+    const lockedParams = useMemo(() => parseLockedParams(urlSearch.lock), [urlSearch.lock]);
+    // Captured once: the component remounts on an external navigation, so the search at
+    // mount IS the tab's intent even after the user has since narrowed things down.
+    const pinnedEntryRef = useRef<Record<string, string | undefined>>({
+        range: urlSearch.range,
+        from: urlSearch.from,
+        to: urlSearch.to,
+        status: urlSearch.status,
+        tier: urlSearch.tier,
+        sla: urlSearch.sla,
+        counsellor: urlSearch.counsellor,
+        audience: urlSearch.audience,
+        campaignType: urlSearch.campaignType,
+        source: urlSearch.source,
+        called: urlSearch.called,
+        calledCount: urlSearch.calledCount,
+        calledWithin: urlSearch.calledWithin,
+        workedWithin: urlSearch.workedWithin,
+        search: urlSearch.search,
+        statusExclude: urlSearch.statusExclude,
+    });
+    const isLocked = (param: string) => lockedParams.has(param as never);
+    /** The route's value for a pinned filter, or the cleared value when it is not pinned. */
+    const clearedOr = (param: string, cleared: string) =>
+        isLocked(param) ? pinnedEntryRef.current[param] ?? cleared : cleared;
+    const clearedOrList = (param: string): string[] => {
+        if (!isLocked(param)) return [];
+        const v = pinnedEntryRef.current[param];
+        return v ? v.split(',').filter(Boolean) : [];
+    };
     const navigate = useNavigate({ from: '/audience-manager/recent-leads/' });
 
     const [page, setPage] = useState(0);
@@ -290,6 +366,35 @@ const RecentLeadsContent = () => {
     const [customFrom, setCustomFrom] = useState(urlSearch.from ?? '');
     const [customTo, setCustomTo] = useState(urlSearch.to ?? '');
     const [customOpen, setCustomOpen] = useState(false);
+    // "Worked in the last …" windows. Rolling, and independent of the submitted-date
+    // range above: a lead submitted 3 months ago that I called this morning belongs in
+    // "called in the last 24h", and the submitted filter can never say so.
+    const [calledWindow, setCalledWindow] = useState(urlSearch.calledWithin ?? '');
+    const [workedWindow, setWorkedWindow] = useState(urlSearch.workedWithin ?? '');
+    // Explicit from–to, only read while the matching window holds WORKED_WINDOW_CUSTOM.
+    const [calledRange, setCalledRange] = useState({
+        from: urlSearch.calledFrom ?? '',
+        to: urlSearch.calledTo ?? '',
+    });
+    const [workedRange, setWorkedRange] = useState({
+        from: urlSearch.workedFrom ?? '',
+        to: urlSearch.workedTo ?? '',
+    });
+    // Recomputed per render on purpose — an absolute instant frozen in state would
+    // silently go stale as the page sits open, so "last 24 hours" would keep meaning
+    // 24 hours before the page loaded rather than 24 hours before now.
+    // A preset is rolling and open-ended at the top; a custom range bounds both ends
+    // by calendar day, exactly like the submitted-date filter beside it.
+    const calledIsCustom = calledWindow === WORKED_WINDOW_CUSTOM;
+    const workedIsCustom = workedWindow === WORKED_WINDOW_CUSTOM;
+    const calledFromIso = calledIsCustom
+        ? startOfDayIso(calledRange.from)
+        : workedWindowFromIso(calledWindow);
+    const calledToIso = calledIsCustom ? endOfDayIso(calledRange.to) : undefined;
+    const workedFromIso = workedIsCustom
+        ? startOfDayIso(workedRange.from)
+        : workedWindowFromIso(workedWindow);
+    const workedToIso = workedIsCustom ? endOfDayIso(workedRange.to) : undefined;
     const appliedRange = useMemo(
         () =>
             rangeDays === CUSTOM_DATE_VALUE
@@ -302,6 +407,11 @@ const RecentLeadsContent = () => {
         urlSearch.audience
             ? urlSearch.audience.split(',').filter((v) => v && v !== ALL_AUDIENCES_VALUE)
             : []
+    );
+    // Campaign-type multi-select — narrows both the audience dropdown and the
+    // leads to audiences of these types. Empty = every type.
+    const [campaignTypeFilters, setCampaignTypeFilters] = useState<string[]>(() =>
+        urlSearch.campaignType ? urlSearch.campaignType.split(',').filter(Boolean) : []
     );
 
     const [searchInput, setSearchInput] = useState(urlSearch.search ?? '');
@@ -322,6 +432,7 @@ const RecentLeadsContent = () => {
     );
     // Lead-status multi-select. Empty = all leads. ALL_ACTIVE / ALL_CONVERTED are
     // exclusive: handleLeadStatusChange enforces mutual exclusion with custom statuses.
+    const [statusExclude, setStatusExclude] = useState(urlSearch.statusExclude === '1');
     const [leadStatusFilters, setLeadStatusFilters] = useState<string[]>(() =>
         urlSearch.status ? urlSearch.status.split(',') : []
     );
@@ -409,40 +520,52 @@ const RecentLeadsContent = () => {
     // tweaks shouldn't pollute browser history). Arrays are serialised as
     // comma-separated strings; empty arrays are omitted so the bare URL stays clean.
     useEffect(() => {
-        void navigate({
-            search: {
-                status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
-                tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
-                sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
-                counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
-                audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
-                search: appliedSearch || undefined,
-                range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
-                from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
-                to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
-                source: sourceFilter || undefined,
-                called: callHistoryFilter || undefined,
-                calledCount: callCountParam ? String(callCountParam) : undefined,
-                utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
-                utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
-                utmCampaign: utmFilters.campaign?.length
-                    ? utmFilters.campaign.join(',')
-                    : undefined,
-                utmContent: utmFilters.content?.length ? utmFilters.content.join(',') : undefined,
-                utmTerm: utmFilters.term?.length ? utmFilters.term.join(',') : undefined,
-                utmChannel: utmFilters.source_type?.length
-                    ? utmFilters.source_type.join(',')
-                    : undefined,
-            },
-            replace: true,
-        });
+        const nextSearch = {
+            // Carried through untouched: the route owns it, not the user.
+            lock: urlSearch.lock || undefined,
+            status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
+            statusExclude: statusExclude ? '1' : undefined,
+            tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+            sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
+            counsellor: counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
+            audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
+            campaignType:
+                campaignTypeFilters.length > 0 ? campaignTypeFilters.join(',') : undefined,
+            search: appliedSearch || undefined,
+            range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
+            from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
+            to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
+            source: sourceFilter || undefined,
+            called: callHistoryFilter || undefined,
+            calledCount: callCountParam ? String(callCountParam) : undefined,
+            calledWithin: calledWindow || undefined,
+            calledFrom: calledIsCustom && calledRange.from ? calledRange.from : undefined,
+            calledTo: calledIsCustom && calledRange.to ? calledRange.to : undefined,
+            workedWithin: workedWindow || undefined,
+            workedFrom: workedIsCustom && workedRange.from ? workedRange.from : undefined,
+            workedTo: workedIsCustom && workedRange.to ? workedRange.to : undefined,
+            utmSource: utmFilters.source?.length ? utmFilters.source.join(',') : undefined,
+            utmMedium: utmFilters.medium?.length ? utmFilters.medium.join(',') : undefined,
+            utmCampaign: utmFilters.campaign?.length ? utmFilters.campaign.join(',') : undefined,
+            utmContent: utmFilters.content?.length ? utmFilters.content.join(',') : undefined,
+            utmTerm: utmFilters.term?.length ? utmFilters.term.join(',') : undefined,
+            utmChannel: utmFilters.source_type?.length
+                ? utmFilters.source_type.join(',')
+                : undefined,
+        };
+        // Record what we are about to write so the parent does not read our own
+        // update back as a sub-tab click and remount us mid-edit.
+        selfWriteRef.current = searchSignature(nextSearch);
+        void navigate({ search: nextSearch, replace: true });
     }, [
         navigate,
         leadStatusFilters,
+        statusExclude,
         tierFilters,
         slaFilters,
         counsellorFilters,
         audienceFilters,
+        campaignTypeFilters,
         appliedSearch,
         rangeDays,
         customFrom,
@@ -450,6 +573,14 @@ const RecentLeadsContent = () => {
         sourceFilter,
         callHistoryFilter,
         callCountParam,
+        calledWindow,
+        workedWindow,
+        urlSearch.lock,
+        selfWriteRef,
+        calledIsCustom,
+        workedIsCustom,
+        calledRange,
+        workedRange,
         utmFilters,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
@@ -469,13 +600,24 @@ const RecentLeadsContent = () => {
 
     // Custom lead-status catalog — drives both the filter dropdown and the
     // editable status chip in the table.
-    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const { statuses: leadStatusCatalog, filterStatuses: leadStatusFilterOptions } =
+        useLeadStatuses();
 
     // Table UI state — column show/hide is persisted per user (localStorage) so
     // the "Manage Column" choice survives reloads and navigation.
     const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
         'crm-lead-columns:recent-leads'
     );
+    // Order is a second, independent preference — Manage Payments already pairs these two
+    // the same way, so the two tables behave identically.
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(
+        'crm-lead-column-order:recent-leads'
+    );
+    /** Reset restores BOTH halves of the layout: what is hidden and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
+    };
 
     const [noteTarget, setNoteTarget] = useState<{
         userId: string;
@@ -490,14 +632,21 @@ const RecentLeadsContent = () => {
 
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
-    const toggleableColumns = useMemo(
+    const naturalColumnToggles = useMemo(
         () =>
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
+                campaignType: terminology.campaignType,
             }),
-        [showOps, showScore, terminology.tier, terminology.leadStatus]
+        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
+    const toggleableColumns = useMemo(() => {
+        const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((t): t is LeadColumnToggle => !!t);
+    }, [naturalColumnToggles, columnOrder]);
 
     const audiencesQuery = useQuery(
         handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
@@ -508,24 +657,70 @@ const RecentLeadsContent = () => {
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
                     name: c.campaign_name || t('filters.audience.untitled'),
+                    campaignType: c.campaign_type,
                 }))
                 .filter((opt) => opt.id !== ''),
         [audiencesQuery.data, t]
     );
+    // Same options as the Lead List's Campaign Type filter: the defaults, then
+    // every other type saved on this institute's audiences.
+    const campaignTypeOptions = useMemo(
+        () =>
+            buildCampaignTypeFilterOptions(buildDefaultCampaignTypeOptions(tCampaignType), [
+                ...audienceOptions.map((opt) => opt.campaignType),
+                ...campaignTypeFilters,
+            ]),
+        [tCampaignType, audienceOptions, campaignTypeFilters]
+    );
+    // Audiences of the picked campaign types — what the audience dropdown offers.
+    const typeAudienceOptions = useMemo(
+        () => filterByCampaignTypes(audienceOptions, campaignTypeFilters),
+        [audienceOptions, campaignTypeFilters]
+    );
+    // The audiences the leads are narrowed to. With no campaign type picked this
+    // is audienceFilters itself, so the request is exactly what it was before the
+    // type filter existed. The 200-row audience fetch above covers every institute
+    // (the largest has ~80 audiences).
+    const resolvedAudienceIds = useMemo(
+        () => resolveLeadAudienceIds(audienceFilters, campaignTypeFilters, audienceOptions),
+        [audienceFilters, campaignTypeFilters, audienceOptions]
+    );
+    // The type → audience mapping needs the audience list, so the leads request
+    // waits for it. Once it is in, null means no audience of these types: skip the
+    // request, because sending no audience ids would mean "all leads". Keyed on
+    // having data, not on status, so a failed background refetch keeps the list
+    // already loaded instead of blanking the leads.
+    const hasAudienceList = audiencesQuery.data !== undefined;
+    const waitingForTypeAudiences = campaignTypeFilters.length > 0 && !hasAudienceList;
+    const noTypeAudiences = !waitingForTypeAudiences && resolvedAudienceIds === null;
+    // An audience list that never loaded can't be mapped to types — show the
+    // error, not "0 leads".
+    const typeAudiencesError =
+        waitingForTypeAudiences && audiencesQuery.isError ? audiencesQuery.error : null;
 
     // Translate the multi-select status filter into the two backend params.
     const specialStatuses = new Set([ALL_STATUSES_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
     const customStatusKeys = leadStatusFilters.filter((v) => !specialStatuses.has(v));
-    const leadStatusId = customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    // The same picks, read the other way round when exclude mode is on. The Active /
+    // Enrolled sentinels are conversion filters, not status keys, so they never invert.
+    const leadStatusId =
+        !statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    const leadStatusExcludeId =
+        statusExclude && customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
+    // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
+    // place they can be seen, and the only way to restore one from the UI.
+    const [showDeleted, setShowDeleted] = useState(false);
+    // The unfiltered "All leads" view hides converted leads only when the institute turned on
+    // LEAD_SETTING.hideConvertedInAllLeads. Picking a specific status (including the
+    // institute's CONVERTED one) and the Deleted view always get every lead.
+    const hideConvertedByDefault =
+        leadSettings.hideConvertedInAllLeads && leadStatusFilters.length === 0 && !showDeleted;
     const conversionFilter: 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED' =
-        leadStatusFilters.includes(ALL_ACTIVE_VALUE)
+        leadStatusFilters.includes(ALL_ACTIVE_VALUE) || hideConvertedByDefault
             ? 'EXCLUDE_CONVERTED'
             : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
               ? 'ONLY_CONVERTED'
               : 'ALL';
-    // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
-    // place they can be seen, and the only way to restore one from the UI.
-    const [showDeleted, setShowDeleted] = useState(false);
     // Undefined (not EXCLUDE_DELETED) when off, so the backend's own default applies and the
     // param stays absent from the normal request.
     const audienceStatusFilter: 'ONLY_DELETED' | undefined = showDeleted
@@ -563,25 +758,34 @@ const RecentLeadsContent = () => {
     // per-campaign query (audience_id, which also honours the source filter);
     // two or more go to the institute-wide query narrowed by audience_ids.
     // Strictly either/or — sending both would be ambiguous server-side.
-    const audienceParams = useMemo(
-        () => ({
-            audience_id: audienceFilters.length === 1 ? audienceFilters[0] : undefined,
-            audience_ids: audienceFilters.length > 1 ? audienceFilters : undefined,
-        }),
-        [audienceFilters]
-    );
+    const audienceParams = useMemo(() => {
+        const ids = resolvedAudienceIds ?? [];
+        return {
+            audience_id: ids.length === 1 ? ids[0] : undefined,
+            audience_ids: ids.length > 1 ? ids : undefined,
+        };
+    }, [resolvedAudienceIds]);
 
-    const { data, isLoading, error } = useQuery({
+    const {
+        data,
+        isLoading: leadsLoading,
+        error,
+    } = useQuery({
         queryKey: [
             'recent-leads',
             instituteId,
             appliedRange.from,
             appliedRange.to,
-            audienceFilters.join(','),
+            (resolvedAudienceIds ?? []).join(','),
+            // Keeps a type with no audiences (request skipped) from reading the
+            // cached unfiltered list, which has the same empty audience ids.
+            campaignTypeFilters.join(','),
             appliedSearch,
             tierFilters.join(','),
             leadStatusFilters.join(','),
             leadStatusId,
+            leadStatusExcludeId,
+            leadStatusExcludeId,
             conversionFilter,
             audienceStatusFilter,
             slaFilters.join(','),
@@ -589,6 +793,14 @@ const RecentLeadsContent = () => {
             sourceFilter,
             callHistoryFilter,
             callCountParam,
+            calledWindow,
+            workedWindow,
+            // The raw yyyy-mm-dd, NOT the derived instants: a preset's instant is
+            // Date.now()-based and would change the key on every single render.
+            calledRange.from,
+            calledRange.to,
+            workedRange.from,
+            workedRange.to,
             customFieldFiltersKey,
             utmFiltersKey,
             page,
@@ -605,6 +817,7 @@ const RecentLeadsContent = () => {
                 search_query: appliedSearch || undefined,
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
+                lead_status_exclude_id: leadStatusExcludeId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -616,6 +829,10 @@ const RecentLeadsContent = () => {
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
+                called_from_local: calledFromIso,
+                called_to_local: calledToIso,
+                activity_from_local: workedFromIso,
+                activity_to_local: workedToIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -625,9 +842,19 @@ const RecentLeadsContent = () => {
                 page,
                 size: pageSize,
             }),
-        enabled: !!instituteId,
+        // Wait for lead settings so the first request already carries the right conversion filter.
+        enabled:
+            !!instituteId &&
+            !leadSettings.isLoading &&
+            !waitingForTypeAudiences &&
+            !noTypeAudiences,
         staleTime: 30 * 1000,
     });
+    // A disabled query is not "loading" in v5, so count the settings and audience-list waits too.
+    const isLoading =
+        leadsLoading ||
+        leadSettings.isLoading ||
+        (waitingForTypeAudiences && audiencesQuery.isPending);
 
     const totalPages = data?.totalPages ?? 0;
     const totalElements = data?.totalElements ?? 0;
@@ -715,6 +942,7 @@ const RecentLeadsContent = () => {
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
     const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
@@ -763,7 +991,7 @@ const RecentLeadsContent = () => {
     // all matching ids in one call, mirroring the paginated query's params.
     const [selectAllLoading, setSelectAllLoading] = useState(false);
     const selectAllAcrossPages = async () => {
-        if (!totalElements) return;
+        if (!totalElements || noTypeAudiences) return;
         try {
             setSelectAllLoading(true);
             const res = await fetchRecentLeads({
@@ -774,6 +1002,7 @@ const RecentLeadsContent = () => {
                 search_query: appliedSearch || undefined,
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
+                lead_status_exclude_id: leadStatusExcludeId,
                 conversion_status_filter: conversionFilter,
                 audience_status_filter: audienceStatusFilter,
                 sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
@@ -785,6 +1014,10 @@ const RecentLeadsContent = () => {
                 source_type: sourceFilter || undefined,
                 call_history_filter: callHistoryFilter || undefined,
                 call_count_value: callCountParam,
+                called_from_local: calledFromIso,
+                called_to_local: calledToIso,
+                activity_from_local: workedFromIso,
+                activity_to_local: workedToIso,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -814,24 +1047,33 @@ const RecentLeadsContent = () => {
 
     // Filters
     const handleClearFilter = () => {
-        setAudienceFilters([]);
-        setSearchInput('');
-        setAppliedSearch('');
-        setTierFilters([]);
-        setLeadStatusFilters([]);
-        setSlaFilters([]);
-        setCounsellorFilters([]);
-        setSourceFilter('');
-        setCallHistoryFilter('');
-        setCallCountValue(DEFAULT_CALL_COUNT);
+        setAudienceFilters(clearedOrList('audience'));
+        setCampaignTypeFilters(clearedOrList('campaignType'));
+        setSearchInput(clearedOr('search', ''));
+        setAppliedSearch(clearedOr('search', ''));
+        setTierFilters(clearedOrList('tier'));
+        setLeadStatusFilters(clearedOrList('status'));
+        setStatusExclude(isLocked('statusExclude') && pinnedEntryRef.current.statusExclude === '1');
+        setSlaFilters(clearedOrList('sla'));
+        setCounsellorFilters(clearedOrList('counsellor'));
+        setSourceFilter(clearedOr('source', ''));
+        setCallHistoryFilter(clearedOr('called', ''));
+        setCallCountValue(
+            isLocked('calledCount') && pinnedEntryRef.current.calledCount
+                ? Number(pinnedEntryRef.current.calledCount)
+                : DEFAULT_CALL_COUNT
+        );
         setCustomFieldFilters({});
         setUtmFilters({});
-        setRangeDays(DEFAULT_RANGE_DAYS);
-        setCustomFrom('');
-        setCustomTo('');
+        setRangeDays(clearedOr('range', DEFAULT_RANGE_DAYS));
+        setCustomFrom(clearedOr('from', ''));
+        setCustomTo(clearedOr('to', ''));
+        setCalledWindow(clearedOr('calledWithin', ''));
+        setWorkedWindow(clearedOr('workedWithin', ''));
         setPage(0);
     };
     const setDateRange = (value: string) => {
+        if (isLocked('range')) return;
         setPage(0);
         setRangeDays(value);
         if (value === CUSTOM_DATE_VALUE) {
@@ -847,6 +1089,7 @@ const RecentLeadsContent = () => {
     };
     const setCounsellor = (values: string[]) => {
         setPage(0);
+        if (isLocked('counsellor')) return;
         setCounsellorFilters(values);
     };
     const setTier = (values: string[]) => {
@@ -878,10 +1121,22 @@ const RecentLeadsContent = () => {
         setPage(0);
         setAudienceFilters(values);
     };
+    // Picked audiences that are not of the new types would be invisible in the
+    // dropdown yet still narrow the leads, so drop them. Only once the audience
+    // list is in — before that every pick would look type-less and be wiped
+    // (resolveLeadAudienceIds still keeps the leads inside the types meanwhile).
+    const handleCampaignTypeChange = (values: string[]) => {
+        setPage(0);
+        setCampaignTypeFilters(values);
+        if (values.length === 0 || !hasAudienceList) return;
+        const keep = new Set(filterByCampaignTypes(audienceOptions, values).map((opt) => opt.id));
+        setAudienceFilters((prev) => prev.filter((id) => keep.has(id)));
+    };
 
     const isFilterActive =
         rangeDays !== DEFAULT_RANGE_DAYS ||
         audienceFilters.length > 0 ||
+        campaignTypeFilters.length > 0 ||
         !!appliedSearch ||
         tierFilters.length > 0 ||
         leadStatusFilters.length > 0 ||
@@ -889,6 +1144,8 @@ const RecentLeadsContent = () => {
         counsellorFilters.length > 0 ||
         !!sourceFilter ||
         !!callHistoryFilter ||
+        !!calledWindow ||
+        !!workedWindow ||
         customFieldFiltersPayload.length > 0 ||
         hasUtmSelection(utmFilters);
 
@@ -908,6 +1165,8 @@ const RecentLeadsContent = () => {
             { key: 'email', label: t('export.columns.email') },
             { key: 'mobile', label: t('export.columns.mobile') },
             { key: 'audience', label: t('export.columns.audience') },
+            { key: 'campaign_type', label: t('export.columns.campaignType', { term }) },
+            { key: 'utm_campaign', label: t('export.columns.utmCampaign') },
         ];
         // Custom-field columns: the institute catalog gives the full pickable
         // set (Recent Leads is cross-campaign, so no single form definition
@@ -943,7 +1202,7 @@ const RecentLeadsContent = () => {
             );
         }
         return cols;
-    }, [showOps, customFieldSetup, data, t]);
+    }, [showOps, customFieldSetup, data, t, term]);
     const exportLeadsCsv = async (leads: RecentLeadDetail[], prefix: string) => {
         if (leads.length === 0) {
             toast.info(t('export.noLeadsToExport'));
@@ -972,6 +1231,10 @@ const RecentLeadsContent = () => {
         if (selectedExportCols.has('email')) baseHeaders.push(t('export.columns.email'));
         if (selectedExportCols.has('mobile')) baseHeaders.push(t('export.columns.mobile'));
         if (selectedExportCols.has('audience')) baseHeaders.push(t('export.columns.audience'));
+        if (selectedExportCols.has('campaign_type'))
+            baseHeaders.push(t('export.columns.campaignType', { term }));
+        if (selectedExportCols.has('utm_campaign'))
+            baseHeaders.push(t('export.columns.utmCampaign'));
         // Custom-field columns. Fields the picker listed follow the user's
         // selection; fields discovered only in the fetched data (not in the
         // catalog / current page when the picker was built) are always
@@ -1030,6 +1293,9 @@ const RecentLeadsContent = () => {
             if (selectedExportCols.has('mobile'))
                 row.push(csvSafe(u.mobile_number || lead.parent_mobile || '-'));
             if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
+            if (selectedExportCols.has('campaign_type'))
+                row.push(csvSafe(lead.campaign_type ?? ''));
+            if (selectedExportCols.has('utm_campaign')) row.push(csvSafe(lead.utm_campaign ?? ''));
             cfFieldIds.forEach((fieldId) => row.push(csvSafe(lead.custom_field_values?.[fieldId])));
             if (showOps) {
                 const cName = userId
@@ -1105,7 +1371,7 @@ const RecentLeadsContent = () => {
     };
 
     const handleExportAll = async () => {
-        if (!instituteId) return;
+        if (!instituteId || noTypeAudiences) return;
         setIsExporting(true);
         try {
             const allLeads: RecentLeadDetail[] = [];
@@ -1120,6 +1386,7 @@ const RecentLeadsContent = () => {
                     search_query: appliedSearch || undefined,
                     lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                     lead_status_id: leadStatusId,
+                    lead_status_exclude_id: leadStatusExcludeId,
                     conversion_status_filter: conversionFilter,
                     audience_status_filter: audienceStatusFilter,
                     sla_filter:
@@ -1132,6 +1399,10 @@ const RecentLeadsContent = () => {
                     source_type: sourceFilter || undefined,
                     call_history_filter: callHistoryFilter || undefined,
                     call_count_value: callCountParam,
+                    called_from_local: calledFromIso,
+                    called_to_local: calledToIso,
+                    activity_from_local: workedFromIso,
+                    activity_to_local: workedToIso,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1153,15 +1424,28 @@ const RecentLeadsContent = () => {
         }
     };
     // Active filter chips
-    const chips: { label: string; onRemove: () => void }[] = [];
+    // `param` names the search key a chip stands for, so a pinned one can render a lock
+    // instead of a remove cross. Chips with no param (custom fields, UTM) are never pinned.
+    const chips: { label: string; onRemove: () => void; param?: string }[] = [];
     if (appliedSearch)
         chips.push({
             label: t('chips.search', { query: appliedSearch }),
+            param: 'search',
             onRemove: () => {
                 setSearchInput('');
                 setAppliedSearch('');
             },
         });
+    if (campaignTypeFilters.length > 0) {
+        const types = campaignTypeFilters.map(
+            (value) => campaignTypeOptions.find((o) => o.value === value)?.label ?? value
+        );
+        chips.push({
+            label: t('chips.campaignType', { term, types: types.join(', ') }),
+            onRemove: () => handleCampaignTypeChange([]),
+            param: 'campaignType',
+        });
+    }
     if (audienceFilters.length > 0) {
         const names = audienceFilters.map(
             (id) => audienceOptions.find((o) => o.id === id)?.name ?? t('chips.fallbackSelected')
@@ -1169,6 +1453,7 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.audience', { names: names.join(', ') }),
             onRemove: () => handleAudienceChange([]),
+            param: 'audience',
         });
     }
     if (tierFilters.length > 0)
@@ -1177,6 +1462,7 @@ const RecentLeadsContent = () => {
                 tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', '),
             }),
             onRemove: () => setTierFilters([]),
+            param: 'tier',
         });
     if (leadStatusFilters.length > 0) {
         const statusLabels = leadStatusFilters.map((v) => {
@@ -1185,8 +1471,11 @@ const RecentLeadsContent = () => {
             return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
         });
         chips.push({
-            label: t('chips.status', { statuses: statusLabels.join(', ') }),
+            label: statusExclude
+                ? t('chips.statusExcluded', { statuses: statusLabels.join(', ') })
+                : t('chips.status', { statuses: statusLabels.join(', ') }),
             onRemove: () => setLeadStatusFilters([]),
+            param: 'status',
         });
     }
     if (slaFilters.length > 0)
@@ -1197,6 +1486,7 @@ const RecentLeadsContent = () => {
                     .join(', '),
             }),
             onRemove: () => setSlaFilters([]),
+            param: 'sla',
         });
     if (counsellorFilters.length > 0) {
         const cLabels = counsellorFilters.map((id) =>
@@ -1208,11 +1498,13 @@ const RecentLeadsContent = () => {
         chips.push({
             label: t('chips.counsellor', { names: cLabels.join(', ') }),
             onRemove: () => setCounsellorFilters([]),
+            param: 'counsellor',
         });
     }
     if (sourceFilter)
         chips.push({
             label: t('chips.source', { source: sourceFilter }),
+            param: 'source',
             onRemove: () => {
                 setPage(0);
                 setSourceFilter('');
@@ -1250,6 +1542,56 @@ const RecentLeadsContent = () => {
             });
         });
     });
+    // Worked-window chips reuse the date-range preset labels ("Last 7 days"), so the
+    // two windows read the same way even though one is rolling and one is calendar-day.
+    const workedWindowLabel = (hours: string): string => {
+        const days = Number(hours) / 24;
+        if (days === 1) return t('dateRangeOptions.last24Hours');
+        if (days === 7) return t('dateRangeOptions.last7Days');
+        if (days === 15) return t('dateRangeOptions.last15Days');
+        if (days === 30) return t('dateRangeOptions.last30Days');
+        return t('chips.dateRangeFallback');
+    };
+    // A custom window reads out its own dates; without both it is not applied yet,
+    // so the chip says so rather than claiming a filter that is doing nothing.
+    const windowChipLabel = (window: string, range: { from: string; to: string }): string => {
+        if (window !== WORKED_WINDOW_CUSTOM) return workedWindowLabel(window);
+        return range.from && range.to
+            ? t('chips.dateRangeCustomWithDates', { from: range.from, to: range.to })
+            : t('chips.dateRangeCustomFallback');
+    };
+    const customRangeLabels = {
+        setDates: t('filters.customDate.setDates'),
+        from: t('filters.customDate.from'),
+        to: t('filters.customDate.to'),
+        done: t('filters.customDate.done'),
+    };
+    if (calledWindow) {
+        chips.push({
+            label: t('chips.calledWithin', {
+                window: windowChipLabel(calledWindow, calledRange),
+            }),
+            param: 'calledWithin',
+            onRemove: () => {
+                setCalledWindow('');
+                setCalledRange({ from: '', to: '' });
+                setPage(0);
+            },
+        });
+    }
+    if (workedWindow) {
+        chips.push({
+            label: t('chips.workedWithin', {
+                window: windowChipLabel(workedWindow, workedRange),
+            }),
+            param: 'workedWithin',
+            onRemove: () => {
+                setWorkedWindow('');
+                setWorkedRange({ from: '', to: '' });
+                setPage(0);
+            },
+        });
+    }
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {
@@ -1264,6 +1606,7 @@ const RecentLeadsContent = () => {
         }
         chips.push({
             label,
+            param: 'range',
             onRemove: () => {
                 setRangeDays(DEFAULT_RANGE_DAYS);
                 setCustomFrom('');
@@ -1271,6 +1614,11 @@ const RecentLeadsContent = () => {
             },
         });
     }
+
+    // Pinned filters are the sub-tab's identity, not something the user picked: the tab's
+    // own label already says what it narrows to, and rendering them chipped the whole row
+    // (one I2CAN tab pins nine statuses). They stay applied, they just stop shouting.
+    const visibleChips = chips.filter((c) => !(c.param && isLocked(c.param)));
 
     return (
         <div className="flex w-full flex-col gap-4">
@@ -1300,6 +1648,7 @@ const RecentLeadsContent = () => {
                             }))}
                             selected={tierFilters}
                             onChange={setTier}
+                            locked={isLocked('tier')}
                             widthClass="w-36"
                         />
                     )}
@@ -1308,18 +1657,33 @@ const RecentLeadsContent = () => {
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            {
-                                value: ALL_CONVERTED_VALUE,
-                                label: t('filters.leadStatus.converted'),
-                            },
-                            ...leadStatusCatalog.map((s) => ({
+                            // Built-in, not a catalog row — it filters on conversion_status,
+                            // so it has its own switch in Lead Settings.
+                            ...(leadSettings.showConvertedFilterOption
+                                ? [
+                                      {
+                                          value: ALL_CONVERTED_VALUE,
+                                          label: t('filters.leadStatus.converted'),
+                                      },
+                                  ]
+                                : []),
+                            ...leadStatusFilterOptions.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
                             })),
                         ]}
                         selected={leadStatusFilters}
                         onChange={handleLeadStatusChange}
+                        locked={isLocked('status')}
                         widthClass="w-44"
+                        exclude={{
+                            value: statusExclude,
+                            onChange: (next) => {
+                                setStatusExclude(next);
+                                setPage(0);
+                            },
+                            label: t('filters.leadStatus.excludeSelected'),
+                        }}
                     />
                     {showOps && (
                         <MultiSelectFilter
@@ -1330,6 +1694,7 @@ const RecentLeadsContent = () => {
                                 .map((o) => ({ value: o.value, label: o.label }))}
                             selected={slaFilters}
                             onChange={setSla}
+                            locked={isLocked('sla')}
                             widthClass="w-44"
                         />
                     )}
@@ -1343,14 +1708,24 @@ const RecentLeadsContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label={t('filters.audience.label')}
+                        label={t('filters.campaignType.label', { term })}
+                        icon={<Folders className="size-4 shrink-0 text-neutral-400" />}
+                        options={campaignTypeOptions}
+                        selected={campaignTypeFilters}
+                        onChange={handleCampaignTypeChange}
+                        locked={isLocked('campaignType')}
+                        widthClass="w-48"
+                    />
+                    <MultiSelectFilter
+                        label={t('filters.audience.label', { term: terminology.leadSource })}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
-                        options={audienceOptions.map((opt) => ({
+                        options={typeAudienceOptions.map((opt) => ({
                             value: opt.id,
                             label: opt.name,
                         }))}
                         selected={audienceFilters}
                         onChange={handleAudienceChange}
+                        locked={isLocked('audience')}
                         widthClass="w-44"
                     />
                     <CallHistoryFilter
@@ -1363,6 +1738,52 @@ const RecentLeadsContent = () => {
                         onCountChange={(n) => {
                             setCallCountValue(n);
                             setPage(0);
+                        }}
+                    />
+                    <WorkedWindowFilter
+                        kind="CALLED"
+                        value={calledWindow}
+                        onValueChange={(v) => {
+                            setCalledWindow(v);
+                            setPage(0);
+                        }}
+                        labels={{
+                            anyLabel: t('filters.calledWithin.any'),
+                            placeholder: t('filters.calledWithin.placeholder'),
+                            optionLabel: (hours) => workedWindowLabel(String(hours)),
+                            customLabel: t('dateRangeOptions.customRange'),
+                        }}
+                        custom={{
+                            from: calledRange.from,
+                            to: calledRange.to,
+                            onChange: (from, to) => {
+                                setCalledRange({ from, to });
+                                setPage(0);
+                            },
+                            labels: customRangeLabels,
+                        }}
+                    />
+                    <WorkedWindowFilter
+                        kind="ACTIVITY"
+                        value={workedWindow}
+                        onValueChange={(v) => {
+                            setWorkedWindow(v);
+                            setPage(0);
+                        }}
+                        labels={{
+                            anyLabel: t('filters.workedWithin.any'),
+                            placeholder: t('filters.workedWithin.placeholder'),
+                            optionLabel: (hours) => workedWindowLabel(String(hours)),
+                            customLabel: t('dateRangeOptions.customRange'),
+                        }}
+                        custom={{
+                            from: workedRange.from,
+                            to: workedRange.to,
+                            onChange: (from, to) => {
+                                setWorkedRange({ from, to });
+                                setPage(0);
+                            },
+                            labels: customRangeLabels,
                         }}
                     />
                     {filterCustomFields.map((f) =>
@@ -1393,7 +1814,11 @@ const RecentLeadsContent = () => {
                         onChange={setUtmFilter}
                     />
                     <ManageListFiltersLink surface="LEADS" />
-                    <Select value={rangeDays} onValueChange={setDateRange}>
+                    <Select
+                        value={rangeDays}
+                        onValueChange={setDateRange}
+                        disabled={isLocked('range')}
+                    >
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
                             <SelectValue />
@@ -1490,7 +1915,8 @@ const RecentLeadsContent = () => {
                         columns={toggleableColumns}
                         hiddenColumns={hiddenColumns}
                         onToggle={toggleColumn}
-                        onReset={resetColumns}
+                        onReset={handleResetColumns}
+                        onReorder={setColumnOrder}
                     />
                     <Button
                         size="sm"
@@ -1509,9 +1935,9 @@ const RecentLeadsContent = () => {
             </div>
 
             {/* Active filter chips */}
-            {chips.length > 0 && (
+            {visibleChips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {chips.map((chip, i) => (
+                    {visibleChips.map((chip, i) => (
                         <span
                             key={i}
                             className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600"
@@ -1624,6 +2050,14 @@ const RecentLeadsContent = () => {
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Not admin-gated, unlike delete/move below:
+                                        // changing status is a counsellor's normal daily
+                                        // action and the single-row chip already allows it.
+                                        {
+                                            label: t('bulk.changeStatus'),
+                                            value: 'status',
+                                            icon: <Tag className="size-4" />,
+                                        },
                                         // Delete/restore are admin-only, matching the endpoints'
                                         // own check. In the deleted-leads view the only sensible
                                         // action is putting them back.
@@ -1660,6 +2094,10 @@ const RecentLeadsContent = () => {
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'status') {
+                                            setBulkStatusOpen(true);
+                                            return;
+                                        }
                                         if (value === 'migrate') {
                                             setBulkMigrateOpen(true);
                                             return;
@@ -1686,7 +2124,7 @@ const RecentLeadsContent = () => {
                             </div>
                         </div>
                     )}
-                    {error ? (
+                    {error || typeAudiencesError ? (
                         <LeadEmptyState
                             title={t('emptyState.errorTitle')}
                             description={t('emptyState.errorDescription')}
@@ -1704,6 +2142,7 @@ const RecentLeadsContent = () => {
                             alwaysShowActions
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            columnOrder={columnOrder}
                             selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
@@ -1734,6 +2173,20 @@ const RecentLeadsContent = () => {
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <BulkLeadStatusDialog
+                    open={bulkStatusOpen}
+                    onOpenChange={setBulkStatusOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    statuses={leadStatusCatalog}
+                    onSuccess={(result) => {
+                        // Keep the selection when nothing moved — the admin probably
+                        // wants to pick a different status rather than reselect.
+                        if (result.updated > 0) setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 <DeleteLeadsDialog

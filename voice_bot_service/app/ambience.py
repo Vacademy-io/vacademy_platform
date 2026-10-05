@@ -141,13 +141,19 @@ class AmbienceDucker(FrameProcessor):
             except Exception:
                 logger.debug("ambience: drift update failed", exc_info=True)
 
-    def _stop_drift(self):
+    async def _stop_drift(self):
+        # pipecat 1.4's cancel_task is a COROUTINE. Called without await it did
+        # nothing, so the drift loop outlived every call — and through this
+        # processor's links it kept the call's whole pipeline alive (VAD + Smart
+        # Turn ONNX sessions included): ~30-50 MB per call, never freed, and the
+        # Mumbai box was OOM-killed 20 times between 2026-09-15 and 09-30.
         task, self._drift_task = self._drift_task, None
         if task is not None:
+            task.cancel()                   # at once, even if the await below fails
             try:
-                self.cancel_task(task)
+                await self.cancel_task(task)
             except Exception:
-                task.cancel()
+                pass
 
     # -- frames --------------------------------------------------------------
 
@@ -162,7 +168,7 @@ class AmbienceDucker(FrameProcessor):
             return
 
         if isinstance(frame, (EndFrame, CancelFrame)):
-            self._stop_drift()
+            await self._stop_drift()
             await self.push_frame(frame, direction)
             return
 

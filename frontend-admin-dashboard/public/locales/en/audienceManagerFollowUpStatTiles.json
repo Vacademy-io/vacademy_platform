@@ -14,7 +14,11 @@
         },
         "all": {
             "label": "All",
-            "caption": "All follow-ups"
+            "caption": "All pending"
+        },
+        "completed": {
+            "label": "Completed",
+            "caption": "Already done"
         }
     }
 }

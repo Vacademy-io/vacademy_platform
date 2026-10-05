@@ -58,6 +58,34 @@ public interface StudentSessionInstituteGroupMappingRepository
                                             @Param("instituteId") String instituteId,
                                             @Param("statuses") List<String> statuses);
 
+  /**
+   * Every (learner, batch) enrolment in the given batches: one row per pair, so a
+   * learner in two of the batches comes back twice. Used by assessment_service's
+   * Assessment Dashboard to build each assessment's audience from its assigned batches.
+   *
+   * <p>Same access path as {@link #findEnrolledLearnersByPackageSessions}; the DISTINCT ON
+   * only removes duplicate mapping rows for the same pair (and duplicate student rows).
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id, ssigm.package_session_id)
+             ssigm.user_id AS userId,
+             ssigm.package_session_id AS packageSessionId,
+             CAST(ssigm.enrolled_date AS varchar) AS enrolledDate,
+             s.full_name AS fullName,
+             s.email AS email,
+             s.mobile_number AS mobileNumber
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id, ssigm.enrolled_date
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrollmentRowDto>
+      findEnrollmentRowsByPackageSessions(@Param("psIds") List<String> psIds,
+                                          @Param("instituteId") String instituteId,
+                                          @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,                 -- Index 0
@@ -79,11 +107,27 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("statuses") List<String> statuses);
 
   /**
-   * Learners whose next autopay charge lands exactly N days from today (UTC date
-   * math — the renewal sweep charges on the UTC date of next_charge_at). Only
-   * ACTIVE plans with autopay still enabled are returned, so learners who
-   * already cancelled are naturally excluded. charge_date_label is preformatted
-   * for messages ("11 Aug 2026").
+   * Learners whose next autopay charge lands exactly N days from today, counted in the
+   * INVITE'S OWN timezone (AUTOPAY_SETTING.TRIAL_TIMEZONE, falling back to UTC when an
+   * invite sets none, which preserves the previous behaviour for institutes that do not).
+   *
+   * <p>It used to compare {@code CAST(next_charge_at AS date)} against {@code CURRENT_DATE},
+   * both of which resolve in the database session timezone -- UTC on the pods. A charge due
+   * at IST midnight is stored 18:30 UTC the PREVIOUS day, so it cast to the previous date
+   * and the notice went out a day early; a charge stored mid-day cast to the same date
+   * either way and went out correctly. 20 SuchBliss plans sit on the midnight boundary and
+   * the rest do not, which is exactly why the timing looked arbitrary rather than broken.
+   *
+   * <p>The timezone is read with {@code jsonb_extract_path_text(cast(... as jsonb), ...)} and
+   * NOT with {@code ::jsonb #>>}: Hibernate parses {@code :} in a native query as a named
+   * parameter and strips one colon from {@code ::}, so the statement reaching Postgres said
+   * {@code setting_json:jsonb} and failed with "syntax error at or near :". The cast function
+   * form has no colons to mangle.
+   *
+   * <p>Only ACTIVE plans with autopay still enabled are returned, so learners who already
+   * cancelled are naturally excluded. charge_date_label is preformatted for messages
+   * ("11 Aug 2026") and is likewise rendered in the invite's zone, so the date a learner
+   * reads matches the date they are charged.
    */
   @Query(value = """
       SELECT DISTINCT ON (up.id)
@@ -94,16 +138,26 @@ public interface StudentSessionInstituteGroupMappingRepository
           s.username AS username,
           up.next_charge_at AS next_charge_at,
           up.end_date AS end_date,
-          to_char(up.next_charge_at, 'DD Mon YYYY') AS charge_date_label
+          to_char(up.next_charge_at AT TIME ZONE 'UTC'
+                  AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC'),
+                  'DD Mon YYYY') AS charge_date_label
       FROM user_plan up
       JOIN student_session_institute_group_mapping ssigm
         ON ssigm.user_plan_id = up.id AND ssigm.status = 'ACTIVE'
       JOIN student s ON s.user_id = up.user_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
       WHERE ssigm.package_session_id IN (:psIds)
         AND up.status = 'ACTIVE'
         AND up.auto_renewal_enabled = true
         AND up.next_charge_at IS NOT NULL
-        AND CAST(up.next_charge_at AS date) = CURRENT_DATE + CAST(:daysAhead AS int)
+        AND CAST(up.next_charge_at AT TIME ZONE 'UTC'
+                 AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
+                 AS date)
+            = CAST(now() AT TIME ZONE coalesce(jsonb_extract_path_text(cast(ei.setting_json as jsonb),
+                                        'setting', 'AUTOPAY_SETTING', 'TRIAL_TIMEZONE'), 'UTC')
+                   AS date) + CAST(:daysAhead AS int)
       ORDER BY up.id
       """, nativeQuery = true)
   List<Object[]> findUpcomingAutopayCharges(
@@ -572,6 +626,14 @@ public interface StudentSessionInstituteGroupMappingRepository
   List<Object[]> findAdminsBySubOrg(@Param("subOrgId") String subOrgId);
 
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
+
+  /**
+   * Whether this plan EVER carried an enrolment, in any status (ACTIVE, INACTIVE, DELETED).
+   * Distinguishes a real membership from an abandoned checkout: the self-service renewal
+   * surface uses it to refuse "pay to continue" on a plan row that was never a membership
+   * (see SubscriptionService.everWasAMembership).
+   */
+  boolean existsByUserPlanId(String userPlanId);
 
   long countByPackageSessionIdAndStatus(String packageSessionId, String status);
 

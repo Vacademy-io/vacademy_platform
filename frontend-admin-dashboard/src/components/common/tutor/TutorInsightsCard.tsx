@@ -18,11 +18,29 @@ import {
     type TutorInsights,
     type TutorInsightsSheet,
 } from '@/services/tutor';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const ALL = '__all__';
 
 const fmtScore = (v: number | null) =>
     v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
+
+// Activeness is 0-100 (camera opt-in); "—" when the learner never turned it on.
+const fmtActiveness = (v: number | null | undefined, sessions?: number) =>
+    v === null || v === undefined ? '—' : `${Math.round(v)}${sessions ? ` (${sessions})` : ''}`;
+
+const activenessTone = (v: number | null | undefined) =>
+    v === null || v === undefined
+        ? 'text-neutral-400'
+        : v >= 70
+          ? 'text-success-700'
+          : v >= 40
+            ? 'text-warning-700'
+            : 'text-danger-600';
 
 const SHEETS: Array<{ key: TutorInsightsSheet; label: string }> = [
     { key: 'learners', label: 'Learners CSV' },
@@ -42,6 +60,8 @@ const SHEETS: Array<{ key: TutorInsightsSheet; label: string }> = [
 export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId }) => {
     const { i18n } = useTranslation();
     const instituteWide = !packageId;
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
     const [course, setCourse] = useState<string>(ALL);
     const [batch, setBatch] = useState<string>(ALL);
     const [days, setDays] = useState<number>(90);
@@ -118,7 +138,7 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                 <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                     <ChartBar className="size-5 text-primary-500" />
                     {instituteWide
-                        ? 'What the AI teacher learned across courses'
+                        ? `What the AI teacher learned across ${coursesTerm.toLocaleLowerCase()}`
                         : 'What the AI teacher learned'}
                     {loading && <CircleNotch className="size-4 animate-spin text-neutral-400" />}
                     <span className="ms-auto flex flex-wrap items-center gap-2 text-sm font-normal">
@@ -134,7 +154,9 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value={ALL}>All courses</SelectItem>
+                                    <SelectItem value={ALL}>
+                                        All {coursesTerm.toLocaleLowerCase()}
+                                    </SelectItem>
                                     {courses.map((c) => (
                                         <SelectItem key={c.package_id} value={c.package_id}>
                                             {c.name} ({c.sessions})
@@ -182,8 +204,8 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                 <p className="text-sm text-neutral-500">
                     Every lesson records each answer, the concepts a learner struggled with, the
                     misconceptions the teacher heard, and the teacher&apos;s own note about the
-                    learner. Use this to see where a course needs a better explanation and which
-                    learners need a human.
+                    learner. Use this to see where a {courseTerm.toLocaleLowerCase()} needs a better
+                    explanation and which learners need a human.
                 </p>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                     {SHEETS.filter((s) => instituteWide || s.key !== 'courses').map((s) => (
@@ -201,7 +223,7 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                             ) : (
                                 <DownloadSimple className="size-4" />
                             )}
-                            {s.label}
+                            {s.key === 'courses' ? `${coursesTerm} CSV` : s.label}
                         </MyButton>
                     ))}
                 </div>
@@ -215,14 +237,20 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                 {totals && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                         {[
-                            ['Courses', totals.courses],
+                            [coursesTerm, totals.courses],
                             ['Lessons', totals.sessions],
                             ['Learners', totals.learners],
                             ['Minutes', totals.minutes],
                             ['Voice lessons', totals.voice_sessions],
                             ['Left mid-way', totals.abandoned],
+                            ['Avg activeness', fmtActiveness(totals.activeness)],
                         ]
-                            .filter(([label]) => instituteWide || label !== 'Courses')
+                            .filter(([label]) => instituteWide || label !== coursesTerm)
+                            .filter(
+                                ([label]) =>
+                                    label !== 'Avg activeness' ||
+                                    (totals.activeness_sessions ?? 0) > 0
+                            )
                             .map(([label, value]) => (
                                 <div
                                     key={String(label)}
@@ -241,7 +269,9 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
 
                 {instituteWide && (
                     <div>
-                        <h4 className="mb-2 text-sm font-semibold text-neutral-800">Courses</h4>
+                        <h4 className="mb-2 text-sm font-semibold text-neutral-800">
+                            {coursesTerm}
+                        </h4>
                         {!loading && (data?.courses.length ?? 0) === 0 && (
                             <p className="text-sm text-neutral-500">
                                 No tutor lessons in this period.
@@ -252,12 +282,18 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
-                                            <th className="py-2 pe-3 text-start">Course</th>
+                                            <th className="py-2 pe-3 text-start">{courseTerm}</th>
                                             <th className="py-2 pe-3 text-end">Lessons</th>
                                             <th className="py-2 pe-3 text-end">Learners</th>
                                             <th className="py-2 pe-3 text-end">Minutes</th>
                                             <th className="py-2 pe-3 text-end">Answers</th>
                                             <th className="py-2 pe-3 text-end">Avg score</th>
+                                            <th
+                                                className="py-2 pe-3 text-end"
+                                                title="Average activeness (0-100) in lessons where the learner turned the camera on; lessons counted in brackets"
+                                            >
+                                                Activeness
+                                            </th>
                                             <th className="py-2 pe-3 text-end">Weak</th>
                                             <th className="py-2 pe-3 text-end">Last lesson</th>
                                         </tr>
@@ -286,6 +322,14 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                                 <td className="py-2 pe-3 text-end">{c.attempts}</td>
                                                 <td className="py-2 pe-3 text-end">
                                                     {fmtScore(c.avg_score)}
+                                                </td>
+                                                <td
+                                                    className={`py-2 pe-3 text-end ${activenessTone(c.activeness)}`}
+                                                >
+                                                    {fmtActiveness(
+                                                        c.activeness,
+                                                        c.activeness_sessions
+                                                    )}
                                                 </td>
                                                 <td className="py-2 pe-3 text-end">
                                                     {c.weak_attempts > 0 ? (
@@ -323,7 +367,7 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                         <th className="py-2 pe-3 text-start">Concept</th>
                                         <th className="py-2 pe-3 text-start">
                                             {instituteWide
-                                                ? 'Course · slide · board'
+                                                ? `${courseTerm} · slide · board`
                                                 : 'Slide · board'}
                                         </th>
                                         <th className="py-2 pe-3 text-end">Learners weak</th>
@@ -398,12 +442,18 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                     <tr className="border-b border-neutral-200 text-xs uppercase tracking-wide text-neutral-500">
                                         <th className="py-2 pe-3 text-start">Learner</th>
                                         {instituteWide && (
-                                            <th className="py-2 pe-3 text-end">Courses</th>
+                                            <th className="py-2 pe-3 text-end">{coursesTerm}</th>
                                         )}
                                         <th className="py-2 pe-3 text-end">Lessons</th>
                                         <th className="py-2 pe-3 text-end">Minutes</th>
                                         <th className="py-2 pe-3 text-end">Answers</th>
                                         <th className="py-2 pe-3 text-end">Avg score</th>
+                                        <th
+                                            className="py-2 pe-3 text-end"
+                                            title="Average activeness (0-100) in lessons where the learner turned the camera on; lessons counted in brackets"
+                                        >
+                                            Activeness
+                                        </th>
                                         <th className="py-2 pe-3 text-end">Weak</th>
                                         <th className="py-2 pe-3 text-end">Last lesson</th>
                                     </tr>
@@ -435,6 +485,11 @@ export const TutorInsightsCard: React.FC<{ packageId?: string }> = ({ packageId 
                                             <td className="py-2 pe-3 text-end">{l.attempts}</td>
                                             <td className="py-2 pe-3 text-end">
                                                 {fmtScore(l.avg_score)}
+                                            </td>
+                                            <td
+                                                className={`py-2 pe-3 text-end ${activenessTone(l.activeness)}`}
+                                            >
+                                                {fmtActiveness(l.activeness, l.activeness_sessions)}
                                             </td>
                                             <td className="py-2 pe-3 text-end">
                                                 {l.weak_attempts > 0 ? (

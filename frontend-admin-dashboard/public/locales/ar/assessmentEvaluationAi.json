@@ -82,7 +82,17 @@
         "pendingStatus": "قيد الانتظار",
         "failedGradeMessage": "تعذر على الذكاء الاصطناعي تقييم هذا السؤال — يحتاج إلى مراجعتك",
         "editedBadge": "معدَّل",
-        "needsReviewBadge": "يحتاج إلى مراجعة"
+        "needsReviewBadge": "يحتاج إلى مراجعة",
+        "reviewMeta": {
+            "reviewedViaApiBy": "تمت المراجعة عبر API بواسطة {{reviewer}}",
+            "reviewedViaApi": "تمت المراجعة عبر API",
+            "reviewedBy": "تمت المراجعة بواسطة {{reviewer}}",
+            "reviewed": "تمت المراجعة",
+            "approvedViaApiBy": "تم الاعتماد عبر API بواسطة {{reviewer}}",
+            "approvedViaApi": "تم الاعتماد عبر API",
+            "approvedBy": "تم الاعتماد بواسطة {{reviewer}}",
+            "approved": "تم الاعتماد"
+        }
     },
     "teacherReview": {
         "failedTitle": "لم يتم تقييم هذا السؤال تلقائيًا.",

@@ -38,20 +38,32 @@
         "leadStatus": {
             "label": "جميع العملاء المحتملين",
             "active": "نشط (غير مسجَّل)",
-            "converted": "مسجَّل / محوَّل"
+            "converted": "مسجَّل / محوَّل",
+            "excludeSelected": "استبعاد المحدد"
         },
         "sla": {
             "label": "جميع حالات SLA"
         },
         "audience": {
-            "label": "جميع الجماهير",
+            "label": "كل {{term}}",
             "untitled": "جمهور بلا عنوان"
+        },
+        "campaignType": {
+            "label": "كل {{term}}"
         },
         "customDate": {
             "setDates": "تحديد التواريخ",
             "done": "تم",
             "from": "من",
             "to": "إلى"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -66,6 +78,7 @@
     "chips": {
         "search": "بحث: {{query}}",
         "audience": "الجمهور: {{names}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "المستوى: {{tiers}}",
         "status": "الحالة: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -81,7 +94,11 @@
         "statusConverted": "محوَّل",
         "unassigned": "غير مُسنَد",
         "removeAriaLabel": "إزالة {{label}}",
-        "clearAll": "مسح الكل"
+        "clearAll": "مسح الكل",
+        "calledWithin": null,
+        "workedWithin": null,
+        "pinnedTitle": "مثبَّت بواسطة هذا التبويب — لا يمكن إزالته من هنا",
+        "statusExcluded": "الحالة ليست: {{statuses}}"
     },
     "search": {
         "placeholder": "البحث عن العملاء المحتملين",
@@ -113,7 +130,8 @@
         "assignLeads": "إسناد العملاء المحتملين",
         "unassignLeads": "إلغاء إسناد العملاء المحتملين",
         "restoreLeads": "استعادة العملاء المحتملين",
-        "deleteLeads": "حذف العملاء المحتملين"
+        "deleteLeads": "حذف العملاء المحتملين",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "تعذّر تحميل العملاء المحتملين",
@@ -132,11 +150,13 @@
             "email": "البريد الإلكتروني",
             "mobile": "الجوال",
             "audience": "الجمهور",
+            "campaignType": "{{term}}",
             "leadStatus": "حالة العميل المحتمل",
             "counsellor": "المستشار",
             "activityNotes": "النشاط والملاحظات",
             "notesCount": "عدد الملاحظات",
-            "leadJourney": "رحلة العميل المحتمل (التصرف والملاحظات)"
+            "leadJourney": "رحلة العميل المحتمل (التصرف والملاحظات)",
+            "utmCampaign": "حملة UTM"
         },
         "notes": {
             "defaultTitle": "ملاحظة",
@@ -160,6 +180,12 @@
         "leadRestored_many": "تمت استعادة {{count}} عميلاً محتملاً",
         "leadRestored_other": "تمت استعادة {{count}} عميل محتمل",
         "restoreFailed": "فشلت الاستعادة. حاول مرة أخرى.",
-        "selectAllFailed": "فشل تحديد جميع العملاء المحتملين"
+        "selectAllFailed": "فشل تحديد جميع العملاء المحتملين",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

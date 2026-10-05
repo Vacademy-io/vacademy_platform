@@ -47,6 +47,15 @@ const buildActionTakenLabels = (t: TFunction): Record<string, string> => ({
     NONE: t('table.emptyValue'),
 });
 
+/**
+ * The backend reports an invite whose payment option has no plan as
+ * "Config resolution failed: No active PaymentPlan found for PaymentOption=<uuid>",
+ * which tells nobody what to do about it. Everything else is passed through untouched
+ * rather than guessed at.
+ */
+const explainFailure = (message: string, tr: (k: string) => string): string =>
+    /No active PaymentPlan found/i.test(message) ? tr('noPlanConfigured') : message;
+
 export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props) => {
     const { t } = useTranslation('manageStudentsStep4Preview');
     const { summary, results } = previewResponse;
@@ -236,12 +245,13 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                                 </span>
                                                 {r.message && (
                                                     <span className="text-neutral-400">
-                                                        {r.message}
+                                                        {explainFailure(r.message, t)}
                                                     </span>
                                                 )}
                                             </div>
                                         ) : (
-                                            r.message || emptyValue
+                                            (r.message && explainFailure(r.message, t)) ||
+                                            emptyValue
                                         )}
                                     </td>
                                 </tr>

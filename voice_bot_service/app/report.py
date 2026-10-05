@@ -622,6 +622,7 @@ def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
         if outcome.crashed:
             d.crash = getattr(outcome, "crash_detail", None) or "pipeline_error"
         d.machine_markers = _machine_markers(outcome)
+        d.person_turns = _person_turns(outcome)
         d.opening_replays, d.repeated_lines, d.repeated_line_samples = _played_invariants(outcome)
         payload = diagnostics.to_payload(d)
         _alert(outcome, payload)
@@ -724,6 +725,66 @@ def _machine_markers(outcome: CallOutcome) -> List[str]:
             if m in low and m not in hits:
                 hits.append(m)
     return hits
+
+
+def _person_turns(outcome: CallOutcome) -> int:
+    """How many times a PERSON answered the bot after the machine greeting.
+
+    A marker says a recording spoke first, not that nobody came after it. A
+    call screener answers, then the person picks up and talks: live calls
+    b5b43ae1 (the father, 2:41, 18 turns, Interested_Follow_Up_Needed) and
+    34452119 (the mother, 2:14, Quiz_Link_Sent) both opened with Google's "If
+    you record your name and reason for calling…" and were both flagged AMBER
+    "Probably an answering machine" on 2026-10-02.
+
+    Counted per EXCHANGE: the caller turns between two bot turns count once,
+    when one of them is past the greeting (after the last marker in the window
+    _machine_markers reads), is not itself the machine (marker, carrier
+    phrase, screener hold), carries a word beyond a greeting or a bare yes
+    (the _has_substance test, per turn) and was not counted before. Once per
+    exchange is what a recording cannot fake: it plays its fragments in a row
+    whatever we say, so however many land they are one exchange per bot turn,
+    while a person answers each of ours. Per exchange and not "the turn right
+    after ours", because people say "हाँ।" and then the answer as two finals
+    (call 8b8533fc). Over 133 replay records a screener or voicemail with
+    nobody behind it scored at most 2 (787aa111: the screen's "Thanks.
+    Arushi." relay, then "I'm sorry."); the two calls above score 8 and 9
+    on their own replay records.
+    """
+    from app.turntake import is_carrier_announcement, is_screener_hold
+    after = 0
+    for i, t in enumerate(_caller_turns(outcome)[:3]):
+        low = t.lower()
+        if any(m in low for m in _MACHINE_MARKERS):
+            after = i + 1
+    seen: set = set()
+    n_user, open_exchange = 0, False
+    for t in outcome.transcript:
+        role, text = t.get("role"), t.get("text") or ""
+        # Same caller turns as _caller_turns (synthetic "[…]" cues skipped), so
+        # `after` indexes the turns the markers were read from.
+        if not text or text.lstrip().startswith("["):
+            continue
+        if role == "assistant":
+            open_exchange = True
+            continue
+        if role != "user":
+            continue
+        n_user += 1
+        if n_user <= after or not open_exchange:
+            continue
+        low = text.lower()
+        if (any(m in low for m in _MACHINE_MARKERS) or is_carrier_announcement(text)
+                or is_screener_hold(text)):
+            continue
+        words = [w for w in (w.strip(_WORD_STRIP) for w in text.casefold().split()) if w]
+        key = " ".join(words)
+        if key in seen or not any(w not in _GREETING_WORDS and w not in _AFFIRMATIVE_WORDS
+                                  for w in words):
+            continue
+        seen.add(key)
+        open_exchange = False
+    return len(seen)
 
 
 def _caller_turns(outcome: CallOutcome) -> List[str]:

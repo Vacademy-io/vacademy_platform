@@ -52,6 +52,7 @@ import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { installChunkErrorHandler } from '@/lib/chunk-reload';
+import { rememberComponentStack } from '@/lib/error-component-stack';
 import { initNative, isNative, getPlatform, shouldForceVimShell, getFlavor } from '@/native';
 
 // Recover stale tabs whose cached chunk URLs 404 after a new deploy.
@@ -107,6 +108,9 @@ const router = createRouter({
     defaultNotFoundComponent: RootNotFoundComponent,
     defaultErrorComponent: RootErrorComponent,
     defaultPendingComponent: RootPendingComponent,
+    // No route sets its own onCatch, so this sees every render error the
+    // error pages show; it keeps the component stack for "Report Issue".
+    defaultOnCatch: rememberComponentStack,
 });
 
 // Register the router instance for type safety

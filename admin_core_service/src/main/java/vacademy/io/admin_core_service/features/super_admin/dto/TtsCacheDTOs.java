@@ -62,6 +62,12 @@ public final class TtsCacheDTOs {
         private Double inrSaved;
         private Date lastHitAt;
         private Date reportedAt;
+        /** Last 7 days, from the calls' own diagnostics (the trend's source). */
+        private Long calls7d;
+        private Double hitRate7d;
+        private Double charShare7d;
+        private Double inrSaved7d;
+        private Double inrSavedPerCall7d;
     }
 
     /** The sentences screen, and (with {@code reason} set) the misses screen. */
@@ -171,5 +177,41 @@ public final class TtsCacheDTOs {
         private String agentId;
         private String previousMode;
         private String speechCacheMode;
+    }
+
+    /** One day of one agent's speech cache, from the calls' own diagnostics. */
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TrendDay {
+        private String day;              // YYYY-MM-DD, IST
+        private long calls;
+        private long cacheHits;
+        private long cacheMisses;
+        /** Sentences served from cache / sentences looked up, as a percentage. */
+        private Double hitRate;
+        /** Characters served from cache / all characters spoken, as a percentage. */
+        private Double charShare;
+        private long charsSaved;
+        private long vendorChars;
+        private Double inrSaved;
+        private Double inrSavedPerCall;
+    }
+
+    /** A line the agent says in several near-identical forms, each its own cache entry. */
+    @Data
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VariantGroup {
+        private String canonical;        // the most-said form
+        private long totalSightings;
+        /** Sightings of the other forms — the reuse lost to the split. */
+        private long splitSightings;
+        private Double inrLost;
+        private List<Entry> variants;
     }
 }

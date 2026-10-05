@@ -60,7 +60,8 @@
                     "label": "Évaluation et publication manuelles",
                     "help": "L'enseignant note chaque soumission à la main. Les résultats restent masqués jusqu'à ce que vous les évaluiez et les publiiez manuellement."
                 }
-            }
+            },
+            "managedByApi": "Géré par l'API : les résultats sont publiés par le système partenaire (ou avec Publier le résultat), ce réglage reste donc Manuel."
         },
         "submissionType": {
             "label": "Type de soumission",

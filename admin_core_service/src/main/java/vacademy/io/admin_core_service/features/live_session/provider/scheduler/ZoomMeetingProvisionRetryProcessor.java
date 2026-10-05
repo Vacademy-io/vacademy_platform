@@ -14,7 +14,8 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Safety net for Zoom meeting provisioning. Up-front provisioning runs in a
+ * Safety net for Zoom / Google Meet meeting provisioning (the provider is read from the
+ * session's stored account, despite the class name). Up-front provisioning runs in a
  * fire-and-forget @Async loop ({@code ProviderMeetingBatchService}); if that loop
  * is interrupted (process restart, partial failure) some occurrences are left with
  * no provider meeting and would otherwise stay un-joinable forever (HTTP 400 on

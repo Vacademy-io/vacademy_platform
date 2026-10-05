@@ -24,7 +24,11 @@ export const GetFilterData = (
     // DATE/NUMBER custom fields to expose as range popovers. Already gated by
     // the caller (only enabled fields are passed) — range fields have no legacy
     // auto-expose, so an empty/absent list simply renders none.
-    rangeCustomFields?: CustomFieldSetupItem[]
+    rangeCustomFields?: CustomFieldSetupItem[],
+    // From the list response: whether this institute runs trials at all. False hides the
+    // Membership filter, so an institute with no trial memberships is never offered a
+    // Trial/Paid distinction that means nothing there.
+    membershipTypesAvailable = false
 ) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
@@ -80,6 +84,27 @@ export const GetFilterData = (
             id: 'session_expiry_days',
             title: `${getTerminology(ContentTerms.Session, SystemTerms.Session)} ${t('sessionExpiry.titleSuffix')}`,
             filterList: sessionExpiry || [],
+        },
+        ...(membershipTypesAvailable
+            ? [
+                  {
+                      id: 'membership_types',
+                      // Not "Membership": that word already names the sidebar section for
+                      // plans and invites, so reusing it here read as the same thing.
+                      title: 'Member Type',
+                      filterList: [
+                          { id: 'TRIAL', label: 'Trial' },
+                          { id: 'TRIAL_ENDED', label: 'Trial ended' },
+                          { id: 'PAID', label: 'Paid' },
+                      ],
+                  },
+              ]
+            : []),
+        {
+            id: 'joined_range',
+            title: 'Joined',
+            kind: 'DATE_RANGE' as const,
+            filterList: [],
         },
         {
             id: 'payment_statuses',

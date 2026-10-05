@@ -6,6 +6,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.dto.CloseLeadFollowupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.CreateLeadFollowupRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import vacademy.io.admin_core_service.features.audience.dto.LeadFollowupDto;
 import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadFollowupRequest;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
@@ -159,6 +164,81 @@ public class LeadFollowupService {
         return withLeadInfo(rows.stream()
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList()));
+    }
+
+    /**
+     * Completed follow-ups — the mirror of {@link #myPending} for work already
+     * closed, newest first.
+     *
+     * A row here is a follow-up, not a lead, and that is the point. A counsellor
+     * who rings a lead today and books the next call for Friday closes one
+     * follow-up and opens another; the lead belongs in this list for the call
+     * that happened AND in Upcoming for the one that has not. Keying the list on
+     * leads instead would show that lead as finished while Friday is still open.
+     *
+     * Paged, because unlike the pending set this one only grows.
+     */
+    public Page<LeadFollowupDto> completed(CustomUserDetails user, String instituteId,
+                                           String counsellorUserId, String search,
+                                           Timestamp closedFrom, Timestamp closedTo,
+                                           Pageable pageable) {
+        // ORDER BY lives in the query, so the Pageable stays unsorted.
+        Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+
+        if (instituteId == null || instituteId.isBlank()) {
+            return hydrate(leadFollowupRepository
+                    .findByCreatedByAndIsClosedTrue(user.getUserId(), paged));
+        }
+
+        // Empty CSV means "every counsellor in the institute" to the query.
+        String createdByCsv = "";
+        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user);
+        if (counsellorUserId != null && !counsellorUserId.isBlank()) {
+            if (scoped && !user.getUserId().equals(counsellorUserId)
+                    && !counsellorScopeService.scopedCounsellorUserIds(instituteId, user.getUserId())
+                            .contains(counsellorUserId)) {
+                throw new VacademyException("You don't have access to this counsellor's follow-ups");
+            }
+            createdByCsv = counsellorUserId;
+        } else if (scoped) {
+            List<String> ids = counsellorScopeService.scopedCounsellorUserIds(
+                    instituteId, user.getUserId());
+            // An empty CSV means "no restriction" to the query, so a scoped caller
+            // with no resolved reports must still be pinned to their own id rather
+            // than widened to the institute.
+            createdByCsv = ids == null || ids.isEmpty()
+                    ? user.getUserId()
+                    : String.join(",", ids);
+        }
+
+        // A lead whose name lives on its auth user has nothing in parent_name, so
+        // searching audience_response alone would never find it. Same gap the leads
+        // query closes, closed the same way.
+        String searchUserIdsCsv = null;
+        if (search != null && !search.isBlank()) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(search, null);
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                log.warn("auth-service user search failed for completed follow-ups query='{}': {}",
+                        search, e.getMessage());
+            }
+        }
+
+        return hydrate(leadFollowupRepository.findCompleted(
+                instituteId, createdByCsv, closedFrom, closedTo,
+                search == null || search.isBlank() ? null : search.trim(),
+                searchUserIdsCsv, paged));
+    }
+
+    /** Map a page of entities through the same lead-name hydration the lists use. */
+    private Page<LeadFollowupDto> hydrate(Page<LeadFollowup> page) {
+        List<LeadFollowupDto> dtos = withLeadInfo(page.getContent().stream()
+                .map(LeadFollowupDto::from)
+                .collect(Collectors.toList()));
+        return new PageImpl<>(dtos, page.getPageable(), page.getTotalElements());
     }
 
     /**

@@ -269,7 +269,7 @@ WEBSITE_EDIT_SCHEMA: Dict[str, Any] = {
                 "kind": {"type": "string", "enum": list(IMAGE_KINDS)},
                 "caption": {"type": "string"},
                 "source": {"type": "string", "enum": ["all", "showcase", "product_page"]},
-                "mode": {"type": "string", "enum": ["newest", "onSale", "tag", "picked"], "description": "set_courses showcase mode."},
+                "mode": {"type": "string", "enum": ["newest", "onSale", "tag", "picked", "comingSoon"], "description": "set_courses showcase mode."},
                 "tag": {"type": "string", "description": "set_courses mode=tag: the course tag."},
                 "limit": {"type": "integer"},
                 "product_page_code": {"type": "string"},
@@ -699,7 +699,8 @@ def _example_props(section_type: str) -> Optional[Dict[str, Any]]:
 #: `capabilities` is what website(action="schema") shows for them.
 _EXTRA_COMPONENTS: List[Dict[str, Any]] = [
     {"type": "courseShowcase",
-     "capabilities": "A strip of a FEW live courses: source newest | onSale | tag (with `tag`) | picked (with `courseIds`), "
+     "capabilities": "A strip of a FEW live courses: source newest | onSale | tag (with `tag`) | picked (with `courseIds`) "
+                     "| comingSoon (courses the admin switched to Coming Soon — ribbon + Notify me lead button), "
                      "`limit` 1–12, layout row | grid. Prefer this over courseCatalog on a landing page; wire it later with "
                      "website_edit(set_courses).",
      "exampleProps": {"title": "New courses", "subtitle": "", "source": "newest", "tag": "", "courseIds": [],
@@ -1373,8 +1374,8 @@ async def _action_set_courses(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         summary = "shows every course in the institute (live)"
     elif source == "showcase":
         mode = args.get("mode") or "newest"
-        if mode not in ("newest", "onSale", "tag", "picked"):
-            return _err("bad_request", message="mode must be newest, onSale, tag or picked.")
+        if mode not in ("newest", "onSale", "tag", "picked", "comingSoon"):
+            return _err("bad_request", message="mode must be newest, onSale, tag, picked or comingSoon.")
         ids = [str(i) for i in args.get("course_ids") or []]
         if mode == "picked":
             if not ids:

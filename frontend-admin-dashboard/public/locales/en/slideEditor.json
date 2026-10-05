@@ -36,7 +36,8 @@
         "typeSaveError": "Error saving {{type}} slide",
         "forcedOverride": "Slide saved (forced override).",
         "discardedRestored": "Changes discarded — restored to the last saved version.",
-        "autoPublished": "Slide auto-published for review"
+        "autoPublished": "Slide auto-published for review",
+        "renameUnsupported": "This slide type can't be renamed here."
     },
     "ui": {
         "openDoubtSidebar": "Open Doubt Resolution Sidebar",

@@ -8,16 +8,43 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BalanceLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.InstalmentProgressProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.MonthDueLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UpcomingMonthProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDatesProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
+
+    /**
+     * Integrity check: plans that took money and are ACTIVE, whose learner holds no ACTIVE
+     * enrolment anywhere in that plan's institute. Paid access that was never granted.
+     *
+     * <p>Scoped to the institute rather than to the plan's own mappings on purpose — access
+     * legitimately moves between plan rows (plan change, abandoned-sibling reconciliation),
+     * so "this plan has no mapping" alone is noisy, while "this learner is enrolled in
+     * nothing here" is the condition that actually hurts a paying member.
+     */
+    @Query(value = """
+            SELECT up.* FROM user_plan up
+            JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+            WHERE up.status = 'ACTIVE'
+              AND EXISTS (SELECT 1 FROM payment_log pl
+                          WHERE pl.user_plan_id = up.id AND pl.payment_status = 'PAID')
+              AND NOT EXISTS (SELECT 1 FROM student_session_institute_group_mapping m
+                              WHERE m.user_id = up.user_id
+                                AND m.institute_id = ei.institute_id
+                                AND m.status = 'ACTIVE')
+            """, nativeQuery = true)
+    List<UserPlan> findPaidActivePlansWithoutEnrollment();
 
     /**
      * (userPlanId, currency) for a batch of plans, read straight off the joined
@@ -309,6 +336,110 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         List<UserPlan> findDueForRenewal(@Param("now") java.util.Date now);
 
         /**
+         * Whether this learner has already CONSUMED a free trial at this institute.
+         *
+         * <p>"Consumed" means a previous trial that actually DELIVERED something — its window
+         * has elapsed AND it either carried an enrolment or took a payment. Two separate traps
+         * sit here, and both have bitten:
+         * <ul>
+         *   <li>A learner who retries checkout creates several trial plan rows in a few minutes
+         *       (Nitika Maheshwari made four in seven). Rows whose window is still ahead are
+         *       the same trial, not a second one — hence the end_date test.</li>
+         *   <li>An ABANDONED row's window elapses too. Counting it would tell a learner who
+         *       never completed a checkout, never got access and never attended a class that
+         *       they had already used their free trial, and charge them full price for their
+         *       first visit. The mapping/payment test is what keeps "abandoned, came back three
+         *       weeks later" on the trial path, which is the intended happy flow.</li>
+         * </ul>
+         *
+         * <p>Scoped to the institute rather than the invite: an institute offers one free
+         * trial, and hopping to a different invite is exactly how a second one gets taken.
+         */
+        @Query("""
+                SELECT COUNT(up) > 0 FROM UserPlan up
+                WHERE up.userId = :userId
+                  AND up.id <> :currentPlanId
+                  AND up.isTrial = true
+                  AND up.endDate IS NOT NULL
+                  AND up.endDate < :now
+                  AND up.enrollInvite.instituteId = :instituteId
+                  AND (EXISTS (SELECT 1 FROM StudentSessionInstituteGroupMapping m
+                               WHERE m.userPlanId = up.id)
+                       OR EXISTS (SELECT 1 FROM PaymentLog pl
+                                  WHERE pl.userPlan.id = up.id AND pl.paymentStatus = 'PAID'))
+                """)
+        boolean hasConsumedTrialAtInstitute(@Param("userId") String userId,
+                @Param("instituteId") String instituteId,
+                @Param("currentPlanId") String currentPlanId,
+                @Param("now") java.util.Date now);
+
+        /**
+         * The same question for an institute that identifies learners by PHONE: has anyone on
+         * this NUMBER already consumed a trial here, whatever account they used?
+         *
+         * <p>Matching on user_id alone is not enough where the number is the identity. The same
+         * person routinely accumulates accounts — at SuchBliss four numbers already hold
+         * consumed trials under more than one account, one of them across fourteen — so a
+         * second free trial is available to anyone who signs up again. Compared on the last
+         * ten digits of the digits-only number because stored values mix 918130434435, bare
+         * ten-digit and non-Indian forms.
+         *
+         * <p>Same "actually delivered" rule as the user-id variant: an elapsed ABANDONED row
+         * does not burn the trial, or a learner who never completed their first checkout would
+         * be charged full price for a class they have never attended.
+         *
+         * <p>A learner whose own number is missing or shorter than ten digits matches nothing
+         * and keeps their trial: an unidentifiable person must not be charged full price.
+         */
+        @Query(value = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    JOIN student s ON s.user_id = up.user_id
+                    WHERE ei.institute_id = :instituteId
+                      AND up.id <> :currentPlanId
+                      AND up.is_trial = true
+                      AND up.end_date IS NOT NULL
+                      AND up.end_date < :now
+                      AND (EXISTS (SELECT 1 FROM student_session_institute_group_mapping m
+                                   WHERE m.user_plan_id = up.id)
+                           OR EXISTS (SELECT 1 FROM payment_log pl
+                                      WHERE pl.user_plan_id = up.id AND pl.payment_status = 'PAID'))
+                      AND length(regexp_replace(coalesce(s.mobile_number, ''), '[^0-9]', '', 'g')) >= 10
+                      AND right(regexp_replace(s.mobile_number, '[^0-9]', '', 'g'), 10) = (
+                            SELECT right(regexp_replace(me.mobile_number, '[^0-9]', '', 'g'), 10)
+                            FROM student me
+                            WHERE me.user_id = :userId
+                              AND length(regexp_replace(coalesce(me.mobile_number, ''), '[^0-9]', '', 'g')) >= 10
+                            LIMIT 1)
+                )
+                """, nativeQuery = true)
+        boolean hasConsumedTrialByPhone(@Param("userId") String userId,
+                @Param("instituteId") String instituteId,
+                @Param("currentPlanId") String currentPlanId,
+                @Param("now") java.util.Date now);
+
+        /**
+         * As {@link #findDueForRenewal} but restricted to institutes that have authorised the
+         * charge sweep (PAYMENT_SETTING.autopayChargeSchedulerEnabled). The sweep is a single
+         * platform-wide cron, so without this scoping every institute with an armed plan is
+         * charged the moment autopay is switched on for anyone.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                LEFT JOIN FETCH up.paymentPlan pp
+                WHERE up.status = 'ACTIVE'
+                  AND up.autoRenewalEnabled = true
+                  AND up.nextChargeAt IS NOT NULL
+                  AND up.nextChargeAt <= :now
+                  AND ei.instituteId IN :instituteIds
+                """)
+        List<UserPlan> findDueForRenewalForInstitutes(@Param("now") java.util.Date now,
+                        @Param("instituteIds") List<String> instituteIds);
+
+        /**
          * Atomically CLAIM a plan for a renewal charge (multi-replica safe). The
          * daily scheduler fires on every replica, so before charging, each replica
          * runs this — only the one whose UPDATE actually flips next_charge_at→null
@@ -516,6 +647,76 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                 """;
 
         /**
+         * Everything expected but not yet owed, one row per due date: the money behind
+         * {@code upcomingAll} on the billing summary, split out so it can be grouped by month.
+         * Appended to {@link #DUE_OBLIGATION_CTES}, so it prices exactly the same live plans.
+         * <ul>
+         *   <li><b>CPO</b>: each unpaid instalment dated today or later (or undated), at its unpaid
+         *       remainder. Together they are the plan's outstanding minus its overdue.</li>
+         *   <li><b>Invoice</b>: an unpaid invoice whose due date has not passed.</li>
+         *   <li><b>Subscription</b>: a renewal inside the upcoming horizon, dated by the period end.</li>
+         * </ul>
+         * A one-time plan never appears, because it owes nothing. So the amounts add up to
+         * {@code upcomingAll} and their distinct learners to {@code learnersUpcomingAll}.
+         */
+        String UPCOMING_DUES_CTES = """
+                , upcoming_dues AS (
+                  SELECT l.user_id,
+                         sfp.due_date AS due_on,
+                         GREATEST(sfp.amount_expected - COALESCE(sfp.amount_paid, 0), 0) AS amount
+                    FROM obligations l
+                    JOIN student_fee_payment sfp ON sfp.user_plan_id = l.user_plan_id
+                   WHERE l.is_live
+                     AND l.kind = 'CPO'
+                     AND sfp.institute_id = :instituteId
+                     AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
+                     AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected
+                     AND (sfp.due_date IS NULL OR sfp.due_date >= CURRENT_DATE)
+                  UNION ALL
+                  SELECT l.user_id, l.next_due_date, l.outstanding - l.overdue
+                    FROM obligations l
+                   WHERE l.is_live
+                     AND l.kind = 'INVOICE'
+                     AND l.outstanding - l.overdue > 0
+                  UNION ALL
+                  SELECT l.user_id, CAST(sub.end_date AS date), l.upcoming
+                    FROM obligations l
+                    JOIN user_plan sub ON sub.id = l.user_plan_id
+                   WHERE l.is_live
+                     AND l.kind = 'SUBSCRIPTION'
+                     AND l.upcoming > 0
+                )
+                """;
+
+        /** Per learner, what {@link #UPCOMING_DUES_CTES} puts in [monthStart, monthEnd). */
+        String IN_MONTH_CTE = """
+                , in_month AS (
+                  SELECT d.user_id, SUM(d.amount) AS amount, MIN(d.due_on) AS first_due_on
+                    FROM upcoming_dues d
+                   WHERE d.amount > 0
+                     AND d.due_on >= :monthStart
+                     AND d.due_on < :monthEnd
+                   GROUP BY d.user_id
+                )
+                """;
+
+        /**
+         * Narrows a balances list (Due / Outstanding / one forecast month) to the learners the
+         * search box matches, by the same student-row rule the payment records use
+         * ({@link PaymentLogRepository#STUDENT_SEARCH_MATCH}). Correlates on {@code o.user_id}.
+         *
+         * Only ever added to a list and its count, never inside {@link #DUE_OBLIGATION_CTES}: the
+         * cards above the list keep describing every learner while the list narrows.
+         */
+        String LEARNER_SEARCH_PREDICATE = """
+                (:noSearchFilter = true OR EXISTS (
+                      SELECT 1 FROM student sst
+                       WHERE sst.user_id = o.user_id
+                         AND """ + PaymentLogRepository.STUDENT_SEARCH_MATCH + """
+                      ))
+                """;
+
+        /**
          * Every enrolment one learner holds at an institute, priced individually — the Due side
          * view.
          *
@@ -608,6 +809,14 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
                 ), live AS (
                   SELECT * FROM obligations WHERE is_live
+                ), inst_mix AS (
+                  SELECT COUNT(*) AS live_plans,
+                         COUNT(*) FILTER (WHERE ipo.type = 'CPO') AS cpo_plans
+                    FROM user_plan iu
+                    JOIN enroll_invite iei ON iei.id = iu.enroll_invite_id
+                    LEFT JOIN payment_option ipo ON ipo.id = iu.payment_option_id
+                   WHERE iei.institute_id = :instituteId
+                     AND iu.status = 'ACTIVE'
                 )
                 SELECT (SELECT COALESCE(amt, 0) FROM paid) AS collected,
                        (SELECT COALESCE(SUM(overdue), 0) FROM live) AS due,
@@ -615,6 +824,8 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        (SELECT COUNT(DISTINCT user_id) FROM live WHERE overdue > 0) AS learnersOwing,
                        (SELECT COUNT(DISTINCT user_id) FROM live WHERE upcoming > 0) AS learnersUpcoming,
                        (SELECT COUNT(*) FROM live WHERE is_plan) AS planCount,
+                       (SELECT cpo_plans FROM inst_mix) AS instalmentPlanCount,
+                       (SELECT live_plans FROM inst_mix) AS livePlanCount,
                        (SELECT COUNT(*) FROM live WHERE activated_without_payment)
                          AS activatedWithoutPaymentCount,
                        (SELECT COALESCE(SUM(outstanding), 0) FROM live) AS outstanding,
@@ -663,6 +874,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        MAX(o.currency) AS currency
                   FROM obligations o
                  WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
                  GROUP BY o.user_id
                 HAVING SUM(o.overdue) > 0
                  ORDER BY due DESC
@@ -671,6 +883,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   FROM (SELECT o.user_id
                           FROM obligations o
                          WHERE o.is_live
+                           AND """ + LEARNER_SEARCH_PREDICATE + """
                          GROUP BY o.user_id
                         HAVING SUM(o.overdue) > 0) owing
                 """, nativeQuery = true)
@@ -681,6 +894,9 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds,
                         @Param("upcomingDays") int upcomingDays,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
                         Pageable pageable);
 
         /**
@@ -711,6 +927,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                        MAX(o.currency) AS currency
                   FROM obligations o
                  WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
                  GROUP BY o.user_id
                 HAVING SUM(o.outstanding) > 0
                  ORDER BY MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) NULLS LAST,
@@ -720,6 +937,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                   FROM (SELECT o.user_id
                           FROM obligations o
                          WHERE o.is_live
+                           AND """ + LEARNER_SEARCH_PREDICATE + """
                          GROUP BY o.user_id
                         HAVING SUM(o.outstanding) > 0) owing
                 """, nativeQuery = true)
@@ -730,7 +948,170 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("noPackageSessions") boolean noPackageSessions,
                         @Param("packageSessionIds") List<String> packageSessionIds,
                         @Param("upcomingDays") int upcomingDays,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
                         Pageable pageable);
+
+        /**
+         * The Upcoming card split by calendar month: how much falls due each month and from how
+         * many learners. Built on {@link #UPCOMING_DUES_CTES}, so the months add up to
+         * {@code upcomingAll}. Undated instalments come back as one row with a null month, last.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + """
+                SELECT CAST(date_trunc('month', CAST(d.due_on AS timestamp)) AS date) AS monthStart,
+                       SUM(d.amount) AS amount,
+                       COUNT(DISTINCT d.user_id) AS learners,
+                       COUNT(*) AS dues,
+                       MIN(d.due_on) AS firstDueOn
+                  FROM upcoming_dues d
+                 WHERE d.amount > 0
+                 GROUP BY 1
+                 ORDER BY 1 NULLS LAST
+                """, nativeQuery = true)
+        List<UpcomingMonthProjection> getUpcomingByMonth(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays);
+
+        /**
+         * Billed / paid / overdue / outstanding across live instalment (CPO) plans only — the fee
+         * progress of the instalment schedule. One-time and subscription plans are left out on
+         * purpose: a one-time plan is paid or not enrolled, and a subscription has no schedule.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + """
+                SELECT COALESCE(SUM(o.billed), 0) AS billed,
+                       COALESCE(SUM(o.paid), 0) AS paid,
+                       COALESCE(SUM(o.overdue), 0) AS overdue,
+                       COALESCE(SUM(o.outstanding), 0) AS outstanding,
+                       COUNT(*) AS plans,
+                       COUNT(DISTINCT o.user_id) AS learners
+                  FROM obligations o
+                 WHERE o.is_live
+                   AND o.kind = 'CPO'
+                """, nativeQuery = true)
+        InstalmentProgressProjection getInstalmentProgress(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays);
+
+        /**
+         * The learners behind one month of {@link #getUpcomingByMonth}: everyone with something
+         * falling due in [monthStart, monthEnd), soonest first, with how much. Same columns as
+         * {@link #findLearnersWithBalance} plus {@code monthAmount}; the page total equals the
+         * month's learner count.
+         */
+        @Query(value = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + IN_MONTH_CTE + """
+                SELECT o.user_id AS userId,
+                       (array_agg(o.course_name ORDER BY o.outstanding DESC))[1] AS courseName,
+                       (array_agg(o.payment_type ORDER BY o.outstanding DESC))[1] AS paymentType,
+                       (array_agg(o.plan_status ORDER BY o.outstanding DESC))[1] AS planStatus,
+                       SUM(o.billed) AS billed,
+                       SUM(o.paid) AS paid,
+                       SUM(o.overdue) AS due,
+                       SUM(o.upcoming) AS upcoming,
+                       SUM(o.outstanding) AS outstanding,
+                       COUNT(*) FILTER (WHERE o.is_plan) AS planCount,
+                       SUM(o.pending_installments) AS pendingInstallments,
+                       MIN(o.next_due_date) FILTER (WHERE o.outstanding > 0) AS nextDueDate,
+                       (array_agg(o.next_due_amount ORDER BY o.next_due_date NULLS LAST)
+                          FILTER (WHERE o.outstanding > 0))[1] AS nextDueAmount,
+                       MAX(o.currency) AS currency,
+                       MAX(m.amount) AS monthAmount
+                  FROM obligations o
+                  JOIN in_month m ON m.user_id = o.user_id
+                 WHERE o.is_live
+                   AND """ + LEARNER_SEARCH_PREDICATE + """
+                 GROUP BY o.user_id
+                 ORDER BY MIN(m.first_due_on), MAX(m.amount) DESC, o.user_id
+                """, countQuery = DUE_OBLIGATION_CTES + UPCOMING_DUES_CTES + IN_MONTH_CTE + """
+                SELECT COUNT(*) FROM in_month o
+                 WHERE """ + LEARNER_SEARCH_PREDICATE, nativeQuery = true)
+        Page<MonthDueLearnerProjection> findLearnersDueInMonth(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("upcomingDays") int upcomingDays,
+                        @Param("monthStart") LocalDate monthStart,
+                        @Param("monthEnd") LocalDate monthEnd,
+                        @Param("noSearchFilter") boolean noSearchFilter,
+                        @Param("searchString") String searchString,
+                        @Param("searchPhoneDigits") String searchPhoneDigits,
+                        Pageable pageable);
+
+        /**
+         * Enrolment date and next due date for a page of plans, for the optional Enrolled on and
+         * Next due columns on the payment list.
+         *
+         * <p>Enrolled on is when the learner joined the batch: the stored {@code enrolled_date} on
+         * the batch mapping linked to this plan, and failing that on the learner's mapping for a
+         * batch of the plan's invite. So a pending or failed renewal by an existing member shows the
+         * date they joined. Only mappings where the learner actually got in count (ACTIVE /
+         * INACTIVE / TERMINATED / EXPIRED). An invite, a pending approval, or the DELETED
+         * placeholder a checkout leaves behind is not an enrolment, so someone who never got in
+         * has no date.
+         *
+         * <p>Mappings are reached through the plan's user (indexed); student_session_institute_group_mapping
+         * has no index on user_plan_id, and filtering on it directly scanned the whole table.
+         *
+         * <p>Next due follows the Due / Upcoming rules of {@link #DUE_OBLIGATION_CTES}. Only an
+         * ACTIVE plan owes anything. For an instalment plan it is the first instalment not yet fully
+         * paid, and for a priced subscription it is the end of the paid period (a free one owes
+         * nothing, as on the Due tab). One-time plans are never due.
+         */
+        @Query(value = """
+                WITH plans AS (
+                  SELECT up.id, up.user_id, up.enroll_invite_id, up.status, up.end_date, po.type,
+                         COALESCE(pp.actual_price, 0) AS price
+                    FROM user_plan up
+                    LEFT JOIN payment_option po ON po.id = up.payment_option_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                   WHERE up.id IN (:userPlanIds)
+                ), linked AS (
+                  SELECT p.id AS user_plan_id, MIN(s.enrolled_date) AS enrolled_date
+                    FROM plans p
+                    JOIN student_session_institute_group_mapping s
+                      ON s.user_id = p.user_id
+                     AND s.user_plan_id = p.id
+                   WHERE UPPER(s.status) IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')
+                   GROUP BY p.id
+                ), by_batch AS (
+                  SELECT p.id AS user_plan_id, MIN(s.enrolled_date) AS enrolled_date
+                    FROM plans p
+                    JOIN package_session_learner_invitation_to_payment_option psli
+                      ON psli.enroll_invite_id = p.enroll_invite_id
+                    JOIN student_session_institute_group_mapping s
+                      ON s.package_session_id = psli.package_session_id
+                     AND s.user_id = p.user_id
+                   WHERE UPPER(s.status) IN ('ACTIVE', 'INACTIVE', 'TERMINATED', 'EXPIRED')
+                   GROUP BY p.id
+                ), next_instalment AS (
+                  SELECT sfp.user_plan_id, MIN(CAST(sfp.due_date AS date)) AS due_on
+                    FROM student_fee_payment sfp
+                   WHERE sfp.user_plan_id IN (:userPlanIds)
+                     AND sfp.status NOT IN ('DELETED', 'CANCELLED', 'DROPPED', 'WAIVED')
+                     AND COALESCE(sfp.amount_paid, 0) < sfp.amount_expected
+                   GROUP BY sfp.user_plan_id
+                )
+                SELECT p.id AS userPlanId,
+                       COALESCE(l.enrolled_date, b.enrolled_date) AS enrolledDate,
+                       CASE WHEN p.status = 'ACTIVE' AND p.type = 'CPO' THEN ni.due_on END AS nextInstalmentDue,
+                       CASE WHEN p.status = 'ACTIVE' AND p.type = 'SUBSCRIPTION' AND p.price > 0
+                            THEN p.end_date END AS renewalDue
+                  FROM plans p
+                  LEFT JOIN linked l ON l.user_plan_id = p.id
+                  LEFT JOIN by_batch b ON b.user_plan_id = p.id
+                  LEFT JOIN next_instalment ni ON ni.user_plan_id = p.id
+                """, nativeQuery = true)
+        List<UserPlanDatesProjection> findPlanDates(@Param("userPlanIds") List<String> userPlanIds);
 
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)

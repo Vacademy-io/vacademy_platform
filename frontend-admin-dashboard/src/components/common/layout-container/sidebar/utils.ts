@@ -442,14 +442,14 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
-                subItem: sidebarT('sidebar:managePayments'),
-                subItemLink: '/manage-payments',
-                subItemId: 'manage-payments-sub',
-            },
-            {
                 subItem: sidebarT('sidebar:paymentDashboard'),
                 subItemLink: '/payment-dashboard',
                 subItemId: 'payment-dashboard-sub',
+            },
+            {
+                subItem: sidebarT('sidebar:managePayments'),
+                subItemLink: '/manage-payments',
+                subItemId: 'manage-payments-sub',
             },
             {
                 subItem: sidebarT('sidebar:manageExpiry'),
@@ -1122,6 +1122,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'assessments-tests',
         category: 'LMS',
         subItems: [
+            {
+                subItem: sidebarT('sidebar:assessmentDashboard'),
+                subItemLink: '/assessment/dashboard',
+                subItemId: 'assessment-dashboard',
+            },
             {
                 subItem: sidebarT('sidebar:scheduledTests'),
                 subItemLink: '/assessment/assessment-list?selectedTab=liveTests',

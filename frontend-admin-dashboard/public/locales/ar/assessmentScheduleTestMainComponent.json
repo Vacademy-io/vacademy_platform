@@ -35,6 +35,14 @@
             "instructionPrefix": "— اضغط",
             "applyLabel": "تطبيق",
             "instructionSuffix": "لتحديث القائمة."
+        },
+        "source": {
+            "label": "المصدر",
+            "options": {
+                "DASHBOARD": "لوحة التحكم",
+                "API": "API"
+            },
+            "emptyOnPage": "لا توجد تقييمات من هذا المصدر في هذه الصفحة. جرّب صفحة أخرى أو امسح عامل تصفية المصدر."
         }
     },
     "dialogs": {

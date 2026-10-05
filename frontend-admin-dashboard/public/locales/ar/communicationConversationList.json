@@ -41,6 +41,10 @@
         "aiError": "لم يتمكن المساعد من توليد رد",
         "manual": "سلّمه أحد المشرفين",
         "noInfo": "لم يكن لدى المساعد المعلومات اللازمة للرد",
-        "withMessage": "{{why}}\n\nسألوا: {{message}}"
+        "withMessage": "{{why}}\n\nسألوا: {{message}}",
+        "existingLead": "راسل عميل محتمل حالي مرة أخرى",
+        "crmSaveFailed": "تعذر على روبوت المحادثة حفظ هذا العميل المحتمل في CRM",
+        "withLeadMessage": "{{why}}\n\nرسالته: {{message}}",
+        "withAnswers": "{{why}}\n\nإجاباته:\n{{message}}"
     }
 }

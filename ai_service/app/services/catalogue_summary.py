@@ -254,6 +254,7 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
             "onSale": "courses on sale",
             "tag": f'courses tagged "{p.get("tag") or ""}"',
             "picked": f"{len(p.get('courseIds') or [])} hand-picked courses",
+            "comingSoon": "coming-soon courses",
         }.get(source, source)
         return f"{detail} (live){f', limit {limit}' if limit else ''}"
     if t == "productPageOffer":

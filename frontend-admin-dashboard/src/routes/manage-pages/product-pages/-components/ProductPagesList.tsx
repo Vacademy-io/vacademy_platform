@@ -30,6 +30,11 @@ import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getLearnerPortalUrl } from '@/lib/learner-portal-url';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const GRADIENTS = [
     'from-primary-400 to-primary-600',
@@ -61,6 +66,11 @@ const CardSkeleton = () => (
 
 export const ProductPagesList = () => {
     const instituteId = getCurrentInstituteId();
+    const courseLower = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesLower = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
     const navigate = useNavigate();
     const { toast } = useToast();
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -130,7 +140,7 @@ export const ProductPagesList = () => {
                 <div>
                     <h1 className="text-xl font-semibold text-neutral-800">Product Pages</h1>
                     <p className="mt-0.5 text-sm text-neutral-500">
-                        Multi-course enrollment landing pages with a combined checkout
+                        Multi-{courseLower} enrollment landing pages with a combined checkout
                     </p>
                 </div>
                 <MyButton
@@ -180,7 +190,8 @@ export const ProductPagesList = () => {
                     </div>
                     <h3 className="mb-1 text-base font-semibold text-neutral-700">No product pages yet</h3>
                     <p className="mb-6 max-w-xs text-sm text-neutral-400">
-                        Create a product page to let learners add multiple courses to a cart and pay in one go.
+                        Create a product page to let learners add multiple {coursesLower} to a cart
+                        and pay in one go.
                     </p>
                     <MyButton buttonType="primary" scale="medium" onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="size-4" />
@@ -228,7 +239,10 @@ export const ProductPagesList = () => {
 
                                     {page.mappings?.length > 0 && (
                                         <div className="mt-0.5 text-[11px] text-neutral-400">
-                                            {page.mappings.length} course{page.mappings.length !== 1 ? 's' : ''}
+                                            {page.mappings.length}{' '}
+                                            {page.mappings.length !== 1
+                                                ? coursesLower
+                                                : courseLower}
                                         </div>
                                     )}
 

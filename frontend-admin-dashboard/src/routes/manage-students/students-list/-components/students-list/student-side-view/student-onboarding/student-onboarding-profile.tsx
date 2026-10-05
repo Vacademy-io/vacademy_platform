@@ -51,7 +51,7 @@ import {
     fetchOnboardingSideView,
     fetchOnboardingSteps,
     fetchOnboardingFlows,
-    fetchStepFields,
+    fetchStepInstanceFields,
     fetchSubmittedFieldValues,
     completeStepInstance,
     saveStepInstanceProgress,
@@ -62,10 +62,20 @@ import {
     onboardingSideViewKey,
     onboardingStepsKey,
     onboardingFlowsKey,
+    onboardingStepInstanceFieldsKey,
     type OnboardingInstanceDTO,
     type OnboardingStepInstanceDTO,
     type OnboardingStepDTO,
 } from '@/routes/audience-manager/onboarding/-services/onboarding-service';
+import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { CustomFieldValueDisplay } from '@/components/common/custom-fields/CustomFieldValueDisplay';
+import { parseFieldOptions } from '@/routes/audience-manager/list/-utils/parseFieldOptions';
+import { configJsonToFullConfig } from '@/services/custom-field-settings';
+
+/** True for an HTTP 403 — "your role has no onboarding access", distinct from a real failure. */
+function isForbidden(error: unknown): boolean {
+    return (error as { response?: { status?: number } } | null)?.response?.status === 403;
+}
 
 interface StudentOnboardingProfileProps {
     userId: string;
@@ -105,7 +115,12 @@ export function StudentOnboardingProfile({
         queryFn: () => fetchOnboardingSideView(userId, instituteId),
         enabled: !!userId && !!instituteId,
         staleTime: 30 * 1000,
+        // A 403 here isn't a failure to retry — onboarding is enabled for the institute but no
+        // step's role-access grid names any of this staff member's roles, so there is genuinely
+        // nothing for them here. Retrying would 403 forever.
+        retry: (failureCount, error) => !isForbidden(error) && failureCount < 2,
     });
+    const forbidden = isForbidden(instancesQuery.error);
 
     const startButton = (
         <MyButton buttonType="primary" scale="small" onClick={() => setStartDialogOpen(true)}>
@@ -126,6 +141,12 @@ export function StudentOnboardingProfile({
     );
 
     if (instancesQuery.isLoading) return <ProfileSkeleton blocks={2} />;
+
+    // No grant anywhere: show the same "nothing here" state a subject with no instances gets,
+    // minus the Start button they couldn't use — not a scary error about a load that worked.
+    if (forbidden) {
+        return <ProfileEmpty icon={Path} title={t('empty.title')} hint={t('noAccess.hint')} />;
+    }
 
     if (instancesQuery.isError) {
         return (
@@ -629,31 +650,33 @@ function CompleteFormStepDialog({
     onSave: (payload: Record<string, unknown>) => void;
 }) {
     const { t } = useTranslation('manageStudentsOnboardingProfile');
+    // Step-INSTANCE-scoped (not step-scoped) so each field arrives with its own already-saved
+    // value, in the step builder's order, carrying the field type/config needed to render it as
+    // itself. The generic feature-fields catalog lookup this replaced had none of that: it
+    // ordered by the institute catalog, always reported is_mandatory as null, and left every
+    // field -- dropdown, date, file -- rendering as a plain text box.
     const fieldsQuery = useQuery({
-        queryKey: ['onboarding-step-fields', instituteId, stepInstance.step_id],
-        queryFn: () => fetchStepFields(instituteId, stepInstance.step_id),
-        staleTime: 60 * 1000,
-    });
-    // Whatever's already been saved for this step instance -- e.g. a PRIOR "Save" call by this
-    // same admin, or a field the student already filled in -- so reopening this dialog shows
-    // it instead of risking an overwrite with a blank input.
-    const submittedQuery = useQuery({
-        queryKey: ['onboarding-step-submitted-values', stepInstance.id],
-        queryFn: () => fetchSubmittedFieldValues(stepInstance.id),
+        queryKey: onboardingStepInstanceFieldsKey(stepInstance.id),
+        queryFn: () => fetchStepInstanceFields(stepInstance.id),
         staleTime: 10 * 1000,
     });
     const [values, setValues] = useState<Record<string, string>>({});
     const fields = fieldsQuery.data ?? [];
 
+    // Whatever's already been saved for this step instance -- e.g. a PRIOR "Save" call by this
+    // same admin, or a field the student already filled in -- so reopening this dialog shows
+    // it instead of risking an overwrite with a blank input. A never-answered field falls back
+    // to its configured default.
     useEffect(() => {
-        if (!submittedQuery.data) return;
+        if (!fieldsQuery.data) return;
         const seeded: Record<string, string> = {};
-        submittedQuery.data.forEach((f) => {
-            if (f.value) seeded[f.institute_custom_field_id] = f.value;
+        fieldsQuery.data.forEach((f) => {
+            const seed = f.value ?? f.default_value;
+            if (seed) seeded[f.institute_custom_field_id] = seed;
         });
         setValues((prev) => ({ ...seeded, ...prev }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [submittedQuery.data]);
+    }, [fieldsQuery.data]);
 
     // "Create a student from this step" config: empty pool → search ANY course;
     // non-empty pool → pick only from the courses the flow builder allowed.
@@ -888,20 +911,45 @@ function CompleteFormStepDialog({
                             </span>
                             <Label className="text-neutral-700">{t('completeStepDialog.formFieldsLabel')}</Label>
                         </div>
-                        <div className="flex flex-col gap-2.5 ps-10">
-                            {fields.map((f) => (
-                                <MyInput
-                                    key={f.id}
-                                    label={f.custom_field?.fieldName ?? t('completeStepDialog.defaultFieldLabel')}
-                                    required={f.is_mandatory ?? false}
-                                    inputType="text"
-                                    inputPlaceholder={f.custom_field?.fieldName ?? ''}
-                                    input={values[f.id] ?? ''}
-                                    onChangeFunction={(e) =>
-                                        setValues((prev) => ({ ...prev, [f.id]: e.target.value }))
-                                    }
-                                />
-                            ))}
+                        <div className="flex flex-col gap-3.5 ps-10">
+                            {fields.map((f) => {
+                                const label =
+                                    f.field_name ?? t('completeStepDialog.defaultFieldLabel');
+                                return (
+                                    <div
+                                        key={f.institute_custom_field_id}
+                                        className="flex flex-col gap-1.5"
+                                    >
+                                        <Label className="text-body text-neutral-700">
+                                            {label}
+                                            {f.is_mandatory && (
+                                                <span className="text-danger-600"> *</span>
+                                            )}
+                                        </Label>
+                                        <CustomFieldRenderer
+                                            // `type` is what makes a dropdown a dropdown and a
+                                            // date a date picker -- every field used to render
+                                            // through a single hardcoded text input.
+                                            type={f.field_type ?? 'text'}
+                                            name={label}
+                                            value={values[f.institute_custom_field_id] ?? ''}
+                                            onChange={(value) =>
+                                                setValues((prev) => ({
+                                                    ...prev,
+                                                    [f.institute_custom_field_id]: value,
+                                                }))
+                                            }
+                                            options={parseFieldOptions(f.config)}
+                                            config={configJsonToFullConfig(f.config ?? undefined)}
+                                            required={f.is_mandatory ?? false}
+                                            // A field this step assigns to the student/parent
+                                            // only: shown pre-filled but not editable here,
+                                            // matching what the server would accept anyway.
+                                            disabled={f.can_edit === false}
+                                        />
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -953,9 +1001,13 @@ function SubmittedFormDialog({
                                     {f.field_name ?? t('submittedFormDialog.untitledField')}
                                 </div>
                                 <div className="text-body text-neutral-800">
-                                    {f.value?.trim() ? f.value : (
-                                        <span className="text-neutral-400">{t('submittedFormDialog.notAnswered')}</span>
-                                    )}
+                                    {/* By type, not as a string: a file field's value is the
+                                        uploaded object's URL, which is useless as raw text. */}
+                                    <CustomFieldValueDisplay
+                                        value={f.value}
+                                        fieldType={f.field_type}
+                                        emptyLabel={t('submittedFormDialog.notAnswered')}
+                                    />
                                 </div>
                             </li>
                         ))}

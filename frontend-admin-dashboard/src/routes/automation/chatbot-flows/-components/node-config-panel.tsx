@@ -10,6 +10,7 @@ import {
 import { getInstituteId } from '@/constants/helper';
 import { Plus, Trash, CaretUp, CaretDown } from '@phosphor-icons/react';
 import { VariableMappingEditor } from './VariableMappingEditor';
+import { AskFieldConfig, CrmLeadCheckConfig, SaveToCrmConfig } from './crm-node-config';
 
 export function NodeConfigPanel() {
     const { t } = useTranslation('automationNodeConfigPanel');
@@ -69,6 +70,27 @@ export function NodeConfigPanel() {
                 {nodeType === 'WORKFLOW_ACTION' && <WorkflowConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'HTTP_WEBHOOK' && <WebhookConfig config={config} onChange={handleConfigChange} />}
                 {nodeType === 'AI_RESPONSE' && <AiResponseConfig config={config} onChange={handleConfigChange} />}
+                {nodeType === 'CRM_LEAD_CHECK' && (
+                    <CrmLeadCheckConfig
+                        config={config}
+                        onChange={handleConfigChange}
+                        nodeId={selectedNodeId!}
+                    />
+                )}
+                {nodeType === 'ASK_FIELD' && (
+                    <AskFieldConfig
+                        config={config}
+                        onChange={handleConfigChange}
+                        nodeId={selectedNodeId!}
+                    />
+                )}
+                {nodeType === 'SAVE_TO_CRM' && (
+                    <SaveToCrmConfig
+                        config={config}
+                        onChange={handleConfigChange}
+                        nodeId={selectedNodeId!}
+                    />
+                )}
             </div>
         </div>
     );

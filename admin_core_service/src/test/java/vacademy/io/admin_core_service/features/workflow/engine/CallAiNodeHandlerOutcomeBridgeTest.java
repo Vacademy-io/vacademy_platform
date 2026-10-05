@@ -34,6 +34,7 @@ import static org.mockito.Mockito.*;
 class CallAiNodeHandlerOutcomeBridgeTest {
 
     @Mock AiCallNodeDispatcher aiCallDispatcher;
+    @Mock vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService aiCallQueueService;
     @Mock AiCallingSettingsService settingsService;
     @Mock UserLeadProfileRepository userLeadProfileRepository;
     @Mock WorkflowExecutionStateRepository executionStateRepository;

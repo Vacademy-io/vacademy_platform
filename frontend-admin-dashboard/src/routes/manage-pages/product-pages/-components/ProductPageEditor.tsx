@@ -16,6 +16,8 @@ import { ProductPagePreview } from './ProductPagePreview';
 import { MyButton } from '@/components/design-system/button';
 import { PageDesignEditor } from './PageDesignEditor';
 import { ProductPageCustomFieldsManager } from './ProductPageCustomFieldsManager';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const TABS = [
     { id: 'design', label: 'Page Design' },
@@ -238,7 +240,9 @@ export const ProductPageEditor = () => {
                                 : 'border-transparent text-neutral-500 hover:text-neutral-700'
                         }`}
                     >
-                        {tab.label}
+                        {tab.id === 'courses'
+                            ? getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)
+                            : tab.label}
                     </button>
                 ))}
             </div>
@@ -253,7 +257,9 @@ export const ProductPageEditor = () => {
                     {activeTab === 'courses' && (
                         <div className="mx-auto max-w-3xl">
                             <div className="mb-4">
-                                <h2 className="text-sm font-semibold text-neutral-800">Courses</h2>
+                                <h2 className="text-sm font-semibold text-neutral-800">
+                                    {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
+                                </h2>
                                 <p className="mt-0.5 text-xs text-neutral-500">
                                     Select package sessions to include. Each uses its default invite
                                     — you can change it per session.

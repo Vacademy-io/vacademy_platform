@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { Form } from '@/components/ui/form';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Trash2, Plus, Calendar, ChevronDown } from 'lucide-react';
+import { UploadSimple } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { getPublicUrl } from '@/services/upload_file';
+import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -756,6 +760,11 @@ export const AddCourseStep2 = ({
             hasSessions: data.hasSessions,
             sessions: data.sessions,
             instructors: data.instructors,
+            // The authors on screen. The auto-added creator is only in state, never
+            // written to the form, so the form value alone can miss them.
+            selectedInstructors: Array.isArray(selectedInstructors)
+                ? selectedInstructors
+                : data.selectedInstructors,
             publishToCatalogue: data.publishToCatalogue,
         };
         onSubmit(completeData);
@@ -1023,12 +1032,12 @@ export const AddCourseStep2 = ({
         return name?.slice(0, 2).toUpperCase();
     };
 
-    // Author-profile metadata (subtitle / description) shown on course pages.
+    // Author-profile metadata (subtitle / description / photo) shown on course pages.
     // Updates the selected instructor, the form value, and every level userIds
     // entry so the metadata is carried through to the create/update payload.
     const handleAuthorMetaChange = (
         instructorId: string,
-        field: 'authorSubtitle' | 'authorDescription',
+        field: 'authorSubtitle' | 'authorDescription' | 'profilePicId',
         value: string
     ) => {
         setSelectedInstructors((prev) => {
@@ -1053,6 +1062,49 @@ export const AddCourseStep2 = ({
             form.setValue('sessions', ensureNewSessionAndLevelFlags(updatedSessions));
             return updatedSessions;
         });
+    };
+
+    // Author photo: uploaded like the Teams member photo, saved onto the user
+    // (profile_pic_file_id) when the course is saved.
+    const [authorPhotoUrls, setAuthorPhotoUrls] = useState<Record<string, string>>({});
+    const [uploadingAuthorPhotoFor, setUploadingAuthorPhotoFor] = useState<string | null>(null);
+    const requestedAuthorPhotoIds = useRef(new Set<string>());
+
+    useEffect(() => {
+        (Array.isArray(selectedInstructors) ? selectedInstructors : []).forEach(
+            ({ profilePicId }) => {
+                if (!profilePicId || requestedAuthorPhotoIds.current.has(profilePicId)) return;
+                requestedAuthorPhotoIds.current.add(profilePicId);
+                getPublicUrl(profilePicId)
+                    .then((url) => {
+                        if (url) setAuthorPhotoUrls((prev) => ({ ...prev, [profilePicId]: url }));
+                    })
+                    .catch(() => undefined);
+            }
+        );
+    }, [selectedInstructors]);
+
+    const handleAuthorPhotoUpload = async (instructorId: string, file?: File) => {
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please choose an image file.');
+            return;
+        }
+        setUploadingAuthorPhotoFor(instructorId);
+        try {
+            const fileId = await UploadFileInS3Public(
+                file,
+                () => undefined,
+                instituteId,
+                'STUDENTS'
+            );
+            if (!fileId) throw new Error('no file id');
+            handleAuthorMetaChange(instructorId, 'profilePicId', fileId);
+        } catch {
+            toast.error('Photo upload failed. Please try again.');
+        } finally {
+            setUploadingAuthorPhotoFor(null);
+        }
     };
 
     const handlePublishChange = (checked: boolean | 'indeterminate') => {
@@ -1470,10 +1522,17 @@ export const AddCourseStep2 = ({
     }, [courseSettings, hasSessions, hasLevels, form, initialData]);
 
     useEffect(() => {
-        fetchInstituteDashboardUsers(instituteId, {
-            roles: RoleTypeExceptStudent,
-            status: [{ id: '1', name: 'ACTIVE' }],
-        })
+        // Every active staff member, not the endpoint's default first 10: the author
+        // picker searches this list client-side.
+        fetchInstituteDashboardUsers(
+            instituteId,
+            {
+                roles: RoleTypeExceptStudent,
+                status: [{ id: '1', name: 'ACTIVE' }],
+            },
+            0,
+            1000
+        )
             .then((res) => {
                 // API may return a plain array or paginated { content: [...] }
                 const usersList = Array.isArray(res) ? res : res?.content || [];
@@ -1633,8 +1692,12 @@ export const AddCourseStep2 = ({
                                 {!isEdit && !courseSettings?.courseStructure?.fixCourseDepth && (
                                     <div>
                                         <h3 className="mb-3 text-base font-medium text-gray-900">
-                                            Select course structure that is suitable for your
-                                            institute
+                                            Select{' '}
+                                            {getTerminology(
+                                                ContentTerms.Course,
+                                                SystemTerms.Course
+                                            ).toLocaleLowerCase()}{' '}
+                                            structure that is suitable for your institute
                                         </h3>
                                         <AddCourseStep2StructureTypes
                                             form={form}
@@ -3346,9 +3409,15 @@ export const AddCourseStep2 = ({
                                                         (!selectedInstructors ||
                                                             selectedInstructors.length === 0) && (
                                                             <p className="text-sm text-gray-600">
-                                                                No authors assigned yet. Select one below to
-                                                                add a subtitle and description; until then the
-                                                                catalogue shows the course creator.
+                                                                No authors assigned yet. Select one
+                                                                below to add a subtitle and
+                                                                description; until then the
+                                                                catalogue shows the{' '}
+                                                                {getTerminology(
+                                                                    ContentTerms.Course,
+                                                                    SystemTerms.Course
+                                                                ).toLocaleLowerCase()}{' '}
+                                                                creator.
                                                             </p>
                                                         )}
 
@@ -3750,7 +3819,14 @@ export const AddCourseStep2 = ({
                                                                                             <div className="flex items-center gap-3">
                                                                                                 <Avatar className="size-8">
                                                                                                     <AvatarImage
-                                                                                                        src=""
+                                                                                                        src={
+                                                                                                            authorPhotoUrls[
+                                                                                                                instructor
+                                                                                                                    .profilePicId
+                                                                                                            ] ??
+                                                                                                            ''
+                                                                                                        }
+                                                                                                        className="object-cover"
                                                                                                         alt={
                                                                                                             instructor.email
                                                                                                         }
@@ -3936,8 +4012,83 @@ export const AddCourseStep2 = ({
                                                                                             </div>
                                                                                         </div>
 
-                                                                                        {/* Per-author subtitle & description */}
+                                                                                        {/* Per-author photo, subtitle & description */}
                                                                                         <div className="mt-2 space-y-2">
+                                                                                            <div>
+                                                                                                <Label className="mb-1 block text-xs font-medium text-gray-700">
+                                                                                                    Author
+                                                                                                    Photo
+                                                                                                </Label>
+                                                                                                <div className="flex items-center gap-3">
+                                                                                                    <Avatar className="size-12">
+                                                                                                        <AvatarImage
+                                                                                                            src={
+                                                                                                                authorPhotoUrls[
+                                                                                                                    instructor
+                                                                                                                        .profilePicId
+                                                                                                                ] ??
+                                                                                                                ''
+                                                                                                            }
+                                                                                                            className="object-cover"
+                                                                                                            alt={
+                                                                                                                instructor.name
+                                                                                                            }
+                                                                                                        />
+                                                                                                        <AvatarFallback className="bg-gray-100 text-xs font-medium text-gray-500">
+                                                                                                            {getInitials(
+                                                                                                                instructor.email
+                                                                                                            )}
+                                                                                                        </AvatarFallback>
+                                                                                                    </Avatar>
+                                                                                                    <label
+                                                                                                        className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 ${uploadingAuthorPhotoFor === instructor.id ? 'pointer-events-none opacity-60' : ''}`}
+                                                                                                    >
+                                                                                                        <UploadSimple
+                                                                                                            size={
+                                                                                                                14
+                                                                                                            }
+                                                                                                        />
+                                                                                                        {uploadingAuthorPhotoFor ===
+                                                                                                        instructor.id
+                                                                                                            ? 'Uploading...'
+                                                                                                            : instructor.profilePicId
+                                                                                                              ? 'Change photo'
+                                                                                                              : 'Upload photo'}
+                                                                                                        <input
+                                                                                                            type="file"
+                                                                                                            accept="image/*"
+                                                                                                            className="hidden"
+                                                                                                            disabled={
+                                                                                                                uploadingAuthorPhotoFor ===
+                                                                                                                instructor.id
+                                                                                                            }
+                                                                                                            onChange={(
+                                                                                                                e
+                                                                                                            ) => {
+                                                                                                                void handleAuthorPhotoUpload(
+                                                                                                                    instructor.id,
+                                                                                                                    e
+                                                                                                                        .target
+                                                                                                                        .files?.[0]
+                                                                                                                );
+                                                                                                                e.target.value =
+                                                                                                                    '';
+                                                                                                            }}
+                                                                                                        />
+                                                                                                    </label>
+                                                                                                </div>
+                                                                                                <p className="mt-1 text-xs text-gray-500">
+                                                                                                    Shown
+                                                                                                    with
+                                                                                                    this
+                                                                                                    author
+                                                                                                    on
+                                                                                                    every
+                                                                                                    course
+                                                                                                    they
+                                                                                                    teach.
+                                                                                                </p>
+                                                                                            </div>
                                                                                             <div>
                                                                                                 <Label className="mb-1 block text-xs font-medium text-gray-700">
                                                                                                     Author
@@ -4554,11 +4705,20 @@ export const AddCourseStep2 = ({
                                         </CollapsibleTrigger>
                                         <CollapsibleContent className="mt-3 space-y-2">
                                             <p className="text-xs text-muted-foreground">
-                                                Advanced per-course settings used by workflows (LMS
-                                                config, retention, etc.). Must be a JSON object
-                                                wrapped in a <code>{'{ "setting": { ... } }'}</code>{' '}
-                                                envelope. You can also edit this later from the
-                                                course&apos;s Settings tab. Leave empty to skip.
+                                                Advanced per-
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}{' '}
+                                                settings used by workflows (LMS config, retention,
+                                                etc.). Must be a JSON object wrapped in a{' '}
+                                                <code>{'{ "setting": { ... } }'}</code> envelope.
+                                                You can also edit this later from the{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}
+                                                &apos;s Settings tab. Leave empty to skip.
                                             </p>
                                             <Textarea
                                                 spellCheck={false}

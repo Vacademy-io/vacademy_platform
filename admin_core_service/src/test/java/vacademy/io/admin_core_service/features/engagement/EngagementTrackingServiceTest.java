@@ -535,6 +535,21 @@ class EngagementTrackingServiceTest {
     }
 
     @Test
+    @DisplayName("Overview: a learner who joined Thursday is not charged with Wednesday's tasks")
+    void overviewLateJoinerNotCharged() {
+        ZonedDateTime now = overviewFixture();
+        List<Object[]> joins = new ArrayList<>();
+        joins.add(new Object[] {"u2", Timestamp.from(ZonedDateTime.of(2026, 9, 24, 9, 0, 0, 0, IST).toInstant())});
+        when(plans.findJoinDatesForBatch("ps-1")).thenReturn(joins);
+
+        EngagementTrackingDTO.LearnerProgress u2 = service.getPlanOverview(plan(), OverviewQuery.ALL, now)
+                .getRows().stream().filter(r -> "u2".equals(r.getUserId())).findFirst().orElseThrow();
+
+        assertEquals(2L, u2.getAvailable()); // Thu i3 + Fri i4, not Wed's i1/i2
+        assertEquals(1L, u2.getMissed());    // Thu i3 only
+    }
+
+    @Test
     @DisplayName("Overview days[]: completions filed under their day, today counted once it opened")
     void overviewDays() {
         ZonedDateTime now = overviewFixture();

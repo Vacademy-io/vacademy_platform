@@ -6,8 +6,6 @@ import com.itextpdf.html2pdf.ConverterProperties;
 import com.itextpdf.html2pdf.HtmlConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -59,6 +57,8 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
 
 import static vacademy.io.common.auth.enums.CompanyStatus.ACTIVE;
 
@@ -130,7 +130,7 @@ public class AssessmentParticipantsManager {
     private vacademy.io.assessment_service.features.assessment.service.batch_pending.NotAttemptedLearnerService notAttemptedLearnerService;
 
     @Autowired
-    private CacheManager cacheManager;
+    private vacademy.io.assessment_service.features.assessment.service.ReleaseStateWriter releaseStateWriter;
 
     @Autowired
     private vacademy.io.assessment_service.features.assessment.service.ReportPdfRenderService reportPdfRenderService;
@@ -1211,7 +1211,9 @@ public class AssessmentParticipantsManager {
         if (!StringUtils.hasText(type))
             throw new VacademyException("Invalid Request Type");
 
-        Optional<Assessment> assessmentOptional = assessmentRepository.findById(assessmentId);
+        // Tenant check: the assessment must belong to the institute in the request.
+        Optional<Assessment> assessmentOptional = assessmentRepository.findByAssessmentIdAndInstituteId(assessmentId,
+                instituteId);
         if (assessmentOptional.isEmpty())
             throw new VacademyException("No Assessment Found");
 
@@ -1275,6 +1277,14 @@ public class AssessmentParticipantsManager {
      */
     private void createParticipantsReportAndSendEmail(List<StudentAttempt> attemptList, Assessment assessment,
             String instituteId) {
+        if (ApiCandidatePolicy.isApiExam(assessment)) {
+            // Exams created through the partner API (spec 12): Release Result is the
+            // state change only. API candidates have no login and no email, so no report
+            // PDF is rendered and nothing is sent; the ASSESSMENT_RESULT_RELEASED workflow
+            // is not fired for them either.
+            releaseStateWriter.release(attemptList);
+            return;
+        }
         if (assessment.getEvaluationType().equals("MANUAL")) {
             handleParticipantsReportCreationForManualAssessment(attemptList, assessment, instituteId);
             return;
@@ -1389,17 +1399,9 @@ public class AssessmentParticipantsManager {
      * @param attempt The student attempt to update.
      */
     private void updateAttemptDataReleaseData(StudentAttempt attempt) {
-        attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
-        attempt.setReportLastReleaseDate(DateUtil.getCurrentUtcTime());
-        studentAttemptRepository.save(attempt);
-        // Bust the per-attempt comparison cache so freshly-released results
-        // don't get masked by a stale studentMarks=0 entry from before scoring.
-        try {
-            Cache cache = cacheManager.getCache("comparisonData");
-            if (cache != null) cache.clear();
-        } catch (Exception e) {
-            log.warn("Failed to evict comparisonData cache after release: {}", e.getMessage());
-        }
+        // Shared with the partner API's finalize (ReleaseStateWriter): status, release
+        // date, save, then one comparisonData cache clear -- per attempt here, as before.
+        releaseStateWriter.release(attempt);
     }
 
     /**
@@ -1458,9 +1460,20 @@ public class AssessmentParticipantsManager {
         if (Objects.isNull(request))
             throw new VacademyException("Invalid Request");
 
-        // Fetch attempts based on request
+        // Fetch attempts based on request. Only attempts on THIS assessment: the ids
+        // come from the client, and the assessment was the only thing tenant-checked.
         List<StudentAttempt> attemptList = StreamSupport
                 .stream(studentAttemptRepository.findAllById(request.getAttemptIds()).spliterator(), false)
+                .filter(attempt -> {
+                    boolean onAssessment = attempt.getRegistration() != null
+                            && attempt.getRegistration().getAssessment() != null
+                            && assessment.getId().equals(attempt.getRegistration().getAssessment().getId());
+                    if (!onAssessment) {
+                        log.warn("[release-result] skipping attempt {} not on assessment {}", attempt.getId(),
+                                assessment.getId());
+                    }
+                    return onAssessment;
+                })
                 .toList();
 
         createParticipantsReportAndSendEmail(attemptList, assessment, instituteId);

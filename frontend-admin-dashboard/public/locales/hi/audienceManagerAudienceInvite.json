@@ -15,6 +15,10 @@
         "allStatus": "सभी स्थितियां",
         "placeholder": "स्थिति के अनुसार फ़िल्टर करें"
     },
+    "typeFilter": {
+        "allTypes": "सभी {{term}}",
+        "placeholder": "{{term}} से फ़िल्टर करें"
+    },
     "toolbar": {
         "searchPlaceholder": "{{term}} खोजें",
         "searchAriaLabel": "{{term}} खोजें",

@@ -290,6 +290,11 @@ public class FileServiceImpl implements FileService {
             return false;
         }
         Optional<FileMetadata> metadata = fileMetadataRepository.findById(request.getFileId());
+        // AI Evaluation API files (answer sheets, checked copies) are never linked to a user
+        // or copied to the public bucket (acknowledge-get-details would publish them).
+        if (metadata.isPresent() && EvalApiFileService.isReservedSource(metadata.get().getSource())) {
+            return false;
+        }
         if (metadata.isPresent()) {
             metadata.get().setFileSize(request.getFileSize());
             metadata.get().setHeight(request.getHeight());
@@ -482,7 +487,9 @@ public class FileServiceImpl implements FileService {
     @Override
     public String getPublicUrl(String id) {
         Optional<FileMetadata> fileMetadata = fileMetadataRepository.findById(id);
-        if (fileMetadata.isEmpty())
+        // AI Evaluation API files get no permanent URL: the public CDN can fail over to the
+        // main bucket, so such a link would be a permanent public copy of an answer sheet.
+        if (fileMetadata.isEmpty() || EvalApiFileService.isReservedSource(fileMetadata.get().getSource()))
             throw new DatabaseException("File Not Found");
 
         // CDN-disabled fallback stays on the main bucket's host — the exact URL

@@ -1,12 +1,5 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { SidebarItem } from '@/routes/evaluator-ai/-components/layout-container/sidebar/sidebar-item';
-import { SidebarItemsData } from '@/routes/evaluator-ai/-components/layout-container/sidebar/utils';
-import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import React, { useState } from 'react';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { filterMenuItems } from '../sidebar/helper';
-import { useTabSettings } from '@/hooks/use-tab-settings';
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -22,44 +15,18 @@ export const InternalSidebarComponent = ({
 }) => {
     const { t } = useTranslation('internalSidebarComponent');
     const resolvedMobileButtonText = mobileButtonText ?? t('menu');
-    const { data, isLoading } = useSuspenseQuery(useInstituteQuery());
-    const { isTabVisible, isSubItemVisible } = useTabSettings();
-    // Removed sub_modules dependency - use filterMenuItems directly
-    const sideBarItems = filterMenuItems(
-        SidebarItemsData,
-        data?.id,
-        isTabVisible,
-        isSubItemVisible
-    );
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const [isOpen, setIsOpen] = useState(false);
-
-    if (isLoading) {
-        return <DashboardLoader />;
-    }
 
     // Sidebar content - shared between mobile drawer and desktop sidebar.
     // A page-supplied `sidebarComponent` is rendered as the panel's direct child
     // (no wrapper div) so it can own the full column: min-h-full resolves against
     // the h-screen panel, which is what lets a page pin a footer with
     // `sticky bottom-0` instead of a viewport-`fixed` bar that guesses its width.
-    const sidebarContent = sidebarComponent ? (
-        sidebarComponent
-    ) : (
-        <div className="w-full">
-            {sideBarItems.map((obj, key) => (
-                <div key={key} id={obj.id} className="pb-5">
-                    <SidebarItem
-                        icon={obj.icon}
-                        subItems={obj.subItems}
-                        title={obj.title}
-                        to={obj.to}
-                    />
-                </div>
-            ))}
-        </div>
-    );
+    // (The old built-in fallback menu listed the retired public /evaluator-ai
+    // tool; LayoutContainer only mounts this with a page-supplied component.)
+    const sidebarContent = sidebarComponent;
 
     // Mobile/Tablet: Render as Sheet/Drawer with a trigger button
     if (isMobile || isTablet) {

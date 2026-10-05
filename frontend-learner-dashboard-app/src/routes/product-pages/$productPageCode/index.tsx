@@ -96,7 +96,9 @@ function RouteComponent() {
         retry: 1,
     });
 
-    const resolvedInstituteId = domainInstituteId || search.instituteId || null;
+    // An explicit ?instituteId wins: the shared learner.vacademy.io host resolves to Vacademy's own
+    // institute, which would otherwise fetch every other institute's page with the wrong id (510).
+    const resolvedInstituteId = search.instituteId || domainInstituteId || null;
 
     if (domainLoading) return <Spinner />;
 

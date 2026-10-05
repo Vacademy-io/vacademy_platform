@@ -42,6 +42,10 @@ public class EnrollmentFormService {
     private EnrollInviteRepository enrollInviteRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository userPlanRepository;
+
+
+    @Autowired
     private StudentRegistrationManager studentRegistrationManager;
 
     @Autowired
@@ -158,8 +162,29 @@ public class EnrollmentFormService {
         return EnrollmentFormSubmitResponseDTO.builder()
                 .userId(createdUser.getId())
                 .abandonedCartEntryIds(abandonedCartEntryIds)
+                .trialAvailable(trialAvailableFor(createdUser.getId(), request.getInstituteId()))
                 .message("Form submitted successfully. Please proceed to payment.")
                 .build();
+    }
+
+    /**
+     * Whether the learner still has their free trial. Mirrors the rule the enrolment path
+     * applies, so the form promises exactly what the checkout will charge.
+     *
+     * <p>Any failure answers "yes": a lookup problem must not tell a first-time learner they
+     * have no trial, which would read as a bait-and-switch for the many to spare the few.
+     */
+    private boolean trialAvailableFor(String userId, String instituteId) {
+        try {
+            java.util.Date now = new java.util.Date();
+            boolean consumed = phoneIdentifierInviteSubmissionGuard.usesPhoneIdentifier(instituteId)
+                    ? userPlanRepository.hasConsumedTrialByPhone(userId, instituteId, "", now)
+                    : userPlanRepository.hasConsumedTrialAtInstitute(userId, instituteId, "", now);
+            return !consumed;
+        } catch (Exception e) {
+            log.warn("Could not resolve trial eligibility for user {}: {}", userId, e.getMessage());
+            return true;
+        }
     }
 
     private EnrollInvite validateEnrollInvite(String enrollInviteId, String instituteId) {

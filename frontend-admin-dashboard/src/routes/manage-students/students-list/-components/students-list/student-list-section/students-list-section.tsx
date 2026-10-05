@@ -5,6 +5,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { GetFilterData } from '@/routes/manage-students/students-list/-constants/all-filters';
 import { MyTable } from '@/components/design-system/table';
+import { counsellorDisplayName } from '@/components/shared/leads/counsellor-display';
 import { MyPagination } from '@/components/design-system/pagination';
 import { StudentListHeader } from './student-list-header';
 import { StudentFilters } from './student-filters';
@@ -20,6 +21,7 @@ import { STUDENT_LIST_COLUMN_WIDTHS } from '@/components/design-system/utils/con
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { MembershipBadge } from '@/components/shared/membership-badge';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { UserCircle } from '@phosphor-icons/react';
 import { BulkActions } from './bulk-actions/bulk-actions';
@@ -250,6 +252,11 @@ export const StudentsListSection = () => {
         [studentCfFilterGate, rangeCustomFields]
     );
 
+    // Whether this institute runs trials at all, reported by the list endpoint rather than
+    // configured. Held in state because the filter bar is built before the table hook has
+    // run: it starts false and flips once the first page arrives, which re-renders the bar.
+    const [membershipTypesAvailable, setMembershipTypesAvailable] = useState(false);
+
     const allFilters = GetFilterData(
         tAllFilters,
         instituteDetails,
@@ -258,7 +265,8 @@ export const StudentsListSection = () => {
         subOrgsData,
         textCustomFields,
         studentCfFilterGate,
-        gatedRangeCustomFields
+        gatedRangeCustomFields,
+        membershipTypesAvailable
     );
     const filters = allFilters.filter((f) => {
         const fixed = FILTER_TO_COLUMNS[f.id];
@@ -286,6 +294,12 @@ export const StudentsListSection = () => {
         setAppliedFilters,
         search.package_session_id ? [search.package_session_id] : null
     );
+
+    // Flip the gate once the first page lands. Only on a real change, so this never loops.
+    useEffect(() => {
+        const available = Boolean(studentTableData?.membership_types_available);
+        setMembershipTypesAvailable((current) => (current === available ? current : available));
+    }, [studentTableData]);
 
     // Header badge counts (Total / Active / Inactive) — independent of the status
     // filter so the breakdown is always visible. Pass the same pinned
@@ -509,7 +523,34 @@ export const StudentsListSection = () => {
                                                 last: studentTableData.last,
                                             }}
                                             columns={(() => {
-                                                const cols = getCustomColumns(showApprovalActions);
+                                                const baseCols = getCustomColumns(showApprovalActions);
+                                                // Trial/Paid chip under the name. Applied before the
+                                                // lead-system early return, so it shows for institutes
+                                                // that run trials whether or not leads are enabled.
+                                                const cols = membershipTypesAvailable
+                                                    ? baseCols.map((col) => {
+                                                          if (col.id !== 'full_name') return col;
+                                                          const inner = col.cell;
+                                                          return {
+                                                              ...col,
+                                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                              cell: (props: any) => (
+                                                                  <div className="flex flex-col gap-0.5">
+                                                                      {typeof inner === 'function'
+                                                                          ? inner(props)
+                                                                          : null}
+                                                                      <MembershipBadge
+                                                                          membershipType={
+                                                                              props.row.original
+                                                                                  .membership_type
+                                                                          }
+                                                                          available
+                                                                      />
+                                                                  </div>
+                                                              ),
+                                                          };
+                                                      })
+                                                    : baseCols;
                                                 // If lead system is entirely off, return cols unchanged
                                                 if (!leadReady) return cols;
 
@@ -563,7 +604,7 @@ export const StudentsListSection = () => {
                                                             .full_name as string;
                                                         const profile = leadProfiles[userId];
                                                         const counselorName =
-                                                            profile?.assigned_counselor_name;
+                                                            counsellorDisplayName(profile);
                                                         if (counselorName) {
                                                             return (
                                                                 <button

@@ -8,11 +8,13 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.web.util.OnCommittedResponseWrapper;
 import org.springframework.stereotype.Component;
+import vacademy.io.common.logging.SentrySensitiveDataScrubber;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -52,24 +54,61 @@ public class RequestTracingFilter implements Filter {
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
 
-        // Check if tracing is enabled
-        if (!tracingProperties.isRequestFilterEffectivelyEnabled()) {
+        if (!(request instanceof HttpServletRequest httpRequest)
+                || !(response instanceof HttpServletResponse httpResponse)) {
             chain.doFilter(request, response);
             return;
         }
 
-        if (!(request instanceof HttpServletRequest httpRequest)) {
-            chain.doFilter(request, response);
-            return;
+        // The request id is a contract (it is in every public API error body and forwarded
+        // on internal calls), not an observability extra, so it is bound even when the
+        // tracing toggles below are off.
+        String previousRequestId = MDC.get(RequestIds.MDC_KEY);
+        String requestId = bindRequestId(httpRequest, httpResponse);
+        try {
+            if (!tracingProperties.isRequestFilterEffectivelyEnabled()) {
+                chain.doFilter(request, response);
+                return;
+            }
+            traceRequest(httpRequest, httpResponse, chain, requestId);
+        } finally {
+            // Pooled thread: never leave this request's id behind for the next one.
+            if (previousRequestId != null) {
+                MDC.put(RequestIds.MDC_KEY, previousRequestId);
+            } else {
+                MDC.remove(RequestIds.MDC_KEY);
+            }
         }
+    }
 
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
+    /**
+     * Accept a well-formed inbound {@code X-Request-Id} or mint one, then make it visible to
+     * logs (MDC), to later filters and controllers (request attribute) and to the caller
+     * (response header, set now while the response cannot have committed yet).
+     */
+    static String bindRequestId(HttpServletRequest request, HttpServletResponse response) {
+        String requestId = RequestIds.acceptOrGenerate(request.getHeader(RequestIds.HEADER));
+        request.setAttribute(RequestIds.ATTRIBUTE, requestId);
+        MDC.put(RequestIds.MDC_KEY, requestId);
+        try {
+            if (!response.isCommitted()) {
+                response.setHeader(RequestIds.HEADER, requestId);
+            }
+        } catch (Exception e) {
+            // Observability must never break the response it is observing.
+        }
+        return requestId;
+    }
+
+    private void traceRequest(HttpServletRequest httpRequest, HttpServletResponse httpResponse, FilterChain chain,
+            String requestId) throws IOException, ServletException {
+        ServletRequest request = httpRequest;
+        ServletResponse response = httpResponse;
 
         // Extract request info
         String method = httpRequest.getMethod();
         String uri = httpRequest.getRequestURI();
-        String queryString = httpRequest.getQueryString();
-        String fullPath = queryString != null ? uri + "?" + queryString : uri;
+        String fullPath = loggablePath(uri, httpRequest.getQueryString());
         String clientIp = getClientIp(httpRequest);
 
         // Start timing
@@ -80,7 +119,7 @@ public class RequestTracingFilter implements Filter {
         ExternalCallTimer.begin();
 
         // Add start breadcrumb to Sentry
-        addRequestStartBreadcrumb(method, fullPath, clientIp);
+        addRequestStartBreadcrumb(method, fullPath, clientIp, requestId);
 
         // Tag the current Sentry span
         tagCurrentSpan(method, uri, clientIp);
@@ -118,7 +157,7 @@ public class RequestTracingFilter implements Filter {
             int status = httpResponse.getStatus();
 
             // Log based on duration and status
-            logRequestCompletion(method, fullPath, status, durationMs, clientIp);
+            logRequestCompletion(method, fullPath, status, durationMs, clientIp, requestId);
 
             // Add completion breadcrumb to Sentry
             addRequestCompleteBreadcrumb(method, fullPath, status, durationMs);
@@ -126,6 +165,18 @@ public class RequestTracingFilter implements Filter {
             // Never leave the counter on a pooled thread.
             ExternalCallTimer.clear();
         }
+    }
+
+    /**
+     * The path as it goes to logs, breadcrumbs and Sentry extras. Public `/open/` endpoints
+     * can carry partner identifiers and tokens in the query string, so theirs is dropped;
+     * elsewhere secret-looking parameters (?token=, ?signature=, ...) are filtered.
+     */
+    static String loggablePath(String uri, String queryString) {
+        if (queryString == null || SentrySensitiveDataScrubber.isOpenPath(uri)) {
+            return uri;
+        }
+        return uri + "?" + SentrySensitiveDataScrubber.redactQueryString(queryString);
     }
 
     /**
@@ -277,13 +328,14 @@ public class RequestTracingFilter implements Filter {
     /**
      * Add request start breadcrumb for Sentry debugging
      */
-    private void addRequestStartBreadcrumb(String method, String path, String clientIp) {
+    private void addRequestStartBreadcrumb(String method, String path, String clientIp, String requestId) {
         try {
             Breadcrumb breadcrumb = new Breadcrumb();
             breadcrumb.setCategory("http.request");
             breadcrumb.setLevel(SentryLevel.INFO);
             breadcrumb.setMessage(method + " " + path);
             breadcrumb.setData("client_ip", clientIp);
+            breadcrumb.setData("request_id", requestId);
             breadcrumb.setData("phase", "start");
             Sentry.addBreadcrumb(breadcrumb);
         } catch (Exception e) {
@@ -337,10 +389,11 @@ public class RequestTracingFilter implements Filter {
     /**
      * Log request completion with appropriate log level based on duration
      */
-    private void logRequestCompletion(String method, String path, int status, long durationMs, String clientIp) {
+    private void logRequestCompletion(String method, String path, int status, long durationMs, String clientIp,
+            String requestId) {
         String logMessage = String.format(
-                "%s %s | Status: %d | Duration: %dms | Client: %s",
-                method, truncatePath(path), status, durationMs, clientIp);
+                "%s %s | Status: %d | Duration: %dms | Client: %s | RequestId: %s",
+                method, truncatePath(path), status, durationMs, clientIp, requestId);
 
         if (durationMs >= tracingProperties.getCriticalRequestThresholdMs()) {
             // Critical slowness - log as ERROR with full details

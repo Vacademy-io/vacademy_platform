@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationLane;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 
@@ -34,16 +35,11 @@ import java.util.List;
 public class AiEvaluationSubmissionEnqueuer {
 
         /**
-         * An evaluation in any of these states already covers this attempt. Mirrors
-         * AiEvaluationService.ACTIVE_STATUSES -- re-declared rather than shared because
-         * the two paths are independent and should be free to diverge.
+         * An evaluation in any of these states already covers this attempt. The shared
+         * list, not a copy: a copy of it missed DISPATCHED once already, and a claimed
+         * row read as "nothing running" would be queued (and paid for) a second time.
          */
-        private static final List<String> ACTIVE_STATUSES = List.of(
-                        AiEvaluationStatusEnum.PENDING.name(),
-                        AiEvaluationStatusEnum.STARTED.name(),
-                        AiEvaluationStatusEnum.PROCESSING.name(),
-                        AiEvaluationStatusEnum.EXTRACTING.name(),
-                        AiEvaluationStatusEnum.EVALUATING.name());
+        static final List<String> ACTIVE_STATUSES = AiEvaluationStatusEnum.ACTIVE;
 
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
         private final TypedAnswerEvaluation typedAnswerEvaluation;
@@ -82,6 +78,17 @@ public class AiEvaluationSubmissionEnqueuer {
                         if (!Boolean.TRUE.equals(assessment.getAiEvaluationEnabled())) {
                                 return null;
                         }
+                        // A released result is frozen against AI writes (G8, T0.33): queueing it
+                        // would bill a run whose marks are then thrown away.
+                        if (AiEvaluationService.isReleased(attempt)) {
+                                log.info("[AI-EVAL-ENQUEUE] Attempt {} result is already released; not queued",
+                                                attempt.getId());
+                                return null;
+                        }
+                        // No credit check here, on purpose: this runs inside the learner's
+                        // submit and must never wait on the credit service. The row is priced
+                        // and checked when it is dispatched (AiEvaluationCreditGate.checkAtDispatch);
+                        // a shortfall fails it there, unbilled, where the teacher sees it.
                         // With an uploaded copy the AI grades the sheet. Without one it grades
                         // only the typed written answers - so an online paper with nothing
                         // written would be dispatched only to fail with "nothing to grade";
@@ -108,6 +115,11 @@ public class AiEvaluationSubmissionEnqueuer {
                         process.setStudentAttempt(attempt);
                         process.setAssessment(assessment);
                         process.setStatus(AiEvaluationStatusEnum.PENDING.name());
+                        // The fair queue shares capacity out per institute and lane (V52).
+                        process.setInstituteId(attempt.getRegistration() != null
+                                        ? attempt.getRegistration().getInstituteId() : null);
+                        process.setLane(AiEvaluationLane.of(
+                                        typedAnswerEvaluation.isTypedAttempt(attempt, assessment)).name());
                         // startedAt is stamped by the worker when it actually begins. Leaving it
                         // null here is what distinguishes "queued" from "running" for the
                         // stale-job sweeper.

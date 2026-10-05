@@ -53,6 +53,7 @@ import { CriteriaStatusBadge } from '@/routes/assessment/create-assessment/$asse
 import { AddEditCriteriaDialog } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/AddEditCriteriaDialog';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface QuestionDuration {
     hrs: string;
@@ -194,7 +195,7 @@ const SectionInfo = ({
                         <div
                             className="custom-html-content prose prose-sm max-w-none text-sm text-slate-700"
                             dangerouslySetInnerHTML={{
-                                __html: section.description.content || '',
+                                __html: sanitizeRichHtml(section.description.content),
                             }}
                         />
                     </CardContent>

@@ -19,6 +19,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Pre-renders an agent's FIXED lines into the voice bot's speech cache when the
@@ -152,7 +154,47 @@ public class AiAgentSpeechWarmer {
         if (!opening.isEmpty() && !opening.contains("{{") && complete(opening)) {
             out.add(opening);
         }
+        String mode = agent.getSpeechCacheMode() == null ? "" : agent.getSpeechCacheMode().trim().toUpperCase();
+        if (mode.equals("FULL")) {
+            out.addAll(scriptSentences(agent.getSystemPrompt(), MAX_SCRIPT_SENTENCES));
+        }
         return new ArrayList<>(out);
+    }
+
+    /** The bot caps a warm at 64 texts; the opening takes one. */
+    static final int MAX_SCRIPT_SENTENCES = 60;
+    private static final Pattern QUOTED = Pattern.compile("[\"“]([^\"“”\n]{8,400})[\"”]");
+    private static final Pattern SENTENCE_END = Pattern.compile("(?<=[।?!.？])\\s+");
+
+    /**
+     * The sentences a scripted prompt tells the agent to SAY — its quoted lines —
+     * one per cache entry, split where the bot's sentence aggregator splits, so the
+     * warmed key is the key a live sentence looks up. Warmed on save so that after
+     * a prompt change the new lines hit from call #1 instead of the cache hit rate
+     * dropping to zero and relearning (the gap measured on Shreya, 2026-09-30).
+     *
+     * <p>Only lines that can be spoken verbatim: no {{placeholder}}, no <slot> or
+     * [slot], a letter in them, 8-240 characters, a sentence ending. A quoted
+     * CALLER line ("अभी time नहीं") is warmed too and simply never hits — one
+     * vendor render, skipped on every later save because the bot already has it.
+     */
+    static List<String> scriptSentences(String prompt, int cap) {
+        List<String> out = new ArrayList<>();
+        if (prompt == null || prompt.isBlank()) return out;
+        Set<String> seen = new LinkedHashSet<>();
+        Matcher m = QUOTED.matcher(prompt);
+        while (m.find() && seen.size() < cap) {
+            for (String part : SENTENCE_END.split(m.group(1).strip())) {
+                String t = part.strip();
+                if (t.length() < 8 || t.length() > 240) continue;
+                if (t.contains("{{") || t.contains("<") || t.contains("[") || t.contains(">")) continue;
+                if (t.codePoints().noneMatch(Character::isLetter)) continue;
+                if (!complete(t)) continue;
+                if (seen.add(t) && seen.size() >= cap) break;
+            }
+        }
+        out.addAll(seen);
+        return out;
     }
 
     private static boolean complete(String s) {
@@ -176,6 +218,7 @@ public class AiAgentSpeechWarmer {
         if (m.startsWith("smallest") || m.startsWith("lightning")) return m; // retain pro/model selection
         if (m.startsWith("rumik") || m.startsWith("silk")) return "rumik";
         if (m.startsWith("deepgram") || m.startsWith("aura")) return "deepgram";
+        if (m.startsWith("navana") || m.startsWith("bodhi")) return "navana";
         return "sarvam";
     }
 }

@@ -12,13 +12,14 @@ export interface LeadColumnToggle {
 }
 
 /**
- * Institute wording for the two renamable columns. Pass the values from
+ * Institute wording for the renamable columns. Pass the values from
  * useLeadTerminology() so the "Manage Column" list says what the table headers
  * say — an institute that calls Tier "Interest Level" must not see "Tier" here.
  */
 export interface LeadColumnLabels {
     tier?: string;
     leadStatus?: string;
+    campaignType?: string;
 }
 
 /**
@@ -35,6 +36,8 @@ export function buildLeadColumnToggles(
     const cols: LeadColumnToggle[] = [
         { id: 'contact', label: 'Contact' },
         { id: 'source', label: 'Lead source' },
+        { id: 'campaignType', label: labels?.campaignType || 'Campaign type' },
+        { id: 'utmCampaign', label: 'UTM campaign' },
     ];
     if (showOps) cols.push({ id: 'status', label: labels?.leadStatus || 'Lead status' });
     if (showScore) cols.push({ id: 'score', label: 'Lead score' });

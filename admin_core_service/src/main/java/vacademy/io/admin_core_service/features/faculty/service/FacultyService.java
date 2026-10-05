@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
@@ -37,11 +38,18 @@ public class FacultyService {
     private final FacultySubjectPackageSessionMappingRepository facultyRepository;
     private final AuthService authService;
     private final SubjectService subjectService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     public String addFacultyToSubjectsAndBatches(AddFacultyToSubjectAndBatchDTO addFacultyToSubjectAndBatch,
             String instituteId, CustomUserDetails userDetails) {
         UserDTO userDTO = addFacultyToSubjectAndBatch.getUser();
         if (addFacultyToSubjectAndBatch.isNewUser()) {
+            // The invite creates the user with the roles in the request. Only an ADMIN of
+            // this institute may create another ADMIN (no root bypass: learners are root users).
+            if (userDTO != null && userDTO.getRoles() != null
+                    && userDTO.getRoles().stream().anyMatch("ADMIN"::equalsIgnoreCase)) {
+                instituteAccessValidator.requireInstituteAdmin(userDetails, instituteId);
+            }
             userDTO = inviteUser(userDTO, instituteId);
         }
         List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();
@@ -296,14 +304,19 @@ public class FacultyService {
     }
 
     /**
-     * Push author metadata (subtitle / description) from the Add Course -> Add Authors
+     * Push author metadata (subtitle / description / photo) from the Add Course -> Add Authors
      * flow onto the EXISTING user record in auth_service. Best-effort: a transient
      * auth-service failure is logged and swallowed so it never fails course
      * creation/update, and the faculty mapping itself is unaffected.
+     * A blank photo never clears an existing one; an unchanged photo alone skips the update.
      */
     private void syncAuthorMetadata(UserDTO teacher) {
-        if (teacher == null || teacher.getId() == null
-                || (teacher.getAuthorSubtitle() == null && teacher.getAuthorDescription() == null)) {
+        if (teacher == null || teacher.getId() == null) {
+            return;
+        }
+        boolean hasMeta = teacher.getAuthorSubtitle() != null || teacher.getAuthorDescription() != null;
+        boolean hasPhoto = StringUtils.hasText(teacher.getProfilePicFileId());
+        if (!hasMeta && !hasPhoto) {
             return;
         }
         try {
@@ -311,8 +324,18 @@ public class FacultyService {
                     .stream()
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("Author user not found"));
-            persistedUser.setAuthorSubtitle(teacher.getAuthorSubtitle());
-            persistedUser.setAuthorDescription(teacher.getAuthorDescription());
+            boolean photoChanged = hasPhoto
+                    && !teacher.getProfilePicFileId().equals(persistedUser.getProfilePicFileId());
+            if (!hasMeta && !photoChanged) {
+                return;
+            }
+            if (hasMeta) {
+                persistedUser.setAuthorSubtitle(teacher.getAuthorSubtitle());
+                persistedUser.setAuthorDescription(teacher.getAuthorDescription());
+            }
+            if (photoChanged) {
+                persistedUser.setProfilePicFileId(teacher.getProfilePicFileId());
+            }
             authService.updateUser(persistedUser, persistedUser.getId());
         } catch (Exception e) {
             log.warn("Failed to sync author metadata for user {}: {}", teacher.getId(), e.getMessage());

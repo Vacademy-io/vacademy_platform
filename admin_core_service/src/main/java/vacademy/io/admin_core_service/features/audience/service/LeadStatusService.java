@@ -124,6 +124,9 @@ public class LeadStatusService {
                 .color(dto.getColor())
                 .displayOrder(dto.getDisplayOrder() != null ? dto.getDisplayOrder() : 0)
                 .isDefault(Boolean.TRUE.equals(dto.getIsDefault()))
+                // Absent on create means "offer it" — what every caller meant before
+                // this column existed.
+                .showInFilter(dto.getShowInFilter() == null || Boolean.TRUE.equals(dto.getShowInFilter()))
                 .isActive(true)
                 .createdBy(actorUserId)
                 .updatedBy(actorUserId)
@@ -150,6 +153,7 @@ public class LeadStatusService {
             applyActiveChange(s, Boolean.TRUE.equals(dto.getIsActive()), actorUserId, now);
         }
         if (dto.getIsDefault() != null) s.setIsDefault(dto.getIsDefault());
+        if (dto.getShowInFilter() != null) s.setShowInFilter(dto.getShowInFilter());
         s.setUpdatedBy(actorUserId);
         s.setUpdatedAt(now);
         LeadStatus saved = leadStatusRepository.save(s);

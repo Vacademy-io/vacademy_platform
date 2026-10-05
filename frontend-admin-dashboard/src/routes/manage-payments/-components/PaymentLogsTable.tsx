@@ -25,6 +25,7 @@ import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
 import { cn } from '@/lib/utils';
 import { GatewayBadge } from './GatewayBadge';
 import { derivePaymentTypeLabel } from '../-utils/exportPaymentLogsCsv';
+import { daysUntil, dueState, formatPlanDate } from '../-utils/planDates';
 
 // ─── Redesign cell primitives ──────────────────────────────────────────────────
 
@@ -459,6 +460,42 @@ const formatRelativeTime = (dateString: string) => {
     }
 };
 
+/** Next Due Date: the day, and under it whether it has passed, is today, or how far off it is. */
+function NextDueCell({ value }: { value?: string | null }) {
+    const label = formatPlanDate(value);
+    if (!label) return <span className="text-xs text-neutral-400">—</span>;
+    const state = dueState(value);
+    const days = daysUntil(value) ?? 0;
+    return (
+        <div className="space-y-1">
+            <div
+                className={cn(
+                    'text-sm font-medium',
+                    state === 'overdue' ? 'text-danger-600' : 'text-neutral-700'
+                )}
+            >
+                {label}
+            </div>
+            <div
+                className={cn(
+                    'text-xs',
+                    state === 'overdue'
+                        ? 'text-danger-500'
+                        : state === 'today'
+                          ? 'text-warning-600'
+                          : 'text-neutral-500'
+                )}
+            >
+                {state === 'overdue'
+                    ? `Overdue by ${-days} day${days === -1 ? '' : 's'}`
+                    : state === 'today'
+                      ? 'Due today'
+                      : `In ${days} day${days === 1 ? '' : 's'}`}
+            </div>
+        </div>
+    );
+}
+
 // ─── Static Columns (defined outside component — never recreated) ─────────
 
 const trackingIdColumn: ColumnDef<PaymentLogEntry> = {
@@ -790,6 +827,24 @@ export function PaymentLogsTable({
                     );
                 },
                 size: 200,
+            },
+            {
+                id: 'enrolled_date',
+                header: 'Enrollment Date',
+                accessorFn: (row) => row?.enrolled_date || '',
+                cell: ({ row }) => {
+                    const label = formatPlanDate(row.original?.enrolled_date);
+                    if (!label) return <span className="text-xs text-neutral-400">—</span>;
+                    return <span className="text-sm text-neutral-700">{label}</span>;
+                },
+                size: 150,
+            },
+            {
+                id: 'next_due_date',
+                header: 'Next Due Date',
+                accessorFn: (row) => row?.next_due_on || '',
+                cell: ({ row }) => <NextDueCell value={row.original?.next_due_on} />,
+                size: 160,
             },
             invoiceColumn,
             {

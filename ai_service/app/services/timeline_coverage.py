@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 
 __all__ = ["_frame_is_substantive", "_timeline_coverage"]
 
+_ENTRY_ID = re.compile(r"^shot-(\d+)(?:-sub\d+)?$")
+
 
 def _frame_is_substantive(html: str) -> bool:
     """True when a timeline entry actually shows something.
@@ -59,14 +61,24 @@ def _timeline_coverage(run_dir) -> Optional[Dict[str, Any]]:
     planned = [s for s in (data.get("meta", {}) or {}).get("shots", []) or []]
     if not planned:
         return None
-    entries = {e.get("id"): e for e in (data.get("entries") or [])}
+    # The pipeline names a shot's entry `shot-{shot_idx}` (0-based), and a split
+    # shot's halves `shot-{shot_idx}-sub{n}` — there is no plain `shot-{idx}`
+    # entry for a split shot. This once looked up `shot-{idx + 1}`: every
+    # complete film reported its last shot missing, each shot was judged by its
+    # neighbour's frame, and a blank first shot could never be caught.
+    by_shot: Dict[str, list] = {}
+    for e in data.get("entries") or []:
+        m = _ENTRY_ID.match(str(e.get("id") or ""))
+        if m:
+            by_shot.setdefault(m.group(1), []).append(e)
     missing = []
     for s in planned:
         idx = s.get("shot_idx")
         if idx is None:
             continue
-        e = entries.get(f"shot-{idx + 1}")
-        if e is None or not _frame_is_substantive(e.get("html") or ""):
+        found = by_shot.get(str(idx)) or []
+        # A split shot with one blank half still puts a white screen on air.
+        if not found or not all(_frame_is_substantive(e.get("html") or "") for e in found):
             missing.append(idx)
     return {"planned": len(planned), "present": len(planned) - len(missing), "missing": missing}
 

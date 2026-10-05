@@ -65,6 +65,8 @@ class CopyIntakeServiceTest {
     private AssessmentAuditClient audit;
     private AiEvaluationProcessRepository processes;
     private CopyIntakeService service;
+    private vacademy.io.assessment_service.features.assessment.copy_intake.service.InstituteFileOwnership ownership;
+    private AiEvaluationService evaluation;
 
     private final CustomUserDetails admin = new CustomUserDetails();
 
@@ -77,6 +79,8 @@ class CopyIntakeServiceTest {
         assessments = mock(AssessmentRepository.class);
         audit = mock(AssessmentAuditClient.class);
         processes = mock(AiEvaluationProcessRepository.class);
+        ownership = mock(vacademy.io.assessment_service.features.assessment.copy_intake.service.InstituteFileOwnership.class);
+        evaluation = mock(AiEvaluationService.class);
 
         // A TransactionTemplate that just runs the callback: the service's
         // transaction boundaries are the thing under test only in so far as
@@ -93,9 +97,10 @@ class CopyIntakeServiceTest {
                 mock(AssessmentUserRegistrationRepository.class),
                 mock(AssessmentBatchRegistrationRepository.class),
                 mock(AdminCoreServiceClient.class), aiClient,
-                mock(AdminOfflineDataEntryManager.class), mock(AiEvaluationService.class),
+                mock(AdminOfflineDataEntryManager.class), evaluation,
                 mock(StudentAttemptService.class), notifier, audit, new ObjectMapper(), tx,
-                mock(vacademy.io.assessment_service.features.auth_service.service.AuthService.class));
+                mock(vacademy.io.assessment_service.features.auth_service.service.AuthService.class),
+                ownership);
         ReflectionTestUtils.setField(service, "mediaServiceUrl", "http://media.invalid");
         ReflectionTestUtils.setField(service, "identifyStaleMinutes", 10L);
 
@@ -149,6 +154,43 @@ class CopyIntakeServiceTest {
         assertThat(b.isNotifyEmail()).isTrue();
         verify(items).saveAll(org.mockito.ArgumentMatchers.<List<AiCopyIntakeItem>>argThat(l -> l.size() == 2));
         verify(audit).record(eq(admin), eq("i-1"), eq("BULK_AI_CHECK"), eq("a-1"), anyString(), any());
+    }
+
+    @Test
+    void startRefusesAFileNotRecordedForTheInstituteBeforeCreatingABatch() {
+        Assessment a = new Assessment();
+        a.setId("a-1");
+        when(assessments.findById("a-1")).thenReturn(Optional.of(a));
+        when(ownership.notOwnedBy(eq("i-1"), anyList())).thenReturn(List.of("other-institutes-file"));
+        CopyIntakeDtos.StartRequest req = CopyIntakeDtos.StartRequest.builder().files(List.of(
+                new CopyIntakeDtos.UploadedFile("f1", "a.pdf", 5),
+                new CopyIntakeDtos.UploadedFile("other-institutes-file", "b.pdf", 3))).build();
+
+        assertThatThrownBy(() -> service.start(admin, "a-1", "i-1", req))
+                .isInstanceOf(VacademyException.class)
+                .hasMessageContaining("not uploaded for this institute");
+        verify(ownership).notOwnedBy("i-1", List.of("f1", "other-institutes-file"));
+        verify(batches, never()).save(any());
+        verify(items, never()).saveAll(any());
+        verify(evaluation, never()).requireCreditsForCopies(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void startChecksCreditsForEveryCopyBeforeCreatingABatch() {
+        Assessment a = new Assessment();
+        a.setId("a-1");
+        when(assessments.findById("a-1")).thenReturn(Optional.of(a));
+        org.mockito.Mockito.doThrow(new vacademy.io.assessment_service.features.assessment.service.evaluation_ai.billing
+                        .InsufficientCreditsException(java.math.BigDecimal.TEN, java.math.BigDecimal.ONE,
+                        java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO))
+                .when(evaluation).requireCreditsForCopies(a, "i-1", 2);
+        CopyIntakeDtos.StartRequest req = CopyIntakeDtos.StartRequest.builder().files(List.of(
+                new CopyIntakeDtos.UploadedFile("f1", "a.pdf", 5),
+                new CopyIntakeDtos.UploadedFile("f2", "b.pdf", 3))).build();
+
+        assertThatThrownBy(() -> service.start(admin, "a-1", "i-1", req))
+                .hasMessageContaining("Not enough AI credits");
+        verify(batches, never()).save(any());
     }
 
     @Test

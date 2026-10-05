@@ -40,6 +40,48 @@ from typing import Any
 
 SHORT_TYPES = {"MCQ", "ONE_WORD", "SHORT_ANSWER", "FILL_BLANK", "TRUE_FALSE"}
 PRAISE = re.compile(r"^(good|well|excellent|nice|correct|very good|well done|well explained|option correct)[.! ]*$", re.I)
+# A criterion's reason that says the student got it right is no reason for a
+# deduction, even when the grader's figures took a half mark off there.
+_NOT_A_DEDUCTION = re.compile(r"^\s*(full marks|fully correct|correct(ly)?\b|accurate(ly)?\b|well\b|good\b)", re.I)
+REASON_MAX_WORDS = 15
+REASON_MAX_CHARS = 110
+_TRAILING = {"and", "or", "but", "the", "a", "an", "of", "to", "in", "on", "for", "with", "is", "are", "as"}
+
+
+_RANKED_OPENERS = ((re.compile(r"^\s*(no marks|missing|not (attempted|given|mentioned)|absent|deducted)", re.I), 2),
+                   (re.compile(r"^\s*(partial|incomplete|lacks)", re.I), 1))
+_LABEL = re.compile(r"^\s*(no marks|partial( credit)?|deducted|full marks)\s*[:\-\u2013]\s*", re.I)
+_EXAMPLES = re.compile(r"\s*\((e\.g\.|i\.e\.|eg|ie)[^)]*\)", re.I)
+
+
+def _deduction_rank(reason: str) -> int:
+    for pattern, rank in _RANKED_OPENERS:
+        if pattern.match(reason):
+            return rank
+    return 0
+
+
+def _as_remark(reason: str) -> str:
+    """Grader criterion prose -> a teacher's remark: no "No marks:" label,
+    no "(e.g., ...)" list, capital first letter."""
+    text = _EXAMPLES.sub("", _LABEL.sub("", reason or "")).strip()
+    return text[:1].upper() + text[1:] if text else text
+
+
+def short_reason(text: str) -> str:
+    """A deduction reason as a teacher writes it: at most REASON_MAX_WORDS
+    words, cut at a word - never mid-word ("... behaviour, and ins", which a
+    [:90] slice put on a copy) and never on a dangling "and"."""
+    words = (text or "").split()
+    out = words[:REASON_MAX_WORDS]
+    while out and len(" ".join(out)) > REASON_MAX_CHARS:
+        out.pop()
+    while len(out) > 1 and out[-1].lower().strip(",;:-") in _TRAILING:
+        out.pop()
+    reason = " ".join(out).rstrip(" ,;:-")
+    if len(out) < len(words) and reason and reason[-1] not in ".!?":
+        reason += "."
+    return reason
 
 
 @dataclass
@@ -48,6 +90,9 @@ class Result:
     total: dict[str, Any] | None
     report: list[str] = field(default_factory=list)
     unmarked: list[str] = field(default_factory=list)
+    # The mark enforce settled on for each result, in input order (key match,
+    # half-mark steps, clamp to max): the figure the score on the copy shows.
+    awarded: list[float] = field(default_factory=list)
 
 
 def _rows(layout_map: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -104,6 +149,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
     report: list[str] = []
     unmarked: list[str] = []
     awarded_sum = 0.0
+    awarded_list: list[float] = []
     seen_praise = 0
 
     for res in results:
@@ -132,6 +178,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
         awarded = round(awarded * 2) / 2                      # 0.5 steps
         awarded = max(0.0, min(mx, awarded))
         awarded_sum += awarded
+        awarded_list.append(awarded)
         cancelled = str(res.get("verdict") or "").lower() == "cancelled"
         attempted = bool(res.get("extracted_answer")) or bool(res.get("annotations")) or cancelled
         tag = f"Q{qid}"
@@ -206,16 +253,25 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
             notes = [a for a in anns if a.get("style") == "margin_note" and (a.get("text") or "").strip()]
             if notes:
                 note = notes[0]
+                note["text"] = short_reason(note["text"])
                 anns = [a for a in anns if a is note or a.get("style") != "margin_note"]
             else:
-                reason = ""
-                for c in res.get("criteria_breakdown") or []:
-                    if float(c.get("marks") or 0) < float(c.get("max_marks") or 1e9) and c.get("reason"):
-                        reason = c["reason"]
-                        break
+                # The criterion that cost the most, not merely the first that
+                # cost anything - and never one whose reason is praise.
+                # The grader often sends no per-criterion maximum; then the
+                # reason's own opening says how much was lost.
+                lost = [((float(c["max_marks"]) - float(c.get("marks") or 0))
+                         if c.get("max_marks") is not None else 0.0,
+                         _deduction_rank(c["reason"]), -i, c["reason"])
+                        for i, c in enumerate(res.get("criteria_breakdown") or [])
+                        if c.get("reason")
+                        and float(c.get("marks") or 0) < float(c.get("max_marks") or 1e9)
+                        and not _NOT_A_DEDUCTION.match(c["reason"])]
+                reason = _as_remark(max(lost)[3]) if lost else ""
                 reason = reason or (res.get("feedback") or "Marks deducted: answer incomplete.")
                 reason = re.sub(r"\b\d+(\.\d+)?\s*marks?\b.*?(because|as|since)\s*", "", reason, flags=re.I)
-                reason = reason.strip()[:90] if qtype in SHORT_TYPES else reason.strip().split(". ")[0][:90]
+                reason = short_reason(reason.strip() if qtype in SHORT_TYPES
+                                      else reason.strip().split(". ")[0])
                 report.append(f"{tag}: deduction note missing, synthesised from feedback")
                 note = {"style": "margin_note", "q": qid, "text": reason, "anchor_text": rows[last]["text"]}
                 anns.append(note)
@@ -287,7 +343,7 @@ def enforce(results: list[dict[str, Any]], layout_map: dict[str, Any],
                  "placement": "right_margin", "text": f"{_fmt(awarded_sum)}/{_fmt(mx_total)}"}
     if unmarked:
         report.append(f"UNMARKED QUESTIONS: {', '.join(unmarked)} - shipped without a mark")
-    return Result(out, total, report, unmarked)
+    return Result(out, total, report, unmarked, awarded_list)
 
 
 # ------------------------------------------------------------------ self-test

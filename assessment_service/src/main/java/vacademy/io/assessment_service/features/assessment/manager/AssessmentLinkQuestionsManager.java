@@ -5,6 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.util.Set;
 import java.util.HashSet;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpStatus;
+import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus;
+import vacademy.io.assessment_service.features.open_evaluation.policy.ApiCandidatePolicy;
 import vacademy.io.assessment_service.features.question_core.dto.QuestionDTO;
 import vacademy.io.assessment_service.features.question_bank.manager.AddQuestionPaperFromImportManager;
 import org.springframework.http.ResponseEntity;
@@ -56,6 +61,7 @@ public class AssessmentLinkQuestionsManager {
         if (assessmentOptional.isEmpty()) {
             throw new VacademyException("Assessment not found");
         }
+        requireApiStructureUnlocked(assessmentOptional.get(), addQuestionsAssessmentDetailsDTO);
 
         for (SectionAddEditRequestDto sectionAddEditRequestDto : addQuestionsAssessmentDetailsDTO.getAddedSections()) {
             addSectionToAssessment(user, sectionAddEditRequestDto, assessmentOptional.get(), instituteId, type);
@@ -79,6 +85,61 @@ public class AssessmentLinkQuestionsManager {
         AssessmentSaveResponseDto assessmentSaveResponseDto = new AssessmentSaveResponseDto(assessmentId, assessmentOptional.get().getStatus());
         return ResponseEntity.ok(assessmentSaveResponseDto);
     }
+
+    /**
+     * Exams created through the partner API freeze their structure once open (spec 7.1):
+     * submitted attempts are marked against the linked scheme, so questions cannot be added
+     * or removed and max marks cannot change. Enforced here, server-side, for every caller
+     * (the dashboard dialog included), only for {@code source = 'API'} exams that are
+     * PUBLISHED. Dashboard exams and API drafts are untouched. Section renames, order and
+     * duration edits, and re-sending unchanged marks stay allowed.
+     */
+    void requireApiStructureUnlocked(Assessment assessment, AddQuestionsAssessmentDetailsDTO dto) {
+        if (!ApiCandidatePolicy.isApiExam(assessment)
+                || !AssessmentStatus.PUBLISHED.name().equals(assessment.getStatus())) {
+            return;
+        }
+        if (!isEmpty(dto.getAddedSections()) || !isEmpty(dto.getDeletedSections())) {
+            throw apiStructureLocked();
+        }
+        for (SectionAddEditRequestDto section : dto.getUpdatedSections()) {
+            if (section.getQuestionAndMarking() == null) continue;
+            for (SectionAddEditRequestDto.QuestionAndMarking qm : section.getQuestionAndMarking()) {
+                if (Boolean.TRUE.equals(qm.getIsAdded()) || Boolean.TRUE.equals(qm.getIsDeleted())) {
+                    throw apiStructureLocked();
+                }
+                if (Boolean.TRUE.equals(qm.getIsUpdated())) {
+                    QuestionAssessmentSectionMapping existing = questionAssessmentSectionMappingService
+                            .getMappingById(qm.getQuestionId(), section.getSectionId());
+                    if (existing == null || !Objects.equals(totalMark(existing.getMarkingJson()), totalMark(qm.getMarkingJson()))) {
+                        throw apiStructureLocked();
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isEmpty(List<?> list) {
+        return list == null || list.isEmpty();
+    }
+
+    private static VacademyException apiStructureLocked() {
+        return new VacademyException(HttpStatus.CONFLICT,
+                "This exam is managed by the API and is open: questions cannot be added or removed and max marks cannot change.");
+    }
+
+    /** {@code data.totalMark} of a marking JSON, null when absent or unreadable. */
+    static Double totalMark(String markingJson) {
+        if (markingJson == null || markingJson.isBlank()) return null;
+        try {
+            JsonNode value = MARKING_READER.readTree(markingJson).path("data").path("totalMark");
+            return value.isNumber() ? value.asDouble() : null;
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private static final ObjectMapper MARKING_READER = new ObjectMapper();
 
     void validateMarkingScheme(SectionAddEditRequestDto.QuestionAndMarking questionAndMarkings) {
         //Todo: validate marking scheme

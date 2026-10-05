@@ -42,7 +42,11 @@ from typing import Any, Dict, List, NamedTuple, Optional
 # ~76% of its payload was social tokens or abandoned fragments. Consent and refusal
 # are explicitly still counted — see _lost_carries_meaning. Compare ANSWER_DELETED
 # rates across the v4/v5 boundary with care.
-RULES_VERSION = 5
+# v6 (2026-10-02): LIKELY_MACHINE no longer fires on a machine marker that a
+# person then answered past (person_turns, see machine_score) — a call screener
+# followed by a real conversation (calls b5b43ae1, 34452119). Compare
+# LIKELY_MACHINE rates across the v5/v6 boundary with care.
+RULES_VERSION = 6
 
 # ── fault codes: CLOSED, APPEND-ONLY ─────────────────────────────────────────
 # Renaming one silently breaks every row already stored. test_diagnostics.py
@@ -204,6 +208,11 @@ class CallDiagnostics:
     # could not tell that story: it counts sentences, and what matters is TURNS
     # the caller could not answer.
     handbacks: int = 0
+    empty_replies: int = 0        # genuinely empty model answers re-asked for the next line
+    forming_holds: int = 0        # runs held because the caller's turn was still forming
+    forming_hold_cap_releases: int = 0   # …released by the cap, not by the turn (expect ~0)
+    retired_runs_dropped: int = 0  # requests a failed LLM primary dropped (the fallback answered)
+    cue_runs_dropped: int = 0      # the bot's own runs dropped at the door (a reply was on its way)
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
@@ -242,6 +251,9 @@ class CallDiagnostics:
     late_reply_commits: int = 0
     floor_holds: int = 0
     floor_holds_dropped: int = 0
+    # Shadow mode (2026-10-01): the caller's gender from voice pitch and from
+    # their own words — measured and reported, not yet used. app/caller_gender.py
+    caller_gender: dict = field(default_factory=dict)
     floor_holds_released: int = 0
     floor_holds_capped: int = 0
     voice_cuts: int = 0
@@ -284,6 +296,9 @@ class CallDiagnostics:
     first_user_secs: Optional[float] = None
     longest_user_secs: float = 0.0
     machine_markers: List[str] = field(default_factory=list)
+    # Times a person answered the bot after the machine greeting (report.
+    # _person_turns). None = not measured, and then the markers count as before.
+    person_turns: Optional[int] = None
 
     # ── latency reservoirs ──
     llm_ttfb: List[float] = field(default_factory=list)
@@ -745,11 +760,21 @@ def reconcile_answers(heard: List[str], delivered: List[str]) -> tuple:
     return lost.answers, lost.answer_samples
 
 
+# A machine greeting that a person then answered past this many times was a
+# call screener (or a pickup after the operator's line), not an answering
+# machine. Live calls b5b43ae1 and 34452119 (2026-10-02) were AMBER
+# LIKELY_MACHINE on the screener's marker alone, through 18 and 15 caller
+# turns of a real conversation. 3, not 1: a screen with nobody behind it
+# still relays a line or two after our opening ("Thanks. Arushi.", "I'm
+# sorry." — 787aa111 scored 2), and a person answers us far more than that.
+_PERSON_TURNS_OVER_MACHINE = 3
+
+
 def machine_score(d: CallDiagnostics) -> float:
     """Bounded 0..1 heuristic that a machine, not a person, answered. INFERRED —
     v1 is EVIDENCE ONLY and never changes status or disposition."""
     score = 0.0
-    if d.machine_markers:
+    if d.machine_markers and (d.person_turns or 0) < _PERSON_TURNS_OVER_MACHINE:
         score += 0.5
     if d.user_turns <= 1 and d.bot_turns >= 2:
         score += 0.2
@@ -971,6 +996,11 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "lateReplyCommits": d.late_reply_commits,
                 "floorHolds": d.floor_holds,
                 "floorHoldsDropped": d.floor_holds_dropped,
+                "callerGender": d.caller_gender or None,
+                "formingHolds": d.forming_holds,
+                "formingHoldCapReleases": d.forming_hold_cap_releases,
+                "retiredRunsDropped": d.retired_runs_dropped,
+                "cueRunsDropped": d.cue_runs_dropped,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,
@@ -1013,6 +1043,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "machine": {
                 "score": machine_score(d),
                 "markers": d.machine_markers or None,
+                "personTurns": d.person_turns,
                 "firstUserSecs": d.first_user_secs,
                 "longestUserSecs": round(d.longest_user_secs, 2) or None,
                 "src": "inferred",

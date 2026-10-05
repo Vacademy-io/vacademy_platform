@@ -33,6 +33,10 @@
         "aiError": "The assistant could not generate a reply",
         "manual": "Handed over by an admin",
         "noInfo": "The assistant didn't have the information to answer",
-        "withMessage": "{{why}}\n\nThey asked: {{message}}"
+        "withMessage": "{{why}}\n\nThey asked: {{message}}",
+        "existingLead": "An existing lead messaged again",
+        "crmSaveFailed": "The chatbot couldn't save this lead to the CRM",
+        "withLeadMessage": "{{why}}\n\nTheir message: {{message}}",
+        "withAnswers": "{{why}}\n\nTheir answers:\n{{message}}"
     }
 }

@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import vacademy.io.common.tracing.RequestIds;
 
 @Component
 public class InternalClientUtils {
@@ -67,6 +68,7 @@ public class InternalClientUtils {
         HttpHeaders headers = new HttpHeaders();
         headers.set("clientName", clientName);
         headers.set("Signature", secretKey);
+        forwardRequestId(headers);
         headers.set("Content-Type", MediaType.APPLICATION_JSON_VALUE);
 
         // Make the request
@@ -109,6 +111,7 @@ public class InternalClientUtils {
         HttpHeaders headers = new HttpHeaders();
         headers.set("clientName", clientName);
         headers.set("Signature", secretKey);
+        forwardRequestId(headers);
         headers.set("Content-Type", MediaType.APPLICATION_JSON_VALUE);
 
         return restTemplate.exchange(
@@ -144,6 +147,7 @@ public class InternalClientUtils {
         HttpHeaders headers = new HttpHeaders();
         headers.set("clientName", clientName);
         headers.set("Signature", secretKey);
+        forwardRequestId(headers);
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         // Prepare body as multipart
@@ -185,6 +189,7 @@ public class InternalClientUtils {
 
         headers.set("clientName", clientName);
         headers.set("Signature", secretKey);
+        forwardRequestId(headers);
 
         // Make the request
         ResponseEntity<String> response = restTemplate.exchange(
@@ -194,6 +199,17 @@ public class InternalClientUtils {
                 String.class);
 
         return response;
+    }
+
+    /**
+     * Carry the caller's request id to the service being called, so one request can be
+     * followed through every hop. Leaves a caller-supplied value alone.
+     */
+    static void forwardRequestId(HttpHeaders headers) {
+        String requestId = RequestIds.current();
+        if (requestId != null && !requestId.isEmpty() && !headers.containsKey(RequestIds.HEADER)) {
+            headers.set(RequestIds.HEADER, requestId);
+        }
     }
 
 }

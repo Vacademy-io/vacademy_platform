@@ -56,12 +56,20 @@ import {
 } from '../-services/ad-platform-service';
 import { AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import {
+    buildCampaignTypeFilterOptions,
+    buildDefaultCampaignTypeOptions,
+    filterByCampaignTypes,
+} from '@/routes/audience-manager/list/-utils/campaign-types';
+import { useLeadTerminology } from '@/hooks/use-lead-terminology';
+import { EvaluationApiKeysCard } from './EvaluationApiKeysCard';
 
 // ── Audience list hook ───────────────────────────────────────────────────────
 
 interface AudienceOption {
     id: string;
     name: string;
+    campaignType?: string;
 }
 
 function useAudienceList(instituteId: string) {
@@ -74,14 +82,100 @@ function useAudienceList(instituteId: string) {
                 size: 200,
             });
             const items = res.data?.content ?? [];
-            return items.map((c: { id?: string; audience_id?: string; campaign_name: string }) => ({
-                id: c.audience_id ?? c.id ?? '',
-                name: c.campaign_name,
-            }));
+            return items.map(
+                (c: {
+                    id?: string;
+                    audience_id?: string;
+                    campaign_name: string;
+                    campaign_type?: string;
+                }) => ({
+                    id: c.audience_id ?? c.id ?? '',
+                    name: c.campaign_name,
+                    campaignType: c.campaign_type,
+                })
+            );
         },
         enabled: !!instituteId,
         staleTime: 60_000,
     });
+}
+
+// ── Campaign type → audience picker ─────────────────────────────────────────
+// Picking a campaign type narrows the audience list to audiences of that type.
+// The type is only a filter — it is not saved on the connector. "All campaign
+// types" (the default) lists every audience, as before. Renders two grid cells
+// so it slots into the forms' existing two-column grid.
+
+function AudiencePickerByType({
+    audiences,
+    audienceId,
+    onAudienceChange,
+    audienceLabel,
+    audiencePlaceholder,
+}: {
+    audiences: AudienceOption[];
+    audienceId: string;
+    onAudienceChange: (id: string) => void;
+    audienceLabel: string;
+    audiencePlaceholder: string;
+}) {
+    const { t } = useTranslation('settingsIntegration');
+    const { campaignType: term } = useLeadTerminology();
+    const { t: tCampaignType } = useTranslation('audienceManagerCampaignTypeDropdown');
+    const [campaignType, setCampaignType] = useState('');
+    const typeOptions = buildCampaignTypeFilterOptions(
+        buildDefaultCampaignTypeOptions(tCampaignType),
+        audiences.map((a) => a.campaignType)
+    );
+    const visibleAudiences = filterByCampaignTypes(audiences, campaignType ? [campaignType] : []);
+
+    const handleTypeChange = (type: string) => {
+        setCampaignType(type);
+        // A picked audience of another type would be hidden yet still saved — clear it.
+        const stillVisible = filterByCampaignTypes(audiences, type ? [type] : []).some(
+            (a) => a.id === audienceId
+        );
+        if (audienceId && !stillVisible) onAudienceChange('');
+    };
+
+    return (
+        <>
+            <div className="space-y-1">
+                <Label className="text-xs">{t('campaignTypeFilter.label', { term })}</Label>
+                <select
+                    className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                    value={campaignType}
+                    onChange={(e) => handleTypeChange(e.target.value)}
+                >
+                    <option value="">{t('campaignTypeFilter.all', { term })}</option>
+                    {typeOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="space-y-1">
+                <Label className="text-xs">{audienceLabel}</Label>
+                <select
+                    className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                    value={audienceId}
+                    onChange={(e) => onAudienceChange(e.target.value)}
+                >
+                    <option value="">
+                        {visibleAudiences.length === 0 && campaignType
+                            ? t('campaignTypeFilter.noAudiences')
+                            : audiencePlaceholder}
+                    </option>
+                    {visibleAudiences.map((a) => (
+                        <option key={a.id} value={a.id}>
+                            {a.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        </>
+    );
 }
 
 // ── Derive a short label from a Lead Gen Form name ──────────────────────────
@@ -373,6 +467,7 @@ function ConnectorTable({
                         <th className="px-4 py-2">{t('table.headers.formCampaign')}</th>
                         <th className="px-4 py-2">{t('table.headers.audience')}</th>
                         <th className="px-4 py-2">{t('table.headers.source')}</th>
+                        <th className="px-4 py-2">{t('table.headers.connectedOn')}</th>
                         <th className="px-4 py-2">{t('table.headers.status')}</th>
                         <th className="px-4 py-2">{t('table.headers.webhook')}</th>
                         <th className="px-4 py-2" />
@@ -442,6 +537,22 @@ function ConnectorTable({
                                 </td>
                                 <td className="px-4 py-2.5 text-xs text-neutral-500">
                                     {c.producesSourceType ?? '-'}
+                                </td>
+                                {/* When the link was established. createdAt is the row's own
+                                    creation, so re-authorising an existing connector keeps the
+                                    original date rather than resetting it — which is what
+                                    "when did we connect this form" means. */}
+                                <td
+                                    className="whitespace-nowrap px-4 py-2.5 text-xs text-neutral-500"
+                                    title={c.createdAt ?? undefined}
+                                >
+                                    {c.createdAt
+                                        ? new Date(c.createdAt).toLocaleDateString(undefined, {
+                                              day: 'numeric',
+                                              month: 'short',
+                                              year: 'numeric',
+                                          })
+                                        : t('table.neverConnected')}
                                 </td>
                                 <td className="px-4 py-2.5">
                                     {c.connectionStatus === 'ACTIVE' ? (
@@ -701,21 +812,13 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                         onChange={(e) => setGoogleKey(e.target.value)}
                     />
                 </div>
-                <div className="space-y-1">
-                    <Label className="text-xs">{t('google.audienceLabel')}</Label>
-                    <select
-                        className="w-full rounded-md border bg-white px-3 py-2 text-sm"
-                        value={audienceId}
-                        onChange={(e) => setAudienceId(e.target.value)}
-                    >
-                        <option value="">{t('google.selectAudiencePlaceholder')}</option>
-                        {audiences.map((a) => (
-                            <option key={a.id} value={a.id}>
-                                {a.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                <AudiencePickerByType
+                    audiences={audiences}
+                    audienceId={audienceId}
+                    onAudienceChange={setAudienceId}
+                    audienceLabel={t('google.audienceLabel')}
+                    audiencePlaceholder={t('google.selectAudiencePlaceholder')}
+                />
             </div>
             {webhookUrl && (
                 <div className="flex items-center gap-2 rounded-md border bg-neutral-50 px-3 py-2">
@@ -1083,21 +1186,13 @@ function AddMetaForm({
                                 </>
                             )}
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-xs">{t('meta.audienceLabel')}</Label>
-                            <select
-                                className="w-full rounded-md border bg-white px-3 py-2 text-sm"
-                                value={audienceId}
-                                onChange={(e) => selectAudience(e.target.value)}
-                            >
-                                <option value="">{t('meta.selectAudiencePlaceholder')}</option>
-                                {audiences.map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                        {a.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <AudiencePickerByType
+                            audiences={audiences}
+                            audienceId={audienceId}
+                            onAudienceChange={selectAudience}
+                            audienceLabel={t('meta.audienceLabel')}
+                            audiencePlaceholder={t('meta.selectAudiencePlaceholder')}
+                        />
                         <div className="space-y-1">
                             <Label className="text-xs">{t('meta.sourceTypeLabel')}</Label>
                             <div className="flex gap-3 pt-2">
@@ -1407,6 +1502,9 @@ export default function IntegrationSettings() {
                     {showAddGoogle && <AddGoogleForm onSaved={handleSaved} />}
                 </CardContent>
             </Card>
+
+            {/* ── AI Evaluation API keys (partner access, spec §6.3) ── */}
+            <EvaluationApiKeysCard />
 
             <ConnectorEditDialog
                 connector={editingConnector}

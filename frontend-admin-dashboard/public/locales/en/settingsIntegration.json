@@ -23,7 +23,8 @@
             "audience": "Audience",
             "source": "Source",
             "status": "Status",
-            "webhook": "Webhook"
+            "webhook": "Webhook",
+            "connectedOn": "Connected on"
         },
         "statusActive": "ACTIVE",
         "statusActionNeeded": "Action needed",
@@ -33,7 +34,8 @@
         "testConnection": "Test connection",
         "resubscribeTooltip": "Re-subscribe (after granting Full control)",
         "editDefaultValues": "Edit default values",
-        "deactivateConnector": "Deactivate connector"
+        "deactivateConnector": "Deactivate connector",
+        "neverConnected": "-"
     },
     "vendor": {
         "meta": "Meta",
@@ -73,6 +75,11 @@
         "platformField": "Platform Field",
         "audienceField": "Audience Field",
         "skipOption": "— skip —"
+    },
+    "campaignTypeFilter": {
+        "label": "{{term}}",
+        "all": "All {{term}}",
+        "noAudiences": "No audiences of this type"
     },
     "google": {
         "keyLabel": "Google Key",
@@ -136,5 +143,88 @@
         "noNewLeads": "No new leads from Meta in the last 24 hours",
         "syncedLeads_one": "Synced {{count}} lead from Meta",
         "syncedLeads_other": "Synced {{count}} leads from Meta"
+    },
+    "apiKeys": {
+        "title": "API keys",
+        "description": "Keys for the AI Evaluation API. A partner system (your ERP, OSM or test-series vendor) uses a key to create exams, send answer sheets and read AI marks for this institute.",
+        "createButton": "Create key",
+        "loading": "Loading API keys…",
+        "loadError": "Could not load API keys.",
+        "retry": "Retry",
+        "disabled": {
+            "title": "Evaluation API is not enabled",
+            "description": "Contact Vacademy to enable the Evaluation API",
+            "checkAgain": "Check again"
+        },
+        "empty": {
+            "title": "No API keys yet",
+            "description": "Create a key and share it with the system that will call the Evaluation API."
+        },
+        "table": {
+            "name": "Name",
+            "prefix": "Key",
+            "scopes": "Permissions",
+            "createdBy": "Created by",
+            "createdByYou": "You",
+            "lastUsed": "Last used",
+            "status": "Status",
+            "neverUsed": "Never",
+            "statusActive": "Active",
+            "statusRevoked": "Revoked",
+            "statusExpired": "Expired",
+            "revoke": "Revoke",
+            "expires": "Expires {{date}}",
+            "dailyCap": "Up to {{cap}} copies a day",
+            "activeCount": "Active keys: {{active}} of 50"
+        },
+        "scopes": {
+            "evaluation_read": "Read exams, submissions, results and credits",
+            "evaluation_write": "Create exams, questions, rubrics, candidates, uploads and submissions",
+            "evaluation_review": "Override AI marks and approve them",
+            "evaluation_finalize": "Finalize and unfinalize results"
+        },
+        "form": {
+            "heading": "Create API key",
+            "nameLabel": "Key name",
+            "namePlaceholder": "e.g. School ERP",
+            "scopesLabel": "Permissions",
+            "expiryLabel": "Expires on (optional)",
+            "capLabel": "Daily copy limit (optional)",
+            "capPlaceholder": "Institute limit",
+            "hint": "Leave the expiry empty for a key that does not expire. The daily limit caps how many answer copies this key can send per day, within the institute's own limit.",
+            "cancel": "Cancel",
+            "submit": "Create key",
+            "errors": {
+                "nameRequired": "Enter a name for the key.",
+                "nameTooLong": "Keep the name to 120 characters or fewer.",
+                "scopesRequired": "Pick at least one permission.",
+                "expiryInvalid": "Enter a valid expiry date.",
+                "expiryInPast": "The expiry date must be today or later.",
+                "capInvalid": "The daily limit must be a whole number above 0.",
+                "generic": "Check the form and try again."
+            }
+        },
+        "issued": {
+            "heading": "Copy your API key",
+            "warning": "Store this key now. It is shown only once and cannot be shown again. If it is lost, revoke it and create a new one.",
+            "copy": "Copy",
+            "copiedShort": "Copied",
+            "copied": "API key copied",
+            "copyFailed": "Could not copy. Select the key and copy it yourself.",
+            "usage": "Send it in the X-API-Key header to https://api.evalezy.com/v1.",
+            "done": "I have stored the key",
+            "notCopiedWarning": "You have not copied this key yet. Close again to discard it; it cannot be shown again."
+        },
+        "revoke": {
+            "title": "Revoke this API key?",
+            "description": "\"{{name}}\" stops working within a minute, and any system using it gets an error. This cannot be undone.",
+            "cancel": "Cancel",
+            "confirm": "Revoke key"
+        },
+        "toasts": {
+            "issueFailed": "Could not create the API key.",
+            "revoked": "API key revoked",
+            "revokeFailed": "Could not revoke the API key."
+        }
     }
 }

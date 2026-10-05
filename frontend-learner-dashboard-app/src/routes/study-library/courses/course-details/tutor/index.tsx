@@ -13,18 +13,24 @@ import { TeacherAvatar } from "@/components/tutor/TeacherAvatar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ListBullets } from "@phosphor-icons/react";
 import { TeacherPanel, type LessonStats, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
+import { ActivenessCard } from "@/components/tutor/ActivenessCard";
+import { useActiveness } from "@/hooks/useActiveness";
 import {
   endTutorSession,
   getTutorAvatarToken,
   getTutorChapterSlides,
+  getTutorCourseOutline,
   getTutorDemoAvatarToken,
   startTutorSession,
   type TutorChapterSlide,
+  type TutorOutlineChapter,
   type TutorStartResponse,
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
 import { submitTutorQuizActivity } from "@/services/tutor-api";
 import { readTutorGuest, writeTutorGuest } from "@/lib/tutorGuest";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface TutorSearch {
   courseId: string;
@@ -106,7 +112,13 @@ function TutorPage() {
   const [check, setCheck] = useState<TutorCheckEvent | null>(null);
   const [awaiting, setAwaiting] = useState<"continue" | "answer" | "done" | null>(null);
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
+  // Every chapter of the course: the rail and "Next" cross chapters with it.
+  const [courseOutline, setCourseOutline] = useState<TutorOutlineChapter[]>([]);
+  // Read by socket callbacks, which must see the latest list, not a stale render's.
+  const courseSlidesRef = useRef<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
+  const speakOnRef = useRef(true);
+  speakOnRef.current = speakOn;
   const [micOn, setMicOn] = useState(false);
   const [pace, setPace] = useState<TutorPace>("normal");
   const [language, setLanguage] = useState<"en" | "hi">("en");
@@ -140,7 +152,11 @@ function TutorPage() {
   const [outlineOpen, setOutlineOpen] = useState(false);
   // Phones: one pane at a time — the board, or the teacher's conversation.
   // A question or a nudge flips to the teacher so nothing is missed.
-  const [phoneView, setPhoneView] = useState<"board" | "teacher">("board");
+  // Voice lessons open on the Teacher pane: a display:none pane has no size, so
+  // the face could never paint there and the voice always arrived first. The
+  // first thing the teacher writes after the greeting flips it to the Board.
+  const [phoneView, setPhoneView] = useState<"board" | "teacher">(voiceMode ? "teacher" : "board");
+  const arrivalViewRef = useRef(voiceMode);
   // The open question (spoken + shown in the card); appended to the transcript with the answer.
   const pendingAskRef = useRef<TranscriptLine | null>(null);
   const flushAsk = (answer: string) => {
@@ -335,6 +351,11 @@ function TutorPage() {
         }
         if (typeof seg.endTurn === "number") {
           completeTeacherText(seg.endTurn);
+          // Phones: she has greeted the learner face to face; now the board.
+          if (arrivalViewRef.current) {
+            arrivalViewRef.current = false;
+            setPhoneView("board");
+          }
           continue;
         }
         setPhase("speaking");
@@ -419,6 +440,11 @@ function TutorPage() {
       else if (ev.phase === "slide_done") applyPhase("done");
     },
     onBoard: (ops, clear, live, _topicId, replay) => {
+      // Muted voice lesson: no audio turn will end, so flip on the first board.
+      if (arrivalViewRef.current && begunRef.current && ops.length > 0 && !speakOnRef.current) {
+        arrivalViewRef.current = false;
+        setPhoneView("board");
+      }
       if (live) {
         setLiveOps(ops);
         return;
@@ -457,6 +483,7 @@ function TutorPage() {
       // The bubble fills sentence by sentence as the audio plays (voice mode).
       setTranscript((prev) => [...prev, line]);
       if (!(voiceMode && speakOn)) setPhase("idle");
+      if (meta.kind === "nudge") activeness.markNudged();
       // Scoreboard: a verdict on a check, a cleared revisit, a miss.
       const k = meta.kind;
       const score = typeof meta.score === "number" ? meta.score : null;
@@ -542,11 +569,13 @@ function TutorPage() {
       setAwaiting(null);
       setCheck(null);
       const slideType = currentSlideType();
-      const current = chapterSlides.find((s) => s.slide_id === ev.slide_id);
+      const current = courseSlidesRef.current.find((s) => s.slide_id === ev.slide_id);
+      // The slide's own chapter first: after moving to another chapter from the
+      // rail, the chapter in the URL is the one the lesson STARTED in.
       const ids = {
-        chapterId: search.chapterId || current?.chapter_id || undefined,
-        moduleId: search.moduleId || current?.module_id || undefined,
-        subjectId: search.subjectId || current?.subject_id || undefined,
+        chapterId: current?.chapter_id || search.chapterId || undefined,
+        moduleId: current?.module_id || search.moduleId || undefined,
+        subjectId: current?.subject_id || search.subjectId || undefined,
       };
       try {
         if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
@@ -591,8 +620,24 @@ function TutorPage() {
     },
   });
 
+  // ── activeness (opt-in camera, on-device) ──
+  // Stepping away pauses the teacher: what she was saying stops here, and the
+  // server says she will wait. Back in front of the camera, she picks up again.
+  const activeness = useActiveness({
+    active: readyAt !== null && !disconnected && phase !== "connecting" && phase !== "done",
+    speaking: phase === "speaking",
+    questionOpen: awaiting === "answer",
+    onPresence: (present) => {
+      // Cut off mid-speech: the server is told, so she repeats what was missed.
+      const cut = !present && phase === "speaking";
+      if (cut) stopAudio();
+      socket.sendPresence(present, cut);
+    },
+    onReport: (report) => socket.sendActiveness({ ...report }),
+  });
+
   const currentSlideType = () =>
-    chapterSlides.find((s) => s.slide_id === currentSlideRef.current)?.source_type || "DOCUMENT";
+    courseSlidesRef.current.find((s) => s.slide_id === currentSlideRef.current)?.source_type || "DOCUMENT";
 
   // ── mic ──
   const recorder = useVoiceRecorder({
@@ -657,15 +702,17 @@ function TutorPage() {
     socket.sendConfig({ avatar: avatarActive });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarActive]);
-  // The face is on screen: unlock its audio without a second tap when the
-  // document already has user activation; otherwise the gate asks for one.
+  // Unlock the face's audio and connect its motion session as soon as the view
+  // exists — in parallel with the first paint, not after it (that serialised
+  // 2-3 s of a silent face). No second tap when the document already has user
+  // activation; otherwise the gate asks for one.
   useEffect(() => {
-    if (!avatarShown || !avatar.painted || avatar.activated || needsTap) return;
+    if (!avatarShown || !avatar.ready || avatar.activated || needsTap) return;
     void avatar.activate().then((ok) => {
       if (!ok) setNeedsTap(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avatarShown, avatar.painted, avatar.activated, needsTap]);
+  }, [avatarShown, avatar.ready, avatar.activated, needsTap]);
   // Opening: the server keeps the teacher quiet until this device can show and
   // play her — or until the cap, so a slow face never holds the lesson.
   useEffect(() => {
@@ -713,16 +760,17 @@ function TutorPage() {
 
   // Voice mode: after the audio of a no-question concept (or a topic summary)
   // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
-  // `awaiting`/`micOn`/`phase` and cancels the timer.
+  // `awaiting`/`micOn`/`phase` and cancels the timer. Never while the camera
+  // says the learner stepped away: the teacher is waiting for them to return.
   useEffect(() => {
-    if (!voiceMode || awaiting !== "continue" || phase !== "idle" || micOn || !!disconnected) return;
+    if (!voiceMode || awaiting !== "continue" || phase !== "idle" || micOn || !!disconnected || activeness.away) return;
     const t = window.setTimeout(() => {
       setAwaiting(null);
       socket.sendContinue();
     }, AUTO_CONTINUE_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceMode, awaiting, phase, micOn, disconnected]);
+  }, [voiceMode, awaiting, phase, micOn, disconnected, activeness.away]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const isDemo = search.demo === "1";
@@ -745,11 +793,15 @@ function TutorPage() {
     setReadyAt(null);
     setGate(false);
     try {
-      const [b, slides] = await Promise.all([
+      const [b, slides, outlineRes] = await Promise.all([
         isDemo
           ? (guestRef.current ? Promise.resolve(guestRef.current.boot) : Promise.reject(new Error("Your free lesson has expired. Start again from tutezy.ai.")))
           : startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
         search.chapterId && !isDemo ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+        // Optional: without it the rail falls back to this chapter's slides.
+        !isDemo && search.packageSessionId
+          ? getTutorCourseOutline(search.packageSessionId).catch(() => [] as TutorOutlineChapter[])
+          : Promise.resolve([] as TutorOutlineChapter[]),
       ]);
       if (seq !== bootSeq.current) {
         // The page moved on while the request was in flight: close what we opened.
@@ -760,6 +812,7 @@ function TutorPage() {
       setTopics(b.topics ?? []);
       setSlideTitle(b.slide_title || "");
       setChapterSlides(slides);
+      setCourseOutline(outlineRes);
       currentSlideRef.current = b.slide_id;
       sessionRef.current = b.tutor_session_id;
       socket.connect(b.socket_path);
@@ -812,10 +865,23 @@ function TutorPage() {
     () => chapterSlides.map((s) => ({ ...s, current: s.slide_id === (state?.slide_id ?? boot?.slide_id) })),
     [chapterSlides, state?.slide_id, boot?.slide_id],
   );
+  // The whole course in order, each slide carrying its chapter lineage; falls
+  // back to this chapter's slides when the outline is unavailable.
+  const courseSlides = useMemo<TutorChapterSlide[]>(
+    () =>
+      courseOutline.length > 0
+        ? courseOutline.flatMap((ch) =>
+            ch.slides.map((sl) => ({ ...sl, plan_id: null, chapter_id: ch.chapter_id, module_id: ch.module_id, subject_id: ch.subject_id })),
+          )
+        : chapterSlides,
+    [courseOutline, chapterSlides],
+  );
+  courseSlidesRef.current = courseSlides;
+  // "Next" continues into the next chapter instead of stopping at the chapter's end.
   const nextTeachable = useMemo(() => {
-    const idx = chapterSlides.findIndex((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id));
-    return chapterSlides.slice(idx + 1).find((s) => s.teachable) || null;
-  }, [chapterSlides, state?.slide_id, boot?.slide_id]);
+    const idx = courseSlides.findIndex((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id));
+    return courseSlides.slice(idx + 1).find((s) => s.teachable) || null;
+  }, [courseSlides, state?.slide_id, boot?.slide_id]);
 
   const goToSlide = (slideId: string) => {
     stopAudio();
@@ -836,6 +902,7 @@ function TutorPage() {
 
   const endAndLeave = () => {
     stopAudio();
+    activeness.flush();
     socket.sendEndSession();
     setTimeout(() => {
       if (isDemo) {
@@ -865,7 +932,7 @@ function TutorPage() {
     );
   }
 
-  const title = slideTitle || chapterSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson";
+  const title = slideTitle || courseSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson";
   const progress = state?.progress ?? boot?.progress ?? { done: 0, total: 1, percent: 0 };
   const lessonOver = phase === "done" && !audioBusy();
 
@@ -878,6 +945,8 @@ function TutorPage() {
       done={progress.done}
       total={progress.total}
       nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
       onPickSlide={(id) => {
         setOutlineOpen(false);
         goToSlide(id);
@@ -952,6 +1021,8 @@ function TutorPage() {
               done={progress.done}
               total={progress.total}
               nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
               onPickSlide={goToSlide}
               onBack={endAndLeave}
               collapsed
@@ -966,6 +1037,8 @@ function TutorPage() {
               done={progress.done}
               total={progress.total}
               nextSlides={nextSlides}
+              outline={courseOutline}
+              currentSlideId={state?.slide_id ?? boot?.slide_id ?? null}
               onPickSlide={goToSlide}
               onBack={endAndLeave}
               onToggleCollapse={toggleOutline}
@@ -990,7 +1063,7 @@ function TutorPage() {
                 </button>
               )}
               <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">
-                Back to course
+                Back to {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
               </button>
             </div>
           )}
@@ -1019,7 +1092,7 @@ function TutorPage() {
                 </button>
               ) : (
                 <button type="button" onClick={endAndLeave} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
-                  Back to course
+                  Back to {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
                 </button>
               )}
             </div>
@@ -1069,6 +1142,17 @@ function TutorPage() {
               showNotice(l === "hi" ? "The teacher will continue in Hindi from the next line." : "The teacher will continue in English from the next line.");
             }}
             stats={stats}
+            activeness={
+              <ActivenessCard
+                status={activeness.status}
+                score={activeness.score}
+                parts={activeness.parts}
+                away={activeness.away}
+                attachVideo={activeness.attachVideo}
+                onEnable={activeness.enable}
+                onDisable={activeness.disable}
+              />
+            }
             awaiting={awaiting}
             voiceMode={voiceMode}
             micOn={micOn}
@@ -1091,6 +1175,7 @@ function TutorPage() {
               socket.sendContinue();
             }}
             onControl={(intent) => {
+              if (intent === "skip") activeness.markSkipped();
               setAwaiting(null);
               socket.sendControl(intent);
             }}

@@ -18,7 +18,8 @@
         "walkInNote": "Walk-in Note",
         "followupScheduled": "Follow-up Scheduled",
         "statusChange": "Status Changed",
-        "fallback": "Event"
+        "fallback": "Event",
+        "reEnquiry": "Contacted Again"
     },
     "statusChangeMeta": {
         "previous": "Previous"

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SpinnerGap } from "@phosphor-icons/react";
+import { CustomFieldValueDisplay } from "@/components/common/custom-fields/CustomFieldValueDisplay";
 import {
   getResolvedStepFields,
   type OnboardingStepInstanceDTO,
@@ -61,7 +62,8 @@ export const SubmittedFormDialog = ({ stepInstance, onOpenChange }: SubmittedFor
                     {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                   </dt>
                   <dd className="text-sm text-neutral-800">
-                    {field.value || t("submittedFormDialog.emptyValue")}
+                    {/* By type, not as a string: a file field's value is an upload URL. */}
+                    <CustomFieldValueDisplay value={field.value} fieldType={field.field_type} />
                   </dd>
                 </div>
               ))}

@@ -32,6 +32,7 @@ export type AudienceFormBackground = 'gradient' | 'plain' | 'muted';
 export type AudienceFormAccent = 'primary' | 'success' | 'info' | 'warning' | 'neutral';
 export type AudienceFormCardStyle = 'glass' | 'elevated' | 'outlined' | 'flat';
 export type AudienceFormHighlightIcon = 'sparkle' | 'shield' | 'clock' | 'check' | 'users' | 'chat';
+export type AudienceFormTextAlign = 'left' | 'center' | 'right';
 
 export interface AudienceFormHighlight {
     /** Stable key for React lists. Also persisted, so reorders stay stable. */
@@ -46,6 +47,13 @@ export const MAX_FORM_HIGHLIGHTS = 4;
 /** Longest single string the renderer will draw, per field. */
 const MAX_TEXT = 500;
 
+/**
+ * Cap for the fields that may hold rich text (`headline`, `formSubtitle`).
+ * Markup is far longer than the words it wraps, and slicing it at MAX_TEXT
+ * would cut a tag in half. Same value as the learner renderer.
+ */
+const MAX_RICH_TEXT = 5000;
+
 export interface AudienceFormAppearance {
     // ── Shape ──
     layout: AudienceFormLayout;
@@ -59,8 +67,13 @@ export interface AudienceFormAppearance {
     coverImageUrl: string;
     /** Small label above the headline (e.g. "Admissions 2026"). Blank hides it. */
     eyebrow: string;
-    /** Overrides the campaign name as the page's h1. Blank keeps the name. */
+    /**
+     * Overrides the campaign name as the page's h1. Plain text or rich text
+     * from the editor. Blank keeps the name.
+     */
     headline: string;
+    /** Alignment of the heading block: eyebrow, headline, intro, highlights. */
+    headingAlign: AudienceFormTextAlign;
     /** Overrides the campaign description. Blank keeps the description. */
     subheadline: string;
     showDescription: boolean;
@@ -69,8 +82,10 @@ export interface AudienceFormAppearance {
     // ── Form card ──
     /** Overrides "Please fill in your details". */
     formTitle: string;
-    /** Overrides "This information will be used to contact you…". */
+    /** Overrides "This information will be used to contact you…". Plain or rich text. */
     formSubtitle: string;
+    /** Alignment of the form card's heading + sub-heading. */
+    formHeaderAlign: AudienceFormTextAlign;
     /** Overrides "Submit Response". */
     submitLabel: string;
     /** "* Required field" line under the form header. Off by default. */
@@ -110,11 +125,13 @@ export const DEFAULT_FORM_APPEARANCE: AudienceFormAppearance = {
     coverImageUrl: '',
     eyebrow: '',
     headline: '',
+    headingAlign: 'left',
     subheadline: '',
     showDescription: true,
     showObjective: true,
     formTitle: '',
     formSubtitle: '',
+    formHeaderAlign: 'left',
     submitLabel: '',
     showRequiredLegend: false,
     showProgress: false,
@@ -164,6 +181,7 @@ export const FORM_CARD_STYLES: readonly AudienceFormCardStyle[] = [
     'outlined',
     'flat',
 ];
+export const FORM_TEXT_ALIGNS: readonly AudienceFormTextAlign[] = ['left', 'center', 'right'];
 export const FORM_HIGHLIGHT_ICONS: readonly AudienceFormHighlightIcon[] = [
     'sparkle',
     'shield',
@@ -177,6 +195,9 @@ export const FORM_HIGHLIGHT_ICONS: readonly AudienceFormHighlightIcon[] = [
 
 const toStr = (value: unknown, fallback: string): string =>
     typeof value === 'string' ? value.slice(0, MAX_TEXT) : fallback;
+
+const toRichText = (value: unknown, fallback: string): string =>
+    typeof value === 'string' ? value.slice(0, MAX_RICH_TEXT) : fallback;
 
 const toBool = (value: unknown, fallback: boolean): boolean =>
     typeof value === 'boolean' ? value : fallback;
@@ -226,12 +247,14 @@ export const normalizeFormAppearance = (
         cardStyle: toEnum(src.cardStyle, FORM_CARD_STYLES, base.cardStyle),
         coverImageUrl: toStr(src.coverImageUrl, base.coverImageUrl),
         eyebrow: toStr(src.eyebrow, base.eyebrow),
-        headline: toStr(src.headline, base.headline),
+        headline: toRichText(src.headline, base.headline),
+        headingAlign: toEnum(src.headingAlign, FORM_TEXT_ALIGNS, base.headingAlign),
         subheadline: toStr(src.subheadline, base.subheadline),
         showDescription: toBool(src.showDescription, base.showDescription),
         showObjective: toBool(src.showObjective, base.showObjective),
         formTitle: toStr(src.formTitle, base.formTitle),
-        formSubtitle: toStr(src.formSubtitle, base.formSubtitle),
+        formSubtitle: toRichText(src.formSubtitle, base.formSubtitle),
+        formHeaderAlign: toEnum(src.formHeaderAlign, FORM_TEXT_ALIGNS, base.formHeaderAlign),
         submitLabel: toStr(src.submitLabel, base.submitLabel),
         showRequiredLegend: toBool(src.showRequiredLegend, base.showRequiredLegend),
         showProgress: toBool(src.showProgress, base.showProgress),
@@ -305,11 +328,13 @@ export const isDefaultFormAppearance = (config: AudienceFormAppearance): boolean
         config.coverImageUrl === d.coverImageUrl &&
         config.eyebrow === d.eyebrow &&
         config.headline === d.headline &&
+        config.headingAlign === d.headingAlign &&
         config.subheadline === d.subheadline &&
         config.showDescription === d.showDescription &&
         config.showObjective === d.showObjective &&
         config.formTitle === d.formTitle &&
         config.formSubtitle === d.formSubtitle &&
+        config.formHeaderAlign === d.formHeaderAlign &&
         config.submitLabel === d.submitLabel &&
         config.showRequiredLegend === d.showRequiredLegend &&
         config.showProgress === d.showProgress &&

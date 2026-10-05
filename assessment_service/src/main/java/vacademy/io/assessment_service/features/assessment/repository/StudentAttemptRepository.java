@@ -650,15 +650,16 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
      * List the most-recent attempt per assessment for a student within an institute and optional
      * date range, ordered newest first.  Used by the internal student-analysis endpoint.
      *
-     * Dates are inclusive bounds on sa.created_at (attempt creation date).  Pass null to skip
-     * either bound.
+     * Dates are inclusive bounds on the attempt's EXAM date — COALESCE(submit_time, start_time,
+     * created_at). Not created_at alone: bulk-imported offline marks are all created in one
+     * import run, so created_at is the import time, not the exam. Pass null to skip either bound.
      */
     @Query(value = """
             SELECT
                 a.id              AS assessmentId,
                 a.name            AS assessmentName,
                 sa.id             AS attemptId,
-                sa.created_at     AS attemptDate,
+                COALESCE(sa.submit_time, sa.start_time, sa.created_at) AS attemptDate,
                 sa.total_marks    AS totalMarks,
                 sa.total_time_in_seconds AS durationInSeconds,
                 sa.result_status  AS resultStatus
@@ -681,14 +682,16 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                     FROM public.student_attempt sa_inner
                     WHERE sa_inner.registration_id = aur.id
                       AND sa_inner.status = 'ENDED'
-                      AND (CAST(:startDate AS timestamp) IS NULL OR sa_inner.created_at >= CAST(:startDate AS timestamp))
-                      AND (CAST(:endDate   AS timestamp) IS NULL OR sa_inner.created_at <= CAST(:endDate AS timestamp))
-                    ORDER BY sa_inner.created_at DESC
+                      AND (CAST(:startDate AS timestamp) IS NULL
+                           OR COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) >= CAST(:startDate AS timestamp))
+                      AND (CAST(:endDate   AS timestamp) IS NULL
+                           OR COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) <= CAST(:endDate AS timestamp))
+                    ORDER BY COALESCE(sa_inner.submit_time, sa_inner.start_time, sa_inner.created_at) DESC, sa_inner.id
                     LIMIT 1
                 )
             WHERE a.status = 'PUBLISHED'
               AND sa.status = 'ENDED'
-            ORDER BY sa.created_at DESC
+            ORDER BY COALESCE(sa.submit_time, sa.start_time, sa.created_at) DESC, sa.id
             """, nativeQuery = true)
     List<StudentAttemptHistoryProjection> findAssessmentHistoryForUserInDateRange(
             @Param("userId") String userId,

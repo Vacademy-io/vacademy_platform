@@ -20,8 +20,9 @@ import java.util.Map;
  * for
  * the PUBLIC calling API — a key is issued BY a logged-in admin of the
  * institute,
- * then handed to the external client. InstituteAccessValidator keeps one
- * institute's admin from minting keys that spend another's credits.
+ * then handed to the external client. requireInstituteAdmin (ADMIN role in
+ * that institute, no root-user bypass -- learners are root users) keeps
+ * learners and other institutes' admins from minting keys that spend its credits.
  */
 @RestController
 @RequestMapping("/admin-core-service/v1/telephony/ai-call/api-keys")
@@ -36,7 +37,7 @@ public class AiCallApiKeyAdminController {
     public ResponseEntity<Map<String, Object>> issue(
             @RequestBody IssueKeyRequest body,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, body.getInstituteId());
+        instituteAccessValidator.requireInstituteAdmin(user, body.getInstituteId());
         AiCallApiKeyService.IssuedKey issued = keyService.issue(
                 body.getInstituteId(), body.getKeyName(),
                 user == null ? null : user.getUserId());
@@ -56,7 +57,7 @@ public class AiCallApiKeyAdminController {
     public ResponseEntity<List<Map<String, Object>>> list(
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteAdmin(user, instituteId);
         List<Map<String, Object>> keys = keyService.list(instituteId).stream()
                 .map(AiCallApiKeyAdminController::toView)
                 .toList();
@@ -72,7 +73,7 @@ public class AiCallApiKeyAdminController {
             @PathVariable String keyId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        instituteAccessValidator.requireInstituteAdmin(user, instituteId);
         boolean ok = keyService.revoke(instituteId, keyId);
         return ResponseEntity.ok(Map.of(
                 "revoked", ok,

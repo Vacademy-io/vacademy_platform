@@ -25,7 +25,7 @@ import { MyQuestion } from '@/types/assessments/question-paper-form';
 import { z } from 'zod';
 import sectionDetailsSchema from '../../create-assessment/$assessmentId/$examtype/-utils/section-details-schema';
 import { UseFormReturn } from 'react-hook-form';
-import { Dispatch, SetStateAction, useMemo, useState } from 'react';
+import { Dispatch, Fragment, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -38,6 +38,19 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { describeMerge, mergeSectionQuestions } from '../-utils/merge-section-questions';
 import { calculateTotalMarks } from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { QuestionPaperCard } from './QuestionPaperCard';
+import { dateGroupKey, PaperSort } from '../-utils/question-paper-list';
+import { useRefetchStore } from '../-global-states/refetch-store';
 export type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
 // Picks N random questions per tag (as configured in `tagCounts`) and merges
@@ -76,6 +89,7 @@ export const QuestionPapersList = ({
     setCurrentQuestionIndex,
     examType,
     onManualSelectionReady,
+    sortOrder = 'NEWEST',
 }: {
     questionPaperList: PaginatedResponse;
     pageNo: number;
@@ -90,6 +104,8 @@ export const QuestionPapersList = ({
     setCurrentQuestionIndex: Dispatch<SetStateAction<number>>;
     examType?: string;
     onManualSelectionReady?: (questions: MyQuestion[]) => void;
+    // Question Papers page only: date headers are shown for the date sorts.
+    sortOrder?: PaperSort;
 }) => {
     const { t, i18n } = useTranslation('assessmentQuestionPapersList');
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -185,6 +201,66 @@ export const QuestionPapersList = ({
             questionPaperId,
             instituteId: INSTITUTE_ID,
         });
+    };
+
+    // ---- Question Papers page (isAssessment false) ----
+    const { t: tPage } = useTranslation('assessmentQuestionPapersPage');
+    const [pendingDelete, setPendingDelete] = useState<QuestionPaperInterface | null>(null);
+    const justAddedId = useRefetchStore((s) => s.justAddedId);
+    const setJustAddedId = useRefetchStore((s) => s.setJustAddedId);
+
+    // The "Just added" highlight fades after a while.
+    useEffect(() => {
+        if (!justAddedId) return;
+        const timer = setTimeout(() => setJustAddedId(null), 10000);
+        return () => clearTimeout(timer);
+    }, [justAddedId, setJustAddedId]);
+
+    const toggleFavouriteOnPage = (paper: QuestionPaperInterface) => {
+        handleMarkQuestionPaperStatus.mutate(
+            {
+                status: paper.status === 'FAVOURITE' ? 'ACTIVE' : 'FAVOURITE',
+                questionPaperId: paper.id,
+                instituteId: INSTITUTE_ID,
+            },
+            {
+                onSuccess: () =>
+                    toast.success(
+                        paper.status === 'FAVOURITE'
+                            ? tPage('list.removedFromFavourites')
+                            : tPage('list.addedToFavourites')
+                    ),
+            }
+        );
+    };
+
+    // Delete now asks first, and the toast offers Undo (the same status call, back to
+    // what the paper was before).
+    const confirmDelete = () => {
+        const paper = pendingDelete;
+        setPendingDelete(null);
+        if (!paper) return;
+        const previousStatus = paper.status === 'FAVOURITE' ? 'FAVOURITE' : 'ACTIVE';
+        handleMarkQuestionPaperStatus.mutate(
+            { status: 'DELETE', questionPaperId: paper.id, instituteId: INSTITUTE_ID },
+            {
+                onSuccess: () =>
+                    toast.success(tPage('list.deleted', { title: paper.title }), {
+                        action: {
+                            label: tPage('list.undo'),
+                            onClick: () =>
+                                handleMarkQuestionPaperStatus.mutate(
+                                    {
+                                        status: previousStatus,
+                                        questionPaperId: paper.id,
+                                        instituteId: INSTITUTE_ID,
+                                    },
+                                    { onSuccess: () => toast.success(tPage('list.restored')) }
+                                ),
+                        },
+                    }),
+            }
+        );
     };
 
     const handleGetQuestionPaperData = useMutation({
@@ -597,6 +673,138 @@ export const QuestionPapersList = ({
                         )}
                     </MyButton>
                 </div>
+            </div>
+        );
+    }
+
+    if (!isAssessment) {
+        const papers = questionPaperList?.content ?? [];
+        const byDate = sortOrder !== 'NAME';
+        const now = new Date();
+        const groupLabel = (key: string) => {
+            if (key === 'today') return tPage('list.groups.today');
+            if (key === 'yesterday') return tPage('list.groups.yesterday');
+            if (key === 'thisWeek') return tPage('list.groups.thisWeek');
+            const [year, month] = key.split('-').map(Number);
+            return new Date(year ?? 0, (month ?? 1) - 1, 1).toLocaleDateString(i18n.language, {
+                month: 'long',
+                year: 'numeric',
+            });
+        };
+        const nameOrNull = (name: string) => (name && name !== 'N/A' ? name : null);
+        const pageSize = questionPaperList?.page_size || 10;
+        const from = papers.length ? pageNo * pageSize + 1 : 0;
+        const to = papers.length ? from + papers.length - 1 : 0;
+        let lastGroup = '';
+
+        return (
+            <div className="mt-4 flex flex-col gap-3">
+                {papers.map((paper) => {
+                    const group = byDate ? dateGroupKey(paper.created_on, now) : '';
+                    const showHeader = byDate && group !== lastGroup;
+                    lastGroup = group;
+                    return (
+                        <Fragment key={paper.id}>
+                            {showHeader && (
+                                <div className="mt-2 flex items-center gap-3 text-caption font-semibold uppercase tracking-wide text-neutral-500 first:mt-0">
+                                    {groupLabel(group)}
+                                    <span className="h-px flex-1 bg-neutral-200" />
+                                </div>
+                            )}
+                            <QuestionPaperCard
+                                paper={paper}
+                                levelName={
+                                    instituteDetails
+                                        ? nameOrNull(
+                                              getLevelNameById(
+                                                  instituteDetails.levels,
+                                                  paper.level_id
+                                              )
+                                          )
+                                        : null
+                                }
+                                subjectName={
+                                    instituteDetails?.subjects
+                                        ? nameOrNull(
+                                              getSubjectNameById(
+                                                  instituteDetails.subjects,
+                                                  paper.subject_id
+                                              )
+                                          )
+                                        : null
+                                }
+                                isJustAdded={paper.id === justAddedId}
+                                onToggleFavourite={() => toggleFavouriteOnPage(paper)}
+                                onDelete={() => setPendingDelete(paper)}
+                                viewButton={
+                                    <ViewQuestionPaper
+                                        questionPaperId={paper.id}
+                                        title={paper.title}
+                                        subject={paper.subject_id}
+                                        level={paper.level_id}
+                                        refetchData={refetchData}
+                                        currentQuestionIndex={currentQuestionIndex}
+                                        setCurrentQuestionIndex={setCurrentQuestionIndex}
+                                        examType={examType}
+                                        buttonText={
+                                            <span className="flex items-center gap-1.5">
+                                                <Eye size={16} />
+                                                {t('list.viewButton')}
+                                            </span>
+                                        }
+                                        triggerVariant="secondary"
+                                    />
+                                }
+                                exportButton={
+                                    <ExportQuestionPaper
+                                        questionPaperId={paper.id}
+                                        triggerVariant="button"
+                                    />
+                                }
+                            />
+                        </Fragment>
+                    );
+                })}
+                <div className="mt-2 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                    <span className="whitespace-nowrap text-caption text-neutral-500">
+                        {tPage('list.showing', {
+                            from,
+                            to,
+                            total: questionPaperList?.total_elements ?? 0,
+                        })}
+                    </span>
+                    <MyPagination
+                        currentPage={pageNo}
+                        totalPages={questionPaperList.total_pages}
+                        onPageChange={handlePageChange}
+                    />
+                </div>
+                <AlertDialog
+                    open={!!pendingDelete}
+                    onOpenChange={(open) => {
+                        if (!open) setPendingDelete(null);
+                    }}
+                >
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>
+                                {tPage('list.deleteTitle', { title: pendingDelete?.title ?? '' })}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                                {tPage('list.deleteBody')}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>{tPage('list.keepIt')}</AlertDialogCancel>
+                            <AlertDialogAction
+                                className="bg-danger-600 text-white hover:bg-danger-700"
+                                onClick={confirmDelete}
+                            >
+                                {tPage('list.deletePaper')}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         );
     }

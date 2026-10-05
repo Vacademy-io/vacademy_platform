@@ -142,6 +142,21 @@ public class CounselorPoolService {
         poolRepository.deleteById(poolId);
     }
 
+    /**
+     * The pool a single lead list feeds, or empty when it feeds none.
+     *
+     * <p>Reuses {@link #getPool} rather than mapping the entity here, so the chip in the
+     * lead-list header shows exactly the pool the Pools screen shows — including its
+     * members, which is what makes "who will pick these up" answerable from the list.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<CounselorPoolDTO> findPoolForAudience(String audienceId) {
+        return poolAudienceRepository.findByAudienceId(audienceId)
+                .map(CounselorPoolAudience::getPoolId)
+                .flatMap(poolRepository::findById)
+                .map(pool -> getPool(pool.getId()));
+    }
+
     @Transactional(readOnly = true)
     public CounselorPoolDTO getPool(String poolId) {
         CounselorPool pool = poolRepository.findById(poolId)

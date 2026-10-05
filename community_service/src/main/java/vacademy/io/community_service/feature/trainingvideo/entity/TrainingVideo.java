@@ -58,6 +58,16 @@ public class TrainingVideo {
     @Column(name = "module_path", columnDefinition = "jsonb", nullable = false)
     private String modulePath;
 
+    /** jsonb array of extra search words (synonyms, Hinglish, old names) set by the super admin. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "keywords", columnDefinition = "jsonb", nullable = false)
+    @Builder.Default
+    private String keywords = "[]";
+
+    /** Step number inside its section (1, 2, 3 ...); null = unordered. See V51. */
+    @Column(name = "sort_order")
+    private Integer sortOrder;
+
     @Column(name = "active", nullable = false)
     @Builder.Default
     private boolean active = true;

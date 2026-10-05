@@ -330,6 +330,11 @@ def _num(v: Any) -> Optional[float]:
     return round(float(v), 3) if v is not None else None
 
 
+# Session-average activeness (0-100) the learner's camera tracker reported;
+# NULL when the learner did not turn the camera on.
+_ACTIVENESS = "CASE WHEN jsonb_typeof(ts.summary_json->'activeness'->'avg') = 'number' THEN (ts.summary_json->'activeness'->>'avg')::numeric END"
+
+
 def _insights(
     db: Session, *, institute_id: str, package_id: Optional[str], package_session_id: Optional[str], days: int,
     learners_limit: int = 200, concepts_limit: int = 40, courses_limit: int = 200,
@@ -373,7 +378,8 @@ def _insights(
                COALESCE(SUM(ts.minutes_billed), 0) AS minutes,
                COUNT(*) FILTER (WHERE ts.mode = 'VOICE') AS voice_sessions,
                COUNT(*) FILTER (WHERE ts.status = 'ABANDONED') AS abandoned,
-               COUNT(DISTINCT ps.package_id) AS courses
+               COUNT(DISTINCT ps.package_id) AS courses,
+               AVG({_ACTIVENESS}) AS activeness, COUNT({_ACTIVENESS}) AS activeness_sessions
         FROM tutor_session ts
         JOIN package_session ps ON ps.id = ts.package_session_id
         WHERE {scope}
@@ -381,7 +387,8 @@ def _insights(
 
     courses = db.execute(text(f"""
         WITH s AS (
-            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id
+            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id,
+                   {_ACTIVENESS} AS act
             FROM tutor_session ts
             JOIN package_session ps ON ps.id = ts.package_session_id
             WHERE {scope}
@@ -395,7 +402,7 @@ def _insights(
         SELECT s.package_id, MAX(p.package_name) AS name, COUNT(s.id) AS sessions, COUNT(DISTINCT s.user_id) AS learners,
                COALESCE(SUM(s.minutes_billed), 0) AS minutes, COALESCE(MAX(att.attempts), 0) AS attempts,
                MAX(att.avg_score) AS avg_score, COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts,
-               MAX(s.started_at) AS last_active
+               MAX(s.started_at) AS last_active, AVG(s.act) AS activeness, COUNT(s.act) AS activeness_sessions
         FROM s
         JOIN package p ON p.id = s.package_id
         LEFT JOIN att ON att.package_id = s.package_id
@@ -406,7 +413,8 @@ def _insights(
 
     learners = db.execute(text(f"""
         WITH s AS (
-            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id
+            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id,
+                   {_ACTIVENESS} AS act
             FROM tutor_session ts
             JOIN package_session ps ON ps.id = ts.package_session_id
             WHERE {scope}
@@ -421,7 +429,7 @@ def _insights(
                COALESCE(SUM(s.minutes_billed), 0) AS minutes,
                COALESCE(MAX(att.attempts), 0) AS attempts, MAX(att.avg_score) AS avg_score,
                COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts, MAX(s.started_at) AS last_active,
-               COUNT(DISTINCT s.package_id) AS courses
+               COUNT(DISTINCT s.package_id) AS courses, AVG(s.act) AS activeness, COUNT(s.act) AS activeness_sessions
         FROM s
         LEFT JOIN att ON att.user_id = s.user_id
         LEFT JOIN student st ON st.user_id = s.user_id
@@ -477,15 +485,18 @@ def _insights(
                      "course": b[3], "sessions": int(b[4] or 0)} for b in batches],
         "totals": {"sessions": int(totals[0] or 0), "learners": int(totals[1] or 0), "minutes": int(totals[2] or 0),
                    "voice_sessions": int(totals[3] or 0), "abandoned": int(totals[4] or 0),
-                   "courses": int(totals[5] or 0)} if totals else {},
+                   "courses": int(totals[5] or 0), "activeness": _num(totals[6]),
+                   "activeness_sessions": int(totals[7] or 0)} if totals else {},
         "courses": [{"package_id": r[0], "name": r[1], "sessions": int(r[2] or 0), "learners": int(r[3] or 0),
                      "minutes": int(r[4] or 0), "attempts": int(r[5] or 0), "avg_score": _num(r[6]),
-                     "weak_attempts": int(r[7] or 0), "last_active": r[8].isoformat() if r[8] else None}
+                     "weak_attempts": int(r[7] or 0), "last_active": r[8].isoformat() if r[8] else None,
+                     "activeness": _num(r[9]), "activeness_sessions": int(r[10] or 0)}
                     for r in courses],
         "learners": [{"user_id": r[0], "name": (r[1] or "").strip() or None, "sessions": int(r[2] or 0),
                       "minutes": int(r[3] or 0), "attempts": int(r[4] or 0), "avg_score": _num(r[5]),
                       "weak_attempts": int(r[6] or 0), "last_active": r[7].isoformat() if r[7] else None,
-                      "courses": int(r[8] or 0), "note": notes.get(r[0])}
+                      "courses": int(r[8] or 0), "note": notes.get(r[0]),
+                      "activeness": _num(r[9]), "activeness_sessions": int(r[10] or 0)}
                      for r in learners],
         "concepts": [{"concept_id": r[0], "concept": r[1], "topic": r[2], "slide": r[3], "slide_id": r[4], "course": r[5],
                       "attempts": int(r[6] or 0), "learners": int(r[7] or 0), "avg_score": _num(r[8]),

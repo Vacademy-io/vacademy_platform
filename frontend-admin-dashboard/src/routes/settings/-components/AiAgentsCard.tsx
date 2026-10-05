@@ -17,8 +17,7 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { PencilSimple, Play, Plus, Robot, SpinnerGap, Stop, Trash } from '@phosphor-icons/react';
 import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
-import { AiAgentPromptAssistant } from './AiAgentPromptAssistant';
-import type { AssistDerived } from '../-services/ai-agent-assist';
+import { AiAgentPromptAssistant, type AgentAssistUpdate } from './AiAgentPromptAssistant';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -133,7 +132,6 @@ export interface AiCallActionRule {
         extracted?: Record<string, string>;
     };
 }
-
 
 /** Expressiveness presets → Bulbul v3 temperature. */
 function getExpressivenessOptions(
@@ -295,7 +293,9 @@ export function AiAgentsCard({
             toast.success(t('toast.agentSaved'));
             setEditing(null);
             queryClient.invalidateQueries({ queryKey: ['ai-agents', instituteId] });
-            queryClient.invalidateQueries({ queryKey: ['ai-calling-campaign-options', instituteId] });
+            queryClient.invalidateQueries({
+                queryKey: ['ai-calling-campaign-options', instituteId],
+            });
             if (saved.id) {
                 if (saved.enabled === false) {
                     onRemoved(saved.id);
@@ -320,7 +320,9 @@ export function AiAgentsCard({
         onSuccess: (_res, agentId) => {
             toast.success(t('toast.agentDeleted'));
             queryClient.invalidateQueries({ queryKey: ['ai-agents', instituteId] });
-            queryClient.invalidateQueries({ queryKey: ['ai-calling-campaign-options', instituteId] });
+            queryClient.invalidateQueries({
+                queryKey: ['ai-calling-campaign-options', instituteId],
+            });
             onRemoved(agentId);
         },
         onError: () => toast.error(t('toast.agentDeleteFailed')),
@@ -483,11 +485,11 @@ export function AiAgentsCard({
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
                                     {TTS_MODELS.find((m) => m.id === ttsModel)?.note}
-                                {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
-                                    <span className="mt-0.5 block font-medium text-neutral-700">
-                                        {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
-                                    </span>
-                                )}
+                                    {creditLine(TTS_MODELS.find((m) => m.id === ttsModel)) && (
+                                        <span className="mt-0.5 block font-medium text-neutral-700">
+                                            {creditLine(TTS_MODELS.find((m) => m.id === ttsModel))}
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                             <div className="space-y-1.5">
@@ -536,9 +538,7 @@ export function AiAgentsCard({
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     {t('form.speakingPace.hint')}
-                                    {ttsModel === 'rumik'
-                                        ? t('form.speakingPace.rumikHint')
-                                        : ''}
+                                    {ttsModel === 'rumik' ? t('form.speakingPace.rumikHint') : ''}
                                 </p>
                             </div>
                             <div className="space-y-1.5">
@@ -663,19 +663,14 @@ export function AiAgentsCard({
                             instituteId={instituteId}
                             agentId={editing.id}
                             prompt={editing.systemPrompt ?? ''}
-                            language={editing.language}
-                            onPromptChange={(p) => patch({ systemPrompt: p })}
-                            onApplyDerived={(d: AssistDerived) =>
-                                patch({
-                                    ...(d.opening_line ? { openingLine: d.opening_line } : {}),
-                                    ...(d.extraction_questions?.length
-                                        ? { extractionQuestions: d.extraction_questions }
-                                        : {}),
-                                    ...(d.dispositions?.length
-                                        ? { dispositions: d.dispositions }
-                                        : {}),
-                                })
-                            }
+                            fields={{
+                                agentName: editing.name,
+                                language: editing.language,
+                                openingLine: editing.openingLine,
+                                extractionQuestions: editing.extractionQuestions,
+                                dispositions: editing.dispositions,
+                            }}
+                            onApply={(u: AgentAssistUpdate) => patch(u)}
                         />
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
@@ -741,8 +736,7 @@ export function AiAgentsCard({
                             </Select>
                             <p className="text-xs text-muted-foreground">
                                 {t('form.bookingPage.hint')}
-                                {bookingPages.length === 0 &&
-                                    t('form.bookingPage.hintNoPages')}
+                                {bookingPages.length === 0 && t('form.bookingPage.hintNoPages')}
                             </p>
                         </div>
 

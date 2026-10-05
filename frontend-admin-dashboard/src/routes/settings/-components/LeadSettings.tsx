@@ -46,12 +46,15 @@ export interface LeadSettingsData {
     showScoreInEnquiryTable: boolean;
     showScoreInContactsTable: boolean;
     showScoreInStudentsTable: boolean;
+    /** Hide converted leads from the unfiltered "All leads" view (Recent Leads + Lead List). */
+    hideConvertedInAllLeads: boolean;
+    showConvertedFilterOption: boolean;
     /**
      * Institute-specific names for the built-in lead attributes (e.g. Tier → "Interest
      * Level", Lead status → "Action Label"). Blank = platform default. Read everywhere
      * through useLeadTerminology().
      */
-    labels?: { tier?: string; leadStatus?: string };
+    labels?: { tier?: string; leadStatus?: string; campaignType?: string };
 }
 
 const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
@@ -66,6 +69,8 @@ const DEFAULT_LEAD_SETTINGS: LeadSettingsData = {
     showScoreInEnquiryTable: true,
     showScoreInContactsTable: true,
     showScoreInStudentsTable: true,
+    hideConvertedInAllLeads: false,
+    showConvertedFilterOption: true,
     labels: {},
 };
 
@@ -144,7 +149,7 @@ export default function LeadSettings() {
         setHasChanges(true);
     };
 
-    const updateLabel = (key: 'tier' | 'leadStatus', value: string) => {
+    const updateLabel = (key: 'tier' | 'leadStatus' | 'campaignType', value: string) => {
         setSettings((prev) => ({ ...prev, labels: { ...(prev.labels ?? {}), [key]: value } }));
         setHasChanges(true);
     };
@@ -219,7 +224,7 @@ export default function LeadSettings() {
 interface ConfigSectionProps {
     settings: LeadSettingsData;
     update: (patch: Partial<LeadSettingsData>) => void;
-    updateLabel: (key: 'tier' | 'leadStatus', value: string) => void;
+    updateLabel: (key: 'tier' | 'leadStatus' | 'campaignType', value: string) => void;
     updateWeight: (key: keyof LeadSettingsData['scoringWeights'], value: number) => void;
     weightTotal: number;
     weightError: boolean;
@@ -298,6 +303,44 @@ function ConfigSection({
                                     </Label>
                                 </div>
                             ))}
+                        </CardContent>
+                    </Card>
+
+                    {/* ── All leads view: hide converted leads from the unfiltered list ── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('allLeadsCard.title')}</CardTitle>
+                            <CardDescription>{t('allLeadsCard.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="hideConvertedInAllLeads"
+                                    checked={settings.hideConvertedInAllLeads}
+                                    onCheckedChange={(v) => update({ hideConvertedInAllLeads: v })}
+                                />
+                                <Label htmlFor="hideConvertedInAllLeads" className="cursor-pointer">
+                                    {t('allLeadsCard.hideConverted')}
+                                </Label>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="showConvertedFilterOption"
+                                    checked={settings.showConvertedFilterOption}
+                                    onCheckedChange={(v) =>
+                                        update({ showConvertedFilterOption: v })
+                                    }
+                                />
+                                <Label
+                                    htmlFor="showConvertedFilterOption"
+                                    className="cursor-pointer"
+                                >
+                                    {t('allLeadsCard.showConvertedFilter')}
+                                </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('allLeadsCard.showConvertedFilterHint')}
+                            </p>
                         </CardContent>
                     </Card>
 
@@ -405,7 +448,7 @@ function ConfigSection({
                         </CardContent>
                     </Card>
 
-                    {/* ── Terminology: what this institute calls Tier / Lead status ── */}
+                    {/* ── Terminology: what this institute calls Tier / Lead status / Campaign type ── */}
                     <Card>
                         <CardHeader>
                             <CardTitle>{t('terminologyCard.title')}</CardTitle>
@@ -434,6 +477,18 @@ function ConfigSection({
                                     placeholder={t('terminologyCard.leadStatusPlaceholder')}
                                     maxLength={40}
                                     onChange={(e) => updateLabel('leadStatus', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="lead-label-campaign-type">
+                                    {t('terminologyCard.campaignTypeLabel')}
+                                </Label>
+                                <Input
+                                    id="lead-label-campaign-type"
+                                    value={settings.labels?.campaignType ?? ''}
+                                    placeholder={t('terminologyCard.campaignTypePlaceholder')}
+                                    maxLength={40}
+                                    onChange={(e) => updateLabel('campaignType', e.target.value)}
                                 />
                             </div>
                             <p className="text-xs text-muted-foreground sm:col-span-2">

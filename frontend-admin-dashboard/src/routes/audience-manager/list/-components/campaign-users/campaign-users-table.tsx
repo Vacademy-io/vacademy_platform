@@ -106,6 +106,9 @@ import {
     LeadTable,
     LeadPagination,
     ManageColumnsPopover,
+    useColumnOrderPrefs,
+    orderColumnIds,
+    type LeadColumnToggle,
     useLeadColumnPrefs,
     buildLeadColumnToggles,
     useUpdateLeadTier,
@@ -114,10 +117,17 @@ import {
     type LeadSortKey,
     type LeadSortDirection,
 } from '@/components/shared/leads';
+import { usePoolForAudience } from '@/services/counselor-pool';
+import { UsersThree, Tag } from '@phosphor-icons/react';
+import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
-const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source'];
+// The campaign type is redundant here for the same reason, but it ships AFTER
+// users already have saved column prefs, and `defaultHidden` only seeds the very
+// first open. So it stays in the Manage Column list: new users get it hidden,
+// everyone else can switch it off themselves.
+const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source', 'campaignType'];
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
@@ -456,7 +466,10 @@ const CampaignUsersContent = ({
             search_query: appliedSearch || undefined,
             lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
             lead_status_id: customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined,
-            conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE)
+            // Unfiltered view hides converted leads only when the institute turned on
+            // LEAD_SETTING.hideConvertedInAllLeads; a picked status always gets every lead.
+            conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE) ||
+            (leadSettings.hideConvertedInAllLeads && leadStatusFilters.length === 0)
                 ? 'EXCLUDE_CONVERTED'
                 : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
                   ? 'ONLY_CONVERTED'
@@ -487,17 +500,26 @@ const CampaignUsersContent = ({
         customFieldFiltersPayload,
         utmFiltersPayload,
         callHistoryFilter,
+        leadSettings.hideConvertedInAllLeads,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
         ALL_CONVERTED_VALUE,
         UNASSIGNED_COUNSELLOR_VALUE,
     ]);
 
-    const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
+    // Wait for lead settings so the first request already carries the right conversion filter;
+    // a disabled query is not "loading" in v5, so count the settings wait too.
+    const {
+        data: usersResponse,
+        isLoading: usersLoading,
+        error,
+    } = useCampaignUsers(leadsPayload, { enabled: !leadSettings.isLoading });
+    const isLoading = usersLoading || leadSettings.isLoading;
 
     // ── Settings + per-row data ──────────────────────────────
     const showScore = showOps && leadSettings.showScoreInEnquiryTable;
-    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const { statuses: leadStatusCatalog, filterStatuses: leadStatusFilterOptions } =
+        useLeadStatuses();
 
     const leadUserIds = useMemo(
         () =>
@@ -559,6 +581,9 @@ const CampaignUsersContent = ({
                 _user: user,
                 _custom_field_values: customValues,
                 _audience_campaign_name: lead.campaign_name || campaignName || null,
+                _audience_campaign_type: lead.campaign_type || campaignType || null,
+                _utm_campaign: lead.utm_campaign || null,
+                _utm_source: lead.utm_source || null,
                 _tat_due_at: lead.tat_due_at ?? null,
                 _follow_up_due_at: lead.follow_up_due_at ?? null,
                 _tat_overdue: lead.tat_overdue ?? null,
@@ -573,7 +598,7 @@ const CampaignUsersContent = ({
             };
             return row;
         });
-    }, [usersResponse, page, customFieldMap, campaignFieldsMap, campaignName]);
+    }, [usersResponse, page, customFieldMap, campaignFieldsMap, campaignName, campaignType]);
 
     const totalElements = usersResponse?.totalElements ?? 0;
     const totalPages = usersResponse?.totalPages ?? 0;
@@ -619,6 +644,7 @@ const CampaignUsersContent = ({
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
+    const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
 
     // Selection works in every view (previously Unassigned-only, which made
     // reassign/remove unreachable); drop it on filter change so stale ids
@@ -692,15 +718,32 @@ const CampaignUsersContent = ({
         'crm-lead-columns:audience-leads',
         AUDIENCE_LEADS_DEFAULT_HIDDEN
     );
+    // Order is a second, independent preference, paired with visibility exactly as
+    // Recent Leads and Manage Payments pair them.
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(
+        'crm-lead-column-order:audience-leads'
+    );
+    /** Reset restores BOTH halves of the layout: what is hidden and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
+    };
     // "Manage Column" list — source stays hidden and is not offered here.
-    const toggleableColumns = useMemo(
+    const naturalColumnToggles = useMemo(
         () =>
             buildLeadColumnToggles(showOps, showScore, {
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
+                campaignType: terminology.campaignType,
             }).filter((c) => c.id !== 'source'),
-        [showOps, showScore, terminology.tier, terminology.leadStatus]
+        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
     );
+    const toggleableColumns = useMemo(() => {
+        const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((t): t is LeadColumnToggle => !!t);
+    }, [naturalColumnToggles, columnOrder]);
 
     // ── Filter handlers ──────────────────────────────────────
     const handleTierChange = (values: string[]) => {
@@ -1057,6 +1100,10 @@ const CampaignUsersContent = ({
         }
     };
 
+    // Which counsellor pool this list feeds, if any. Resolves to null for the many
+    // lists that aren't auto-assigned, in which case the chip simply doesn't render.
+    const { data: pool } = usePoolForAudience(campaignId);
+
     return (
         <div className="flex w-full flex-col gap-6">
             {/* Heading */}
@@ -1076,6 +1123,23 @@ const CampaignUsersContent = ({
                                   formattedCount: totalElements.toLocaleString(i18n.language),
                               })}
                     </p>
+                    {/* Where this list's leads get routed. Only auto-assigned lists have a
+                        pool, so its absence is meaningful rather than missing data. */}
+                    {pool && (
+                        <span
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700"
+                            title={`Leads from this list are assigned through the "${pool.name}" pool`}
+                        >
+                            <UsersThree className="size-3.5" weight="fill" />
+                            {pool.name}
+                            {pool.members?.length ? (
+                                <span className="font-normal text-primary-600">
+                                    · {pool.members.length}{' '}
+                                    {pool.members.length === 1 ? 'counsellor' : 'counsellors'}
+                                </span>
+                            ) : null}
+                        </span>
+                    )}
                 </div>
                 {!isOptOut && (
                     <Button
@@ -1117,11 +1181,16 @@ const CampaignUsersContent = ({
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
                             { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
-                            {
-                                value: ALL_CONVERTED_VALUE,
-                                label: t('filters.leadStatus.converted'),
-                            },
-                            ...leadStatusCatalog.map((s) => ({
+                            // Built-in, not a catalog row — see Lead Settings -> All Leads View.
+                            ...(leadSettings.showConvertedFilterOption
+                                ? [
+                                      {
+                                          value: ALL_CONVERTED_VALUE,
+                                          label: t('filters.leadStatus.converted'),
+                                      },
+                                  ]
+                                : []),
+                            ...leadStatusFilterOptions.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
                             })),
@@ -1281,7 +1350,8 @@ const CampaignUsersContent = ({
                         columns={toggleableColumns}
                         hiddenColumns={hiddenColumns}
                         onToggle={toggleColumn}
-                        onReset={resetColumns}
+                        onReset={handleResetColumns}
+                        onReorder={setColumnOrder}
                     />
                     <Button
                         variant="outline"
@@ -1416,6 +1486,14 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Not admin-gated, unlike move/delete below: changing
+                                        // status is a counsellor's normal daily action and the
+                                        // per-row status chip already allows it.
+                                        {
+                                            label: t('bulkToolbar.changeStatus'),
+                                            value: 'status',
+                                            icon: <Tag className="size-4" />,
+                                        },
                                         // Move and delete are admin-only, matching those
                                         // endpoints' own checks.
                                         ...(canDeleteLeads
@@ -1436,6 +1514,10 @@ const CampaignUsersContent = ({
                                             : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'status') {
+                                            setBulkStatusOpen(true);
+                                            return;
+                                        }
                                         if (value === 'send-message') {
                                             setShowSendMessage(true);
                                             return;
@@ -1479,6 +1561,7 @@ const CampaignUsersContent = ({
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            columnOrder={columnOrder}
                             selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
@@ -1519,6 +1602,20 @@ const CampaignUsersContent = ({
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <BulkLeadStatusDialog
+                    open={bulkStatusOpen}
+                    onOpenChange={setBulkStatusOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    statuses={leadStatusCatalog}
+                    onSuccess={(result) => {
+                        // Keep the selection when nothing moved -- the admin probably wants to
+                        // pick a different status rather than reselect every row.
+                        if (result.updated > 0) setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 <DeleteLeadsDialog

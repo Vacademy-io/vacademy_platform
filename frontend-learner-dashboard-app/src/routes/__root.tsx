@@ -29,13 +29,14 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { applyTabBranding } from "@/utils/branding";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { hasLearnerSession } from "@/lib/auth/session-guard";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { loadLearnerTrackingSettings } from "@/services/learner-tracking-settings";
-import { resolvePostLoginRoute } from "@/lib/auth/post-login-redirect";
+import {
+  INSTITUTE_SELECTED_EVENT,
+  resolvePostLoginRoute,
+} from "@/lib/auth/post-login-redirect";
 import type { StudentUIType } from "@/types/student-display-settings";
 import {
   resolveDomainRouting,
@@ -119,36 +120,9 @@ const isReaderBlockedPath = (pathname: string): boolean =>
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-const isAuthenticated = async () => {
-  const token = await getTokenFromStorage(TokenKey.accessToken);
-  const studentDetails = await Preferences.get({
-    key: "StudentDetails",
-  });
-  const instituteDetails = await Preferences.get({
-    key: "InstituteDetails",
-  });
-
-  const hasToken = !isNullOrEmptyOrUndefined(token);
-  const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails?.value);
-  const hasInstituteDetails = !isNullOrEmptyOrUndefined(
-    instituteDetails?.value,
-  );
-
-  console.log(`🔍 Authentication check:`, {
-    hasToken,
-    hasStudentDetails,
-    hasInstituteDetails,
-    tokenLength: token ? token.length : 0,
-    studentDetailsLength: studentDetails?.value
-      ? studentDetails.value.length
-      : 0,
-    instituteDetailsLength: instituteDetails?.value
-      ? instituteDetails.value.length
-      : 0,
-  });
-
-  return hasToken && hasStudentDetails && hasInstituteDetails;
-};
+// Shared with the per-route guards that need the same check (see
+// lib/auth/session-guard) so "is this learner signed in?" has one definition.
+const isAuthenticated = hasLearnerSession;
 
 // Helper function to check if a route is public
 const isPublicRoute = (pathname: string): boolean => {
@@ -493,6 +467,41 @@ const RootComponent = () => {
     } catch (e) {
       console.warn("Failed to initialize UI debug helpers", e);
     }
+
+    // The loads above ran once, on mount. If that mount came before a
+    // multi-institute learner picked an institute (full page load onto
+    // /institute-selection), getInstituteId() answered the token's first
+    // institute. Reload the same institute-keyed settings for the pick.
+    const onInstituteSelected = () => {
+      getChatbotSettings(false)
+        .then((settings) => setIsChatbotEnabled(settings?.enable === true))
+        .catch(() => setIsChatbotEnabled(false));
+      let override = "";
+      try {
+        override = localStorage.getItem(DEBUG_KEY) || "";
+      } catch {
+        /* ignore */
+      }
+      if (
+        !["vibrant", "default", "play", "cleanerPlay", "corporate"].includes(
+          override
+        )
+      ) {
+        getStudentDisplaySettings(false)
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
+          .catch(() => {
+            /* ignore */
+          });
+      }
+      void loadLearnerTrackingSettings().catch(() => {});
+    };
+    window.addEventListener(INSTITUTE_SELECTED_EVENT, onInstituteSelected);
+    return () =>
+      window.removeEventListener(INSTITUTE_SELECTED_EVENT, onInstituteSelected);
     // We intentionally skip deps here to avoid re-running in StrictMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -599,15 +608,33 @@ const RootComponent = () => {
               "@/lib/auth/sessionUtility"
             );
             const decoded = getTokenDecodedData(accessToken);
+            // Several institutes on the token: open this app's own institute,
+            // not whichever one the backend happened to list first.
+            const { pickLoginInstituteId } = await import(
+              "@/lib/auth/pick-login-institute"
+            );
+            const pickedInstituteId = await pickLoginInstituteId(
+              decoded?.authorities,
+              decoded?.user,
+              url.searchParams.get("instituteId"),
+            );
             const instituteId =
-              decoded?.authorities &&
-              Object.keys(decoded.authorities)[0];
+              pickedInstituteId ||
+              (decoded?.authorities &&
+                Object.keys(decoded.authorities)[0]);
 
             if (instituteId) {
               await performFullAuthCycle(
                 { accessToken, refreshToken },
                 instituteId,
               );
+              // getInstituteId() reads this first: pin it to the institute just
+              // hydrated so a pick (or a stale value from an earlier login on
+              // this device) can never disagree with InstituteDetails.
+              await Preferences.set({
+                key: "selectedInstituteId",
+                value: instituteId,
+              });
               console.log(
                 "[OAuth DeepLink] Auth cycle complete, navigating to dashboard",
               );
@@ -861,8 +888,18 @@ export const Route = createRootRouteWithContext<{
         const { getTokenDecodedData } =
           await import("@/lib/auth/sessionUtility");
         const decoded = getTokenDecodedData(urlAccessToken);
+        // Several institutes on the token: open the link's / this host's own
+        // institute, not whichever one the backend happened to list first.
+        const { pickLoginInstituteId } =
+          await import("@/lib/auth/pick-login-institute");
+        const pickedInstituteId = await pickLoginInstituteId(
+          decoded?.authorities,
+          decoded?.user,
+          urlParams.get("instituteId"),
+        );
         // Institute ID is the first key in JWT authorities, or fallback to institute_id claim
         const instituteId =
+          pickedInstituteId ||
           (decoded?.authorities && Object.keys(decoded.authorities)[0]) ||
           (decoded as { institute_id?: string })?.institute_id;
 
@@ -871,6 +908,13 @@ export const Route = createRootRouteWithContext<{
             { accessToken: urlAccessToken, refreshToken: urlRefreshToken },
             instituteId,
           );
+          // getInstituteId() reads this first: pin it to the institute just
+          // hydrated so a pick (or a stale value from an earlier login on this
+          // device) can never disagree with InstituteDetails.
+          await Preferences.set({
+            key: "selectedInstituteId",
+            value: instituteId,
+          });
 
           // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard);
           // otherwise land on the institute's configured post-login route.

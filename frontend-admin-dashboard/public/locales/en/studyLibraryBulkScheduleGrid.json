@@ -27,7 +27,11 @@
         "sessionsCreated_one": "{{count}} session created",
         "sessionsCreated_other": "{{count}} sessions created",
         "rowsHaveErrorsBeforePreview": "Some rows have errors. Please fix them before previewing.",
-        "rowsHaveErrors": "Some rows have errors. Please fix them."
+        "rowsHaveErrors": "Some rows have errors. Please fix them.",
+        "teachersApplied_one": "Applied to {{count}} row",
+        "teachersApplied_other": "Applied to all {{count}} rows",
+        "teachersNotMatched_one": "{{count}} teacher in the CSV couldn't be matched to one staff member — check the highlighted Teacher cells.",
+        "teachersNotMatched_other": "{{count}} teachers in the CSV couldn't be matched to one staff member — check the highlighted Teacher cells."
     },
     "config": {
         "title": "Configuration",
@@ -102,6 +106,7 @@
             "platform": "Platform",
             "link": "Link",
             "batches": "Batches",
+            "teacher": "Teacher",
             "recording": "Recording",
             "waitingRoom": "Waiting room",
             "description": "Description",
@@ -111,6 +116,7 @@
         "importCsv": "Import CSV",
         "template": "Template",
         "batchReference": "Batch reference",
+        "teacherReference": "Teacher reference",
         "pasteHint": "Tip: paste tab-separated rows, or import a CSV."
     },
     "access": {
@@ -172,7 +178,9 @@
         "unknownError": "Unknown error",
         "downloadResults": "Download results (CSV)",
         "stayAndRetry": "Stay & retry",
-        "doneViewSessions": "Done — view sessions"
+        "doneViewSessions": "Done — view sessions",
+        "teachersSkipped": "Teachers not found in this institute and skipped: {{list}}",
+        "teachersAmbiguous": "These match more than one staff member and were skipped: {{list}}"
     },
     "rowBatchPicker": {
         "session": "Session",
@@ -187,6 +195,24 @@
         "batchesSelected_one": "{{count}} batch selected",
         "batchesSelected_other": "{{count}} batches selected",
         "clear": "Clear"
+    },
+    "rowTeacherPicker": {
+        "defaultYou": "You (default)",
+        "nameAndMore": "{{name}} +{{more}}",
+        "notFound": "· not found",
+        "ambiguous": "· shared by {{people}} people",
+        "remove": "Remove",
+        "searchPlaceholder": "Search by name, email or username…",
+        "clearSearch": "Clear search",
+        "loading": "Loading teachers…",
+        "loadFailed": "Couldn't load the institute's staff. Emails from a CSV will still be matched when the classes are created.",
+        "noMatch": "No one matches that search.",
+        "noStaff": "No staff found in this institute.",
+        "emptyHint": "Leave empty and you'll be the teacher.",
+        "applyToAll": "Use for all rows",
+        "clear": "Clear",
+        "problemCount_one": "{{count}} can't be matched — will be skipped",
+        "problemCount_other": "{{count}} can't be matched — will be skipped"
     },
     "waitingRoomPicker": {
         "off": "Off",

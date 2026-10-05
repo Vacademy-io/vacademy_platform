@@ -77,6 +77,31 @@
         "vsClassCaption": "Performance par matière vs. moyenne de classe",
         "vsClassSuffix": "classe {{value}}%"
     },
+    "assessments": {
+        "title": "Évaluations",
+        "caption": "{{count}} sur la période",
+        "rank": "Rang {{rank}}"
+    },
+    "trend": {
+        "title": "Évolution des notes",
+        "classAverage": "Moyenne de la classe",
+        "ariaLabel": "Note à chaque évaluation comparée à la moyenne de la classe"
+    },
+    "gradeMix": {
+        "title": "Notes obtenues",
+        "summary_one": "{{good}} évaluation sur {{total}} avec la note B ou plus",
+        "summary_other": "{{good}} évaluations sur {{total}} avec la note B ou plus",
+        "testCount_one": "{{count}} évaluation",
+        "testCount_other": "{{count}} évaluations",
+        "range": {
+            "ap": "90 % et plus",
+            "a": "80–89 %",
+            "bp": "70–79 %",
+            "b": "60–69 %",
+            "c": "50–59 %",
+            "d": "moins de 50 %"
+        }
+    },
     "misconceptions": {
         "title": "Prochaines pistes de travail",
         "caption": "erreurs de compréhension précises et comment les corriger"

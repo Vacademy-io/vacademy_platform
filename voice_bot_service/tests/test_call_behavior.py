@@ -723,6 +723,119 @@ def test_machine_markers_cover_devanagari_transliteration():
     assert rpt._machine_markers(_H()) == [], "a real Hindi speaker is not a machine"
 
 
+_SCREEN_OPEN = "नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से। आपने बच्चे के लिए inquiry की थी।"
+
+
+def _machine_blob(turns, **diag):
+    """The report's diagnostics blob for a played transcript of (role, text)."""
+    o = b.CallOutcome(corr="machine-t", context={})
+    o.transcript = [{"role": r, "text": t} for r, t in turns]
+    o.diagnostics = dg_mod.CallDiagnostics(**diag)
+    return rpt._diagnostics_blob(o)
+
+
+def test_screener_then_a_real_person_is_not_flagged_as_a_machine():
+    """Live calls b5b43ae1 (the father: 2:41, 18 turns, Interested_Follow_Up_Needed)
+    and 34452119 (the mother: 2:14, quiz link sent), 2026-10-02. Google's call
+    screen answered first, a parent then talked through the whole call, and
+    both reports were AMBER "Probably an answering machine, not a person"."""
+    father = [
+        ("user", "Hi."), ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling I will see if this."),
+        ("user", "Hello."), ("assistant", _SCREEN_OPEN),
+        ("user", "हाँ जी।"), ("user", "मैं बच्चे का पिता बोल रहा हूँ।"),
+        ("assistant", "जी सर, आपसे बात करके अच्छा लगा। क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"),
+        ("user", "बच्चे का नाम सुमन है और वो six"), ("user", "हाँ।"),
+        ("assistant", "जी सर, सुमन Class 6 में है। सुमन के previous class में कितने marks आए थे?"),
+        ("user", "हाँ जी।"), ("user", "सुमन के fifty three थे ma'am।"),
+        ("assistant", "जी सर, समझ सकती हूँ — ये इस stage पर बहुत common है।"),
+        ("user", "हाँ बोल सकते हैं पढ़ाई नहीं कर रही है आजकल।"),
+        ("assistant", "समझ सकती हूँ सर।"),
+        ("user", "और sir TV और mobile में लगी रहती है।"),
+        ("assistant", "सर, generally parents की तीन-चार basic expectations होती हैं।"),
+        ("user", "हाँ जी।"),
+        ("assistant", "क्या सर, इसके अलावा आपकी कोई specific expectation है?"),
+        ("user", "नहीं नहीं ऐसे कुछ नहीं।"),
+        ("assistant", "ठीक है सर। तो मैं आपको हमारे MIP के बारे में बताती हूँ।"),
+        ("user", "नहीं नहीं नहीं बताइए और।"),
+        ("assistant", "हमारे यहाँ पचास से ज़्यादा full-time faculties हैं।"),
+        ("user", "कितनी fees?"), ("user", "कितनी रहती है आप लोग की?"),
+        ("assistant", "सर, MIP की fees लगभग बत्तीस हज़ार से पचास हज़ार के बीच रहती है।"),
+        ("user", "अच्छा।"), ("user", "और classes कब से चालू रहेंगी?"),
+        ("assistant", "सर, ये detail हमारे Senior Academic Advisor आपको बता देंगे।"),
+    ]
+    mother = [
+        ("user", "Hi."), ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling I will see if this person."),
+        ("user", "बताएं।"), ("user", "माता से।"),
+        ("assistant", "नमस्ते मैम, Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है।"),
+        ("user", "ठीक है तो फिर हम क्या करना है क्या चाहिए आपको?"),
+        ("assistant", "जी मैम, क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ?"),
+        ("user", "हाँ बच्चा।"),
+        ("assistant", "बच्चा अभी किस class में है मैम?"),
+        ("user", "हाँ।"), ("user", "third class में है।"),
+        ("assistant", "जी मैम, Class 3। और बच्चे का नाम क्या है मैम?"),
+        ("user", "अरिया नाम है।"),
+        ("assistant", "अरिया के previous class में कितने marks आए थे?"),
+        ("user", "Eighty seven."),
+        ("assistant", "अच्छा! ये तो अच्छी बात है मैम।"),
+        ("user", "ठीक है तो आप ये बताइए आपके कितने क्या क्या plans हैं?"),
+        ("assistant", "मैम, हमारे यहाँ एक Scholarship Test होता है।"),
+        ("user", "हाँ बताओ pricing कितनी है plan की?"),
+        ("assistant", "मैम, MGP की fees लगभग चालीस हज़ार से साठ हज़ार के बीच रहती है।"),
+        ("user", "ठीक है ठीक है भेज दीजिए।"),
+        ("assistant", "जी मैम, मैं आपको Scholarship Quiz का link WhatsApp कर दूँगी।"),
+        ("user", "नहीं किया।"), ("user", "Okay thank you bye bye."),
+        ("assistant", "आपके समय के लिए धन्यवाद। नमस्ते।"),
+    ]
+    for name, turns, users in (("b5b43ae1", father, 18), ("34452119", mother, 15)):
+        p = _machine_blob(turns, bot_turns=12, tts_chars=1800, longest_user_secs=3.1,
+                          barge_ins=2)
+        assert p["turnTaking"]["userTurns"] == users, name
+        assert p["machine"]["markers"], f"{name}: the screener is still on record"
+        assert p["machine"]["personTurns"] >= dg_mod._PERSON_TURNS_OVER_MACHINE, (name, p["machine"])
+        assert dg_mod.LIKELY_MACHINE not in p["faultLevels"], (name, p["faultLevels"])
+        assert p["health"] == "GREEN", (name, p["faultLevels"])
+
+
+def test_screener_or_voicemail_with_nobody_behind_it_is_still_a_machine():
+    """The other side of b5b43ae1/34452119: no person ever answered us."""
+    # replay 787aa111: the screen relayed "Thanks. Arushi." and then gave up
+    screener_only = [
+        ("assistant", _SCREEN_OPEN),
+        ("user", "If you record your name and reason for calling, I'll see if this person is available."),
+        ("user", "Thanks."), ("user", "Arushi."), ("user", "Please stay on the line."),
+        ("assistant", "Hello, क्या आप मुझे सुन पा रहे हैं?"),
+        ("user", "I'm sorry."), ("user", "This person is not available."),
+        ("user", "If you would like to leave an additional message."),
+        ("user", "Please reply after the tone."),
+        ("assistant", "ठीक है, मैं बाद में call करती हूँ। धन्यवाद।"),
+    ]
+    # replay 7958a36d: the operator's voicemail, in fragments
+    voicemail = [
+        ("user", "Call has been forwarded to voicemail."), ("assistant", _SCREEN_OPEN),
+        ("user", "The person you are trying to reach is not available."),
+        ("user", "At the tone."), ("user", "Please record your message."),
+        ("assistant", "Hello?"),
+        ("user", "When you have."), ("user", "You have finished recording."),
+        ("user", "You may hang up."),
+        ("assistant", "ठीक है, मैं बाद में call करती हूँ।"),
+    ]
+    # A personal greeting after the operator's line: several unmatched lines
+    # with real words, but all in ONE run over our opening — it never answered.
+    personal = [
+        ("user", "Your call has been forwarded to voicemail."), ("assistant", _SCREEN_OPEN),
+        ("user", "Hi, this is Rahul Sharma."), ("user", "I am busy right now."),
+        ("user", "I will call you back soon."), ("user", "Please leave your name and number."),
+        ("assistant", "Hello, क्या आप मुझे सुन पा रहे हैं?"),
+    ]
+    for name, turns in (("screener", screener_only), ("voicemail", voicemail),
+                        ("personal", personal)):
+        p = _machine_blob(turns, bot_turns=3, tts_chars=400, longest_user_secs=5.0)
+        assert p["machine"]["personTurns"] < dg_mod._PERSON_TURNS_OVER_MACHINE, (name, p["machine"])
+        assert dg_mod.LIKELY_MACHINE in p["faultLevels"], (name, p["faultLevels"])
+
+
 def test_kill_hook_stamps_a_suspicion_not_a_count():
     """The hook must NOT bump the counter directly — 95% of these replies play."""
     src = inspect.getsource(b.run_bot)
@@ -2646,6 +2759,22 @@ async def test_short_answer_run_waits_for_the_rest_when_the_voice_resumes():
 
 
 @pytest.mark.asyncio
+async def test_a_blocked_retrigger_never_cancels_a_held_answer():
+    """A held short answer, then a run that is BLOCKED (context unchanged, or
+    the last word was ours): the block must not take the held answer with it."""
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d = _graced_guard(lambda: 5.0)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "कृष्णा साहू।"}]
+    await g.process_frame(LLMRunFrame(), D)          # held: a 2-word answer
+    assert rec.passed == []
+    await g.process_frame(LLMRunFrame(), D)          # stale retrigger, same context
+    assert rec.passed == [], "the retrigger itself must stay blocked"
+    await asyncio.sleep(1.4)                         # grace + settle
+    assert len(rec.passed) == 1, "the held answer was lost to a blocked run"
+
+
+@pytest.mark.asyncio
 async def test_short_answer_run_is_superseded_by_the_next_turn():
     from pipecat.frames.frames import LLMRunFrame
     state = {"quiet": 0.1}
@@ -3512,7 +3641,11 @@ def test_resay_requires_an_interruption_after_the_greet_was_queued():
     import inspect
     src = inspect.getsource(b.run_bot)
     resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
-    assert 'flags["last_cut_t"] > _greet_queued_t' in resay
+    assert 'flags["last_cut_t"]' in resay and "max(_greet_queued_t, flags[\"opening_queued_t\"])" in resay
+    # Call 8208166f (2026-10-01): the cut of the FIRST delivery must not
+    # justify re-saying the re-said one (an absorbed "हाँ।" queued a third copy).
+    tail = src[src.index("_opening_resays += 1"):src.index("_opening_resays += 1") + 1200]
+    assert 'flags["opening_queued_t"] = time.time() + 0.5' in tail
     # cut_now is the one exception: the turn-gate has just broadcast the
     # interruption itself (a real barge-in), so the cut is a fact, not a guess.
     assert "not cut_now and not (flags" in resay
@@ -4763,7 +4896,11 @@ def test_replay_record_becomes_a_scenario_with_finals_at_their_times():
     assert len(turns) == 3, "the 0.2 s VAD blip with no words is not a turn"
     assert sc.reply_for("[cue] बोलिए।") == "जी सर। बच्चे का नाम?"      # by trigger, not order
     assert sc.reply_for("Hello") == "जी, मैं सुन रही हूँ।"
-    assert sc.reply_for("anything") is None, "every recorded reply used once"
+    # Every recorded reply used once: a run the live call never made gets a
+    # unique contentful line (never a stub "Okay.", which starts a cue
+    # cascade), and is counted as drift from the live call.
+    extra = sc.reply_for("anything")
+    assert extra and "नोट" in extra and sc.reply_for.unrecorded == 1, extra
     assert 170 < sc.max_secs <= 180
 
 
@@ -5385,6 +5522,64 @@ def test_a_greeting_during_the_opening_is_absorbed():
     from app.turntake import mid_reply_action, ABSORB
     for t in ["नमस्ते।", "नमस्कार जी", "Namaste ma'am"]:
         assert mid_reply_action(t) == ABSORB, t
+
+
+# ── call 1f2b97ab (2026-10-01): "अभी time नहीं है madam" at 10.4 s of a 12.4 s
+#    cached opening -> the opening again from "नमस्ते जी", twice; hung up at 15 s ─
+_SHREYA_OPENING = ("नमस्ते जी, मैं श्रेया बोल रही हूँ Shiksha Nation से । आपने अपने बच्चे के लिए "
+                   "live classes की inquiry की थी, उसी के बारे में दो मिनट बात करनी थी। क्या मैं "
+                   "जान सकती हूँ कि मैं बच्चे के माता-पिता में से किससे बात कर रही हूँ?")
+
+
+def test_opening_heard_is_measured_by_audio_not_only_by_recorded_text():
+    # A cached opening is one blob: nothing of it is in the played transcript
+    # until it ENDS. 10.4 s of it had played.
+    assert not b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=10.4)
+    assert not b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=7.5)
+    # A real cut at the start is still unheard, by either measure.
+    assert b._opening_barely_heard(_SHREYA_OPENING, [], 0.0, played_secs=1.3)
+    assert b._opening_barely_heard(_SHREYA_OPENING, [], 0.0)
+    # The estimate errs LONG (a little more audio needed to call it heard).
+    from app.turntake import opening_expected_secs
+    assert 12.4 <= opening_expected_secs(_SHREYA_OPENING) <= 15.5
+
+
+def test_busy_and_later_are_answers_not_pickup_noise():
+    from app.turntake import caller_is_busy, takes_over_opening
+    for t in ["अभी time नहीं है madam.", "अभी थोड़ा busy है ma'am।", "मैं गाड़ी चला रहा हूँ",
+              "बाद में call करना", "Madam अभी मैं bike चला रहा हूँ", "I'm driving, call later",
+              "अभी अभी मुझे urgency है"]:
+        assert caller_is_busy(t), t
+        assert takes_over_opening(t), t
+    for t in ["हाँ जी बोलिए।", "Hello.", "नमस्ते।", "मैं बच्चे का पिता बोल रहा हूँ", "[cue busy]"]:
+        assert not caller_is_busy(t), t
+
+
+def test_resay_measures_heard_by_audio_and_yields_to_a_real_answer():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    resay = src[src.index("async def _resay_opening(text"):src.index("_opening_resays += 1")]
+    assert "played_secs=played" in resay
+    # Only once some of it PLAYED: before any audio (call ab194522) the opening
+    # is owed whatever they said.
+    assert "if played > 0 and takes_over_opening(" in resay
+    pending = src[src.index("def _opening_pending()"):src.index("async def _resay_opening(text")]
+    assert "played_secs=_opening_played_secs()" in pending, \
+        "RunGuard and the re-say must read the same 'heard'"
+    played = src[src.index("def _opening_played_secs()"):src.index("def _opening_pending()")]
+    assert 'flags["last_cut_t"]' in played, "frozen at the cut"
+
+
+@pytest.mark.parametrize("text", ["हो।", "हो नमस्ते।", "होय", "हाँ बोल।", "हाँ बोलें।", "बरोबर।"])
+def test_marathi_yes_and_bol_forms_are_backchannels(text):
+    from app.turntake import mid_reply_action, ABSORB
+    assert mid_reply_action(text) == ABSORB, text
+
+
+@pytest.mark.parametrize("text", ["क्या हो रहा है", "करतो करतो।", "हो गया काम?", "नहीं हो पाएगा"])
+def test_ho_inside_a_sentence_still_interrupts(text):
+    from app.turntake import mid_reply_action, ABSORB
+    assert mid_reply_action(text) != ABSORB, text
 
 
 # ── call 4243a436 (2026-09-22): room chatter at pickup ran the model and cut ──
@@ -6503,3 +6698,456 @@ async def test_a_reply_that_asked_for_a_fresh_line_does_not_also_speak_its_held_
     await _reply(g, first)              # the whole previous turn, again
     assert asked, "a fresh line should have been requested"
     assert not any("क्या परमजीत" in t for t in rec.text), rec.text
+
+
+# ── Call 22062aac (2026-09-29): a stale next-step, a gagged question, "जी सर।"×4 ──
+def _nr_with_steps(caller):
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append((held, kind, attempt))
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: caller["t"],
+                       request_next_step=_next_step)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    return g, rec, asked
+
+
+@pytest.mark.asyncio
+async def test_no_recovery_for_a_reply_a_newer_turn_already_superseded():
+    """"हाँ जी।" ran, then "9th में पढ़ रहा है।" ran before that reply ended. The
+    first reply said nothing new, and the next-step request made for it was a
+    SECOND reply on top of the real answer's — both played back to back."""
+    caller = {"t": "हाँ जी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    g.note_run()                      # the held short answer's run
+    g.note_run()                      # the full answer's run, queued behind it
+    await _reply(g, "जी सर।")
+    assert not asked, "asked for a next step although a newer turn was queued: %r" % asked
+    # The newer run's reply is untouched.
+    caller["t"] = "9th में पढ़ रहा है।"
+    rec.text.clear()
+    await _reply(g, "यही वो साल है जब syllabus heavy लगने लगता है। ",
+                 "पिछली class में कितने marks आए थे?")
+    assert any("marks" in t for t in rec.text), rec.text
+
+
+@pytest.mark.asyncio
+async def test_a_filler_reply_with_nothing_queued_still_recovers():
+    caller = {"t": "कोशिश करता है।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    g.note_run()
+    await _reply(g, "जी सर।")
+    assert asked, "the ordinary filler-only recovery stopped working"
+
+
+def test_an_acknowledgment_that_only_echoes_a_word_is_a_filler():
+    f = b.NoRepeatGate._is_filler
+    assert f("जी सर, Pragyan.")
+    assert f("जी सर, प्रज्ञान।")
+    assert f("Okay, Raman.")
+    assert not f("जी सर, धन्यवाद।")          # a thanks means something
+    assert not f("जी सर, Pragyan कैसा है?")  # a question is never a filler
+    assert not f("जी सर, यही वो साल है जब syllabus heavy लगता है।")
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_question_is_what_the_recovery_is_about():
+    """"जी सर, Pragyan." + the marks question (already said) + its explanation
+    (already said): the recovery must name the QUESTION, and the model may ask
+    it once more — the father had answered a different question."""
+    Q = "क्या मैं जान सकती हूँ कि Pragyan के previous class में कितने marks आए थे? "
+    WHY = "So that मुझे उसकी performance के बारे में थोड़ा idea मिल सके।"
+    caller = {"t": "9th में पढ़ रहा है।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, Q, WHY)
+    caller["t"] = "ये प्रज्ञान है।"
+    rec.text.clear()
+    await _reply(g, "जी सर, Pragyan. ", Q, WHY)
+    assert asked, "silence: no recovery after an ack-only reply"
+    held, kind, _ = asked[-1]
+    assert "marks" in held and kind == "all-repeat", asked
+    what, cue = b.next_step_cue(held, kind)
+    assert "still unanswered" in cue
+    # The model judged it unanswered and asks again: this one gets through.
+    rec.text.clear()
+    await _reply(g, "पिछली class में Pragyan के कितने marks आए थे?")
+    assert any("marks" in t for t in rec.text), "the permitted re-ask was blocked"
+
+
+@pytest.mark.asyncio
+async def test_a_second_acknowledgment_only_reply_gets_the_firm_cue():
+    caller = {"t": "अब पढ़ने में तो।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    await _reply(g, "जी।")
+    caller["t"] = "कोशिश करता है।"
+    await _reply(g, "जी सर।")
+    assert [a for _h, _k, a in asked] == [0, 2], asked
+    assert g.owes_line() and g.owed_after_filler()
+    caller["t"] = "अच्छा।"
+    # A real reply ends the acknowledgment streak. Being a statement with no
+    # question it still leaves the bot owing the next line (call 963347ab) —
+    # but as a statement, not as a filler.
+    await _reply(g, "आमतौर पर parents की तीन-चार expectations होती हैं।")
+    assert not g.owed_after_filler()
+    assert g.owes_line()
+    caller["t"] = "जी।"
+    await _reply(g, "पहली, faculty अच्छे हों। क्या आपकी भी यही expectation है?")
+    assert not g.owes_line()
+
+
+def test_a_hindi_final_ending_in_a_connective_is_unfinished():
+    """Sarvam ends every final with "।", which made the check dead for Hindi."""
+    def unfinished(text):
+        msgs = [{"role": "assistant", "content": "क्या Pragyan के साथ भी ऐसा ही है सर?"},
+                {"role": "user", "content": text}]
+        return b.RunGuard._ends_mid_clause(b.RunGuard, msgs)
+    assert unfinished("अब पढ़ने में तो।")
+    assert unfinished("वो class में और।")
+    assert not unfinished("कोशिश करता है।")
+    assert not unfinished("और?")
+
+
+@pytest.mark.asyncio
+async def test_a_short_line_left_by_the_repeat_filter_still_recovers():
+    """Call f6764346 (2026-09-30): the reply was "समझ सकती हूँ सर।" + the
+    Shiksha Nation line, which had already been said. Only the empathy line
+    reached the caller, it counted as real content, and nothing recovered —
+    8.2 s of silence, then "are you there?"."""
+    WHY = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+           "बच्चों की concept clarity मजबूत करने पर काम करते हैं।")
+    caller = {"t": "हाँ जी बताइए।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, WHY)
+    caller["t"] = "हां जी बिल्कुल ऐसा ही है Ma'am।"
+    rec.text.clear()
+    await _reply(g, "समझ सकती हूँ सर। ", WHY)
+    assert asked, "no recovery after only a short line survived: %r" % rec.text
+    assert g.owes_line()
+
+
+@pytest.mark.asyncio
+async def test_a_short_answer_with_a_question_is_not_treated_as_empty():
+    WHY = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+           "बच्चों की concept clarity मजबूत करने पर काम करते हैं।")
+    caller = {"t": "हाँ जी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    await _reply(g, WHY)
+    caller["t"] = "जी।"
+    await _reply(g, "बच्चा किस class में है? ", WHY)
+    assert not asked, asked
+
+
+# ── Call 3ad7f590 (2026-09-30): "क्या बोलूं?" and a killed reply's late fragment ──
+def test_what_should_i_say_is_a_request_to_hear_the_question_again():
+    from app.turntake import caller_asked_to_repeat
+    assert caller_asked_to_repeat("क्या बोलूं?")
+    assert caller_asked_to_repeat("मैं क्या बताऊँ?")
+    assert caller_asked_to_repeat("What should I say?")
+    assert not caller_asked_to_repeat("क्या बोलूं मैं आपको, मेरा बेटा आठवीं क्लास में पढ़ता है?")
+
+
+@pytest.mark.asyncio
+async def test_a_killed_responses_late_fragment_is_never_spoken():
+    """The mother cut in with "Mother."; the response it killed still streamed
+    "जी मैम, Shik" and ended — which was flushed to the caller as a tail, and a
+    filler recovery was requested for a reply she never heard."""
+    from pipecat.frames.frames import (InterruptionFrame, LLMFullResponseEndFrame,
+                                       LLMFullResponseStartFrame, LLMTextFrame)
+    caller = {"t": "मम्मी।"}
+    g, rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMTextFrame("जी मैम, "), d)
+    await g.process_frame(InterruptionFrame(), d)
+    await g.process_frame(LLMTextFrame("Shik"), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not any("Shik" in t for t in rec.text), rec.text
+    assert not asked, asked
+    # The next response is handled normally.
+    caller["t"] = "Mother."
+    rec.text.clear()
+    await _reply(g, "जी मैम, Shiksha Nation में हमारा focus concept clarity पर है। ",
+                 "बच्चा किस class में है?")
+    assert any("class" in t for t in rec.text), rec.text
+
+
+# ── Call 963347ab (2026-09-30): three silences, three causes ───────────────
+PITCH_963 = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है, हम Day one से "
+             "बच्चों की concept clarity मजबूत करने पर काम करते हैं, ताकि वो school exams में "
+             "बेहतर perform करें और पूरे confidence के साथ अच्छे marks ला सकें। ")
+
+
+@pytest.mark.asyncio
+async def test_the_cap_keeps_the_question_even_when_a_line_follows_it():
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "मैं उसकी बड़ी बहन बोल रही हूँ।",
+                       request_next_step=_next_step, max_sentences=lambda: 2,
+                       max_chars=lambda: 240)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    await _reply(g, "जी, नमस्ते। ", PITCH_963,
+                 "क्या मैं बच्चे के बारे में थोड़ा जान सकती हूँ, नाम क्या है और किस class में है? ",
+                 "जी।")
+    said = " ".join(rec.text)
+    assert "किस class में है?" in said, said
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_asks_for_the_next_line():
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    caller = {"t": "ये apply."}
+    g, rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert asked and asked[-1][1] == "continue", asked
+
+
+@pytest.mark.asyncio
+async def test_a_reply_the_parent_cut_off_is_not_an_empty_reply():
+    """Call 24e13868 (2026-09-30): the parent's barge-in killed the response
+    before its first word; "continuing" it was a second reply to the same
+    moment, and the parent heard a stray "जी, बोलिए।"."""
+    from pipecat.frames.frames import (InterruptionFrame, LLMFullResponseEndFrame,
+                                       LLMFullResponseStartFrame)
+    caller = {"t": "मेरा बेटा आठवीं में है।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(InterruptionFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not [k for _h, k, _a in asked if k == "continue"], asked
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_after_a_bare_no_still_moves_on():
+    """A bare "नहीं" answers a yes/no question — the next line must follow
+    (review of 0ea2d31037: treating it as a refusal left silence)."""
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    caller = {"t": "नहीं।"}
+    g, _rec, asked = _nr_with_steps(caller)
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert [k for _h, k, _a in asked if k == "continue"], asked
+
+
+def test_the_continue_cue_offers_a_call_back_after_a_put_off():
+    """Call 899c6888: after the parent put the call off, 'say your next line'
+    pushed past them. The cue itself now says to offer a call back or close."""
+    _kind, cue = b.next_step_cue("", kind="continue")
+    assert _kind == "continue"
+    assert "call back" in cue and "close politely" in cue, cue
+
+
+@pytest.mark.asyncio
+async def test_an_empty_reply_while_ending_does_nothing():
+    from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
+    rec, asked = _NRRec(), []
+
+    async def _next_step(held, kind="", attempt=0):
+        asked.append(kind)
+    g = b.NoRepeatGate(enabled=lambda: True, last_caller_text=lambda: "ठीक है।",
+                       request_next_step=_next_step, ending=lambda: True)
+    g.push_frame = rec.push
+    b.FrameProcessor.process_frame = _noop_super
+    d = b.FrameDirection.DOWNSTREAM
+    await g.process_frame(LLMFullResponseStartFrame(), d)
+    await g.process_frame(LLMFullResponseEndFrame(), d)
+    assert not asked
+
+
+@pytest.mark.asyncio
+async def test_a_statement_with_no_question_leaves_the_bot_owing_the_line():
+    caller = {"t": "जी।"}
+    g, _rec, _asked = _nr_with_steps(caller)
+    await _reply(g, "पहली, faculty अच्छे हों और बच्चे के concepts properly clear करें।")
+    assert g.owes_line() and not g.owed_after_filler()
+    caller["t"] = "जी जी।"
+    await _reply(g, "क्या इसके अलावा आपकी कोई specific expectation है?")
+    assert not g.owes_line()
+
+
+
+def test_memory_reclaim_never_freezes_a_finished_call(monkeypatch):
+    """A PipelineTask still reachable at the first idle reclaim must not be
+    frozen (review of 42e5d333ab): the freeze waits for a clean idle moment."""
+    import gc
+    from app import memory
+
+    class PipelineTask:          # same type name the guard looks for
+        pass
+    pinned = PipelineTask()
+    frozen = []
+    monkeypatch.setattr(memory, "_frozen_after_call", False)
+    monkeypatch.setattr(gc, "freeze", lambda: frozen.append(1))
+    st = memory.reclaim(idle=True, corr="t")
+    assert not st["froze"] and not frozen
+    del pinned
+    st = memory.reclaim(idle=True, corr="t")
+    assert st["froze"] and frozen == [1]
+
+
+
+def test_memory_reclaim_waits_for_idle_before_the_first_freeze(monkeypatch):
+    """The first full collection (before survivors are frozen) took 232 ms on the
+    box (2026-10-01): never run it while calls are live."""
+    import gc
+    from app import memory
+    collected = []
+    monkeypatch.setattr(memory, "_frozen_after_call", False)
+    monkeypatch.setattr(gc, "collect", lambda *a: collected.append(1) or 0)
+    monkeypatch.setattr(gc, "freeze", lambda: None)
+    st = memory.reclaim(idle=False, corr="t")
+    assert st.get("deferred") and not collected
+    st = memory.reclaim(idle=True, corr="t")
+    assert collected and not st.get("deferred")
+    collected.clear()
+    st = memory.reclaim(idle=False, corr="t")            # frozen now: cheap, runs live
+    assert collected and not st.get("deferred")
+
+
+def test_call_modules_preload():
+    from app import memory
+    assert memory.preload_call_modules() >= 1
+
+
+# ── single-flight replies, step 3 (2026-10-01): one ledger answers "is a reply
+#    on its way?" — calls c05f6c83 / 1d28af3a ran the model twice for one moment
+#    when a run started while the previous reply was still playing ───────────
+@pytest.mark.asyncio
+async def test_the_run_ledger_counts_a_composing_reply_until_its_end():
+    from pipecat.frames.frames import (LLMFullResponseStartFrame, LLMFullResponseEndFrame,
+                                       InterruptionFrame)
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    D = b.FrameDirection.DOWNSTREAM
+    assert not g.generating()
+    g.note_run()                                   # RunGuard let a run through
+    assert g.generating(), "passed, not started yet: a reply is on its way"
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    assert g.generating()
+    await g.process_frame(LLMFullResponseEndFrame(), D)
+    assert not g.generating(), "composed: the audio side takes over"
+    g.note_run()
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    await g.process_frame(InterruptionFrame(), D)  # a barge-in kills it
+    assert not g.generating()
+    g.note_run()
+    g._last_run_t -= 9.0                           # a run that never started…
+    g._last_start_t -= 9.0                         # …long after the last reply began
+    assert not g.generating(), "bounded: a lost run cannot hold the call for good"
+
+
+def test_reply_in_flight_is_measured_from_the_replys_own_start():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    body = src[src.index("def _reply_in_flight() -> bool:"):src.index("def _reply_pending() -> bool:")]
+    assert "no_repeat.generating()" in body
+    assert 'flags["bot_started_t"] < st and flags["reply_cancelled_t"] < st' in body
+    pending = src[src.index("def _reply_pending() -> bool:"):]
+    pending = pending[:pending.index("\n    def ")]
+    assert "run_guard.held()" in pending
+
+
+# ── single-flight step 2 (2026-10-01): a failed LLM primary retires at once ──
+@pytest.mark.asyncio
+async def test_a_failed_primary_retires_and_drops_what_was_queued_behind_it():
+    from pipecat.frames.frames import ErrorFrame, LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from app.providers import with_retire
+
+    seen, errors = [], []
+
+    class _Base:
+        async def process_frame(self, frame, direction):
+            seen.append(frame)
+            if getattr(self, "_fail_next", False):
+                self._fail_next = False
+                await self.push_error_frame(ErrorFrame(error="first token not received",
+                                                       fatal=False))
+
+        async def push_error_frame(self, error):
+            errors.append(error)
+
+    P = with_retire(_Base)
+    p = P()
+    drops = []
+    p.retire_on_error = True
+    p.on_retired_drop = lambda: drops.append(1)
+    D = b.FrameDirection.DOWNSTREAM
+    p._fail_next = True
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)   # the stalled request
+    assert p.retired and p.errored_t > 0 and len(errors) == 1
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)   # queued behind it
+    assert len(seen) == 1 and drops == [1], "a retired primary must not start another generation"
+
+    # a fatal error, or one outside a request, never retires; nor without a fallback
+    q = P()
+    q.retire_on_error = True
+    await q.push_error_frame(ErrorFrame(error="outside", fatal=False))
+    assert not q.retired
+    q._fail_next = True
+    q._in_ctx = False
+    r = P()
+    r._fail_next = True
+    await r.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert not r.retired, "retire_on_error is off when there is no fallback"
+
+
+def test_an_errored_primary_reply_is_not_read_as_empty():
+    import inspect
+    src = inspect.getsource(b.NoRepeatGate.process_frame)
+    i = src.index("the model's reply was EMPTY")
+    assert "self._primary_errored_since(self._last_start_t)" in src[:i]
+    run = inspect.getsource(b.run_bot)
+    assert "llm_primary.retire_on_error = True" in run
+    assert "no_repeat.note_dropped_run()" in run
+
+
+@pytest.mark.asyncio
+async def test_a_retired_primary_serves_again_when_the_switcher_returns_to_it():
+    """Design review 2026-10-01: after the fallback fails too, failover goes back
+    to the primary; a primary that stayed retired dropped every later request —
+    a mute bot for the rest of the call."""
+    from pipecat.frames.frames import (ErrorFrame, LLMContextFrame,
+                                       ServiceSwitcherRequestMetadataFrame)
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from app.providers import with_retire
+    seen = []
+
+    class _Base:
+        async def process_frame(self, frame, direction):
+            seen.append(type(frame).__name__)
+
+        async def push_error_frame(self, error):
+            pass
+
+    p = with_retire(_Base)()
+    p.retire_on_error = True
+    p.retired = True                                    # failed earlier in the call
+    D = b.FrameDirection.DOWNSTREAM
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert "LLMContextFrame" not in seen, "queued behind the failure: dropped"
+    await p.process_frame(ServiceSwitcherRequestMetadataFrame(service=p), D)
+    assert not p.retired
+    await p.process_frame(LLMContextFrame(context=LLMContext()), D)
+    assert seen.count("LLMContextFrame") == 1, "active again: it serves"
+
+
+def test_errored_primary_skip_only_while_its_failover_rerun_is_coming():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    i = src.index("primary_errored_since=lambda t:")
+    expr = src[i:i + 600]
+    assert "settings.llm_retire_primary" in expr, "LLM_RETIRE_PRIMARY=0 must restore the old EMPTY path"
+    assert 'flags["llm_failed_over_t"] >= t' in expr, "a later error (no re-run coming) gets ordinary recovery"
+    reason = src[src.index("def _bot_run_drop_reason("):]
+    reason = reason[:reason.index("\n    def ")]
+    assert 'flags["stopping_since"] is not None' in reason
+    assert "end_pending_since" not in reason, "a goodbye a noise killed must still be re-asked"
+    assert 'flags["reply_started_t"] == for_reply' in reason

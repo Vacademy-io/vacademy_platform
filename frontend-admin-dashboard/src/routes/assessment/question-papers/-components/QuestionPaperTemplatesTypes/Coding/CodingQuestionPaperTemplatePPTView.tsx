@@ -5,6 +5,7 @@ import {
     CodingQuestionConfig,
     makeEmptyQuestion,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/utils/code-editor-types';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 // PPT/preview rendering: show problem + sample tests + language list. Read-only.
 export const CodingQuestionPaperTemplatePPTView = ({
@@ -33,7 +34,7 @@ export const CodingQuestionPaperTemplatePPTView = ({
                                     className="prose max-w-none rounded border bg-background p-3"
                                     dangerouslySetInnerHTML={{
                                         __html:
-                                            value.problemHtml ||
+                                            sanitizeRichHtml(value.problemHtml) ||
                                             `<i>${t('noProblemStatement')}</i>`,
                                     }}
                                 />

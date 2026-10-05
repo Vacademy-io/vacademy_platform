@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +132,10 @@ def _layout_target_index(layout_map: dict[str, Any]) -> dict[str, str]:
     return idx
 
 
-_MARK_IN_TEXT = re.compile(r"[\s(\[]*\b\d+(?:\.\d+)?\s*/\s*\d+(?:\.\d+)?\b[\s)\]]*\.?\s*$")
+_MARK_IN_TEXT = re.compile(r"[\s(\[]*\b(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\b[\s)\]]*\.?\s*$")
 
 
-def _strip_mark_from_note(text: Any) -> Any:
+def _strip_mark_from_note(text: Any, max_marks: float = 0.0) -> Any:
     """Take a mark figure out of a written comment.
 
     The score is its own annotation, drawn from the mark this module has
@@ -147,7 +147,14 @@ def _strip_mark_from_note(text: Any) -> Any:
     """
     if not isinstance(text, str):
         return text
-    cleaned = _MARK_IN_TEXT.sub("", text).rstrip(" ,;:-")
+    # Only a figure OUT OF this question's marks is a mark. A fraction that
+    # is the answer - "final answer should be 7/30" - ends a note too, and
+    # stripping it printed "final answer should be" on a real maths copy.
+    m = _MARK_IN_TEXT.search(text)
+    if not m or not max_marks or abs(float(m.group(2)) - float(max_marks)) > 1e-6 \
+            or float(m.group(1)) > float(max_marks):
+        return text
+    cleaned = text[:m.start()].rstrip(" ,;:-")
     # Never return an empty note: if the figure was the whole remark, the
     # score annotation will carry it and the note has nothing left to say.
     return cleaned if cleaned else None
@@ -412,7 +419,7 @@ def validate_and_cap(
             "target": line_id,
             "page_id": page_id,
             "style": style,
-            "text": (_strip_mark_from_note(ann.get("text"))
+            "text": (_strip_mark_from_note(ann.get("text"), max_marks)
                      if style in NOTE_STYLES else ann.get("text")),
             "anchor_text": anchor_text,
             "position": position if position in VALID_POSITIONS else None,
@@ -518,3 +525,41 @@ def validate_and_cap(
                           if r and str(r) in idx] or None,
         "status": "COMPLETED",
     }
+
+
+def _criterion_key(name: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(name or "").lower()).strip()
+
+
+def attach_criteria_max(verdict: dict[str, Any], rubric: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Give each criteria_breakdown item the `max` of its criterion in the
+    rubric the question was graded against (spec 7.8, T1.13).
+
+    Matched by name (case and punctuation ignored). When names do not match
+    but the grader returned exactly one item per rubric criterion, items are
+    paired in order (the prompt asks for the rubric's order). Anything still
+    unmatched gets max None rather than a guess. In place; returns verdict."""
+    breakdown = verdict.get("criteria_breakdown") or []
+    items = [it for it in (rubric or {}).get("rubric") or [] if isinstance(it, dict)]
+    if not breakdown:
+        return verdict
+    maxima: dict[str, float] = {}
+    ordered: list[Optional[float]] = []
+    for it in items:
+        value = coerce_number(it.get("max_marks"), float("nan"))
+        value = None if value != value else round(value, 2)
+        ordered.append(value)
+        key = _criterion_key(it.get("criteria_name"))
+        if key and value is not None and key not in maxima:
+            maxima[key] = value
+    by_name = [maxima.get(_criterion_key(c.get("criteria_name"))) if isinstance(c, dict) else None
+               for c in breakdown]
+    positional = len(ordered) == len(breakdown)
+    for i, c in enumerate(breakdown):
+        if not isinstance(c, dict):
+            continue
+        value = by_name[i]
+        if value is None and positional:
+            value = ordered[i]
+        c["max"] = value
+    return verdict

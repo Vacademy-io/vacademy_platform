@@ -14,7 +14,11 @@
         "defaultStatusAriaLabel": "الحالة الافتراضية",
         "setAsDefaultAriaLabel": "تعيين كافتراضي",
         "systemDefaultTitle": "افتراضي النظام — يمكن إعادة تسميته أو تلوينه",
-        "systemDefaultBadge": "افتراضي"
+        "systemDefaultBadge": "افتراضي",
+        "showInFilterAriaLabel": "إظهار في مُرشِّح الحالة",
+        "hideFromFilterAriaLabel": "إخفاء من مُرشِّح الحالة",
+        "showInFilterTitle": "مخفي من مُرشِّح الحالة — انقر للإظهار",
+        "hideFromFilterTitle": "ظاهر في مُرشِّح الحالة — انقر للإخفاء"
     },
     "addStatus": "إضافة حالة",
     "footer": {

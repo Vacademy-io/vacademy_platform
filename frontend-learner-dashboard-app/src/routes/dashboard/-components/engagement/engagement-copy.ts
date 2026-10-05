@@ -187,12 +187,14 @@ export function pointsBreakdown(item: EngagementCopyItem): PointsBreakdown {
   const bonus = bonusApplies ? scaled(num(item.correctPoints), percent) : 0;
   const full = answerOut ? num(item.completionPoints) : maxPoints(item);
   let total = now + bonus;
-  if (finite(item.effectivePoints)) {
-    // The server's own number for a reduced-rate task.
-    total = Math.max(0, item.effectivePoints);
-  } else if (percent >= 100 && !answerOut && finite(item.earnablePoints)) {
-    // At full rate "earnable" means the same under either reading of the field.
+  if (finite(item.earnablePoints)) {
+    // The server's own total: completion plus any bonus still payable, after the
+    // catch-up percent. effectivePoints is the completion part only, so preferring it
+    // dropped the answer bonus from every open question ("+10" for a 10 + 20 task).
     total = Math.max(0, item.earnablePoints);
+  } else if (finite(item.effectivePoints) && !bonusApplies) {
+    // Older servers: the completion part is the whole of it when no bonus applies.
+    total = Math.max(0, item.effectivePoints);
   }
   return {
     now,

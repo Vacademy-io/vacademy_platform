@@ -26,6 +26,13 @@
             "studentsTable": "Tableau des étudiants (Gérer les étudiants)"
         }
     },
+    "allLeadsCard": {
+        "title": "Vue « Tous les prospects »",
+        "description": "Choisissez si les prospects convertis apparaissent dans la vue non filtrée « Tous les prospects » des prospects récents et des listes. Vous pouvez toujours les voir en choisissant « Inscrits / Convertis » ou votre statut converti dans le filtre de statut, ou sur le tableau des prospects.",
+        "hideConverted": "Masquer les prospects convertis de « Tous les prospects »",
+        "showConvertedFilter": "Proposer « Enrolled / Converted » dans le filtre de statut",
+        "showConvertedFilterHint": "Option intégrée qui trouve les leads inscrits à un cours. Désactivez-la si votre propre statut converti la couvre déjà — la plupart des établissements en ont un, et les deux se ressemblent beaucoup."
+    },
     "weightsCard": {
         "title": "Pondérations de notation",
         "description": "Chaque facteur contribue à hauteur de son pourcentage de pondération dans le score final (0–100). Les pondérations doivent totaliser exactement 100.",
@@ -66,6 +73,8 @@
         "tierPlaceholder": "p. ex. Niveau d'intérêt",
         "leadStatusLabel": "Nom de « Statut du lead »",
         "leadStatusPlaceholder": "p. ex. Action",
+        "campaignTypeLabel": "Nom pour « Type de campagne »",
+        "campaignTypePlaceholder": "ex. Source",
         "hint": "Utilisé dans les en-têtes du tableau des leads, les filtres, la vue latérale et ces réglages. Enregistrez avec le bouton ci-dessous."
     }
 }

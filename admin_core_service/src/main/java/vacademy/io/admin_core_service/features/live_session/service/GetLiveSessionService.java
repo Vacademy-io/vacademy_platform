@@ -8,11 +8,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionDeleteAuditDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionInstructorDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionVisibilityScope;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
@@ -487,6 +490,64 @@ public class GetLiveSessionService {
     }
 
     /**
+     * Snapshot of what a delete request targets, for the audit log's
+     * {@code captureBefore}. Must run BEFORE the delete — afterwards every lookup
+     * here filters the rows out as DELETED. Never throws: audit must not block a
+     * delete, so any failure yields null and the log falls back to a count.
+     */
+    public LiveSessionDeleteAuditDTO deleteAuditSnapshot(List<String> ids, String type) {
+        if (ids == null || ids.isEmpty()) return null;
+        try {
+            if (Objects.equals(type, "session")) {
+                LiveSession session = sessionRepository.findById(ids.get(0)).orElse(null);
+                if (session == null) return null;
+                int classes = scheduleRepository.countActiveSchedulesBySessionId(
+                        session.getId(), NotificationStatusEnum.DELETED.name());
+                LiveSessionDeleteAuditDTO.Item item = new LiveSessionDeleteAuditDTO.Item(
+                        session.getId(), null, session.getTitle(), null, null, session.getTimezone());
+                return new LiveSessionDeleteAuditDTO(session.getId(),
+                        "live session \"" + session.getTitle() + "\" (all " + classes + " classes)",
+                        List.of(item));
+            }
+
+            List<LiveSessionDeleteAuditDTO.Item> items = new ArrayList<>();
+            for (String scheduleId : ids) {
+                SessionSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+                if (schedule == null) continue;
+                LiveSession session = sessionRepository.findById(schedule.getSessionId()).orElse(null);
+                items.add(new LiveSessionDeleteAuditDTO.Item(
+                        schedule.getSessionId(),
+                        schedule.getId(),
+                        session != null ? session.getTitle() : null,
+                        schedule.getMeetingDate() != null
+                                ? new java.text.SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH).format(schedule.getMeetingDate())
+                                : null,
+                        schedule.getStartTime() != null
+                                ? schedule.getStartTime().toString().substring(0, 5)
+                                : null,
+                        session != null ? session.getTimezone() : null));
+            }
+            if (items.isEmpty()) return null;
+
+            Set<String> sessionIds = items.stream()
+                    .map(LiveSessionDeleteAuditDTO.Item::getSessionId)
+                    .collect(Collectors.toSet());
+            String sessionId = sessionIds.size() == 1 ? sessionIds.iterator().next() : null;
+            if (items.size() > 1) {
+                return new LiveSessionDeleteAuditDTO(sessionId, items.size() + " live classes", items);
+            }
+            LiveSessionDeleteAuditDTO.Item only = items.get(0);
+            StringBuilder label = new StringBuilder("live class \"").append(only.getTitle()).append('"');
+            if (only.getMeetingDate() != null) label.append(" on ").append(only.getMeetingDate());
+            if (only.getStartTime() != null) label.append(" at ").append(only.getStartTime());
+            if (StringUtils.hasText(only.getTimezone())) label.append(" (").append(only.getTimezone()).append(')');
+            return new LiveSessionDeleteAuditDTO(sessionId, label.toString(), items);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * Access-checked delete (V524). The controller uses this overload so a
      * restricted role cannot delete a session it is not allowed to see by
      * POSTing its id directly. The unchecked overloads above remain for
@@ -570,6 +631,13 @@ public class GetLiveSessionService {
                 }
                 // Disable notifications for the deleted schedules
                 scheduleNotificationRepository.disableNotificationsByScheduleIds(scheduleIdsToNotify, NotificationStatusEnum.DISABLED.name());
+            }
+            // Soft-delete AFTER notifying: the notifier looks schedules up by
+            // status <> DELETED, so deleting first left it nothing to send. That is
+            // why the in-loop delete was dropped in 04fc6f0e — which left these
+            // occurrences LIVE and the "deleted" class still listed.
+            if (!scheduleIdsToNotify.isEmpty()) {
+                scheduleRepository.softDeleteScheduleByIdIn(scheduleIdsToNotify);
             }
         }
         return type + " is deleted";

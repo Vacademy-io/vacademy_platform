@@ -31,6 +31,7 @@ from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.kb_paper import router as kb_paper_router
+from .routers.kb_companion import router as kb_companion_router
 from .routers.paper_digitise import router as paper_digitise_router
 from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
@@ -58,7 +59,6 @@ from .routers.question_gen import router as question_gen_router
 from .routers.pdf_questions import router as pdf_questions_router
 from .routers.audio_questions import router as audio_questions_router
 from .routers.chat_with_pdf import router as chat_with_pdf_router
-from .routers.evaluation import router as evaluation_router
 from .routers.retry import router as retry_router
 from .routers.translation import router as translation_router
 
@@ -126,6 +126,14 @@ async def _lifespan(app: FastAPI):
         start_call_intelligence_poller()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("call-intelligence poller startup skipped: %s", exc)
+    # Copy-check billing reconciliation (spec 10.5): nightly, flags graded copies
+    # of the last 48 h that have no credit transaction. One replica runs it
+    # (advisory lock). Lazy import so a module issue can't block app boot.
+    try:
+        from .services.copy_check.billing_reconciliation import start_billing_reconciliation
+        start_billing_reconciliation()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("copy-check billing reconciliation startup skipped: %s", exc)
     # Vacademy Assistant help corpus: keep the deployed pgvector corpus in sync
     # with app/data/help_knowledge.jsonl. Change-detected, so an unchanged corpus
     # is a no-op. Lazy import + background task so it can't block app boot.
@@ -272,6 +280,8 @@ def create_app() -> FastAPI:
     # Question papers generated from a knowledge base (V436). Shares the
     # /knowledge-base/v1 prefix and the same Caller auth dependency.
     app.include_router(kb_paper_router, prefix=settings.api_base_path)
+    # Student study companions built on a knowledge base (V535).
+    app.include_router(kb_companion_router, prefix=settings.api_base_path)
     # A question-paper PDF read into gradable questions for offline tests.
     app.include_router(paper_digitise_router, prefix=settings.api_base_path)
     app.include_router(kb_library_router, prefix=settings.api_base_path)
@@ -318,7 +328,8 @@ def create_app() -> FastAPI:
     app.include_router(pdf_questions_router, prefix=settings.api_base_path)
     app.include_router(audio_questions_router, prefix=settings.api_base_path)
     app.include_router(chat_with_pdf_router, prefix=settings.api_base_path)
-    app.include_router(evaluation_router, prefix=settings.api_base_path)
+    # /ai/evaluation-tool/* (the logged-out /evaluator-ai free tool) is retired:
+    # it ran anonymous AI evaluation against any assessment id. Not mounted.
     app.include_router(retry_router, prefix=settings.api_base_path)
     # i18n Phase 1 — content translation pipeline (estimate / course job /
     # strings / review-approve / job status). Router declares its own

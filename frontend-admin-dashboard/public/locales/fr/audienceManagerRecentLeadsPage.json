@@ -35,20 +35,32 @@
         "leadStatus": {
             "label": "Tous les prospects",
             "active": "Actif (non inscrit)",
-            "converted": "Inscrit / Converti"
+            "converted": "Inscrit / Converti",
+            "excludeSelected": "Exclure la sélection"
         },
         "sla": {
             "label": "Tous les états SLA"
         },
         "audience": {
-            "label": "Toutes les audiences",
+            "label": "Tous : {{term}}",
             "untitled": "Audience sans titre"
+        },
+        "campaignType": {
+            "label": "Tous les {{term}}"
         },
         "customDate": {
             "setDates": "Définir les dates",
             "done": "Terminé",
             "from": "Du",
             "to": "Au"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -63,6 +75,7 @@
     "chips": {
         "search": "Recherche : {{query}}",
         "audience": "Audience : {{names}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "Niveau : {{tiers}}",
         "status": "Statut : {{statuses}}",
         "sla": "SLA : {{states}}",
@@ -78,7 +91,11 @@
         "statusConverted": "Converti",
         "unassigned": "Non assigné",
         "removeAriaLabel": "Supprimer {{label}}",
-        "clearAll": "Tout effacer"
+        "clearAll": "Tout effacer",
+        "calledWithin": null,
+        "workedWithin": null,
+        "pinnedTitle": "Épinglé par cet onglet — impossible de le retirer ici",
+        "statusExcluded": "Statut différent de : {{statuses}}"
     },
     "search": {
         "placeholder": "Rechercher des prospects",
@@ -101,7 +118,8 @@
         "assignLeads": "Assigner les prospects",
         "unassignLeads": "Désassigner les prospects",
         "restoreLeads": "Restaurer les prospects",
-        "deleteLeads": "Supprimer les prospects"
+        "deleteLeads": "Supprimer les prospects",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "Impossible de charger les prospects",
@@ -120,11 +138,13 @@
             "email": "E-mail",
             "mobile": "Mobile",
             "audience": "Audience",
+            "campaignType": "{{term}}",
             "leadStatus": "Statut du prospect",
             "counsellor": "Conseiller",
             "activityNotes": "Activité et notes",
             "notesCount": "Nombre de notes",
-            "leadJourney": "Parcours du prospect (disposition et notes)"
+            "leadJourney": "Parcours du prospect (disposition et notes)",
+            "utmCampaign": "Campagne UTM"
         },
         "notes": {
             "defaultTitle": "Note",
@@ -142,6 +162,12 @@
         "leadRestored_many": "{{count}} prospects restaurés",
         "leadRestored_other": "{{count}} prospects restaurés",
         "restoreFailed": "Échec de la restauration. Veuillez réessayer.",
-        "selectAllFailed": "Échec de la sélection de tous les prospects"
+        "selectAllFailed": "Échec de la sélection de tous les prospects",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

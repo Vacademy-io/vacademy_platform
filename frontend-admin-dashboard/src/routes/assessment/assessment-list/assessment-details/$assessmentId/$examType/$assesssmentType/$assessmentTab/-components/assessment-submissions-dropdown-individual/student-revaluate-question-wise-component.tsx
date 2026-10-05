@@ -30,6 +30,7 @@ import {
     SelectedFilterRevaluateInterface,
 } from '@/types/assessments/assessment-revaluate-question-wise';
 import { toast } from 'sonner';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 export function StudentRevaluateQuestionWiseComponent({
     student,
@@ -206,9 +207,10 @@ export function StudentRevaluateQuestionWiseComponent({
                                         <TableCell>{index + 1}</TableCell>
                                         <TableCell
                                             dangerouslySetInnerHTML={{
-                                                __html:
+                                                __html: sanitizeRichHtml(
                                                     question.assessment_question_preview_dto
-                                                        .questionName || '',
+                                                        .questionName
+                                                ),
                                             }}
                                         />
                                         <TableCell>

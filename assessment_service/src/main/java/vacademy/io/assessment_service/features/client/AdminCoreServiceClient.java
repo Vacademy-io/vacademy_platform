@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
+import vacademy.io.assessment_service.features.assessment_dashboard.dto.BatchEnrollmentRow;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
@@ -332,6 +333,54 @@ public class AdminCoreServiceClient {
                     instituteId, batchIds.size(), e.getMessage());
         }
         return List.of();
+    }
+
+    /** admin_core refuses more batches than this in one enrolment lookup. */
+    private static final int ENROLLMENT_BATCH_CHUNK = 200;
+
+    /**
+     * Every (learner, batch) enrolment in the given batches, with the enrolment date — for
+     * the Assessment Dashboard, which needs each batch's full membership (a learner in two
+     * batches appears under both, unlike {@link #getEnrolledLearnersForBatches}).
+     *
+     * <p>Returns {@code null}, not an empty list, when any chunk fails, so the dashboard can
+     * say "batch membership unavailable" instead of reporting that nobody was set a test.
+     */
+    public List<BatchEnrollmentRow> getBatchEnrollments(String instituteId, List<String> batchIds) {
+        if (instituteId == null || instituteId.isBlank() || batchIds == null || batchIds.isEmpty()) {
+            return List.of();
+        }
+        List<BatchEnrollmentRow> out = new ArrayList<>();
+        for (int from = 0; from < batchIds.size(); from += ENROLLMENT_BATCH_CHUNK) {
+            List<String> chunk = new ArrayList<>(
+                    batchIds.subList(from, Math.min(batchIds.size(), from + ENROLLMENT_BATCH_CHUNK)));
+            try {
+                Map<String, Object> body = new HashMap<>();
+                body.put("institute_id", instituteId);
+                body.put("package_session_ids", chunk);
+                body.put("statuses", List.of("ACTIVE"));
+
+                ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                        clientName, "POST", adminCoreServiceBaseUrl,
+                        "/admin-core-service/internal/learner/v1/enrollments-by-package-sessions", body);
+
+                if (response.getStatusCode() != HttpStatus.OK) {
+                    log.warn("Batch enrolment lookup returned {} for institute {} ({} batches)",
+                            response.getStatusCode(), instituteId, chunk.size());
+                    return null;
+                }
+                if (StringUtils.hasText(response.getBody())) {
+                    out.addAll(objectMapper.readValue(response.getBody(),
+                            new TypeReference<List<BatchEnrollmentRow>>() {
+                            }));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch batch enrolments for institute {} ({} batches): {}",
+                        instituteId, chunk.size(), e.getMessage());
+                return null;
+            }
+        }
+        return out;
     }
 
     /**

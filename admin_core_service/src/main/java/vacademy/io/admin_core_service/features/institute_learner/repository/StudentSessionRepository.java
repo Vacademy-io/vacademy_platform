@@ -485,4 +485,14 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           String userId,
           String packageSessionId,
           String status);
+
+  /**
+   * Every row this learner has in these package sessions, whatever its status, newest first.
+   * Used by the enrollment repair to find a lapsed membership worth reviving: a revoked trial
+   * leaves an INACTIVE or DELETED row, and reviving that one keeps the learner's enrollment
+   * number, sub-org and roles instead of minting a parallel record.
+   */
+  List<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSession_IdInOrderByCreatedAtDesc(
+          String userId,
+          List<String> packageSessionIds);
 }

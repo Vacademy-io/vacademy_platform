@@ -34,20 +34,32 @@
         "leadStatus": {
             "label": "सभी लीड्स",
             "active": "सक्रिय (नामांकित नहीं)",
-            "converted": "नामांकित / परिवर्तित"
+            "converted": "नामांकित / परिवर्तित",
+            "excludeSelected": "चुने हुए हटाएँ"
         },
         "sla": {
             "label": "सभी SLA स्थितियां"
         },
         "audience": {
-            "label": "सभी ऑडियंस",
+            "label": "सभी {{term}}",
             "untitled": "बिना शीर्षक वाली ऑडियंस"
+        },
+        "campaignType": {
+            "label": "सभी {{term}}"
         },
         "customDate": {
             "setDates": "तारीखें सेट करें",
             "done": "हो गया",
             "from": "से",
             "to": "तक"
+        },
+        "calledWithin": {
+            "placeholder": null,
+            "any": null
+        },
+        "workedWithin": {
+            "placeholder": null,
+            "any": null
         }
     },
     "toolbar": {
@@ -62,6 +74,7 @@
     "chips": {
         "search": "खोज: {{query}}",
         "audience": "ऑडियंस: {{names}}",
+        "campaignType": "{{term}}: {{types}}",
         "tier": "स्तर: {{tiers}}",
         "status": "स्थिति: {{statuses}}",
         "sla": "SLA: {{states}}",
@@ -77,7 +90,11 @@
         "statusConverted": "परिवर्तित",
         "unassigned": "असाइन नहीं किया गया",
         "removeAriaLabel": "{{label}} हटाएं",
-        "clearAll": "सभी हटाएं"
+        "clearAll": "सभी हटाएं",
+        "calledWithin": null,
+        "workedWithin": null,
+        "pinnedTitle": "यह फ़िल्टर इस टैब का है — इसे यहाँ से हटाया नहीं जा सकता",
+        "statusExcluded": "स्टेटस नहीं है: {{statuses}}"
     },
     "search": {
         "placeholder": "लीड्स खोजें",
@@ -97,7 +114,8 @@
         "assignLeads": "लीड्स असाइन करें",
         "unassignLeads": "लीड्स अनअसाइन करें",
         "restoreLeads": "लीड्स पुनर्स्थापित करें",
-        "deleteLeads": "लीड्स हटाएं"
+        "deleteLeads": "लीड्स हटाएं",
+        "changeStatus": null
     },
     "emptyState": {
         "errorTitle": "लीड्स लोड नहीं हो सकीं",
@@ -116,11 +134,13 @@
             "email": "ईमेल",
             "mobile": "मोबाइल",
             "audience": "ऑडियंस",
+            "campaignType": "{{term}}",
             "leadStatus": "लीड स्थिति",
             "counsellor": "काउंसलर",
             "activityNotes": "गतिविधि और नोट्स",
             "notesCount": "नोट्स की संख्या",
-            "leadJourney": "लीड यात्रा (निपटान व नोट्स)"
+            "leadJourney": "लीड यात्रा (निपटान व नोट्स)",
+            "utmCampaign": "UTM कैंपेन"
         },
         "notes": {
             "defaultTitle": "नोट",
@@ -136,6 +156,12 @@
         "leadRestored_one": "{{count}} लीड पुनर्स्थापित की गई",
         "leadRestored_other": "{{count}} लीड्स पुनर्स्थापित की गईं",
         "restoreFailed": "पुनर्स्थापित करने में विफल। कृपया फिर से कोशिश करें।",
-        "selectAllFailed": "सभी लीड्स चुनने में विफल"
+        "selectAllFailed": "सभी लीड्स चुनने में विफल",
+        "bulkStatusUpdated_one": null,
+        "bulkStatusUpdated_other": null,
+        "bulkStatusUnchanged_one": null,
+        "bulkStatusUnchanged_other": null,
+        "bulkStatusPartial": null,
+        "bulkStatusFailed": null
     }
 }

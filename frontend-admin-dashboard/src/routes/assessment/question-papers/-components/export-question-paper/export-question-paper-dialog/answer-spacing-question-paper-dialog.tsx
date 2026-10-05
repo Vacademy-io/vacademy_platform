@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Question } from '@/components/common/export-offline/types/question';
+import { sanitizeRichHtml } from '@/lib/sanitize-html';
 
 interface AnswerSpacingDialogProps {
     open: boolean;
@@ -132,9 +133,9 @@ export function AnswerSpacingQuestionPaperDialog({
                                                             <div
                                                                 className="line-clamp-2 text-sm"
                                                                 dangerouslySetInnerHTML={{
-                                                                    __html:
-                                                                        question.question.content ||
-                                                                        '',
+                                                                    __html: sanitizeRichHtml(
+                                                                        question.question.content
+                                                                    ),
                                                                 }}
                                                             />
                                                         </div>
@@ -146,8 +147,9 @@ export function AnswerSpacingQuestionPaperDialog({
                                                         <div
                                                             className="text-sm"
                                                             dangerouslySetInnerHTML={{
-                                                                __html:
-                                                                    question.question.content || '',
+                                                                __html: sanitizeRichHtml(
+                                                                    question.question.content
+                                                                ),
                                                             }}
                                                         />
                                                     </TooltipContent>

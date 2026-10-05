@@ -14,9 +14,10 @@ import {
 } from "@phosphor-icons/react";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard } from "@/components/design-system/modern-card";
+import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
+import { CustomFieldValueDisplay } from "@/components/common/custom-fields/CustomFieldValueDisplay";
 import { cn } from "@/lib/utils";
 import {
   getResolvedStepFields,
@@ -95,7 +96,11 @@ export const OnboardingStepForm = ({
   const defaultValues = useMemo(
     () =>
       Object.fromEntries(
-        editableFields.map((f) => [f.institute_custom_field_id, f.value ?? ""])
+        // A never-answered field falls back to its configured default value.
+        editableFields.map((f) => [
+          f.institute_custom_field_id,
+          f.value ?? f.default_value ?? "",
+        ])
       ),
     [editableFields]
   );
@@ -209,7 +214,11 @@ export const OnboardingStepForm = ({
                   {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                 </span>
                 <span className="text-sm text-neutral-700">
-                  {field.value || t("onboardingStepForm.notFilledIn")}
+                  {field.value ? (
+                    <CustomFieldValueDisplay value={field.value} fieldType={field.field_type} />
+                  ) : (
+                    t("onboardingStepForm.notFilledIn")
+                  )}
                 </span>
               </div>
             ))}
@@ -223,27 +232,34 @@ export const OnboardingStepForm = ({
                   <FormItem>
                     <FormControl>
                       <div className="flex flex-col gap-1.5">
-                        <Label
-                          htmlFor={field.institute_custom_field_id}
-                          className="text-sm font-medium text-neutral-700"
-                        >
+                        <Label className="text-sm font-medium text-neutral-700">
                           {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                           {field.is_mandatory && (
                             <span className="ms-0.5 text-danger-600">*</span>
                           )}
                         </Label>
-                        <Input
-                          id={field.institute_custom_field_id}
-                          placeholder={t("onboardingStepForm.enterPlaceholder", {
-                            field: field.field_name ?? t("onboardingStepForm.defaultFieldPlaceholder"),
-                          })}
+                        <div
                           className={cn(
-                            "h-10 rounded-lg border-neutral-200 bg-neutral-50/50 px-3 text-sm text-neutral-700 shadow-none",
-                            "placeholder:text-neutral-400 hover:border-primary-200 focus:border-primary-500 focus:bg-white focus-visible:ring-0",
-                            fieldState.error && "border-danger-400"
+                            "onboarding-field",
+                            fieldState.error && "[&_input]:border-danger-400"
                           )}
-                          {...rhfField}
-                        />
+                        >
+                          {/* Renders the field AS ITS CONFIGURED TYPE — a dropdown's
+                              options, a date picker, a phone input, a file upload. Every
+                              field used to render through this one plain text <Input>
+                              regardless of type. */}
+                          <CustomFieldRenderer
+                            type={field.field_type ?? "text"}
+                            name={field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
+                            value={rhfField.value ?? ""}
+                            onChange={rhfField.onChange}
+                            config={field.config}
+                            required={field.is_mandatory ?? false}
+                            placeholder={t("onboardingStepForm.enterPlaceholder", {
+                              field: field.field_name ?? t("onboardingStepForm.defaultFieldPlaceholder"),
+                            })}
+                          />
+                        </div>
                         {fieldState.error && (
                           <p className="text-xs font-medium text-danger-600">
                             {fieldState.error.message}

@@ -906,7 +906,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             </DialogTitle>
             {enrollmentData && (
               <p className="text-sm text-gray-600 text-center">
-                Complete your one-time payment to access the course
+                Complete your one-time payment to access the {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}
               </p>
             )}
           </DialogHeader>
@@ -1115,7 +1115,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   <p className="text-red-600 text-xs mt-1">{validationError}</p>
                 )}
                 <p className="text-sm text-gray-500 mt-2">
-                  We'll send your receipt and course details to this email
+                  We'll send your receipt and {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()} details to this email
                   address
                 </p>
               </div>
@@ -1238,7 +1238,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                     </span>
                   </div>
                   <p className="text-orange-600">
-                    This course's payment provider ({vendor}) isn't supported on
+                    This {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}'s payment provider ({vendor}) isn't supported on
                     this screen yet. Please use the enrollment link to complete
                     your payment, or contact support.
                   </p>
@@ -1290,7 +1290,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 <div className="mb-2 border border-blue-200 bg-blue-50 rounded p-4 text-sm text-blue-700">
                   You'll be securely redirected to{" "}
                   {isCashfree ? "Cashfree" : "PhonePe"} to complete your payment,
-                  then brought back to your course.
+                  then brought back to your {getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase()}.
                 </div>
               ) : (
                 <div className="mb-2">

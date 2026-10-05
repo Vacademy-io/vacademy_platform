@@ -278,7 +278,8 @@ function EditTemplateDialog({
             category,
             variableNames: pairs.map((p) => p.name.trim()),
             sampleValues: pairs.map((p) => p.sample.trim()),
-            footerText: footer.trim() || undefined,
+            // "" clears the footer; undefined would mean "keep the current one" to the backend.
+            footerText: footer.trim(),
         });
 
     return (

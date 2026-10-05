@@ -17,7 +17,7 @@ import json
 import re
 from typing import Any
 
-from .prompt_builder import _model_answer_block, _question_context
+from .prompt_builder import _model_answer_block, _question_context, grader_persona
 
 TYPED_GRADING_SYSTEM = """
 You are an experienced teacher marking a student's answer that was TYPED in an
@@ -49,6 +49,17 @@ missing or wrong in THIS answer. No mark figures in the feedback.
 
 OUTPUT: STRICT JSON only, no prose before or after.
 """
+
+
+def typed_grading_system(subject: Any = None, level: Any = None) -> str:
+    """TYPED_GRADING_SYSTEM with the paper's persona (T0.25): "You are an
+    experienced Science teacher (Class 6-12) marking ...". Neither known =
+    the constant unchanged."""
+    persona = grader_persona(subject, level)
+    if persona is None:
+        return TYPED_GRADING_SYSTEM
+    return TYPED_GRADING_SYSTEM.replace(
+        "You are an experienced teacher", f"You are an experienced {persona}", 1)
 
 
 def answer_text(raw: Any) -> str:

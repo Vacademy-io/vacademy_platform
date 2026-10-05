@@ -39,7 +39,7 @@
             "priceLabel": "Price:",
             "validity_one": "{{count}} day validity",
             "validity_other": "{{count}} days validity",
-            "none": "No plan resolved"
+            "none": "No plan — this invite cannot enrol anyone until a price is set"
         },
         "access": {
             "label": "Access",

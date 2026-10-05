@@ -345,6 +345,29 @@ export default function LeadFollowUpFieldsSettings() {
                         </div>
 
                         {draft.enabled && (
+                            <div className="space-y-1.5 pl-12">
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        id="followup-fields-required"
+                                        checked={draft.fieldsRequired}
+                                        onCheckedChange={(v) => update({ fieldsRequired: v })}
+                                    />
+                                    <Label
+                                        htmlFor="followup-fields-required"
+                                        className="cursor-pointer"
+                                    >
+                                        Make them mandatory
+                                    </Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Each dropdown gets a red * and a follow-up can&rsquo;t be saved
+                                    until they&rsquo;re answered. Only the dropdowns you actually
+                                    configured are required.
+                                </p>
+                            </div>
+                        )}
+
+                        {draft.enabled && (
                             <>
                                 {noOptions && (
                                     <p className="rounded-md bg-warning-50 px-3 py-2 text-xs text-warning-700">

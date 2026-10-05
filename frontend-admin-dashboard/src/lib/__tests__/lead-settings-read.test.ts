@@ -78,6 +78,7 @@ describe('follow-up fields config', () => {
             followUpModes: [],
             nextActions: [],
             notesRequired: false,
+            fieldsRequired: false,
         });
     });
 
@@ -176,5 +177,26 @@ describe('lead lookup config', () => {
         expect(leadLookup.enabled).toBe(false);
         expect(leadLookup.fields.name).toBe(false);
         expect(leadLookup.fields.counsellor).toBe(true);
+    });
+});
+
+describe('fieldsRequired', () => {
+    it('is off by default — the dropdowns shipped optional', () => {
+        expect(mergeLeadSettings({}).followUpFields.fieldsRequired).toBe(false);
+    });
+
+    it('is independent of notesRequired', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { fieldsRequired: true, notesRequired: false },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.fieldsRequired).toBe(true);
+        expect(merged.followUpFields.notesRequired).toBe(false);
+    });
+
+    it('only a real boolean true starts blocking counsellors', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { fieldsRequired: 'true' },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.fieldsRequired).toBe(false);
     });
 });

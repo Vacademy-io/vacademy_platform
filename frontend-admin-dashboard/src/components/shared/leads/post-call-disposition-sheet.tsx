@@ -309,7 +309,10 @@ function PostCallDispositionSheet({
     // Only blocks the paths that actually create a follow-up — a counsellor who just
     // sets a status here is not logging a follow-up and must stay unblocked.
     const followUpNoteMissing = !!followUpAt && notesRequired && noteTrimmed.length === 0;
-    const canSave = (statusChanged || !!followUpAt || noteSavable) && !followUpNoteMissing;
+    const canSave =
+        (statusChanged || !!followUpAt || noteSavable) &&
+        !followUpNoteMissing &&
+        !(!!followUpAt && followUpFields.missingRequired);
 
     // Tracks which steps already succeeded so a retry after a partial failure
     // doesn't duplicate the completed requests.
@@ -546,8 +549,13 @@ function PostCallDispositionSheet({
                             })}
                         </div>
                         {followUpNoteMissing && (
-                            <p className="text-xs text-warning-600">
+                            <p className="text-xs text-danger-600">
                                 Your institute requires a note on every follow-up.
+                            </p>
+                        )}
+                        {!!followUpAt && followUpFields.missingRequired && (
+                            <p className="text-xs text-danger-600">
+                                Answer every field marked * before scheduling this follow-up.
                             </p>
                         )}
                         {/* Institute-configured response / mode / next-action dropdowns.

@@ -786,7 +786,10 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const isFollowUp = actionType === 'FOLLOW_UP';
     const followUpNoteMissing = isFollowUp && notesRequired && isNoteEmpty;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId && !followUpNoteMissing
+        ? !!scheduleTime &&
+          !!audienceResponseId &&
+          !followUpNoteMissing &&
+          !followUpFields.missingRequired
         : !isNoteEmpty || callMeta !== undefined;
 
     function resetForm() {
@@ -922,13 +925,22 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                         <RichTextEditor
                             value={noteText}
                             onChange={setNoteText}
-                            placeholder={t('addNote.followUpPlaceholder')}
+                            placeholder={
+                                notesRequired
+                                    ? t('addNote.followUpPlaceholderRequired')
+                                    : t('addNote.followUpPlaceholder')
+                            }
                             minHeight={56}
                             minimalToolbar
                         />
                     </div>
                     {followUpNoteMissing && (
-                        <p className="text-caption text-warning-600">{t('addNote.noteRequired')}</p>
+                        <p className="text-caption text-danger-600">{t('addNote.noteRequired')}</p>
+                    )}
+                    {followUpFields.missingRequired && (
+                        <p className="text-caption text-danger-600">
+                            {t('addNote.fieldsRequired')}
+                        </p>
                     )}
                     {!audienceResponseId && (
                         <p className="text-caption text-amber-600">

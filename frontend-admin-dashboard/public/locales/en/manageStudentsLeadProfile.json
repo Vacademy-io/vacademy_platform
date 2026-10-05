@@ -59,7 +59,9 @@
         "followUpFailed": "Failed to schedule follow-up",
         "noteAdded": "Note added",
         "noteFailed": "Failed to add note",
-        "noteRequired": "Your institute requires a note on every follow-up."
+        "noteRequired": "Your institute requires a note on every follow-up.",
+        "followUpPlaceholderRequired": "Add a note for this follow-up (required)…",
+        "fieldsRequired": "Answer every field marked * before scheduling this follow-up."
     },
     "audiences": {
         "linkedCampaigns": "Linked Campaigns",

@@ -21,6 +21,10 @@ const FollowUpsSearchSchema = z.object({
      *  ("Overdue Follow ups" -> ?bucket=overdue); before this the param was dropped
      *  by the schema and every such tab landed on "today". */
     bucket: z.enum(['overdue', 'today', 'upcoming', 'all', 'completed']).optional(),
+    /** Comma-separated filter names this ROUTE owns (see recent-leads/-components/
+     *  pinned-filters.ts). `lock=bucket` keeps a sub-tab on its own bucket instead of
+     *  letting a stray card click turn "Overdue Follow ups" into Pending. */
+    lock: z.string().optional(),
 });
 
 export type FollowUpsSearch = z.infer<typeof FollowUpsSearchSchema>;

@@ -84,6 +84,7 @@ import {
 import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
+import { parseLockedParams } from '../../recent-leads/-components/pinned-filters';
 
 /**
  * Follow-ups — at-a-glance task list of leads needing counsellor action.
@@ -175,7 +176,7 @@ const FollowUpsContent = () => {
     // Seeded from the route so a sub-tab link opens on its own tile, and kept in step
     // with it: every sub-tab shares this pathname, so switching between them does not
     // remount the page. The page never writes the param back, so there is no loop.
-    const { bucket: bucketParam } = useSearch({ from: '/audience-manager/follow-ups/' });
+    const { bucket: bucketParam, lock } = useSearch({ from: '/audience-manager/follow-ups/' });
     const [bucket, setBucket] = useState<FollowUpBucket>(bucketParam ?? 'today');
     useEffect(() => {
         if (bucketParam) setBucket(bucketParam);
@@ -229,6 +230,8 @@ const FollowUpsContent = () => {
     // audience) are two different things to the client, and neither is a UTM tag.
     // Same wiring as Recent Leads: picking Sources narrows which Labels the second
     // dropdown offers, and the request carries the resolved audience ids.
+    // ?lock=bucket — the sub-tab owns its bucket, so a card click must not move off it.
+    const bucketLocked = parseLockedParams(lock).has('bucket');
     const terminology = useLeadTerminology();
     // Admins switch individual filters off from the gear below; a hidden filter
     // must also stop filtering, or it would narrow the list invisibly.
@@ -728,7 +731,12 @@ const FollowUpsContent = () => {
             </div>
 
             {/* Bucket cards — the dominant element */}
-            <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
+            <FollowUpStatTiles
+                counts={counts}
+                active={bucket}
+                onChange={setBucket}
+                locked={bucketLocked}
+            />
 
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}

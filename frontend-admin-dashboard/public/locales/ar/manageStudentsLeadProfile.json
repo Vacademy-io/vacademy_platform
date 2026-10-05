@@ -58,7 +58,8 @@
         "followUpScheduled": "تمت جدولة المتابعة",
         "followUpFailed": "فشل جدولة المتابعة",
         "noteAdded": "تمت إضافة الملاحظة",
-        "noteFailed": "فشل إضافة الملاحظة"
+        "noteFailed": "فشل إضافة الملاحظة",
+        "noteRequired": "تشترط مؤسستك كتابة ملاحظة في كل متابعة."
     },
     "audiences": {
         "linkedCampaigns": "الحملات المرتبطة",

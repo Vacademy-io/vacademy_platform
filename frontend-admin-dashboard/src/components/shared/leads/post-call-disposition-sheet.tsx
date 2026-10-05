@@ -46,7 +46,7 @@ import { LeadStatusChip } from '@/components/shared/lead-status-chip';
 import { cn } from '@/lib/utils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
-import { FollowUpFields, useFollowUpFields } from './follow-up-fields';
+import { FollowUpFields, useFollowUpFields, useFollowUpNotesRequired } from './follow-up-fields';
 import {
     fetchLeadStatuses,
     setLeadStatusForLead,
@@ -248,6 +248,7 @@ function PostCallDispositionSheet({
     const [note, setNote] = useState('');
     const [followUpAt, setFollowUpAt] = useState('');
     const followUpFields = useFollowUpFields();
+    const notesRequired = useFollowUpNotesRequired();
     const [statusPickerOpen, setStatusPickerOpen] = useState(false);
     // null = untouched (keep the lead's current status — nothing is posted).
     const [selectedStatusId, setSelectedStatusId] = useState<string | null>(null);
@@ -305,7 +306,10 @@ function PostCallDispositionSheet({
     // A note needs the lead's userId for the timeline event; without one it can
     // still ride along as the follow-up's content.
     const noteSavable = noteTrimmed.length > 0 && (!!payload.leadUserId || !!followUpAt);
-    const canSave = statusChanged || !!followUpAt || noteSavable;
+    // Only blocks the paths that actually create a follow-up — a counsellor who just
+    // sets a status here is not logging a follow-up and must stay unblocked.
+    const followUpNoteMissing = !!followUpAt && notesRequired && noteTrimmed.length === 0;
+    const canSave = (statusChanged || !!followUpAt || noteSavable) && !followUpNoteMissing;
 
     // Tracks which steps already succeeded so a retry after a partial failure
     // doesn't duplicate the completed requests.
@@ -541,6 +545,11 @@ function PostCallDispositionSheet({
                                 );
                             })}
                         </div>
+                        {followUpNoteMissing && (
+                            <p className="text-xs text-warning-600">
+                                Your institute requires a note on every follow-up.
+                            </p>
+                        )}
                         {/* Institute-configured response / mode / next-action dropdowns.
                             Only once a time is set — they describe the follow-up being
                             scheduled, so they'd be answering about nothing before that. */}

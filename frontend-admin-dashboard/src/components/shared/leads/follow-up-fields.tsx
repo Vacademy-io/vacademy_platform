@@ -66,6 +66,18 @@ export function useFollowUpFields() {
     };
 }
 
+/**
+ * Whether this institute refuses a follow-up with an empty note.
+ *
+ * Deliberately separate from {@link useFollowUpFields}: the note box already
+ * exists on every follow-up form and is nothing to do with the three dropdowns,
+ * so a call site can require a note without rendering any of them.
+ */
+export function useFollowUpNotesRequired(): boolean {
+    const { followUpFields } = useLeadSettings();
+    return followUpFields.notesRequired;
+}
+
 interface FollowUpFieldsProps {
     values: FollowUpFieldValues;
     onChange: (next: FollowUpFieldValues) => void;

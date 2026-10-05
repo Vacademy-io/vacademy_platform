@@ -14,7 +14,11 @@ import {
     CREATE_TIMELINE_EVENT,
     CREATE_LEAD_FOLLOWUP,
 } from '@/constants/urls';
-import { FollowUpFields, useFollowUpFields } from '@/components/shared/leads/follow-up-fields';
+import {
+    FollowUpFields,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from '@/components/shared/leads/follow-up-fields';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
@@ -764,6 +768,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
     const followUpFields = useFollowUpFields();
+    const notesRequired = useFollowUpNotesRequired();
     const queryClient = useQueryClient();
     const noteActionTypes = buildNoteActionTypes(t);
 
@@ -776,10 +781,12 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
 
-    // For Follow Up the schedule time is mandatory; content is optional.
+    // For Follow Up the schedule time is mandatory; the note is optional unless
+    // the institute requires one on every follow-up.
     const isFollowUp = actionType === 'FOLLOW_UP';
+    const followUpNoteMissing = isFollowUp && notesRequired && isNoteEmpty;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId
+        ? !!scheduleTime && !!audienceResponseId && !followUpNoteMissing
         : !isNoteEmpty || callMeta !== undefined;
 
     function resetForm() {
@@ -920,6 +927,9 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                             minimalToolbar
                         />
                     </div>
+                    {followUpNoteMissing && (
+                        <p className="text-caption text-warning-600">{t('addNote.noteRequired')}</p>
+                    )}
                     {!audienceResponseId && (
                         <p className="text-caption text-amber-600">
                             {t('addNote.noResponseLinked')}

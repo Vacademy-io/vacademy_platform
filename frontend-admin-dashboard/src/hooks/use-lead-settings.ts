@@ -135,10 +135,20 @@ export interface LeadSettingsConfig {
  * institute can enable just the two it cares about.
  */
 export interface FollowUpFieldsConfig {
+    /** Gates the three dropdowns below. Does NOT gate {@link notesRequired}. */
     enabled: boolean;
     studentResponses: string[];
     followUpModes: string[];
     nextActions: string[];
+    /**
+     * Refuse to save a follow-up with an empty note.
+     *
+     * Independent of {@link enabled}: an institute can insist on a written note
+     * without adopting the dropdowns, or the other way round. Off by default —
+     * the note has always been optional and turning it on retroactively would
+     * block a counsellor mid-task.
+     */
+    notesRequired: boolean;
 }
 
 export interface LeadTerminologyLabels {
@@ -164,7 +174,13 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
-    followUpFields: { enabled: false, studentResponses: [], followUpModes: [], nextActions: [] },
+    followUpFields: {
+        enabled: false,
+        studentResponses: [],
+        followUpModes: [],
+        nextActions: [],
+        notesRequired: false,
+    },
     tatReminder: {
         enabled: false,
         tatHours: 24,
@@ -232,6 +248,7 @@ export function normaliseFollowUpFields(
         studentResponses: list(saved?.studentResponses),
         followUpModes: list(saved?.followUpModes),
         nextActions: list(saved?.nextActions),
+        notesRequired: saved?.notesRequired === true,
     };
 }
 

@@ -77,6 +77,7 @@ describe('follow-up fields config', () => {
             studentResponses: [],
             followUpModes: [],
             nextActions: [],
+            notesRequired: false,
         });
     });
 
@@ -123,5 +124,28 @@ describe('follow-up fields config survives a hand-edited setting_json', () => {
             followUpFields: { enabled: 'true', studentResponses: ['A'] },
         } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
         expect(merged.followUpFields.enabled).toBe(false);
+    });
+});
+
+describe('notesRequired', () => {
+    it('is off by default — the note has always been optional', () => {
+        expect(mergeLeadSettings({}).followUpFields.notesRequired).toBe(false);
+        expect(LEAD_SETTINGS_DEFAULTS.followUpFields.notesRequired).toBe(false);
+    });
+
+    it('is independent of the dropdowns — a note can be required without them', () => {
+        const merged = mergeLeadSettings({
+            followUpFields: { enabled: false, notesRequired: true },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.enabled).toBe(false);
+        expect(merged.followUpFields.notesRequired).toBe(true);
+    });
+
+    it('only a real boolean true makes it mandatory', () => {
+        // A hand-written "true" must not quietly start blocking counsellors.
+        const merged = mergeLeadSettings({
+            followUpFields: { notesRequired: 'true' },
+        } as unknown as Partial<typeof LEAD_SETTINGS_DEFAULTS>);
+        expect(merged.followUpFields.notesRequired).toBe(false);
     });
 });

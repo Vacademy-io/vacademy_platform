@@ -14,7 +14,11 @@ import { cn, parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
-import { FollowUpFields, useFollowUpFields } from '@/components/shared/leads/follow-up-fields';
+import {
+    FollowUpFields,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from '@/components/shared/leads/follow-up-fields';
 import { CallRecordingInput } from '@/components/shared/lead-calls/CallRecordingInput';
 import {
     type CallActivity,
@@ -91,6 +95,7 @@ export const AddLeadNoteDialog = ({
 
     const isFollowUp = actionType === 'FOLLOW_UP';
     const followUpFields = useFollowUpFields();
+    const notesRequired = useFollowUpNotesRequired();
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
     const isNoteEmpty = !parseHtmlToString(noteText).trim();
@@ -101,7 +106,7 @@ export const AddLeadNoteDialog = ({
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId
+        ? !!scheduleTime && !!audienceResponseId && (!notesRequired || !isNoteEmpty)
         : !isNoteEmpty || callMeta !== undefined;
 
     const resetState = () => {
@@ -264,7 +269,8 @@ export const AddLeadNoteDialog = ({
                         />
                     )}
 
-                    {/* Writing surface — note body (for FOLLOW_UP it's an optional reminder). */}
+                    {/* Writing surface — note body. For FOLLOW_UP it's a reminder, optional
+                        unless the institute requires a note on every follow-up. */}
                     <div
                         className="overflow-hidden rounded-lg border border-neutral-200 bg-white text-sm text-neutral-800 transition-colors focus-within:border-primary-300 focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
                         onKeyDown={(e) => {
@@ -279,13 +285,20 @@ export const AddLeadNoteDialog = ({
                             onChange={setNoteText}
                             placeholder={
                                 isFollowUp
-                                    ? 'Add a note for this follow-up (optional)…'
+                                    ? notesRequired
+                                        ? 'Add a note for this follow-up (required)…'
+                                        : 'Add a note for this follow-up (optional)…'
                                     : 'Type your note here…'
                             }
                             minHeight={isFollowUp ? 80 : 120}
                             minimalToolbar
                         />
                     </div>
+                    {isFollowUp && notesRequired && isNoteEmpty && (
+                        <p className="text-xs text-warning-600">
+                            Your institute requires a note on every follow-up.
+                        </p>
+                    )}
 
                     {actionType === 'CALL_LOG' && (
                         <CallRecordingInput

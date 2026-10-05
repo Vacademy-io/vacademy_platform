@@ -296,9 +296,9 @@ export default function LeadFollowUpFieldsSettings() {
                     Follow-up fields
                 </CardTitle>
                 <CardDescription>
-                    Extra dropdowns a counsellor fills in wherever a follow-up is logged — the lead
+                    What a counsellor has to fill in wherever a follow-up is logged — the lead
                     profile, the add-activity dialog, the post-call sheet and &ldquo;Schedule
-                    next&rdquo;. Off unless you turn it on.
+                    next&rdquo;. Everything here is off unless you turn it on.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -306,15 +306,42 @@ export default function LeadFollowUpFieldsSettings() {
                     <p className="text-sm text-muted-foreground">Loading…</p>
                 ) : (
                     <>
-                        <div className="flex items-center gap-3">
-                            <Switch
-                                id="followup-fields-enabled"
-                                checked={draft.enabled}
-                                onCheckedChange={(v) => update({ enabled: v })}
-                            />
-                            <Label htmlFor="followup-fields-enabled" className="cursor-pointer">
-                                {draft.enabled ? 'Enabled' : 'Disabled'}
-                            </Label>
+                        {/* Independent of the dropdowns below: an institute can insist on a
+                            written note without adopting any of them. */}
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="followup-notes-required"
+                                    checked={draft.notesRequired}
+                                    onCheckedChange={(v) => update({ notesRequired: v })}
+                                />
+                                <Label htmlFor="followup-notes-required" className="cursor-pointer">
+                                    Require a note on every follow-up
+                                </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                A follow-up cannot be saved with an empty note. Off by default — the
+                                note has always been optional.
+                            </p>
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-3">
+                                <Switch
+                                    id="followup-fields-enabled"
+                                    checked={draft.enabled}
+                                    onCheckedChange={(v) => update({ enabled: v })}
+                                />
+                                <Label htmlFor="followup-fields-enabled" className="cursor-pointer">
+                                    Extra dropdowns
+                                </Label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Student response, follow-up mode and next action, each from a list
+                                you write below.
+                            </p>
                         </div>
 
                         {draft.enabled && (

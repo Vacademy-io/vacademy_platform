@@ -72,5 +72,9 @@
     "formAppearance": {
         "title": "Apparence du formulaire",
         "description": "L'aspect du formulaire public pendant sa saisie — mise en page, couleurs et libellés autour des champs. S'applique uniquement à cette campagne."
+    },
+    "formText": {
+        "title": "Titre et texte du formulaire",
+        "description": "Le titre en haut du formulaire public (par défaut le nom de cette liste) et le texte au-dessus des champs — aligné à gauche, au centre ou à droite."
     }
 }

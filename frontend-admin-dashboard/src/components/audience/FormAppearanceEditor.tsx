@@ -44,6 +44,7 @@ import { isValidPostSubmitUrl } from '@/services/audience-post-submit-settings';
 import {
     AUDIENCE_FORM_HOOK_CLASSES,
     createFormHighlight,
+    DEFAULT_FORM_APPEARANCE,
     FORM_ACCENTS,
     FORM_BACKGROUNDS,
     FORM_CARD_STYLES,
@@ -324,33 +325,12 @@ export const FormAppearanceEditor = ({
         </Dialog>
     );
 
-    // ── Basics: the four things admins actually change ──
+    // ── Basics: the things admins actually change ──
+    // The page heading and the form heading / sub-heading are NOT here: they
+    // live in FormTextEditor ("Form Heading & Text"), which every campaign gets
+    // without this card's institute switch. One place to edit each field.
     const basics = (
         <div className="space-y-4">
-            <div>
-                <Label className="text-sm font-semibold">Form Heading</Label>
-                <Input
-                    value={value.formTitle}
-                    disabled={disabled}
-                    placeholder="Please fill in your details"
-                    onChange={(e) => patch({ formTitle: e.target.value })}
-                    className="mt-2"
-                />
-                <HelpText>Blank keeps the standard wording.</HelpText>
-            </div>
-
-            <div>
-                <Label className="text-sm font-semibold">Form Sub-heading</Label>
-                <Textarea
-                    rows={2}
-                    value={value.formSubtitle}
-                    disabled={disabled}
-                    placeholder="This information will be used to contact you about the campaign."
-                    onChange={(e) => patch({ formSubtitle: e.target.value })}
-                    className="mt-2"
-                />
-            </div>
-
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                     <Label className="text-sm font-semibold">Submit Button</Label>
@@ -387,29 +367,19 @@ export const FormAppearanceEditor = ({
         <div className="space-y-6 pt-4">
             <div className="space-y-4">
                 <p className="text-sm font-semibold text-neutral-800">Heading block</p>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                        <Label className="text-sm font-semibold">Page Heading</Label>
-                        <Input
-                            value={value.headline}
-                            disabled={disabled}
-                            placeholder={previewCampaignName}
-                            onChange={(e) => patch({ headline: e.target.value })}
-                            className="mt-2"
-                        />
-                        <HelpText>Blank uses the campaign name.</HelpText>
-                    </div>
-                    <div>
-                        <Label className="text-sm font-semibold">Eyebrow</Label>
-                        <Input
-                            value={value.eyebrow}
-                            disabled={disabled}
-                            placeholder="Admissions 2026"
-                            onChange={(e) => patch({ eyebrow: e.target.value })}
-                            className="mt-2"
-                        />
-                        <HelpText>Small label above the heading.</HelpText>
-                    </div>
+                <div>
+                    <Label className="text-sm font-semibold">Eyebrow</Label>
+                    <Input
+                        value={value.eyebrow}
+                        disabled={disabled}
+                        placeholder="Admissions 2026"
+                        onChange={(e) => patch({ eyebrow: e.target.value })}
+                        className="mt-2"
+                    />
+                    <HelpText>
+                        Small label above the heading. The heading itself is set in Form Heading
+                        &amp; Text.
+                    </HelpText>
                 </div>
                 <div>
                     <Label className="text-sm font-semibold">Page Intro</Label>
@@ -687,7 +657,7 @@ export const FormAppearanceEditor = ({
             {section(
                 'advanced',
                 'More options',
-                'Heading block, shape, toggles and highlights.',
+                'Eyebrow, intro, cover, shape, toggles and highlights.',
                 advanced,
                 advancedOpen,
                 setAdvancedOpen
@@ -733,7 +703,16 @@ export const FormAppearanceEditor = ({
 
     // Chip tells the admin at a glance whether this campaign deviates from the
     // standard look, so a customised campaign never looks inert while collapsed.
-    const isDefault = isDefaultFormAppearance(value);
+    // The heading / form-header fields belong to FormTextEditor and carry their
+    // own chip there, so they don't count as "this card was customised".
+    const isDefault = isDefaultFormAppearance({
+        ...value,
+        headline: DEFAULT_FORM_APPEARANCE.headline,
+        headingAlign: DEFAULT_FORM_APPEARANCE.headingAlign,
+        formTitle: DEFAULT_FORM_APPEARANCE.formTitle,
+        formSubtitle: DEFAULT_FORM_APPEARANCE.formSubtitle,
+        formHeaderAlign: DEFAULT_FORM_APPEARANCE.formHeaderAlign,
+    });
 
     return (
         <Collapsible open={open} onOpenChange={setOpen}>

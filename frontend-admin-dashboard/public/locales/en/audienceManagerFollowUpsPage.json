@@ -28,7 +28,9 @@
         "suffix_today_one": "due today follow-up",
         "suffix_today_other": "due today follow-ups",
         "suffix_upcoming_one": "upcoming follow-up",
-        "suffix_upcoming_other": "upcoming follow-ups"
+        "suffix_upcoming_other": "upcoming follow-ups",
+        "suffix_completed_one": "completed follow-ups",
+        "suffix_completed_other": "completed follow-ups"
     },
     "table": {
         "actionHeader": "Action"
@@ -89,5 +91,12 @@
         "campaignType": "All {{term}}",
         "audience": "All {{term}}",
         "audienceUntitled": "Untitled audience"
+    },
+    "completedRange": {
+        "preset_one": "Today",
+        "preset_other": "Last {{count}} days",
+        "custom": "Custom range",
+        "from": "From date",
+        "to": "To date"
     }
 }

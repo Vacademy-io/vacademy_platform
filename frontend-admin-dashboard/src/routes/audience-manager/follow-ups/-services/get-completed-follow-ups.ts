@@ -34,6 +34,11 @@ export interface CompletedFollowUpsPage {
 export async function fetchCompletedFollowUps(params: {
     instituteId: string;
     counsellorUserId?: string;
+    /** Name, phone or email. Matched the same way the leads list matches it. */
+    search?: string;
+    /** closed_at window, ISO instants. Both optional — omit for all time. */
+    closedFrom?: string;
+    closedTo?: string;
     page: number;
     size: number;
 }): Promise<CompletedFollowUpsPage | undefined> {
@@ -41,6 +46,9 @@ export async function fetchCompletedFollowUps(params: {
         params: {
             instituteId: params.instituteId,
             counsellorUserId: params.counsellorUserId,
+            search: params.search || undefined,
+            closedFrom: params.closedFrom,
+            closedTo: params.closedTo,
             page: params.page,
             size: params.size,
         },

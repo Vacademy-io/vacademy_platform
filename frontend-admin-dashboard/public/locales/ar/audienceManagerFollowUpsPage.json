@@ -56,7 +56,13 @@
         "suffix_upcoming_two": "متابعتان قادمتان",
         "suffix_upcoming_few": "متابعات قادمة",
         "suffix_upcoming_many": "متابعة قادمة",
-        "suffix_upcoming_other": "متابعة قادمة"
+        "suffix_upcoming_other": "متابعة قادمة",
+        "suffix_completed_one": "متابعة مكتملة",
+        "suffix_completed_other": "متابعة مكتملة",
+        "suffix_completed_zero": "متابعة مكتملة",
+        "suffix_completed_two": "متابعة مكتملة",
+        "suffix_completed_few": "متابعة مكتملة",
+        "suffix_completed_many": "متابعة مكتملة"
     },
     "table": {
         "actionHeader": "إجراء"
@@ -133,5 +139,16 @@
         "campaignType": "كل {{term}}",
         "audience": "كل {{term}}",
         "audienceUntitled": "جمهور بلا اسم"
+    },
+    "completedRange": {
+        "preset_one": "اليوم",
+        "preset_other": "آخر {{count}} أيام",
+        "custom": "نطاق مخصص",
+        "from": "من تاريخ",
+        "to": "إلى تاريخ",
+        "preset_zero": "آخر {{count}} أيام",
+        "preset_two": "آخر {{count}} أيام",
+        "preset_few": "آخر {{count}} أيام",
+        "preset_many": "آخر {{count}} أيام"
     }
 }

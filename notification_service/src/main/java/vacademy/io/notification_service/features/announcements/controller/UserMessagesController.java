@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.notification_service.features.announcements.repository.AnnouncementRepository;
 import vacademy.io.notification_service.features.announcements.dto.*;
 import vacademy.io.notification_service.features.announcements.enums.ModeType;
 import vacademy.io.notification_service.features.announcements.service.UserMessageService;
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 public class UserMessagesController {
 
     private final UserMessageService userMessageService;
+    private final AnnouncementRepository announcementRepository;
     private static final long CACHE_MAX_AGE_MINUTES = 3L;
 
     private <T> ResponseEntity<T> cacheableOk(T body) {
@@ -229,6 +231,28 @@ public class UserMessagesController {
             log.error("Error getting stream messages for user: {} and package session: {}", userId, packageSessionId, e);
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    /**
+     * Switch off the still-active system alerts raised about one entity.
+     *
+     * The lead-assignment bell is deliberately not dismissible: it is meant to
+     * sit there until the counsellor actually works the lead. This is how it
+     * comes down — admin-core calls it the moment a timeline event lands on
+     * that lead.
+     */
+    @PutMapping("/system-alerts/deactivate-by-entity")
+    public ResponseEntity<Integer> deactivateSystemAlertsForEntity(
+            @RequestParam String instituteId,
+            @RequestParam String entity,
+            @RequestParam String entityId) {
+        if (instituteId == null || instituteId.isBlank()
+                || entity == null || entity.isBlank()
+                || entityId == null || entityId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(
+                announcementRepository.deactivateSystemAlertsForEntity(instituteId, entity, entityId));
     }
 
     /**

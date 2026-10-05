@@ -398,6 +398,8 @@ public class AnnouncementService {
         announcement.setCreatedByName(request.getCreatedByName());
         announcement.setCreatedByRole(request.getCreatedByRole());
         announcement.setTimezone(request.getTimezone() != null ? request.getTimezone() : "UTC");
+        announcement.setEntity(request.getEntity());
+        announcement.setEntityId(request.getEntityId());
         announcement.setStatus(AnnouncementStatus.DRAFT);
         return announcement;
     }

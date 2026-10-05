@@ -30,6 +30,7 @@ import {
     ChartLineUp,
     SealCheck,
     UserCircle,
+    GraduationCap,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -739,6 +740,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // not adminOnly. mySidebar strips the whole section for anyone without an
     // employee profile (see useMyEmployeeProfile) — same shape as
     // mentorship-my-mentorship.
+    {
+        icon: GraduationCap,
+        title: sidebarT('sidebar:admission'),
+        id: 'erp-admission',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: sidebarT('sidebar:enrolledBatchStudents'),
+                subItemLink: '/erp/admission/enrolled-batch',
+                subItemId: 'erp-admission-enrolled-batch',
+            },
+            {
+                subItem: sidebarT('sidebar:flexiBatchStudents'),
+                subItemLink: '/erp/admission/flexi-batch',
+                subItemId: 'erp-admission-flexi-batch',
+            },
+        ],
+    },
     {
         icon: UserCircle,
         title: sidebarT('sidebar:myHr'),

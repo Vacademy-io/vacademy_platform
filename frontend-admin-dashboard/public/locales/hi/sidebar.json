@@ -138,5 +138,8 @@
     "whatsappTemplates": "व्हाट्सएप टेम्पलेट",
     "workflows": "वर्कफ़्लो",
     "dailyEngagement": "दैनिक सहभागिता",
-    "leadLookup": "लीड जाँचें"
+    "leadLookup": "लीड जाँचें",
+    "admission": "प्रवेश",
+    "enrolledBatchStudents": "बैच में नामांकित छात्र",
+    "flexiBatchStudents": "फ्लेक्सी बैच छात्र"
 }

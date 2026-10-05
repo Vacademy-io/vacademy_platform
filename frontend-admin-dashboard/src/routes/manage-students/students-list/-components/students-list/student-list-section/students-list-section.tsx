@@ -56,7 +56,23 @@ import { getTerminology, getTerminologyPlural } from '@/components/common/layout
 import { useListCustomFieldControls } from '@/components/shared/leads/use-list-custom-field-controls';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-export const StudentsListSection = () => {
+interface StudentsListSectionProps {
+    /**
+     * Pin the list to a fixed set of batches. Used by ERP → Admission, where the
+     * whole point of the screen is one side of the enrolled/flexi split.
+     *
+     * Rides the same pinned-session path the Course Details tab already uses —
+     * honoured only while the user hasn't picked batches of their own.
+     */
+    pinnedPackageSessionIds?: string[];
+    /** Overrides the nav heading; defaults to the Manage Students one. */
+    heading?: string;
+}
+
+export const StudentsListSection = ({
+    pinnedPackageSessionIds,
+    heading,
+}: StudentsListSectionProps = {}) => {
     const { t } = useTranslation('manageStudentsListSection');
     const { t: tAllFilters } = useTranslation('manageStudentsAllFilters');
     const { setNavHeading } = useNavHeadingStore();
@@ -105,9 +121,11 @@ export const StudentsListSection = () => {
 
     useEffect(() => {
         setNavHeading(
-            <h1 className="text-lg">{getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}</h1>
+            <h1 className="text-lg">
+                {heading ?? getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}
+            </h1>
         );
-    }, []);
+    }, [heading]);
 
     // Ensure the custom-field settings cache is populated/fresh. After saving a
     // toggle the cache is cleared, and the column-visibility readers fail open
@@ -292,7 +310,7 @@ export const StudentsListSection = () => {
     } = useStudentTable(
         appliedFilters,
         setAppliedFilters,
-        search.package_session_id ? [search.package_session_id] : null
+        pinnedPackageSessionIds ?? (search.package_session_id ? [search.package_session_id] : null)
     );
 
     // Flip the gate once the first page lands. Only on a real change, so this never loops.
@@ -307,7 +325,7 @@ export const StudentsListSection = () => {
     const studentCounts = useStudentCounts(
         appliedFilters,
         !isLoading && showCountBadges,
-        search.package_session_id ? [search.package_session_id] : null
+        pinnedPackageSessionIds ?? (search.package_session_id ? [search.package_session_id] : null)
     );
 
     const leadSettings = useLeadSettings();

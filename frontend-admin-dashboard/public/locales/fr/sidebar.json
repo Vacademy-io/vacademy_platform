@@ -138,5 +138,8 @@
     "whatsappTemplates": "Modèles WhatsApp",
     "workflows": "Workflows",
     "dailyEngagement": "Engagement quotidien",
-    "leadLookup": "Vérifier un prospect"
+    "leadLookup": "Vérifier un prospect",
+    "admission": "Admission",
+    "enrolledBatchStudents": "Étudiants d’un groupe",
+    "flexiBatchStudents": "Étudiants sans groupe"
 }

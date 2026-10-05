@@ -203,6 +203,8 @@ import { Route as ErpComplianceProvisionsIndexRouteImport } from "./routes/erp/c
 import { Route as ErpComplianceChallansIndexRouteImport } from "./routes/erp/compliance/challans/index"
 import { Route as ErpAttendanceSetupIndexRouteImport } from "./routes/erp/attendance/setup/index"
 import { Route as ErpAttendanceRegularizationsIndexRouteImport } from "./routes/erp/attendance/regularizations/index"
+import { Route as ErpAdmissionFlexiBatchIndexRouteImport } from "./routes/erp/admission/flexi-batch/index"
+import { Route as ErpAdmissionEnrolledBatchIndexRouteImport } from "./routes/erp/admission/enrolled-batch/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -1720,6 +1722,26 @@ const ErpAttendanceRegularizationsIndexRoute =
       (d) => d.Route,
     ),
   )
+const ErpAdmissionFlexiBatchIndexRoute =
+  ErpAdmissionFlexiBatchIndexRouteImport.update({
+    id: "/erp/admission/flexi-batch/",
+    path: "/erp/admission/flexi-batch/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/admission/flexi-batch/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const ErpAdmissionEnrolledBatchIndexRoute =
+  ErpAdmissionEnrolledBatchIndexRouteImport.update({
+    id: "/erp/admission/enrolled-batch/",
+    path: "/erp/admission/enrolled-batch/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/admission/enrolled-batch/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
     id: "/audience-manager/list/campaign-users/",
@@ -2254,6 +2276,8 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admission/enrolled-batch/": typeof ErpAdmissionEnrolledBatchIndexRoute
+  "/erp/admission/flexi-batch/": typeof ErpAdmissionFlexiBatchIndexRoute
   "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
@@ -2491,6 +2515,8 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admission/enrolled-batch": typeof ErpAdmissionEnrolledBatchIndexRoute
+  "/erp/admission/flexi-batch": typeof ErpAdmissionFlexiBatchIndexRoute
   "/erp/attendance/regularizations": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans": typeof ErpComplianceChallansIndexRoute
@@ -2730,6 +2756,8 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/admission/enrolled-batch/": typeof ErpAdmissionEnrolledBatchIndexRoute
+  "/erp/admission/flexi-batch/": typeof ErpAdmissionFlexiBatchIndexRoute
   "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
   "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
@@ -2970,6 +2998,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/admission/enrolled-batch/"
+    | "/erp/admission/flexi-batch/"
     | "/erp/attendance/regularizations/"
     | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
@@ -3207,6 +3237,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/admission/enrolled-batch"
+    | "/erp/admission/flexi-batch"
     | "/erp/attendance/regularizations"
     | "/erp/attendance/setup"
     | "/erp/compliance/challans"
@@ -3445,6 +3477,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/admission/enrolled-batch/"
+    | "/erp/admission/flexi-batch/"
     | "/erp/attendance/regularizations/"
     | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
@@ -3683,6 +3717,8 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpAdmissionEnrolledBatchIndexRoute: typeof ErpAdmissionEnrolledBatchIndexRoute
+  ErpAdmissionFlexiBatchIndexRoute: typeof ErpAdmissionFlexiBatchIndexRoute
   ErpAttendanceRegularizationsIndexRoute: typeof ErpAttendanceRegularizationsIndexRoute
   ErpAttendanceSetupIndexRoute: typeof ErpAttendanceSetupIndexRoute
   ErpComplianceChallansIndexRoute: typeof ErpComplianceChallansIndexRoute
@@ -5113,6 +5149,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpAttendanceRegularizationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/admission/flexi-batch/": {
+      id: "/erp/admission/flexi-batch/"
+      path: "/erp/admission/flexi-batch"
+      fullPath: "/erp/admission/flexi-batch/"
+      preLoaderRoute: typeof ErpAdmissionFlexiBatchIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/admission/enrolled-batch/": {
+      id: "/erp/admission/enrolled-batch/"
+      path: "/erp/admission/enrolled-batch"
+      fullPath: "/erp/admission/enrolled-batch/"
+      preLoaderRoute: typeof ErpAdmissionEnrolledBatchIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/campaign-users/": {
       id: "/audience-manager/list/campaign-users/"
       path: "/audience-manager/list/campaign-users"
@@ -5615,6 +5665,8 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpAdmissionEnrolledBatchIndexRoute: ErpAdmissionEnrolledBatchIndexRoute,
+  ErpAdmissionFlexiBatchIndexRoute: ErpAdmissionFlexiBatchIndexRoute,
   ErpAttendanceRegularizationsIndexRoute:
     ErpAttendanceRegularizationsIndexRoute,
   ErpAttendanceSetupIndexRoute: ErpAttendanceSetupIndexRoute,

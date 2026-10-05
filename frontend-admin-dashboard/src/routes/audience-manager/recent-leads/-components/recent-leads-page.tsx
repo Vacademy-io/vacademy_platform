@@ -643,8 +643,16 @@ const RecentLeadsContent = ({
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
                 campaignType: terminology.campaignType,
+                leadSource: terminology.leadSource,
             }),
-        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
+        [
+            showOps,
+            showScore,
+            terminology.tier,
+            terminology.leadStatus,
+            terminology.campaignType,
+            terminology.leadSource,
+        ]
     );
     const toggleableColumns = useMemo(() => {
         const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));

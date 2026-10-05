@@ -43,6 +43,16 @@ import { getCurrencySymbol } from '@/constants/currencies';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
+    /**
+     * Keep a plan the admin has already chosen when the option list refetches.
+     *
+     * Without this, the seeding effect below resets `selectedPlan` to the institute
+     * DEFAULT every time `GET_PAYMENT_DETAILS` changes identity — and AddPaymentPlanDialog
+     * invalidates that key right after saving a new plan, so the admin's fresh choice is
+     * wiped. GenerateInviteLinkDialog omits the prop and keeps its existing behaviour,
+     * where its own prefill effect runs afterwards and re-applies the selection anyway.
+     */
+    preserveSelection?: boolean;
 }
 
 // Re-exported from the canonical currency source (kept here for existing import paths).
@@ -181,7 +191,7 @@ const CpoPlanCard = ({ plan, isSelected, onSelect }: CpoPlanCardProps) => {
     );
 };
 
-export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
+export function PaymentPlansDialog({ form, preserveSelection = false }: PaymentPlansDialogProps) {
     const { t } = useTranslation('manageStudentsPaymentPlansDialog');
     const { data: paymentsData } = useSuspenseQuery(handleGetPaymentDetails());
     const isOpen = form.watch('showPlansDialog');
@@ -189,11 +199,15 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
     const [typeFilter, setTypeFilter] = useState<PlanTypeFilter | null>(null);
 
     useEffect(() => {
+        const currentSelection = form.getValues('selectedPlan');
         form.reset({
             ...form.getValues(),
             freePlans: splitPlansByType(paymentsData).freePlans,
             paidPlans: splitPlansByType(paymentsData).paidPlans,
-            selectedPlan: getDefaultPlanFromPaymentsData(paymentsData),
+            selectedPlan:
+                preserveSelection && currentSelection?.id
+                    ? currentSelection
+                    : getDefaultPlanFromPaymentsData(paymentsData),
         });
     }, [paymentsData]);
 

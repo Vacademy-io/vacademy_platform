@@ -2232,6 +2232,70 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("followUpRule") String followUpRule);
 
         /**
+         * The 1-minute TAT scan's candidates: same shape as {@link #findSlaCandidatesForInstitute}
+         * but only leads that can still cross a TAT boundary — never responded, not yet flagged
+         * TAT_OVERDUE, and submitted recently (or with a recent admin override). Keeps the
+         * per-minute scan to a small set; the 30-minute full scan remains the safety net.
+         */
+        @Query(value = """
+                            SELECT c.*,
+                                   COALESCE(c.tatDueOverrideAt,
+                                            lead_sla_due_at(c.submittedAt, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) AS tatDueAt,
+                                   CAST(NULL AS timestamp) AS followUpDueAt
+                            FROM (
+                            SELECT ar.id AS leadId,
+                                   ar.user_id AS userId,
+                                   ar.student_user_id AS studentUserId,
+                                   ar.enquiry_id AS enquiryId,
+                                   ar.audience_id AS audienceId,
+                                   a.campaign_name AS campaignName,
+                                   a.institute_id AS instituteId,
+                                   ar.parent_name AS parentName,
+                                   ar.parent_email AS parentEmail,
+                                   ar.parent_mobile AS parentMobile,
+                                   ar.submitted_at AS submittedAt,
+                                   COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counselorId,
+                                   ar.tat_reminder_stage AS tatReminderStage,
+                                   ar.tat_reminder_count AS tatReminderCount,
+                                   ar.tat_reminder_assignee_id AS tatReminderAssigneeId,
+                                   ar.tat_due_override_at AS tatDueOverrideAt,
+                                   CAST(NULL AS timestamp) AS lastCounselorActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
+                              -- Narrowing for the 1-minute scan: still on the TAT clock, not yet
+                              -- flagged overdue, and recent enough that its deadline can still be
+                              -- ahead (duration + up to a week of non-working days), or carrying a
+                              -- recent admin override. Anything older is left to the 30-min scan.
+                              AND (ar.tat_reminder_stage IS NULL OR ar.tat_reminder_stage <> 'TAT_OVERDUE')
+                              AND (ar.submitted_at >= NOW() - make_interval(mins => CAST(:tatMinutes AS integer)) - INTERVAL '8 days'
+                                   OR ar.tat_due_override_at >= NOW() - INTERVAL '1 day')
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM timeline_event te
+                                  WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
+                                    AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                          OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                          OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) ))
+                            ) c
+                        """, nativeQuery = true)
+        List<LeadSlaCandidate> findRecentTatCandidatesForInstitute(@Param("instituteId") String instituteId,
+                        @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule);
+
+        /**
          * For a set of leads, the timestamps of the FIRST and LAST response events on each lead
          * (from timeline_event). Drives:
          *   firstActionAt → "Responded in N" (time-to-first-response shown in the leads tables).

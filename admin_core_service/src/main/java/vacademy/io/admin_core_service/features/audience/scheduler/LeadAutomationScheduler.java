@@ -9,8 +9,10 @@ import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
+import vacademy.io.admin_core_service.features.audience.entity.LeadSlaConfig;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadSlaConfigRepository;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService;
 import vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder;
@@ -39,7 +41,8 @@ import java.util.Map;
  * The SLA/TAT scan is unchanged — still emit-only, since it's institute-config-gated by
  * design (tatOn / followUpOn) rather than "should always notify someone."</p>
  *
- * <p>It runs two scans on a 30-minute cadence:</p>
+ * <p>It runs a full SLA scan every 30 minutes and a narrow TAT + scheduled-follow-up scan every
+ * minute ({@link #fastScan}):</p>
  * <ol>
  *   <li><b>SLA scan</b> — for each institute, walks {@code findSlaCandidatesForInstitute}
  *       and emits TAT or follow-up triggers based on time-since-submission /
@@ -68,17 +71,54 @@ public class LeadAutomationScheduler {
     private final AudienceResponseRepository audienceResponseRepository;
     private final LeadFollowupRepository leadFollowupRepository;
     private final LeadSlaConfigService leadSlaConfigService;
+    private final LeadSlaConfigRepository leadSlaConfigRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder ctxBuilder;
     private final LeadAssignmentNotifier leadAssignmentNotifier;
 
-    /** 30-minute cadence (server timezone). "Before" reminder windows shorter than the scan
-     *  interval may be skipped, so configure before-windows of 30 minutes or more. */
+    /**
+     * Full SLA scan every 30 minutes: the follow-up SLA, plus TAT for every open lead (the
+     * safety net behind the 1-minute TAT scan — dedup makes the overlap harmless).
+     */
     @Scheduled(cron = "0 */30 * * * ?")
     @SchedulerLock(name = "LeadAutomationScheduler", lockAtMostFor = "PT25M", lockAtLeastFor = "PT1M")
     public void scan() {
         scanLeadSlas();
+    }
+
+    /**
+     * Time-sensitive reminders every minute (override with {@code lead.sla.fast-scan-cron}):
+     * TAT before/overdue for leads still on the TAT clock, and counsellor-scheduled
+     * follow-ups. Both queries are narrow (recent unresponded leads / due follow-up rows), so a
+     * 10-minute TAT is reminded within about a minute of its deadline instead of up to 30.
+     */
+    @Scheduled(cron = "${lead.sla.fast-scan-cron:0 * * * * ?}")
+    @SchedulerLock(name = "LeadTatFastScan", lockAtMostFor = "PT50S", lockAtLeastFor = "PT5S")
+    public void fastScan() {
+        scanRecentTat();
         scanScheduledFollowups();
+    }
+
+    private void scanRecentTat() {
+        int emitted = 0;
+        for (LeadSlaConfig cfg : leadSlaConfigRepository.findByTatEnabledTrue()) {
+            String instituteId = cfg.getInstituteId();
+            LeadSlaConfigDTO config = readConfig(instituteId);
+            if (config == null || config.getTatReminder() == null || !config.getTatReminder().isEnabled()
+                    || config.getTatReminder().getTatMinutes() == null) continue;
+            try {
+                List<LeadSlaCandidate> candidates = audienceResponseRepository.findRecentTatCandidatesForInstitute(
+                        instituteId,
+                        config.getTatReminder().getTatMinutes(),
+                        config.getTatReminder().getWorkingHoursRule());
+                for (LeadSlaCandidate c : candidates) {
+                    if (process(c, config, true, false)) emitted++;
+                }
+            } catch (Exception ex) {
+                log.warn("[LeadSla] Fast TAT scan failed for institute {}: {}", instituteId, ex.getMessage());
+            }
+        }
+        if (emitted > 0) log.info("[LeadSla] Fast TAT scan emitted {} trigger(s)", emitted);
     }
 
     // ─────────────────────────────────────────────────────────────────────

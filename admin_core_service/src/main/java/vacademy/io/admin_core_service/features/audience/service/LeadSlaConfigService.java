@@ -57,7 +57,9 @@ public class LeadSlaConfigService {
         List<Integer> tatBefore = windowRepository
                 .findByInstituteIdAndSlaTypeOrderByDisplayOrderAsc(instituteId, TAT).stream()
                 .map(LeadSlaReminderWindow::getBeforeMinutes).collect(Collectors.toList());
-        if (tatBefore.isEmpty()) tatBefore = List.of(30);
+        // Default 30-min reminder only for an institute that has never saved the settings —
+        // once saved, an empty list means the admin removed every early reminder.
+        if (tatBefore.isEmpty() && c == null) tatBefore = List.of(30);
 
         int tatMinutes = c != null ? tatMinutesOf(c) : DEFAULT_MINUTES;
         int followupMinutes = c != null ? followupMinutesOf(c) : DEFAULT_MINUTES;

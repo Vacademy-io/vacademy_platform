@@ -12,7 +12,11 @@
         "searchLevel": "Search {{term}}…",
         "noLevelsYet": "No {{term}} to reuse — add a new one below.",
         "searchSession": "Search {{term}}…",
-        "noOtherSessions": "No other {{term}} to copy material from."
+        "noOtherSessions": "No other {{term}} to copy material from.",
+        "title": "Choose {{term}}",
+        "subtitle": "Pick the {{term}} learners in this batch will study.",
+        "selectExistingHint": "Reuse a {{term}} your institute already has",
+        "createNewHint": "Add a {{term}} with its own duration"
     },
     "validation": {
         "pleaseSelectLevel": "Please select a level",

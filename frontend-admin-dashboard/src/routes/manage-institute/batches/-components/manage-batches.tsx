@@ -1,7 +1,8 @@
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BatchSection } from './batch-section';
+import { BatchesToolbar, BatchView } from './batches-toolbar';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -11,9 +12,16 @@ import {
     DropdownValueType,
 } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
+import { MyButton } from '@/components/design-system/button';
 import { EmptyBatchImage } from '@/assets/svgs';
-import { ContentTerms, RoleTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { Plus } from '@phosphor-icons/react';
+import {
+    applyBatchFilters,
+    DEFAULT_BATCH_FILTERS,
+    hasActiveBatchFilters,
+} from '@/routes/manage-institute/batches/-utils/batch-filters';
 
 export const ManageBatches = () => {
     const { t } = useTranslation('manageInstituteManageBatches');
@@ -28,6 +36,12 @@ export const ManageBatches = () => {
     );
 
     const [currentSession, setCurrentSession] = useState<DropdownItemType | undefined>();
+    const [filters, setFilters] = useState(DEFAULT_BATCH_FILTERS);
+    const [view, setView] = useState<BatchView>('grid');
+    const [createDialog, setCreateDialog] = useState<{
+        open: boolean;
+        course: { id: string; name: string } | null;
+    }>({ open: false, course: null });
 
     useEffect(() => {
         if (sessionList.length > 0) {
@@ -66,6 +80,57 @@ export const ManageBatches = () => {
         setNavHeading(t('navHeading'));
     }, []);
 
+    /**
+     * Each course with only the batches that belong to the selected session. A
+     * course whose batches all sit in other sessions is left out; a course with
+     * no batches at all stays, so its empty state shows.
+     */
+    const sessionCourses = useMemo(() => {
+        if (!data) return [];
+        const sessionsForBatches = instituteDetails?.batches_for_sessions;
+        if (!currentSession?.id || !sessionsForBatches) return data;
+        const sessionOf = new Map(
+            sessionsForBatches.map((detail) => [detail.id, detail.session.id])
+        );
+        return data
+            .map((course) => ({
+                course,
+                batches: course.batches.filter(
+                    (batch) => sessionOf.get(batch.package_session_id) === currentSession.id
+                ),
+            }))
+            .filter(({ course, batches }) => batches.length > 0 || course.batches.length === 0)
+            .map(({ course, batches }) => ({ ...course, batches }));
+    }, [data, instituteDetails, currentSession?.id]);
+
+    const visibleCourses = useMemo(
+        () => applyBatchFilters(sessionCourses, filters),
+        [sessionCourses, filters]
+    );
+
+    const totalsByCourse = useMemo(
+        () =>
+            new Map(
+                sessionCourses.map((course) => [
+                    course.package_dto.id,
+                    {
+                        batches: course.batches.length,
+                        learners: course.batches.reduce(
+                            (sum, batch) => sum + (batch.count_students ?? 0),
+                            0
+                        ),
+                    },
+                ])
+            ),
+        [sessionCourses]
+    );
+
+    const openCreateBatch = (course: { id: string; name: string } | null = null) =>
+        setCreateDialog({ open: true, course });
+
+    const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
+
     if (isLoading) return <DashboardLoader />;
 
     if (isError)
@@ -75,61 +140,126 @@ export const ManageBatches = () => {
             </div>
         );
 
+    const hasCourses = sessionCourses.length > 0;
+
     return (
-        <div className="flex flex-col gap-4 p-2 text-neutral-700 sm:gap-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p className="text-lg font-semibold sm:text-xl">
-                        {t('heading', { learner: getTerminology(RoleTerms.Learner, 'Learner') })}
-                    </p>
-                    <p className="text-xs text-neutral-500 sm:text-sm">
+        <div className="flex flex-col gap-5 p-2 text-neutral-700 sm:gap-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-1">
+                    <h1 className="text-h2 font-semibold text-neutral-800">
+                        {t('heading', { learner: learnerTerm })}
+                    </h1>
+                    <p className="text-body text-neutral-500">
                         {t('subheading', {
-                            learner: getTerminology(RoleTerms.Learner, 'Learner').toLocaleLowerCase(),
-                            session: getTerminology(ContentTerms.Session, 'Session').toLocaleLowerCase(),
+                            learner: learnerTerm.toLocaleLowerCase(),
+                            session: getTerminology(
+                                ContentTerms.Session,
+                                SystemTerms.Session
+                            ).toLocaleLowerCase(),
                         })}
                     </p>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-3">
                     {sessionList.length > 0 && currentSession !== undefined && (
                         <MyDropdown
                             currentValue={currentSession}
                             dropdownList={sessionList}
                             placeholder={t('selectSessionPlaceholder', {
-                                session: getTerminology(ContentTerms.Session, 'Session'),
+                                session: getTerminology(ContentTerms.Session, SystemTerms.Session),
                             })}
                             handleChange={handleSessionChange}
                         />
                     )}
-                    <CreateBatchDialog />
+                    <MyButton
+                        scale="large"
+                        buttonType="primary"
+                        className="gap-2"
+                        onClick={() => openCreateBatch()}
+                    >
+                        <Plus size={18} />
+                        {t('createBatch', { term: batchTerm })}
+                    </MyButton>
                 </div>
             </div>
 
-            {data && data.length > 0 ? (
-                <div className="flex flex-col gap-4 sm:gap-8">
-                    {data.map((batch, index) => (
-                        <BatchSection
-                            key={index}
-                            batch={batch}
-                            currentSessionId={currentSession?.id}
-                        />
-                    ))}
-                </div>
+            {hasCourses ? (
+                <>
+                    <BatchesToolbar
+                        filters={filters}
+                        onChange={setFilters}
+                        view={view}
+                        onViewChange={setView}
+                    />
+                    {visibleCourses.length > 0 ? (
+                        <div className="flex flex-col gap-8">
+                            {visibleCourses.map((course) => {
+                                const totals = totalsByCourse.get(course.package_dto.id);
+                                return (
+                                    <BatchSection
+                                        key={course.package_dto.id}
+                                        course={course}
+                                        totalBatches={totals?.batches ?? 0}
+                                        totalLearners={totals?.learners ?? 0}
+                                        view={view}
+                                        onCreateBatch={() =>
+                                            openCreateBatch({
+                                                id: course.package_dto.id,
+                                                name: course.package_dto.package_name,
+                                            })
+                                        }
+                                    />
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-12 text-center">
+                            <p className="text-subtitle font-medium text-neutral-600">
+                                {t('emptyState.noMatches', { term: batchTerm.toLocaleLowerCase() })}
+                            </p>
+                            {hasActiveBatchFilters(filters) && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() =>
+                                        setFilters({
+                                            ...DEFAULT_BATCH_FILTERS,
+                                            sort: filters.sort,
+                                        })
+                                    }
+                                >
+                                    {t('emptyState.clearFilters')}
+                                </MyButton>
+                            )}
+                        </div>
+                    )}
+                </>
             ) : (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-10 text-center sm:gap-5 sm:py-16">
+                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-10 text-center sm:gap-5 sm:py-16">
                     <EmptyBatchImage className="size-24 text-neutral-400 sm:size-32" />
-                    <p className="text-base font-medium text-neutral-600 sm:text-lg">
+                    <p className="text-subtitle font-medium text-neutral-600">
                         {currentSession
                             ? t('emptyState.noBatchesForSession', { session: currentSession.name })
                             : t('emptyState.noSessionsAvailable')}
                     </p>
-                    <p className="max-w-md text-xs text-neutral-500 sm:text-sm">
+                    <p className="max-w-md text-body text-neutral-500">
                         {currentSession
                             ? t('emptyState.createBatchHint')
                             : t('emptyState.createSessionHint')}
                     </p>
-                    {currentSession && <CreateBatchDialog />}
+                    {currentSession && (
+                        <MyButton buttonType="primary" onClick={() => openCreateBatch()}>
+                            <Plus size={18} className="me-1.5" />
+                            {t('createBatch', { term: batchTerm })}
+                        </MyButton>
+                    )}
                 </div>
             )}
+
+            <CreateBatchDialog
+                open={createDialog.open}
+                onOpenChange={(open) => setCreateDialog((prev) => ({ ...prev, open }))}
+                initialCourse={createDialog.course}
+            />
         </div>
     );
 };

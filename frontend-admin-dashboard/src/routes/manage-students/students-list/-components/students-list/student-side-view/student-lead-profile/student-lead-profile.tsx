@@ -171,11 +171,14 @@ async function updateLeadTier(
     return response.data;
 }
 
-async function fetchUserAudiences(userId: string): Promise<AudienceMembership[]> {
+async function fetchUserAudiences(
+    userId: string,
+    instituteId: string
+): Promise<AudienceMembership[]> {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: GET_USER_AUDIENCES,
-        params: { userId },
+        params: { userId, instituteId },
     });
     return response.data;
 }
@@ -1027,10 +1030,11 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
 
 function AudienceListSection({ userId }: { userId: string }) {
     const { t } = useTranslation('manageStudentsLeadProfile');
+    const instituteId = getCurrentInstituteId() ?? '';
     const { data: audiences, isLoading } = useQuery({
-        queryKey: ['user-audiences', userId],
-        queryFn: () => fetchUserAudiences(userId),
-        enabled: !!userId,
+        queryKey: ['user-audiences', userId, instituteId],
+        queryFn: () => fetchUserAudiences(userId, instituteId),
+        enabled: !!userId && !!instituteId,
         staleTime: 2 * 60 * 1000,
     });
 
@@ -1219,9 +1223,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     // linked campaign response when the profile has no `best_score_response_id`
     // yet (common for fresh leads that haven't been scored).
     const { data: audiences } = useQuery({
-        queryKey: ['user-audiences', userId],
-        queryFn: () => fetchUserAudiences(userId),
-        enabled: !!userId,
+        queryKey: ['user-audiences', userId, instituteId],
+        queryFn: () => fetchUserAudiences(userId, instituteId),
+        enabled: !!userId && !!instituteId,
         staleTime: 2 * 60 * 1000,
     });
     const effectiveResponseId =

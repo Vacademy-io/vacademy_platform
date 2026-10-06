@@ -1765,6 +1765,23 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<AudienceResponse> findByUserIdOrStudentUserId(String userId, String studentUserId);
 
         /**
+         * Every lead this person holds within one institute, as either the submitter
+         * or the child the submission was for, whatever its audience_status.
+         *
+         * <p>Institute-scoped through the audience join: a person can be a lead in
+         * several institutes, and an admin of one must not see the others' campaigns.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND (ar.userId = :userId OR ar.studentUserId = :userId)
+                        """)
+        List<AudienceResponse> findAllByInstituteAndUserOrStudent(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * These specific leads, but ONLY the ones that belong to this institute.
          *
          * <p>Security boundary for delete/restore: the caller supplies both the response ids and

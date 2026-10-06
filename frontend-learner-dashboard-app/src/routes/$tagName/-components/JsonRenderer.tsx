@@ -61,6 +61,7 @@ import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { PlainVideoPlayer } from "./components/PlainVideoPlayer";
 import { isDirectVideoFile } from "../-utils/video-url";
+import { useResourceUnlocked } from "../-utils/resource-unlock";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { CourseShowcaseComponent } from "./components/CourseShowcaseComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
@@ -1418,9 +1419,93 @@ const TextBlockRenderer: React.FC<any> = ({ content = '', maxWidth = '800px', al
 
 /* ─── Feature Grid ─────────────────────────────────────────────────────── */
 
+/**
+ * One card of the featureGrid `resource` style — a free-resources library
+ * card: 16:9 thumbnail (with an optional badge such as "Featured"), chips for
+ * age group / duration, title, description and a full-width action button.
+ * A link flagged `gated` (or every link, with the grid's `gateAll`) opens the grid's gate list form first (see
+ * -utils/resource-unlock.ts); once that list is unlocked it is a plain link.
+ */
+const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: string; gateTitle?: string; gateAll?: boolean }> = ({
+  feature: f, index, gateAudienceId, gateTitle, gateAll = false,
+}) => {
+  const unlocked = useResourceUnlocked(gateAudienceId);
+  const chips: string[] = (f.chips || []).filter(Boolean);
+  const cta = f.link?.text && f.link?.url ? f.link : null;
+  // `gateAll` = the author gated the whole section; `cta.gated` = this card only.
+  const gated = !!(cta && (gateAll || cta.gated) && gateAudienceId && !unlocked);
+  const badge = (f.badge || '').trim();
+
+  const openGate = () => {
+    window.dispatchEvent(new CustomEvent('openAudienceForm', {
+      detail: {
+        audienceId: gateAudienceId,
+        title: gateTitle || f.title,
+        unlockUrl: cta.url,
+        unlockLabel: cta.text,
+      },
+    }));
+  };
+
+  return (
+    <article
+      data-stagger-item
+      style={{ ['--stagger-i' as any]: index }}
+      className="catalogue-card-elevated group flex flex-col overflow-hidden text-start"
+    >
+      {f.image && (
+        <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
+          <img
+            src={f.image}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+          />
+          {badge && (
+            <span className="absolute start-3 top-3 inline-flex items-center rounded-full bg-catalogue-bg-elevated px-3 py-1 text-xs font-semibold text-primary-500 shadow-sm">
+              {badge}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
+        {!f.image && badge && (
+          <span className="mb-3 inline-flex w-fit items-center rounded-full bg-primary-500 px-3 py-1 text-xs font-semibold text-catalogue-bg-elevated">
+            {badge}
+          </span>
+        )}
+        {chips.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {chips.map((c: string, j: number) => (
+              <span key={j} className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-500 ring-1 ring-primary-100">{c}</span>
+            ))}
+          </div>
+        )}
+        <h3 className="text-lg font-semibold tracking-tight text-catalogue-text-primary">{f.title}</h3>
+        {f.description && (
+          <p className="mt-1.5 text-sm leading-relaxed text-catalogue-text-muted">{f.description}</p>
+        )}
+        {cta && (
+          <div className="mt-auto pt-5">
+            {gated ? (
+              <button type="button" onClick={openGate} className="catalogue-btn catalogue-btn-primary w-full justify-center">
+                {cta.text}
+              </button>
+            ) : (
+              <CatalogueLink to={cta.url} className="catalogue-btn catalogue-btn-primary w-full justify-center">
+                {cta.text}
+              </CatalogueLink>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+};
+
 const FeatureGridRenderer: React.FC<any> = ({
   headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
-  layout,
+  layout, gateAudienceId = '', gateTitle, gateAll = false,
 }) => {
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
@@ -1538,6 +1623,27 @@ const FeatureGridRenderer: React.FC<any> = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // "resource" — free-resources library cards (thumbnail + chips + button),
+  // with optional email-gated links. Headings stay centred unless the author
+  // asked for left: the cards carry prose, the section title does not.
+  if (style === 'resource') {
+    const headLeft = align === 'left';
+    const gateId = String(gateAudienceId || '').trim();
+    return (
+      <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+        <div className="catalogue-shell">
+          {headerText && <h2 className={`mb-2 catalogue-h2 ${headLeft ? '' : 'text-center'} ${txt.heading}`}>{headerText}</h2>}
+          {subheading && <p className={`catalogue-lead mb-8 ${headLeft ? '' : 'catalogue-measure text-center'} ${txt.muted}`}>{subheading}</p>}
+          <div className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''}`}>
+            {features.map((f: any, i: number) => (
+              <ResourceCard key={i} feature={f} index={i} gateAudienceId={gateId} gateTitle={gateTitle} gateAll={!!gateAll} />
+            ))}
           </div>
         </div>
       </section>

@@ -402,7 +402,9 @@
         "notFoundBody": "Cet article a peut-être été dépublié ou déplacé.",
         "tags": "Étiquettes",
         "copyLink": "Copier le lien",
-        "linkCopied": "Lien copié"
+        "linkCopied": "Lien copié",
+        "gateTitle": "Débloquer cet article",
+        "gateSubtitle": "Partagez vos coordonnées une seule fois pour lire cet article et toutes les ressources gratuites du site."
     },
     "comingSoon": {
         "ribbon": "Bientôt disponible",

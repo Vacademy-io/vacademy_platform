@@ -397,7 +397,9 @@
         "notFoundBody": "This article may have been unpublished or moved.",
         "tags": "Tags",
         "copyLink": "Copy link",
-        "linkCopied": "Link copied"
+        "linkCopied": "Link copied",
+        "gateTitle": "Unlock this article",
+        "gateSubtitle": "Share your details once to read this and every free resource on our site."
     },
     "comingSoon": {
         "ribbon": "Coming soon",

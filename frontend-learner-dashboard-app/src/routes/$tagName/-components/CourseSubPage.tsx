@@ -50,7 +50,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
-  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string } | null>(null);
 
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
@@ -210,7 +210,13 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     const handleOpenAudienceForm = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
       if (detail.audienceId) {
-        setAudienceForm({ audienceId: detail.audienceId, title: detail.title });
+        setAudienceForm({
+          audienceId: detail.audienceId,
+          title: detail.title,
+          // Set by gated resource cards — the file to hand over after submit.
+          unlockUrl: detail.unlockUrl,
+          unlockLabel: detail.unlockLabel,
+        });
       }
     };
     window.addEventListener('openAudienceForm', handleOpenAudienceForm);
@@ -454,6 +460,8 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           audienceId={audienceForm.audienceId}
           title={audienceForm.title}
           instituteId={instituteId}
+          unlockUrl={audienceForm.unlockUrl}
+          unlockLabel={audienceForm.unlockLabel}
         />
       )}
       {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection.enabled && (!showIntroPage || introCompleted) && (

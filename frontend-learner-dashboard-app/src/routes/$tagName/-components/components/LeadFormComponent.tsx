@@ -5,7 +5,7 @@ import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { getFieldVerification } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import { FieldVerification } from "@/routes/product-pages/$productPageCode/-components/FieldVerification";
-import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import { FieldRenderType, getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
   extractRespondentIdentity,
   handleGetAudienceCampaign,
@@ -58,6 +58,8 @@ interface LeadFormProps {
   backgroundColor?: string;
   /** 'section' renders the full catalogue section; 'embedded' just the form. */
   variant?: "section" | "embedded";
+  /** Fired once the visitor's submission is accepted (the gated-resource modal unlocks on it). */
+  onSubmitted?: () => void;
   instituteId?: string;
   isPreviewMode?: boolean;
 }
@@ -83,6 +85,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   variant = "section",
   instituteId,
   isPreviewMode = false,
+  onSubmitted,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const { data: campaign, isLoading, isError } = useQuery({
@@ -221,8 +224,11 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     }
 
     // Spam verdicts show the normal success state — never tell a bot it lost.
+    // onSubmitted still fires: a fast autofill can trip the timer, and what it
+    // unlocks (public resource links) is not worth stranding a real parent.
     if (isSpamSubmission(honeypot, mountedAt.current)) {
       setDone(true);
+      onSubmitted?.();
       return;
     }
 
@@ -244,6 +250,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       // and in the redirect query string.
       setRespondent(extractRespondentIdentity(formValues));
       setDone(true);
+      onSubmitted?.();
     } catch {
       setError(t("leadForm.genericError"));
     } finally {
@@ -371,15 +378,23 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
 
   const formBody = (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      {fields.map((f) => (
+      {fields.map((f) => {
+        // A checkbox carries its own label beside the box, and the renderer
+        // prints `name` there — pass the human label, not the field key, and
+        // skip the label above so the question is not shown twice.
+        const renderType = getFieldRenderType(f.key, f.type);
+        const isCheckbox = renderType === FieldRenderType.CHECKBOX;
+        return (
         <div key={f.id}>
-          <label className="mb-1.5 block text-sm font-medium text-catalogue-text-secondary">
-            {f.name}
-            {f.mandatory && <span className="ms-1 text-catalogue-brand-ink">*</span>}
-          </label>
+          {!isCheckbox && (
+            <label className="mb-1.5 block text-sm font-medium text-catalogue-text-secondary">
+              {f.name}
+              {f.mandatory && <span className="ms-1 text-catalogue-brand-ink">*</span>}
+            </label>
+          )}
           <CustomFieldRenderer
-            type={getFieldRenderType(f.key, f.type)}
-            name={f.key}
+            type={renderType}
+            name={isCheckbox ? f.name : f.key}
             value={values[f.key] || ""}
             onChange={(v: string) => setValues((prev) => ({ ...prev, [f.key]: v }))}
             config={f.config}
@@ -415,7 +430,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             );
           })()}
         </div>
-      ))}
+        );
+      })}
 
       {/* Honeypot — visually hidden from humans, irresistible to bots.
           aria-hidden + tabIndex -1 keep it out of assistive tech and tabbing. */}

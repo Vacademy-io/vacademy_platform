@@ -29,8 +29,10 @@ export function WhatsAppTemplateButtons({
                 const type = (button.type || '').toUpperCase();
                 const rowClass =
                     'flex items-center justify-center gap-1.5 border-t border-black/10 px-3 py-2 text-sm font-medium text-blue-600 first:border-t-0';
+                // A template's own URL can still hold a `{{1}}` that only gets filled per send —
+                // show it on hover, but don't open a link that can't work.
                 const href =
-                    button.url && /^https?:\/\//i.test(button.url)
+                    button.url && /^https?:\/\//i.test(button.url) && !button.url.includes('{{')
                         ? button.url
                         : type === 'PHONE_NUMBER' && button.phoneNumber
                           ? `tel:${button.phoneNumber.replace(/[^\d+]/g, '')}`
@@ -50,6 +52,7 @@ export function WhatsAppTemplateButtons({
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
+                        title={button.url || button.phoneNumber}
                         onClick={(e) => e.stopPropagation()}
                         className={cn(rowClass, 'hover:bg-black/5')}
                     >
@@ -57,7 +60,7 @@ export function WhatsAppTemplateButtons({
                         <span className="truncate">{button.text}</span>
                     </a>
                 ) : (
-                    <div key={i} className={rowClass}>
+                    <div key={i} className={rowClass} title={button.url || button.phoneNumber}>
                         {icon}
                         <span className="truncate">{button.text}</span>
                     </div>

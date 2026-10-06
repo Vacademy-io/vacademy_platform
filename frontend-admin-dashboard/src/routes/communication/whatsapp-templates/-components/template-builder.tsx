@@ -10,6 +10,7 @@ import { getUserId } from '@/utils/userDetails';
 import { cn } from '@/lib/utils';
 import { getBackendErrorBody, reportApiError } from '@/lib/report-api-error';
 import { createTemplateDraft, updateTemplate, submitToMeta, WhatsAppTemplateDTO, TemplateButton } from '../-services/template-api';
+import { WhatsAppTemplateBubble } from './whatsapp-template-bubble';
 import {
     normalizeTemplateName,
     placeholderIndexes,
@@ -569,61 +570,15 @@ export function TemplateBuilder({ template, onClose }: Props) {
                 <div className="w-full md:w-96 shrink-0 border-t md:border-t-0 md:border-l bg-[#e5ddd5] p-6 md:overflow-y-auto flex items-start justify-center">
                     <div className="w-72 max-w-full">
                         <p className="text-xs text-center text-gray-500 mb-3">{t('preview.title')}</p>
-                        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                            {/* Header preview */}
-                            {headerType !== 'NONE' && (
-                                <div className="bg-gray-100 p-3">
-                                    {headerType === 'TEXT' && (
-                                        <p className="text-sm font-semibold text-gray-800">{headerText || t('preview.headerTextFallback')}</p>
-                                    )}
-                                    {headerType === 'IMAGE' && (
-                                        <div className="h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
-                                            {headerSampleUrl ? <img src={headerSampleUrl} alt="" className="h-full w-full object-cover rounded" /> : t('preview.imageFallback')}
-                                        </div>
-                                    )}
-                                    {headerType === 'VIDEO' && (
-                                        <div className="h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">{t('preview.videoFallback')}</div>
-                                    )}
-                                    {headerType === 'DOCUMENT' && (
-                                        <div className="h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">{t('preview.documentFallback')}</div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Body preview */}
-                            <div className="p-3">
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewBody || t('preview.bodyFallback')}</p>
-                            </div>
-
-                            {/* Footer preview */}
-                            {footerText && (
-                                <div className="px-3 pb-2">
-                                    <p className="text-xs text-gray-400">{footerText}</p>
-                                </div>
-                            )}
-
-                            {/* Buttons preview */}
-                            {buttons.length > 0 && (
-                                <div className="border-t">
-                                    {buttons.map((btn, i) => (
-                                        <div key={i} className="border-b last:border-0 py-2 text-center">
-                                            <span className="text-sm text-blue-500 font-medium">
-                                                {btn.type === 'URL' && '🔗 '}
-                                                {btn.type === 'PHONE_NUMBER' && '📞 '}
-                                                {btn.text || t('preview.buttonFallback', { n: i + 1 })}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Timestamp */}
-                            <div className="px-3 pb-2 text-right">
-                                <span className="text-[10px] text-gray-400">
-                                    {new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} ✓✓
-                                </span>
-                            </div>
-                        </div>
+                        <WhatsAppTemplateBubble
+                            headerType={headerType}
+                            headerText={headerText}
+                            headerSampleUrl={headerSampleUrl}
+                            bodyText={previewBody}
+                            footerText={footerText}
+                            buttons={buttons}
+                            timestamp={`${new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} ✓✓`}
+                        />
 
                         {/* Info */}
                         <div className="mt-3 p-2 bg-white/80 rounded text-[10px] text-gray-500 space-y-0.5">

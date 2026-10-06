@@ -146,6 +146,138 @@ function DurationInput({
     );
 }
 
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+// Working hours shared by TAT and the follow-up SLA. A clock that starts inside these hours runs
+// for the configured duration; one that starts outside them is due at the card's off-hours time
+// on the next working day.
+function WorkingHoursCard({
+    draft,
+    patch,
+}: {
+    draft: SlaConfig;
+    patch: (p: Partial<SlaConfig>) => void;
+}) {
+    const { t } = useTranslation('settingsLeadSla');
+    const days = draft.working_days ?? [];
+    const toggleDay = (d: number) =>
+        patch({
+            working_days: days.includes(d)
+                ? days.filter((x) => x !== d)
+                : [...days, d].sort((a, b) => a - b),
+        });
+    const endBeforeStart = draft.working_end_time <= draft.working_start_time;
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>{t('workingHours.title')}</CardTitle>
+                <CardDescription>{t('workingHours.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                    <Switch
+                        id="working-hours-enabled"
+                        checked={draft.working_hours_enabled}
+                        onCheckedChange={(v) => patch({ working_hours_enabled: v })}
+                    />
+                    <Label htmlFor="working-hours-enabled" className="cursor-pointer">
+                        {draft.working_hours_enabled ? t('common.onLabel') : t('common.offLabel')}
+                    </Label>
+                </div>
+
+                {draft.working_hours_enabled && (
+                    <>
+                        <div>
+                            <p className="text-sm font-medium">{t('workingHours.days')}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {WEEKDAYS.map((d) => {
+                                    const on = days.includes(d);
+                                    return (
+                                        <button
+                                            key={d}
+                                            type="button"
+                                            aria-pressed={on}
+                                            onClick={() => toggleDay(d)}
+                                            className={
+                                                on
+                                                    ? 'rounded-full border border-primary-400 bg-primary-50 px-3 py-1 text-xs font-medium text-primary-600'
+                                                    : 'rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500'
+                                            }
+                                        >
+                                            {t(`workingHours.dayShort.${d}`)}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {days.length === 0 && (
+                                <p className="mt-1 text-xs text-danger-600">{t('workingHours.noDays')}</p>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                            <p className="text-sm font-medium">{t('workingHours.hoursLabel')}</p>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="time"
+                                    value={draft.working_start_time}
+                                    onChange={(e) => patch({ working_start_time: e.target.value })}
+                                    className="w-32"
+                                    aria-label={t('workingHours.from')}
+                                />
+                                <span className="text-sm text-muted-foreground">{t('workingHours.to')}</span>
+                                <Input
+                                    type="time"
+                                    value={draft.working_end_time}
+                                    onChange={(e) => patch({ working_end_time: e.target.value })}
+                                    className="w-32"
+                                    aria-label={t('workingHours.to')}
+                                />
+                            </div>
+                        </div>
+                        {endBeforeStart && (
+                            <p className="text-xs text-danger-600">{t('workingHours.endBeforeStart')}</p>
+                        )}
+                        {draft.timezone && (
+                            <p className="text-xs text-muted-foreground">
+                                {t('workingHours.timezoneNote', { tz: draft.timezone })}
+                            </p>
+                        )}
+                    </>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// "Outside working hours → due at HH:mm on the next working day" row, shown in each SLA card.
+function OffhoursDueRow({
+    label,
+    hint,
+    value,
+    onChange,
+}: {
+    label: string;
+    hint: string;
+    value: string;
+    onChange: (v: string) => void;
+}) {
+    return (
+        <div className="flex items-center justify-between gap-4">
+            <div>
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-xs text-muted-foreground">{hint}</p>
+            </div>
+            <Input
+                type="time"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-32"
+                aria-label={label}
+            />
+        </div>
+    );
+}
+
 /**
  * Table-backed TAT + Follow-up SLA settings (replaces the JSON tatReminder/followUp cards).
  * Reads/writes via the lead-sla-config endpoint. Emit-only: the workflow engine delivers.
@@ -205,6 +337,10 @@ export default function LeadSlaSettings() {
     }
 
     const beforeMinutes = draft.tat_before_minutes ?? [];
+    const workingHoursInvalid =
+        draft.working_hours_enabled &&
+        ((draft.working_days ?? []).length === 0 ||
+            draft.working_end_time <= draft.working_start_time);
 
     // "1 hour 30 minutes" / "45 minutes" / "24 hours" for the plain-words summaries.
     const formatDuration = (total: number) => {
@@ -217,6 +353,9 @@ export default function LeadSlaSettings() {
 
     return (
         <>
+            {/* ── Working hours (TAT + follow-up SLA) ── */}
+            <WorkingHoursCard draft={draft} patch={patch} />
+
             {/* ── New Lead Response Time ── */}
             <Card>
                 <CardHeader>
@@ -260,6 +399,9 @@ export default function LeadSlaSettings() {
                                         {t('tat.summary.noRemindersPart3')}
                                     </>
                                 )}
+                                {draft.working_hours_enabled && (
+                                    <> {t('tat.summary.offhours', { time: draft.tat_offhours_due_time })}</>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between gap-4">
@@ -275,6 +417,15 @@ export default function LeadSlaSettings() {
                                     onChange={(m) => patch({ tat_minutes: m })}
                                 />
                             </div>
+
+                            {draft.working_hours_enabled && (
+                                <OffhoursDueRow
+                                    label={t('tat.offhours.label')}
+                                    hint={t('tat.offhours.hint')}
+                                    value={draft.tat_offhours_due_time}
+                                    onChange={(v) => patch({ tat_offhours_due_time: v })}
+                                />
+                            )}
 
                             <Separator />
 
@@ -361,6 +512,9 @@ export default function LeadSlaSettings() {
                                 {t('followup.summaryPart2')}
                                 <span className="font-semibold">{`${draft.followup_remind_before_minutes} ${t('common.minAbbrev')}`}</span>
                                 {t('followup.summaryPart3')}
+                                {draft.working_hours_enabled && (
+                                    <> {t('followup.summaryOffhours', { time: draft.followup_offhours_due_time })}</>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between gap-4">
@@ -376,6 +530,15 @@ export default function LeadSlaSettings() {
                                     onChange={(m) => patch({ followup_sla_minutes: m })}
                                 />
                             </div>
+
+                            {draft.working_hours_enabled && (
+                                <OffhoursDueRow
+                                    label={t('followup.offhours.label')}
+                                    hint={t('followup.offhours.hint')}
+                                    value={draft.followup_offhours_due_time}
+                                    onChange={(v) => patch({ followup_offhours_due_time: v })}
+                                />
+                            )}
                             <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <p className="text-sm font-medium">{t('followup.earlyReminder.label')}</p>
@@ -424,7 +587,7 @@ export default function LeadSlaSettings() {
                             buttonType="primary"
                             scale="medium"
                             onClick={handleSave}
-                            disable={saving || !hasChanges}
+                            disable={saving || !hasChanges || workingHoursInvalid}
                         >
                             {saving ? t('footer.saving') : t('footer.save')}
                         </MyButton>

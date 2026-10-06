@@ -28,6 +28,21 @@ export interface LeadSlaSettings {
     followup_sla_hours: number;
     followup_remind_before_minutes: number;
     followup_notify_roles: string[];
+    // ── Working hours (apply to TAT and the follow-up SLA) ──
+    /** When on: a clock starting inside working hours runs for the configured time; one starting
+     *  outside them is due at the off-hours time on the next working day. */
+    working_hours_enabled: boolean;
+    /** ISO weekdays, 1 = Monday … 7 = Sunday. */
+    working_days: number[];
+    /** "HH:mm", institute-local. */
+    working_start_time: string;
+    working_end_time: string;
+    /** "HH:mm" — TAT due time on the next working day for leads arriving outside hours. */
+    tat_offhours_due_time: string;
+    /** "HH:mm" — follow-up due time on the next working day when the last activity was outside hours. */
+    followup_offhours_due_time: string;
+    /** Read-only: the institute timezone the hours are evaluated in (Settings → Language). */
+    timezone?: string;
 }
 
 export const LEAD_SLA_CONFIG_QUERY_KEY = ['lead-sla-config'];
@@ -43,6 +58,12 @@ export const LEAD_SLA_DEFAULTS: LeadSlaSettings = {
     followup_sla_hours: 24,
     followup_remind_before_minutes: 30,
     followup_notify_roles: [],
+    working_hours_enabled: false,
+    working_days: [1, 2, 3, 4, 5, 6],
+    working_start_time: '09:00',
+    working_end_time: '18:00',
+    tat_offhours_due_time: '10:00',
+    followup_offhours_due_time: '10:00',
 };
 
 export async function fetchLeadSlaConfig(): Promise<LeadSlaSettings> {
@@ -73,6 +94,19 @@ export async function saveLeadSlaConfig(dto: LeadSlaSettings): Promise<void> {
         followup_sla_hours: Math.max(1, Math.ceil(dto.followup_sla_minutes / 60)),
     };
     await authenticatedAxiosInstance.put(BASE, payload, { params: { instituteId } });
+}
+
+/**
+ * Admin-only: set one lead's TAT deadline by hand (ISO instant), or pass null to reset it to the
+ * automatic (working-hours) deadline. The server re-checks the ADMIN role.
+ */
+export async function setLeadTatDueOverride(responseId: string, dueAtIso: string | null): Promise<void> {
+    const instituteId = getCurrentInstituteId();
+    await authenticatedAxiosInstance.put(
+        `${BASE}/lead/${encodeURIComponent(responseId)}/tat-due`,
+        { due_at: dueAtIso },
+        { params: { instituteId } }
+    );
 }
 
 /** Split a minute count into whole hours + remaining minutes (for the hour : minute inputs). */

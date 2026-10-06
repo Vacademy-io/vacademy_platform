@@ -361,7 +361,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               )
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
-                              --   * Reach-out buckets use submitted_at + tatMinutes AND a NOT EXISTS
+                              --   * Reach-out buckets use the effective TAT deadline (admin override, else
+                              --     lead_sla_due_at — working-hours aware) AND a NOT EXISTS
                               --     check on timeline_event (any response event — see
                               --     findCounselorActionsByResponseIds) so leads already responded
                               --     to are excluded, matching the badge.
@@ -372,7 +373,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -382,8 +383,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) > NOW()
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) > NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) <= NOW() + INTERVAL '30 minutes'
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -409,7 +410,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        AND (
                                            (:tatMinutes IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
-                                            AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                            AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                             AND NOT EXISTS (
                                                 SELECT 1 FROM timeline_event te
                                                 WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -732,7 +733,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               )
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
-                              --   * Reach-out buckets use submitted_at + tatMinutes AND a NOT EXISTS
+                              --   * Reach-out buckets use the effective TAT deadline (admin override, else
+                              --     lead_sla_due_at — working-hours aware) AND a NOT EXISTS
                               --     check on timeline_event (any response event — see
                               --     findCounselorActionsByResponseIds) so leads already responded
                               --     to are excluded, matching the badge.
@@ -743,7 +745,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -753,8 +755,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) > NOW()
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) > NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) <= NOW() + INTERVAL '30 minutes'
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -780,7 +782,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        AND (
                                            (:tatMinutes IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
-                                            AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                            AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                             AND NOT EXISTS (
                                                 SELECT 1 FROM timeline_event te
                                                 WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -923,6 +925,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         @Param("sortCustomFieldId") String sortCustomFieldId,
@@ -1099,7 +1102,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
-                              --   * Reach-out buckets use submitted_at + tatMinutes AND a NOT EXISTS
+                              --   * Reach-out buckets use the effective TAT deadline (admin override, else
+                              --     lead_sla_due_at — working-hours aware) AND a NOT EXISTS
                               --     check on timeline_event (any response event — see
                               --     findCounselorActionsByResponseIds) so leads already responded
                               --     to are excluded, matching the badge.
@@ -1110,7 +1114,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1120,8 +1124,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) > NOW()
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) > NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) <= NOW() + INTERVAL '30 minutes'
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1147,7 +1151,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        AND (
                                            (:tatMinutes IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
-                                            AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                            AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                             AND NOT EXISTS (
                                                 SELECT 1 FROM timeline_event te
                                                 WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1470,7 +1474,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
-                              --   * Reach-out buckets use submitted_at + tatMinutes AND a NOT EXISTS
+                              --   * Reach-out buckets use the effective TAT deadline (admin override, else
+                              --     lead_sla_due_at — working-hours aware) AND a NOT EXISTS
                               --     check on timeline_event (any response event — see
                               --     findCounselorActionsByResponseIds) so leads already responded
                               --     to are excluded, matching the badge.
@@ -1481,7 +1486,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1491,8 +1496,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatMinutes IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) > NOW()
-                                       AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) > NOW()
+                                       AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) <= NOW() + INTERVAL '30 minutes'
                                        AND NOT EXISTS (
                                            SELECT 1 FROM timeline_event te
                                            WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1518,7 +1523,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                        AND (
                                            (:tatMinutes IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
-                                            AND ar.submitted_at + make_interval(mins => CAST(:tatMinutes AS integer)) < NOW()
+                                            AND COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) < NOW()
                                             AND NOT EXISTS (
                                                 SELECT 1 FROM timeline_event te
                                                 WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
@@ -1653,6 +1658,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
                         @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
                         @Param("callHistoryFilter") String callHistoryFilter,
@@ -2173,6 +2179,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * resolution of {@link #findLeadsWithFilters} (linked_users first, then user_lead_profile).
          */
         @Query(value = """
+                            SELECT c.*,
+                                   COALESCE(c.tatDueOverrideAt,
+                                            lead_sla_due_at(c.submittedAt, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) AS tatDueAt,
+                                   lead_sla_due_at(c.lastCounselorActionAt, CAST(:followUpMinutes AS integer),
+                                                   CAST(:followUpRule AS jsonb)) AS followUpDueAt
+                            FROM (
                             SELECT ar.id AS leadId,
                                    ar.user_id AS userId,
                                    ar.student_user_id AS studentUserId,
@@ -2188,6 +2200,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    ar.tat_reminder_stage AS tatReminderStage,
                                    ar.tat_reminder_count AS tatReminderCount,
                                    ar.tat_reminder_assignee_id AS tatReminderAssigneeId,
+                                   ar.tat_due_override_at AS tatDueOverrideAt,
                                    (SELECT MAX(te.created_at) FROM timeline_event te
                                       WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
                                         AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
@@ -2210,8 +2223,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND ar.audience_status = 'ACTIVE'
                               AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
+                            ) c
                         """, nativeQuery = true)
-        List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId);
+        List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId,
+                        @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule,
+                        @Param("followUpMinutes") Integer followUpMinutes,
+                        @Param("followUpRule") String followUpRule);
 
         /**
          * For a set of leads, the timestamps of the FIRST and LAST response events on each lead
@@ -2239,7 +2257,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         @Query(value = """
                             SELECT ar.id        AS leadId,
                                    acts.first_at AS firstActionAt,
-                                   acts.last_at  AS lastActionAt
+                                   acts.last_at  AS lastActionAt,
+                                   COALESCE(ar.tat_due_override_at, lead_sla_due_at(ar.submitted_at, CAST(:tatMinutes AS integer), CAST(:tatRule AS jsonb))) AS tatDueAt
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN LATERAL (
@@ -2265,7 +2284,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE ar.id IN (:responseIds)
                         """, nativeQuery = true)
         List<LeadLastActionProjection> findCounselorActionsByResponseIds(
-                        @Param("responseIds") List<String> responseIds);
+                        @Param("responseIds") List<String> responseIds,
+                        @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule);
 
         // ─────────────────────────────────────────────────────────────────────
         // Lead Reports — institute-scoped aggregates, date-bounded on submitted_at.
@@ -2322,6 +2343,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WITH first_acts AS (
                                 SELECT ar.id            AS lead_id,
                                        ar.submitted_at  AS submitted_at,
+                                       ar.tat_due_override_at AS tat_due_override_at,
                                        (SELECT MIN(te.created_at) FROM timeline_event te
                                           WHERE (te.category = 'ACTIVITY' OR te.action_type = 'REACHOUT' OR (te.action_type IN ('STATUS_CHANGED','LEAD_CONVERTED','LEAD_LOST','COUNSELOR_ASSIGNED','COUNSELOR_UNASSIGNED','MANUAL_SCORE_UPDATE') AND te.actor_id IS NOT NULL))
                                             AND ( (te.type='AUDIENCE_RESPONSE' AND te.type_id = ar.id)
@@ -2348,7 +2370,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             SELECT COUNT(first_action_at)                                                  AS respondedLeads,
                                    AVG(EXTRACT(EPOCH FROM (first_action_at - submitted_at)) / 60.0)        AS avgResponseMinutes,
                                    SUM(CASE WHEN first_action_at IS NOT NULL
-                                                 AND first_action_at - submitted_at <= make_interval(mins => :tatMinutes)
+                                                 AND first_action_at <= COALESCE(tat_due_override_at, lead_sla_due_at(submitted_at, :tatMinutes, CAST(:tatRule AS jsonb)))
                                                 THEN 1 ELSE 0 END)                                         AS tatMetCount
                             FROM first_acts
                         """, nativeQuery = true)
@@ -2357,6 +2379,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("fromTs") String fromTs,
                         @Param("toTs") String toTs,
                         @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule,
                         @Param("scopeUsersCsv") String scopeUsersCsv,
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);
@@ -2502,6 +2525,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WITH lead_meta AS (
                                 SELECT ar.id            AS lead_id,
                                        ar.submitted_at  AS submitted_at,
+                                       ar.tat_due_override_at AS tat_due_override_at,
                                        ar.tat_reminder_stage AS tat_reminder_stage,
                                        ulp.conversion_status AS conversion_status,
                                        (SELECT MIN(te.created_at) FROM timeline_event te
@@ -2534,7 +2558,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN conversion_status='CONVERTED' THEN 1 ELSE 0 END)                        AS conversions,
                                    AVG(EXTRACT(EPOCH FROM (first_response_at - submitted_at)) / 60.0)                    AS avgResponseMinutes,
                                    SUM(CASE WHEN first_response_at IS NOT NULL
-                                                 AND first_response_at - submitted_at <= make_interval(mins => :tatMinutes)
+                                                 AND first_response_at <= COALESCE(tat_due_override_at, lead_sla_due_at(submitted_at, :tatMinutes, CAST(:tatRule AS jsonb)))
                                                 THEN 1 ELSE 0 END)                                                       AS tatMetCount,
                                    SUM(CASE WHEN conversion_status IS NULL
                                               OR conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)        AS openLeads,
@@ -2549,6 +2573,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("fromTs") String fromTs,
                         @Param("toTs") String toTs,
                         @Param("tatMinutes") Integer tatMinutes,
+                        @Param("tatRule") String tatRule,
                         @Param("scopeUsersCsv") String scopeUsersCsv,
                         @Param("audienceId") String audienceId,
                         @Param("sourceType") String sourceType);
@@ -2576,6 +2601,26 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("stage") String stage,
                         @Param("assigneeId") String assigneeId,
                         @Param("dueAt") Timestamp dueAt);
+
+        /**
+         * Set (or clear, with a null dueAt) an admin's manual TAT deadline for one lead. Also
+         * resets the reminder dedup state so the scheduler re-arms its before/overdue
+         * reminders against the new deadline.
+         */
+        @Modifying
+        @Transactional
+        @Query(value = """
+                            UPDATE audience_response
+                               SET tat_due_override_at = CAST(:dueAt AS timestamp),
+                                   tat_due_override_by = :byUserId,
+                                   tat_due_override_set_at = NOW(),
+                                   tat_reminder_dedup_key = NULL,
+                                   tat_reminder_stage = NULL
+                             WHERE id = :id
+                        """, nativeQuery = true)
+        int setTatDueOverride(@Param("id") String id,
+                        @Param("dueAt") Timestamp dueAt,
+                        @Param("byUserId") String byUserId);
 
         /**
          * Lead lookup — "is this phone / email already ours?".

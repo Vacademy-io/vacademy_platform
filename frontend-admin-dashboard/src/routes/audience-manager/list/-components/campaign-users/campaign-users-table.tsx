@@ -585,6 +585,7 @@ const CampaignUsersContent = ({
                 _utm_campaign: lead.utm_campaign || null,
                 _utm_source: lead.utm_source || null,
                 _tat_due_at: lead.tat_due_at ?? null,
+                _tat_due_overridden: lead.tat_due_overridden ?? null,
                 _follow_up_due_at: lead.follow_up_due_at ?? null,
                 _tat_overdue: lead.tat_overdue ?? null,
                 _tat_due_soon: lead.tat_due_soon ?? null,

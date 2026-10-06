@@ -74,7 +74,8 @@ public class LeadDetailDTO {
     private String sourceAudienceName; // name of the audience the user opted out FROM
 
     // ── TAT / Follow-up SLA (deadlines computed live from SLA config; badges from scheduler state) ──
-    private Timestamp tatDueAt;          // reach-out deadline = submitted_at + tatHours (computed live when TAT enabled)
+    private Timestamp tatDueAt;          // reach-out deadline: admin override, else working-hours-aware lead_sla_due_at (live when TAT enabled)
+    private Boolean tatDueOverridden;    // true when an admin set tatDueAt by hand (PUT .../tat-due)
     private Timestamp firstResponseAt;   // first time the assigned counselor acted on this lead (null until they act)
     private Timestamp followUpDueAt;     // follow-up deadline = last counselor action + followUpSlaHours (null until acted)
     private String tatReminderStage;     // canonical stage last emitted: TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE

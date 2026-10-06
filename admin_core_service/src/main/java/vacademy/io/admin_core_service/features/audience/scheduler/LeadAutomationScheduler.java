@@ -102,8 +102,14 @@ public class LeadAutomationScheduler {
             if (!tatOn && !followUpOn) continue;
 
             try {
-                List<LeadSlaCandidate> candidates =
-                        audienceResponseRepository.findSlaCandidatesForInstitute(instituteId);
+                // Deadlines come back computed in SQL (lead_sla_due_at — working-hours aware, plus
+                // any admin TAT override) so the scheduler matches the list and the reports.
+                List<LeadSlaCandidate> candidates = audienceResponseRepository.findSlaCandidatesForInstitute(
+                        instituteId,
+                        tatOn ? config.getTatReminder().getTatMinutes() : null,
+                        tatOn ? config.getTatReminder().getWorkingHoursRule() : null,
+                        followUpOn ? config.getFollowUp().getFollowUpSlaMinutes() : null,
+                        followUpOn ? config.getFollowUp().getWorkingHoursRule() : null);
                 for (LeadSlaCandidate c : candidates) {
                     if (process(c, config, tatOn, followUpOn)) emitted++;
                 }
@@ -128,14 +134,19 @@ public class LeadAutomationScheduler {
         if (!acted) {
             if (!tatOn) return false;
             LeadSlaConfigDTO.TatReminder tat = config.getTatReminder();
-            Instant due = c.getSubmittedAt().toInstant().plusSeconds(tat.getTatMinutes() * 60L);
+            if (c.getTatDueAt() == null) return false;
+            Instant due = c.getTatDueAt().toInstant();
             emission = resolveTatStage(now, due, tat);
-            cycleAnchorEpoch = c.getSubmittedAt().getTime();
+            // An admin override starts a new cycle, so reminders re-arm against the new deadline.
+            cycleAnchorEpoch = c.getTatDueOverrideAt() != null
+                    ? c.getTatDueOverrideAt().getTime()
+                    : c.getSubmittedAt().getTime();
             notifyRoles = tat.getNotifyRoles();
         } else {
             if (!followUpOn) return false;
             LeadSlaConfigDTO.FollowUp fu = config.getFollowUp();
-            Instant due = c.getLastCounselorActionAt().toInstant().plusSeconds(fu.getFollowUpSlaMinutes() * 60L);
+            if (c.getFollowUpDueAt() == null) return false;
+            Instant due = c.getFollowUpDueAt().toInstant();
             emission = resolveFollowUpStage(now, due, fu);
             cycleAnchorEpoch = c.getLastCounselorActionAt().getTime();
             notifyRoles = fu.getNotifyRoles();

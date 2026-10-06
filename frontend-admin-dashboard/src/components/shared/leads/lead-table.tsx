@@ -443,7 +443,7 @@ export function LeadTable({
         },
         {
             id: 'source',
-            header: 'Lead source',
+            header: terminology.leadSource,
             thClass: 'min-w-32',
             show: true,
             render: (vm) => <LeadSourcePill label={vm.audience} />,
@@ -537,6 +537,8 @@ export function LeadTable({
                     overdue={vm.tatOverdue}
                     respondedAt={vm.firstResponseAt}
                     baselineAt={vm.submittedIso}
+                    responseId={vm.responseId}
+                    dueOverridden={vm.tatDueOverridden}
                 />
             ),
         },

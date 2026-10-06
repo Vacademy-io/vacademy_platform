@@ -20,6 +20,8 @@ export interface LeadColumnLabels {
     tier?: string;
     leadStatus?: string;
     campaignType?: string;
+    /** What this institute calls the audience a lead came in through. */
+    leadSource?: string;
 }
 
 /**
@@ -35,7 +37,7 @@ export function buildLeadColumnToggles(
 ): LeadColumnToggle[] {
     const cols: LeadColumnToggle[] = [
         { id: 'contact', label: 'Contact' },
-        { id: 'source', label: 'Lead source' },
+        { id: 'source', label: labels?.leadSource || 'Lead source' },
         { id: 'campaignType', label: labels?.campaignType || 'Campaign type' },
         { id: 'utmCampaign', label: 'UTM campaign' },
     ];

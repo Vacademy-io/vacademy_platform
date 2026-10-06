@@ -5,7 +5,10 @@
         "wasDue": "Échéance",
         "completedAt": "Terminé le",
         "completedBy": "Terminé par",
-        "outcome": "Résultat"
+        "outcome": "Résultat",
+        "studentResponse": "Réponse de l’étudiant",
+        "followUpMode": "Mode",
+        "nextAction": "Action suivante"
     },
     "empty": {
         "title": "Aucun suivi terminé",

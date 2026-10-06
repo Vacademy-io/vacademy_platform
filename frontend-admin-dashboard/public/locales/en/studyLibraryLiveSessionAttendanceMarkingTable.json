@@ -1,4 +1,6 @@
 {
+    "emptyTitle": "No learners are linked to this class",
+    "emptyHint": "The batch this class was scheduled for has no active learners, or it has been deleted. Edit the class and pick a batch that has learners to mark attendance.",
     "title": "Attendance",
     "exportCsv": "Export CSV",
     "saving": "Saving...",

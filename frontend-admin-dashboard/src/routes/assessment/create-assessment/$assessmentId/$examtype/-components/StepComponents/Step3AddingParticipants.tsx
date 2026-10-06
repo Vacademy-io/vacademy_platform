@@ -33,6 +33,7 @@ import {
     copyToClipboard,
     getAllSessions,
     getAssessmentJoinLink,
+    convertToCustomFieldsData,
     getCustomFieldsWhileEditStep3,
     getStepKey,
     handleDownloadQRCode,
@@ -56,6 +57,7 @@ import { reportApiError } from '@/lib/report-api-error';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTestAccessStore } from '../../-utils/zustand-global-states/step3-adding-participants';
+import { diffBaseForSave } from '../../-utils/step3-registration-fields';
 import { useParams } from '@tanstack/react-router';
 import { convertDateFormat } from './Step1BasicInfo';
 import { handleGetIndividualStudentList } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
@@ -319,7 +321,13 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
 
     const onSubmit = (data: z.infer<typeof testAccessSchema>) => {
         handleSubmitStep3Form.mutate({
-            oldFormData: oldFormData.current,
+            oldFormData: diffBaseForSave(
+                oldFormData.current,
+                convertToCustomFieldsData(
+                    assessmentDetails[2]?.saved_data?.registration_form_fields
+                ),
+                data.open_test.checked
+            ),
             data: data,
             assessmentId: assessmentId !== 'defaultId' ? assessmentId : savedAssessmentId,
             instituteId: instituteDetails?.id,

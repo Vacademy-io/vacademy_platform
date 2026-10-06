@@ -48,8 +48,10 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
           (:notRequireApproval = true AND po.require_approval = false) OR
           (:requireApproval = false AND :notRequireApproval = false)
       )
+      AND (CAST(:search AS text) IS NULL OR po.name ILIKE CONCAT('%', CAST(:search AS text), '%'))
     GROUP BY po.id, po.name, po.status, po.source, po.source_id, po.tag, po.type, po.require_approval, po.unit, po.complex_payment_option_id, po.created_at, po.updated_at
     ORDER BY po.created_at DESC, MAX(pp.created_at) DESC NULLS LAST
+    LIMIT CAST(:maxResults AS integer)
 """, nativeQuery = true)
     List<PaymentOption> findPaymentOptionsWithPaymentPlansNative(
             @Param("hasTypes") boolean hasTypes,
@@ -63,7 +65,11 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
             @Param("hasPaymentPlanStatuses") boolean hasPaymentPlanStatuses,
             @Param("paymentPlanStatuses") List<String> paymentPlanStatuses,
             @Param("requireApproval") boolean requireApproval,
-            @Param("notRequireApproval") boolean notRequireApproval
+            @Param("notRequireApproval") boolean notRequireApproval,
+            @Param("search") String search,
+            // Postgres reads LIMIT NULL as "no limit", which is what every caller
+            // that leaves this unset had before.
+            @Param("maxResults") Integer maxResults
     );
 
     @Query("""

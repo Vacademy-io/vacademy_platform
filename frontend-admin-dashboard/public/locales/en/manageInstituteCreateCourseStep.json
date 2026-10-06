@@ -10,5 +10,7 @@
     "toast": {
         "batchCreated": "Batch created successfully",
         "createFailed": "Failed to create batch"
-    }
+    },
+    "searchPlaceholder": "Search {{course}}…",
+    "emptyCourses": "No courses yet. Choose \"Create new\" above to add one."
 }

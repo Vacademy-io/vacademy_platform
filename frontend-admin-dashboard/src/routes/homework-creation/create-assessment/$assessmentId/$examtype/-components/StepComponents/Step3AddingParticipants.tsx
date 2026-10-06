@@ -23,6 +23,7 @@ import QRCode from 'react-qr-code';
 import {
     copyToClipboard,
     getAllSessions,
+    convertToCustomFieldsData,
     getCustomFieldsWhileEditStep3,
     getStepKey,
     handleDownloadQRCode,
@@ -51,6 +52,7 @@ import { reportApiError } from '@/lib/report-api-error';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTestAccessStore } from '../../-utils/zustand-global-states/step3-adding-participants';
+import { diffBaseForSave } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/step3-registration-fields';
 import { useParams } from '@tanstack/react-router';
 import useIntroJsTour, { Step } from '@/hooks/use-intro';
 import { IntroKey } from '@/constants/storage/introKey';
@@ -253,7 +255,13 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
 
     const onSubmit = (data: TestAccessFormValues) => {
         handleSubmitStep3Form.mutate({
-            oldFormData: oldFormData.current,
+            oldFormData: diffBaseForSave(
+                oldFormData.current,
+                convertToCustomFieldsData(
+                    assessmentDetails[2]?.saved_data?.registration_form_fields
+                ),
+                data.open_test.checked
+            ),
             data: data,
             assessmentId: assessmentId !== 'defaultId' ? assessmentId : savedAssessmentId,
             instituteId: instituteDetails?.id,
@@ -407,7 +415,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                           )
                         : '',
                     instructions: '',
-                    custom_fields: getCustomFieldsWhileEditStep3(assessmentDetails, tHelper),
+                    custom_fields: getCustomFieldsWhileEditStep3(assessmentDetails),
                 },
                 select_batch: {
                     checked: true,

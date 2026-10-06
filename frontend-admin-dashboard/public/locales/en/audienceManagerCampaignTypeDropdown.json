@@ -8,5 +8,7 @@
     "addCustomType": "Add custom Enquiry type",
     "customInputPlaceholder": "Enter {{term}}",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "searchPlaceholder": "Search…",
+    "noMatches": "No match for “{{query}}”"
 }

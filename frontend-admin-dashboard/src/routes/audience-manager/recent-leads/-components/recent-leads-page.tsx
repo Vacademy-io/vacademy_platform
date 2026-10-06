@@ -316,7 +316,13 @@ const RecentLeadsContent = ({
     // Filters this ROUTE owns (sidebar sub-tabs bake them into their link). They cannot
     // be removed, and "Clear all" puts them back to the value the route asked for rather
     // than dropping them — otherwise an "Untouched Leads" tab quietly becomes "all leads".
-    const lockedParams = useMemo(() => parseLockedParams(urlSearch.lock), [urlSearch.lock]);
+    // Captured at mount, for the same reason pinnedEntryRef below is. This component is
+    // REMOUNTED on an external navigation, so reading the live URL here means reacting to
+    // the sub-tab the user has just left for: the old instance re-rendered, its URL-writing
+    // effect fired because this dep changed, and it put its stale filters back over the tab
+    // that was clicked. That is why a sub-tab took two or three clicks to stick.
+    const lockRef = useRef(urlSearch.lock);
+    const lockedParams = useMemo(() => parseLockedParams(lockRef.current), []);
     // Captured once: the component remounts on an external navigation, so the search at
     // mount IS the tab's intent even after the user has since narrowed things down.
     const pinnedEntryRef = useRef<Record<string, string | undefined>>({
@@ -341,6 +347,17 @@ const RecentLeadsContent = ({
     /** The route's value for a pinned filter, or the cleared value when it is not pinned. */
     const clearedOr = (param: string, cleared: string) =>
         isLocked(param) ? pinnedEntryRef.current[param] ?? cleared : cleared;
+    /**
+     * Like {@link clearedOr}, but the tab's entry value wins even when the filter
+     * is NOT locked.
+     *
+     * Used for the date window. A sub-tab that opens on "All time" should go back
+     * to All time when the user clears, not to the 30-day default it never showed
+     * them — that default is for someone arriving at Recent Leads cold. Locking
+     * the filter would also achieve it, at the cost of not being able to look at
+     * a narrower window at all.
+     */
+    const entryOr = (param: string, fallback: string) => pinnedEntryRef.current[param] ?? fallback;
     const clearedOrList = (param: string): string[] => {
         if (!isLocked(param)) return [];
         const v = pinnedEntryRef.current[param];
@@ -522,7 +539,7 @@ const RecentLeadsContent = ({
     useEffect(() => {
         const nextSearch = {
             // Carried through untouched: the route owns it, not the user.
-            lock: urlSearch.lock || undefined,
+            lock: lockRef.current || undefined,
             status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
             statusExclude: statusExclude ? '1' : undefined,
             tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
@@ -575,7 +592,6 @@ const RecentLeadsContent = ({
         callCountParam,
         calledWindow,
         workedWindow,
-        urlSearch.lock,
         selfWriteRef,
         calledIsCustom,
         workedIsCustom,
@@ -638,8 +654,16 @@ const RecentLeadsContent = ({
                 tier: terminology.tier,
                 leadStatus: terminology.leadStatus,
                 campaignType: terminology.campaignType,
+                leadSource: terminology.leadSource,
             }),
-        [showOps, showScore, terminology.tier, terminology.leadStatus, terminology.campaignType]
+        [
+            showOps,
+            showScore,
+            terminology.tier,
+            terminology.leadStatus,
+            terminology.campaignType,
+            terminology.leadSource,
+        ]
     );
     const toggleableColumns = useMemo(() => {
         const byId = new Map(naturalColumnToggles.map((t) => [t.id, t]));
@@ -1065,9 +1089,9 @@ const RecentLeadsContent = ({
         );
         setCustomFieldFilters({});
         setUtmFilters({});
-        setRangeDays(clearedOr('range', DEFAULT_RANGE_DAYS));
-        setCustomFrom(clearedOr('from', ''));
-        setCustomTo(clearedOr('to', ''));
+        setRangeDays(entryOr('range', DEFAULT_RANGE_DAYS));
+        setCustomFrom(entryOr('from', ''));
+        setCustomTo(entryOr('to', ''));
         setCalledWindow(clearedOr('calledWithin', ''));
         setWorkedWindow(clearedOr('workedWithin', ''));
         setPage(0);

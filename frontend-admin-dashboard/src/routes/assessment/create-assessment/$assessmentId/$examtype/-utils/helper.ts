@@ -22,6 +22,7 @@ import { z } from 'zod';
 import sectionDetailsSchema from './section-details-schema';
 import { convertCustomFields } from '../-services/assessment-services';
 import testAccessSchema from './add-participants-schema';
+import { withMissingBuiltInFieldsOnTop } from './step3-registration-fields';
 import { CourseWithSessionsType } from '@/stores/study-library/use-study-library-store';
 import { BatchData } from '@/types/assessments/batch-details';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
@@ -744,49 +745,8 @@ export function convertToCustomFieldsData(data: RegistrationFormField[] | undefi
 }
 
 export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
-    const defaultFields = [
-        {
-            id: '0',
-            type: 'textfield',
-            name: 'Full Name',
-            oldKey: true,
-            isRequired: true,
-            key: 'full_name',
-            order: 0,
-        },
-        {
-            id: '1',
-            type: 'textfield',
-            name: 'Email',
-            oldKey: true,
-            isRequired: true,
-            key: 'email',
-            order: 1,
-        },
-        {
-            id: '2',
-            type: 'textfield',
-            name: 'Phone Number',
-            oldKey: true,
-            isRequired: true,
-            key: 'phone_number',
-            order: 2,
-        },
-    ];
-
     const registrationFields = assessmentDetails[2]?.saved_data?.registration_form_fields ?? [];
-
-    // Extract field names from registrationFields
-    const existingFieldNames = new Set(registrationFields.map((field) => field.field_name));
-
-    // Check if all three fields exist
-    const hasAllDefaults = ['Full Name', 'Email', 'Phone Number'].every((field) =>
-        existingFieldNames.has(field)
-    );
-
-    return hasAllDefaults
-        ? convertToCustomFieldsData(registrationFields)
-        : [...defaultFields, ...convertToCustomFieldsData(registrationFields)];
+    return withMissingBuiltInFieldsOnTop(convertToCustomFieldsData(registrationFields));
 }
 
 export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCustomField => {

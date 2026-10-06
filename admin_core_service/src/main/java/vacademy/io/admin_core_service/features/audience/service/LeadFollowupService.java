@@ -58,6 +58,9 @@ public class LeadFollowupService {
                 .createdBy(user.getUserId())
                 .scheduleTime(request.getScheduleTime())
                 .content(request.getContent())
+                .studentResponse(request.getStudentResponse())
+                .followUpMode(request.getFollowUpMode())
+                .nextAction(request.getNextAction())
                 .build();
 
         LeadFollowup saved = leadFollowupRepository.save(followup);

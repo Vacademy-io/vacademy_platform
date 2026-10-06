@@ -58,7 +58,10 @@
         "followUpScheduled": "تمت جدولة المتابعة",
         "followUpFailed": "فشل جدولة المتابعة",
         "noteAdded": "تمت إضافة الملاحظة",
-        "noteFailed": "فشل إضافة الملاحظة"
+        "noteFailed": "فشل إضافة الملاحظة",
+        "noteRequired": "تشترط مؤسستك كتابة ملاحظة في كل متابعة.",
+        "followUpPlaceholderRequired": "أضف ملاحظة لهذه المتابعة (مطلوب)…",
+        "fieldsRequired": "أكمل كل حقل عليه * قبل جدولة هذه المتابعة."
     },
     "audiences": {
         "linkedCampaigns": "الحملات المرتبطة",

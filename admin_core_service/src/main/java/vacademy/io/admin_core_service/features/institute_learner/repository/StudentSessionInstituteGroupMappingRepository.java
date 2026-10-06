@@ -628,12 +628,26 @@ public interface StudentSessionInstituteGroupMappingRepository
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
 
   /**
-   * Whether this plan EVER carried an enrolment, in any status (ACTIVE, INACTIVE, DELETED).
-   * Distinguishes a real membership from an abandoned checkout: the self-service renewal
-   * surface uses it to refuse "pay to continue" on a plan row that was never a membership
-   * (see SubscriptionService.everWasAMembership).
+   * Whether this plan EVER carried a real enrolment -- a row that granted access at some point,
+   * as opposed to one that merely records an attempt.
+   *
+   * <p>The exclusions are the whole point. A checkout stamps the plan onto an INVITED row and an
+   * ABANDONED_CART row the moment the learner reaches the payment step, so "has any mapping" is
+   * true for every abandoned checkout ever made. Counting those as membership would hand a dead
+   * signup attempt the renewal button -- the precise thing this predicate exists to deny -- and
+   * would hide the "complete your enrollment" card from the only rows that need it.
+   * INACTIVE and DELETED rows DO count: that is a revoked trial, which was a real membership.
+   *
+   * <p>Same exclusion list as {@link #existsActiveMembership}, deliberately, so the two cannot
+   * disagree about what being a member means.
    */
-  boolean existsByUserPlanId(String userPlanId);
+  @Query("""
+      SELECT COUNT(m) > 0 FROM StudentSessionInstituteGroupMapping m
+      WHERE m.userPlanId = :userPlanId
+        AND m.status <> 'INVITED'
+        AND (m.type IS NULL OR m.type NOT IN ('ABANDONED_CART', 'PAYMENT_FAILED'))
+      """)
+  boolean existsRealEnrollmentForPlan(@Param("userPlanId") String userPlanId);
 
   long countByPackageSessionIdAndStatus(String packageSessionId, String status);
 

@@ -334,6 +334,7 @@ export const AddCourseStep2 = ({
     settingsLoading = false,
     courseCreationDisplay,
     courseId,
+    isFinalStep = true,
 }: {
     onBack: () => void;
     onSubmit: (data: Step2Data) => void;
@@ -346,6 +347,11 @@ export const AddCourseStep2 = ({
     courseCreationDisplay?: CourseCreationSettings;
     /** Used to exclude this course when reporting which courses share a session/level row. */
     courseId?: string;
+    /**
+     * False when a later step follows (the Payment & Enrolment step), so the footer reads
+     * "Next" instead of "Create" and the course is not created from here.
+     */
+    isFinalStep?: boolean;
 }) => {
     const { instituteDetails } = useInstituteDetailsStore();
     const existingBatches = instituteDetails?.batches_for_sessions || [];
@@ -4773,6 +4779,8 @@ export const AddCourseStep2 = ({
                                         <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                         {isEdit ? 'Updating...' : 'Creating...'}
                                     </span>
+                                ) : !isFinalStep ? (
+                                    'Next'
                                 ) : (
                                     <>
                                         {!isEdit && <Plus />}

@@ -308,7 +308,8 @@ public class AirtelImportPromoter {
                     "SYSTEM", null, actorName,
                     title,
                     "Airtel call " + row.getStatus().toLowerCase(),
-                    meta, null);
+                    // Link to the lead so an imported call counts as a response for TAT.
+                    meta, row.getUserId());
         } catch (Exception ignored) {
             // never block promotion on a logging side-effect
         }

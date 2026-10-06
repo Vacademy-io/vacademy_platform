@@ -140,9 +140,22 @@ public class AudienceResponse {
     @Column(name = "tat_reminder_assignee_id", length = 255)
     private String tatReminderAssigneeId;
 
-    /** Denormalized TAT deadline (submitted_at + tatHours) for scanning + the frontend badge. */
+    /** Scheduler-stamped TAT deadline (written when a reminder stage is claimed). */
     @Column(name = "tat_due_at")
     private Timestamp tatDueAt;
+
+    /**
+     * Admin-set TAT deadline for this lead. When non-null it replaces the computed deadline
+     * everywhere (list badge, SLA filter, reports, scheduler). Null = automatic.
+     */
+    @Column(name = "tat_due_override_at")
+    private Timestamp tatDueOverrideAt;
+
+    @Column(name = "tat_due_override_by", length = 255)
+    private String tatDueOverrideBy;
+
+    @Column(name = "tat_due_override_set_at")
+    private Timestamp tatDueOverrideSetAt;
 
     /** Current pipeline status (FK to lead_status.id). Replaces the JSON/enquiry_status approach. */
     @Column(name = "lead_status_id")

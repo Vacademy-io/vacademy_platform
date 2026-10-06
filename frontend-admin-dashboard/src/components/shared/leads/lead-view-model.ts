@@ -46,8 +46,10 @@ export interface LeadCardVM {
     tatOverdue?: boolean | null;
     tatDueSoon?: boolean | null;
     followUpOverdue?: boolean | null;
-    /** ISO deadline to first reach out (submitted_at + tatHours). */
+    /** ISO deadline to first reach out (admin override, else working-hours aware). */
     tatDueAt?: string | null;
+    /** True when an admin set tatDueAt by hand. */
+    tatDueOverridden?: boolean | null;
     /** First counsellor activity timestamp — drives the "Reach out in" cell.
      *  When set, the cell shows the actual contact time ("✓ Contacted · 2:28 PM");
      *  when null, the cell shows Pending / Overdue based on tatDueAt. */
@@ -273,6 +275,7 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         tatDueSoon: lead.tat_due_soon,
         followUpOverdue: lead.follow_up_overdue,
         tatDueAt: lead.tat_due_at,
+        tatDueOverridden: lead.tat_due_overridden,
         firstResponseAt: lead.first_response_at,
         followUpDueAt: lead.follow_up_due_at,
         toStudent: () => mapRecentLeadToStudent(lead),
@@ -310,6 +313,7 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         tatDueSoon: row._tat_due_soon,
         followUpOverdue: row._follow_up_overdue,
         tatDueAt: row._tat_due_at,
+        tatDueOverridden: row._tat_due_overridden,
         firstResponseAt: row._first_response_at,
         followUpDueAt: row._follow_up_due_at,
         toStudent: () => mapCampaignRowToStudent(row),

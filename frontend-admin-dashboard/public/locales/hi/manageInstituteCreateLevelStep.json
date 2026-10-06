@@ -4,11 +4,15 @@
         "selectExisting": "मौजूदा {{term}} चुनें",
         "createNew": "नया {{term}} बनाएं",
         "selectALevelPlaceholder": "एक {{term}} चुनें",
-        "durationDays_one": "अवधि: {{count}} दिन",
-        "durationDays_other": "अवधि: {{count}} दिन",
+        "durationDays_one": "{{count}} दिन",
+        "durationDays_other": "{{count}} दिन",
         "duplicateFromPreExisting": "पहले से मौजूद {{term}} से अध्ययन सामग्री कॉपी करें",
         "duplicateFrom": "{{term}} से कॉपी करें",
-        "selectForDuplication": "कॉपी करने के लिए {{term}} चुनें"
+        "selectForDuplication": "कॉपी करने के लिए {{term}} चुनें",
+        "searchLevel": "{{term}} खोजें…",
+        "noLevelsYet": "दोबारा उपयोग करने के लिए कोई {{term}} नहीं — नीचे नया जोड़ें।",
+        "searchSession": "{{term}} खोजें…",
+        "noOtherSessions": "सामग्री कॉपी करने के लिए कोई दूसरा {{term}} नहीं है।"
     },
     "validation": {
         "pleaseSelectLevel": "कृपया एक स्तर चुनें",

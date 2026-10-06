@@ -8,5 +8,7 @@
     "addCustomType": "إضافة نوع استفسار مخصص",
     "customInputPlaceholder": "أدخل {{term}}",
     "cancel": "إلغاء",
-    "save": "حفظ"
+    "save": "حفظ",
+    "searchPlaceholder": "بحث…",
+    "noMatches": "لا توجد نتائج لـ «{{query}}»"
 }

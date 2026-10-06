@@ -6,5 +6,7 @@
     "startDate": "تاريخ البدء: {{date}}",
     "validation": {
         "selectSession": "يرجى اختيار جلسة"
-    }
+    },
+    "searchPlaceholder": "ابحث عن {{session}}…",
+    "emptyForCourse": "لا يوجد {{session}} لهذه الدورة بعد — أضف الأول أدناه."
 }

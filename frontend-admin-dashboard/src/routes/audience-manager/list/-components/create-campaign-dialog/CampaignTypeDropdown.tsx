@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CaretDown, CaretUp, Check, Plus } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, Check, MagnifyingGlass, Plus } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import {
+    buildCampaignTypeFilterOptions,
     buildDefaultCampaignTypeOptions,
     type CampaignTypeOption,
 } from '../../-utils/campaign-types';
+import { handleFetchCampaignsList } from '../../-services/get-campaigns-list';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
 
 interface CampaignTypeDropdownProps {
@@ -39,6 +43,12 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
     const [options, setOptions] = useState<CampaignTypeOption[]>(
         () => initialOptions ?? buildDefaultCampaignTypeOptions(t)
     );
+    // Institutes carry their own types — I2CAN has twenty-one — so the list is no
+    // longer something you scan by eye.
+    const [query, setQuery] = useState('');
+    const visibleOptions = options.filter((o) =>
+        `${o.label} ${o.value}`.toLowerCase().includes(query.trim().toLowerCase())
+    );
     const [isAddingCustom, setIsAddingCustom] = useState(false);
     const [customValue, setCustomValue] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -50,6 +60,7 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                 setIsOpen(false);
                 setIsAddingCustom(false);
                 setCustomValue('');
+                setQuery('');
             }
         }
 
@@ -77,11 +88,29 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
         }
     }, [value, options]);
 
+    // The five built-in types are not what an institute actually uses. I2CAN's
+    // leads carry nineteen of their own, every one already saved on an audience,
+    // and this dropdown offered none of them — so creating a list meant retyping
+    // a type that existed, and a typo made a twentieth.
+    //
+    // Skipped when the caller supplies its own list (the enquiry form does).
+    const instituteId = getCurrentInstituteId();
+    const { data: audiences } = useQuery({
+        ...handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 }),
+        enabled: !initialOptions && Boolean(instituteId),
+    });
+    useEffect(() => {
+        if (initialOptions || !audiences?.content) return;
+        const saved = audiences.content.map((c) => c.campaign_type);
+        setOptions((prev) => buildCampaignTypeFilterOptions(prev, saved));
+    }, [initialOptions, audiences]);
+
     const handleSelect = (optionValue: string) => {
         onChange(optionValue);
         setIsOpen(false);
         setIsAddingCustom(false);
         setCustomValue('');
+        setQuery('');
     };
 
     const handleCustomSave = () => {
@@ -134,8 +163,24 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
 
             {isOpen && (
                 <div className="absolute z-30 mt-2 w-full rounded-lg border border-neutral-200 bg-white shadow-lg">
+                    <div className="relative border-b border-neutral-100 p-2">
+                        <MagnifyingGlass className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder={t('searchPlaceholder')}
+                            aria-label={t('searchPlaceholder')}
+                            className="w-full rounded-md border border-neutral-200 py-1.5 pl-8 pr-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                        />
+                    </div>
                     <div className="max-h-60 overflow-y-auto py-1">
-                        {options.map((option) => (
+                        {visibleOptions.length === 0 && (
+                            <p className="p-3 text-center text-sm text-neutral-500">
+                                {t('noMatches', { query: query.trim() })}
+                            </p>
+                        )}
+                        {visibleOptions.map((option) => (
                             <button
                                 key={option.value}
                                 type="button"
@@ -199,12 +244,9 @@ const CampaignTypeDropdown: React.FC<CampaignTypeDropdownProps> = ({
                 </div>
             )}
 
-            {error && (
-                <span className="mt-1 block text-sm text-red-500">{error}</span>
-            )}
+            {error && <span className="mt-1 block text-sm text-red-500">{error}</span>}
         </div>
     );
 };
 
 export default CampaignTypeDropdown;
-

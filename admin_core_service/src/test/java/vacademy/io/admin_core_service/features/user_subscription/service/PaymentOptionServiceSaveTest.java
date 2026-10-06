@@ -160,7 +160,9 @@ class PaymentOptionServiceSaveTest {
         c.setId("c");
         when(paymentOptionRepository.findPaymentOptionsWithPaymentPlansNative(
                 anyBoolean(), anyList(), anyBoolean(), anyList(), any(), any(),
-                anyBoolean(), anyList(), anyBoolean(), anyList(), anyBoolean(), anyBoolean()))
+                anyBoolean(), anyList(), anyBoolean(), anyList(), anyBoolean(), anyBoolean(),
+                // search and maxResults — both null on this path, so nullable matchers
+                any(), any()))
                 .thenReturn(List.of(a, b, c));
         when(authService.getUsersFromAuthServiceByUserIds(List.of("u1")))
                 .thenReturn(List.of(UserDTO.builder().id("u1").fullName("Neeraj H").build()))

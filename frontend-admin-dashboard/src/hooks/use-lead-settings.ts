@@ -112,6 +112,11 @@ export interface LeadSettingsConfig {
     /** TAT / follow-up SLA reminder configuration (trigger-only; engine handles delivery). */
     tatReminder: TatReminderConfig;
     followUp: FollowUpConfig;
+    /** The three dropdowns a counsellor fills when logging a follow-up. Off for
+     *  every institute until one turns it on and supplies its own wording. */
+    followUpFields: FollowUpFieldsConfig;
+    /** The "is this number already ours?" lookup. Off, and blank, until configured. */
+    leadLookup: LeadLookupConfig;
     customStatuses: CustomLeadStatus[];
 
     /**
@@ -122,6 +127,86 @@ export interface LeadSettingsConfig {
      */
     labels?: LeadTerminologyLabels;
 }
+
+/**
+ * Student response / follow-up mode / next action — what a counsellor records
+ * when they log a follow-up.
+ *
+ * The options are the institute's own words, not an enum, because every institute
+ * runs a different script. Empty list = that one dropdown is not shown, so an
+ * institute can enable just the two it cares about.
+ */
+export interface FollowUpFieldsConfig {
+    /** Gates the three dropdowns below. Does NOT gate {@link notesRequired}. */
+    enabled: boolean;
+    studentResponses: string[];
+    followUpModes: string[];
+    nextActions: string[];
+    /**
+     * Refuse to save a follow-up with an empty note.
+     *
+     * Independent of {@link enabled}: an institute can insist on a written note
+     * without adopting the dropdowns, or the other way round. Off by default —
+     * the note has always been optional and turning it on retroactively would
+     * block a counsellor mid-task.
+     */
+    notesRequired: boolean;
+    /**
+     * Refuse to save a follow-up until every dropdown the institute configured
+     * has an answer.
+     *
+     * Separate from {@link notesRequired} — an institute can demand the
+     * structured answers without demanding prose, or the other way round. Off by
+     * default: these fields went out optional, and flipping them to mandatory
+     * retroactively would block a counsellor mid-call.
+     */
+    fieldsRequired: boolean;
+}
+
+/**
+ * Lead lookup — what a counsellor may learn about a lead that isn't theirs.
+ *
+ * A counsellor only sees their own leads, so searching a colleague's lead finds
+ * nothing and they call it as a fresh one. This answers for a single exact phone
+ * or email instead of widening the list.
+ *
+ * Every field starts hidden and the institute ticks what it is willing to share.
+ * ADMIN-role users are never masked by this — the backend gives them every field,
+ * since they aren't scoped out of lead data anywhere else either.
+ */
+export interface LeadLookupConfig {
+    enabled: boolean;
+    fields: LeadLookupFields;
+    /**
+     * Which custom field holds the course. Matched by id so a rename doesn't
+     * break it. Blank = the course line is simply not shown; there is no sensible
+     * guess, and destination_package_session_id is unset at the institutes that
+     * collect the course as a form answer.
+     */
+    courseFieldId: string;
+}
+
+export interface LeadLookupFields {
+    name: boolean;
+    email: boolean;
+    phone: boolean;
+    counsellor: boolean;
+    source: boolean;
+    campaign: boolean;
+    status: boolean;
+    course: boolean;
+}
+
+export const LEAD_LOOKUP_FIELD_KEYS: (keyof LeadLookupFields)[] = [
+    'name',
+    'email',
+    'phone',
+    'counsellor',
+    'source',
+    'campaign',
+    'status',
+    'course',
+];
 
 export interface LeadTerminologyLabels {
     tier?: string;
@@ -146,6 +231,28 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
     showScoreInStudentsTable: true,
     hideConvertedInAllLeads: false,
     showConvertedFilterOption: true,
+    followUpFields: {
+        enabled: false,
+        studentResponses: [],
+        followUpModes: [],
+        nextActions: [],
+        notesRequired: false,
+        fieldsRequired: false,
+    },
+    leadLookup: {
+        enabled: false,
+        fields: {
+            name: false,
+            email: false,
+            phone: false,
+            counsellor: false,
+            source: false,
+            campaign: false,
+            status: false,
+            course: false,
+        },
+        courseFieldId: '',
+    },
     tatReminder: {
         enabled: false,
         tatHours: 24,
@@ -195,6 +302,50 @@ export function extractLeadSettingData(
     return undefined;
 }
 
+/**
+ * Coerce the three option lists to arrays of strings.
+ *
+ * This subtree gets hand-written into institutes.setting_json when a new institute
+ * is onboarded, so a stray null or a string where a list belongs is a live
+ * possibility — and `.length` on it would take down every follow-up form and the
+ * whole Completed tab, for a config the UI never validated.
+ */
+export function normaliseFollowUpFields(
+    saved: Partial<FollowUpFieldsConfig> | undefined
+): FollowUpFieldsConfig {
+    const list = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+    return {
+        enabled: saved?.enabled === true,
+        studentResponses: list(saved?.studentResponses),
+        followUpModes: list(saved?.followUpModes),
+        nextActions: list(saved?.nextActions),
+        notesRequired: saved?.notesRequired === true,
+        fieldsRequired: saved?.fieldsRequired === true,
+    };
+}
+
+/**
+ * Coerce the lookup config. Same reason as {@link normaliseFollowUpFields}: this
+ * is hand-written into institutes.setting_json during onboarding, and a missing
+ * `fields` object would make every `fields.name` read throw.
+ */
+export function normaliseLeadLookup(
+    saved: Partial<LeadLookupConfig> | undefined
+): LeadLookupConfig {
+    const savedFields = (saved?.fields ?? {}) as Partial<LeadLookupFields>;
+    const fields = {} as LeadLookupFields;
+    for (const key of LEAD_LOOKUP_FIELD_KEYS) {
+        // Only a real boolean true shares a field — a stray "true" string must not.
+        fields[key] = savedFields[key] === true;
+    }
+    return {
+        enabled: saved?.enabled === true,
+        fields,
+        courseFieldId: typeof saved?.courseFieldId === 'string' ? saved.courseFieldId : '',
+    };
+}
+
 /** Merge saved config over the defaults, keeping nested groups whole. */
 export function mergeLeadSettings(
     saved: Partial<LeadSettingsConfig> | undefined
@@ -210,6 +361,8 @@ export function mergeLeadSettings(
         },
         tatReminder: { ...LEAD_SETTINGS_DEFAULTS.tatReminder, ...(saved.tatReminder ?? {}) },
         followUp: { ...LEAD_SETTINGS_DEFAULTS.followUp, ...(saved.followUp ?? {}) },
+        followUpFields: normaliseFollowUpFields(saved.followUpFields),
+        leadLookup: normaliseLeadLookup(saved.leadLookup),
         labels: { ...(LEAD_SETTINGS_DEFAULTS.labels ?? {}), ...(saved.labels ?? {}) },
     };
 }

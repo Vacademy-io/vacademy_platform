@@ -14,6 +14,11 @@ import {
     CREATE_TIMELINE_EVENT,
     CREATE_LEAD_FOLLOWUP,
 } from '@/constants/urls';
+import {
+    FollowUpFields,
+    useFollowUpFields,
+    useFollowUpNotesRequired,
+} from '@/components/shared/leads/follow-up-fields';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
@@ -166,11 +171,14 @@ async function updateLeadTier(
     return response.data;
 }
 
-async function fetchUserAudiences(userId: string): Promise<AudienceMembership[]> {
+async function fetchUserAudiences(
+    userId: string,
+    instituteId: string
+): Promise<AudienceMembership[]> {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: GET_USER_AUDIENCES,
-        params: { userId },
+        params: { userId, instituteId },
     });
     return response.data;
 }
@@ -762,6 +770,8 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
+    const followUpFields = useFollowUpFields();
+    const notesRequired = useFollowUpNotesRequired();
     const queryClient = useQueryClient();
     const noteActionTypes = buildNoteActionTypes(t);
 
@@ -774,16 +784,22 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
 
-    // For Follow Up the schedule time is mandatory; content is optional.
+    // For Follow Up the schedule time is mandatory; the note is optional unless
+    // the institute requires one on every follow-up.
     const isFollowUp = actionType === 'FOLLOW_UP';
+    const followUpNoteMissing = isFollowUp && notesRequired && isNoteEmpty;
     const canSubmit = isFollowUp
-        ? !!scheduleTime && !!audienceResponseId
+        ? !!scheduleTime &&
+          !!audienceResponseId &&
+          !followUpNoteMissing &&
+          !followUpFields.missingRequired
         : !isNoteEmpty || callMeta !== undefined;
 
     function resetForm() {
         setNoteText('');
         setCallActivity(null);
         setScheduleTime('');
+        followUpFields.reset();
         setIsExpanded(false);
     }
 
@@ -793,6 +809,7 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 audience_response_id: audienceResponseId,
                 schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
                 content: noteText.trim() || null,
+                ...followUpFields.payload,
             }),
         onSuccess: () => {
             toast.success(t('addNote.followUpScheduled'));
@@ -820,7 +837,12 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                 title: label,
                 description: noteText.trim(),
                 student_user_id: userId,
-                metadata: callMeta,
+                // metadata_json is free-form, so the student's response rides along
+                // with a note (or a call log) without a schema change.
+                metadata:
+                    callMeta || followUpFields.noteMetadata()
+                        ? { ...(callMeta ?? {}), ...(followUpFields.noteMetadata() ?? {}) }
+                        : undefined,
             });
         },
         onSuccess: () => {
@@ -898,15 +920,36 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                             className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-800 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
                         />
                     </div>
+                    {followUpFields.visible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            // student-profile-overlay renders this inside a Dialog, and
+                            // react-remove-scroll kills the wheel on a portalled list there.
+                            portal={false}
+                        />
+                    )}
                     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2">
                         <RichTextEditor
                             value={noteText}
                             onChange={setNoteText}
-                            placeholder={t('addNote.followUpPlaceholder')}
+                            placeholder={
+                                notesRequired
+                                    ? t('addNote.followUpPlaceholderRequired')
+                                    : t('addNote.followUpPlaceholder')
+                            }
                             minHeight={56}
                             minimalToolbar
                         />
                     </div>
+                    {followUpNoteMissing && (
+                        <p className="text-caption text-danger-600">{t('addNote.noteRequired')}</p>
+                    )}
+                    {followUpFields.missingRequired && (
+                        <p className="text-caption text-danger-600">
+                            {t('addNote.fieldsRequired')}
+                        </p>
+                    )}
                     {!audienceResponseId && (
                         <p className="text-caption text-amber-600">
                             {t('addNote.noResponseLinked')}
@@ -914,22 +957,38 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
                     )}
                 </div>
             ) : (
-                <div
-                    className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                            e.preventDefault();
-                            if (canSubmit) handleSubmit();
-                        }
-                    }}
-                >
-                    <RichTextEditor
-                        value={noteText}
-                        onChange={setNoteText}
-                        placeholder={t('addNote.notePlaceholder')}
-                        minHeight={64}
-                        minimalToolbar
-                    />
+                <div className="flex flex-col gap-2">
+                    {/* The student's response also belongs on a plain note — "spoke to
+                        them, they want a callback" is the same answer whether or not a
+                        follow-up is being booked. Not mandatory here: the institute's
+                        setting is about follow-ups, and blocking every quick jotting on
+                        a dropdown would be its own problem. */}
+                    {followUpFields.studentResponseVisible && (
+                        <FollowUpFields
+                            values={followUpFields.values}
+                            onChange={followUpFields.setValues}
+                            only={['studentResponse']}
+                            required={false}
+                            portal={false}
+                        />
+                    )}
+                    <div
+                        className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                if (canSubmit) handleSubmit();
+                            }
+                        }}
+                    >
+                        <RichTextEditor
+                            value={noteText}
+                            onChange={setNoteText}
+                            placeholder={t('addNote.notePlaceholder')}
+                            minHeight={64}
+                            minimalToolbar
+                        />
+                    </div>
                 </div>
             )}
 
@@ -971,10 +1030,11 @@ function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
 
 function AudienceListSection({ userId }: { userId: string }) {
     const { t } = useTranslation('manageStudentsLeadProfile');
+    const instituteId = getCurrentInstituteId() ?? '';
     const { data: audiences, isLoading } = useQuery({
-        queryKey: ['user-audiences', userId],
-        queryFn: () => fetchUserAudiences(userId),
-        enabled: !!userId,
+        queryKey: ['user-audiences', userId, instituteId],
+        queryFn: () => fetchUserAudiences(userId, instituteId),
+        enabled: !!userId && !!instituteId,
         staleTime: 2 * 60 * 1000,
     });
 
@@ -1163,9 +1223,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     // linked campaign response when the profile has no `best_score_response_id`
     // yet (common for fresh leads that haven't been scored).
     const { data: audiences } = useQuery({
-        queryKey: ['user-audiences', userId],
-        queryFn: () => fetchUserAudiences(userId),
-        enabled: !!userId,
+        queryKey: ['user-audiences', userId, instituteId],
+        queryFn: () => fetchUserAudiences(userId, instituteId),
+        enabled: !!userId && !!instituteId,
         staleTime: 2 * 60 * 1000,
     });
     const effectiveResponseId =

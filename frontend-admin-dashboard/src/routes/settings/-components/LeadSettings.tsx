@@ -17,6 +17,8 @@ import LeadTiersManager from './LeadTiersManager';
 import LeadSlaSettings from './LeadSlaSettings';
 import LeadReportSettings from './LeadReportSettings';
 import LeadDedupSettings from './LeadDedupSettings';
+import LeadFollowUpFieldsSettings from './LeadFollowUpFieldsSettings';
+import LeadLookupSettings from './LeadLookupSettings';
 import PoolsList from './pools/PoolsList';
 import AudienceFormSettings from './AudienceFormSettings';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
@@ -517,6 +519,12 @@ function ConfigSection({
 
                     {/* ── TAT + Follow-up reminders (table-backed) ── */}
                     <LeadSlaSettings />
+
+                    {/* ── Follow-up form dropdowns (LEAD_SETTING.data.followUpFields subtree) ── */}
+                    <LeadFollowUpFieldsSettings />
+
+                    {/* ── Check Lead duplicate lookup (LEAD_SETTING.data.leadLookup subtree) ── */}
+                    <LeadLookupSettings />
 
                     {/* ── Lead Statuses (table-backed CRUD) ── */}
                     <LeadStatusesManager />

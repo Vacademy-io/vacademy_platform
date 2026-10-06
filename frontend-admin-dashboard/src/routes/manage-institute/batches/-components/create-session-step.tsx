@@ -1,6 +1,7 @@
 // CreateSessionStep.tsx
 import { AddSessionInput } from '@/components/design-system/add-session-input';
-import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
+import { BatchItemSelect } from './batch-item-select';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { RadioGroupItem, RadioGroup } from '@/components/ui/radio-group';
 
 import { useEffect, useState } from 'react';
@@ -20,7 +21,40 @@ export const CreateSessionStep = () => {
     const [newSessionStartDate, setNewSessionStartDate] = useState('');
     const form = useFormContext();
     const { watch } = form;
-    const [sessionList, setSessionList] = useState<Session[]>([]);
+    const { getSessionFromPackage, instituteDetails } = useInstituteDetailsStore();
+    const selectedCourseId = watch('selectedCourse')?.id;
+
+    /**
+     * The chosen course's existing sessions.
+     *
+     * Loading these never happened: sessionList started empty and only ever grew
+     * when the user added one, so "select existing" was a dead, disabled dropdown
+     * for every course — including courses that do have sessions.
+     *
+     * Seeded in the initializer rather than from an effect, because the
+     * auto-switch below reads it on the FIRST render. With an effect, every
+     * course looked session-less for one render and got switched to "create new"
+     * before its sessions ever arrived.
+     */
+    const sessionsForCourse = (courseId?: string): Session[] =>
+        courseId ? (getSessionFromPackage({ courseId }) as unknown as Session[]) : [];
+    const [sessionList, setSessionList] = useState<Session[]>(() =>
+        sessionsForCourse(selectedCourseId)
+    );
+
+    useEffect(() => {
+        setSessionList(sessionsForCourse(selectedCourseId));
+    }, [selectedCourseId, instituteDetails]);
+
+    /**
+     * A course with no sessions yet can only go one way, so go there instead of
+     * leaving the user on an empty picker wondering what to click.
+     */
+    useEffect(() => {
+        if (sessionList.length === 0 && watch('sessionCreationType') === 'existing') {
+            form.setValue('sessionCreationType', 'new');
+        }
+    }, [sessionList.length]);
 
     const handleAddSession = (sessionName: string, startDate: string) => {
         const newSession = {
@@ -69,11 +103,22 @@ export const CreateSessionStep = () => {
                             >
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                        <RadioGroupItem value="existing" id="existing-session" />
+                                        {/* Nothing to select when the course has no sessions —
+                                            matching how the course step disables its own
+                                            "existing" option on an empty list. */}
+                                        <RadioGroupItem
+                                            value="existing"
+                                            id="existing-session"
+                                            disabled={sessionList.length === 0}
+                                        />
                                     </FormControl>
                                     <FormLabel
                                         htmlFor="existing-session"
-                                        className="cursor-pointer font-normal text-neutral-600"
+                                        className={`cursor-pointer font-normal ${
+                                            sessionList.length === 0
+                                                ? 'text-neutral-400'
+                                                : 'text-neutral-600'
+                                        }`}
                                     >
                                         {t('selectExisting', {
                                             session: getTerminology(
@@ -118,20 +163,31 @@ export const CreateSessionStep = () => {
                                 <span className="text-danger-500">*</span>
                             </FormLabel>
                             <FormControl>
-                                <MyDropdown
-                                    currentValue={field.value}
-                                    dropdownList={sessionList.map((session) => ({
+                                <BatchItemSelect
+                                    items={sessionList.map((session) => ({
                                         id: session.id,
                                         name: session.name,
                                     }))}
-                                    handleChange={field.onChange}
+                                    value={field.value}
+                                    onChange={field.onChange}
                                     placeholder={t('selectPlaceholder', {
                                         session: getTerminology(
                                             ContentTerms.Session,
                                             SystemTerms.Session
                                         ).toLocaleLowerCase(),
                                     })}
-                                    disable={sessionList.length === 0}
+                                    searchPlaceholder={t('searchPlaceholder', {
+                                        session: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ).toLocaleLowerCase(),
+                                    })}
+                                    emptyMessage={t('emptyForCourse', {
+                                        session: getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        ).toLocaleLowerCase(),
+                                    })}
                                 />
                             </FormControl>
                             <FormMessage />

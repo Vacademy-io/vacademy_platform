@@ -4,12 +4,16 @@
         "selectExisting": "Sélectionner un {{term}} existant",
         "createNew": "Créer un nouveau {{term}}",
         "selectALevelPlaceholder": "Sélectionner un {{term}}",
-        "durationDays_one": "Durée : {{count}} jour",
+        "durationDays_one": "{{count}} jour",
         "durationDays_many": "Durée : {{count}} jours",
-        "durationDays_other": "Durée : {{count}} jours",
+        "durationDays_other": "{{count}} jours",
         "duplicateFromPreExisting": "Dupliquer le matériel d'étude à partir d'un {{term}} préexistant",
         "duplicateFrom": "Dupliquer à partir de {{term}}",
-        "selectForDuplication": "Sélectionner {{term}} pour la duplication"
+        "selectForDuplication": "Sélectionner {{term}} pour la duplication",
+        "searchLevel": "Rechercher {{term}}…",
+        "noLevelsYet": "Aucun {{term}} à réutiliser — ajoutez-en un ci-dessous.",
+        "searchSession": "Rechercher {{term}}…",
+        "noOtherSessions": "Aucun autre {{term}} d’où copier le contenu."
     },
     "validation": {
         "pleaseSelectLevel": "Veuillez sélectionner un niveau",

@@ -1,4 +1,6 @@
 {
+    "emptyTitle": "Aucun apprenant n’est lié à ce cours",
+    "emptyHint": "Le groupe prévu pour ce cours n’a aucun apprenant actif, ou il a été supprimé. Modifiez le cours et choisissez un groupe avec des apprenants pour marquer la présence.",
     "title": "Présence",
     "exportCsv": "Exporter en CSV",
     "saving": "Enregistrement...",

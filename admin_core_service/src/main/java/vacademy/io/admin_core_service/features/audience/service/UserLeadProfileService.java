@@ -404,21 +404,24 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Add {@code tat} (human-readable e.g. "24 hours") and {@code tatHours} (raw int) to ctx
-     * so templates can render copy like "Please reach out before {{tat}}". Falls back to a
-     * generic "the earliest" string when TAT isn't configured for the institute — that way
-     * the template still reads sensibly instead of leaving a literal `tat` placeholder.
+     * Add {@code tat} (human-readable e.g. "1 hour 30 minutes"), {@code tatMinutes} (exact)
+     * and {@code tatHours} (whole hours, rounded up) to ctx so templates can render copy like
+     * "Please reach out before {{tat}}". Falls back to a generic "the earliest" string when TAT
+     * isn't configured for the institute — that way the template still reads sensibly instead
+     * of leaving a literal `tat` placeholder.
      */
     private void enrichTatInfo(Map<String, Object> ctx, String instituteId) {
         String tat = "the earliest";
         Integer tatHours = null;
+        Integer tatMinutes = null;
         if (instituteId != null && !instituteId.isBlank()) {
             try {
                 LeadSlaConfigDTO config = leadSlaConfigService.getSchedulerConfig(instituteId);
                 if (config != null && config.getTatReminder() != null
-                        && config.getTatReminder().getTatHours() != null) {
+                        && config.getTatReminder().getTatMinutes() != null) {
+                    tatMinutes = config.getTatReminder().getTatMinutes();
                     tatHours = config.getTatReminder().getTatHours();
-                    tat = tatHours == 1 ? "1 hour" : tatHours + " hours";
+                    tat = LeadSlaConfigService.formatDuration(tatMinutes);
                 }
             } catch (Exception e) {
                 log.debug("[LeadTrigger] TAT lookup failed for institute {}: {}",
@@ -427,6 +430,7 @@ public class UserLeadProfileService {
         }
         leadTriggerContextBuilder.put(ctx, "tat", tat);
         if (tatHours != null) leadTriggerContextBuilder.put(ctx, "tatHours", tatHours);
+        if (tatMinutes != null) leadTriggerContextBuilder.put(ctx, "tatMinutes", tatMinutes);
     }
 
     /**
@@ -540,11 +544,13 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Get all audience/campaign memberships for a user.
-     * Returns one entry per audience response the user has submitted.
+     * Get a user's audience/campaign memberships within one institute.
+     * Returns one entry per audience response the user has submitted there — never
+     * another institute's campaigns, even when the same person is a lead in both.
      */
-    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId) {
-        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId, String instituteId) {
+        List<AudienceResponse> responses =
+                audienceResponseRepository.findAllByInstituteAndUserOrStudent(instituteId, userId);
         if (responses.isEmpty()) return Collections.emptyList();
 
         // Batch fetch audience details

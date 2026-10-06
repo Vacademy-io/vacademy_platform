@@ -78,6 +78,7 @@ export interface CampaignUserTable {
     _custom_field_values?: Record<string, string | null>;
     // TAT / follow-up SLA deadlines + badge (visual only)
     _tat_due_at?: string | null;
+    _tat_due_overridden?: boolean | null; // admin set the TAT deadline by hand
     _first_response_at?: string | null; // drives "Responded in N" in the Reach-out-by cell
     _follow_up_due_at?: string | null;
     _tat_overdue?: boolean | null;
@@ -452,6 +453,8 @@ export const generateDynamicColumns = (
                         overdue={row.original._tat_overdue}
                         respondedAt={row.original._first_response_at}
                         baselineAt={row.original.submittedAt}
+                        responseId={row.original._response_id}
+                        dueOverridden={row.original._tat_due_overridden}
                     />
                 </div>
             ),

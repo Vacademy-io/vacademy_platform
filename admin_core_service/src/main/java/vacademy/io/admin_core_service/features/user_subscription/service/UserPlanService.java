@@ -784,8 +784,21 @@ public class UserPlanService {
             // Pass the plan the payment landed on so the ACTIVE mapping references THIS
             // plan — not the plan id of whatever INVITED row is being shifted (which,
             // after a failed-then-retried checkout, is the abandoned first plan).
-            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
-                    userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
+            int shiftedOnFirstPayment = learnerBatchEnrollService
+                    .shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
+                            userPlan.getUserId(), enrollInvite.getId(), userPlan.getId());
+            if (shiftedOnFirstPayment == 0) {
+                // The shift PROMOTES existing INVITED / ABANDONED_CART rows and creates none, so
+                // zero here means this payment enrolled nobody — while everything below (inventory,
+                // ACTIVE status, invoice, confirmation email) carries on as though it had.
+                // Reachable whenever the row the checkout created is not reachable from this plan's
+                // user: under PHONE identity the form's row can belong to a different account on
+                // the same number, which is how a paid learner lands in no batch at all.
+                logger.error("First payment on plan {} shifted NOTHING for user {} in {} — repairing "
+                        + "the enrollment directly", userPlan.getId(), userPlan.getUserId(), packageSessionIds);
+                learnerBatchEnrollService.reviveLapsedEnrollment(
+                        packageSessionIds, userPlan.getUserId(), userPlan);
+            }
 
             // Decrement inventory (available slots) for each enrolled package session
             for (String psId : packageSessionIds) {

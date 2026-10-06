@@ -66,14 +66,12 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Lightning } from '@phosphor-icons/react';
 import { CategoryRail, type CategoryId } from './category-rail';
 import { SidebarPanel } from './sidebar-panel';
-import {
-    useCallIntelligenceEnabled,
-    useHasCallIntelligenceData,
-} from '@/components/shared/leads';
+import { useCallIntelligenceEnabled, useHasCallIntelligenceData } from '@/components/shared/leads';
 import { useIsMentor } from '@/hooks/use-is-mentor';
 import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
 // create-assessment wizard. Hidden together with the Create Assessment button.
 const ASSESSMENT_CREATE_SUB_ITEM_IDS = new Set([
@@ -182,6 +180,18 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // Fail closed: both hooks return false while loading, so it stays hidden until
     // the settings/data resolve. The has-data probe is skipped when the feature is
     // on (the entry shows regardless), avoiding an extra analytics call.
+    // Check Lead is off for every institute until one turns it on, so without a
+    // gate the entry is a dead page for everyone else.
+    //
+    // Like every gate in this file (see project notes on sidebar feature-gates),
+    // this costs a request on NON-CRM pages too — the sidebar is in the layout.
+    // It shares the ['lead-settings-config'] cache the CRM screens already fill,
+    // 5-min staleTime, and hits the same /institute/setting/v1/get that the
+    // call-intelligence gate right below already calls on every page. So it is
+    // one more cached GET per session, not one per navigation.
+    const { leadLookup } = useLeadSettings();
+    const isLeadLookupEnabled = leadLookup.enabled;
+
     const isCrmIntelligenceEnabled = useCallIntelligenceEnabled();
     const hasCrmIntelligenceData = useHasCallIntelligenceData(!isCrmIntelligenceEnabled);
     const isCrmIntelligenceAvailable = isCrmIntelligenceEnabled || hasCrmIntelligenceData;
@@ -312,7 +322,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // straight into the create wizard, so leaving them would contradict the
         // hidden Create Assessment button.
         const needsSubItemFilter =
-            !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment || !isMentor;
+            !isChatEnabled ||
+            !isCrmIntelligenceAvailable ||
+            !canCreateAssessment ||
+            !isMentor ||
+            !isLeadLookupEnabled;
         // Drop My HR entirely for non-employees — it is a whole module, not a
         // sub-item, so it is filtered from the item list rather than within one.
         const rawBaseWithHr = hasEmployeeProfile
@@ -327,6 +341,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                           (isChatEnabled || s.subItemId !== 'chat') &&
                           (isCrmIntelligenceAvailable || s.subItemId !== 'ai-intelligence') &&
                           (isMentor || s.subItemId !== 'mentorship-my-mentorship') &&
+                          (isLeadLookupEnabled || s.subItemId !== 'lead-lookup') &&
                           (canCreateAssessment ||
                               !ASSESSMENT_CREATE_SUB_ITEM_IDS.has(s.subItemId || ''))
                   ),

@@ -1728,7 +1728,7 @@ public class AudienceService {
         // Bell notification to the new owner — mirrors the pool auto-assign
         // alert so a bulk-imported lead owner hears about their lead too.
         // Best-effort inside the notifier; never fails the import row.
-        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName);
+        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName, leadUserId);
     }
 
     /**
@@ -2688,6 +2688,9 @@ public class AudienceService {
                     String campaignName = audienceId != null
                             ? audienceRepository.findById(audienceId).map(Audience::getCampaignName).orElse(null)
                             : null;
+                    // Left as an ordinary dismissible alert: an enquiry is not a lead
+                    // user, so there is no id here that a timeline event would ever
+                    // match, and a correlation that never clears is worse than none.
                     leadAssignmentNotifier.notifyAssigned(instituteId, finalCounsellorId, null, campaignName);
                 } catch (Exception e) {
                     logger.warn("Failed to notify counsellor {} for enquiry {}: {}",
@@ -3208,17 +3211,19 @@ public class AudienceService {
             }
         }
 
-        // Resolve the institute's tatHours up-front so the SLA-state filter can derive
-        // the deadline live as `submitted_at + tatHours`. Needs to happen BEFORE the
-        // repo call because the predicate is bound at query time. Returns null when
-        // the institute hasn't enabled TAT — SQL guards with `:tatHours IS NOT NULL`.
-        Integer filterTatHours = resolveFilterTatHours(
+        // Resolve the institute's TAT (minutes + working-hours rule) up-front so the SLA-state
+        // filter can derive the deadline live via lead_sla_due_at(). Needs to happen BEFORE the
+        // repo call because the predicate is bound at query time. Null when the institute
+        // hasn't enabled TAT — SQL guards with `:tatMinutes IS NOT NULL`.
+        vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO.TatReminder filterTat = resolveFilterTat(
                 filterDTO.getInstituteId() != null && !filterDTO.getInstituteId().isBlank()
                         ? filterDTO.getInstituteId()
                         : (filterDTO.getAudienceId() != null
                             ? audienceRepository.findById(filterDTO.getAudienceId())
                                     .map(Audience::getInstituteId).orElse(null)
                             : null));
+        Integer filterTatMinutes = filterTat != null ? filterTat.getTatMinutes() : null;
+        String filterTatRule = filterTat != null ? filterTat.getWorkingHoursRule() : null;
 
         // Pre-resolve the custom-field filters into matching audience_response IDs
         // using one indexed lookup per field (intersected across fields). This
@@ -3276,7 +3281,8 @@ public class AudienceService {
                     conversionStatusFilter,
                     audienceStatusFilter,
                     filterDTO.getSlaFilter(),
-                    filterTatHours,
+                    filterTatMinutes,
+                    filterTatRule,
                     customFieldMatchedIdsCsv,
                     customFieldExcludedIdsCsv,
                     filterDTO.getCallHistoryFilter(),
@@ -3321,7 +3327,8 @@ public class AudienceService {
                 conversionStatusFilter,
                 audienceStatusFilter,
                 filterDTO.getSlaFilter(),
-                filterTatHours,
+                filterTatMinutes,
+                filterTatRule,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 filterDTO.getSortCustomFieldId(),
@@ -3384,22 +3391,23 @@ public class AudienceService {
     }
 
     /**
-     * Reads the institute's TAT hours from LEAD_SETTING for use in the SLA-state filter
-     * (the predicate derives `tat_due_at = submitted_at + tatHours` live so it matches
-     * the row-level badge regardless of scheduler timing). Returns null when the institute
-     * has no setting, TAT is disabled, or any read failure — the SQL guards with
-     * `:tatHours IS NOT NULL` so a null safely turns the predicate off.
+     * Reads the institute's TAT config (minutes + working-hours rule) from lead_sla_config for
+     * the SLA-state filter (the predicate derives the deadline live via lead_sla_due_at() so
+     * it matches the row-level badge regardless of scheduler timing). Returns null when the
+     * institute has no setting, TAT is disabled, or any read failure — the SQL guards with
+     * `:tatMinutes IS NOT NULL` so a null safely turns the predicate off.
      */
-    private Integer resolveFilterTatHours(String instituteId) {
+    private vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO.TatReminder resolveFilterTat(
+            String instituteId) {
         if (instituteId == null || instituteId.isBlank()) return null;
         try {
             vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla =
                     leadSlaConfigService.getSchedulerConfig(instituteId);
             if (sla != null && sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
-                return sla.getTatReminder().getTatHours();
+                return sla.getTatReminder();
             }
         } catch (Exception ex) {
-            logger.warn("Failed to read TAT hours for SLA filter (institute={}): {}", instituteId, ex.getMessage());
+            logger.warn("Failed to read TAT for SLA filter (institute={}): {}", instituteId, ex.getMessage());
         }
         return null;
     }
@@ -3422,44 +3430,49 @@ public class AudienceService {
         Map<String, LeadScore> scoreByResponseId = leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
                 .collect(Collectors.toMap(LeadScore::getAudienceResponseId, s -> s, (a, b) -> a));
 
-        // SLA deadlines: read the institute's TAT / follow-up config once. tatHours /
-        // followUpSlaHours
+        // SLA deadlines: read the institute's TAT / follow-up config once. tatMinutes /
+        // followUpSlaMinutes
         // stay null when the institute hasn't enabled that SLA, so we don't show a
         // meaningless deadline.
-        Integer tatHours = null;
-        Integer followUpSlaHours = null;
+        Integer tatMinutes = null;
+        String tatRule = null;
+        Integer followUpSlaMinutes = null;
         if (instituteId != null && !instituteId.isBlank()) {
             try {
                 vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla = leadSlaConfigService
                         .getSchedulerConfig(instituteId);
                 if (sla != null) {
                     if (sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
-                        tatHours = sla.getTatReminder().getTatHours();
+                        tatMinutes = sla.getTatReminder().getTatMinutes();
+                        tatRule = sla.getTatReminder().getWorkingHoursRule();
                     }
                     if (sla.getFollowUp() != null && sla.getFollowUp().isEnabled()) {
-                        followUpSlaHours = sla.getFollowUp().getFollowUpSlaHours();
+                        followUpSlaMinutes = sla.getFollowUp().getFollowUpSlaMinutes();
                     }
                 }
             } catch (Exception ex) {
                 logger.warn("Failed to read SLA config for institute {}: {}", instituteId, ex.getMessage());
             }
         }
-        // Counsellor activity drives BOTH TAT and follow-up displays — single source of
-        // truth.
-        // firstActionAt = MIN(timeline_event by assigned counsellor) → "Reach out by →
-        // ✓ Responded"
-        // lastActionAt = MAX(timeline_event by assigned counsellor) → follow-up
-        // deadline
-        // TAT is now strictly "time the counsellor took to log their first
-        // note/call/activity";
-        // status changes by admins no longer count. Fetch when
-        // EITHER TAT or follow-up SLA is on.
-        final Integer followUpSlaHoursFinal = followUpSlaHours;
-        final Integer tatHoursFinal = tatHours;
-        final List<vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection> counselorActions = ((tatHours != null
-                || followUpSlaHours != null) && !responseIds.isEmpty())
-                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds)
+        // Response events drive BOTH TAT and follow-up displays — single source of truth,
+        // shared with the reports and the SLA scheduler (see the RESPONSE EVENT definition on
+        // AudienceResponseRepository.findCounselorActionsByResponseIds).
+        // firstActionAt = MIN(response event) → "Reach out by → ✓ Responded"
+        // lastActionAt  = MAX(response event) → follow-up deadline
+        // Fetch when EITHER TAT or follow-up SLA is on.
+        final Integer tatMinutesFinal = tatMinutes;
+        final List<vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection> counselorActions = ((tatMinutes != null
+                || followUpSlaMinutes != null) && !responseIds.isEmpty())
+                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds, tatMinutes, tatRule)
                         : Collections.emptyList();
+        // Effective TAT deadline per lead, computed in SQL (admin override, else lead_sla_due_at —
+        // working-hours aware) so the badge matches the SLA filter and the reports exactly.
+        final Map<String, Timestamp> tatDueByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getTatDueAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getTatDueAt,
+                        (a, b) -> a));
         final Map<String, Timestamp> firstActionByResponseId = counselorActions.stream()
                 .filter(p -> p.getLeadId() != null && p.getFirstActionAt() != null)
                 .collect(Collectors.toMap(
@@ -3623,13 +3636,11 @@ public class AudienceService {
                     ? enquiryIdToCounselor.get(response.getEnquiryId())
                     : null;
 
-            // Reach-out deadline = submitted_at + tatHours (computed live when TAT is on;
-            // else the
-            // scheduler-stamped value, which may be null). Follow-up deadline = last
-            // counselor action
-            // + followUpSlaHours (null until the counselor has acted at least once).
-            Timestamp computedTatDueAt = (tatHoursFinal != null && response.getSubmittedAt() != null)
-                    ? Timestamp.from(response.getSubmittedAt().toInstant().plusSeconds(tatHoursFinal * 3600L))
+            // Reach-out deadline = the effective TAT deadline from SQL when TAT is on (admin
+            // override, else working-hours aware); else the scheduler-stamped value, which may
+            // be null.
+            Timestamp computedTatDueAt = tatMinutesFinal != null && tatDueByResponseId.containsKey(response.getId())
+                    ? tatDueByResponseId.get(response.getId())
                     : response.getTatDueAt();
             Timestamp lastAction = lastActionByResponseId.get(response.getId());
             // "Follow up at" = ONLY a counsellor-explicitly-scheduled callback (a row in
@@ -3639,10 +3650,7 @@ public class AudienceService {
             // separately via tat_reminder_stage / follow_up_overdue.
             Timestamp computedFollowUpDueAt = scheduledFollowupByResponseId.get(response.getId());
             // First-response timestamp powers the "Reach out by → ✓ Responded" display.
-            // Strict TAT definition: first counsellor activity (timeline_event by assigned
-            // counsellor)
-            // minus submitted_at. Status changes by admins do NOT count — only real
-            // activity.
+            // TAT definition: first response event on the lead minus submitted_at.
             vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
                     .getUserId() != null ? userIdToProfile.get(response.getUserId()) : null;
             Timestamp firstResponseAt = firstActionByResponseId.get(response.getId());
@@ -3695,6 +3703,7 @@ public class AudienceService {
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)
                     .tatDueAt(computedTatDueAt)
+                    .tatDueOverridden(response.getTatDueOverrideAt() != null)
                     .firstResponseAt(firstResponseAt)
                     .followUpDueAt(computedFollowUpDueAt)
                     .tatReminderStage(response.getTatReminderStage())
@@ -5979,7 +5988,11 @@ public class AudienceService {
                                     "Counselor manually reassigned",
                                     Map.of("counselor_id", updatedCounsellorId,
                                             "assignment_source", "MANUAL"),
-                                    null);
+                                    // Link to the lead so a manual reassignment counts as a
+                                    // response for TAT (the intake auto-assignment event in
+                                    // linkCounsellorToEnquiry deliberately stays unlinked).
+                                    response.getUserId() != null ? response.getUserId()
+                                            : response.getStudentUserId());
                         } catch (Exception e) {
                             logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
                                     response.getEnquiryId(), e.getMessage());

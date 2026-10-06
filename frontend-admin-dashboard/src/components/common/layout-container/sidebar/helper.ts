@@ -280,3 +280,37 @@ export function parseSidebarLink(link?: string): {
     });
     return { to: link.slice(0, q), search };
 }
+
+/**
+ * Is this sidebar link the one the user is currently on?
+ *
+ * Several sub-items can share a path and differ only by query — the Follow-ups
+ * buckets are all /audience-manager/follow-ups with ?bucket=today|all|overdue|…
+ * Comparing the pathname against the whole link meant none of those ever
+ * matched, so the highlight stayed on whichever sibling had a bare path and
+ * clicking "All Follow Ups" left it on "Today's Pending Follow-ups".
+ *
+ * A link's own params must all be satisfied; extra params in the URL (lock=,
+ * date=, a filter the user added) don't stop it matching.
+ */
+export function isSidebarLinkActive(
+    link: string | undefined,
+    currentPath: string,
+    currentSearch: Record<string, unknown> | undefined
+): boolean {
+    if (!link) return false;
+    const { to, search } = parseSidebarLink(link);
+    if (!to) return false;
+    if (!(currentPath === to || currentPath.startsWith(to + '/'))) return false;
+    if (!search) return true;
+    return Object.entries(search).every(
+        ([key, value]) => String(currentSearch?.[key] ?? '') === String(value)
+    );
+}
+
+/** How specific a link is, for picking a winner when several match. */
+export function sidebarLinkSpecificity(link: string | undefined): number {
+    if (!link) return 0;
+    const { to, search } = parseSidebarLink(link);
+    return to.length + Object.keys(search ?? {}).length * 1000;
+}

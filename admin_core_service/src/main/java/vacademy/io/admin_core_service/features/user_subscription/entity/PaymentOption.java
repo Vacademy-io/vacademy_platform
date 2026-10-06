@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Where;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
@@ -97,6 +98,12 @@ public class PaymentOption {
     // mappedBy refers to the field in the PaymentPlan entity that owns the relationship (the foreign key)
     @OneToMany(mappedBy = "paymentOption", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Where(clause = "status = 'ACTIVE'")
+    // Every caller that maps a list of options to DTOs reads this collection, so a lazy
+    // load per option is an N+1 the size of the list. get-payment-options measured 31s
+    // against an institute with 6,665 options while the query behind it takes 31ms --
+    // a thousand lazy SELECTs, not a slow query. Hibernate now fetches the plans for up
+    // to 500 options at a time, turning that into about fourteen round trips.
+    @BatchSize(size = 500)
     // Without this the plans come back in physical row order, so editing any one plan
     // silently reshuffles the learner's plan list. Shortest cycle first (Monthly →
     // Quarterly → Half-Yearly → Annual), which is the order learners expect to compare in.

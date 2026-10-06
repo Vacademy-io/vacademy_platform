@@ -398,6 +398,8 @@ public class AnnouncementService {
         announcement.setCreatedByName(request.getCreatedByName());
         announcement.setCreatedByRole(request.getCreatedByRole());
         announcement.setTimezone(request.getTimezone() != null ? request.getTimezone() : "UTC");
+        announcement.setEntity(request.getEntity());
+        announcement.setEntityId(request.getEntityId());
         announcement.setStatus(AnnouncementStatus.DRAFT);
         return announcement;
     }
@@ -684,7 +686,7 @@ public class AnnouncementService {
                     schedulingResponse.setTimezone(scheduledMessage.getTimezone());
                     schedulingResponse.setStartDate(scheduledMessage.getStartDate());
                     schedulingResponse.setEndDate(scheduledMessage.getEndDate());
-                    schedulingResponse.setNextRunTime(scheduledMessage.getNextRunTime());
+                    schedulingResponse.setNextRunTime(schedulingService.nextRunTimeInScheduleZone(scheduledMessage));
                     schedulingResponse.setLastRunTime(scheduledMessage.getLastRunTime());
                     schedulingResponse.setIsActive(scheduledMessage.getIsActive());
                     response.setScheduling(schedulingResponse);
@@ -1013,7 +1015,7 @@ public class AnnouncementService {
             item.setTimezone(sm.getTimezone());
             item.setStartDate(sm.getStartDate());
             item.setEndDate(sm.getEndDate());
-            item.setNextRunTime(sm.getNextRunTime());
+            item.setNextRunTime(schedulingService.nextRunTimeInScheduleZone(sm));
             item.setLastRunTime(sm.getLastRunTime());
         });
         return item;

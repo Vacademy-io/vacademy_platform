@@ -13,7 +13,9 @@
         "city": "शहर",
         "region": "क्षेत्र",
         "gender": "लिंग",
-        "enrollmentId": "नामांकन आईडी"
+        "enrollmentId": "नामांकन आईडी",
+        "username": "यूज़रनेम",
+        "password": "पासवर्ड"
     },
     "toasts": {
         "loadTemplatesFailed": "व्हाट्सएप टेम्पलेट लोड करने में विफल",
@@ -45,7 +47,15 @@
         "columnMappedField": "मैप की गई फ़ील्ड",
         "selectFieldPlaceholder": "फ़ील्ड चुनें...",
         "staticValueOption": "स्थिर मान…",
-        "staticValuePlaceholder": "जैसे \"विद्यार्थी\""
+        "staticValuePlaceholder": "जैसे \"विद्यार्थी\"",
+        "searchPlaceholder": "फ़ील्ड खोजें...",
+        "noMatch": "आपकी खोज से कोई फ़ील्ड मेल नहीं खाता।",
+        "credentialsLoading": "लॉगिन विवरण लाए जा रहे हैं... {{done}}/{{total}}",
+        "credentialsFailed": "लॉगिन विवरण नहीं मिल सके। डायलॉग बंद करके फिर से कोशिश करें।",
+        "credentialsMissing_one": "{{count}} छात्र का यूज़रनेम/पासवर्ड सेव नहीं है, उसे छोड़ दिया जाएगा।",
+        "credentialsMissing_other": "{{count}} छात्रों का यूज़रनेम/पासवर्ड सेव नहीं है, उन्हें छोड़ दिया जाएगा।",
+        "credentialsReady_one": "{{count}} छात्र के लॉगिन विवरण तैयार हैं।",
+        "credentialsReady_other": "{{count}} छात्रों के लॉगिन विवरण तैयार हैं।"
     },
     "reviewStep": {
         "messagesSent": "संदेश भेजे गए",
@@ -64,7 +74,8 @@
         "staticValueLabel": "स्थिर: \"{{value}}\"",
         "sending": "भेजा जा रहा है...",
         "sendButton_one": "{{count}} विद्यार्थी को भेजें",
-        "sendButton_other": "{{count}} विद्यार्थियों को भेजें"
+        "sendButton_other": "{{count}} विद्यार्थियों को भेजें",
+        "sampleFor": "{{name}} के लिए उदाहरण"
     },
     "footer": {
         "back": "पीछे",

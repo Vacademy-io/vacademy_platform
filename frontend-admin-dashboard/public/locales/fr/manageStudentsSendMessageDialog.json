@@ -13,7 +13,9 @@
         "city": "Ville",
         "region": "Région",
         "gender": "Genre",
-        "enrollmentId": "ID d'inscription"
+        "enrollmentId": "ID d'inscription",
+        "username": "Nom d'utilisateur",
+        "password": "Mot de passe"
     },
     "toasts": {
         "loadTemplatesFailed": "Échec du chargement des modèles WhatsApp",
@@ -48,7 +50,15 @@
         "columnMappedField": "Champ associé",
         "selectFieldPlaceholder": "Sélectionner un champ...",
         "staticValueOption": "Valeur fixe…",
-        "staticValuePlaceholder": "ex. « Étudiant »"
+        "staticValuePlaceholder": "ex. « Étudiant »",
+        "searchPlaceholder": "Rechercher un champ...",
+        "noMatch": "Aucun champ ne correspond à votre recherche.",
+        "credentialsLoading": "Récupération des identifiants... {{done}}/{{total}}",
+        "credentialsFailed": "Impossible de récupérer les identifiants. Fermez la fenêtre et réessayez.",
+        "credentialsMissing_one": "{{count}} étudiant n'a pas d'identifiant/mot de passe enregistré et sera ignoré.",
+        "credentialsMissing_other": "{{count}} étudiants n'ont pas d'identifiant/mot de passe enregistré et seront ignorés.",
+        "credentialsReady_one": "Identifiants prêts pour {{count}} étudiant.",
+        "credentialsReady_other": "Identifiants prêts pour {{count}} étudiants."
     },
     "reviewStep": {
         "messagesSent": "Messages envoyés",
@@ -69,7 +79,8 @@
         "sending": "Envoi en cours...",
         "sendButton_one": "Envoyer à {{count}} étudiant",
         "sendButton_many": "Envoyer à {{count}} d'étudiants",
-        "sendButton_other": "Envoyer à {{count}} étudiants"
+        "sendButton_other": "Envoyer à {{count}} étudiants",
+        "sampleFor": "exemple pour {{name}}"
     },
     "footer": {
         "back": "Retour",

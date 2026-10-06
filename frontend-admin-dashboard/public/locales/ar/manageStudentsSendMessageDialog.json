@@ -13,7 +13,9 @@
         "city": "المدينة",
         "region": "المنطقة",
         "gender": "الجنس",
-        "enrollmentId": "رقم التسجيل"
+        "enrollmentId": "رقم التسجيل",
+        "username": "اسم المستخدم",
+        "password": "كلمة المرور"
     },
     "toasts": {
         "loadTemplatesFailed": "فشل تحميل قوالب واتساب",
@@ -57,7 +59,15 @@
         "columnMappedField": "الحقل المرتبط",
         "selectFieldPlaceholder": "اختر حقلاً...",
         "staticValueOption": "قيمة ثابتة…",
-        "staticValuePlaceholder": "مثال: \"طالب\""
+        "staticValuePlaceholder": "مثال: \"طالب\"",
+        "searchPlaceholder": "ابحث في الحقول...",
+        "noMatch": "لا يوجد حقل يطابق بحثك.",
+        "credentialsLoading": "جارٍ جلب بيانات الدخول... {{done}}/{{total}}",
+        "credentialsFailed": "تعذّر جلب بيانات الدخول. أغلق النافذة وحاول مرة أخرى.",
+        "credentialsMissing_one": "{{count}} طالب ليس لديه اسم مستخدم/كلمة مرور محفوظة وسيتم تخطيه.",
+        "credentialsMissing_other": "{{count}} طلاب ليس لديهم اسم مستخدم/كلمة مرور محفوظة وسيتم تخطيهم.",
+        "credentialsReady_one": "بيانات الدخول جاهزة لطالب واحد.",
+        "credentialsReady_other": "بيانات الدخول جاهزة لـ {{count}} طلاب."
     },
     "reviewStep": {
         "messagesSent": "تم إرسال الرسائل",
@@ -84,7 +94,8 @@
         "sendButton_two": "إرسال إلى طالبين ({{count}})",
         "sendButton_few": "إرسال إلى {{count}} طلاب",
         "sendButton_many": "إرسال إلى {{count}} طالبًا",
-        "sendButton_other": "إرسال إلى {{count}} طالب"
+        "sendButton_other": "إرسال إلى {{count}} طالب",
+        "sampleFor": "مثال لـ {{name}}"
     },
     "footer": {
         "back": "رجوع",

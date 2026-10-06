@@ -27,7 +27,9 @@
         "gender": "الجنس",
         "enrollmentId": "رقم التسجيل",
         "fathersName": "اسم الأب",
-        "mothersName": "اسم الأم"
+        "mothersName": "اسم الأم",
+        "username": "اسم المستخدم",
+        "password": "كلمة المرور"
     },
     "toasts": {
         "loadEmailTemplatesFailed": "تعذر تحميل قوالب البريد الإلكتروني",
@@ -98,7 +100,9 @@
         "literalOption": "قيمة ثابتة...",
         "literalPlaceholder": "اكتب قيمة",
         "unresolved": "(غير محدد)",
-        "livePreviewLabel": "معاينة الرسالة"
+        "livePreviewLabel": "معاينة الرسالة",
+        "sourceSearchPlaceholder": "ابحث في الحقول...",
+        "sourceNoMatch": "لا يوجد حقل يطابق بحثك."
     },
     "reviewStep": {
         "messageSent": "تم إرسال الرسالة",

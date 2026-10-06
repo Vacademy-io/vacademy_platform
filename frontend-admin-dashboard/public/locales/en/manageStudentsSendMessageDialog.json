@@ -13,7 +13,9 @@
         "city": "City",
         "region": "Region",
         "gender": "Gender",
-        "enrollmentId": "Enrollment ID"
+        "enrollmentId": "Enrollment ID",
+        "username": "Username",
+        "password": "Password"
     },
     "toasts": {
         "loadTemplatesFailed": "Failed to load WhatsApp templates",
@@ -45,7 +47,15 @@
         "columnMappedField": "Mapped Field",
         "selectFieldPlaceholder": "Select field...",
         "staticValueOption": "Static value…",
-        "staticValuePlaceholder": "e.g. \"Student\""
+        "staticValuePlaceholder": "e.g. \"Student\"",
+        "searchPlaceholder": "Search fields...",
+        "noMatch": "No field matches your search.",
+        "credentialsLoading": "Fetching login details... {{done}}/{{total}}",
+        "credentialsFailed": "Could not fetch login details. Close the dialog and try again.",
+        "credentialsMissing_one": "{{count}} student has no username/password stored and will be skipped.",
+        "credentialsMissing_other": "{{count}} students have no username/password stored and will be skipped.",
+        "credentialsReady_one": "Login details ready for {{count}} student.",
+        "credentialsReady_other": "Login details ready for {{count}} students."
     },
     "reviewStep": {
         "messagesSent": "Messages Sent",
@@ -64,7 +74,8 @@
         "staticValueLabel": "Static: \"{{value}}\"",
         "sending": "Sending...",
         "sendButton_one": "Send to {{count}} student",
-        "sendButton_other": "Send to {{count}} students"
+        "sendButton_other": "Send to {{count}} students",
+        "sampleFor": "example for {{name}}"
     },
     "footer": {
         "back": "Back",

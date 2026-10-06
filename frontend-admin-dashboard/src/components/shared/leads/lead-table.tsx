@@ -537,6 +537,8 @@ export function LeadTable({
                     overdue={vm.tatOverdue}
                     respondedAt={vm.firstResponseAt}
                     baselineAt={vm.submittedIso}
+                    responseId={vm.responseId}
+                    dueOverridden={vm.tatDueOverridden}
                 />
             ),
         },

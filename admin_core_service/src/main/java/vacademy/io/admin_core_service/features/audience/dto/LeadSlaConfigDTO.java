@@ -32,6 +32,11 @@ public class LeadSlaConfigDTO {
         private Integer tatHours;
         /** TAT duration in minutes — what deadlines are computed from. */
         private Integer tatMinutes;
+        /**
+         * Working-hours rule JSON for lead_sla_due_at() (off = the TAT off-hours due time);
+         * null when working hours are off, i.e. plain wall-clock deadlines.
+         */
+        private String workingHoursRule;
         private List<BeforeTrigger> beforeTatTriggers;
         private TriggerRef overdueTrigger;
         /** Institute role names to notify — emitted in the trigger ctx for the workflow to target. */
@@ -46,6 +51,8 @@ public class LeadSlaConfigDTO {
         private Integer followUpSlaHours;
         /** Follow-up SLA duration in minutes — what deadlines are computed from. */
         private Integer followUpSlaMinutes;
+        /** Working-hours rule JSON (off = the follow-up off-hours due time); null = wall clock. */
+        private String workingHoursRule;
         private BeforeTrigger beforeFollowUpTrigger;
         private TriggerRef overdueTrigger;
         /** Institute role names to notify — emitted in the trigger ctx for the workflow to target. */

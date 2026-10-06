@@ -27,7 +27,8 @@
             "overdueLabel": "en retard",
             "noRemindersPart1": "un nouveau prospect doit être contacté dans un délai de ",
             "noRemindersPart2": ". S'il n'est toujours pas contacté, le prospect est marqué comme ",
-            "noRemindersPart3": "."
+            "noRemindersPart3": ".",
+            "offhours": "Les prospects arrivés en dehors des heures de travail sont dus à {{time}} le jour ouvré suivant."
         },
         "responseWithin": {
             "label": "Répondre à un nouveau prospect sous",
@@ -38,6 +39,10 @@
             "description": "Prévenez le conseiller avant l'échéance. Ajoutez-en plusieurs pour le rappeler à nouveau à mesure que l'échéance approche.",
             "beforeDeadlineLabel": "minutes avant l'échéance",
             "addButton": "+ Ajouter un rappel anticipé"
+        },
+        "offhours": {
+            "label": "Prospects arrivés en dehors des heures de travail",
+            "hint": "Dû à cette heure le jour ouvré suivant."
         }
     },
     "followup": {
@@ -53,7 +58,12 @@
         },
         "summaryPart1": "après qu'un conseiller enregistre une activité sur un prospect, il dispose de ",
         "summaryPart2": " pour effectuer un nouveau suivi, avec une alerte ",
-        "summaryPart3": " avant l'échéance. Le compteur redémarre à chaque action."
+        "summaryPart3": " avant l'échéance. Le compteur redémarre à chaque action.",
+        "offhours": {
+            "label": "Activité enregistrée en dehors des heures de travail",
+            "hint": "Suivi dû à cette heure le jour ouvré suivant."
+        },
+        "summaryOffhours": "Si la dernière activité a eu lieu en dehors des heures de travail, le suivi est dû à {{time}} le jour ouvré suivant."
     },
     "footer": {
         "triggerWorkflow": "Déclencher le workflow",
@@ -73,5 +83,25 @@
         "placeholderMore": "Ajouter un autre rôle…",
         "noRolesFound": "Aucun rôle trouvé pour cet établissement.",
         "allRolesAdded": "Tous les rôles ont été ajoutés."
+    },
+    "workingHours": {
+        "title": "Heures de travail",
+        "description": "Les échéances TAT et de suivi suivent vos heures de travail. Un délai qui démarre pendant les heures de travail court pendant la durée définie ; un délai qui démarre en dehors est dû à une heure fixe le jour ouvré suivant.",
+        "days": "Jours ouvrés",
+        "hoursLabel": "Heures de travail",
+        "from": "De",
+        "to": "à",
+        "noDays": "Choisissez au moins un jour ouvré.",
+        "endBeforeStart": "Les heures de travail doivent se terminer après leur début.",
+        "timezoneNote": "Heures exprimées en {{tz}} (défini dans Paramètres → Langue).",
+        "dayShort": {
+            "1": "Lun",
+            "2": "Mar",
+            "3": "Mer",
+            "4": "Jeu",
+            "5": "Ven",
+            "6": "Sam",
+            "7": "Dim"
+        }
     }
 }

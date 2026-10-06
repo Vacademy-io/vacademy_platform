@@ -39,6 +39,8 @@ export interface RecentLeadDetail {
     >;
     // ── TAT / Follow-up SLA (deadlines + badge; visual only) ──
     tat_due_at?: string | null;
+    /** True when an admin set tat_due_at by hand. */
+    tat_due_overridden?: boolean | null;
     /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
     first_response_at?: string | null;
     /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */

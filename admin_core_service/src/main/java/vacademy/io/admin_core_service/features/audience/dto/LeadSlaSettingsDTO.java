@@ -35,4 +35,18 @@ public class LeadSlaSettingsDTO {
     private Integer followupSlaHours;
     private Integer followupRemindBeforeMinutes;
     private List<String> followupNotifyRoles;
+
+    // ── Working hours (apply to TAT and follow-up SLA) ───────────────────────
+    private boolean workingHoursEnabled;
+    /** ISO weekdays, 1 = Monday … 7 = Sunday. */
+    private List<Integer> workingDays;
+    /** "HH:mm", institute-local. */
+    private String workingStartTime;
+    private String workingEndTime;
+    /** "HH:mm" — TAT due time on the next working day for leads arriving outside hours. */
+    private String tatOffhoursDueTime;
+    /** "HH:mm" — follow-up due time on the next working day when the last response was outside hours. */
+    private String followupOffhoursDueTime;
+    /** Read-only: the institute timezone (Settings → Language) the hours are evaluated in. */
+    private String timezone;
 }

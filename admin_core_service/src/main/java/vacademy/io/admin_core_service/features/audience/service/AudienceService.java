@@ -3211,17 +3211,19 @@ public class AudienceService {
             }
         }
 
-        // Resolve the institute's TAT (minutes) up-front so the SLA-state filter can derive
-        // the deadline live as `submitted_at + tatMinutes`. Needs to happen BEFORE the
-        // repo call because the predicate is bound at query time. Returns null when
-        // the institute hasn't enabled TAT — SQL guards with `:tatMinutes IS NOT NULL`.
-        Integer filterTatMinutes = resolveFilterTatMinutes(
+        // Resolve the institute's TAT (minutes + working-hours rule) up-front so the SLA-state
+        // filter can derive the deadline live via lead_sla_due_at(). Needs to happen BEFORE the
+        // repo call because the predicate is bound at query time. Null when the institute
+        // hasn't enabled TAT — SQL guards with `:tatMinutes IS NOT NULL`.
+        vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO.TatReminder filterTat = resolveFilterTat(
                 filterDTO.getInstituteId() != null && !filterDTO.getInstituteId().isBlank()
                         ? filterDTO.getInstituteId()
                         : (filterDTO.getAudienceId() != null
                             ? audienceRepository.findById(filterDTO.getAudienceId())
                                     .map(Audience::getInstituteId).orElse(null)
                             : null));
+        Integer filterTatMinutes = filterTat != null ? filterTat.getTatMinutes() : null;
+        String filterTatRule = filterTat != null ? filterTat.getWorkingHoursRule() : null;
 
         // Pre-resolve the custom-field filters into matching audience_response IDs
         // using one indexed lookup per field (intersected across fields). This
@@ -3280,6 +3282,7 @@ public class AudienceService {
                     audienceStatusFilter,
                     filterDTO.getSlaFilter(),
                     filterTatMinutes,
+                    filterTatRule,
                     customFieldMatchedIdsCsv,
                     customFieldExcludedIdsCsv,
                     filterDTO.getCallHistoryFilter(),
@@ -3325,6 +3328,7 @@ public class AudienceService {
                 audienceStatusFilter,
                 filterDTO.getSlaFilter(),
                 filterTatMinutes,
+                filterTatRule,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 filterDTO.getSortCustomFieldId(),
@@ -3387,19 +3391,20 @@ public class AudienceService {
     }
 
     /**
-     * Reads the institute's TAT (minutes) from lead_sla_config for use in the SLA-state filter
-     * (the predicate derives `tat_due_at = submitted_at + tatMinutes` live so it matches
-     * the row-level badge regardless of scheduler timing). Returns null when the institute
-     * has no setting, TAT is disabled, or any read failure — the SQL guards with
+     * Reads the institute's TAT config (minutes + working-hours rule) from lead_sla_config for
+     * the SLA-state filter (the predicate derives the deadline live via lead_sla_due_at() so
+     * it matches the row-level badge regardless of scheduler timing). Returns null when the
+     * institute has no setting, TAT is disabled, or any read failure — the SQL guards with
      * `:tatMinutes IS NOT NULL` so a null safely turns the predicate off.
      */
-    private Integer resolveFilterTatMinutes(String instituteId) {
+    private vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO.TatReminder resolveFilterTat(
+            String instituteId) {
         if (instituteId == null || instituteId.isBlank()) return null;
         try {
             vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla =
                     leadSlaConfigService.getSchedulerConfig(instituteId);
             if (sla != null && sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
-                return sla.getTatReminder().getTatMinutes();
+                return sla.getTatReminder();
             }
         } catch (Exception ex) {
             logger.warn("Failed to read TAT for SLA filter (institute={}): {}", instituteId, ex.getMessage());
@@ -3430,6 +3435,7 @@ public class AudienceService {
         // stay null when the institute hasn't enabled that SLA, so we don't show a
         // meaningless deadline.
         Integer tatMinutes = null;
+        String tatRule = null;
         Integer followUpSlaMinutes = null;
         if (instituteId != null && !instituteId.isBlank()) {
             try {
@@ -3438,6 +3444,7 @@ public class AudienceService {
                 if (sla != null) {
                     if (sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
                         tatMinutes = sla.getTatReminder().getTatMinutes();
+                        tatRule = sla.getTatReminder().getWorkingHoursRule();
                     }
                     if (sla.getFollowUp() != null && sla.getFollowUp().isEnabled()) {
                         followUpSlaMinutes = sla.getFollowUp().getFollowUpSlaMinutes();
@@ -3456,8 +3463,16 @@ public class AudienceService {
         final Integer tatMinutesFinal = tatMinutes;
         final List<vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection> counselorActions = ((tatMinutes != null
                 || followUpSlaMinutes != null) && !responseIds.isEmpty())
-                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds)
+                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds, tatMinutes, tatRule)
                         : Collections.emptyList();
+        // Effective TAT deadline per lead, computed in SQL (admin override, else lead_sla_due_at —
+        // working-hours aware) so the badge matches the SLA filter and the reports exactly.
+        final Map<String, Timestamp> tatDueByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getTatDueAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getTatDueAt,
+                        (a, b) -> a));
         final Map<String, Timestamp> firstActionByResponseId = counselorActions.stream()
                 .filter(p -> p.getLeadId() != null && p.getFirstActionAt() != null)
                 .collect(Collectors.toMap(
@@ -3621,13 +3636,11 @@ public class AudienceService {
                     ? enquiryIdToCounselor.get(response.getEnquiryId())
                     : null;
 
-            // Reach-out deadline = submitted_at + tatMinutes (computed live when TAT is on;
-            // else the
-            // scheduler-stamped value, which may be null). Follow-up deadline = last
-            // counselor action
-            // + followUpSlaMinutes (null until the lead has been responded to at least once).
-            Timestamp computedTatDueAt = (tatMinutesFinal != null && response.getSubmittedAt() != null)
-                    ? Timestamp.from(response.getSubmittedAt().toInstant().plusSeconds(tatMinutesFinal * 60L))
+            // Reach-out deadline = the effective TAT deadline from SQL when TAT is on (admin
+            // override, else working-hours aware); else the scheduler-stamped value, which may
+            // be null.
+            Timestamp computedTatDueAt = tatMinutesFinal != null && tatDueByResponseId.containsKey(response.getId())
+                    ? tatDueByResponseId.get(response.getId())
                     : response.getTatDueAt();
             Timestamp lastAction = lastActionByResponseId.get(response.getId());
             // "Follow up at" = ONLY a counsellor-explicitly-scheduled callback (a row in
@@ -3690,6 +3703,7 @@ public class AudienceService {
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)
                     .tatDueAt(computedTatDueAt)
+                    .tatDueOverridden(response.getTatDueOverrideAt() != null)
                     .firstResponseAt(firstResponseAt)
                     .followUpDueAt(computedFollowUpDueAt)
                     .tatReminderStage(response.getTatReminderStage())

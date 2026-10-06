@@ -49,6 +49,13 @@ public enum LeadJourneyActionType {
     /** Lead moved from one pipeline status to another (metadata: from/to status). */
     STATUS_CHANGED,
 
+    // ── SLA ──────────────────────────────────────────────────────────────────
+    /**
+     * An admin set or cleared this lead's manual TAT deadline (metadata: previous/new
+     * override). Not a response event — it never stops the TAT clock.
+     */
+    TAT_DEADLINE_CHANGED,
+
     // ── Engagement signals ────────────────────────────────────────────────────
     /** A follow-up task was created or completed for this lead. */
     FOLLOWUP,

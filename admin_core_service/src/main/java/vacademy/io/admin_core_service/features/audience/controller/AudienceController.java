@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.timeline.service.TimelineEventSer
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.exceptions.InvalidRequestException;
 
 import java.util.List;
 import java.util.Map;
@@ -591,18 +592,32 @@ public class AudienceController {
      * Get a user's audience/campaign memberships within one institute.
      * GET /admin-core-service/v1/audience/user-audiences?userId=...&instituteId=...
      *
-     * <p>The caller must hold a role in {@code instituteId} — read from the JWT for that exact
-     * institute, not from the clientId header — so an admin of one institute can't name another
-     * and read which of its campaigns a person is in.</p>
+     * <p>{@code instituteId} falls back to the {@code clientId} header (the admin app's current
+     * institute) so a bundle cached from before the param existed keeps working — scoped, not
+     * platform-wide as it used to be.</p>
+     *
+     * <p>The caller must hold a role in that institute, so an admin of one institute can't name
+     * another and read which of its campaigns a person is in. Accepted from either the JWT's
+     * per-institute roles, or the DB-loaded roles when the clientId header names this same
+     * institute (covers a role granted after the token was minted).</p>
      */
     @GetMapping("/user-audiences")
     public ResponseEntity<List<UserAudienceMembershipDTO>> getUserAudiences(
             @RequestParam String userId,
-            @RequestParam String instituteId) {
-        if (audienceRoleAccessService.currentRequestRoles(instituteId).isEmpty()) {
+            @RequestParam(required = false) String instituteId,
+            @RequestHeader(value = "clientId", required = false) String clientId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        String scopedInstituteId = (instituteId != null && !instituteId.isBlank()) ? instituteId : clientId;
+        if (scopedInstituteId == null || scopedInstituteId.isBlank()) {
+            throw new InvalidRequestException("instituteId is required");
+        }
+        boolean rolesInJwt = !audienceRoleAccessService.currentRequestRoles(scopedInstituteId).isEmpty();
+        boolean rolesForHeaderInstitute = scopedInstituteId.equals(clientId)
+                && user != null && user.getAuthorities() != null && !user.getAuthorities().isEmpty();
+        if (!rolesInJwt && !rolesForHeaderInstitute) {
             throw new ForbiddenException("You do not have access to this institute");
         }
-        return ResponseEntity.ok(userLeadProfileService.getUserAudienceMemberships(userId, instituteId));
+        return ResponseEntity.ok(userLeadProfileService.getUserAudienceMemberships(userId, scopedInstituteId));
     }
 
     /**

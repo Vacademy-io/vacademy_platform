@@ -50,5 +50,21 @@
     "couldNotDeleteTemplate": "Could not delete \"{{name}}\".",
     "approvedByMeta": "Template approved by Meta and ready to use.",
     "submittedForApproval": "Template submitted to Meta for approval.",
-    "metaRejectedTemplate": "Meta rejected the template."
+    "metaRejectedTemplate": "Meta rejected the template.",
+    "summary": {
+        "header": "{{type}} header",
+        "headerType": {
+            "text": "Text",
+            "image": "Image",
+            "video": "Video",
+            "document": "Document"
+        },
+        "variables_one": "{{count}} variable",
+        "variables_other": "{{count}} variables",
+        "buttons_one": "{{count}} button",
+        "buttons_other": "{{count}} buttons",
+        "footer": "Footer"
+    },
+    "showFullMessage": "Show full message",
+    "showLess": "Show less"
 }

@@ -10,5 +10,7 @@
     "toast": {
         "batchCreated": "Lot créé avec succès",
         "createFailed": "Échec de la création du lot"
-    }
+    },
+    "searchPlaceholder": "Rechercher {{course}}…",
+    "emptyCourses": "Aucun cours pour le moment. Choisissez « Créer » ci-dessus."
 }

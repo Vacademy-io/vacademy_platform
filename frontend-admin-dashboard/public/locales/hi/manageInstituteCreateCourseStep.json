@@ -10,5 +10,7 @@
     "toast": {
         "batchCreated": "बैच सफलतापूर्वक बनाया गया",
         "createFailed": "बैच बनाने में विफल"
-    }
+    },
+    "searchPlaceholder": "{{course}} खोजें…",
+    "emptyCourses": "अभी कोई कोर्स नहीं है। ऊपर \"नया बनाएँ\" चुनें।"
 }

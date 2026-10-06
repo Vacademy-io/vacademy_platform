@@ -6,5 +6,7 @@
     "startDate": "Start Date: {{date}}",
     "validation": {
         "selectSession": "Please select a session"
-    }
+    },
+    "searchPlaceholder": "Search {{session}}…",
+    "emptyForCourse": "This course has no {{session}} yet — add the first one below."
 }

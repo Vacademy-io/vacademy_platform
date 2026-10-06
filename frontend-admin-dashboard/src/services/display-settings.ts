@@ -15,6 +15,10 @@ import { SidebarItemsData } from '@/components/common/layout-container/sidebar/u
 
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 const CACHE_EXPIRY_HOURS = 24;
+// Bump to discard every cached blob on the next load. 2: the sidebar started
+// honouring adminOnly entries for non-admin roles, and caches written before then
+// still carry the old seeded `visible: true` on them.
+const CACHE_VERSION = 2;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
 
@@ -29,6 +33,7 @@ interface CachedDisplaySettings {
     data: DisplaySettingsData;
     timestamp: number;
     instituteId: string;
+    version?: number;
 }
 
 const CUSTOM_ROLE_KEY_PREFIX = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_`;
@@ -1077,7 +1082,7 @@ function readCache(role: RoleKey): DisplaySettingsData | null {
         const parsed: CachedDisplaySettings = JSON.parse(raw);
         const age = Date.now() - parsed.timestamp;
         const expiry = CACHE_EXPIRY_HOURS * 60 * 60 * 1000;
-        if (age > expiry) {
+        if (age > expiry || parsed.version !== CACHE_VERSION) {
             localStorage.removeItem(key);
             return null;
         }
@@ -1104,6 +1109,7 @@ function writeCache(role: RoleKey, data: DisplaySettingsData): void {
             data,
             timestamp: Date.now(),
             instituteId,
+            version: CACHE_VERSION,
         };
         localStorage.setItem(key, JSON.stringify(payload));
         window.dispatchEvent(new Event(DISPLAY_SETTINGS_UPDATED_EVENT));

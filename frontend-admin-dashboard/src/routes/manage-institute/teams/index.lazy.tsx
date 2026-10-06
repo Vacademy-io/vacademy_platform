@@ -50,7 +50,8 @@ import {
 import { subOrgPermission } from '@/lib/display-settings/sub-org-module';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getPreferredPhoneCountries } from '@/services/domain-routing';
@@ -132,13 +133,13 @@ function RouteComponent() {
     }, [setNavHeading, t]);
 
     // ---- Viewer settings (unchanged rules) -------------------------------------------
-    // Admin or teacher display settings, matching the layout container. Custom-role
-    // viewers fall through to teacher settings, the same baseline used elsewhere.
+    // The viewer's own role settings, matching the sidebar: admin, teacher, or the
+    // custom role (e.g. "Operations") they are signed in as.
     const viewerDisplaySettings = useMemo(() => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const viewerRoles = getUserRoles(accessToken);
         const isAdmin = viewerRoles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : getActiveRoleDisplaySettingsKey();
         return { isAdmin, settings: getDisplaySettingsFromCache(roleKey) };
     }, []);
     const viewerTeamManagement = viewerDisplaySettings.settings?.teamManagement;

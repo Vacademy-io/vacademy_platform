@@ -307,7 +307,8 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                   getSidebarItemsData(),
                   data?.id || '',
                   isTabVisible,
-                  isSubItemVisible
+                  isSubItemVisible,
+                  roleDisplay
               );
         // Chat is OFF by default. Strip the Communications > Chat sub-item unless the
         // institute has explicitly enabled chat. Fail closed: isChatEnabled is false

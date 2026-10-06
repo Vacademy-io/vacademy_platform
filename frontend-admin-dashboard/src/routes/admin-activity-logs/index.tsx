@@ -1,5 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 /**
@@ -24,6 +26,14 @@ export const Route = createFileRoute('/admin-activity-logs/')({
     // respect the same setting — otherwise institutes that explicitly disabled
     // it could still expose the page to anyone who knew the URL.
     beforeLoad: () => {
+        // ADMIN only, judged as the sidebar judges it (filterSidebarByRole) so the page
+        // never refuses an admin the sidebar shows the link to. Redirects only when the
+        // roles are known: an expired token reads as no roles until it is refreshed, and
+        // an admin must not be bounced for that. The audit API checks ADMIN regardless.
+        const roles = getUserRoles(getTokenFromCookie(TokenKey.accessToken));
+        if (roles.length > 0 && !roles.some((role) => role.toUpperCase() === 'ADMIN')) {
+            throw redirect({ to: '/dashboard' });
+        }
         const settings = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
         const tab = settings?.sidebar?.find((t) => t.id === 'admin-activity-logs');
         if (tab && tab.visible === false) {

@@ -345,14 +345,20 @@ export const CreateBatchDialog = ({
             };
 
             // The course step only lets an existing course through.
-            const courseData: CourseFormData = {
+            //
+            // useAddCourse posts this object as-is, and the endpoint reads the
+            // snake_case session/level fields above (session_name, new_session,
+            // start_date, ...). CourseFormData describes the course wizard's form
+            // state (name, startDate, newSession, ...) instead, so the payload is
+            // cast rather than reshaped — reshaping it would change what is sent.
+            const courseData = {
                 id: data.selectedCourse?.id || '',
                 course_name: data.selectedCourse?.name || '',
                 thumbnail_file_id: '',
                 new_course: false,
                 contain_levels: true,
                 sessions: [sessionData],
-            };
+            } as unknown as CourseFormData;
             handleAddCourse({
                 requestData: courseData,
                 duplicateFromSession: data.duplicateStudyMaterials,

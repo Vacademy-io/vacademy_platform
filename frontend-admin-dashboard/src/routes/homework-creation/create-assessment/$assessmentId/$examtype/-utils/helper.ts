@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { withMissingBuiltInFieldsOnTop } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/step3-registration-fields';
 import {
     ConvertedCustomField,
     CustomFieldStep3,
@@ -644,50 +645,11 @@ export function convertToCustomFieldsData(data: RegistrationFormField[] | undefi
         }));
 }
 
-export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps, t: TFunction) {
-    const defaultFields = [
-        {
-            id: '0',
-            type: 'textfield',
-            name: t('defaultRegistrationFields.fullName'),
-            oldKey: true,
-            isRequired: true,
-            key: 'full_name',
-        },
-        {
-            id: '1',
-            type: 'textfield',
-            name: t('defaultRegistrationFields.email'),
-            oldKey: true,
-            isRequired: true,
-            key: 'email',
-        },
-        {
-            id: '2',
-            type: 'textfield',
-            name: t('defaultRegistrationFields.phoneNumber'),
-            oldKey: true,
-            isRequired: true,
-            key: 'phone_number',
-        },
-    ];
-
+// The built-ins go out under their canonical English names: the backend derives field_key from the
+// name, and the learner's registration identifies the email / name fields by that key.
+export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
     const registrationFields = assessmentDetails[2]?.saved_data?.registration_form_fields ?? [];
-
-    // Extract field names from registrationFields
-    const existingFieldNames = new Set(registrationFields.map((field) => field.field_name));
-
-    // Check if all three fields exist. These three literals are the historical, English-only
-    // field_name values the backend has always stored for these defaults (set at save time,
-    // independent of the viewer's current UI language) — this is a data-identity comparison,
-    // not display text, so it intentionally does NOT use the translated `name` above.
-    const hasAllDefaults = ['Full Name', 'Email', 'Phone Number'].every((field) =>
-        existingFieldNames.has(field)
-    );
-
-    return hasAllDefaults
-        ? convertToCustomFieldsData(registrationFields)
-        : [...defaultFields, ...convertToCustomFieldsData(registrationFields)];
+    return withMissingBuiltInFieldsOnTop(convertToCustomFieldsData(registrationFields));
 }
 
 export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCustomField => {

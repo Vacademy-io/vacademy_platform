@@ -127,7 +127,9 @@
         "showRecordings": "Afficher les enregistrements",
         "showAttendance": "Afficher la présence",
         "showActivityStats": "Afficher les statistiques d'activité",
-        "showClassMaterials": "Afficher le matériel de cours"
+        "showClassMaterials": "Afficher le matériel de cours",
+        "showUnassignedPublicSessions": "Afficher les cours publics sans groupe à tous les apprenants inscrits",
+        "showUnassignedPublicSessionsHint": "Les cours publics non attribués à un groupe ou à un apprenant apparaissent dans la liste des cours en direct de chaque apprenant inscrit."
     },
     "tutorials": {
         "cardTitle": "Tutoriels de l'application",

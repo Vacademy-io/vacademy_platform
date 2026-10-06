@@ -23,6 +23,10 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getLiveClassDisclaimer } from "@/services/live-class-disclaimer";
 import { DisclaimerVideoScreen } from "@/routes/study-library/live-class/-components/DisclaimerVideoScreen";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
+import {
+  fetchLiveSessionPaymentStatus,
+  registerAndPayForLiveSession,
+} from "../-services/livePayment";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -91,6 +95,31 @@ function RouteComponent() {
   // Handle navigation to a specific session
   const proceedToSession = useCallback(
     async (session: SessionDetails, isInWaitingRoom: boolean) => {
+      // Paid class gate, same as the Live Classes list: BBB and plain links have
+      // no server-side payment check, so an unpaid learner must go via the
+      // invoice first. On lookup failure fall through — Zoom/Meet still enforce.
+      try {
+        const payStatus = await fetchLiveSessionPaymentStatus(session.session_id);
+        if (payStatus.payment_required && payStatus.payment_status !== "PAID") {
+          toast.info(
+            t("liveClass.toast.paymentRequired", {
+              session: getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase(),
+            })
+          );
+          const registration = await registerAndPayForLiveSession(session.session_id);
+          if (registration.invoice_id) {
+            (navigate as any)({
+              to: "/pay/invoice/$invoiceId",
+              params: { invoiceId: registration.invoice_id },
+              search: { redirect: "/study-library/live-class" },
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Live-session payment status check failed:", error);
+      }
+
       // PRE_JOINING sessions join the live class directly during the
       // waiting-room window instead of entering the waiting-room screen.
       const isPreJoining = session.waiting_room_type === "PRE_JOINING";
@@ -158,7 +187,7 @@ function RouteComponent() {
         }
       }
     },
-    [navigate, markAttendance]
+    [navigate, markAttendance, t]
   );
 
   /**

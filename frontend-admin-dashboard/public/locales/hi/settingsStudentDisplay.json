@@ -127,7 +127,9 @@
         "showRecordings": "रिकॉर्डिंग दिखाएं",
         "showAttendance": "उपस्थिति दिखाएं",
         "showActivityStats": "गतिविधि आंकड़े दिखाएं",
-        "showClassMaterials": "क्लास सामग्री दिखाएं"
+        "showClassMaterials": "क्लास सामग्री दिखाएं",
+        "showUnassignedPublicSessions": "बिना बैच वाली पब्लिक क्लासेस सभी नामांकित शिक्षार्थियों को दिखाएं",
+        "showUnassignedPublicSessionsHint": "जो पब्लिक क्लासेस किसी बैच या शिक्षार्थी को असाइन नहीं हैं, वे हर नामांकित शिक्षार्थी की लाइव क्लासेस सूची में दिखेंगी।"
     },
     "tutorials": {
         "cardTitle": "ऐप ट्यूटोरियल",

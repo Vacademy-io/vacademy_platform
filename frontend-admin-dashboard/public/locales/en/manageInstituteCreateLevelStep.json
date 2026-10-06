@@ -4,11 +4,15 @@
         "selectExisting": "Select existing {{term}}",
         "createNew": "Create new {{term}}",
         "selectALevelPlaceholder": "Select a {{term}}",
-        "durationDays_one": "Duration: {{count}} day",
-        "durationDays_other": "Duration: {{count}} days",
+        "durationDays_one": "{{count}} day",
+        "durationDays_other": "{{count}} days",
         "duplicateFromPreExisting": "Duplicate study materials from a pre-existing {{term}}",
         "duplicateFrom": "Duplicate from {{term}}",
-        "selectForDuplication": "Select {{term}} for duplication"
+        "selectForDuplication": "Select {{term}} for duplication",
+        "searchLevel": "Search {{term}}…",
+        "noLevelsYet": "No {{term}} to reuse — add a new one below.",
+        "searchSession": "Search {{term}}…",
+        "noOtherSessions": "No other {{term}} to copy material from."
     },
     "validation": {
         "pleaseSelectLevel": "Please select a level",

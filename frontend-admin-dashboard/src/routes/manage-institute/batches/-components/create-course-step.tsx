@@ -1,45 +1,20 @@
 // CreateCourseStep.tsx
 import { RadioGroupItem, RadioGroup } from '@/components/ui/radio-group';
 import { useEffect, useState } from 'react';
-import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
+import { BatchItemSelect } from './batch-item-select';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { Plus } from '@phosphor-icons/react';
 import { AddCourseButton } from '@/components/common/study-library/add-course/add-course-button';
-import { MyButton } from '@/components/design-system/button';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useAddCourse } from '@/services/study-library/course-operations/add-course';
-import { CourseFormData } from '@/components/common/study-library/add-course/add-course-form';
-import { toast } from 'sonner';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 
-interface CreateCourseStepProps {
-    handleOpenManageBatchDialog: (open: boolean) => void;
-}
-
-export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseStepProps) => {
+export const CreateCourseStep = () => {
     const { t } = useTranslation('manageInstituteCreateCourseStep');
     const { getCourseFromPackage, instituteDetails } = useInstituteDetailsStore();
     const [courseList, setCourseList] = useState(getCourseFromPackage());
     const form = useFormContext();
-    const addCourseMutation = useAddCourse();
-
-    const handleAddCourse = ({ requestData }: { requestData: CourseFormData }) => {
-        addCourseMutation.mutate(
-            { requestData: requestData },
-            {
-                onSuccess: () => {
-                    toast.success(t('toast.batchCreated'));
-                    handleOpenManageBatchDialog(false);
-                },
-                onError: () => {
-                    toast.error(t('toast.createFailed'));
-                },
-            }
-        );
-    };
 
     useEffect(() => {
         setCourseList(getCourseFromPackage());
@@ -127,17 +102,23 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
                                 <span className="text-danger-500">*</span>
                             </FormLabel>
                             <FormControl>
-                                <MyDropdown
-                                    currentValue={field.value}
-                                    dropdownList={courseList}
-                                    handleChange={field.onChange}
+                                <BatchItemSelect
+                                    items={courseList}
+                                    value={field.value}
+                                    onChange={field.onChange}
                                     placeholder={t('selectPlaceholder', {
                                         course: getTerminology(
                                             ContentTerms.Course,
                                             SystemTerms.Course
                                         ).toLocaleLowerCase(),
                                     })}
-                                    disable={courseList.length === 0}
+                                    searchPlaceholder={t('searchPlaceholder', {
+                                        course: getTerminology(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
+                                        ).toLocaleLowerCase(),
+                                    })}
+                                    emptyMessage={t('emptyCourses')}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -148,26 +129,11 @@ export const CreateCourseStep = ({ handleOpenManageBatchDialog }: CreateCourseSt
 
             {form.watch('courseCreationType') === 'new' && (
                 <div className="mt-2">
-                    <AddCourseButton
-                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                        // @ts-expect-error
-                        onSubmit={handleAddCourse}
-                        courseButton={
-                            <MyButton
-                                type="button"
-                                buttonType="text"
-                                layoutVariant="default"
-                                scale="medium"
-                                className="hover:text-primary-600 flex items-center p-0 font-normal text-neutral-600 hover:bg-transparent active:bg-transparent"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                }}
-                            >
-                                <Plus size={18} className="me-1" /> {t('addNewCourse')}
-                            </MyButton>
-                        }
-                    />
+                    {/* AddCourseButton takes only open/onOpenChange — the onSubmit and
+                        courseButton props passed here were silently dropped, and the
+                        @ts-expect-error above them hid that. It renders its own trigger
+                        and runs the full course wizard, which is what we want anyway. */}
+                    <AddCourseButton />
                 </div>
             )}
         </div>

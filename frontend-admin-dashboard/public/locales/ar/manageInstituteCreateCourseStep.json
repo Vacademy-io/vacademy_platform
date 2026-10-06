@@ -10,5 +10,7 @@
     "toast": {
         "batchCreated": "تم إنشاء الدفعة بنجاح",
         "createFailed": "فشل إنشاء الدفعة"
-    }
+    },
+    "searchPlaceholder": "ابحث عن {{course}}…",
+    "emptyCourses": "لا توجد دورات بعد. اختر \"إنشاء جديد\" أعلاه."
 }

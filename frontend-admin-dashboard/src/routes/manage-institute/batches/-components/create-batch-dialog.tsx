@@ -276,7 +276,7 @@ export const CreateBatchDialog = () => {
         );
 
     const steps = [
-        <CreateCourseStep key="course" handleOpenManageBatchDialog={handleOpenManageBatchDialog} />,
+        <CreateCourseStep key="course" />,
         <CreateSessionStep key="session" />,
         <CreateLevelStep key="level" />,
     ];

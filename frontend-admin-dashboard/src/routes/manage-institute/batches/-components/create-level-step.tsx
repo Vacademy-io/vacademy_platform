@@ -3,7 +3,7 @@ import { AddLevelInput } from '@/components/design-system/add-level-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useEffect, useState } from 'react';
-import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
+import { BatchItemSelect } from './batch-item-select';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { X } from '@phosphor-icons/react';
@@ -153,17 +153,28 @@ export const CreateLevelStep = () => {
                                 <span className="text-danger-500">*</span>
                             </FormLabel>
                             <FormControl>
-                                <MyDropdown
-                                    currentValue={field.value}
-                                    dropdownList={levelList}
-                                    handleChange={field.onChange}
+                                <BatchItemSelect
+                                    items={levelList}
+                                    value={field.value}
+                                    onChange={field.onChange}
                                     placeholder={t('form.selectALevelPlaceholder', {
                                         term: getTerminology(
                                             ContentTerms.Level,
                                             SystemTerms.Level
                                         ).toLocaleLowerCase(),
                                     })}
-                                    disable={levelList.length === 0}
+                                    searchPlaceholder={t('form.searchLevel', {
+                                        term: getTerminology(
+                                            ContentTerms.Level,
+                                            SystemTerms.Level
+                                        ).toLocaleLowerCase(),
+                                    })}
+                                    emptyMessage={t('form.noLevelsYet', {
+                                        term: getTerminology(
+                                            ContentTerms.Level,
+                                            SystemTerms.Level
+                                        ).toLocaleLowerCase(),
+                                    })}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -261,17 +272,28 @@ export const CreateLevelStep = () => {
                                         <span className="text-danger-500">*</span>
                                     </FormLabel>
                                     <FormControl>
-                                        <MyDropdown
-                                            currentValue={field.value}
-                                            dropdownList={sessionList}
-                                            handleChange={field.onChange}
+                                        <BatchItemSelect
+                                            items={sessionList}
+                                            value={field.value}
+                                            onChange={field.onChange}
                                             placeholder={t('form.selectForDuplication', {
                                                 term: getTerminology(
                                                     ContentTerms.Session,
                                                     SystemTerms.Session
                                                 ).toLocaleLowerCase(),
                                             })}
-                                            disable={sessionList.length === 0}
+                                            searchPlaceholder={t('form.searchSession', {
+                                                term: getTerminology(
+                                                    ContentTerms.Session,
+                                                    SystemTerms.Session
+                                                ).toLocaleLowerCase(),
+                                            })}
+                                            emptyMessage={t('form.noOtherSessions', {
+                                                term: getTerminology(
+                                                    ContentTerms.Session,
+                                                    SystemTerms.Session
+                                                ).toLocaleLowerCase(),
+                                            })}
                                         />
                                     </FormControl>
                                     <FormMessage />

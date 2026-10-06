@@ -18,7 +18,9 @@
   },
   "audienceFormModal": {
     "registrationForm": "पंजीकरण फ़ॉर्म",
-    "closeForm": "फ़ॉर्म बंद करें"
+    "closeForm": "फ़ॉर्म बंद करें",
+    "openResource": "अपना संसाधन खोलें",
+    "resourcesUnlocked": "इस साइट के सभी मुफ़्त संसाधन अब आपके लिए खुल गए हैं।"
   },
   "mobileActionBar": {
     "signupPrompt": "खाता नहीं है?",

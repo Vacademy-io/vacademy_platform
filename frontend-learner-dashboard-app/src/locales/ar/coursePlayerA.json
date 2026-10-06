@@ -18,7 +18,9 @@
   },
   "audienceFormModal": {
     "registrationForm": "نموذج التسجيل",
-    "closeForm": "إغلاق النموذج"
+    "closeForm": "إغلاق النموذج",
+    "openResource": "افتح المورد",
+    "resourcesUnlocked": "تم فتح جميع الموارد المجانية على هذا الموقع لك الآن."
   },
   "mobileActionBar": {
     "signupPrompt": "ليس لديك حساب؟",

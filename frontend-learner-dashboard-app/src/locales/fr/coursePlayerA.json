@@ -18,7 +18,9 @@
   },
   "audienceFormModal": {
     "registrationForm": "Formulaire d'inscription",
-    "closeForm": "Fermer le formulaire"
+    "closeForm": "Fermer le formulaire",
+    "openResource": "Ouvrir votre ressource",
+    "resourcesUnlocked": "Toutes les ressources gratuites de ce site sont désormais débloquées pour vous."
   },
   "mobileActionBar": {
     "signupPrompt": "Vous n'avez pas de compte ?",

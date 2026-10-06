@@ -18,7 +18,9 @@
   },
   "audienceFormModal": {
     "registrationForm": "Registration form",
-    "closeForm": "Close form"
+    "closeForm": "Close form",
+    "openResource": "Open your resource",
+    "resourcesUnlocked": "All free resources on this site are now unlocked for you."
   },
   "mobileActionBar": {
     "signupPrompt": "Don't have an account?",

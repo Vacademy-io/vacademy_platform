@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.audience.dto.*;
+import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
@@ -14,6 +15,7 @@ import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionT
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,9 @@ public class AudienceController {
 
     @Autowired
     private LeadCreatorAttributionService leadCreatorAttributionService;
+
+    @Autowired
+    private AudienceRoleAccessService audienceRoleAccessService;
 
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
@@ -583,13 +588,21 @@ public class AudienceController {
     }
 
     /**
-     * Get all audience/campaign memberships for a user.
-     * GET /admin-core-service/v1/audience/user-audiences?userId=...
+     * Get a user's audience/campaign memberships within one institute.
+     * GET /admin-core-service/v1/audience/user-audiences?userId=...&instituteId=...
+     *
+     * <p>The caller must hold a role in {@code instituteId} — read from the JWT for that exact
+     * institute, not from the clientId header — so an admin of one institute can't name another
+     * and read which of its campaigns a person is in.</p>
      */
     @GetMapping("/user-audiences")
     public ResponseEntity<List<UserAudienceMembershipDTO>> getUserAudiences(
-            @RequestParam String userId) {
-        return ResponseEntity.ok(userLeadProfileService.getUserAudienceMemberships(userId));
+            @RequestParam String userId,
+            @RequestParam String instituteId) {
+        if (audienceRoleAccessService.currentRequestRoles(instituteId).isEmpty()) {
+            throw new ForbiddenException("You do not have access to this institute");
+        }
+        return ResponseEntity.ok(userLeadProfileService.getUserAudienceMemberships(userId, instituteId));
     }
 
     /**

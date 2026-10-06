@@ -540,11 +540,13 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Get all audience/campaign memberships for a user.
-     * Returns one entry per audience response the user has submitted.
+     * Get a user's audience/campaign memberships within one institute.
+     * Returns one entry per audience response the user has submitted there — never
+     * another institute's campaigns, even when the same person is a lead in both.
      */
-    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId) {
-        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+    public List<UserAudienceMembershipDTO> getUserAudienceMemberships(String userId, String instituteId) {
+        List<AudienceResponse> responses =
+                audienceResponseRepository.findAllByInstituteAndUserOrStudent(instituteId, userId);
         if (responses.isEmpty()) return Collections.emptyList();
 
         // Batch fetch audience details

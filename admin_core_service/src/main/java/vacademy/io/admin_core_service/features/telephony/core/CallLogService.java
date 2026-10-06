@@ -41,6 +41,9 @@ public class CallLogService {
     @Autowired
     private LiveActivityCallRecorder liveActivityCallRecorder;
 
+    @Autowired
+    private CallTimelineWriter callTimelineWriter;
+
     @Transactional
     public TelephonyCallLog applyEvent(TelephonyCallLog row, NormalizedCallEvent ev) {
         return applyEvent(row, ev, true);
@@ -111,7 +114,34 @@ public class CallLogService {
         if (appliedStatus != null) {
             liveActivityCallRecorder.recordStatus(saved, appliedStatus);
         }
+
+        // Lead timeline: every call gets its CALL_MADE event the moment it ends — answered or
+        // not, recorded or not — so it counts as a lead response (TAT) at the real call time.
+        // Fires once: terminal statuses are sticky (first terminal wins, see the transition
+        // rule above). Skipped for promotion-minted rows (voiceBillable=false), which only
+        // mirror a call that already has its own row. The recording path later updates the
+        // same event with the recording key.
+        if (voiceBillable && appliedStatus != null && appliedStatus.isTerminal()) {
+            writeTimelineAfterCommit(saved);
+        }
         return saved;
+    }
+
+    /**
+     * After commit, so a timeline failure can never roll back the status update and the
+     * event never exists for a transition that was rolled back.
+     */
+    private void writeTimelineAfterCommit(TelephonyCallLog saved) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    callTimelineWriter.write(saved);
+                }
+            });
+        } else {
+            callTimelineWriter.write(saved);
+        }
     }
 
     /**

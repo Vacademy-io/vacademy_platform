@@ -28,6 +28,7 @@ public class LeadSlaConfigService {
 
     private static final String TAT = "TAT";
     private static final String FOLLOWUP = "FOLLOWUP";
+    private static final int DEFAULT_MINUTES = 24 * 60;
 
     private final LeadSlaConfigRepository configRepository;
     private final LeadSlaReminderWindowRepository windowRepository;
@@ -42,13 +43,17 @@ public class LeadSlaConfigService {
                 .map(LeadSlaReminderWindow::getBeforeMinutes).collect(Collectors.toList());
         if (tatBefore.isEmpty()) tatBefore = List.of(30);
 
+        int tatMinutes = c != null ? tatMinutesOf(c) : DEFAULT_MINUTES;
+        int followupMinutes = c != null ? followupMinutesOf(c) : DEFAULT_MINUTES;
         return LeadSlaSettingsDTO.builder()
                 .tatEnabled(c != null && Boolean.TRUE.equals(c.getTatEnabled()))
-                .tatHours(c != null ? c.getTatHours() : 24)
+                .tatMinutes(tatMinutes)
+                .tatHours(ceilHours(tatMinutes))
                 .tatBeforeMinutes(tatBefore)
                 .tatNotifyRoles(roleNames(instituteId, TAT))
                 .followupEnabled(c != null && Boolean.TRUE.equals(c.getFollowupEnabled()))
-                .followupSlaHours(c != null ? c.getFollowupSlaHours() : 24)
+                .followupSlaMinutes(followupMinutes)
+                .followupSlaHours(ceilHours(followupMinutes))
                 .followupRemindBeforeMinutes(c != null ? c.getFollowupRemindBeforeMinutes() : 30)
                 .followupNotifyRoles(roleNames(instituteId, FOLLOWUP))
                 .build();
@@ -58,10 +63,14 @@ public class LeadSlaConfigService {
     public void save(String instituteId, LeadSlaSettingsDTO dto) {
         LeadSlaConfig c = configRepository.findByInstituteId(instituteId)
                 .orElseGet(() -> LeadSlaConfig.builder().instituteId(instituteId).build());
+        int tatMinutes = resolveMinutes(dto.getTatMinutes(), dto.getTatHours());
+        int followupMinutes = resolveMinutes(dto.getFollowupSlaMinutes(), dto.getFollowupSlaHours());
         c.setTatEnabled(dto.isTatEnabled());
-        c.setTatHours(dto.getTatHours() != null ? dto.getTatHours() : 24);
+        c.setTatMinutes(tatMinutes);
+        c.setTatHours(ceilHours(tatMinutes));
         c.setFollowupEnabled(dto.isFollowupEnabled());
-        c.setFollowupSlaHours(dto.getFollowupSlaHours() != null ? dto.getFollowupSlaHours() : 24);
+        c.setFollowupSlaMinutes(followupMinutes);
+        c.setFollowupSlaHours(ceilHours(followupMinutes));
         c.setFollowupRemindBeforeMinutes(
                 dto.getFollowupRemindBeforeMinutes() != null ? dto.getFollowupRemindBeforeMinutes() : 30);
         c.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
@@ -82,6 +91,48 @@ public class LeadSlaConfigService {
         notifyRoleRepository.deleteByInstituteId(instituteId);
         saveRoles(instituteId, TAT, dto.getTatNotifyRoles());
         saveRoles(instituteId, FOLLOWUP, dto.getFollowupNotifyRoles());
+    }
+
+    // ── Duration helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Minutes from the request: explicit minutes win, else legacy whole hours, else 24h.
+     * Non-positive values fall back to the default so a deadline can never be "now".
+     */
+    private static int resolveMinutes(Integer minutes, Integer hours) {
+        if (minutes != null && minutes > 0) return minutes;
+        if (hours != null && hours > 0) return hours * 60;
+        return DEFAULT_MINUTES;
+    }
+
+    private static int tatMinutesOf(LeadSlaConfig c) {
+        if (c.getTatMinutes() != null && c.getTatMinutes() > 0) return c.getTatMinutes();
+        return c.getTatHours() != null && c.getTatHours() > 0 ? c.getTatHours() * 60 : DEFAULT_MINUTES;
+    }
+
+    private static int followupMinutesOf(LeadSlaConfig c) {
+        if (c.getFollowupSlaMinutes() != null && c.getFollowupSlaMinutes() > 0) return c.getFollowupSlaMinutes();
+        return c.getFollowupSlaHours() != null && c.getFollowupSlaHours() > 0
+                ? c.getFollowupSlaHours() * 60 : DEFAULT_MINUTES;
+    }
+
+    /** Whole hours rounded up — what the legacy *_hours columns/fields carry. */
+    private static int ceilHours(int minutes) {
+        return Math.max(1, (minutes + 59) / 60);
+    }
+
+    /**
+     * Human-readable duration for workflow copy and UI text: "45 minutes", "1 hour",
+     * "1 hour 30 minutes", "24 hours".
+     */
+    public static String formatDuration(int minutes) {
+        int h = minutes / 60;
+        int m = minutes % 60;
+        String hPart = h == 1 ? "1 hour" : h + " hours";
+        String mPart = m == 1 ? "1 minute" : m + " minutes";
+        if (h == 0) return mPart;
+        if (m == 0) return hPart;
+        return hPart + " " + mPart;
     }
 
     private void saveRoles(String instituteId, String slaType, List<String> roles) {
@@ -112,7 +163,8 @@ public class LeadSlaConfigService {
 
         LeadSlaConfigDTO.TatReminder tat = new LeadSlaConfigDTO.TatReminder();
         tat.setEnabled(tatOn);
-        tat.setTatHours(c.getTatHours());
+        tat.setTatMinutes(tatMinutesOf(c));
+        tat.setTatHours(ceilHours(tatMinutesOf(c)));
         List<LeadSlaConfigDTO.BeforeTrigger> windows = new ArrayList<>();
         for (LeadSlaReminderWindow w : windowRepository
                 .findByInstituteIdAndSlaTypeOrderByDisplayOrderAsc(instituteId, TAT)) {
@@ -132,7 +184,8 @@ public class LeadSlaConfigService {
 
         LeadSlaConfigDTO.FollowUp fu = new LeadSlaConfigDTO.FollowUp();
         fu.setEnabled(fuOn);
-        fu.setFollowUpSlaHours(c.getFollowupSlaHours());
+        fu.setFollowUpSlaMinutes(followupMinutesOf(c));
+        fu.setFollowUpSlaHours(ceilHours(followupMinutesOf(c)));
         LeadSlaConfigDTO.BeforeTrigger before = new LeadSlaConfigDTO.BeforeTrigger();
         before.setBeforeMinutes(c.getFollowupRemindBeforeMinutes());
         before.setTriggerKey("FOLLOW_UP_DUE");

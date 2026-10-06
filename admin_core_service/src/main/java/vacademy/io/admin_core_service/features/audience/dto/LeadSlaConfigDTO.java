@@ -28,7 +28,10 @@ public class LeadSlaConfigDTO {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class TatReminder {
         private boolean enabled;
+        /** Legacy whole hours (CEIL of tatMinutes). Use {@link #getTatMinutes()} for deadlines. */
         private Integer tatHours;
+        /** TAT duration in minutes — what deadlines are computed from. */
+        private Integer tatMinutes;
         private List<BeforeTrigger> beforeTatTriggers;
         private TriggerRef overdueTrigger;
         /** Institute role names to notify — emitted in the trigger ctx for the workflow to target. */
@@ -39,7 +42,10 @@ public class LeadSlaConfigDTO {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class FollowUp {
         private boolean enabled;
+        /** Legacy whole hours (CEIL of followUpSlaMinutes). Use {@link #getFollowUpSlaMinutes()}. */
         private Integer followUpSlaHours;
+        /** Follow-up SLA duration in minutes — what deadlines are computed from. */
+        private Integer followUpSlaMinutes;
         private BeforeTrigger beforeFollowUpTrigger;
         private TriggerRef overdueTrigger;
         /** Institute role names to notify — emitted in the trigger ctx for the workflow to target. */

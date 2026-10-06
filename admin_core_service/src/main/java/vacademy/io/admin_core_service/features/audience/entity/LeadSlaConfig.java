@@ -30,17 +30,29 @@ public class LeadSlaConfig {
     @Builder.Default
     private Boolean tatEnabled = false;
 
+    /** Legacy whole-hour TAT, kept in sync as CEIL(tatMinutes / 60). Read tatMinutes instead. */
     @Column(name = "tat_hours", nullable = false)
     @Builder.Default
     private Integer tatHours = 24;
+
+    /** TAT duration in minutes — the source of truth since V550. */
+    @Column(name = "tat_minutes", nullable = false)
+    @Builder.Default
+    private Integer tatMinutes = 1440;
 
     @Column(name = "followup_enabled", nullable = false)
     @Builder.Default
     private Boolean followupEnabled = false;
 
+    /** Legacy whole-hour follow-up SLA, kept in sync as CEIL(followupSlaMinutes / 60). */
     @Column(name = "followup_sla_hours", nullable = false)
     @Builder.Default
     private Integer followupSlaHours = 24;
+
+    /** Follow-up SLA duration in minutes — the source of truth since V550. */
+    @Column(name = "followup_sla_minutes", nullable = false)
+    @Builder.Default
+    private Integer followupSlaMinutes = 1440;
 
     @Column(name = "followup_remind_before_minutes", nullable = false)
     @Builder.Default

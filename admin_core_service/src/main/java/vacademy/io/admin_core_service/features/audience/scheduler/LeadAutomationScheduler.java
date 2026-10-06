@@ -95,10 +95,10 @@ public class LeadAutomationScheduler {
             if (config == null) continue;
             boolean tatOn = config.getTatReminder() != null
                     && config.getTatReminder().isEnabled()
-                    && config.getTatReminder().getTatHours() != null;
+                    && config.getTatReminder().getTatMinutes() != null;
             boolean followUpOn = config.getFollowUp() != null
                     && config.getFollowUp().isEnabled()
-                    && config.getFollowUp().getFollowUpSlaHours() != null;
+                    && config.getFollowUp().getFollowUpSlaMinutes() != null;
             if (!tatOn && !followUpOn) continue;
 
             try {
@@ -128,14 +128,14 @@ public class LeadAutomationScheduler {
         if (!acted) {
             if (!tatOn) return false;
             LeadSlaConfigDTO.TatReminder tat = config.getTatReminder();
-            Instant due = c.getSubmittedAt().toInstant().plusSeconds(tat.getTatHours() * 3600L);
+            Instant due = c.getSubmittedAt().toInstant().plusSeconds(tat.getTatMinutes() * 60L);
             emission = resolveTatStage(now, due, tat);
             cycleAnchorEpoch = c.getSubmittedAt().getTime();
             notifyRoles = tat.getNotifyRoles();
         } else {
             if (!followUpOn) return false;
             LeadSlaConfigDTO.FollowUp fu = config.getFollowUp();
-            Instant due = c.getLastCounselorActionAt().toInstant().plusSeconds(fu.getFollowUpSlaHours() * 3600L);
+            Instant due = c.getLastCounselorActionAt().toInstant().plusSeconds(fu.getFollowUpSlaMinutes() * 60L);
             emission = resolveFollowUpStage(now, due, fu);
             cycleAnchorEpoch = c.getLastCounselorActionAt().getTime();
             notifyRoles = fu.getNotifyRoles();
@@ -183,10 +183,13 @@ public class LeadAutomationScheduler {
         ctxBuilder.put(ctx, "minutesToBreach", Math.max(0, (emission.dueAt.getEpochSecond() - now.getEpochSecond()) / 60));
         // Surface the institute's configured TAT so templates can render copy like
         // "Please reach out before {{tat}}". Falls back gracefully when not configured.
-        Integer tatHours = config.getTatReminder() != null ? config.getTatReminder().getTatHours() : null;
-        if (tatHours != null) {
-            ctxBuilder.put(ctx, "tatHours", tatHours);
-            ctxBuilder.put(ctx, "tat", tatHours == 1 ? "1 hour" : tatHours + " hours");
+        // tatHours stays a whole number (rounded up) for workflows written against it;
+        // tatMinutes is exact and tat reads like "1 hour 30 minutes".
+        Integer tatMinutes = config.getTatReminder() != null ? config.getTatReminder().getTatMinutes() : null;
+        if (tatMinutes != null) {
+            ctxBuilder.put(ctx, "tatMinutes", tatMinutes);
+            ctxBuilder.put(ctx, "tatHours", config.getTatReminder().getTatHours());
+            ctxBuilder.put(ctx, "tat", LeadSlaConfigService.formatDuration(tatMinutes));
         } else {
             ctxBuilder.put(ctx, "tat", "the earliest");
         }

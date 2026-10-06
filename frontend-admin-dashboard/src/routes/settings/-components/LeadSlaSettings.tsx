@@ -21,6 +21,7 @@ import {
     useLeadSlaConfig,
     saveLeadSlaConfig,
     LEAD_SLA_CONFIG_QUERY_KEY,
+    splitMinutes,
     type LeadSlaSettings as SlaConfig,
 } from '@/hooks/use-lead-sla-config';
 import { getInstituteId } from '@/constants/helper';
@@ -102,6 +103,49 @@ function NotifyRolesPicker({
     );
 }
 
+// Hours : minutes pair for an SLA duration. Stores one total-minutes value and never lets the
+// total drop below 1 minute, so a deadline can't land "immediately".
+function DurationInput({
+    totalMinutes,
+    onChange,
+    idPrefix,
+}: {
+    totalMinutes: number;
+    onChange: (next: number) => void;
+    idPrefix: string;
+}) {
+    const { t } = useTranslation('settingsLeadSla');
+    const { hours, minutes } = splitMinutes(totalMinutes);
+    const emit = (h: number, m: number) => onChange(Math.max(1, h * 60 + m));
+    return (
+        <div className="flex items-center gap-1">
+            <Input
+                id={`${idPrefix}-hours`}
+                type="number"
+                min={0}
+                value={hours}
+                onChange={(e) => emit(Math.max(0, parseInt(e.target.value, 10) || 0), minutes)}
+                className="w-20 text-center"
+                aria-label={t('common.hoursLabel')}
+            />
+            <span className="text-sm text-muted-foreground">{t('common.hoursLabel')}</span>
+            <Input
+                id={`${idPrefix}-minutes`}
+                type="number"
+                min={0}
+                max={59}
+                value={minutes}
+                onChange={(e) =>
+                    emit(hours, Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))
+                }
+                className="ms-2 w-20 text-center"
+                aria-label={t('common.minutesLabel')}
+            />
+            <span className="text-sm text-muted-foreground">{t('common.minutesLabel')}</span>
+        </div>
+    );
+}
+
 /**
  * Table-backed TAT + Follow-up SLA settings (replaces the JSON tatReminder/followUp cards).
  * Reads/writes via the lead-sla-config endpoint. Emit-only: the workflow engine delivers.
@@ -162,6 +206,15 @@ export default function LeadSlaSettings() {
 
     const beforeMinutes = draft.tat_before_minutes ?? [];
 
+    // "1 hour 30 minutes" / "45 minutes" / "24 hours" for the plain-words summaries.
+    const formatDuration = (total: number) => {
+        const { hours, minutes } = splitMinutes(total);
+        const parts: string[] = [];
+        if (hours > 0) parts.push(t('common.hoursUnit', { count: hours }));
+        if (minutes > 0 || hours === 0) parts.push(t('common.minutesUnit', { count: minutes }));
+        return parts.join(' ');
+    };
+
     return (
         <>
             {/* ── New Lead Response Time ── */}
@@ -191,7 +244,7 @@ export default function LeadSlaSettings() {
                                 {beforeMinutes.length > 0 ? (
                                     <>
                                         {t('tat.summary.withRemindersPart1')}
-                                        <span className="font-semibold">{t('common.hoursUnit', { count: draft.tat_hours })}</span>
+                                        <span className="font-semibold">{formatDuration(draft.tat_minutes)}</span>
                                         {t('tat.summary.withRemindersPart2')}
                                         <span className="font-semibold">{beforeMinutes.map((m) => `${m} ${t('common.minAbbrev')}`).join(' and ')}</span>
                                         {t('tat.summary.withRemindersPart3')}
@@ -201,7 +254,7 @@ export default function LeadSlaSettings() {
                                 ) : (
                                     <>
                                         {t('tat.summary.noRemindersPart1')}
-                                        <span className="font-semibold">{t('common.hoursUnit', { count: draft.tat_hours })}</span>
+                                        <span className="font-semibold">{formatDuration(draft.tat_minutes)}</span>
                                         {t('tat.summary.noRemindersPart2')}
                                         <span className="font-semibold">{t('tat.summary.overdueLabel')}</span>
                                         {t('tat.summary.noRemindersPart3')}
@@ -209,23 +262,18 @@ export default function LeadSlaSettings() {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-[1fr_120px] items-center gap-4">
+                            <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <p className="text-sm font-medium">{t('tat.responseWithin.label')}</p>
                                     <p className="text-xs text-muted-foreground">
                                         {t('tat.responseWithin.hint')}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={draft.tat_hours}
-                                        onChange={(e) => patch({ tat_hours: parseInt(e.target.value, 10) || 24 })}
-                                        className="w-20 text-center"
-                                    />
-                                    <span className="text-sm text-muted-foreground">{t('common.hoursLabel')}</span>
-                                </div>
+                                <DurationInput
+                                    idPrefix="tat"
+                                    totalMinutes={draft.tat_minutes}
+                                    onChange={(m) => patch({ tat_minutes: m })}
+                                />
                             </div>
 
                             <Separator />
@@ -309,33 +357,26 @@ export default function LeadSlaSettings() {
                             <div className="rounded-md bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
                                 <span className="font-semibold">{t('common.inPlainWordsLabel')}</span>
                                 {t('followup.summaryPart1')}
-                                <span className="font-semibold">{t('common.hoursUnit', { count: draft.followup_sla_hours })}</span>
+                                <span className="font-semibold">{formatDuration(draft.followup_sla_minutes)}</span>
                                 {t('followup.summaryPart2')}
                                 <span className="font-semibold">{`${draft.followup_remind_before_minutes} ${t('common.minAbbrev')}`}</span>
                                 {t('followup.summaryPart3')}
                             </div>
 
-                            <div className="grid grid-cols-[1fr_120px] items-center gap-4">
+                            <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <p className="text-sm font-medium">{t('followup.within.label')}</p>
                                     <p className="text-xs text-muted-foreground">
                                         {t('followup.within.hint')}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={draft.followup_sla_hours}
-                                        onChange={(e) =>
-                                            patch({ followup_sla_hours: parseInt(e.target.value, 10) || 24 })
-                                        }
-                                        className="w-20 text-center"
-                                    />
-                                    <span className="text-sm text-muted-foreground">{t('common.hoursLabel')}</span>
-                                </div>
+                                <DurationInput
+                                    idPrefix="followup"
+                                    totalMinutes={draft.followup_sla_minutes}
+                                    onChange={(m) => patch({ followup_sla_minutes: m })}
+                                />
                             </div>
-                            <div className="grid grid-cols-[1fr_120px] items-center gap-4">
+                            <div className="flex items-center justify-between gap-4">
                                 <div>
                                     <p className="text-sm font-medium">{t('followup.earlyReminder.label')}</p>
                                     <p className="text-xs text-muted-foreground">

@@ -6,6 +6,8 @@
         "hoursUnit_one": "{{count}} hour",
         "hoursUnit_other": "{{count}} hours",
         "hoursLabel": "hours",
+        "minutesUnit_one": "{{count}} minute",
+        "minutesUnit_other": "{{count}} minutes",
         "minutesLabel": "minutes",
         "minAbbrev": "min",
         "remind": "Remind",

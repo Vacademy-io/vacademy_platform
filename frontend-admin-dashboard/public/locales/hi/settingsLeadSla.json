@@ -6,6 +6,8 @@
         "hoursUnit_one": "{{count}} घंटा",
         "hoursUnit_other": "{{count}} घंटे",
         "hoursLabel": "घंटे",
+        "minutesUnit_one": "{{count}} मिनट",
+        "minutesUnit_other": "{{count}} मिनट",
         "minutesLabel": "मिनट",
         "minAbbrev": "मिनट",
         "remind": "याद दिलाएं",

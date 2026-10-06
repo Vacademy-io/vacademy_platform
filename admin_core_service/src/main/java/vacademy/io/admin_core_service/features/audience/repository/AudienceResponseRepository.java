@@ -2565,15 +2565,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Newest first: a repeat enquiry should answer with its current owner.
          */
         @Query(value = """
-                            SELECT ar.parent_name            AS lead_name,
-                                   ar.parent_email           AS lead_email,
-                                   ar.parent_mobile          AS lead_mobile,
-                                   ulp.assigned_counselor_name AS counsellor_name,
-                                   a.campaign_type           AS campaign_type,
-                                   a.campaign_name           AS campaign_name,
-                                   ls.label                  AS status_label,
-                                   course.value              AS course_value,
-                                   ar.overall_status         AS overall_status
+                            SELECT ar.parent_name            AS "leadName",
+                                   ar.parent_email           AS "leadEmail",
+                                   ar.parent_mobile          AS "leadMobile",
+                                   ulp.assigned_counselor_name AS "counsellorName",
+                                   a.campaign_type           AS "campaignType",
+                                   a.campaign_name           AS "campaignName",
+                                   ls.label                  AS "statusLabel",
+                                   course.value              AS "courseValue",
+                                   ar.overall_status         AS "overallStatus"
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN user_lead_profile ulp
@@ -2604,7 +2604,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("email") String email,
                         @Param("courseFieldId") String courseFieldId);
 
-        /** Projection for {@link #lookupByPhoneOrEmail}. */
+        /**
+         * Projection for {@link #lookupByPhoneOrEmail}.
+         *
+         * The aliases above are quoted camelCase on purpose. Postgres folds an
+         * unquoted alias to lower case, so `AS lead_name` arrives as `lead_name`
+         * and never binds to {@code getLeadName()} — Spring returns null for every
+         * getter rather than failing, which reads as "the lead exists but we know
+         * nothing about it".
+         */
         interface LeadLookupRow {
                 String getLeadName();
                 String getLeadEmail();

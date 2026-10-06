@@ -17,7 +17,7 @@
     },
     "loading": "Chargement des paramètres de rappel…",
     "tat": {
-        "title": "Délai de réponse aux nouveaux prospects",
+        "title": "Délai de réponse aux nouveaux prospects (TAT)",
         "description": "Assurez-vous que les nouveaux prospects sont contactés rapidement. Si le conseiller assigné ne les contacte pas à temps, il recevra un rappel. Choisissez comment il est notifié (e-mail, WhatsApp, dans l'application) sous <1>Paramètres → Automatisations</1>.",
         "summary": {
             "withRemindersPart1": "un nouveau prospect doit être contacté dans un délai de ",
@@ -41,7 +41,7 @@
         }
     },
     "followup": {
-        "title": "Rappels de suivi",
+        "title": "Rappels de suivi (SLA)",
         "description": "Aidez les conseillers à assurer le suivi. Une fois qu'ils ont contacté un prospect, ils recevront un rappel pour effectuer un nouveau suivi dans le délai que vous définissez. Le compteur redémarre chaque fois qu'ils enregistrent une nouvelle activité (appel, note, réunion).",
         "within": {
             "label": "Effectuer un nouveau suivi sous",

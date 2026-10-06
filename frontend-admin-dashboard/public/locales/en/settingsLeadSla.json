@@ -15,7 +15,7 @@
     },
     "loading": "Loading reminder settings…",
     "tat": {
-        "title": "New Lead Response Time",
+        "title": "New Lead Response Time (TAT)",
         "description": "Make sure new leads get contacted quickly. If the assigned counsellor doesn't reach out in time, they'll be reminded. Choose how they're notified (email, WhatsApp, in-app) under <1>Settings → Automations</1>.",
         "summary": {
             "withRemindersPart1": "a new lead should be contacted within ",
@@ -39,7 +39,7 @@
         }
     },
     "followup": {
-        "title": "Follow-up Reminders",
+        "title": "Follow-up Reminders (SLA)",
         "description": "Keep counsellors following up. Once they've contacted a lead, they'll be reminded to follow up again within the time you set. The clock restarts every time they log a new activity (call, note, meeting).",
         "within": {
             "label": "Follow up again within",

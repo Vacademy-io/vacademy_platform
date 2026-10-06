@@ -55,6 +55,7 @@ Each tool takes an `action` argument. The schema is flat (`action` plus optional
 | `invites` | Every invite for the course: link, price, status, whether it is the default, enrollment count. |
 | `get_invite` | One invite in full: landing copy, form fields, payment plans. |
 | `payment_setup` | Active payment gateways (vendors) and the institute's existing payment plans. |
+| `sessions_levels` | The institute's existing sessions (e.g. 2026-27) and levels (e.g. Class 9), to reuse by id. |
 
 ### 3.2 `course_edit` (WRITE, drafts only)
 
@@ -102,6 +103,17 @@ Sequence (from admin-core):
 3. `POST /v1/enroll-invite` with `package_session_to_payment_options=[{package_session_id, payment_option:{id}}]`; the tag stays empty.
 4. Optionally `PUT /v1/enroll-invite/update-default-enroll-invite-config`.
 5. `GET /v1/enroll-invite/{instituteId}/{id}` to fetch `short_url`.
+
+## 3.5 Sessions, levels and batches
+
+A course is taught in one or more **batches** (`package_session`), one per **session × level**. Most courses need none: without `sessions` / `levels`, `create_course` sends `contain_levels: false` and admin-core creates the single hidden DEFAULT × DEFAULT batch.
+
+- `create_course(levels: ['Class 9', 'Class 10'])` → DEFAULT session, one batch per level.
+- `create_course(sessions: [{name: '2026-27', start_date?, levels?}], levels?)` → one batch per session × level. A session without its own levels gets the top-level `levels`, else the DEFAULT level.
+- **Reuse:** `{id}` for an existing session / level (validated against the institute's own, from `courses(sessions_levels)`); a new **name** that already exists in the institute is reused by admin-core. An existing level is sent **without** its name, because admin-core renames a level to whatever name accompanies its id.
+- **The payload is the dashboard wizard's** (`components/common/study-library/-utils/helper.ts`): `contain_levels: true`, `sessions: [{id, session_name, new_session, start_date, levels: [{id, new_level, level_name, group, …}]}]`.
+- **Content is shared** by all batches: subjects and chapters are created with every batch id in `commaSeparatedPackageSessionIds` (as the dashboard does), and `add_chapter` maps new chapters to every batch.
+- **Invites are per batch:** `create_invite` needs `batch_ids` when a course has several (it refuses to guess the class / year), and several ids make one bundled invite. `make_default` and the `create_payment_plan` swap cover every batch the invite enrols into. `courses(get / invites)` list the batches, the invites' batches and the batches still without a default invite.
 
 ## 4. Persistence mapping (what `create_course` / `add_slide` call)
 

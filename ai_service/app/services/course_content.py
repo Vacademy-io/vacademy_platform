@@ -606,6 +606,126 @@ def normalize_outline(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], O
 
 
 DEFAULT_LEVEL = "DEFAULT"
+MAX_BATCHES = 30
+
+BATCHES_CONTRACT = (
+    "A course is taught in one or more BATCHES = session × level. Most courses need none: leave out "
+    "`sessions` / `levels` and the course gets one hidden default batch. Otherwise:\n"
+    "  levels: ['Class 9', 'Class 10']                     → one batch per level (no session)\n"
+    "  sessions: [{name: '2026-27', start_date?: 'YYYY-MM-DD', levels?: ['Class 9', …]}]\n"
+    "                                                      → one batch per session × level (a session with no "
+    "levels gets the default level; top-level `levels` apply to sessions that list none)\n"
+    "Reuse the institute's existing ones (courses(action='sessions_levels')) by id: {id: '<session id>'} / "
+    "{id: '<level id>'}; a NAME that already exists in the institute is reused automatically. All batches share "
+    "the same chapters and slides; each batch gets its own invite link and enrolments."
+)
+
+
+def _level_payload(level: Any, index: int) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+    """(AddLevelWithSessionDTO, label, problem) — mirrors the dashboard's formatLevels()."""
+    group = {"id": "", "group_name": "", "group_value": "", "new_group": True}
+    common = {"duration_in_days": 0, "thumbnail_file_id": "", "package_id": "", "is_parent": False,
+              "parent_id": None, "add_faculty_to_course": [], "group": group}
+    if isinstance(level, dict) and level.get("id"):
+        # Existing level: NO name — admin-core renames an existing level to whatever name is sent.
+        return {"id": str(level["id"]), "new_level": False, "level_name": "", **common}, f"level:{level['id']}", None
+    name = clean_title(level.get("name") if isinstance(level, dict) else level)
+    if not name:
+        return None, None, f"level {index + 1} needs a name or an id"
+    if name.upper() == DEFAULT_LEVEL:
+        return None, None, "'DEFAULT' is reserved — leave levels out for a course without levels"
+    return {"id": "", "new_level": True, "level_name": name, **common}, name.casefold(), None
+
+
+def _default_level() -> Dict[str, Any]:
+    return {"id": DEFAULT_LEVEL, "new_level": True, "level_name": DEFAULT_LEVEL, "duration_in_days": 0,
+            "thumbnail_file_id": "", "package_id": "", "is_parent": False, "parent_id": None,
+            "add_faculty_to_course": [],
+            "group": {"id": DEFAULT_LEVEL, "group_name": DEFAULT_LEVEL, "group_value": "", "new_group": True}}
+
+
+def normalize_batches(args: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    The add-course ``contain_levels`` + ``sessions`` payload for the requested
+    batches, built exactly like the dashboard's course wizard
+    (components/common/study-library/-utils/helper.ts). Returns
+    ({"contain_levels", "sessions", "batches": [labels]}, None) or (None, problem).
+    No sessions and no levels → contain_levels false (one hidden default batch).
+    """
+    sessions_in = args.get("sessions")
+    levels_in = args.get("levels")
+    if sessions_in in (None, []) and levels_in in (None, []):
+        return {"contain_levels": False, "sessions": [], "batches": []}, None
+    if sessions_in is not None and not isinstance(sessions_in, list):
+        return None, "sessions must be a list"
+    if levels_in is not None and not isinstance(levels_in, list):
+        return None, "levels must be a list"
+
+    def levels_for(items: List[Any]) -> Tuple[Optional[List[Dict[str, Any]]], List[str], Optional[str]]:
+        out, labels, seen = [], [], set()
+        for i, lv in enumerate(items):
+            payload, key, problem = _level_payload(lv, i)
+            if problem:
+                return None, [], problem
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(payload)
+            labels.append(payload["level_name"] or f"level {payload['id']}")
+        return out, labels, None
+
+    top_levels, top_labels, problem = levels_for(levels_in or [])
+    if problem:
+        return None, problem
+
+    sessions: List[Dict[str, Any]] = []
+    batch_labels: List[str] = []
+    if not sessions_in:
+        sessions.append({"id": DEFAULT_LEVEL, "session_name": DEFAULT_LEVEL, "status": "ACTIVE", "start_date": "",
+                         "new_session": True, "levels": top_levels})
+        batch_labels = list(top_labels)
+    else:
+        seen_sessions = set()
+        for i, sess in enumerate(sessions_in):
+            if not isinstance(sess, (dict, str)):
+                return None, f"session {i + 1} must be an object or a name"
+            sess = {"name": sess} if isinstance(sess, str) else sess
+            start = str(sess.get("start_date") or "").strip()
+            if start:
+                from datetime import date
+                try:
+                    start = date.fromisoformat(start[:10]).isoformat()
+                except ValueError:
+                    return None, f"session {i + 1}: start_date must be YYYY-MM-DD"
+            if sess.get("id"):
+                payload = {"id": str(sess["id"]), "session_name": "", "status": "ACTIVE", "start_date": start,
+                           "new_session": False}
+                key, label = f"session:{sess['id']}", f"session {sess['id']}"
+            else:
+                name = clean_title(sess.get("name"))
+                if not name:
+                    return None, f"session {i + 1} needs a name or an id"
+                if name.upper() == DEFAULT_LEVEL:
+                    return None, "'DEFAULT' is reserved — leave sessions out for a course without sessions"
+                payload = {"id": "", "session_name": name, "status": "ACTIVE", "start_date": start,
+                           "new_session": True}
+                key, label = name.casefold(), name
+            if key in seen_sessions:
+                return None, f"session '{label}' is listed twice"
+            seen_sessions.add(key)
+            if sess.get("levels"):
+                lv, lv_labels, problem = levels_for(sess["levels"])
+                if problem:
+                    return None, f"session '{label}': {problem}"
+            elif top_levels:
+                lv, lv_labels = [dict(x) for x in top_levels], top_labels
+            else:
+                lv, lv_labels = [_default_level()], [None]
+            sessions.append({**payload, "levels": lv})
+            batch_labels += [" · ".join(x for x in (label, l) if x) for l in lv_labels]
+    if len(batch_labels) > MAX_BATCHES:
+        return None, f"at most {MAX_BATCHES} batches (sessions × levels) per course"
+    return {"contain_levels": True, "sessions": sessions, "batches": batch_labels}, None
 
 
 def _unique(title: str, used: set) -> str:
@@ -692,5 +812,5 @@ __all__ = [
     "SLIDE_TYPES", "SLIDE_STATUSES", "QUESTION_TYPES", "SOURCE_TYPE_TO_SPEC", "DEPTH_CONTRACT", "OUTLINE_CONTRACT",
     "slide_contract", "clean_document_html", "youtube_id", "normalize_question", "quiz_question_payload",
     "build_slide_request", "normalize_outline", "is_placeholder", "review_findings", "word_count", "new_id",
-    "clean_title", "DEFAULT_LEVEL",
+    "clean_title", "DEFAULT_LEVEL", "BATCHES_CONTRACT", "normalize_batches",
 ]

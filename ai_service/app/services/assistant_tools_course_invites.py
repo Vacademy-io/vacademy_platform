@@ -58,7 +58,8 @@ INVITES_EDIT_SCHEMA: Dict[str, Any] = {
             "Create invite links (the page learners enrol / pay through) and payment plans for a course. Never edits "
             "or deletes anything. Read courses(action='invites') and courses(action='payment_setup') first; never "
             "invent prices — ask the admin. Pick an `action`:\n"
-            "- create_invite (course_id, payment: PAYMENT | payment_option_id, name?, start_date?, end_date?, "
+            "- create_invite (course_id, payment: PAYMENT | payment_option_id, batch_ids? (required when the "
+            "course has several batches — ask which session / level), name?, start_date?, end_date?, "
             "access_days?, landing?: {description_html, learning_outcome_html, about_html, target_audience_html, "
             "tags}, form_fields?: [{label, type: text|number|dropdown, required?, options?}], make_default?): a new "
             "invite. The registration form always starts with the institute's default fields (name, email, phone…); "
@@ -86,6 +87,10 @@ INVITES_EDIT_SCHEMA: Dict[str, Any] = {
                 "landing": {"type": "object"},
                 "form_fields": {"type": "array", "items": {"type": "object"}},
                 "make_default": {"type": "boolean", "description": "create_invite: also make it the default."},
+                "batch_ids": {"type": "array", "items": {"type": "string"},
+                              "description": "Which batches (session × level, ids from courses(action='get')) the "
+                                             "invite enrols into. Needed when the course has several; several make "
+                                             "one bundled invite. make_default: limit to these batches."},
             },
             "required": ["action"],
         },
@@ -290,14 +295,42 @@ def _iso_day(value: Any) -> Tuple[Optional[str], Optional[str]]:
 
 # ── shared steps ─────────────────────────────────────────────────────────
 
-def _course_and_batch(ctx: ToolContext, course_id: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
+def _course_and_batches(ctx: ToolContext, course_id: Any) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """The course and its ACTIVE batches (session × level), or an error."""
     course = cbd.course_row(ctx, str(course_id or ""))
     if not course:
-        return None, None, _err("unknown_course", message="No such course in this institute. Use courses(action='list').")
-    batch = cbd.active_batch_id(ctx, course["id"])
-    if not batch:
-        return None, None, _err("no_batch", message="This course has no active batch to enrol into.")
-    return course, batch, None
+        return None, [], _err("unknown_course", message="No such course in this institute. Use courses(action='list').")
+    batches = cbd.course_batches(ctx, course["id"])
+    if not batches:
+        return None, [], _err("no_batch", message="This course has no active batch to enrol into.")
+    return course, batches, None
+
+
+def _batch_view(b: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": b["id"], "name": b["name"], "session": b.get("session"), "level": b.get("level")}
+
+
+def pick_batches(batches: List[Dict[str, Any]], requested: Any) -> Tuple[Optional[List[str]], Optional[Dict[str, Any]]]:
+    """
+    Which batches an invite enrols into. A one-batch course needs no choice; a
+    course with several sessions / levels needs `batch_ids` — guessing would
+    sell the wrong class or year.
+    """
+    ids = [str(x) for x in (requested or []) if x]
+    known = {b["id"] for b in batches}
+    if ids:
+        unknown = [i for i in ids if i not in known]
+        if unknown:
+            return None, _err("unknown_batch", message="Some batch_ids are not batches of this course.",
+                              batch_ids=unknown, batches=[_batch_view(b) for b in batches])
+        return list(dict.fromkeys(ids)), None
+    if len(batches) == 1:
+        return [batches[0]["id"]], None
+    return None, _err("choose_batch",
+                      message="This course has several batches (session × level). Ask the admin which one(s) this "
+                              "invite is for and pass batch_ids; several batch_ids make ONE bundled invite that "
+                              "enrols the learner into all of them.",
+                      batches=[_batch_view(b) for b in batches])
 
 
 async def _create_option(ctx: ToolContext, spec: Any, fallback_name: str,
@@ -343,7 +376,10 @@ async def _invite_link(ctx: ToolContext, invite_id: str) -> Dict[str, Any]:
 # ── actions ──────────────────────────────────────────────────────────────
 
 async def _action_create_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    course, batch, error = _course_and_batch(ctx, args.get("course_id"))
+    course, batches, error = _course_and_batches(ctx, args.get("course_id"))
+    if error:
+        return error
+    batch_ids, error = pick_batches(batches, args.get("batch_ids"))
     if error:
         return error
     if not args.get("payment") and not args.get("payment_option_id"):
@@ -412,12 +448,13 @@ async def _action_create_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         "name": name, "start_date": start, "end_date": end, "status": "ACTIVE",
         "institute_id": ctx.principal.institute_id, "vendor": vendor.get("vendor"),
         "vendor_id": vendor.get("vendor_id") or vendor.get("vendor"), "currency": currency, "tag": "",
-        "is_bundled": False, "learner_access_days": access_days,
+        "is_bundled": len(batch_ids) > 1, "learner_access_days": access_days,
         "web_page_meta_data_json": json.dumps(meta),
         "setting_json": json.dumps({"postformfillConfiguration": {"showLoginButton": True}}),
         "institute_custom_fields": fields,
         "package_session_to_payment_options": [
-            {"package_session_id": batch, "payment_option": {"id": option["id"]}, "status": "ACTIVE"}],
+            {"package_session_id": bid, "payment_option": {"id": option["id"]}, "status": "ACTIVE"}
+            for bid in batch_ids],
     }
     created = await cbd.admin_core(ctx, "POST", "/admin-core-service/v1/enroll-invite", body=invite_body)
     invite_id = created.strip().strip('"') if isinstance(created, str) else (
@@ -432,15 +469,18 @@ async def _action_create_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         if course["status"] == cbd.STATUS_ACTIVE:
             notes.append("Not made the default: the course is live — change its default invite in the dashboard.")
         else:
-            made_default = not cbd.is_error(await _make_default(ctx, invite_id, batch))
+            results = [await _make_default(ctx, invite_id, bid) for bid in batch_ids]
+            made_default = not any(cbd.is_error(r) for r in results)
             if not made_default:
-                notes.append("The invite was created but could not be made the default.")
+                notes.append("The invite was created but could not be made the default for every batch.")
     elif course["status"] != cbd.STATUS_ACTIVE:
         notes.append("This is not the course's default invite yet; call make_default if catalogue enrolments "
                      "should use this price.")
     link = await _invite_link(ctx, invite_id)
+    by_id = {b["id"]: b for b in batches}
     return {
         "invite": {"id": invite_id, "name": name, "is_default": made_default, **link,
+                   "batches": [_batch_view(by_id[b]) for b in batch_ids], "bundled": len(batch_ids) > 1,
                    "form_fields": [f["custom_field"]["fieldName"] for f in fields]},
         "payment": describe_option(option),
         "course": {"id": course["id"], "name": course["name"], "status": course["status"]},
@@ -453,15 +493,15 @@ async def _action_create_payment_plan(args: Dict[str, Any], ctx: ToolContext) ->
     if not args.get("payment"):
         return _err("missing_argument", action="create_payment_plan", needs=["payment"])
     invite_id = str(args.get("invite_id") or "").strip()
-    course = batch = invite = None
+    course = invite = None
     if invite_id:
-        course, batch, error = _course_and_batch(ctx, args.get("course_id"))
+        course, batches, error = _course_and_batches(ctx, args.get("course_id"))
         if error:
             return error
         if course["status"] == cbd.STATUS_ACTIVE:
             return _err("course_is_live", message="This course is live; change its invite's plan in the dashboard. "
                                                   "You can still create a NEW invite with create_invite.")
-        invite = cbd.invite_row(ctx, invite_id, batch)
+        invite = cbd.invite_row(ctx, invite_id, [b["id"] for b in batches])
         if not invite:
             return _err("unknown_invite", message="No such invite for this course. Use courses(action='invites').")
     option, error = await _create_option(ctx, args["payment"], (course or {}).get("name") or "Course")
@@ -471,12 +511,13 @@ async def _action_create_payment_plan(args: Dict[str, Any], ctx: ToolContext) ->
     if invite:
         swapped = await cbd.admin_core(
             ctx, "PUT", "/admin-core-service/v1/enroll-invite/enroll-invite-payment-option",
+            # One replacement per batch the invite enrols into, so a bundled invite stays whole.
             body=[{"enroll_invite_id": invite_id, "update_payment_options": [{
-                "old_package_session_payment_option_id": invite["link_id"],
+                "old_package_session_payment_option_id": link["link_id"],
                 "new_package_session_payment_option": {
-                    "package_session_id": batch, "payment_option": {"id": option["id"]},
+                    "package_session_id": link["package_session_id"], "payment_option": {"id": option["id"]},
                     "enroll_invite_id": invite_id, "status": "ACTIVE"},
-            }]}],
+            } for link in invite["links"]]}],
         )
         if cbd.is_error(swapped):
             result["notes"] = ["The plan was created but could not be attached to the invite; attach it in the dashboard."]
@@ -491,18 +532,31 @@ async def _action_create_payment_plan(args: Dict[str, Any], ctx: ToolContext) ->
 async def _action_make_default(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     if not args.get("invite_id"):
         return _err("missing_argument", action="make_default", needs=["course_id", "invite_id"])
-    course, batch, error = _course_and_batch(ctx, args.get("course_id"))
+    course, batches, error = _course_and_batches(ctx, args.get("course_id"))
     if error:
         return error
     if course["status"] == cbd.STATUS_ACTIVE:
         return _err("course_is_live", message="This course is live; change its default invite in the dashboard.")
-    invite = cbd.invite_row(ctx, str(args["invite_id"]), batch)
+    invite = cbd.invite_row(ctx, str(args["invite_id"]), [b["id"] for b in batches])
     if not invite:
         return _err("unknown_invite", message="No such invite for this course. Use courses(action='invites').")
-    done = await _make_default(ctx, invite["id"], batch)
-    if cbd.is_error(done):
-        return _err("save_failed", message=done.get("message") or "The invite could not be made the default.")
-    return {"default_invite": {"id": invite["id"], "name": invite["name"], "link": invite.get("short_url")},
+    # The default invite is per batch: by default make it the default of every batch it enrols into.
+    targets = invite["batch_ids"]
+    if args.get("batch_ids"):
+        targets = [b for b in invite["batch_ids"] if b in {str(x) for x in args["batch_ids"]}]
+        if not targets:
+            return _err("bad_request", message="This invite does not enrol into any of those batches.")
+    by_id = {b["id"]: b for b in batches}
+    failed = []
+    for bid in targets:
+        if cbd.is_error(await _make_default(ctx, invite["id"], bid)):
+            failed.append(by_id.get(bid, {}).get("name", bid))
+    if len(failed) == len(targets):
+        return _err("save_failed", message="The invite could not be made the default.")
+    return {"default_invite": {"id": invite["id"], "name": invite["name"], "link": invite.get("short_url"),
+                               "default_for": [_batch_view(by_id[b]) for b in targets if b in by_id
+                                               and by_id[b]["name"] not in failed]},
+            "failed_batches": failed,
             "course": {"id": course["id"], "name": course["name"]}}
 
 

@@ -185,8 +185,76 @@ LIMIT 1
 
 
 def active_batch_id(ctx: ToolContext, course_id: str) -> Optional[str]:
+    """The course's PRIMARY batch (oldest ACTIVE). Content is shared by all of
+    a course's batches, so the tree is read through this one — use
+    course_batches() for anything that is per batch (invites, enrolments)."""
     rows = _rows(ctx, _BATCH_SQL, {"pkg": course_id})
     return rows[0]["id"] if rows else None
+
+
+_BATCHES_SQL = """
+SELECT ps.id, ps.session_id, s.session_name, s.start_date, ps.level_id, l.level_name, ps.status,
+       (SELECT COUNT(*) FROM student_session_institute_group_mapping m
+         WHERE m.package_session_id = ps.id AND m.institute_id = :inst AND m.status = 'ACTIVE') AS enrolled
+FROM package_session ps
+LEFT JOIN session s ON s.id = ps.session_id
+LEFT JOIN level l ON l.id = ps.level_id
+WHERE ps.package_id = :pkg AND ps.status = 'ACTIVE'
+ORDER BY ps.created_at ASC
+"""
+
+
+def _label(name: Optional[str]) -> Optional[str]:
+    """Session / level name as the admin sees it — the DEFAULT placeholder is no name."""
+    return None if not name or name.upper() == DEFAULT_LEVEL_NAME else name
+
+
+def course_batches(ctx: ToolContext, course_id: str) -> List[Dict[str, Any]]:
+    """Every ACTIVE batch (session × level) of a course — the INVITED sentinel excluded."""
+    rows = _rows(ctx, _BATCHES_SQL, {"pkg": course_id, "inst": ctx.principal.institute_id})
+    out = []
+    for r in rows:
+        session, level = _label(r.get("session_name")), _label(r.get("level_name"))
+        out.append({
+            "id": r["id"],
+            "session": session, "session_id": r.get("session_id") if session else None,
+            "level": level, "level_id": r.get("level_id") if level else None,
+            "start_date": r.get("start_date"),
+            "name": " · ".join(x for x in (session, level) if x) or "Default batch",
+            "enrolled": int(r.get("enrolled") or 0),
+        })
+    return out
+
+
+_SESSIONS_LEVELS_SQL = """
+SELECT DISTINCT 'session' AS kind, s.id, s.session_name AS name, s.start_date
+FROM package_session ps JOIN package_institute pi ON pi.package_id = ps.package_id
+JOIN session s ON s.id = ps.session_id
+WHERE pi.institute_id = :inst AND ps.status = 'ACTIVE' AND COALESCE(s.status, 'ACTIVE') = 'ACTIVE'
+UNION
+SELECT DISTINCT 'level' AS kind, l.id, l.level_name AS name, NULL::date AS start_date
+FROM package_session ps JOIN package_institute pi ON pi.package_id = ps.package_id
+JOIN level l ON l.id = ps.level_id
+WHERE pi.institute_id = :inst AND ps.status = 'ACTIVE' AND COALESCE(l.status, 'ACTIVE') = 'ACTIVE'
+"""
+
+
+def institute_sessions_levels(ctx: ToolContext) -> Dict[str, List[Dict[str, Any]]]:
+    """The sessions and levels the institute already uses (DEFAULT placeholders left out)."""
+    rows = _rows(ctx, _SESSIONS_LEVELS_SQL, {"inst": ctx.principal.institute_id})
+    out: Dict[str, List[Dict[str, Any]]] = {"sessions": [], "levels": []}
+    for r in rows:
+        if not _label(r.get("name")):
+            continue
+        item = {"id": r["id"], "name": r["name"]}
+        if r["kind"] == "session":
+            item["start_date"] = r.get("start_date")
+            out["sessions"].append(item)
+        else:
+            out["levels"].append(item)
+    for k in out:
+        out[k].sort(key=lambda x: str(x["name"]).casefold())
+    return out
 
 
 _ENROLLED_SQL = """
@@ -196,6 +264,7 @@ WHERE package_session_id = :ps AND institute_id = :inst AND status = 'ACTIVE'
 
 
 def enrolled_count(ctx: ToolContext, package_session_id: Optional[str]) -> int:
+    """Learners enrolled in ONE batch (course_batches() carries the per-batch counts)."""
     if not package_session_id:
         return 0
     rows = _rows(ctx, _ENROLLED_SQL, {"ps": package_session_id, "inst": ctx.principal.institute_id})
@@ -319,13 +388,14 @@ SELECT ei.id, ei.name, ei.status, ei.tag, ei.invite_code, ei.short_url, ei.curre
        ei.start_date, ei.end_date, ei.learner_access_days, ei.created_at,
        b.id AS link_id, po.id AS payment_option_id, po.name AS payment_option_name, po.type AS payment_type,
        po.require_approval
+       , b.package_session_id
 FROM enroll_invite ei
 JOIN package_session_learner_invitation_to_payment_option b
-     ON b.enroll_invite_id = ei.id AND b.status = 'ACTIVE' AND b.package_session_id = :ps
+     ON b.enroll_invite_id = ei.id AND b.status = 'ACTIVE' AND b.package_session_id = ANY(:ps)
 LEFT JOIN payment_option po ON po.id = b.payment_option_id
 WHERE ei.institute_id = :inst AND ei.status <> 'DELETED'
 ORDER BY ei.created_at DESC
-LIMIT 40
+LIMIT 200
 """
 
 _PLANS_SQL = """
@@ -336,24 +406,45 @@ ORDER BY validity_in_days NULLS LAST
 """
 
 
-def invites_for_batch(ctx: ToolContext, package_session_id: str) -> List[Dict[str, Any]]:
-    rows = _rows(ctx, _INVITES_SQL, {"ps": package_session_id, "inst": ctx.principal.institute_id})
-    option_ids = sorted({r["payment_option_id"] for r in rows if r.get("payment_option_id")})
+def invites_for_batches(ctx: ToolContext, package_session_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    Invites linked to any of the given batches — one row per invite, newest
+    first. ``links`` holds one entry per (invite, batch) link (its id is what a
+    payment-option swap replaces); ``batch_ids`` the batches it enrols into.
+    """
+    if not package_session_ids:
+        return []
+    rows = _rows(ctx, _INVITES_SQL, {"ps": list(package_session_ids), "inst": ctx.principal.institute_id})
+    invites: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        link = {"link_id": r.pop("link_id"), "package_session_id": r.pop("package_session_id"),
+                "payment_option_id": r.get("payment_option_id")}
+        inv = invites.setdefault(r["id"], {**r, "links": []})
+        inv["links"].append(link)
+    out = list(invites.values())
+    option_ids = sorted({i["payment_option_id"] for i in out if i.get("payment_option_id")})
     plans = _rows(ctx, _PLANS_SQL, {"ids": option_ids}) if option_ids else []
     plans_by_opt: Dict[str, List[Dict[str, Any]]] = {}
     for p in plans:
         plans_by_opt.setdefault(p.pop("payment_option_id"), []).append(p)
-    for r in rows:
-        r["plans"] = plans_by_opt.get(r.get("payment_option_id"), [])
-        r["is_default"] = (r.get("tag") or "") == "DEFAULT"
-    return rows
+    for i in out:
+        i["plans"] = plans_by_opt.get(i.get("payment_option_id"), [])
+        i["is_default"] = (i.get("tag") or "") == "DEFAULT"
+        i["batch_ids"] = [l["package_session_id"] for l in i["links"]]
+        i["link_id"] = i["links"][0]["link_id"]
+    return out
 
 
-def invite_row(ctx: ToolContext, invite_id: Optional[str], package_session_id: str) -> Optional[Dict[str, Any]]:
-    """An invite of THIS institute linked to the given batch, else None."""
+def invites_for_batch(ctx: ToolContext, package_session_id: str) -> List[Dict[str, Any]]:
+    return invites_for_batches(ctx, [package_session_id])
+
+
+def invite_row(ctx: ToolContext, invite_id: Optional[str], package_session_ids: Any) -> Optional[Dict[str, Any]]:
+    """An invite of THIS institute linked to the given batch(es), else None."""
     if not invite_id:
         return None
-    for r in invites_for_batch(ctx, package_session_id):
+    ids = [package_session_ids] if isinstance(package_session_ids, str) else list(package_session_ids or [])
+    for r in invites_for_batches(ctx, ids):
         if r["id"] == invite_id:
             return r
     return None
@@ -479,7 +570,8 @@ async def save_course_settings(ctx: ToolContext, data: Dict[str, Any]) -> Any:
 __all__ = [
     "STATUS_DRAFT", "STATUS_IN_REVIEW", "STATUS_ACTIVE", "DEFAULT_LEVEL_NAME",
     "err", "is_error", "admin_core", "admin_base", "course_editor_url",
-    "list_courses", "course_row", "active_batch_id", "enrolled_count", "course_tree", "flatten_chapters",
-    "chapter_context", "slide_context", "invites_for_batch", "invite_row", "payment_vendors",
+    "list_courses", "course_row", "active_batch_id", "course_batches", "institute_sessions_levels",
+    "enrolled_count", "course_tree", "flatten_chapters",
+    "chapter_context", "slide_context", "invites_for_batches", "invites_for_batch", "invite_row", "payment_vendors",
     "load_course_settings", "save_course_settings",
 ]

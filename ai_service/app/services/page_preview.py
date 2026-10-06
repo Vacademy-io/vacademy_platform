@@ -46,8 +46,19 @@ async def render_preview(*, base_url: str, tag_name: str, page_route: str, confi
     except asyncio.TimeoutError:
         return {"error": "preview_timeout", "message": "The page did not render within 60s."}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("preview render failed for %s/%s: %s", tag_name, page_route, exc)
-        return {"error": "preview_failed", "message": "The page could not be rendered."}
+        logger.warning("preview render failed for %s/%s at %s: %r", tag_name, page_route, base_url, exc)
+        # First line only: Playwright appends a multi-line call log.
+        reason = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:300]
+        return {"error": "preview_failed", "message": f"The page could not be rendered: {reason}"}
+
+
+def _preview_url(base_url: str, tag_name: str) -> str:
+    # Institute domains are stored as bare hosts ("learn.example.com"); a
+    # scheme-less URL is not navigable, so every such preview failed.
+    base = (base_url or "").strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"https://{base}"
+    return f"{base}/{quote(tag_name, safe='')}?preview=true"
 
 
 def _as_root_page(config: Dict[str, Any], page_route: str) -> Dict[str, Any]:
@@ -71,7 +82,7 @@ async def _render(async_playwright: Any, base_url: str, tag_name: str, page_rout
     # we simply present the wanted page AS that root page — any page previews
     # through the one route that supports it, and section ids are untouched.
     payload = json.dumps({"type": "CATALOGUE_CONFIG_UPDATE", "payload": _as_root_page(config, page_route)})
-    url = f"{base_url.rstrip('/')}/{quote(tag_name, safe='')}?preview=true"
+    url = _preview_url(base_url, tag_name)
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
@@ -117,4 +128,4 @@ async def _render(async_playwright: Any, base_url: str, tag_name: str, page_rout
             await browser.close()
 
 
-__all__ = ["render_preview", "VIEWPORTS", "_as_root_page"]
+__all__ = ["render_preview", "VIEWPORTS", "_as_root_page", "_preview_url"]

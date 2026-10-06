@@ -59,7 +59,9 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
             "- create_course (course:{name, depth?, about_html?, why_learn_html?, who_should_learn_html?, tags?}, "
             "chapters | modules | subjects): creates a DRAFT course with its structure. Slides inside chapters may be "
             "full slide specs (saved now) or {type, title} placeholders (returned in `todo` for add_slide). Returns "
-            "every chapter id.\n"
+            "every chapter id. Optional sessions / levels make one batch per session × level (see "
+            "courses(action='schema') → batches; reuse existing ones from courses(action='sessions_levels')); leave "
+            "them out for a simple course.\n"
             "- add_chapter (course_id, name, module_id?): another chapter (depth ≥ 3).\n"
             "- add_slide (chapter_id, slide:{type, title, …}, position?, status?): one slide.\n"
             "- update_slide (slide_id, slide:{type, title, …}, status?): replace a slide of a DRAFT course (same type).\n"
@@ -89,6 +91,10 @@ COURSE_EDIT_SCHEMA: Dict[str, Any] = {
                             "description": "create_course depth 4: [{name, chapters:[…]}]."},
                 "subjects": {"type": "array", "items": {"type": "object"},
                              "description": "create_course depth 5: [{name, modules:[…]}]."},
+                "sessions": {"type": "array", "items": {}, "description": "create_course: sessions → batches, "
+                             "[{name | id, start_date?, levels?:[name | {id}]}]. Omit for a course without sessions."},
+                "levels": {"type": "array", "items": {}, "description": "create_course: levels (names or {id}); "
+                           "with no sessions, one batch per level. Omit for a course without levels."},
                 "course_id": {"type": "string"},
                 "chapter_id": {"type": "string"},
                 "module_id": {"type": "string", "description": "add_chapter (depth ≥ 4): the module to add it to."},
@@ -206,11 +212,30 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     if problems:
         return _err("invalid_slides", problems=problems[:30], message="Nothing was created. Fix these and resend.")
 
+    # Sessions × levels (batches). Ids must be the institute's own — admin-core
+    # would otherwise attach this course to another institute's session/level.
+    batches_spec, problem = cc.normalize_batches(args)
+    if problem:
+        return _err("invalid_batches", message=problem, see="courses(action='schema') → batches")
+    if batches_spec["contain_levels"]:
+        known = cbd.institute_sessions_levels(ctx)
+        session_ids = {x["id"] for x in known["sessions"]}
+        level_ids = {x["id"] for x in known["levels"]}
+        for sess in batches_spec["sessions"]:
+            if not sess["new_session"] and sess["id"] != cc.DEFAULT_LEVEL and sess["id"] not in session_ids:
+                return _err("unknown_session", message=f"Session '{sess['id']}' is not one of this institute's "
+                                                       "sessions (see courses(action='sessions_levels')).")
+            for lv in sess["levels"]:
+                if not lv["new_level"] and lv["id"] != cc.DEFAULT_LEVEL and lv["id"] not in level_ids:
+                    return _err("unknown_level", message=f"Level '{lv['id']}' is not one of this institute's "
+                                                         "levels (see courses(action='sessions_levels')).")
+
     course = outline["course"]
     created = await cbd.admin_core(
         ctx, "POST", f"/admin-core-service/course/v1/add-course/{ctx.principal.institute_id}", timeout=60.0,
         body={
-            "id": "", "new_course": True, "force_new_course": True, "contain_levels": False,
+            "id": "", "new_course": True, "force_new_course": True,
+            "contain_levels": batches_spec["contain_levels"], "sessions": batches_spec["sessions"],
             "course_name": course["name"], "course_depth": outline["depth"], "status": cbd.STATUS_DRAFT,
             "is_course_published_to_catalaouge": False,
             "about_the_course_html": course["about_html"], "why_learn_html": course["why_learn_html"],
@@ -224,10 +249,13 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     if not course_id:
         return _err("create_failed", message="The course could not be created.",
                     detail=created.get("message") if isinstance(created, dict) else None)
-    batch = await _batch_for(ctx, course_id)
-    if not batch:
+    batch_ids = await _batches_for(ctx, course_id)
+    if not batch_ids:
         return _err("create_failed", course_id=course_id,
-                    message="The course was created but its batch was not found; open it in the dashboard.")
+                    message="The course was created but its batches were not found; open it in the dashboard.")
+    # Content is shared by every batch: subjects and chapters are mapped to all
+    # of them (the dashboard does the same); the first is the tracking batch.
+    batch, all_batches = batch_ids[0], ",".join(batch_ids)
 
     result_chapters: List[Dict[str, Any]] = []
     failures: List[str] = []
@@ -235,7 +263,7 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     for s_index, s in enumerate(outline["subjects"]):
         subject = await cbd.admin_core(
             ctx, "POST", "/admin-core-service/subject/v1/add-subject",
-            params={"commaSeparatedPackageSessionIds": batch},
+            params={"commaSeparatedPackageSessionIds": all_batches},
             body={"subject_name": s["name"], "subject_code": _code(s["name"]), "credit": 0,
                   "thumbnail_id": None, "subject_order": s_index + 1},
         )
@@ -256,7 +284,8 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
             for c_index, c in enumerate(m["chapters"]):
                 chapter = await cbd.admin_core(
                     ctx, "POST", "/admin-core-service/chapter/v1/add-chapter",
-                    params={"subjectId": subject_id, "moduleId": module_id, "commaSeparatedPackageSessionIds": batch},
+                    params={"subjectId": subject_id, "moduleId": module_id,
+                            "commaSeparatedPackageSessionIds": all_batches},
                     body={"chapter_name": c["name"], "status": "ACTIVE", "file_id": None, "description": "",
                           "chapter_order": len(result_chapters) + 1},
                 )
@@ -289,12 +318,16 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     # admin-core uniquifies a name already used by an ACTIVE/DRAFT course ("X (2)") —
     # report the name it actually saved, not the one asked for.
     saved_name = (cbd.course_row(ctx, course_id) or {}).get("name") or course["name"]
-    invites = cbd.invites_for_batch(ctx, batch)
-    default_invite = next((i for i in invites if i["is_default"]), None)
+    batches = cbd.course_batches(ctx, course_id)
+    invites = cbd.invites_for_batches(ctx, batch_ids)
+    defaults = [i for i in invites if i["is_default"]]
+    names = {b["id"]: b["name"] for b in batches}
     hidden = {2: "subject, module and chapter", 3: "subject and module", 4: "subject"}.get(outline["depth"])
     return {
         "course": {"id": course_id, "name": saved_name, "status": cbd.STATUS_DRAFT, "depth": outline["depth"],
                    "batch_id": batch},
+        "batches": [{"id": b["id"], "name": b["name"], "session": b["session"], "level": b["level"]} for b in batches]
+        or [{"id": bid} for bid in batch_ids],
         # Hidden DEFAULT subject / module names are noise to the caller; every other key stays,
         # including an empty `slides` list.
         "chapters": [{k: v for k, v in c.items() if not (k in ("module", "subject") and v == cc.DEFAULT_LEVEL)}
@@ -302,9 +335,10 @@ async def _action_create_course(args: Dict[str, Any], ctx: ToolContext) -> Dict[
         "todo": todo,
         "failures": failures,
         "hidden_levels": f"A hidden DEFAULT {hidden} hold the structure; learners never see them." if hidden else None,
-        "default_invite": {"id": default_invite["id"], "name": default_invite["name"],
-                           "payment": default_invite.get("payment_type"), "link": default_invite.get("short_url")}
-        if default_invite else None,
+        # Every batch gets an auto-created default invite at the institute's default price.
+        "default_invites": [{"id": i["id"], "name": i["name"], "payment": i.get("payment_type"),
+                             "link": i.get("short_url"), "batches": [names.get(b, b) for b in i["batch_ids"]]}
+                            for i in defaults],
         "next": ("Write each `todo` slide with add_slide, then courses(action='review'). The course is a DRAFT and "
                  "off the catalogue until it is submitted and approved."),
         "editor_url": cbd.course_editor_url(ctx, course_id),
@@ -316,13 +350,11 @@ def _code(name: str) -> str:
     return (letters[:3] or "SUB").upper()
 
 
-async def _batch_for(ctx: ToolContext, course_id: str) -> Optional[str]:
+async def _batches_for(ctx: ToolContext, course_id: str) -> List[str]:
+    """Every ACTIVE batch id of a freshly created course (admin-core's own list, else the DB)."""
     batches = await cbd.admin_core(ctx, "GET", f"/admin-core-service/course/v1/{course_id}/batches")
-    if isinstance(batches, list):
-        for b in batches:
-            if isinstance(b, dict) and b.get("id"):
-                return b["id"]
-    return cbd.active_batch_id(ctx, course_id)
+    ids = [b["id"] for b in batches if isinstance(b, dict) and b.get("id")] if isinstance(batches, list) else []
+    return ids or [b["id"] for b in cbd.course_batches(ctx, course_id)]
 
 
 # ── chapters & slides ────────────────────────────────────────────────────
@@ -347,10 +379,11 @@ async def _action_add_chapter(args: Dict[str, Any], ctx: ToolContext) -> Dict[st
         return _err("unknown_module", message="That module is not part of this course (see courses(action='get')).")
     if name.casefold() in {c["name"].casefold() for c in chapters if c["module_id"] == anchor["module_id"]}:
         return _err("duplicate", message=f"Chapter '{name}' already exists in that module.")
+    all_batches = ",".join(b["id"] for b in cbd.course_batches(ctx, course["id"])) or batch
     chapter = await cbd.admin_core(
         ctx, "POST", "/admin-core-service/chapter/v1/add-chapter",
         params={"subjectId": anchor["subject_id"], "moduleId": anchor["module_id"],
-                "commaSeparatedPackageSessionIds": batch},
+                "commaSeparatedPackageSessionIds": all_batches},
         body={"chapter_name": name, "status": "ACTIVE", "file_id": None, "description": "",
               "chapter_order": len(chapters) + 1},
     )

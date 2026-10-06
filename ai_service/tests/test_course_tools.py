@@ -77,7 +77,12 @@ class Backend:
         self.vendors = [{"vendor": "RAZORPAY", "vendor_id": "RAZORPAY"}]
         self.invites = [{"id": "inv-default", "name": "Biology 101", "status": "ACTIVE", "tag": "DEFAULT",
                          "is_default": True, "short_url": "https://l.ink/a", "link_id": "link-1",
+                         "links": [{"link_id": "link-1", "package_session_id": "ps-1"}], "batch_ids": ["ps-1"],
                          "payment_option_id": "po-inst", "payment_type": "FREE", "plans": []}]
+        self.batches = [{"id": "ps-1", "name": "Default batch", "session": None, "session_id": None,
+                         "level": None, "level_id": None, "start_date": None, "enrolled": 0}]
+        self.sessions_levels = {"sessions": [{"id": "sess-2026", "name": "2026-27"}],
+                                "levels": [{"id": "lvl-9", "name": "Class 9"}]}
         self.counter = 0
         self.slide_dto = {"id": "sl-1", "title": "What is a cell", "status": "DRAFT", "source_type": "DOCUMENT",
                           "new_slide": False, "is_loaded": True,
@@ -94,7 +99,7 @@ class Backend:
             self.created_name = body["course_name"]
             return "course-new"
         if path.endswith("/course-new/batches"):
-            return [{"id": "ps-new"}]
+            return [{"id": b} for b in getattr(self, "new_batch_ids", ["ps-new"])]
         if path.endswith("/add-subject"):
             return {"id": self._id("sub"), "subject_name": body["subject_name"]}
         if path.endswith("/add-module"):
@@ -136,8 +141,17 @@ def backend(monkeypatch):
     monkeypatch.setattr(cbd, "course_row", _course_row)
     monkeypatch.setattr(cbd, "active_batch_id", lambda c, cid: "ps-1")
     monkeypatch.setattr(cbd, "course_tree", lambda c, cid, ps: json.loads(json.dumps(b.tree)))
-    monkeypatch.setattr(cbd, "invites_for_batch", lambda c, ps: [dict(i) for i in b.invites])
+    monkeypatch.setattr(cbd, "invites_for_batches",
+                        lambda c, ps: [dict(i) for i in b.invites if set(i["batch_ids"]) & set(ps)])
+    monkeypatch.setattr(cbd, "invites_for_batch", lambda c, ps: [dict(i) for i in b.invites if ps in i["batch_ids"]])
     monkeypatch.setattr(cbd, "invite_row", lambda c, iid, ps: next((dict(i) for i in b.invites if i["id"] == iid), None))
+    def _batches(c, cid):
+        if cid == "course-new":
+            return [{"id": x, "name": f"batch {x}", "session": None, "level": None, "enrolled": 0}
+                    for x in getattr(b, "new_batch_ids", ["ps-new"])]
+        return [dict(x) for x in b.batches]
+    monkeypatch.setattr(cbd, "course_batches", _batches)
+    monkeypatch.setattr(cbd, "institute_sessions_levels", lambda c: b.sessions_levels)
     monkeypatch.setattr(cbd, "enrolled_count", lambda c, ps: 0)
 
     async def _vendors(c):
@@ -305,7 +319,8 @@ async def test_create_course_builds_a_draft_off_catalogue_with_hidden_levels(bac
     assert slides[0]["params"]["packageSessionId"] == "ps-new" and slides[0]["params"]["instituteId"] == "inst-1"
     assert [t["title"] for t in out["todo"]] == ["Leaf quiz", "Root intro"]
     assert out["course"] == {"id": "course-new", "name": "Plants", "status": "DRAFT", "depth": 3, "batch_id": "ps-new"}
-    assert out["default_invite"]["id"] == "inv-default"
+    assert out["batches"] == [{"id": "ps-new", "name": "batch ps-new", "session": None, "level": None}]
+    assert "default_invites" in out
     assert not out["failures"]
 
 
@@ -631,3 +646,141 @@ async def test_review_warns_about_draft_slides_once_the_course_is_past_draft(bac
     out = await read({"action": "review", "course_id": "course-1"})
     assert out["summary"]["draft_slides"] == 1
     assert any("still DRAFT" in f["issue"] for f in out["findings"])
+
+
+# ── sessions × levels (batches) ──────────────────────────────────────────
+def test_no_sessions_or_levels_is_the_simple_default_batch():
+    spec, problem = cc.normalize_batches({})
+    assert problem is None and spec == {"contain_levels": False, "sessions": [], "batches": []}
+
+
+def test_levels_without_sessions_use_the_default_session():
+    spec, _ = cc.normalize_batches({"levels": ["Class 9", "class 9", {"id": "lvl-10"}]})
+    assert spec["contain_levels"] is True and len(spec["sessions"]) == 1
+    session = spec["sessions"][0]
+    assert session["id"] == "DEFAULT" and session["new_session"] is True
+    new, existing = session["levels"]
+    assert new["new_level"] is True and new["level_name"] == "Class 9"
+    # Reusing a level by id must NOT send its name: admin-core renames the level to it.
+    assert existing == {**existing, "id": "lvl-10", "new_level": False, "level_name": ""}
+    assert spec["batches"] == ["Class 9", "level lvl-10"]
+
+
+def test_sessions_cross_levels_and_sessions_without_levels():
+    spec, _ = cc.normalize_batches({
+        "sessions": [{"name": "2026-27", "start_date": "2026-06-01"}, {"id": "sess-old", "levels": ["Class 11"]}],
+        "levels": ["Class 9", "Class 10"]})
+    first, second = spec["sessions"]
+    assert first["session_name"] == "2026-27" and first["new_session"] and first["start_date"] == "2026-06-01"
+    assert [l["level_name"] for l in first["levels"]] == ["Class 9", "Class 10"]  # top-level levels applied
+    assert second == {**second, "id": "sess-old", "new_session": False, "session_name": ""}
+    assert [l["level_name"] for l in second["levels"]] == ["Class 11"]
+    assert spec["batches"] == ["2026-27 · Class 9", "2026-27 · Class 10", "session sess-old · Class 11"]
+    spec, _ = cc.normalize_batches({"sessions": ["2027-28"]})
+    assert spec["sessions"][0]["levels"][0]["id"] == "DEFAULT" and spec["batches"] == ["2027-28"]
+
+
+@pytest.mark.parametrize("args, needle", [
+    ({"levels": ["DEFAULT"]}, "reserved"),
+    ({"sessions": [{"name": "A"}, {"name": "a"}]}, "listed twice"),
+    ({"sessions": [{"name": "A", "start_date": "June"}]}, "YYYY-MM-DD"),
+    ({"levels": [{}]}, "needs a name or an id"),
+    ({"sessions": "2026"}, "must be a list"),
+])
+def test_bad_batches_are_named(args, needle):
+    spec, problem = cc.normalize_batches(args)
+    assert spec is None and needle in problem
+
+
+@pytest.mark.asyncio
+async def test_create_course_with_batches_maps_content_to_every_batch(backend):
+    backend.new_batch_ids = ["ps-a", "ps-b"]
+    out = await edit({"action": "create_course", "course": {"name": "Maths"},
+                      "sessions": [{"id": "sess-2026"}], "levels": [{"id": "lvl-9"}, "Class 10"],
+                      "chapters": [{"name": "Algebra"}]})
+    add_course = next(c for c in backend.calls if c["path"].endswith("/add-course/inst-1"))["body"]
+    assert add_course["contain_levels"] is True
+    assert add_course["sessions"][0]["id"] == "sess-2026" and add_course["sessions"][0]["new_session"] is False
+    assert [l["id"] or l["level_name"] for l in add_course["sessions"][0]["levels"]] == ["lvl-9", "Class 10"]
+    subject = next(c for c in backend.calls if c["path"].endswith("/add-subject"))
+    chapter = next(c for c in backend.calls if c["path"].endswith("/add-chapter"))
+    assert subject["params"]["commaSeparatedPackageSessionIds"] == "ps-a,ps-b"
+    assert chapter["params"]["commaSeparatedPackageSessionIds"] == "ps-a,ps-b"
+    assert [b["id"] for b in out["batches"]] == ["ps-a", "ps-b"]
+
+
+@pytest.mark.asyncio
+async def test_create_course_refuses_another_institutes_session_or_level(backend):
+    out = await edit({"action": "create_course", "course": {"name": "Maths"},
+                      "sessions": [{"id": "someone-elses-session"}], "chapters": [{"name": "Algebra"}]})
+    assert out["error"] == "unknown_session" and not backend.calls
+    out = await edit({"action": "create_course", "course": {"name": "Maths"},
+                      "levels": [{"id": "foreign-level"}], "chapters": [{"name": "Algebra"}]})
+    assert out["error"] == "unknown_level" and not backend.calls
+
+
+def _two_batches(backend):
+    backend.batches = [
+        {"id": "ps-9", "name": "2026-27 · Class 9", "session": "2026-27", "level": "Class 9", "enrolled": 3},
+        {"id": "ps-10", "name": "2026-27 · Class 10", "session": "2026-27", "level": "Class 10", "enrolled": 1}]
+
+
+@pytest.mark.asyncio
+async def test_multi_batch_course_invite_needs_a_batch_choice(backend):
+    _two_batches(backend)
+    out = await invites({"action": "create_invite", "course_id": "course-1", "payment": {"type": "FREE"}})
+    assert out["error"] == "choose_batch" and [b["name"] for b in out["batches"]] == ["2026-27 · Class 9", "2026-27 · Class 10"]
+    assert not backend.calls
+    out = await invites({"action": "create_invite", "course_id": "course-1", "payment": {"type": "FREE"},
+                         "batch_ids": ["ps-10"]})
+    body = next(c for c in backend.calls if c["path"] == "/admin-core-service/v1/enroll-invite")["body"]
+    assert [l["package_session_id"] for l in body["package_session_to_payment_options"]] == ["ps-10"]
+    assert body["is_bundled"] is False and out["invite"]["batches"][0]["level"] == "Class 10"
+    out = await invites({"action": "create_invite", "course_id": "course-1", "payment": {"type": "FREE"},
+                         "batch_ids": ["ps-9", "ps-10"], "make_default": True})
+    body = [c for c in backend.calls if c["path"] == "/admin-core-service/v1/enroll-invite"][-1]["body"]
+    assert body["is_bundled"] is True and len(body["package_session_to_payment_options"]) == 2
+    defaults = [c["params"]["packageSessionId"] for c in backend.calls if "update-default" in c["path"]]
+    assert defaults == ["ps-9", "ps-10"] and out["invite"]["bundled"] is True
+    out = await invites({"action": "create_invite", "course_id": "course-1", "payment": {"type": "FREE"},
+                         "batch_ids": ["ps-other"]})
+    assert out["error"] == "unknown_batch"
+
+
+@pytest.mark.asyncio
+async def test_bundled_invite_swap_and_default_cover_every_batch(backend):
+    _two_batches(backend)
+    backend.invites = [{"id": "inv-b", "name": "Both", "status": "ACTIVE", "tag": "", "is_default": False,
+                        "short_url": "https://l.ink/b", "link_id": "l-9", "payment_option_id": "po-1",
+                        "links": [{"link_id": "l-9", "package_session_id": "ps-9"},
+                                  {"link_id": "l-10", "package_session_id": "ps-10"}],
+                        "batch_ids": ["ps-9", "ps-10"], "plans": []}]
+    await invites({"action": "create_payment_plan", "course_id": "course-1", "invite_id": "inv-b",
+                   "payment": {"type": "ONE_TIME", "price": 100, "currency": "INR"}})
+    swap = backend.calls[-1]["body"][0]["update_payment_options"]
+    assert [(u["old_package_session_payment_option_id"], u["new_package_session_payment_option"]["package_session_id"])
+            for u in swap] == [("l-9", "ps-9"), ("l-10", "ps-10")]
+    out = await invites({"action": "make_default", "course_id": "course-1", "invite_id": "inv-b", "batch_ids": ["ps-10"]})
+    assert [c["params"]["packageSessionId"] for c in backend.calls if "update-default" in c["path"]] == ["ps-10"]
+    assert [b["name"] for b in out["default_invite"]["default_for"]] == ["2026-27 · Class 10"]
+
+
+@pytest.mark.asyncio
+async def test_get_lists_batches_and_sessions_levels_action(backend):
+    _two_batches(backend)
+    out = await read({"action": "get", "course_id": "course-1"})
+    assert [b["name"] for b in out["batches"]] == ["2026-27 · Class 9", "2026-27 · Class 10"]
+    assert out["course"]["enrolled_learners"] == 4 and out["course"]["batch_id"] == "ps-9"
+    assert (await read({"action": "get", "course_id": "course-1", "batch_id": "nope"}))["error"] == "unknown_batch"
+    out = await read({"action": "sessions_levels"})
+    assert out["sessions"][0]["name"] == "2026-27" and out["levels"][0]["id"] == "lvl-9"
+    schema = await read({"action": "schema"})
+    assert "session × level" in schema["batches"]
+
+
+@pytest.mark.asyncio
+async def test_add_chapter_maps_to_every_batch(backend):
+    _two_batches(backend)
+    out = await edit({"action": "add_chapter", "course_id": "course-1", "name": "Genetics"})
+    call = next(c for c in backend.calls if c["path"].endswith("/add-chapter"))
+    assert out["chapter"]["name"] == "Genetics" and call["params"]["commaSeparatedPackageSessionIds"] == "ps-9,ps-10"

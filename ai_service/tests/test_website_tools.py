@@ -648,3 +648,9 @@ async def test_preview_is_wired_and_fails_softly(admin_core, monkeypatch):
     monkeypatch.setattr(page_preview, "render_preview", fake_render)
     out = json.loads(await website_mod.execute_website({"action": "preview"}, ctx()))
     assert out["image_png_base64"] == "AAAA" and out["height"] == 3000
+
+
+def test_preview_url_adds_scheme_to_bare_institute_host():
+    from app.services.page_preview import _preview_url
+    assert _preview_url("sites.acme.edu", "main site") == "https://sites.acme.edu/main%20site?preview=true"
+    assert _preview_url("http://localhost:5173/", "x") == "http://localhost:5173/x?preview=true"

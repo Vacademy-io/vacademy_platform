@@ -27,7 +27,7 @@ settings tab has one toggle per feature to manage per role:
 | `workflows_edit` | WRITE (drafts only, no model, no credits) | `workflows_edits` | `validate`, `create_draft`, `update_draft`, `discard_draft` — the last two refuse anything whose status is not DRAFT |
 | `blog` | READ | `blog` | `list` (posts of any status, categories, where they are shown), `get` (one post with its HTML body, SEO, public URLs), `placements` (website pages carrying a Blog section) |
 | `blog_edit` | WRITE (drafts only, no model, no credits) | `blog_edits` | `create` (always a DRAFT, `source=MCP`, body nh3-cleaned with the article profile), `update` / `discard` (refuse anything that is not a DRAFT), `request_publish` (readiness audit + the dashboard link; never publishes) |
-| `courses` | READ | `courses` | `list`, `get`, `get_slide`, `schema`, `brief_checklist`, `review`, `drip`, `invites`, `get_invite`, `payment_setup` |
+| `courses` | READ | `courses` | `list`, `get`, `get_slide`, `schema`, `brief_checklist`, `review`, `drip`, `invites`, `get_invite`, `payment_setup`, `sessions_levels` |
 | `course_edit` | WRITE (DRAFT only, no model, no credits) | `course_edits` | `create_course`, `add_chapter`, `add_slide`, `update_slide`, `reorder`, `import_image`, `import_pdf`, `discard_slide`, `publish_slides`, `submit_for_review` |
 | `course_drip_edit` | WRITE (non-live courses only) | `course_drip_edits` | `set_rules`, `schedule`, `remove_rules` |
 | `course_invites_edit` | WRITE (additive only) | `course_invite_edits` | `create_invite`, `create_payment_plan`, `make_default` |

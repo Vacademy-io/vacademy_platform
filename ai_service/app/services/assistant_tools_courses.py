@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import course_builder_data as cbd
 from . import course_content as cc
@@ -32,7 +32,7 @@ COURSES_TOOL_NAME = "courses"
 COURSES_GROUP_KEY = "courses"
 COURSES_ACTIONS = (
     "list", "get", "get_slide", "schema", "brief_checklist", "review",
-    "drip", "invites", "get_invite", "payment_setup",
+    "drip", "invites", "get_invite", "payment_setup", "sessions_levels",
 )
 
 BRIEF_CHECKLIST = [
@@ -41,6 +41,9 @@ BRIEF_CHECKLIST = [
     {"key": "level_and_language", "ask": "Beginner / intermediate / advanced? Which language should it be written in?"},
     {"key": "size", "ask": "How big — number of chapters, or total hours? (Default: 5-8 chapters of 3-6 slides.)"},
     {"key": "depth", "ask": "Just chapters (depth 3), or modules of chapters (4), or subjects → modules (5)?"},
+    {"key": "batches", "ask": "Is it taught in batches — by session/year (e.g. 2026-27) and/or level/class (e.g. "
+                              "Class 9, Class 10)? Which of the institute's existing ones (courses(sessions_levels))? "
+                              "Most courses need none."},
     {"key": "slide_mix", "ask": "Which formats: reading pages, YouTube videos (do they have favourite channels/links?), "
                                 "PDFs they want included, quizzes, single practice questions, assignments to submit?"},
     {"key": "assessment", "ask": "A quiz after every chapter? An assignment per chapter? Passing marks / attempts?"},
@@ -59,7 +62,8 @@ COURSES_SCHEMA: Dict[str, Any] = {
             "Read the institute's courses and the contract for building one. YOU (the AI) write every outline and "
             "slide; the server only validates and saves — no AI credits are used. Pick an `action`:\n"
             "- list (status?: DRAFT|IN_REVIEW|ACTIVE, search?): courses with status, depth and slide count.\n"
-            "- get (course_id): the course tree with chapter / slide ids, types and statuses, plus its batch id.\n"
+            "- get (course_id, batch_id?): the course tree with chapter / slide ids, types and statuses, plus its "
+            "batches (session × level) — content is shared by all batches.\n"
             "- get_slide (slide_id): one slide's full content.\n"
             "- schema: READ THIS BEFORE BUILDING — the outline JSON for course_edit(create_course), every slide "
             "type's fields, the HTML document rules and the quiz format.\n"
@@ -70,7 +74,9 @@ COURSES_SCHEMA: Dict[str, Any] = {
             "- drip (course_id): the course's drip rules and whether the institute enforces them.\n"
             "- invites (course_id): its invite links, prices and which one is the default.\n"
             "- get_invite (course_id, invite_id): one invite in full.\n"
-            "- payment_setup: active payment gateways and existing payment plans."
+            "- payment_setup: active payment gateways and existing payment plans.\n"
+            "- sessions_levels: the institute's existing sessions (e.g. '2026-27') and levels (e.g. 'Class 9') to "
+            "reuse by id when a course is taught in several batches (session × level)."
         ),
         "parameters": {
             "type": "object",
@@ -79,6 +85,8 @@ COURSES_SCHEMA: Dict[str, Any] = {
                 "course_id": {"type": "string"},
                 "slide_id": {"type": "string"},
                 "invite_id": {"type": "string"},
+                "batch_id": {"type": "string", "description": "get: read the tree through this batch (default: "
+                                                              "the course's first)."},
                 "status": {"type": "string", "description": "list: DRAFT, IN_REVIEW or ACTIVE."},
                 "search": {"type": "string", "description": "list: part of the course name."},
             },
@@ -139,7 +147,12 @@ async def _action_get(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     course, error = _course_or_error(ctx, args, "get")
     if error:
         return error
-    batch = cbd.active_batch_id(ctx, course["id"])
+    batches = cbd.course_batches(ctx, course["id"])
+    # Content is shared by all batches; read it through the requested one, else the primary.
+    batch = str(args.get("batch_id") or "") or (batches[0]["id"] if batches else None)
+    if args.get("batch_id") and batch not in {b["id"] for b in batches}:
+        return _err("unknown_batch", message="That batch is not part of this course.",
+                    batches=[{"id": b["id"], "name": b["name"]} for b in batches])
     depth = int(course.get("depth") or 3)
     tree = cbd.course_tree(ctx, course["id"], batch) if batch else []
     slide_count = sum(len(c.get("slides") or []) for c in cbd.flatten_chapters(tree))
@@ -148,8 +161,11 @@ async def _action_get(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
             "id": course["id"], "name": course["name"], "status": course["status"], "depth": depth,
             "batch_id": batch, "slide_count": slide_count,
             "tags": [t for t in (course.get("tags") or "").split(",") if t],
-            "enrolled_learners": cbd.enrolled_count(ctx, batch),
+            "enrolled_learners": sum(b.get("enrolled", 0) for b in batches),
         },
+        # One batch per session × level; a simple course has a single unnamed one.
+        "batches": [{"id": b["id"], "name": b["name"], "session": b.get("session"), "level": b.get("level"),
+                     "start_date": b.get("start_date"), "enrolled": b.get("enrolled", 0)} for b in batches],
         **_tree_view(tree, depth),
         "editor_url": cbd.course_editor_url(ctx, course["id"]),
         "writable": course["status"] == cbd.STATUS_DRAFT,
@@ -221,6 +237,7 @@ async def _action_schema(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
             "7. course_edit(submit_for_review) — an admin approves it in the dashboard, then it goes live.",
         ],
         "depth": cc.DEPTH_CONTRACT,
+        "batches": cc.BATCHES_CONTRACT,
         "outline": cc.OUTLINE_CONTRACT,
         "slides": cc.slide_contract(),
         "limits": {"chapters_per_course": cc.MAX_CHAPTERS, "slides_per_chapter": cc.MAX_SLIDES_PER_CHAPTER,
@@ -266,7 +283,8 @@ async def _action_review(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, An
         findings.append({"severity": "warn", "where": "course",
                          "issue": f"{len(drafts)} slide(s) are still DRAFT, so learners won't see them — publish them "
                                   "with course_edit(publish_slides) if the admin approves."})
-    invites = cbd.invites_for_batch(ctx, batch) if batch else []
+    batches = cbd.course_batches(ctx, course["id"])
+    invites = cbd.invites_for_batches(ctx, [b["id"] for b in batches])
     setup = {
         "has_invite": bool(invites),
         "default_invite": next((i["name"] for i in invites if i["is_default"]), None),
@@ -310,9 +328,11 @@ async def _action_drip(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]
             "editable_here": course["status"] != cbd.STATUS_ACTIVE}
 
 
-def _invite_view(r: Dict[str, Any]) -> Dict[str, Any]:
+def _invite_view(r: Dict[str, Any], batch_names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    names = batch_names or {}
     return {
         "id": r["id"], "name": r["name"], "status": r["status"], "is_default": r["is_default"],
+        "batches": [names.get(b, b) for b in r.get("batch_ids") or []],
         "link": r.get("short_url"), "invite_code": r.get("invite_code"),
         "payment": {"type": r.get("payment_type"), "name": r.get("payment_option_name"),
                     "requires_approval": r.get("require_approval"),
@@ -329,10 +349,14 @@ async def _action_invites(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
     course, error = _course_or_error(ctx, args, "invites")
     if error:
         return error
-    batch = cbd.active_batch_id(ctx, course["id"])
-    rows = cbd.invites_for_batch(ctx, batch) if batch else []
-    return {"course": {"id": course["id"], "name": course["name"], "status": course["status"], "batch_id": batch},
-            "invites": [_invite_view(r) for r in rows], "count": len(rows)}
+    batches = cbd.course_batches(ctx, course["id"])
+    names = {b["id"]: b["name"] for b in batches}
+    rows = cbd.invites_for_batches(ctx, [b["id"] for b in batches])
+    without_default = [b["name"] for b in batches if not any(r["is_default"] and b["id"] in r["batch_ids"] for r in rows)]
+    return {"course": {"id": course["id"], "name": course["name"], "status": course["status"]},
+            "batches": [{"id": b["id"], "name": b["name"]} for b in batches],
+            "invites": [_invite_view(r, names) for r in rows], "count": len(rows),
+            **({"batches_without_default_invite": without_default} if without_default else {})}
 
 
 async def _action_get_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -342,8 +366,8 @@ async def _action_get_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
     invite_id = str(args.get("invite_id") or "").strip()
     if not invite_id:
         return _err("missing_argument", action="get_invite", needs=["invite_id"])
-    batch = cbd.active_batch_id(ctx, course["id"])
-    row = cbd.invite_row(ctx, invite_id, batch) if batch else None
+    batches = cbd.course_batches(ctx, course["id"])
+    row = cbd.invite_row(ctx, invite_id, [b["id"] for b in batches]) if batches else None
     if not row:
         return _err("unknown_invite", message="No such invite for this course. Use courses(action='invites').")
     full = await cbd.admin_core(ctx, "GET",
@@ -365,7 +389,8 @@ async def _action_get_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
             "availability": full.get("availability_status"),
             "link": full.get("short_url") or row.get("short_url"),
         }
-    return {"course": {"id": course["id"], "name": course["name"]}, "invite": {**_invite_view(row), **detail}}
+    names = {b["id"]: b["name"] for b in batches}
+    return {"course": {"id": course["id"], "name": course["name"]}, "invite": {**_invite_view(row, names), **detail}}
 
 
 async def _action_payment_setup(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
@@ -393,10 +418,21 @@ async def _action_payment_setup(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     }
 
 
+async def _action_sessions_levels(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    found = cbd.institute_sessions_levels(ctx)
+    return {
+        **found,
+        "how": "Reuse these by id in course_edit(create_course, sessions=[{id, levels:[{id}]}]) so the course joins "
+               "the institute's existing years / classes. New names create new sessions / levels (a name that "
+               "already exists is reused). Ask the admin before inventing new ones.",
+    }
+
+
 _ACTIONS = {
     "list": _action_list, "get": _action_get, "get_slide": _action_get_slide, "schema": _action_schema,
     "brief_checklist": _action_brief_checklist, "review": _action_review, "drip": _action_drip,
     "invites": _action_invites, "get_invite": _action_get_invite, "payment_setup": _action_payment_setup,
+    "sessions_levels": _action_sessions_levels,
 }
 
 

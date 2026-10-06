@@ -184,7 +184,9 @@ public class PaymentOptionService {
                 true,
                 activeStatuses,
                 paymentOptionFilterDTO.isRequireApproval(),
-                paymentOptionFilterDTO.isNotRequireApproval()
+                paymentOptionFilterDTO.isNotRequireApproval(),
+                blankToNull(paymentOptionFilterDTO.getSearch()),
+                paymentOptionFilterDTO.getLimit()
         );
         List<PaymentOptionDTO> dtos = paymentOptions.stream().map(PaymentOption::mapToPaymentOptionDTO).toList();
         // The learner app hits this same endpoint for admission payments; a learner has no
@@ -193,6 +195,11 @@ public class PaymentOptionService {
             attachCreatorNames(dtos);
         }
         return dtos;
+    }
+
+    /** A blank search box means "no filter", not "match the empty string". */
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value.trim();
     }
 
     private static final List<String> LEARNER_ROLES = List.of("STUDENT", "PARENT", "GUARDIAN");

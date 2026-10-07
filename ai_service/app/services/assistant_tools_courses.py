@@ -73,7 +73,9 @@ COURSES_SCHEMA: Dict[str, Any] = {
             "and fix every `fix` item.\n"
             "- drip (course_id): the course's drip rules and whether the institute enforces them.\n"
             "- invites (course_id): its invite links, prices and which one is the default.\n"
-            "- get_invite (course_id, invite_id): one invite in full.\n"
+            "- get_invite (course_id, invite_id): one invite in full — landing copy, images, redirect path, success "
+            "page, its form fields (field_id, label, type, required, locked) and available_fields (the institute's "
+            "fields not yet on the form) for course_invites_edit(update_invite / update_form_fields).\n"
             "- payment_setup: active payment gateways and existing payment plans.\n"
             "- sessions_levels: the institute's existing sessions (e.g. '2026-27') and levels (e.g. 'Class 9') to "
             "reuse by id when a course is taught in several batches (session × level)."
@@ -378,14 +380,34 @@ async def _action_get_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str
             meta = json.loads(full.get("web_page_meta_data_json") or "{}")
         except ValueError:
             meta = {}
+        from .assistant_tool_registry import _media_public_url
+        from .assistant_tools_course_invites import catalogue_field_views, form_field_views
+        try:
+            settings = json.loads(full.get("setting_json") or "{}")
+        except ValueError:
+            settings = {}
+        post_fill = (settings.get("postformfillConfiguration") if isinstance(settings, dict) else None) or {}
+        fields = form_field_views(full.get("institute_custom_fields"))
+        catalogue = await cbd.admin_core(ctx, "GET", "/admin-core-service/common/custom-fields",
+                                         params={"instituteId": ctx.principal.institute_id})
+        on_form = {f["field_id"] for f in fields}
+        media = meta.get("courseMedia") if isinstance(meta.get("courseMedia"), dict) else {}
+        images = {}
+        for slot, fid in (("preview", meta.get("coursePreview")), ("banner", meta.get("courseBanner")),
+                          ("media", media.get("id") if media.get("type") != "youtube" else None)):
+            if fid:
+                images[slot] = {"file_id": fid, "url": await _media_public_url(ctx, fid)}
+        if media.get("type") == "youtube" and media.get("id"):
+            images["media"] = {"youtube": media["id"]}
         detail = {
             "landing_page": _compact({k: meta.get(k) for k in (
                 "description", "learningOutcome", "aboutCourse", "targetAudience", "tags", "includePaymentPlans")}),
-            "form_fields": [
-                {"label": ((f.get("custom_field") or {}).get("field_name") or (f.get("custom_field") or {}).get("fieldName")),
-                 "type": ((f.get("custom_field") or {}).get("field_type") or (f.get("custom_field") or {}).get("fieldType")),
-                 "required": f.get("is_mandatory")}
-                for f in full.get("institute_custom_fields") or [] if isinstance(f, dict)],
+            "images": images,
+            "redirect_path": post_fill.get("redirectPath") or None,
+            "success_page": _compact({"content": post_fill.get("content"),
+                                      "show_login_button": post_fill.get("showLoginButton")}),
+            "form_fields": fields,
+            "available_fields": [f for f in catalogue_field_views(catalogue) if f["field_id"] not in on_form],
             "availability": full.get("availability_status"),
             "link": full.get("short_url") or row.get("short_url"),
         }

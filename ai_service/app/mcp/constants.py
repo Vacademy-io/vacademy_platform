@@ -41,7 +41,7 @@ MCP_EXPOSED_TOOLS: Tuple[str, ...] = (
     "courses",              # READ:  courses, their tree, the authoring contract, review, drip, invites
     "course_edit",          # WRITE: draft-only — DRAFT courses and DRAFT slides; nothing publishes
     "course_drip_edit",     # WRITE: drip rules on courses that are not live yet
-    "course_invites_edit",  # WRITE: additive — new invites and new payment plans
+    "course_invites_edit",  # WRITE: new invites / plans; edits an invite's page and form fields
 )
 
 #: WRITE tools this server may expose, with the property that makes each safe
@@ -65,7 +65,11 @@ MCP_ALLOWED_WRITE_TOOLS: Dict[str, str] = {
     "course_edit": "draft-only: creates DRAFT courses and edits only DRAFT courses; slides are DRAFT unless the admin "
                    "asks to publish them (publish_slides); a course goes live only through dashboard approval",
     "course_drip_edit": "not-live only: drip rules of DRAFT / IN_REVIEW courses; never flips the institute switches",
-    "course_invites_edit": "additive: creates invites and payment plans; re-pointing / default only on non-live courses",
+    "course_invites_edit": (
+        "creates invites and payment plans (re-pointing / default only on non-live courses); edits an invite's "
+        "page and form in place — the admin's explicit choice, live courses included — but only binds existing "
+        "fields and never changes a field's shared label / type / options or the invite's payment links"
+    ),
 }
 
 #: Friendly labels for the settings groups the exposed tools belong to. Serves

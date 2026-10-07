@@ -29,6 +29,7 @@ from app.services.assistant_tools_course_edit import execute_course_edit  # noqa
 from app.services.assistant_tools_course_invites import (  # noqa: E402
     build_payment_option,
     execute_course_invites_edit,
+    field_key_for,
     form_fields_payload,
 )
 from app.services.assistant_tools_courses import execute_courses  # noqa: E402
@@ -56,6 +57,13 @@ GOOD_HTML = "<!DOCTYPE html><html><head><style>p{}</style></head><body><h1>Photo
 
 
 # ── fake backend ─────────────────────────────────────────────────────────
+def _mapping(cf_id, key, label, ftype="text", config="", required=False, order=None):
+    """A custom-field mapping as admin-core returns it (snake_case outside, camelCase inside)."""
+    return {"id": f"map-{cf_id}", "status": "ACTIVE", "is_mandatory": required, "individual_order": order,
+            "custom_field": {"id": cf_id, "fieldKey": key, "fieldName": label, "fieldType": ftype, "config": config,
+                             "isMandatory": required}}
+
+
 class Backend:
     """Records admin-core calls and answers them like admin-core does."""
 
@@ -84,6 +92,29 @@ class Backend:
         self.sessions_levels = {"sessions": [{"id": "sess-2026", "name": "2026-27"}],
                                 "levels": [{"id": "lvl-9", "name": "Class 9"}]}
         self.counter = 0
+        self.catalogue = [_mapping("cf-name", "full_name", "Full Name", required=True)]
+        self.feature_fields = [_mapping("cf-name", "full_name", "Full Name", required=True, order=0),
+                               _mapping("cf-email", "email", "Email", required=True, order=1),
+                               _mapping("cf-class", "class_inst_inst-1", "Class", "dropdown",
+                                        '[{"id":1,"value":"9","label":"9"},{"id":2,"value":"10","label":"10"}]',
+                                        order=2)]
+        self.full_invite = {
+            "id": "inv-default", "name": "Biology 101", "start_date": "2026-09-01", "end_date": None,
+            "invite_code": "ABC123", "status": "ACTIVE", "institute_id": "inst-1", "vendor": "RAZORPAY",
+            "vendor_id": "RAZORPAY", "currency": "INR", "tag": "DEFAULT", "learner_access_days": 90,
+            "is_bundled": False, "short_url": "https://l.ink/a", "sub_org_id": None,
+            "availability_status": "AVAILABLE", "gtm_container_id": None,
+            "web_page_meta_data_json": json.dumps({"course": "Biology 101", "description": "<p>Old</p>",
+                                                   "aboutCourse": "<p>About</p>", "tags": ["bio"],
+                                                   "coursePreview": "file-old", "courseMedia": {"type": "", "id": ""},
+                                                   "includePaymentPlans": True}),
+            "setting_json": json.dumps({"postformfillConfiguration": {"showLoginButton": True},
+                                        "setting": {"AUTOPAY_SETTING": {"ENABLED": True}}}),
+            "institute_custom_fields": self.feature_fields,
+            "package_session_to_payment_options": [
+                {"id": "link-1", "package_session_id": "ps-1", "enroll_invite_id": "inv-default", "status": "ACTIVE",
+                 "payment_option": {"id": "po-inst", "name": "Free", "payment_plans": []}}],
+        }
         self.slide_dto = {"id": "sl-1", "title": "What is a cell", "status": "DRAFT", "source_type": "DOCUMENT",
                           "new_slide": False, "is_loaded": True,
                           "document_slide": {"id": "doc-1", "type": "HTML", "data": "<html>cell</html>",
@@ -117,14 +148,19 @@ class Backend:
             return {**body, "id": self._id("po")}
         if path.endswith("/v1/enroll-invite") and method == "POST":
             return self._id("inv")
+        if path.endswith("/v1/enroll-invite/inst-1/inv-default"):
+            return json.loads(json.dumps(self.full_invite))
+        if path.endswith("/common/custom-fields/feature-fields"):
+            if method == "POST":
+                self.feature_fields = body
+                return "synced"
+            return json.loads(json.dumps(self.feature_fields))
         if "/v1/enroll-invite/inst-1/" in path:
             return {"short_url": "https://l.ink/new", "invite_code": "ABC123", "availability_status": "AVAILABLE"}
         if path.endswith("/slide/v1/slide") and method == "GET":
             return json.loads(json.dumps(self.slide_dto))
         if path.endswith("/common/custom-fields"):
-            return [{"id": "m1", "status": "ACTIVE", "is_mandatory": True, "custom_field": {
-                "id": "cf-name", "fieldKey": "full_name", "fieldName": "Full Name", "fieldType": "text",
-                "isMandatory": True}}]
+            return json.loads(json.dumps(self.catalogue))
         return "ok"
 
 
@@ -173,6 +209,14 @@ def backend(monkeypatch):
                 "source_id": "doc-1", "slide_status": "DRAFT", "slide_order": 1}
     monkeypatch.setattr(cbd, "slide_context", _slide)
     monkeypatch.setattr(cbd, "course_editor_url", lambda c, cid: f"https://dash/c/{cid}")
+    b.existing_field_keys = {}
+    monkeypatch.setattr(cbd, "custom_fields_by_keys",
+                        lambda c, keys: {k: b.existing_field_keys[k] for k in keys if k in b.existing_field_keys})
+
+    async def _public_url(c, fid):
+        return f"https://cdn/{fid}" if fid else None
+    import app.services.assistant_tool_registry as registry
+    monkeypatch.setattr(registry, "_media_public_url", _public_url)
     return b
 
 
@@ -784,3 +828,164 @@ async def test_add_chapter_maps_to_every_batch(backend):
     out = await edit({"action": "add_chapter", "course_id": "course-1", "name": "Genetics"})
     call = next(c for c in backend.calls if c["path"].endswith("/add-chapter"))
     assert out["chapter"]["name"] == "Genetics" and call["params"]["commaSeparatedPackageSessionIds"] == "ps-9,ps-10"
+
+
+# ── editing an invite: form fields & page ────────────────────────────────
+def _catalogue(b):
+    b.catalogue = [_mapping("cf-name", "full_name", "Full Name", required=True),
+                   _mapping("cf-email", "email", "Email", required=True),
+                   _mapping("cf-class", "class_inst_inst-1", "Class", "dropdown", '[{"id":1,"value":"9","label":"9"}]'),
+                   _mapping("cf-city", "city_inst_inst-1", "City", "dropdown",
+                            '[{"id":1,"value":"Pune","label":"Pune"}]')]
+
+
+def _saved_fields(b):
+    return next(c for c in reversed(b.calls) if c["method"] == "POST" and c["path"].endswith("/feature-fields"))
+
+
+def test_field_key_mirrors_admin_core():
+    assert field_key_for("City / Town", "i1") == "city_town_inst_i1"
+    assert field_key_for("10th marks", "i1") == "field_10th_marks_inst_i1"
+    assert field_key_for("x", "i1") == "x_field_inst_i1"
+
+
+@pytest.mark.asyncio
+async def test_update_form_fields_binds_existing_fields_by_id_only(backend):
+    _catalogue(backend)
+    out = await invites({"action": "update_form_fields", "course_id": "course-1", "invite_id": "inv-default",
+                         "add": [{"field_id": "City", "required": True}], "remove": ["cf-class"],
+                         "required": {"Email": False}, "order": ["cf-city"]})
+    assert "error" not in out, out
+    body = _saved_fields(backend)["body"]
+    assert _saved_fields(backend)["params"] == {"instituteId": "inst-1", "type": "ENROLL_INVITE",
+                                                "typeId": "inv-default"}
+    assert [f["custom_field"] for f in body] == [{"id": "cf-city"}, {"id": "cf-name"}, {"id": "cf-email"}]
+    assert [f["is_mandatory"] for f in body] == [True, True, False]
+    assert [f["individual_order"] for f in body] == [0, 1, 2]
+    assert [f["label"] for f in out["form_fields"]] == ["City", "Full Name", "Email"]
+
+
+@pytest.mark.asyncio
+async def test_update_form_fields_refuses_built_ins_unknowns_and_saves_nothing(backend):
+    _catalogue(backend)
+    out = await invites({"action": "update_form_fields", "course_id": "course-1", "invite_id": "inv-default",
+                         "remove": ["Email"], "add": [{"field_id": "Favourite colour"}], "required": {"cf-class": "yes"}})
+    assert out["error"] == "invalid_form_fields" and len(out["problems"]) == 3
+    assert "built-in" in out["problems"][0] and "Settings" in out["problems"][1]
+    assert not any(c["method"] == "POST" and c["path"].endswith("/feature-fields") for c in backend.calls)
+
+
+@pytest.mark.asyncio
+async def test_form_fields_and_page_are_editable_on_a_live_course(backend):
+    backend.course["status"] = "ACTIVE"
+    out = await invites({"action": "update_form_fields", "course_id": "course-1", "invite_id": "inv-default",
+                         "required": {"Class": True}})
+    assert "error" not in out and any("live" in n for n in out["notes"])
+    out = await invites({"action": "update_invite", "course_id": "course-1", "invite_id": "inv-default",
+                         "redirect_path": "/study-library/courses"})
+    assert out["changed"] == ["redirect_path"] and any("live" in n for n in out["notes"])
+
+
+@pytest.mark.asyncio
+async def test_update_invite_patches_only_what_was_asked(backend):
+    out = await invites({"action": "update_invite", "course_id": "course-1", "invite_id": "inv-default",
+                         "name": "Biology — Early bird", "end_date": "2026-12-31",
+                         "landing": {"description_html": "<p>New</p>", "tags": ["bio", "neet"]},
+                         "redirect_path": "/study-library/courses?tab=new",
+                         "success_page": {"content": "<p>Welcome!</p>", "show_login_button": False}})
+    assert "error" not in out, out
+    put = next(c for c in backend.calls if c["method"] == "PUT")
+    body = put["body"]
+    assert put["path"] == "/admin-core-service/v1/enroll-invite/enroll-invite"
+    assert body["name"] == "Biology — Early bird" and body["end_date"] == "2026-12-31"
+    # untouched columns go back exactly as read (the PUT nulls whatever it is not sent)
+    for k in ("start_date", "status", "vendor", "vendor_id", "currency", "learner_access_days", "is_bundled"):
+        assert body[k] == backend.full_invite[k], k
+    meta = json.loads(body["web_page_meta_data_json"])
+    assert meta["description"] == "<p>New</p>" and meta["aboutCourse"] == "<p>About</p>"
+    assert meta["tags"] == ["bio", "neet"] and meta["coursePreview"] == "file-old"
+    settings = json.loads(body["setting_json"])
+    assert settings["setting"] == {"AUTOPAY_SETTING": {"ENABLED": True}}
+    assert settings["postformfillConfiguration"] == {"showLoginButton": False, "redirectPath": "/study-library/courses?tab=new",
+                                                     "content": "<p>Welcome!</p>"}
+    # payment links keep their ids; the form is not re-synced and is sent by id only
+    assert body["package_session_to_payment_options"] == [
+        {"id": "link-1", "package_session_id": "ps-1", "enroll_invite_id": "inv-default", "status": "ACTIVE",
+         "payment_option": {"id": "po-inst"}}]
+    assert body["institute_id"] is None
+    assert [f["custom_field"] for f in body["institute_custom_fields"]] == [{"id": "cf-name"}, {"id": "cf-email"},
+                                                                            {"id": "cf-class"}]
+    assert "availability_status" not in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["https://evil.example/x", "//evil.example", "study-library", "/a b"])
+async def test_redirect_must_be_a_learner_app_path(backend, path):
+    out = await invites({"action": "update_invite", "course_id": "course-1", "invite_id": "inv-default",
+                         "redirect_path": path})
+    assert out["error"] == "bad_request"
+    assert not any(c["method"] == "PUT" for c in backend.calls)
+
+
+@pytest.mark.asyncio
+async def test_update_invite_images_store_media_ids(backend, monkeypatch):
+    backend.course["course_banner_media_id"] = "file-banner"
+
+    async def _fetch(url, **kw):
+        return b"png", "image/png", "png"
+
+    async def _upload(c, content, name, ctype):
+        return "file-new"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    monkeypatch.setattr(cbd, "upload_to_media", _upload)
+    out = await invites({"action": "update_invite", "course_id": "course-1", "invite_id": "inv-default",
+                         "images": {"preview": {"image_url": "https://example.com/p.png"}, "banner": "course",
+                                    "media": {"youtube": "https://youtu.be/dQw4w9WgXcQ"}}})
+    assert "error" not in out, out
+    meta = json.loads(next(c for c in backend.calls if c["method"] == "PUT")["body"]["web_page_meta_data_json"])
+    assert meta["coursePreview"] == "file-new" and meta["coursePreviewBlob"] == "https://cdn/file-new"
+    assert meta["courseBanner"] == "file-banner"
+    assert meta["courseMedia"] == {"type": "youtube", "id": "https://youtu.be/dQw4w9WgXcQ"}
+
+
+@pytest.mark.asyncio
+async def test_bad_image_is_refused_before_anything_is_imported(backend, monkeypatch):
+    imported = []
+
+    async def _fetch(url, **kw):
+        imported.append(url)
+        return b"png", "image/png", "png"
+    monkeypatch.setattr(cbd, "fetch_public_file", _fetch)
+    out = await invites({"action": "update_invite", "course_id": "course-1", "invite_id": "inv-default",
+                         "images": {"preview": {"image_url": "https://example.com/p.png"},
+                                    "banner": {"file_id": "https://example.com/b.png"}}})
+    assert out["error"] == "bad_request" and not imported
+    assert not any(c["method"] == "PUT" for c in backend.calls)
+
+
+@pytest.mark.asyncio
+async def test_create_invite_reuses_an_existing_field_instead_of_overwriting_it(backend):
+    backend.existing_field_keys = {"city_inst_inst-1": {"id": "cf-city", "field_key": "city_inst_inst-1",
+                                                        "field_name": "City", "field_type": "dropdown",
+                                                        "config": '[{"id":1,"value":"Pune","label":"Pune"}]'}}
+    out = await invites({"action": "create_invite", "course_id": "course-1", "payment": {"type": "FREE"},
+                         "form_fields": [{"label": "City", "type": "text"}, {"label": "School"}]})
+    body = next(c for c in backend.calls if c["path"] == "/admin-core-service/v1/enroll-invite")["body"]
+    city = next(f for f in body["institute_custom_fields"] if f["custom_field"]["fieldName"] == "City")
+    school = next(f for f in body["institute_custom_fields"] if f["custom_field"]["fieldName"] == "School")
+    assert city["custom_field"]["id"] == "cf-city" and city["custom_field"]["fieldType"] == "dropdown"
+    assert school["custom_field"]["id"] == ""
+    assert any("City" in n for n in out["notes"])
+
+
+@pytest.mark.asyncio
+async def test_get_invite_shows_fields_available_fields_images_and_redirect(backend):
+    _catalogue(backend)
+    backend.full_invite["setting_json"] = json.dumps({"postformfillConfiguration": {"redirectPath": "/dashboard"}})
+    out = await read({"action": "get_invite", "course_id": "course-1", "invite_id": "inv-default"})
+    inv = out["invite"]
+    assert [f["field_id"] for f in inv["form_fields"]] == ["cf-name", "cf-email", "cf-class"]
+    assert inv["form_fields"][0]["locked"] is True and inv["form_fields"][2]["options"] == ["9", "10"]
+    assert [f["field_id"] for f in inv["available_fields"]] == ["cf-city"]
+    assert inv["redirect_path"] == "/dashboard"
+    assert inv["images"]["preview"] == {"file_id": "file-old", "url": "https://cdn/file-old"}

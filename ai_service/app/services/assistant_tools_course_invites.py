@@ -12,13 +12,21 @@ Safety (no confirm card over MCP) — everything here is ADDITIVE:
 
 * payment options / plans are only ever CREATED, never edited, so a plan shared
   with other courses can never change under them;
-* invites are only ever created; re-pointing an invite at a new plan and making
-  an invite the default are allowed only while the course is NOT ACTIVE.
+* re-pointing an invite at a new plan and making an invite the default are
+  allowed only while the course is NOT ACTIVE;
+* an invite's own page and registration form CAN be edited on a live course.
+  update_invite patches only what was asked and sends the rest of the invite
+  back exactly as read (admin-core's update overwrites every column it is
+  sent). update_form_fields only adds / removes / reorders / (un)requires the
+  institute's EXISTING fields on THIS invite — never a field's label, type or
+  options, which every form using that field shares.
 
 Actions
     create_invite        new invite for a course (+ inline payment plan) → share link
     create_payment_plan  new payment option + plan, optionally attached to an invite of a non-live course
     make_default         make an invite the course's default (non-live courses)
+    update_invite        name, dates, landing copy, images, redirect path, success page of an invite
+    update_form_fields   add (existing) / remove / reorder / (un)require fields on an invite's form
 """
 from __future__ import annotations
 
@@ -35,12 +43,21 @@ logger = logging.getLogger(__name__)
 
 INVITES_EDIT_TOOL_NAME = "course_invites_edit"
 INVITES_EDIT_GROUP_KEY = "course_invite_edits"
-INVITES_EDIT_ACTIONS = ("create_invite", "create_payment_plan", "make_default")
+INVITES_EDIT_ACTIONS = ("create_invite", "create_payment_plan", "make_default", "update_invite",
+                        "update_form_fields")
 
 PAYMENT_TYPES = ("FREE", "ONE_TIME", "SUBSCRIPTION")
 FIELD_TYPES = ("text", "number", "dropdown")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _MAX_PRICE = 10_000_000
+_MAX_IMAGE_BYTES = 6_000_000
+_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+#: A learner-app path: one leading slash, no scheme / host (``//host`` would leave the app).
+_REDIRECT_RE = re.compile(r"^/(?!/)[A-Za-z0-9\-._~/%?=&#+]{0,200}$")
+#: The registration form's built-in fields — the dashboard does not let them be removed either.
+SEEDED_FIELD_KEYS = ("full_name", "email", "phone_number")
+_MAX_HTML = 20_000
 
 PAYMENT_SPEC_DOC = (
     "PAYMENT = {type: FREE | ONE_TIME | SUBSCRIPTION, name?, currency (ISO, e.g. INR / USD — required unless FREE), "
@@ -63,12 +80,26 @@ INVITES_EDIT_SCHEMA: Dict[str, Any] = {
             "access_days?, landing?: {description_html, learning_outcome_html, about_html, target_audience_html, "
             "tags}, form_fields?: [{label, type: text|number|dropdown, required?, options?}], make_default?): a new "
             "invite. The registration form always starts with the institute's default fields (name, email, phone…); "
-            "form_fields adds to them. Landing copy defaults to the course's own. Returns the shareable link.\n"
+            "form_fields adds to them (a label the institute already has reuses that field as it is). Landing copy "
+            "defaults to the course's own. Returns the shareable link.\n"
             "- create_payment_plan (payment: PAYMENT, invite_id?, course_id?): a new payment plan. With invite_id + "
             "course_id it replaces that invite's plan (only while the course is not live).\n"
             "- make_default (course_id, invite_id): the course's main enrolment link (only while the course is not "
             "live). Every new course already has a default invite at the institute's default price — make your new "
             "invite the default or the catalogue keeps using that one.\n"
+            "- update_invite (course_id, invite_id, + any of: name, start_date, end_date, clear_end_date, landing (as "
+            "above — only the keys you pass change), images: {preview?, banner?, media?} each {image_url} (public "
+            "https, imported) | {file_id} | 'course' (the course's own; preview / banner) | 'none' — media also takes "
+            "{youtube: url}, redirect_path (where learners land after enrolling: a learner-app path like "
+            "/study-library/courses — ask the admin for it; '' resets to the default), success_page: {content?, "
+            "show_login_button?}): edits the invite's page. Payment plan and form are untouched. Allowed on live "
+            "courses — new visitors see the change at once.\n"
+            "- update_form_fields (course_id, invite_id, + any of: add: [{field_id, required?}] (only the institute's "
+            "existing fields — courses(action='get_invite') lists them as available_fields), remove: [field_id], "
+            "required: {field_id: true|false}, order: [field_id, …] (unlisted fields keep their order after these)): "
+            "this invite's registration form. A label works wherever a field_id does. Never creates, renames or "
+            "changes the type / options of a field (every form using it shares that); Full Name, Email and Phone "
+            "cannot be removed. Allowed on live courses.\n"
             + PAYMENT_SPEC_DOC
         ),
         "parameters": {
@@ -80,13 +111,24 @@ INVITES_EDIT_SCHEMA: Dict[str, Any] = {
                 "payment": {"type": "object", "description": "PAYMENT (see description)."},
                 "payment_option_id": {"type": "string", "description": "create_invite: reuse an existing plan from "
                                                                        "courses(action='payment_setup')."},
-                "name": {"type": "string", "description": "create_invite: invite name (default: course name)."},
-                "start_date": {"type": "string", "description": "YYYY-MM-DD (default today)."},
+                "name": {"type": "string", "description": "create_invite / update_invite: invite name "
+                                                          "(create default: course name)."},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD (create default: today)."},
                 "end_date": {"type": "string", "description": "YYYY-MM-DD, optional (link closes after it)."},
                 "access_days": {"type": "integer", "description": "Days of access after enrolling (FREE invites)."},
                 "landing": {"type": "object"},
                 "form_fields": {"type": "array", "items": {"type": "object"}},
                 "make_default": {"type": "boolean", "description": "create_invite: also make it the default."},
+                "clear_end_date": {"type": "boolean", "description": "update_invite: remove the end date."},
+                "images": {"type": "object", "description": "update_invite: {preview?, banner?, media?}."},
+                "redirect_path": {"type": "string", "description": "update_invite: learner-app path, e.g. "
+                                                                   "/study-library/courses."},
+                "success_page": {"type": "object", "description": "update_invite: {content?, show_login_button?}."},
+                "add": {"type": "array", "items": {"type": "object"},
+                        "description": "update_form_fields: [{field_id, required?}]."},
+                "remove": {"type": "array", "items": {"type": "string"}, "description": "update_form_fields."},
+                "required": {"type": "object", "description": "update_form_fields: {field_id: bool}."},
+                "order": {"type": "array", "items": {"type": "string"}, "description": "update_form_fields."},
                 "batch_ids": {"type": "array", "items": {"type": "string"},
                               "description": "Which batches (session × level, ids from courses(action='get')) the "
                                              "invite enrols into. Needed when the course has several; several make "
@@ -241,7 +283,8 @@ def form_fields_payload(ctx: ToolContext, defaults: List[Dict[str, Any]], extra:
         key = cf.get("fieldKey") or cf.get("field_key") or _snake(cf.get("fieldName") or "")
         if not cf.get("id") or cf.get("isHidden") or str(d.get("status") or "ACTIVE") != "ACTIVE" or key in seen:
             continue
-        seen.add(key)
+        # Catalogue keys carry `_inst_<institute>`; a new field's label is matched against the bare name.
+        seen.update({key, _base_key(key), _snake(cf.get("fieldName") or "")})
         required = d.get("is_mandatory") if d.get("is_mandatory") is not None else bool(cf.get("isMandatory"))
         fields.append(_field(ctx, len(fields), cf.get("id"), key, cf.get("fieldName") or key,
                              cf.get("fieldType") or "text", cf.get("config") or "", bool(required)))
@@ -268,6 +311,108 @@ def form_fields_payload(ctx: ToolContext, defaults: List[Dict[str, Any]], extra:
             config = json.dumps([{"id": n + 1, "value": o, "label": o} for n, o in enumerate(opts)])
         fields.append(_field(ctx, len(fields), "", key, label, ftype, config, bool(f.get("required", False))))
     return fields, None
+
+
+def _base_key(key: str) -> str:
+    return re.sub(r"_inst_.*$", "", key or "")
+
+
+def field_key_for(label: str, institute_id: str) -> str:
+    """admin-core's key for a new field (CustomFieldKeyGenerator) — the row it would reuse AND overwrite."""
+    key = re.sub(r"_+", "_", re.sub(r"[^a-zA-Z0-9_]", "_", label.lower())).strip("_")
+    if not key or key[0].isdigit():
+        key = "field_" + key
+    if len(key) < 2:
+        key += "_field"
+    return f"{key}_inst_{institute_id}"
+
+
+def bind_existing_fields(ctx: ToolContext, fields: List[Dict[str, Any]]) -> List[str]:
+    """
+    New fields whose label the institute already has are bound to that field by
+    id, keeping ITS type and options. Without this admin-core finds the row by
+    key and overwrites its definition — on every other form that uses it.
+    Returns a note per reused field.
+    """
+    fresh = {field_key_for(f["custom_field"]["fieldName"], ctx.principal.institute_id): f
+             for f in fields if not f["custom_field"]["id"]}
+    notes = []
+    for key, row in cbd.custom_fields_by_keys(ctx, list(fresh)).items():
+        cf = fresh[key]["custom_field"]
+        cf.update({"id": row["id"], "fieldKey": key, "fieldName": row.get("field_name") or cf["fieldName"],
+                   "fieldType": row.get("field_type") or cf["fieldType"], "config": row.get("config") or ""})
+        notes.append(f"'{cf['fieldName']}' already exists in this institute, so its existing type and options were "
+                     "used.")
+    return notes
+
+
+def _cf_value(cf: Dict[str, Any], camel: str, snake: str) -> Any:
+    return cf.get(camel) if cf.get(camel) is not None else cf.get(snake)
+
+
+def field_options(config: Any) -> Optional[List[str]]:
+    """A choice field's options from its stored config (JSON list, {options: …} or "A,B")."""
+    if not config:
+        return None
+    data: Any = config
+    if isinstance(config, str):
+        try:
+            data = json.loads(config)
+        except ValueError:
+            return [o.strip() for o in config.split(",") if o.strip()] or None
+    if isinstance(data, dict):
+        data = data.get("options") or [o for o in str(data.get("coommaSepartedOptions") or "").split(",") if o]
+    if not isinstance(data, list):
+        return None
+    out = [str(o.get("label") or o.get("value") or "") if isinstance(o, dict) else str(o) for o in data]
+    return [o for o in out if o.strip()] or None
+
+
+def field_view(mapping: Dict[str, Any]) -> Dict[str, Any]:
+    """One form field as the model sees it."""
+    cf = mapping.get("custom_field") or {}
+    required = mapping.get("is_mandatory")
+    if required is None:
+        required = _cf_value(cf, "isMandatory", "is_mandatory")
+    key = _cf_value(cf, "fieldKey", "field_key") or ""
+    view: Dict[str, Any] = {"field_id": cf.get("id"), "label": _cf_value(cf, "fieldName", "field_name"),
+                            "type": str(_cf_value(cf, "fieldType", "field_type") or "text").lower(),
+                            "required": bool(required)}
+    options = field_options(cf.get("config"))
+    if options and view["type"] in ("dropdown", "radio", "multi_select", "checkbox"):
+        view["options"] = options
+    if any(key.startswith(k) for k in SEEDED_FIELD_KEYS):
+        view["locked"] = True
+    return view
+
+
+def form_field_views(mappings: Any) -> List[Dict[str, Any]]:
+    """An invite's ACTIVE fields in form order."""
+    rows = [m for m in (mappings or []) if isinstance(m, dict) and str(m.get("status") or "ACTIVE") == "ACTIVE"
+            and (m.get("custom_field") or {}).get("id")]
+    rows.sort(key=lambda m: m.get("individual_order") if isinstance(m.get("individual_order"), int) else 10_000)
+    return [field_view(m) for m in rows]
+
+
+def catalogue_field_views(catalogue: Any) -> List[Dict[str, Any]]:
+    """The institute's fields (Settings → Custom Fields) that can be put on a form."""
+    out, seen = [], set()
+    for m in catalogue if isinstance(catalogue, list) else []:
+        cf = (m or {}).get("custom_field") or {}
+        if not cf.get("id") or cf.get("isHidden") or str(m.get("status") or "ACTIVE") != "ACTIVE" or cf["id"] in seen:
+            continue
+        seen.add(cf["id"])
+        out.append(field_view(m))
+    return out
+
+
+def _find_field(ref: Any, pool: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """A field by id, else by label (case-insensitive)."""
+    ref = str(ref or "").strip()
+    if not ref:
+        return None
+    return next((f for f in pool if f["field_id"] == ref), None) or \
+        next((f for f in pool if str(f.get("label") or "").strip().casefold() == ref.casefold()), None)
 
 
 def _field(ctx: ToolContext, order: int, cf_id: str, key: str, label: str, ftype: str, config: str,
@@ -407,6 +552,7 @@ async def _action_create_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
     fields, problem = form_fields_payload(ctx, defaults if isinstance(defaults, list) else [], args.get("form_fields"))
     if problem:
         return _err("invalid_form_fields", message=problem)
+    field_notes = bind_existing_fields(ctx, fields)
 
     vendors = await cbd.payment_vendors(ctx)
     if args.get("payment_option_id"):
@@ -464,7 +610,7 @@ async def _action_create_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[
                     detail=created.get("message") if isinstance(created, dict) else None,
                     payment_option_id=option.get("id"))
     made_default = False
-    notes = []
+    notes = list(field_notes)
     if args.get("make_default"):
         if course["status"] == cbd.STATUS_ACTIVE:
             notes.append("Not made the default: the course is live — change its default invite in the dashboard.")
@@ -560,8 +706,308 @@ async def _action_make_default(args: Dict[str, Any], ctx: ToolContext) -> Dict[s
             "course": {"id": course["id"], "name": course["name"]}}
 
 
+# ── editing an invite (allowed on live courses) ──────────────────────────
+
+_LIVE_NOTE = "The course is live: new visitors see this change right away."
+_LANDING_KEYS = {"description_html": "description", "learning_outcome_html": "learningOutcome",
+                 "about_html": "aboutCourse", "target_audience_html": "targetAudience"}
+#: images slot → (meta key, the dashboard's cached-URL key, the course column 'course' copies)
+_IMAGE_SLOTS = {"preview": ("coursePreview", "coursePreviewBlob", "course_preview_image_media_id"),
+                "banner": ("courseBanner", "courseBannerBlob", "course_banner_media_id"),
+                "media": ("courseMedia", "courseMediaBlob", None)}
+
+
+def _course_and_invite(ctx: ToolContext, args: Dict[str, Any], action: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    if not args.get("invite_id"):
+        return None, None, _err("missing_argument", action=action, needs=["course_id", "invite_id"])
+    course, batches, error = _course_and_batches(ctx, args.get("course_id"))
+    if error:
+        return None, None, error
+    invite = cbd.invite_row(ctx, str(args["invite_id"]).strip(), [b["id"] for b in batches])
+    if not invite:
+        return None, None, _err("unknown_invite", message="No such invite for this course. Use courses(action='invites').")
+    return course, invite, None
+
+
+def _json_obj(raw: Any) -> Dict[str, Any]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    try:
+        data = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def _feature_fields(ctx: ToolContext, invite_id: str) -> Any:
+    return await cbd.admin_core(ctx, "GET", "/admin-core-service/common/custom-fields/feature-fields",
+                                params={"instituteId": ctx.principal.institute_id, "type": "ENROLL_INVITE",
+                                        "typeId": invite_id})
+
+
+def _mapping_payload(fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Fields by id ONLY: admin-core writes a sent label / type / options onto the
+    shared definition, so none are sent — only this form's order and required flag.
+    """
+    return [{"individual_order": i, "is_mandatory": bool(f["required"]), "status": "ACTIVE",
+             "custom_field": {"id": f["field_id"]}} for i, f in enumerate(fields)]
+
+
+async def _action_update_form_fields(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    add, remove, required, order = (args.get(k) for k in ("add", "remove", "required", "order"))
+    if not any((add, remove, required, order)):
+        return _err("missing_argument", action="update_form_fields", needs=["one of add, remove, required, order"])
+    course, invite, error = _course_and_invite(ctx, args, "update_form_fields")
+    if error:
+        return error
+    current = await _feature_fields(ctx, invite["id"])
+    catalogue = await cbd.admin_core(ctx, "GET", "/admin-core-service/common/custom-fields",
+                                     params={"instituteId": ctx.principal.institute_id})
+    if cbd.is_error(current) or not isinstance(current, list):
+        return _err("fetch_failed", message="This invite's form could not be read.")
+    fields = form_field_views(current)
+    available = catalogue_field_views(catalogue)
+    problems: List[str] = []
+    notes: List[str] = []
+
+    for ref in remove if isinstance(remove, list) else ([remove] if remove else []):
+        f = _find_field(ref, fields)
+        if not f:
+            problems.append(f"remove: '{ref}' is not on this form")
+        elif f.get("locked"):
+            problems.append(f"remove: '{f['label']}' is a built-in field and cannot be removed (it can be made optional)")
+        else:
+            fields.remove(f)
+
+    for item in add if isinstance(add, list) else ([add] if add else []):
+        ref = (item.get("field_id") or item.get("label")) if isinstance(item, dict) else item
+        f = _find_field(ref, available)
+        if not f:
+            problems.append(f"add: '{ref}' is not one of the institute's fields (see available_fields from "
+                            "courses(action='get_invite'); new fields are created in Settings → Custom Fields)")
+        elif any(x["field_id"] == f["field_id"] for x in fields):
+            notes.append(f"'{f['label']}' is already on the form.")
+        else:
+            want = item.get("required") if isinstance(item, dict) else None
+            fields.append({**f, "required": f["required"] if want is None else bool(want)})
+
+    if required is not None and not isinstance(required, dict):
+        problems.append("required must be an object: {field_id: true|false}")
+    for ref, value in (required or {}).items() if isinstance(required, dict) else []:
+        f = _find_field(ref, fields)
+        if not f:
+            problems.append(f"required: '{ref}' is not on this form")
+        elif not isinstance(value, bool):
+            problems.append(f"required: '{ref}' must be true or false")
+        else:
+            f["required"] = value
+
+    if order:
+        listed: List[Dict[str, Any]] = []
+        for ref in order if isinstance(order, list) else [order]:
+            f = _find_field(ref, fields)
+            if not f:
+                problems.append(f"order: '{ref}' is not on this form")
+            elif f not in listed:
+                listed.append(f)
+        fields = listed + [f for f in fields if f not in listed]
+
+    if problems:
+        return _err("invalid_form_fields", problems=problems, form_fields=fields)
+    saved = await cbd.admin_core(
+        ctx, "POST", "/admin-core-service/common/custom-fields/feature-fields",
+        params={"instituteId": ctx.principal.institute_id, "type": "ENROLL_INVITE", "typeId": invite["id"]},
+        body=_mapping_payload(fields))
+    if cbd.is_error(saved):
+        return _err("save_failed", message="The form could not be saved.",
+                    detail=saved.get("message") if isinstance(saved, dict) else None)
+    if course["status"] == cbd.STATUS_ACTIVE:
+        notes.append(_LIVE_NOTE)
+    return {"invite": {"id": invite["id"], "name": invite["name"], "link": invite.get("short_url")},
+            "form_fields": fields, "notes": notes}
+
+
+async def _image_value(ctx: ToolContext, slot: str, spec: Any, course: Dict[str, Any]) -> Tuple[Any, Optional[str]]:
+    """The meta value for an image slot (a media file id; courseMedia is {type, id}), or (None, problem)."""
+    meta_key, _, course_col = _IMAGE_SLOTS[slot]
+    wrap = (lambda kind, fid: {"type": kind, "id": fid}) if slot == "media" else (lambda kind, fid: fid)
+    if spec == "none":
+        return wrap("", ""), None
+    if spec == "course":
+        if not course_col:
+            return None, "images.media cannot be 'course' — pass {image_url}, {file_id} or {youtube}"
+        return wrap("image", course.get(course_col) or ""), None
+    if not isinstance(spec, dict):
+        return None, f"images.{slot} must be {{image_url}}, {{file_id}}, 'course' or 'none'"
+    if spec.get("youtube"):
+        if slot != "media":
+            return None, f"images.{slot} cannot be a video — only images.media takes {{youtube}}"
+        from .course_content import youtube_id
+        if not youtube_id(spec["youtube"]):
+            return None, "images.media.youtube must be a YouTube https link (watch / youtu.be / embed / shorts)"
+        return wrap("youtube", str(spec["youtube"]).strip()), None
+    if spec.get("file_id"):
+        fid = str(spec["file_id"]).strip()
+        if not _FILE_ID_RE.match(fid):
+            return None, f"images.{slot}.file_id is not a media file id (pass a URL as image_url instead)"
+        return wrap("image", fid), None
+    if spec.get("image_url"):
+        fetched = await cbd.fetch_public_file(str(spec["image_url"]).strip(), max_bytes=_MAX_IMAGE_BYTES,
+                                              allowed_types=_IMAGE_TYPES)
+        if cbd.is_error(fetched):
+            return None, f"images.{slot}: {fetched.get('message')}"
+        content, ctype, ext = fetched
+        fid = await cbd.upload_to_media(ctx, content, f"invite-{slot}.{ext}", ctype)
+        if cbd.is_error(fid):
+            return None, f"images.{slot}: {fid.get('message')}"
+        return wrap("image", fid), None
+    return None, f"images.{slot} must be {{image_url}}, {{file_id}}, 'course' or 'none'"
+
+
+async def _action_update_invite(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    keys = ("name", "start_date", "end_date", "clear_end_date", "landing", "images", "redirect_path", "success_page")
+    if not any(args.get(k) is not None for k in keys):
+        return _err("missing_argument", action="update_invite", needs=["one of " + ", ".join(keys)])
+    course, invite, error = _course_and_invite(ctx, args, "update_invite")
+    if error:
+        return error
+    full = await cbd.admin_core(ctx, "GET", f"/admin-core-service/v1/enroll-invite/{ctx.principal.institute_id}/{invite['id']}")
+    if cbd.is_error(full) or not isinstance(full, dict) or full.get("id") != invite["id"]:
+        return _err("fetch_failed", message="The invite could not be read.")
+    links = [m for m in full.get("package_session_to_payment_options") or [] if isinstance(m, dict)]
+    if not links or not all(m.get("id") and (m.get("payment_option") or {}).get("id") for m in links):
+        return _err("fetch_failed", message="This invite's payment links could not be read, so it was not changed.")
+
+    changed: List[str] = []
+    body: Dict[str, Any] = {k: v for k, v in full.items()
+                            if k not in ("availability_status", "sub_org", "gtm_container_id")}
+
+    if args.get("name") is not None:
+        name = str(args["name"]).strip()[:120]
+        if not name:
+            return _err("bad_request", message="name cannot be empty")
+        body["name"] = name
+        changed.append("name")
+    start, problem = _iso_day(args.get("start_date"))
+    end, problem2 = _iso_day(args.get("end_date"))
+    if problem or problem2:
+        return _err("bad_request", message=problem or problem2)
+    if start:
+        body["start_date"] = start
+        changed.append("start_date")
+    if args.get("clear_end_date"):
+        body["end_date"] = None
+        changed.append("end_date")
+    elif end:
+        body["end_date"] = end
+        changed.append("end_date")
+    eff_start = _iso_day(body.get("start_date"))[0]
+    eff_end = _iso_day(body.get("end_date"))[0]
+    if eff_start and eff_end and eff_end < eff_start:
+        return _err("bad_request", message="end_date is before start_date")
+
+    meta = _json_obj(full.get("web_page_meta_data_json"))
+    landing = args.get("landing")
+    if landing is not None:
+        if not isinstance(landing, dict):
+            return _err("bad_request", message="landing must be an object")
+        for arg_key, meta_key in _LANDING_KEYS.items():
+            if landing.get(arg_key) is not None:
+                html = str(landing[arg_key])
+                if len(html) > _MAX_HTML:
+                    return _err("bad_request", message=f"landing.{arg_key} is over {_MAX_HTML} characters")
+                meta[meta_key] = html
+                changed.append(meta_key)
+        if landing.get("tags") is not None:
+            if not isinstance(landing["tags"], list):
+                return _err("bad_request", message="landing.tags must be a list of strings")
+            meta["tags"] = [str(t).strip()[:40] for t in landing["tags"] if str(t).strip()][:10]
+            changed.append("tags")
+
+    settings = _json_obj(full.get("setting_json"))
+    post_fill = dict(settings.get("postformfillConfiguration") or {})
+    if args.get("redirect_path") is not None:
+        path = str(args["redirect_path"]).strip()
+        if path and not _REDIRECT_RE.match(path):
+            return _err("bad_request", message="redirect_path must be a learner-app path starting with '/', e.g. "
+                                               "/study-library/courses (not a full URL)")
+        if path:
+            post_fill["redirectPath"] = path
+        else:
+            post_fill.pop("redirectPath", None)
+        changed.append("redirect_path")
+    success = args.get("success_page")
+    if success is not None:
+        if not isinstance(success, dict):
+            return _err("bad_request", message="success_page must be an object: {content?, show_login_button?}")
+        if success.get("content") is not None:
+            if len(str(success["content"])) > _MAX_HTML:
+                return _err("bad_request", message=f"success_page.content is over {_MAX_HTML} characters")
+            post_fill["content"] = str(success["content"])
+            changed.append("success_page.content")
+        if success.get("show_login_button") is not None:
+            if not isinstance(success["show_login_button"], bool):
+                return _err("bad_request", message="success_page.show_login_button must be true or false")
+            post_fill["showLoginButton"] = success["show_login_button"]
+            changed.append("success_page.show_login_button")
+
+    images = args.get("images")
+    if images is not None:
+        if not isinstance(images, dict) or not images or set(images) - set(_IMAGE_SLOTS):
+            return _err("bad_request", message="images must be {preview?, banner?, media?}")
+        # Every image is checked before any is imported, so a bad one leaves nothing half-done.
+        resolved = {}
+        for slot, spec in images.items():
+            if isinstance(spec, dict) and spec.get("image_url"):
+                continue
+            value, problem = await _image_value(ctx, slot, spec, course)
+            if problem:
+                return _err("bad_request", message=problem)
+            resolved[slot] = value
+        for slot, spec in images.items():
+            if slot not in resolved:
+                value, problem = await _image_value(ctx, slot, spec, course)
+                if problem:
+                    return _err("image_failed", message=problem)
+                resolved[slot] = value
+        from .assistant_tool_registry import _media_public_url
+        for slot, value in resolved.items():
+            meta_key, blob_key, _ = _IMAGE_SLOTS[slot]
+            meta[meta_key] = value
+            fid = value.get("id") if isinstance(value, dict) else value
+            kind = value.get("type") if isinstance(value, dict) else "image"
+            # The dashboard previews the cached URL; the learner page reads the id.
+            meta[blob_key] = (fid if kind == "youtube" else (await _media_public_url(ctx, fid) if fid else "")) or ""
+            changed.append(f"images.{slot}")
+
+    if not changed:
+        return _err("missing_argument", action="update_invite", message="Nothing to change.")
+    body["web_page_meta_data_json"] = json.dumps(meta)
+    if post_fill != (settings.get("postformfillConfiguration") or {}):
+        settings["postformfillConfiguration"] = post_fill
+        body["setting_json"] = json.dumps(settings)
+    # The form is not this action's to change. admin-core re-syncs the fields only when
+    # institute_id is sent, so it is left out — and the current fields go along by id
+    # anyway, so even a re-sync would keep the form exactly as it is.
+    body["institute_id"] = None
+    body["institute_custom_fields"] = _mapping_payload(form_field_views(full.get("institute_custom_fields")))
+    # Links sent WITH their ids stay as they are (without, admin-core deletes and recreates them).
+    body["package_session_to_payment_options"] = [
+        {"id": m["id"], "package_session_id": m.get("package_session_id"), "enroll_invite_id": invite["id"],
+         "status": "ACTIVE", "payment_option": {"id": m["payment_option"]["id"]}} for m in links]
+    saved = await cbd.admin_core(ctx, "PUT", "/admin-core-service/v1/enroll-invite/enroll-invite", body=body)
+    if cbd.is_error(saved):
+        return _err("save_failed", message="The invite could not be saved.",
+                    detail=saved.get("message") if isinstance(saved, dict) else None)
+    return {"invite": {"id": invite["id"], "name": body.get("name"), "link": full.get("short_url") or invite.get("short_url")},
+            "changed": list(dict.fromkeys(changed)),
+            "notes": [_LIVE_NOTE] if course["status"] == cbd.STATUS_ACTIVE else []}
+
+
 _ACTIONS = {"create_invite": _action_create_invite, "create_payment_plan": _action_create_payment_plan,
-            "make_default": _action_make_default}
+            "make_default": _action_make_default, "update_invite": _action_update_invite,
+            "update_form_fields": _action_update_form_fields}
 
 
 async def execute_course_invites_edit(args: Dict[str, Any], ctx: ToolContext) -> str:
@@ -600,4 +1046,4 @@ _register()
 
 __all__ = ["INVITES_EDIT_TOOLS", "INVITES_EDIT_TOOL_NAME", "INVITES_EDIT_GROUP_KEY", "INVITES_EDIT_ACTIONS",
            "INVITES_EDIT_SCHEMA", "execute_course_invites_edit", "build_payment_option", "form_fields_payload",
-           "describe_option"]
+           "describe_option", "form_field_views", "catalogue_field_views", "field_key_for"]

@@ -450,6 +450,29 @@ def invite_row(ctx: ToolContext, invite_id: Optional[str], package_session_ids: 
     return None
 
 
+_CUSTOM_FIELDS_BY_KEY_SQL = """
+SELECT id, field_key, field_name, field_type, config, status
+FROM custom_fields
+WHERE field_key = ANY(:keys)
+ORDER BY (status = 'ACTIVE') DESC, created_at DESC
+"""
+
+
+def custom_fields_by_keys(ctx: ToolContext, keys: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    The institute's existing field definitions for the given field keys (keys
+    already carry ``_inst_<institute>``, so this cannot see another institute's
+    fields). Admin-core reuses — and overwrites — the row for a key, so callers
+    look first and bind to it by id instead.
+    """
+    if not keys:
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in _rows(ctx, _CUSTOM_FIELDS_BY_KEY_SQL, {"keys": list(keys)}):
+        out.setdefault(r["field_key"], r)
+    return out
+
+
 async def payment_vendors(ctx: ToolContext) -> List[Dict[str, str]]:
     """Active payment gateways of the institute (empty = none configured)."""
     data = await admin_core(
@@ -573,5 +596,6 @@ __all__ = [
     "list_courses", "course_row", "active_batch_id", "course_batches", "institute_sessions_levels",
     "enrolled_count", "course_tree", "flatten_chapters",
     "chapter_context", "slide_context", "invites_for_batches", "invites_for_batch", "invite_row", "payment_vendors",
+    "custom_fields_by_keys",
     "load_course_settings", "save_course_settings",
 ]

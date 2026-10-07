@@ -2194,7 +2194,9 @@ def sanitize_component(
     cleaned: Dict[str, Any] = {
         "id": cid,
         "type": ctype,
-        "enabled": True,
+        # Keep an explicit opt-out: forcing True made set_layout unable to
+        # switch the site header/footer off (a custom htmlBlock replaces them).
+        "enabled": comp.get("enabled") is not False,
         "props": cleaned_props,
     }
     # anchorId is a COMPONENT field (the wrapper renders it as the DOM id);

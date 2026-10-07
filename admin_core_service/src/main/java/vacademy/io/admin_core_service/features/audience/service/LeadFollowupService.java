@@ -253,10 +253,10 @@ public class LeadFollowupService {
      * on its own: email, source, pipeline status, interest tier, the counsellor who
      * owns the lead, and the lead's custom field answers.
      *
-     * <p>The extra pass is four batched queries for the whole page, never one per row,
-     * and it is opt-in. The Completed table reads none of those fields and the tile's
-     * count probe reads only totalElements, so making it unconditional would have put
-     * four queries on every page load to produce data nobody looked at.
+     * <p>The extra pass is at most six batched queries for the WHOLE page, never one
+     * per row, and it is opt-in. The Completed table reads none of those fields and the
+     * tile's count probe reads only totalElements, so making it unconditional would have
+     * put all six on every page load to produce data nobody looked at.
      */
     private Page<LeadFollowupDto> hydrate(Page<LeadFollowup> page, boolean includeLeadDetail) {
         Page<LeadFollowupDto> hydrated = hydrate(page);

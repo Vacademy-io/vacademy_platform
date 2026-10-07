@@ -65,8 +65,8 @@ public class LeadFollowupController {
      *        interest level, owner and custom-field answers to every row. Off by
      *        default and deliberately so: the table needs none of it, and the
      *        tile's count probe asks for a single row on every page load — both
-     *        would pay for four extra queries they never read. The CSV export
-     *        turns it on, because there a row has to stand on its own.
+     *        would pay for up to six extra queries they never read. The CSV
+     *        export turns it on, because there a row has to stand on its own.
      */
     @GetMapping("/completed")
     public ResponseEntity<Page<LeadFollowupDto>> completed(

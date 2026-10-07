@@ -183,10 +183,41 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("instituteId") String instituteId,
             @Param("statuses") List<String> statuses);
 
+    /**
+     * Batch cards for one course: name, status, learner count and the invite code
+     * to share.
+     *
+     * <p>Two things this deliberately does not do, both of which used to leave the
+     * Manage Batches page unusable for institutes whose data was migrated in bulk:
+     *
+     * <ul>
+     * <li><b>It does not throw away the batch name.</b> The title used to be
+     * level + course. An institute migrated in bulk carries the level name
+     * "default" on every session, so every batch of a course rendered with an
+     * identical title and nothing on the page told them apart - while
+     * package_session.name held the real, distinct name all along. The name wins
+     * when it is set; the placeholder names "DEFAULT" and "General" fall back to
+     * level + course, which is what those institutes already see today.
+     * <li><b>It does not require a DEFAULT-tagged invite.</b> The tag is a
+     * preference in the ORDER BY, not a filter. Requiring it blanked the invite
+     * code on every batch of an institute whose invites carry no tag - 2,935 of
+     * them on one - even though those invites were ACTIVE and usable. Note the
+     * code is per invite, not per batch, so batches sharing a course-level invite
+     * legitimately show the same code.
+     * </ul>
+     *
+     * <p>Prose stays here rather than inside the query text: an apostrophe in a SQL
+     * comment inside a {@code @Query} string crash-loops the service at boot.
+     */
     @Query(value = """
             SELECT
                 ps.id AS packageSessionId,
-                CONCAT(l.level_name, ' ', p.package_name) AS batchName,
+                CASE
+                    WHEN COALESCE(TRIM(ps.name), '') <> ''
+                     AND UPPER(TRIM(ps.name)) NOT IN ('DEFAULT', 'GENERAL')
+                    THEN ps.name
+                    ELSE CONCAT(l.level_name, ' ', p.package_name)
+                END AS batchName,
                 ps.status AS batchStatus,
                 ps.start_time AS startDate,
                 COUNT(ssigm.id) AS countStudents,
@@ -195,9 +226,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                    JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
                   WHERE psli.package_session_id = ps.id
                     AND psli.status = 'ACTIVE'
-                    AND ei.tag = 'DEFAULT'
                     AND ei.status = 'ACTIVE'
-                  ORDER BY ei.created_at DESC
+                  ORDER BY (ei.tag = 'DEFAULT') DESC NULLS LAST, ei.created_at DESC
                   LIMIT 1) AS inviteCode,
                 ps.is_parent AS isParent,
                 ps.parent_id AS parentId
@@ -209,7 +239,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 AND ssigm.status IN (:studentSessionStatuses)
             WHERE p.id = :packageId
               AND ps.status IN (:packageSessionStatuses)
-            GROUP BY ps.id, batchName, ps.status, ps.start_time, ps.is_parent, ps.parent_id
+            GROUP BY ps.id, ps.name, l.level_name, p.package_name, ps.status, ps.start_time, ps.is_parent, ps.parent_id
             ORDER BY ps.start_time DESC
             """, nativeQuery = true)
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(

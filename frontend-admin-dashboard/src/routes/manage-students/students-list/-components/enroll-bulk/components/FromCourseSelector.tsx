@@ -40,7 +40,7 @@ interface StudentRow {
 
 export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Props) => {
     const { t } = useTranslation('manageStudentsFromCourseSelector');
-    const { getPackageWiseLevels } = useInstituteDetailsStore();
+    const { getPackageWiseLevels, instituteDetails } = useInstituteDetailsStore();
     const packageGroups = getPackageWiseLevels();
 
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -55,8 +55,25 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
     const [loading, setLoading] = useState(false);
     const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
-    const levels =
-        packageGroups.find((g) => g.package_dto.id === selectedCourseId)?.level ?? [];
+    // Every batch of the course, not getPackageWiseLevels' one-per-level list — that
+    // keeps only the first session's batch per level, so a course running the same
+    // level in two sessions loaded learners from whichever batch happened to come first.
+    const batches = (instituteDetails?.batches_for_sessions ?? []).filter(
+        (b) => b.package_dto.id === selectedCourseId
+    );
+    const batchLabel = (b: (typeof batches)[number]) =>
+        [b.name?.trim() || b.level.level_name, b.session.session_name].filter(Boolean).join(' · ');
+
+    const selectCourse = (courseId: string) => {
+        setSelectedCourseId(courseId);
+        setStudents([]);
+        // A course with a single real batch has nothing to choose — pick it so "Load" is
+        // live. The INVITED placeholder batch every course carries doesn't count.
+        const realBatches = (instituteDetails?.batches_for_sessions ?? []).filter(
+            (b) => b.package_dto.id === courseId && b.status !== 'INVITED'
+        );
+        setSelectedPackageSessionId(realBatches.length === 1 ? realBatches[0]!.id : '');
+    };
 
     const handleSearch = async () => {
         if (!selectedPackageSessionId) {
@@ -66,8 +83,9 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
         setLoading(true);
         try {
             const response = await authenticatedAxiosInstance.post(
-                `${GET_STUDENTS}?instituteId=${instituteId}`,
+                GET_STUDENTS,
                 {
+                    institute_ids: [instituteId],
                     package_session_ids: [selectedPackageSessionId],
                     statuses: [statusFilter],
                 },
@@ -79,7 +97,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                     user_id: s.user_id,
                     username: s.username,
                     email: s.email,
-                    name: s.name || s.username,
+                    name: s.full_name || s.username,
                 }))
             );
             setCheckedIds(new Set());
@@ -138,14 +156,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                     <Label className="mb-1 text-xs text-neutral-500">
                         {t('labels.sourceCourse', { courseTerm })}
                     </Label>
-                    <Select
-                        value={selectedCourseId}
-                        onValueChange={(v) => {
-                            setSelectedCourseId(v);
-                            setSelectedPackageSessionId('');
-                            setStudents([]);
-                        }}
-                    >
+                    <Select value={selectedCourseId} onValueChange={selectCourse}>
                         <SelectTrigger>
                             <SelectValue
                                 placeholder={t('placeholders.select', {
@@ -180,12 +191,9 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                             />
                         </SelectTrigger>
                         <SelectContent>
-                            {levels.map((l) => (
-                                <SelectItem
-                                    key={l.package_session_id}
-                                    value={l.package_session_id}
-                                >
-                                    {l.level_dto.level_name}
+                            {batches.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                    {batchLabel(b)}
                                 </SelectItem>
                             ))}
                         </SelectContent>

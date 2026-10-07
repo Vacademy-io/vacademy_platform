@@ -372,15 +372,21 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     List<PackageSession> findAllInvitedByPackageIds(@Param("packageIds") Set<String> packageIds);
 
     /**
-     * Autocomplete search for packages by name with relevance scoring.
+     * Autocomplete search for batches with relevance scoring.
      *
      * Matches any part of the course name (substring), not just a prefix, so the batch filter
      * finds "Advanced Nursing Care" from "nursing". Relevance still ranks an exact name first,
      * then a prefix match, then a match that starts a word inside the name, then any substring.
      *
+     * It also matches, and returns, the batch's OWN name (package_session.name). An institute
+     * whose batches are all one course could not find a single one of them here: every row the
+     * search returned carried the same course name and the same level name, so the picker showed
+     * a column of identical entries and typing the batch name found nothing at all.
+     *
      * The selective predicate here is package_institute.institute_id (idx_package_institute_access),
      * which bounds the scan to one institute's packages before the name filter runs — the
-     * LOWER(package_name) b-tree from V84 no longer helps a leading-wildcard LIKE.
+     * LOWER(package_name) b-tree from V84 no longer helps a leading-wildcard LIKE. The added
+     * batch-name match is OR-ed into that same already-bounded row set, so it costs no extra scan.
      */
     @Query(value = """
                         SELECT
@@ -391,9 +397,12 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 l.level_name AS levelName,
                 s.id AS sessionId,
                 s.session_name AS sessionName,
+                ps.name AS batchName,
                 CASE
                     WHEN LOWER(p.package_name) = LOWER(:query) THEN 100
+                    WHEN LOWER(COALESCE(ps.name, '')) = LOWER(:query) THEN 100
                     WHEN LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%')) THEN 90
+                    WHEN LOWER(COALESCE(ps.name, '')) LIKE LOWER(CONCAT(:query, '%')) THEN 90
                     WHEN LOWER(p.package_name) LIKE LOWER(CONCAT('% ', :query, '%')) THEN 80
                     ELSE 70
                 END AS matchScore
@@ -404,11 +413,12 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             JOIN session s ON ps.session_id = s.id
                         WHERE
                             pi.institute_id = :instituteId
-                            AND LOWER(p.package_name) LIKE LOWER(CONCAT('%', :query, '%'))
+                            AND (LOWER(p.package_name) LIKE LOWER(CONCAT('%', :query, '%'))
+                                 OR LOWER(COALESCE(ps.name, '')) LIKE LOWER(CONCAT('%', :query, '%')))
                             AND (:sessionId IS NULL OR :sessionId = '' OR ps.session_id = :sessionId)
                             AND (:levelId IS NULL OR :levelId = '' OR ps.level_id = :levelId)
                             AND ps.status IN ('ACTIVE', 'HIDDEN','DRAFT')
-                        ORDER BY matchScore DESC, p.package_name ASC
+                        ORDER BY matchScore DESC, p.package_name ASC, ps.name ASC
                         LIMIT :limit
                         """, nativeQuery = true)
     List<vacademy.io.admin_core_service.features.packages.dto.PackageAutocompleteProjection> autocompletePackages(

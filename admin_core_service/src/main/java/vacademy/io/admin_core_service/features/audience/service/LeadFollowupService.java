@@ -188,13 +188,13 @@ public class LeadFollowupService {
     public Page<LeadFollowupDto> completed(CustomUserDetails user, String instituteId,
                                            String counsellorUserId, String search,
                                            Timestamp closedFrom, Timestamp closedTo,
-                                           Pageable pageable) {
+                                           Pageable pageable, boolean includeLeadDetail) {
         // ORDER BY lives in the query, so the Pageable stays unsorted.
         Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
         if (instituteId == null || instituteId.isBlank()) {
-            return hydrateFull(leadFollowupRepository
-                    .findByCreatedByAndIsClosedTrue(user.getUserId(), paged));
+            return hydrate(leadFollowupRepository
+                    .findByCreatedByAndIsClosedTrue(user.getUserId(), paged), includeLeadDetail);
         }
 
         // Empty CSV means "every counsellor in the institute" to the query.
@@ -234,10 +234,10 @@ public class LeadFollowupService {
             }
         }
 
-        return hydrateFull(leadFollowupRepository.findCompleted(
+        return hydrate(leadFollowupRepository.findCompleted(
                 instituteId, createdByCsv, closedFrom, closedTo,
                 search == null || search.isBlank() ? null : search.trim(),
-                searchUserIdsCsv, paged));
+                searchUserIdsCsv, paged), includeLeadDetail);
     }
 
     /** Map a page of entities through the same lead-name hydration the lists use. */
@@ -249,17 +249,18 @@ public class LeadFollowupService {
     }
 
     /**
-     * hydrate() plus everything that makes a completed follow-up readable on its own:
-     * email, pipeline status, interest tier, the counsellor who owns the lead, and the
-     * lead's custom field answers.
+     * hydrate(), optionally plus everything that makes a completed follow-up readable
+     * on its own: email, source, pipeline status, interest tier, the counsellor who
+     * owns the lead, and the lead's custom field answers.
      *
-     * <p>Four batched queries for the whole page, never one per row. They are only paid
-     * on the Completed queue, which is where a row has to stand alone - the pending
-     * queues render next to the lead itself.
+     * <p>The extra pass is four batched queries for the whole page, never one per row,
+     * and it is opt-in. The Completed table reads none of those fields and the tile's
+     * count probe reads only totalElements, so making it unconditional would have put
+     * four queries on every page load to produce data nobody looked at.
      */
-    private Page<LeadFollowupDto> hydrateFull(Page<LeadFollowup> page) {
+    private Page<LeadFollowupDto> hydrate(Page<LeadFollowup> page, boolean includeLeadDetail) {
         Page<LeadFollowupDto> hydrated = hydrate(page);
-        withLeadDetail(hydrated.getContent());
+        if (includeLeadDetail) withLeadDetail(hydrated.getContent());
         return hydrated;
     }
 

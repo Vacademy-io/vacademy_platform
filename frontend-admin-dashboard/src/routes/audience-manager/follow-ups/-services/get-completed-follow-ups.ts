@@ -59,6 +59,14 @@ export async function fetchCompletedFollowUps(params: {
     closedTo?: string;
     page: number;
     size: number;
+    /**
+     * Ask for the lead's email, source, status, interest level, owner and custom
+     * fields on every row. Off by default — the table reads none of them and the
+     * tile's count probe reads only the total, so switching it on there would cost
+     * four server-side queries per page load for data nobody renders. The CSV
+     * export sets it, because a row there is read on its own.
+     */
+    includeLeadDetail?: boolean;
 }): Promise<CompletedFollowUpsPage | undefined> {
     const res = await authenticatedAxiosInstance.get(COMPLETED_LEAD_FOLLOWUPS, {
         params: {
@@ -69,6 +77,7 @@ export async function fetchCompletedFollowUps(params: {
             closedTo: params.closedTo,
             page: params.page,
             size: params.size,
+            includeLeadDetail: params.includeLeadDetail || undefined,
         },
     });
     return res?.data;

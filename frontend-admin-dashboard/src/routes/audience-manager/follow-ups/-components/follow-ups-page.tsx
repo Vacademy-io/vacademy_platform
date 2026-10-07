@@ -704,6 +704,7 @@ const FollowUpsContent = () => {
                         ...completedParams,
                         page,
                         size,
+                        includeLeadDetail: true,
                     }),
                 toRow: (row) => completedToExportRow(row, exportFields),
                 labels,

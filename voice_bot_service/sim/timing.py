@@ -127,6 +127,13 @@ class Scenario:
     # builds the fallback. 13 failovers in 283 calls on 2026-10-01.
     llm_stalls: List[Optional[float]] = field(default_factory=list)
     fallback_ttft: float = 0.8
+    # STT WATERFALL on vendor-faithful sockets (sim/stt_fake.py): production's
+    # build_stt_waterfall — pipecat's real SarvamSTTService + SmallestSTTService
+    # with our wrappers, in the ServiceSwitcher — talking to a local server that
+    # transcribes only the caller audio it actually received. Non-empty = on;
+    # the dict is the fault plan per vendor ({"sarvam": {"hang_on_audio": 1}}).
+    # Call 3e327e8a (2026-10-02): a Sarvam socket that closed and hung.
+    stt_fake: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -142,6 +149,12 @@ class Line:
         self.finals: List[tuple] = []          # (t, text)
         self.tts_texts: List[str] = []         # every sentence handed to the TTS
         self._last_bot_write = -10.0
+        # sim/stt_fake.py: which caller utterance (1-based) each voiced 20 ms
+        # chunk of line audio belongs to, how many there are, and its finals.
+        self.chunk_owner: Dict[bytes, int] = {}
+        self.say_chunks: Dict[int, int] = {}
+        self.say_finals: Dict[int, List[str]] = {}
+        self.stt_switches: List[tuple] = []    # (t, service) when the STT switcher moved
 
     def now(self) -> float:
         return time.perf_counter() - self.t0
@@ -510,6 +523,46 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                     await orig(frame, direction)
                 return _tap
             _svc.push_frame = _mk(_svc)
+    elif scenario.stt_fake:
+        # Production's own waterfall, pointed at sim/stt_fake.py's sockets.
+        from pipecat.frames.frames import InterimTranscriptionFrame
+        from app.config import get_settings as _gs
+        from app.providers import build_stt_waterfall
+        from sim.stt_fake import point_at
+        _s = _gs()
+        _saved = {k: getattr(_s, k) for k in ("stt_provider", "stt_fallback_provider",
+                                               "sarvam_api_key", "smallest_api_key")}
+        try:
+            object.__setattr__(_s, "stt_provider", "sarvam")
+            object.__setattr__(_s, "stt_fallback_provider", "smallest")
+            for k in ("sarvam_api_key", "smallest_api_key"):
+                if not getattr(_s, k):
+                    object.__setattr__(_s, k, "sim-not-a-key")
+            stt, _stt_primary, _stt_fallback = build_stt_waterfall(SR_LINE, language="hi-IN")
+        finally:
+            for k, v in _saved.items():
+                object.__setattr__(_s, k, v)
+        point_at(line.stt_server, _stt_primary, _stt_fallback)
+        strategy = getattr(stt, "strategy", None)
+        if strategy is not None:
+            @strategy.event_handler("on_service_switched")
+            async def _switched(_strategy, service):
+                line.stt_switches.append((round(line.now(), 2), type(service).__name__))
+                log(f"STT switched to {type(service).__name__}")
+        for _svc in (_stt_primary, _stt_fallback):
+            def _mk(svc):
+                orig = svc.push_frame
+
+                async def _tap(frame, direction=FrameDirection.DOWNSTREAM):
+                    if (isinstance(frame, TranscriptionFrame)
+                            and not isinstance(frame, InterimTranscriptionFrame) and frame.text.strip()):
+                        line.finals.append((line.now(), frame.text.strip()))
+                        line.vendor_finals.append((round(line.now(), 2), type(svc).__name__,
+                                                   frame.text.strip()))
+                        log(f"STT final ({type(svc).__name__}):", repr(frame.text.strip()))
+                    await orig(frame, direction)
+                return _tap
+            _svc.push_frame = _mk(_svc)
     else:
         stt = SimSTT()
     # The LLM waterfall. SIM_SLOW_PRIMARY_EVERY=N stalls every N-th primary
@@ -601,6 +654,20 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                         pending.remove(s); speaking = s; pos = 0; spoken_frames = 0
                         clip = clip_for(s.text, s.secs, s.clip)
                         total_frames = len(clip) // frame_n
+                        if scenario.stt_fake:
+                            k = scenario.caller.index(s) + 1
+                            # Clips without a fixture of their own are cuts of the SAME
+                            # long recording: a k-LSB offset (inaudible, VAD-neutral)
+                            # makes each utterance's chunks its own.
+                            clip = np.clip(clip.astype(np.int32) + k, -32768, 32767).astype(np.int16)
+                            line.say_finals[k] = list(s.finals or [s.text])
+                            n = 0
+                            for i in range(total_frames):
+                                ch = clip[i * frame_n:(i + 1) * frame_n]
+                                if len(ch) == frame_n and int(np.abs(ch).max()) > 600:
+                                    line.chunk_owner.setdefault(ch.tobytes(), k)
+                                    n += 1
+                            line.say_chunks[k] = max(1, n)
                         line.caller.append([line.now(), line.now() + total_frames / 50])
                         log("CALLER starts:", repr(s.text), f"({total_frames / 50:.2f}s)")
                         break
@@ -627,7 +694,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                     inp.create_task(_emit_at())
                 if spoken_frames >= total_frames:
                     s = speaking; speaking = None
-                    if real_stt or s.final_times:
+                    if real_stt or s.final_times or scenario.stt_fake:
                         continue                    # the vendor / the record decides what was said
                     finals = s.finals or [s.text]
 
@@ -648,7 +715,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
     out = {"stt": stt, "llm": llm, "tts": tts}
     if llm_fallback is not None:
         out["llm_fallback"] = llm_fallback
-    if real_stt:
+    if real_stt or scenario.stt_fake:
         out["stt_primary"], out["stt_fallback"] = _stt_primary, _stt_fallback
     return transport, out
 
@@ -711,6 +778,14 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
     object.__setattr__(_gs(), "filler_probability",
                        float(_p) if _p not in (None, "") else scenario.filler)
     line = Line()
+    line.vendor_finals = []
+    line.stt_server = None
+    if scenario.stt_fake:
+        from sim.stt_fake import FakeSTTServer
+        line.stt_server = FakeSTTServer(
+            line, scenario.stt_fake,
+            log=(lambda *a: print(f"[{line.now():6.2f}s]", *a)) if verbose else None)
+        await line.stt_server.start()
     transport, providers = build(scenario, line, verbose, real_stt)
     if scenario.cache_warm:
         _warm_cache(providers["tts"], ctx["agent"], scenario.cache_warm)
@@ -722,6 +797,9 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         ended_at = line.now()
     except asyncio.TimeoutError:
         ended_at = None
+    finally:
+        if line.stt_server is not None:
+            await line.stt_server.close()
     d = outcome.diagnostics
     res = {
         "key": scenario.key,
@@ -746,6 +824,14 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "end_forced": getattr(outcome, "end_forced", False),
         "floor_holds": getattr(d, "floor_holds", 0) or 0,
         "floor_holds_dropped": getattr(d, "floor_holds_dropped", 0) or 0,
+        "repeats_suppressed": getattr(d, "repeats_suppressed", 0) or 0,
+        "unsaid_reverted": getattr(d, "unsaid_reverted", 0) or 0,
+        "stt_stalls": getattr(d, "stt_stalls", 0) or 0,
+        "stt_switches": list(line.stt_switches),
+        "stt_vendor_finals": list(line.vendor_finals),
+        "stt_conns": [{"vendor": c["vendor"], "hung_at": c["hung_at"],
+                       "audio_secs": round(c["audio_secs"], 2), "flushes": c["flushes"]}
+                      for c in (line.stt_server.conns if line.stt_server is not None else [])],
     }
     # turn latency: caller stop → next bot audio start
     lat = []
@@ -865,6 +951,100 @@ def chk_hello_over_cached_opening(res):
         f.append(f"the opening was said again ({res['opening_resaid']}x) over a pickup hello")
     if not any("किस class" in t for t in _after_user(res, "पिता")):
         f.append("the father's answer never got the next question")
+    return f
+
+
+# ── call 34452119 (2026-10-02, Shreya on Navana, speech cache FULL): a REPLY
+#    sentence served from the cache as one 13.2 s clip; the mother cut in at
+#    63 % of it. A cached clip's text reached the played transcript only when
+#    the clip ENDED, so NoRepeatGate un-recorded the sentence as never played
+#    and the model's next reply said all of it again. A LIVE Navana sentence
+#    counts as heard once 60 % of its audio has played; a cached one must too. ─
+# The sentence as the cache served it: NoRepeatGate's echo trim had already
+# dropped the reply's "नमस्ते मैम," opener ("un-recording never-played
+# 'shiksha nation में हमारा focus…'").
+HI_FOCUS = ("Shiksha Nation में हमारा focus सिर्फ syllabus पूरा करने पर नहीं है — हम हर "
+            "बच्चे के concepts पूरी तरह clear करवाते हैं, हर हफ्ते उसका test लेते हैं और "
+            "उसका progress आपके साथ WhatsApp पर share करते हैं।")
+HI_MOTHER = "जी, मैं उसकी मम्मी बोल रही हूँ।"
+HI_FEES_ASK = "अच्छा, पर इसकी fees कितनी है?"
+HI_FEES_REPLY = "Fees के बारे में मैं अभी बताती हूँ — बच्चा अभी किस class में है?"
+# _warm_cache renders 60 ms of audio per character.
+HI_FOCUS_SECS = 0.06 * len(HI_FOCUS.strip())
+_FOCUS_KEY = "Shiksha Nation में हमारा focus"
+
+
+def _cut_cached_reply(key: str, share: float, heard: bool) -> "Scenario":
+    # The caller's VOICE starts `share` of the way into the clip; the bot audio
+    # stops ~1.0 s later (VAD onset ~0.3 s, then the turn-gate's 0.7 s of talk
+    # over the reply): 0.55 stops it at ~63 % of the 12 s clip, as on the call;
+    # 0.22 at ~30 %.
+    return Scenario(
+        key,
+        caller=[Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6),
+                Say(HI_FEES_ASK, 1.6, after_bot_start=2, offset=round(share * HI_FOCUS_SECS, 2),
+                    stt_latency=0.5)],
+        # The model's answer to the cut repeats the cut sentence first — what
+        # 34452119's model did — then the fees answer.
+        replies=[HI_FOCUS, HI_FOCUS + " " + HI_FEES_REPLY, "जी।"],
+        context="hindi_parent_agent_context.json", engine="navana",
+        cache_warm=[HI_FOCUS],
+        checks=lambda r: chk_cut_cached_reply(r, heard=heard), max_secs=55,
+        note=("call 34452119: cut at 63 % of a 13 s cached reply sentence; it was said again in full"
+              if heard else "cut at 30 % of a cached reply sentence: not heard, so re-saying it is right"))
+
+
+def chk_cut_cached_reply(res, heard: bool):
+    f = []
+    if len(res["caller"]) < 2:
+        return ["caller turns missing"]
+    cut_start = res["caller"][1][0]
+    # The first delivery: the bot stretch the caller's voice started inside.
+    first = next((iv for iv in res["bot"] if iv[0] <= cut_start <= iv[1] + 0.3), None)
+    if first is None:
+        return [f"the caller's cut at {cut_start:.2f}s fell outside any bot audio — scenario shape off"]
+    played = (first[1] - first[0]) / HI_FOCUS_SECS
+    print(f"NOTE {res['key']}: first delivery played {first[1] - first[0]:.2f}s of "
+          f"{HI_FOCUS_SECS:.2f}s ({played:.0%}); repeats_suppressed={res['repeats_suppressed']} "
+          f"unsaid_reverted={res['unsaid_reverted']}")
+    if heard and not 0.6 <= played <= 0.8:
+        f.append(f"scenario shape off: the first delivery played {played:.0%} (want 60-80 %)")
+    if not heard and not 0.15 <= played <= 0.5:
+        f.append(f"scenario shape off: the first delivery played {played:.0%} (want 15-50 %)")
+    # The played transcript, split at the caller's cut-in turn.
+    tr = res["transcript"]
+    i_cut = next((i for i, t in enumerate(tr) if t["role"] == "user" and "fees" in t["text"]), None)
+    if i_cut is None:
+        return f + ["the caller's fees question never reached the transcript"]
+    before = " ".join(t["text"] for t in tr[:i_cut] if t["role"] == "assistant")
+    after = " ".join(t["text"] for t in tr[i_cut:] if t["role"] == "assistant")
+    n = (before + " " + after).count(_FOCUS_KEY)
+    # Said twice on the LINE: any bot stretch after the cut long enough to be
+    # the clip again.
+    again = [iv for iv in res["bot"] if iv[0] > first[1] and iv[1] - iv[0] > 0.7 * HI_FOCUS_SECS]
+    if heard:
+        if _FOCUS_KEY not in before:
+            f.append("the sentence the caller heard 60 %+ of is not in the played transcript — "
+                     "it counts as never said")
+        if n != 1:
+            f.append(f"the sentence is in the played transcript {n}x (want once)")
+        if again:
+            f.append(f"the sentence was said again after the cut: a {again[0][1] - again[0][0]:.1f}s "
+                     f"stretch at {again[0][0]:.1f}s")
+        if res["repeats_suppressed"] < 1:
+            f.append("the model's repeat of the heard sentence was not dropped as already said")
+        for ctx in res.get("contexts", [])[1:2]:
+            if _FOCUS_KEY not in json.dumps(ctx, ensure_ascii=False):
+                f.append("the heard sentence is missing from the model's context at the next run")
+    else:
+        if _FOCUS_KEY in before:
+            f.append("a sentence cut at ~30 % counts as heard — it can never be said again")
+        if _FOCUS_KEY not in after:
+            f.append("the sentence the caller barely heard was not said again")
+        if n != 1:
+            f.append(f"the sentence is in the played transcript {n}x (want once, from the re-say)")
+    if "किस class" not in after:
+        f.append("the answer to the fees question never played")
     return f
 
 
@@ -1468,6 +1648,263 @@ def chk_vertex_stall_failover(res, bar: float = 7.0):
     return f
 
 
+# ── call 71d0d5bd (2026-10-02): "हाँ" over the statement AFTER the question ──
+# The prompt's scripted close puts a sentence after the question. The mother's
+# "हाँ।" landed over that sentence; the deferred answer check wanted the reply
+# to END with "?", so it was dropped as "just listening". Both sides waited:
+# two "हेलो? क्या आप मुझे सुन पा रहे हैं?" nudges, the question asked again,
+# 29 s from her answer to the bot's next line.
+HI_MOTHER = "जी, मैं उसकी मम्मी बोल रही हूँ।"
+HI_QUIZ_Q = "क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ?"
+HI_QUIZ_TAIL = "पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।"
+HI_QUIZ = "ठीक है। " + HI_QUIZ_Q + " " + HI_QUIZ_TAIL
+# 14 words after the "?": past the 8-word tolerance — a statement in its own right.
+HI_QUIZ_LONG_TAIL = ("पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result उसी दिन "
+                     "आपके WhatsApp पर आ जाता है।")
+# A long statement FIRST, then the question and the short tail.
+HI_QUIZ_LONG_HEAD = ("ठीक है, मैं आपको sample report, dashboard का video, course brochure और "
+                     "कुछ demo videos अभी WhatsApp पर भेज दूँगी। " + HI_QUIZ_Q + " " + HI_QUIZ_TAIL)
+HI_QUIZ_SENT = "जी, मैं link अभी भेज देती हूँ। परम से कहिएगा कि आज ही quiz attempt कर ले।"
+HI_QUIZ_LATER = "जी, ठीक है। मैं link भेज देती हूँ।"
+
+
+def _quiz_reply(reply: str):
+    """The mother's answer to the opening gets `reply`; the ANSWER cue gets the
+    next line; anything else (a nudge cue, her later words) a short line."""
+    def pick(last_user: str) -> str:
+        u = last_user or ""
+        if "मम्मी" in u:
+            return reply
+        if "ANSWER" in u:
+            return HI_QUIZ_SENT
+        return HI_QUIZ_LATER
+    return pick
+
+
+def _ack_t(res, needle: str):
+    """(start, end) of the caller's interval whose final contains `needle`."""
+    t = next((t for t, x in res["finals"] if needle in x), None)
+    if t is None:
+        return None
+    iv = [c for c in res["caller"] if c[0] <= t]
+    return iv[-1] if iv else None
+
+
+def _quiz_asked(res) -> int:
+    """Replies that carried the quiz question. Counted on the generations, not
+    tts_texts (a cache HIT never reaches run_tts) nor the played transcript
+    (pipecat's word-timestamp sequencer re-emits later sentences there)."""
+    return sum(1 for g in res.get("llm_gens") or [] if "Scholarship Quiz" in (g.get("reply") or ""))
+
+
+def _answer_gens(res):
+    return [g for g in res.get("llm_gens") or [] if "ANSWER" in (g.get("trigger") or "")]
+
+
+def chk_ack_answers_question_before_statement(res):
+    """The "हाँ" over "पंद्रह questions हैं…" answers "…कर दूँ?": the ANSWER
+    path runs right after the reply ends — no 15 s of silence, no nudge, and
+    the question is never asked again."""
+    f = []
+    ack = _ack_t(res, "हाँ")
+    if ack is None:
+        return ["the caller's 'हाँ।' was never transcribed"]
+    ends = [b_ for a, b_ in res["bot"] if b_ > ack[0]]
+    if not ends:
+        return ["no bot audio around the ack"]
+    reply_end = ends[0]
+    if ack[0] > reply_end or ack[1] < reply_end - 3.0:
+        f.append(f"scenario drift: the ack {ack} is not over the reply's last sentence "
+                 f"(reply ends {reply_end})")
+    gens = [g for g in _answer_gens(res) if g["requested"] >= ack[0]]
+    if not gens:
+        f.append("the 'हाँ' over the statement after the question never ran the ANSWER path "
+                 f"(prompts after it: {[p[:40] for p in res.get('llm_prompts', [])[1:]]})")
+    else:
+        lag = round(gens[0]["requested"] - reply_end, 2)
+        print(f"NOTE ack answer: ANSWER cue {lag}s after the reply ended")
+        if lag > 1.0:
+            f.append(f"the ANSWER path ran {lag}s after the reply ended (bar 1.0)")
+    # The next thing on the line is the reply to her answer — not 15 s of
+    # silence and "हेलो? क्या आप मुझे सुन पा रहे हैं?" (the idle clock is 8 s, so
+    # a line inside 3.5 s cannot be a nudge). A later idle nudge, after that
+    # reply asked nothing, is the next turn's business.
+    nxt = [a for a, _ in res["bot"] if a > reply_end + 0.05]
+    if not nxt or nxt[0] - reply_end > 3.5:
+        f.append(f"next bot line {round(nxt[0] - reply_end, 1) if nxt else 'never'}s after the reply "
+                 "ended (bar 3.5)")
+    first = next((g for g in res.get("llm_gens") or [] if g["requested"] >= ack[0]), None)
+    if first is not None and "ANSWER" not in (first.get("trigger") or ""):
+        f.append(f"the first run after her 'हाँ' was not the answer: {(first.get('trigger') or '')[:60]!r}")
+    if _quiz_asked(res) != 1:
+        f.append(f"the model was asked for the quiz question {_quiz_asked(res)}x (want 1)")
+    if not any("भेज देती" in t for t in _assistant_texts(res)):
+        f.append("the reply to her answer never played")
+    return f
+
+
+def chk_ack_stays_backchannel(needle: str = "हाँ"):
+    """An acknowledgement that is NOT an answer — over a long statement after
+    the question, early in the reply, or a "Hello?" line check — must not be
+    handed to the model as the answer to the question."""
+    def chk(res):
+        f = []
+        ack = _ack_t(res, needle)
+        if ack is None:
+            return [f"the caller's {needle!r} was never transcribed"]
+        ends = [b_ for a, b_ in res["bot"] if b_ > ack[0]]
+        if not ends or ack[0] > ends[0]:
+            f.append(f"scenario drift: {needle!r} at {ack} is not over the reply")
+        bad = [g for g in _answer_gens(res) if g["requested"] >= ack[0]]
+        if bad:
+            f.append(f"{needle!r} was taken as the ANSWER at {bad[0]['requested']}: "
+                     f"{(bad[0].get('trigger') or '')[:90]!r}")
+        if _quiz_asked(res) != 1:
+            f.append(f"the model was asked for the quiz question {_quiz_asked(res)}x (want 1)")
+        return f
+    return chk
+
+
+def chk_hello_over_tail_is_not_an_answer(res):
+    f = chk_ack_stays_backchannel("Hello")(res)
+    if not any("भेज दीजिए" in p for p in res.get("llm_prompts", [])):
+        f.append("her real answer after the line check never reached the model")
+    return f
+
+
+def _quiz_scenario(key: str, reply: str, say: "Say", checks, note: str, **kw) -> "Scenario":
+    return Scenario(
+        key,
+        caller=[Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6, stt_latency=0.4), say,
+                *kw.pop("more", [])],
+        replies=[], reply_for=_quiz_reply(reply),
+        context="hindi_parent_agent_context.json",
+        checks=checks, max_secs=kw.pop("max_secs", 45), note=note, **kw)
+
+
+# ── call 3e327e8a (2026-10-02): a hung STT socket held back the opening ────
+# Sarvam's account ran out of credit. Its server answered the stream with a
+# close frame (1003 "Credits exhausted") and kept the TCP connection open; the
+# sarvamai SDK's websockets (legacy) client then made every send() wait for
+# the closing handshake — close_timeout, 10 s (connected 07:10:25.823, error
+# 07:10:35.838). The opening, queued at +1.24 s, played at +13.76 s.
+HI_STT_REPLY_CLASS = "जी मैम। बच्चा अभी किस class में पढ़ रहा है?"
+HI_STT_NINTH = "नौवीं में पढ़ रहा है।"
+
+
+def _stt_reply(last_user: str) -> str:
+    u = last_user or ""
+    if "मम्मी" in u:
+        return HI_STT_REPLY_CLASS
+    if "नौवीं" in u:
+        return HI_Q_EFFORT
+    return "जी मैम।"
+
+
+def _hang_t(res, vendor: str = "sarvam"):
+    return next((c["hung_at"] for c in res.get("stt_conns") or []
+                 if c["vendor"] == vendor and c["hung_at"] is not None), None)
+
+
+def _switch_t(res):
+    return next((t for t, svc in res.get("stt_switches") or [] if "Smallest" in svc), None)
+
+
+def _heard_by(res, needle: str):
+    return [v for t, v, x in res.get("stt_vendor_finals") or [] if needle in x]
+
+
+def chk_stt_failover_target(res, bar: float = 2.5):
+    """A stuck vendor socket fails over within `bar` s of the hang — never the
+    10 s the closing handshake takes — and exactly once."""
+    f = []
+    hung, sw = _hang_t(res), _switch_t(res)
+    if hung is None:
+        return ["scenario drift: the Sarvam socket never hung"]
+    if sw is None:
+        f.append(f"no failover to Smallest after Sarvam hung at {hung}s")
+    else:
+        print(f"NOTE stt: Sarvam hung at {hung}s, switched to Smallest at {sw}s "
+              f"(+{round(sw - hung, 2)}s)")
+        if sw - hung > bar:
+            f.append(f"failover {round(sw - hung, 2)}s after the socket hung (bar {bar})")
+    if res.get("stt_failovers") != 1:
+        f.append(f"stt_failovers = {res.get('stt_failovers')} (want 1)")
+    return f
+
+
+def chk_stt_hangs_at_pickup(res):
+    f = chk_stt_failover_target(res)
+    if not res["bot"]:
+        return f + ["the opening never played"]
+    first = res["bot"][0][0]
+    print(f"NOTE stt: opening first audio at +{first}s")
+    if first > 2.5:
+        f.append(f"the opening started at +{first}s with the STT stuck (normal +1.2-2 s; "
+                 "3e327e8a: +13.76 s)")
+    # Their pickup "Hello" arrived DURING the hang: it must not be lost.
+    if not _heard_by(res, "Hello"):
+        f.append("the pickup 'Hello' spoken while the STT was stuck was never transcribed")
+    elif "SmallestSTTService" not in _heard_by(res, "Hello"):
+        f.append(f"'Hello' transcribed by {_heard_by(res, 'Hello')}, not the fallback")
+    # Their first words after the failover reach the model and get a reply.
+    if "SmallestSTTService" not in _heard_by(res, "मम्मी"):
+        f.append(f"her answer after the failover was not transcribed by the fallback "
+                 f"(finals {res.get('stt_vendor_finals')})")
+    if not any("मम्मी" in p for p in res.get("llm_prompts", [])):
+        f.append("her answer never reached the model")
+    elif len(res["caller"]) >= 2:
+        cend = res["caller"][1][1]
+        nxt = [a for a, _ in res["bot"] if a > cend]
+        if not nxt or nxt[0] - cend > 3.5:
+            f.append(f"reply to her answer {round(nxt[0] - cend, 1) if nxt else 'never'}s "
+                     "after she stopped (bar 3.5)")
+    return f
+
+
+def chk_stt_hangs_mid_call(res):
+    f = chk_stt_failover_target(res)
+    if "SarvamSTTService" not in _heard_by(res, "मम्मी"):
+        f.append(f"before the hang Sarvam should have transcribed her first answer "
+                 f"(finals {res.get('stt_vendor_finals')})")
+    heard = _heard_by(res, "नौवीं")
+    if "SmallestSTTService" not in heard:
+        f.append(f"the answer she gave while Sarvam was stuck was lost (finals "
+                 f"{res.get('stt_vendor_finals')})")
+    if len(res["caller"]) >= 2:
+        cend = res["caller"][1][1]
+        nxt = [a for a, _ in res["bot"] if a > cend]
+        lag = round(nxt[0] - cend, 2) if nxt else None
+        print(f"NOTE stt: reply to the answer given during the hang {lag}s after she stopped")
+        if lag is None or lag > 4.0:
+            f.append(f"reply to the answer given during the hang came {lag}s after she "
+                     "stopped (bar 4.0)")
+    if "syllabus" not in " ".join(_assistant_texts(res)):
+        f.append("the answer given during the hang never got its reply")
+    return f
+
+
+def chk_stt_healthy_quiet(res):
+    """A healthy socket on a caller who says nothing for ~20 s: no stall, no
+    failover — silence is not a stuck vendor — and Sarvam still transcribes."""
+    f = []
+    if res.get("stt_switches"):
+        f.append(f"the STT switched on a healthy, quiet line: {res['stt_switches']}")
+    if res.get("stt_failovers") or res.get("stt_stalls"):
+        f.append(f"stt_failovers={res.get('stt_failovers')} stt_stalls={res.get('stt_stalls')} "
+                 "on a healthy socket")
+    if _hang_t(res) is not None:
+        f.append("scenario drift: the Sarvam socket hung")
+    if _heard_by(res, "मम्मी") != ["SarvamSTTService"]:
+        f.append(f"Sarvam should have transcribed her answer once (finals "
+                 f"{res.get('stt_vendor_finals')})")
+    if not any("मम्मी" in p for p in res.get("llm_prompts", [])):
+        f.append("her answer never reached the model")
+    if res["bot"] and res["bot"][0][0] > 2.5:
+        f.append(f"the opening started at +{res['bot'][0][0]}s")
+    return f
+
+
 _BREATH_REPLIES = [PITCH_Q, "Got it — evenings at the studio, weekends at home. Who sends the daily link right now?"]
 _BREATH_NOTE = "2026-09-15: VAD stop inside a 0.45 s breath; Smallest finalized the short part, the rest was dropped"
 
@@ -1739,6 +2176,8 @@ SCENARIOS: List[Scenario] = [
              cache_warm=[HI_OPENING],
              checks=chk_hello_over_cached_opening, max_secs=40,
              note="the time-based 'heard' must not change a pickup Hello over a cached opening"),
+    _cut_cached_reply("cut_cached_reply_late_is_heard", 0.55, heard=True),
+    _cut_cached_reply("cut_cached_reply_early_is_not_heard", 0.22, heard=False),
     Scenario("hindi_pieces_bare_acks",
              caller=[Say("हाँ जी पिताजी हैं।", 1.2, after_bot_stop=1, offset=0.6),
                      Say("नौवीं में पढ़ रहा है।", 1.3, after_bot_stop=2, offset=0.6),
@@ -1750,6 +2189,87 @@ SCENARIOS: List[Scenario] = [
              checks=chk_hindi_pieces_bare_acks, max_secs=75,
              note="call 22062aac: 'अब पढ़ने में तो।' / 'कोशिश करता है।' got 'जी।' 'जी सर।' x3, "
                   "then 12 s of silence and 'are you there?'"),
+    # Under SimTTS a short first sentence ("ठीक है।", 0.7 s) is its own
+    # utterance on the line — its audio context closes on the 3 s idle timeout
+    # before the next one plays — so the question + tail is bot utterance 3:
+    # the question 3.6 s, then the tail 2.9 s. 4.6 s puts "हाँ" a second into
+    # the tail, where the mother said hers (VAD 182.48 s, tail 181.52-183.83 s).
+    _quiz_scenario("ack_over_statement_after_question",
+                   HI_QUIZ, Say("हाँ।", 0.39, clip="haan", after_bot_start=3, offset=4.6,
+                                stt_latency=0.2),
+                   chk_ack_answers_question_before_statement,
+                   "call 71d0d5bd: 'हाँ' over the sentence after the question was dropped; "
+                   "29 s, two nudges and the question again before the next line"),
+    # Cache HITs play back to back as ONE utterance (60 ms/char): the tail is
+    # its last ~2.8 s; 5.6 s in is ~0.9 s before the end.
+    _quiz_scenario("ack_over_statement_after_question_cached",
+                   HI_QUIZ, Say("हाँ।", 0.39, clip="haan", after_bot_start=2, offset=5.6,
+                                stt_latency=0.2),
+                   chk_ack_answers_question_before_statement,
+                   "the same on Navana with every sentence of the reply a cache HIT "
+                   "(per-sentence audio contexts), as the live call ran",
+                   engine="navana", cache_warm=["ठीक है।", HI_QUIZ_Q, HI_QUIZ_TAIL]),
+    # Negatives. Past the tolerance the statement is a sentence in its own
+    # right, and a "हाँ" over its end acknowledges IT: question 3.6 s + an
+    # 18-word tail of 6.4 s; 8.5 s in is 1.5 s before the end, 4.9 s after "?".
+    _quiz_scenario("ack_over_long_statement_stays_backchannel",
+                   "ठीक है। " + HI_QUIZ_Q + " " + HI_QUIZ_LONG_TAIL,
+                   Say("हाँ।", 0.39, clip="haan", after_bot_start=3, offset=8.5, stt_latency=0.2),
+                   chk_ack_stays_backchannel(),
+                   "negative for 71d0d5bd: an ack over a statement longer than the "
+                   "8-word tolerance is not the answer to the question before it",
+                   max_secs=35),
+    # An ack 1.5 s into a 13 s reply whose question comes near its end: it
+    # acknowledged the first sentence, ~11 s before the reply ends.
+    _quiz_scenario("early_ack_in_question_reply_stays_backchannel",
+                   HI_QUIZ_LONG_HEAD,
+                   Say("हाँ।", 0.39, clip="haan", after_bot_start=2, offset=1.5, stt_latency=0.2),
+                   chk_ack_stays_backchannel(),
+                   "negative for 71d0d5bd: an ack early in a reply that ends on a "
+                   "question (plus a short tail) is still just 'I'm listening'",
+                   max_secs=40),
+    # "Hello?" over the tail is a line check: never the answer. Her real
+    # answer comes 1.2 s after the reply ends and is answered normally.
+    _quiz_scenario("hello_over_statement_after_question_is_not_an_answer",
+                   HI_QUIZ,
+                   Say("Hello?", 0.53, after_bot_start=3, offset=4.6, stt_latency=0.2),
+                   chk_hello_over_tail_is_not_an_answer,
+                   "negative for 71d0d5bd: 'Hello?' over the tail is a line check, not an answer",
+                   more=[Say("हाँ, भेज दीजिए।", 1.0, after_bot_stop=3, offset=1.2,
+                             stt_latency=0.4)]),
+    # Call 3e327e8a: the socket dies on the first audio; the parent's pickup
+    # "Hello" (0.4 s) falls inside the hang, before any detector can fire.
+    Scenario("stt_hangs_at_pickup",
+             caller=[Say("Hello.", at=0.4, stt_latency=0.3),
+                     Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6)],
+             replies=[], reply_for=_stt_reply,
+             stt_fake={"sarvam": {"hang_on_audio": 1}, "smallest": {}},
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_stt_hangs_at_pickup, max_secs=45,
+             note="call 3e327e8a: Sarvam closed 1003 and held the TCP; the opening waited "
+                  "~10 s behind the stuck sends (+13.76 s)"),
+    # Mid-call: Sarvam dies the moment she starts her second answer, so ALL of
+    # it is caller audio that arrived during the hang.
+    Scenario("stt_hangs_mid_call",
+             caller=[Say(HI_MOTHER, 1.4, after_bot_stop=1, offset=0.6),
+                     Say(HI_STT_NINTH, 1.3, after_bot_stop=2, offset=0.6)],
+             replies=[], reply_for=_stt_reply,
+             stt_fake={"sarvam": {"hang_on_say": 2}, "smallest": {}},
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_stt_hangs_mid_call, max_secs=45,
+             note="the 3e327e8a socket failure in the middle of a call, while she talks"),
+    # Healthy and quiet: ~20 s with nothing to transcribe (the opening, a
+    # nudge), then an answer — no stall, no failover, Sarvam hears it.
+    Scenario("stt_healthy_quiet_caller_no_failover",
+             caller=[Say(HI_MOTHER, 1.4, after_bot_stop=2, offset=1.0)],
+             replies=[], reply_for=_stt_reply,
+             stt_fake={"sarvam": {}, "smallest": {}},
+             context="hindi_parent_agent_context.json", engine="navana",
+             cache_warm=[HI_OPENING],
+             checks=chk_stt_healthy_quiet, max_secs=45,
+             note="the stall detector must not fire on a healthy socket that is merely quiet"),
 ]
 BY_KEY = {s.key: s for s in SCENARIOS}
 

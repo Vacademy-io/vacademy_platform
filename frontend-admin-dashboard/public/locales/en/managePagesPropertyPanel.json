@@ -264,7 +264,8 @@
     "grid": "Grid",
     "minimal": "Minimal",
     "slow": "Slow",
-    "warn": "Warning"
+    "warn": "Warning",
+    "resource": "Resource"
   },
   "componentTypes": {
     "heroSection": "Hero Section",
@@ -867,7 +868,18 @@
     "bulletsPlaceholder": "Checklist bullets (one per line)",
     "linkTextPlaceholder": "Link text",
     "linkUrlPlaceholder": "Link URL",
-    "headerColorOverride": "Header color (optional override)"
+    "headerColorOverride": "Header color (optional override)",
+    "resourceStyleHint": "Resource = library cards: 16:9 thumbnail, badge (e.g. Featured), chips for age group / duration, and a full-width button. Use Download / Read / Watch / Listen as the link text.",
+    "gateHeading": "Email before download",
+    "gateList": "Collect emails into this list",
+    "gateTitlePlaceholder": "Popup title (e.g. Get your free printables)",
+    "gateHint": "Visitors fill the list's form once (e.g. name, email, phone); after that every gated card and article on the site opens directly in that browser. Edit the form's fields in Audience Manager; responses export from there.",
+    "cardImage": "Thumbnail image",
+    "resourceBadgePlaceholder": "Badge (optional, e.g. Featured, New)",
+    "uploadPdf": "Or upload a PDF (fills the link URL)",
+    "gateToggle": "Ask for email first",
+    "gateNeedsList": "Pick a list under \"Email before download\" above, otherwise this card opens without asking.",
+    "gateAll": "Ask for details before opening every card in this section"
   },
   "imageBlock": {
     "captionOptional": "Caption (optional)",
@@ -953,6 +965,9 @@
     "showCategoryFilter": "Category filter chips",
     "readMoreLabel": "Read more label",
     "backLabel": "Back to list label",
-    "emptyMessage": "Message when there are no posts"
+    "emptyMessage": "Message when there are no posts",
+    "gateHeading": "Ask for details before reading",
+    "gateTitlePlaceholder": "Popup title (e.g. Read our free articles)",
+    "gateHint": "Pick a list and every article opens only after its form is filled once. The same list on resource cards means one form unlocks both."
   }
 }

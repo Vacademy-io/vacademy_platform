@@ -27,7 +27,9 @@
         "gender": "लिंग",
         "enrollmentId": "नामांकन आईडी",
         "fathersName": "पिता का नाम",
-        "mothersName": "माता का नाम"
+        "mothersName": "माता का नाम",
+        "username": "यूज़रनेम",
+        "password": "पासवर्ड"
     },
     "toasts": {
         "loadEmailTemplatesFailed": "ईमेल टेम्पलेट लोड नहीं हो सके",
@@ -98,7 +100,9 @@
         "literalOption": "निश्चित मान...",
         "literalPlaceholder": "एक मान लिखें",
         "unresolved": "(अनसुलझा)",
-        "livePreviewLabel": "संदेश पूर्वावलोकन"
+        "livePreviewLabel": "संदेश पूर्वावलोकन",
+        "sourceSearchPlaceholder": "फ़ील्ड खोजें...",
+        "sourceNoMatch": "आपकी खोज से कोई फ़ील्ड मेल नहीं खाता।"
     },
     "reviewStep": {
         "messageSent": "संदेश भेजा गया",

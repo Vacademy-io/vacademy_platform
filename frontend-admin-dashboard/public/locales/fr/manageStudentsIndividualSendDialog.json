@@ -27,7 +27,9 @@
         "gender": "Genre",
         "enrollmentId": "Identifiant d'inscription",
         "fathersName": "Nom du père",
-        "mothersName": "Nom de la mère"
+        "mothersName": "Nom de la mère",
+        "username": "Nom d'utilisateur",
+        "password": "Mot de passe"
     },
     "toasts": {
         "loadEmailTemplatesFailed": "Échec du chargement des modèles d'e-mail",
@@ -98,7 +100,9 @@
         "literalOption": "Valeur fixe...",
         "literalPlaceholder": "Saisissez une valeur",
         "unresolved": "(non résolu)",
-        "livePreviewLabel": "Aperçu du message"
+        "livePreviewLabel": "Aperçu du message",
+        "sourceSearchPlaceholder": "Rechercher un champ...",
+        "sourceNoMatch": "Aucun champ ne correspond à votre recherche."
     },
     "reviewStep": {
         "messageSent": "Message envoyé",

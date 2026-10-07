@@ -6,6 +6,8 @@ import { ArrowLeft, ArrowRight, CalendarBlank, Clock, LinkSimple, UserCircle } f
 import { RouteMatcher } from "../../-services/route-matcher";
 import { BlogService, type BlogPostPage, type BlogPostSummary } from "../../-services/blog-service";
 import { blogPlainText, sanitizeBlogHtml } from "../../-utils/blog-html";
+import { markResourceUnlocked, useResourceUnlocked } from "../../-utils/resource-unlock";
+import { LeadFormComponent } from "./LeadFormComponent";
 import "./catalogue-blog.css";
 
 /**
@@ -28,6 +30,11 @@ import "./catalogue-blog.css";
  * Bodies are authored HTML and render on the learner domain, so they pass
  * through sanitizeBlogHtml at render time — the only line of defence for
  * HTML an admin pasted by hand.
+ *
+ * `gateAudienceId` puts articles behind that Audience list's form: the article
+ * shows its title, cover and excerpt with the form, and the body once the
+ * visitor has submitted it. The unlock is shared with gated resource cards
+ * (-utils/resource-unlock.ts), so one submission opens both.
  */
 
 export interface BlogComponentProps {
@@ -50,6 +57,10 @@ export interface BlogComponentProps {
   emptyMessage?: string;
   backgroundColor?: string;
   textColor?: string;
+  /** Audience list whose form must be filled before an article opens. */
+  gateAudienceId?: string;
+  /** Heading above that form. */
+  gateTitle?: string;
   /* injected by the renderer */
   instituteId: string;
   tagName: string;
@@ -88,6 +99,8 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
   emptyMessage,
   backgroundColor,
   textColor,
+  gateAudienceId = "",
+  gateTitle,
   instituteId,
   tagName,
   pageRoute,
@@ -133,6 +146,8 @@ export const BlogComponent: React.FC<BlogComponentProps> = ({
         sectionStyle={sectionStyle}
         locale={i18n.language}
         onBack={() => navigate({ to: listPath as never })}
+        gateAudienceId={String(gateAudienceId || "").trim()}
+        gateTitle={gateTitle}
       />
     );
   }
@@ -477,12 +492,17 @@ interface BlogPostProps {
   sectionStyle?: React.CSSProperties;
   locale: string;
   onBack: () => void;
+  gateAudienceId: string;
+  gateTitle?: string;
 }
 
 const BlogPost: React.FC<BlogPostProps> = ({
   slug, instituteId, listPath, backLabel, showDate, showAuthor, showCategory, showReadingTime, sectionStyle, locale, onBack,
+  gateAudienceId, gateTitle,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  const unlocked = useResourceUnlocked(gateAudienceId);
+  const locked = !!gateAudienceId && !unlocked;
   const [post, setPost] = useState<BlogPostSummary | null | undefined>(undefined);
   const [copied, setCopied] = useState(false);
 
@@ -604,8 +624,23 @@ const BlogPost: React.FC<BlogPostProps> = ({
             className="mb-8 w-full rounded-catalogue-lg object-cover"
           />
         )}
-        <div className="catalogue-rich-text catalogue-blog-article" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-        {post.tags && post.tags.length > 0 && (
+        {locked ? (
+          <div className="space-y-6">
+            {description && <p className="catalogue-lead text-catalogue-text-secondary">{description}</p>}
+            <LeadFormComponent
+              audienceId={gateAudienceId}
+              instituteId={instituteId}
+              title={gateTitle || t("blog.gateTitle")}
+              subtitle={t("blog.gateSubtitle")}
+              variant="embedded"
+              layout="card"
+              onSubmitted={() => markResourceUnlocked(gateAudienceId)}
+            />
+          </div>
+        ) : (
+          <div className="catalogue-rich-text catalogue-blog-article" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+        )}
+        {!locked && post.tags && post.tags.length > 0 && (
           <ul className="mt-10 flex flex-wrap gap-2" aria-label={t("blog.tags")}>
             {post.tags.map((tag) => (
               <li key={tag} className="catalogue-badge">

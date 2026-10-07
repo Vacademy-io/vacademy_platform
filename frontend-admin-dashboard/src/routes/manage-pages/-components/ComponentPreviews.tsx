@@ -1546,6 +1546,50 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
                     </section>
                 );
             }
+            // "resource" — mirrors the learner ResourceCard (thumbnail, badge,
+            // chips, full-width button) so the library looks right on canvas.
+            if (props.style === 'resource') {
+                return (
+                    <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */ }}>
+                        {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
+                        {props.subheading && <p className="mb-8 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.subheading}</p>}
+                        <div className="mx-auto max-w-5xl" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 20 }}>
+                            {features.map((f: any, i: number) => {
+                                const chips: string[] = (f.chips || []).filter(Boolean);
+                                return (
+                                    <div key={i} className="catalogue-card-elevated flex flex-col overflow-hidden !p-0 text-left">
+                                        {f.image && (
+                                            <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
+                                                <img src={f.image} alt="" className="size-full object-cover" />
+                                                {f.badge && <span className="absolute left-2 top-2 rounded-full bg-catalogue-bg-elevated px-2 py-0.5 text-caption font-semibold text-primary-500 shadow-sm">{f.badge}</span>}
+                                            </div>
+                                        )}
+                                        <div className="flex flex-1 flex-col p-4">
+                                            {!f.image && f.badge && <span className="mb-2 w-fit rounded-full bg-primary-500 px-2 py-0.5 text-caption font-semibold text-white">{f.badge}</span>}
+                                            {chips.length > 0 && (
+                                                <div className="mb-2 flex flex-wrap gap-1">
+                                                    {chips.map((c, j) => (
+                                                        <span key={j} className="rounded-full bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-500 ring-1 ring-primary-100">{c}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <h4 className="text-sm font-semibold" style={{ color: fg }}>{f.title}</h4>
+                                            {f.description && <p className="mt-1 text-xs" style={{ color: fg, opacity: 0.6 }}>{f.description}</p>}
+                                            {f.link?.text && (
+                                                <div className="mt-auto pt-3">
+                                                    <div className="rounded-md bg-primary-500 px-3 py-1.5 text-center text-xs font-semibold text-white">
+                                                        {f.link.gated ? '✉ ' : ''}{f.link.text}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
+                );
+            }
             // Card skins mirror the learner FeatureGridRenderer so the new
             // Style buttons (glass / gradient-border / tinted) show on canvas
             const fgStyle = props.style || 'cards';

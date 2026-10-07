@@ -410,14 +410,16 @@ export function getLearnerTourOptions(): LearnerTourOption[] {
     ];
 }
 
-// Live classes — what learners may see about PAST live sessions. All default
-// false; enforced server-side by the learner past-sessions endpoint.
+// Live classes — what learners may see about PAST live sessions, plus whether
+// PUBLIC classes with no batch/learner attached are listed to every enrolled
+// learner. All default false; enforced server-side by the learner endpoints.
 export interface StudentLiveClassesSettings {
     showPastSessions: boolean;
     showRecordings: boolean;
     showAttendance: boolean;
     showActivityStats: boolean;
     showClassMaterials: boolean;
+    showUnassignedPublicSessions: boolean;
 }
 
 // Periodic "Active Focus Check" shown over video slides in the learner app: the

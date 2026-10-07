@@ -27,7 +27,9 @@
         "gender": "Gender",
         "enrollmentId": "Enrollment ID",
         "fathersName": "Father's Name",
-        "mothersName": "Mother's Name"
+        "mothersName": "Mother's Name",
+        "username": "Username",
+        "password": "Password"
     },
     "toasts": {
         "loadEmailTemplatesFailed": "Failed to load email templates",
@@ -98,7 +100,9 @@
         "literalOption": "Literal value...",
         "literalPlaceholder": "Type a value",
         "unresolved": "(unresolved)",
-        "livePreviewLabel": "Message preview"
+        "livePreviewLabel": "Message preview",
+        "sourceSearchPlaceholder": "Search fields...",
+        "sourceNoMatch": "No field matches your search."
     },
     "reviewStep": {
         "messageSent": "Message Sent",

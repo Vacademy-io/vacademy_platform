@@ -51,5 +51,21 @@
     "couldNotDeleteTemplate": "Impossible de supprimer « {{name}} ».",
     "approvedByMeta": "Modèle approuvé par Meta et prêt à l'emploi.",
     "submittedForApproval": "Modèle soumis à Meta pour approbation.",
-    "metaRejectedTemplate": "Meta a rejeté le modèle."
+    "metaRejectedTemplate": "Meta a rejeté le modèle.",
+    "summary": {
+        "header": "En-tête {{type}}",
+        "headerType": {
+            "text": "texte",
+            "image": "image",
+            "video": "vidéo",
+            "document": "document"
+        },
+        "variables_one": "{{count}} variable",
+        "variables_other": "{{count}} variables",
+        "buttons_one": "{{count}} bouton",
+        "buttons_other": "{{count}} boutons",
+        "footer": "Pied de page"
+    },
+    "showFullMessage": "Voir le message complet",
+    "showLess": "Voir moins"
 }

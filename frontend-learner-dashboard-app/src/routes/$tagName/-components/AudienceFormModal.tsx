@@ -1,7 +1,8 @@
-import React, { useEffect } from "react";
-import { X } from "@phosphor-icons/react";
+import React, { useEffect, useState } from "react";
+import { ArrowSquareOut, X } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { LeadFormComponent } from "./components/LeadFormComponent";
+import { markResourceUnlocked } from "../-utils/resource-unlock";
 
 /**
  * Audience Form popup — lets ANY catalogue button open a campaign's form as a
@@ -13,6 +14,11 @@ import { LeadFormComponent } from "./components/LeadFormComponent";
  * so buttons rendered anywhere in the JSON tree can trigger it without prop
  * drilling. The page shell (CourseSubPage / CourseCataloguePage) owns the
  * listener and mounts this once.
+ *
+ * Gated resources (featureGrid `resource` cards) pass `unlockUrl`: on submit
+ * the list is remembered as unlocked for this browser and the panel offers
+ * the file — as a real link the visitor clicks, because opening a tab after
+ * an async submit would be swallowed by popup blockers.
  */
 
 export interface AudienceFormModalProps {
@@ -21,6 +27,10 @@ export interface AudienceFormModalProps {
   audienceId: string;
   title?: string;
   instituteId: string;
+  /** Resource to hand over once the form is submitted. */
+  unlockUrl?: string;
+  /** Button text for that resource (the card's own label, e.g. "Download"). */
+  unlockLabel?: string;
 }
 
 export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
@@ -29,8 +39,16 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
   audienceId,
   title,
   instituteId,
+  unlockUrl,
+  unlockLabel,
 }) => {
   const { t } = useTranslation("coursePlayerA");
+  const [unlocked, setUnlocked] = useState(false);
+
+  // A fresh open (possibly for a different card) starts from the form again.
+  useEffect(() => {
+    if (isOpen) setUnlocked(false);
+  }, [isOpen, unlockUrl]);
 
   // Esc closes; lock body scroll while open.
   useEffect(() => {
@@ -76,7 +94,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={t("common.close")}
-            className="catalogue-btn catalogue-btn-secondary size-9 shrink-0 justify-center rounded-full p-0"
+            className="catalogue-btn catalogue-btn-secondary catalogue-btn-icon size-9 shrink-0 justify-center rounded-full"
           >
             <X className="size-4" weight="bold" aria-hidden="true" />
           </button>
@@ -87,7 +105,32 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
           instituteId={instituteId}
           variant="embedded"
           layout="bare"
+          onSubmitted={
+            unlockUrl
+              ? () => {
+                  markResourceUnlocked(audienceId);
+                  setUnlocked(true);
+                }
+              : undefined
+          }
         />
+
+        {unlocked && unlockUrl && (
+          <div className="flex flex-col items-center gap-2 text-center">
+            <a
+              href={unlockUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="catalogue-btn catalogue-btn-primary w-full justify-center sm:w-auto"
+            >
+              <ArrowSquareOut className="size-4" weight="bold" aria-hidden="true" />
+              {unlockLabel || t("audienceFormModal.openResource")}
+            </a>
+            <p className="text-sm text-catalogue-text-muted">
+              {t("audienceFormModal.resourcesUnlocked")}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

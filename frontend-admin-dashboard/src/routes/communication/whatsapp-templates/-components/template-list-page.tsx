@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle } from '@phosphor-icons/react';
+import {
+    Plus, ArrowClockwise, Trash, PaperPlaneRight, PencilSimple, ArrowSquareOut, Info, WarningCircle,
+    BracketsCurly, CaretDown, CaretUp, EnvelopeSimple, HandTap, ImageSquare,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { reportApiError } from '@/lib/report-api-error';
@@ -9,6 +13,7 @@ import { getWhatsAppProviderStatus } from '@/services/whatsapp-provider-service'
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { TemplateBuilder } from './template-builder';
+import { WhatsAppTemplateBubble } from './whatsapp-template-bubble';
 
 export function TemplateListPage() {
     const { t } = useTranslation('communicationTemplateListPage');
@@ -265,44 +270,162 @@ export function TemplateListPage() {
                     )}
                 </div>
             ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {filtered.map((tpl) => (
-                        <div key={tpl.id} className="flex items-center justify-between p-4 bg-white rounded-lg border hover:border-blue-200 transition">
-                            <div className="flex-1 min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-mono text-sm font-medium text-gray-800 break-all">{tpl.name}</span>
-                                    {statusBadge(tpl.status || 'DRAFT')}
-                                    {categoryBadge(tpl.category)}
-                                    <span className="text-xs text-gray-400">{tpl.language}</span>
-                                    {tpl.createdViaVacademy && (
-                                        <span className="text-[10px] px-1 py-0.5 bg-blue-50 text-blue-500 rounded">{t('vacademyBadge')}</span>
-                                    )}
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{tpl.bodyText}</p>
-                                {tpl.rejectionReason && (
-                                    <p className="text-xs text-red-500 mt-1">{t('rejectionReason', { reason: tpl.rejectionReason })}</p>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-1 ml-3 shrink-0">
-                                {canCreateViaApi && (tpl.status === 'DRAFT' || tpl.status === 'REJECTED') && (
-                                    <>
-                                        <button onClick={() => setEditingTemplate(tpl)} title={t('edit')}
-                                            className="p-2 rounded hover:bg-gray-100">
-                                            <PencilSimple size={16} className="text-gray-500" />
-                                        </button>
-                                        <button onClick={() => handleSubmit(tpl.id!)} title={t('submitToMeta')}
-                                            className="p-2 rounded hover:bg-gray-100">
-                                            <PaperPlaneRight size={16} className="text-blue-500" />
-                                        </button>
-                                    </>
-                                )}
-                                <button onClick={() => handleDelete(tpl)} title={t('delete')}
-                                    className="p-2 rounded hover:bg-gray-100">
-                                    <Trash size={16} className="text-red-400" />
-                                </button>
-                            </div>
-                        </div>
+                        <TemplateCard
+                            key={tpl.id}
+                            tpl={tpl}
+                            statusBadge={statusBadge(tpl.status || 'DRAFT')}
+                            categoryBadge={categoryBadge(tpl.category)}
+                            canEdit={canCreateViaApi && (tpl.status === 'DRAFT' || tpl.status === 'REJECTED')}
+                            onEdit={() => setEditingTemplate(tpl)}
+                            onSubmit={() => handleSubmit(tpl.id!)}
+                            onDelete={() => handleDelete(tpl)}
+                        />
                     ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const PLACEHOLDER_TOKEN = /\{\{\s*[\w.]+\s*\}\}/g;
+
+/**
+ * One template as a card: name and status on top, the message the way the learner sees it in the
+ * middle (long bodies folded), and what it carries — header, variables, buttons — at the bottom.
+ */
+function TemplateCard({
+    tpl,
+    statusBadge,
+    categoryBadge,
+    canEdit,
+    onEdit,
+    onSubmit,
+    onDelete,
+}: {
+    tpl: WhatsAppTemplateDTO;
+    statusBadge: ReactNode;
+    categoryBadge: ReactNode;
+    canEdit: boolean;
+    onEdit: () => void;
+    onSubmit: () => void;
+    onDelete: () => void;
+}) {
+    const { t } = useTranslation('communicationTemplateListPage');
+    const [expanded, setExpanded] = useState(false);
+    const isWhatsApp = (tpl.channelType || 'WHATSAPP') === 'WHATSAPP';
+    const body = tpl.bodyText || '';
+    const isLong = body.split('\n').length > 6 || body.length > 260;
+    const variableCount = new Set(`${tpl.headerText || ''} ${body}`.match(PLACEHOLDER_TOKEN) || []).size;
+    const buttonCount = tpl.buttons?.length || 0;
+    const headerType = (tpl.headerType || 'NONE').toUpperCase();
+    // Meta sends the literal "NONE" when nothing was rejected.
+    const rejection =
+        tpl.rejectionReason && tpl.rejectionReason.trim().toUpperCase() !== 'NONE' ? tpl.rejectionReason : null;
+
+    const chip = 'flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-caption text-neutral-600';
+
+    return (
+        <div className="flex flex-col overflow-hidden rounded-lg border bg-card transition hover:border-primary-200 hover:shadow-sm">
+            {/* Name + status */}
+            <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
+                <div className="min-w-0">
+                    <p className="break-all font-mono text-body font-semibold text-neutral-800">
+                        {tpl.name}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {statusBadge}
+                        {categoryBadge}
+                        <span className="text-caption text-neutral-400">{tpl.language}</span>
+                        {!isWhatsApp && (
+                            <span className="flex items-center gap-1 text-caption text-neutral-500">
+                                <EnvelopeSimple size={12} /> {t('tabEmail')}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center">
+                    {canEdit && (
+                        <>
+                            <button onClick={onEdit} title={t('edit')} className="rounded p-2 hover:bg-muted">
+                                <PencilSimple size={16} className="text-neutral-500" />
+                            </button>
+                            <button onClick={onSubmit} title={t('submitToMeta')} className="rounded p-2 hover:bg-muted">
+                                <PaperPlaneRight size={16} className="text-info-600" />
+                            </button>
+                        </>
+                    )}
+                    <button onClick={onDelete} title={t('delete')} className="rounded p-2 hover:bg-danger-50">
+                        <Trash size={16} className="text-danger-500" />
+                    </button>
+                </div>
+            </div>
+
+            {/* The message as it arrives */}
+            <div className={cn('flex flex-1 flex-col p-3', isWhatsApp ? 'bg-success-50' : 'bg-muted')}>
+                {isWhatsApp ? (
+                    <WhatsAppTemplateBubble
+                        headerType={tpl.headerType}
+                        headerText={tpl.headerText}
+                        headerSampleUrl={tpl.headerSampleUrl}
+                        bodyText={body}
+                        footerText={tpl.footerText}
+                        buttons={tpl.buttons}
+                        clampBody={isLong && !expanded}
+                        className="max-w-sm"
+                    />
+                ) : (
+                    <div className="rounded-lg bg-card p-3 shadow-sm">
+                        {tpl.subject && <p className="mb-1 text-body font-semibold text-neutral-800">{tpl.subject}</p>}
+                        <p className={cn('whitespace-pre-wrap break-words text-caption text-neutral-600', !expanded && 'line-clamp-6')}>
+                            {body}
+                        </p>
+                    </div>
+                )}
+                {isLong && (
+                    <button
+                        onClick={() => setExpanded((v) => !v)}
+                        className="mt-2 flex items-center gap-1 self-start text-caption font-semibold text-info-600 hover:underline"
+                    >
+                        {expanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
+                        {expanded
+                            ? t('showLess', { defaultValue: 'Show less' })
+                            : t('showFullMessage', { defaultValue: 'Show full message' })}
+                    </button>
+                )}
+            </div>
+
+            {rejection && (
+                <p className="border-t bg-danger-50 px-4 py-2 text-caption text-danger-600">
+                    {t('rejectionReason', { reason: rejection })}
+                </p>
+            )}
+
+            {/* What it carries */}
+            {isWhatsApp && (headerType !== 'NONE' || variableCount > 0 || buttonCount > 0) && (
+                <div className="flex flex-wrap gap-1.5 border-t px-4 py-2">
+                    {headerType !== 'NONE' && (
+                        <span className={chip}>
+                            <ImageSquare size={12} />
+                            {t('summary.header', {
+                                type: t(`summary.headerType.${headerType.toLowerCase()}`, { defaultValue: headerType }),
+                                defaultValue: '{{type}} header',
+                            })}
+                        </span>
+                    )}
+                    {variableCount > 0 && (
+                        <span className={chip}>
+                            <BracketsCurly size={12} />
+                            {t('summary.variables', { count: variableCount, defaultValue: variableCount === 1 ? '{{count}} variable' : '{{count}} variables' })}
+                        </span>
+                    )}
+                    {buttonCount > 0 && (
+                        <span className={chip}>
+                            <HandTap size={12} />
+                            {t('summary.buttons', { count: buttonCount, defaultValue: buttonCount === 1 ? '{{count}} button' : '{{count}} buttons' })}
+                        </span>
+                    )}
                 </div>
             )}
         </div>

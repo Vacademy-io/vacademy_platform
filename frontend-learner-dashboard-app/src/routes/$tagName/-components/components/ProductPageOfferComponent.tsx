@@ -1110,7 +1110,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           type="button"
           onClick={() => scrollByPage(-1)}
           aria-label={t("productPageOffer.scrollPrevious", { courses: coursesTerm })}
-          className="catalogue-btn catalogue-btn-secondary absolute left-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+          className="catalogue-btn catalogue-btn-secondary absolute left-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg catalogue-btn-icon shadow-lg md:inline-flex"
         >
           <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
         </button>
@@ -1120,7 +1120,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           type="button"
           onClick={() => scrollByPage(1)}
           aria-label={t("productPageOffer.scrollNext", { courses: coursesTerm })}
-          className="catalogue-btn catalogue-btn-secondary absolute right-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+          className="catalogue-btn catalogue-btn-secondary absolute right-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg catalogue-btn-icon shadow-lg md:inline-flex"
         >
           <CaretRight className="size-5" weight="bold" aria-hidden="true" />
         </button>

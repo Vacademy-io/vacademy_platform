@@ -621,6 +621,16 @@
     border: 1px solid transparent;
   }
 
+  /* Icon-only button (close X, carousel arrows). The base padding above is
+     declared in this same utilities layer AFTER Tailwind's, so a `p-0` on the
+     element loses — a 36px button kept 32px of side padding and squeezed its
+     icon to 2px. Two classes outrank both that and the 44px mobile
+     min-height, so the element's own size-N decides the box. */
+  .catalogue-btn.catalogue-btn-icon {
+    padding: 0;
+    min-height: 0;
+  }
+
   /* Pressed feedback — the only signal a touch user gets that a tap landed. */
   .catalogue-btn:active {
     transform: scale(0.98);

@@ -5813,6 +5813,75 @@ async def test_an_acknowledgement_over_the_closing_question_is_answered_when_the
     assert any(getattr(f, "run_llm", False) for f in rec.frames)
 
 
+_QUIZ_REPLY = ("ठीक है। क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ? "
+               "पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं।")
+
+
+async def _ack_then_reply_ends(text, reply, back=1.0):
+    """A talked-through ack `back` s before the end of `reply`; returns the cues."""
+    from pipecat.frames.frames import BotStoppedSpeakingFrame
+    rec = _Rec()
+    tc, state = _voice_collector(rec, cut_after=5.0)
+    b.FrameProcessor.process_frame = _noop_super
+    await _feed(tc, text)
+    assert tc._acked_mid_reply is not None, "not talked through"
+    tc._acked_mid_reply = (text, time.time() - back)
+    tc._outcome.transcript.append({"role": "assistant", "text": reply})
+    state["speaking"] = False
+    await tc.process_frame(BotStoppedSpeakingFrame(), b.FrameDirection.UPSTREAM)
+    await asyncio.sleep(0.6)
+    return rec
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_over_the_sentence_after_the_question_is_its_answer():
+    """Call 71d0d5bd (2026-10-02): "हाँ" over "पंद्रह questions हैं, सिर्फ पंद्रह मिनट
+    लगते हैं।" — the sentence AFTER "…कर दूँ?" — was dropped because the reply did
+    not END with "?". Both sides waited 29 s."""
+    rec = await _ack_then_reply_ends("हाँ।", _QUIZ_REPLY)
+    cues = [c for c in rec.cues() if "their ANSWER" in c]
+    assert len(cues) == 1, rec.cues()
+    assert "WhatsApp कर दूँ?" in cues[0] and "हाँ" in cues[0], cues[0]
+    assert any(getattr(f, "run_llm", False) for f in rec.frames)
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_over_a_long_statement_after_the_question_is_not_the_answer():
+    long = ("क्या मैं link भेज दूँ? पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result "
+            "उसी दिन आपके WhatsApp पर आ जाता है।")
+    rec = await _ack_then_reply_ends("हाँ।", long)
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+
+
+@pytest.mark.asyncio
+async def test_a_hello_over_the_sentence_after_the_question_is_not_the_answer():
+    rec = await _ack_then_reply_ends("Hello?", _QUIZ_REPLY, back=0.8)
+    assert not [f for f in rec.frames if getattr(f, "run_llm", False)], rec.cues()
+    assert not [c for c in rec.cues() if "their ANSWER" in c], rec.cues()
+
+
+def test_every_ack_path_agrees_on_whether_the_reply_ended_on_a_question():
+    """Three turn-gate paths decide "did the caller hear a question just now?"
+    — at the VAD stop (resume or not), when their final lands (ducked / cut),
+    and when a talked-through reply ends. On 71d0d5bd the last one alone said
+    no. One test (turntake.ends_on_question), one answer, on every path."""
+    from app.turntake import ends_on_question
+    texts = [_QUIZ_REPLY, "क्या आप जुड़ना चाहेंगे?", "Who is it right now? Is that",
+             "ठीक है, मैं भेज देती हूँ।",
+             "क्या मैं link भेज दूँ? पंद्रह questions हैं, सिर्फ पंद्रह मिनट लगते हैं, और result "
+             "उसी दिन आपके WhatsApp पर आ जाता है।"]
+    for t in texts:
+        tc = b.TranscriptCollector.__new__(b.TranscriptCollector)
+
+        class _O:
+            transcript = [{"role": "assistant", "text": t}]
+        tc._outcome = _O()
+        at_vad_stop = tc._played_tail_is_question()
+        _O.transcript.append({"role": "user", "text": "हाँ।"})
+        at_final = tc._played_ended_with_question()
+        assert at_vad_stop == at_final == ends_on_question(t), t
+
+
 @pytest.mark.asyncio
 async def test_an_early_acknowledgement_or_a_hello_is_not_taken_as_the_answer():
     from pipecat.frames.frames import BotStoppedSpeakingFrame
@@ -6261,6 +6330,23 @@ def test_whatsapp_number_question_is_not_the_link_question():
     assert qt("क्या ये नंबर WhatsApp पे है?") == "whatsapp_number"
     assert qt("And you send it to all your students on WhatsApp?") == "quiz_link"
     assert qt("Is this number on WhatsApp?") != qt("Kya aap link WhatsApp pe bhejte hain?")
+
+
+def test_hinglish_whatsapp_number_question_is_not_the_link_question():
+    """Prompt v8 probe (2026-10-02): THE CLOSE asks "क्या ये number WhatsApp पर
+    है?" and then the quiz link. Both fell to quiz_link, so the quiz question was
+    dropped as a re-ask of the number question in every simulated run."""
+    from app.turntake import question_topic as qt
+    number_q = ("सर, इस call के बाद मैं आपको sample report और demo videos share कर दूँगी। "
+                "क्या ये number WhatsApp पर है?")
+    assert qt(number_q) == "whatsapp_number"
+    assert qt("क्या आपका number WhatsApp पर है?") == "whatsapp_number"
+    assert qt("क्या इसी number पर WhatsApp कर दूँ?") == "whatsapp_number"
+    for link_q in ("क्या मैं उसका link भी WhatsApp कर दूँ?",
+                   "क्या मैं Scholarship Quiz का link भी WhatsApp कर दूँ?",
+                   "क्या मैं quiz का लिंक भेज दूँ?"):
+        assert qt(link_q) == "quiz_link", link_q
+        assert qt(link_q) != qt(number_q)
 
 
 def test_screener_hold_lines():

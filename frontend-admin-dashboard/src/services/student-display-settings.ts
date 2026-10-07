@@ -297,6 +297,9 @@ function mergeWithDefaults(
                 incoming?.liveClasses?.showActivityStats ?? d.liveClasses.showActivityStats,
             showClassMaterials:
                 incoming?.liveClasses?.showClassMaterials ?? d.liveClasses.showClassMaterials,
+            showUnassignedPublicSessions:
+                incoming?.liveClasses?.showUnassignedPublicSessions ??
+                d.liveClasses.showUnassignedPublicSessions,
         },
         tutorials: {
             enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,

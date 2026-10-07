@@ -50,7 +50,10 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                         order: subIndex + 1,
                         // Sub-org teams + manage-institute-suborgs + notification hub
                         // are hidden by default for teachers — opt-in via settings.
+                        // adminOnly sub-items too: the sidebar shows them to a
+                        // non-admin role exactly when this says visible.
                         visible:
+                            !sub.adminOnly &&
                             subId !== 'suborg-teams' &&
                             subId !== 'manage-institute-suborgs' &&
                             subId !== 'notification-hub',

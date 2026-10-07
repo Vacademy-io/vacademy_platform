@@ -4478,6 +4478,16 @@ const BlogEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>{t('blog.emptyMessage')}</Label>
                 <Input value={props.emptyMessage || ''} onChange={(e) => updateProp('emptyMessage', e.target.value)} />
             </div>
+            <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                <p className="text-caption font-medium text-gray-500">{t('blog.gateHeading')}</p>
+                <CampaignPicker
+                    label={t('featureGrid.gateList')}
+                    value={props.gateAudienceId || ''}
+                    onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, gateAudienceId: id, gateAudienceName: name } })}
+                />
+                <Input value={props.gateTitle || ''} onChange={(e) => updateProp('gateTitle', e.target.value)} placeholder={t('blog.gateTitlePlaceholder')} />
+                <p className="text-caption text-gray-400">{t('blog.gateHint')}</p>
+            </div>
             <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || ''} onChange={(c) => updateProp('backgroundColor', c)} />
             <ColorPickerField label={t('header.textColor')} value={props.textColor || ''} onChange={(c) => updateProp('textColor', c)} />
         </div>
@@ -6734,6 +6744,22 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
         updated[i] = { ...updated[i], [field]: value };
         updateProp('features', updated);
     };
+    // Card order is the display order on the live page.
+    const moveFeature = (i: number, dir: -1 | 1) => {
+        const j = i + dir;
+        if (j < 0 || j >= features.length) return;
+        const updated = [...features];
+        [updated[i], updated[j]] = [updated[j], updated[i]];
+        updateProp('features', updated);
+        if (expandedIdx === i) setExpandedIdx(j);
+    };
+    const duplicateFeature = (i: number) => {
+        const updated = [...features];
+        updated.splice(i + 1, 0, JSON.parse(JSON.stringify(features[i])));
+        updateProp('features', updated);
+        setExpandedIdx(i + 1);
+    };
+    const isResource = props.style === 'resource';
 
     return (
         <div className="space-y-4">
@@ -6751,7 +6777,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo'].map((s) => (
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo', 'resource'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
@@ -6776,7 +6802,32 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                         {t('featureGrid.panelStyleHint')}
                     </p>
                 )}
+                {isResource && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        {t('featureGrid.resourceStyleHint')}
+                    </p>
+                )}
             </div>
+            {isResource && (
+                <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                    <p className="text-caption font-medium text-gray-500">{t('featureGrid.gateHeading')}</p>
+                    <CampaignPicker
+                        label={t('featureGrid.gateList')}
+                        value={props.gateAudienceId || ''}
+                        onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, gateAudienceId: id, gateAudienceName: name } })}
+                    />
+                    <Input value={props.gateTitle || ''} onChange={(e) => updateProp('gateTitle', e.target.value)} placeholder={t('featureGrid.gateTitlePlaceholder')} />
+                    <label className="flex items-center gap-2 text-caption text-gray-600">
+                        <input
+                            type="checkbox"
+                            checked={!!props.gateAll}
+                            onChange={(e) => updateProp('gateAll', e.target.checked || undefined)}
+                        />
+                        {t('featureGrid.gateAll')}
+                    </label>
+                    <p className="text-caption text-gray-400">{t('featureGrid.gateHint')}</p>
+                </div>
+            )}
             <div>
                 <Label className="text-xs">{t('featureGrid.textAlignment')}</Label>
                 <div className="flex gap-1 mt-1">
@@ -6808,7 +6859,10 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                 <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="text-xs font-medium text-left flex-1 truncate">
                                     {f.icon} {f.title || t('featureGrid.featureN', { n: i + 1 })}
                                 </button>
-                                <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => moveFeature(i, -1)} disabled={i === 0} title={t('actions.moveUp')} aria-label={t('actions.moveUp')} className="size-6 p-0"><ArrowUp className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => moveFeature(i, 1)} disabled={i === features.length - 1} title={t('actions.moveDown')} aria-label={t('actions.moveDown')} className="size-6 p-0"><ArrowDown className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => duplicateFeature(i)} title={t('actions.duplicate')} aria-label={t('actions.duplicate')} className="size-6 p-0"><Copy className="size-3" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} title={t('actions.delete')} aria-label={t('actions.delete')} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
                             {expandedIdx === i && (
                                 <div className="space-y-2">
@@ -6826,6 +6880,10 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder={t('header.title')} />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
+                                    <ImageUploadField label={t('featureGrid.cardImage')} value={f.image || ''} onChange={(url) => updateFeature(i, 'image', url || undefined)} aiKind="image" />
+                                    {isResource && (
+                                        <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder={t('featureGrid.resourceBadgePlaceholder')} />
+                                    )}
                                     {props.style === 'panel' && (
                                         <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
                                             <p className="text-caption font-medium text-gray-500">{t('featureGrid.panelHeader')}</p>
@@ -6856,6 +6914,27 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                         <Input className="flex-1" value={f.link?.text || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), text: e.target.value })} placeholder={t('featureGrid.linkTextPlaceholder')} />
                                         <Input className="flex-1" value={f.link?.url || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), url: e.target.value })} placeholder={t('featureGrid.linkUrlPlaceholder')} />
                                     </div>
+                                    {isResource && (
+                                        <>
+                                            <DocumentUploadField
+                                                label={t('featureGrid.uploadPdf')}
+                                                value={/\.pdf($|\?)/i.test(f.link?.url || '') ? f.link.url : ''}
+                                                onChange={(url) => updateFeature(i, 'link', { ...(f.link || {}), url })}
+                                            />
+                                            <label className="flex items-center gap-2 text-caption text-gray-600">
+                                                <input
+                                                    type="checkbox"
+                                                    disabled={!!props.gateAll}
+                                                    checked={!!props.gateAll || !!f.link?.gated}
+                                                    onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), gated: e.target.checked || undefined })}
+                                                />
+                                                {t('featureGrid.gateToggle')}
+                                            </label>
+                                            {(props.gateAll || f.link?.gated) && !props.gateAudienceId && (
+                                                <p className="text-caption text-amber-600">{t('featureGrid.gateNeedsList')}</p>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

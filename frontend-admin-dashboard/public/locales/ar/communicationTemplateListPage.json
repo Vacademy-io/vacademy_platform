@@ -54,5 +54,29 @@
     "couldNotDeleteTemplate": "تعذر حذف \"{{name}}\".",
     "approvedByMeta": "تمت الموافقة على القالب من Meta وهو جاهز للاستخدام.",
     "submittedForApproval": "تم إرسال القالب إلى Meta للموافقة.",
-    "metaRejectedTemplate": "رفضت Meta القالب."
+    "metaRejectedTemplate": "رفضت Meta القالب.",
+    "summary": {
+        "header": "ترويسة {{type}}",
+        "headerType": {
+            "text": "نصية",
+            "image": "صورة",
+            "video": "فيديو",
+            "document": "مستند"
+        },
+        "variables_zero": "{{count}} متغيرات",
+        "variables_one": "متغير واحد",
+        "variables_two": "متغيران",
+        "variables_few": "{{count}} متغيرات",
+        "variables_many": "{{count}} متغيرًا",
+        "variables_other": "{{count}} متغير",
+        "buttons_zero": "{{count}} أزرار",
+        "buttons_one": "زر واحد",
+        "buttons_two": "زران",
+        "buttons_few": "{{count}} أزرار",
+        "buttons_many": "{{count}} زرًا",
+        "buttons_other": "{{count}} زر",
+        "footer": "تذييل"
+    },
+    "showFullMessage": "عرض الرسالة كاملة",
+    "showLess": "عرض أقل"
 }

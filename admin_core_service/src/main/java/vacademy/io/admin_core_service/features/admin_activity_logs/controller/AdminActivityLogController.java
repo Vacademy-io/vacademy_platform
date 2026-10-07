@@ -16,7 +16,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.admin_activity_logs.dto.AdminActivityLogFilterDTO;
 import vacademy.io.admin_core_service.features.admin_activity_logs.dto.AdminActivityLogResponseDTO;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.admin_activity_logs.service.AdminActivityLogReadService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.sql.Timestamp;
@@ -33,6 +35,9 @@ public class AdminActivityLogController {
 
     @Autowired
     private AdminActivityLogReadService readService;
+
+    @Autowired
+    private InstituteAccessValidator instituteAccessValidator;
 
     /**
      * Page of audit rows for the calling institute.
@@ -149,11 +154,16 @@ public class AdminActivityLogController {
         return values.isEmpty() ? null : new ArrayList<>(values);
     }
 
+    /**
+     * The calling institute (clientId header), once the caller is known to be its ADMIN. The
+     * log is admin-only; no root bypass, since learners and invited staff are root users.
+     */
     private String requireInstituteId(HttpServletRequest request) {
         String instituteId = request.getHeader("clientId");
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("Missing clientId header");
         }
+        instituteAccessValidator.requireInstituteAdmin((CustomUserDetails) request.getAttribute("user"), instituteId);
         return instituteId;
     }
 }

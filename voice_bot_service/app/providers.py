@@ -241,6 +241,7 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
             SmallestSTTService, s.smallest_finalize_retry_secs,
             s.smallest_finalize_retries,
             hold_below=s.smallest_hold_below_secs, hold_secs=s.smallest_hold_secs)
+        stt_cls = decoupled_stt_io(stt_cls, s.stt_stall_secs)
         # Per-agent pins arrive as BCP-47 ("hi-IN"); Pulse wants bare codes and
         # has no Hinglish code, "hi" IS the code-switching mode. Unknown → default.
         tag = (language or "").strip().lower()
@@ -299,6 +300,7 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
         logger.warning("build_stt: Settings rejected %r — model only", settings_kwargs)
         stt_settings = SarvamSTTService.Settings(model=stt_model)
     _cls = final_after_flush(SarvamSTTService) if s.sarvam_final_on_flush else SarvamSTTService
+    _cls = decoupled_stt_io(_cls, s.stt_stall_secs)
     return _cls(
         api_key=s.sarvam_api_key,
         # Capability-gated, same reason as the settings above: saaras:v2.5 (a
@@ -350,6 +352,199 @@ def final_after_flush(cls):
     _FinalOnFlush.__name__ = cls.__name__
     _FinalOnFlush.__qualname__ = cls.__qualname__
     return _FinalOnFlush
+
+
+def decoupled_stt_io(cls, stall_secs: float, backlog_secs: float = 10.0):
+    """Subclass a websocket STT service so the vendor's socket can never hold
+    up the pipeline, and a stuck socket fails over in `stall_secs`.
+
+    WHY. pipecat processes an InputAudioRawFrame — a SystemFrame — INLINE in
+    the STT service's input task, and that task is the only thing that moves
+    any frame through the service: STTService.process_audio_frame awaits
+    run_stt, and Sarvam's run_stt awaits the socket's send. Call 3e327e8a
+    (2026-10-02): Sarvam's account ran out of credit, its server sent a close
+    frame (1003 "Credits exhausted") and kept the TCP open, and the sarvamai
+    SDK's websockets legacy client made every send wait in ensure_open() for the
+    closing handshake — close_timeout, 10 s (connected 07:10:25.823, error
+    07:10:35.838). Behind that one send: the caller's audio (the VAD downstream
+    heard nothing, then 10 s of it in one burst), the scripted opening queued at
+    +1.24 s (played at +13.76 s), and every nudge, cue and switch frame queued
+    from the pipeline source. 11 of 43 answered calls that morning waited > 5 s
+    for the opening; parents hung up.
+
+    WHAT. The vendor-facing work runs in this service's own I/O task, in
+    arrival order: each audio chunk's send (the vendor's own run_stt) and the
+    VAD frames whose handling sends a flush/finalize. The pipeline side only
+    queues them, so audio passes downstream and every other frame flows on
+    whatever the socket does. On a healthy socket a send completes in
+    microseconds, so the queue is empty and the vendor sees exactly what it saw
+    before, at the same moments.
+
+    STUCK = a send (or flush) still not finished after `stall_secs`. That is
+    the socket's own signal, not the caller's: audio — silence included — goes
+    out 50 times a second, so a quiet caller never stalls a healthy socket. A
+    stuck primary hands its queue (the caller's words since it stuck) to the
+    fallback set by set_stall_handoff, ahead of the live audio, then pushes a
+    non-fatal ErrorFrame so the waterfall switches now rather than at the
+    vendor's eventual error. With no fallback it logs, counts, and keeps the
+    newest `backlog_secs` queued until the socket recovers or errors.
+
+    stall_secs <= 0: the class unchanged (kill switch, STT_STALL_SECS=0)."""
+    if stall_secs <= 0:
+        return cls
+    import collections
+    from pipecat.frames.frames import VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+
+    class _DecoupledIO(cls):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._io_jobs = collections.deque()
+            self._io_bytes = 0                 # queued audio, for the backlog cap
+            self._io_wake: Optional[asyncio.Event] = None
+            self._io_task = None
+            self._io_watch_task = None
+            self._io_busy_since = 0.0          # monotonic start of the job in flight
+            self._io_stalled = False
+            self._io_handoff = None            # the fallback STT (build_stt_waterfall)
+            self._io_redirect = None           # after a stall: where our jobs go
+            self._io_diag = None
+            self._io_dropped = 0
+
+        def set_stall_handoff(self, fallback) -> None:
+            self._io_handoff = fallback
+
+        def set_diagnostics(self, diag) -> None:
+            self._io_diag = diag
+            parent = getattr(super(), "set_diagnostics", None)
+            if parent is not None:
+                parent(diag)
+
+        # -- lifecycle -------------------------------------------------------
+        async def start(self, frame):
+            await super().start(frame)
+            if self._io_task is None:
+                self._io_wake = asyncio.Event()
+                self._io_task = self.create_task(self._io_loop(), name="stt_io")
+                self._io_watch_task = self.create_task(self._io_watch(), name="stt_io_watch")
+
+        async def _io_stop(self):
+            for name in ("_io_watch_task", "_io_task"):
+                t = getattr(self, name)
+                setattr(self, name, None)
+                if t is not None:
+                    await self.cancel_task(t)
+
+        async def stop(self, frame):
+            await self._io_stop()
+            await super().stop(frame)
+
+        async def cancel(self, frame):
+            await self._io_stop()
+            await super().cancel(frame)
+
+        # -- the pipeline side: queue, never wait on the socket ---------------
+        async def run_stt(self, audio: bytes):
+            if self._io_task is None:          # not started (or stopping): as before
+                async for f in super().run_stt(audio):
+                    yield f
+                return
+            self._io_put(("audio", audio))
+            yield None
+
+        async def process_frame(self, frame, direction):
+            if (self._io_task is not None
+                    and isinstance(frame, (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame))):
+                # Sarvam flushes and Smallest finalizes on the VAD stop: a send.
+                # Behind the audio that came before it, like the vendor expects.
+                self._io_put(("frame", frame, direction))
+                return
+            await super().process_frame(frame, direction)
+
+        def _io_put(self, job) -> None:
+            if self._io_redirect is not None:
+                self._io_redirect._io_put(job)
+                return
+            self._io_jobs.append(job)
+            if job[0] == "audio":
+                self._io_bytes += len(job[1])
+                cap = int(backlog_secs * (self.sample_rate or 8000) * 2)
+                while self._io_bytes > cap:
+                    old = next((j for j in self._io_jobs if j[0] == "audio"), None)
+                    if old is None:
+                        break
+                    self._io_jobs.remove(old)
+                    self._io_bytes -= len(old[1])
+                    self._io_dropped += 1
+            if self._io_wake is not None:
+                self._io_wake.set()
+
+        # -- the vendor side ---------------------------------------------------
+        async def _io_loop(self):
+            while True:
+                if not self._io_jobs:
+                    self._io_wake.clear()
+                    await self._io_wake.wait()
+                    continue
+                job = self._io_jobs.popleft()
+                if job[0] == "audio":
+                    self._io_bytes -= len(job[1])
+                self._io_busy_since = time.monotonic()
+                try:
+                    if job[0] == "audio":
+                        await self.process_generator(super().run_stt(job[1]))
+                    else:
+                        await super().process_frame(job[1], job[2])
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:         # what pipecat's frame task does with it
+                    await self.push_error(error_msg=f"Error processing frame: {e}", exception=e)
+                finally:
+                    self._io_busy_since = 0.0
+                    if self._io_stalled and self._io_redirect is None:
+                        self._io_stalled = False   # it recovered: watch again
+
+        async def _io_watch(self):
+            tick = min(0.25, stall_secs / 4)
+            while True:
+                await asyncio.sleep(tick)
+                t0 = self._io_busy_since
+                if t0 and not self._io_stalled and time.monotonic() - t0 >= stall_secs:
+                    self._io_stalled = True
+                    try:
+                        await self._io_on_stall(time.monotonic() - t0)
+                    except Exception:
+                        logger.exception("stt: stall handling failed")
+
+        async def _io_on_stall(self, stuck: float):
+            queued = sum(len(j[1]) for j in self._io_jobs if j[0] == "audio")
+            queued_secs = queued / 2.0 / float(self.sample_rate or 8000)
+            if self._io_diag is not None:
+                self._io_diag.bump("stt_stalls")
+            fb = self._io_handoff
+            if fb is None or getattr(fb, "_io_task", None) is None:
+                logger.warning("stt: %s has not finished a send in %.1fs — the vendor socket is "
+                               "stuck and there is no fallback (%.1fs of caller audio queued, "
+                               "the newest %.0fs kept)", type(self).__name__, stuck, queued_secs,
+                               backlog_secs)
+                return
+            # The caller's words since the socket stuck go to the fallback FIRST,
+            # in order — before the switch, so before any live audio reaches it.
+            jobs = list(self._io_jobs)
+            self._io_jobs.clear()
+            self._io_bytes = 0
+            self._io_redirect = fb
+            for j in jobs:
+                fb._io_put(j)
+            logger.warning("stt: %s has not finished a send in %.1fs — the vendor socket is "
+                           "stuck; failing over to %s with %.1fs of the caller's audio",
+                           type(self).__name__, stuck, type(fb).__name__, queued_secs)
+            await self.push_error(
+                error_msg=f"STT vendor socket stuck: a send has not completed in {stuck:.1f}s",
+                fatal=False)
+
+    _DecoupledIO.__name__ = cls.__name__
+    _DecoupledIO.__qualname__ = cls.__qualname__
+    return _DecoupledIO
 
 
 class _PersistentClientSession:
@@ -742,6 +937,10 @@ def build_stt_waterfall(sample_rate: int, language: str | None = None, bias: str
     from pipecat.pipeline.service_switcher import (ServiceSwitcher,
                                                    ServiceSwitcherStrategyFailover)
     switcher = ServiceSwitcher([primary, fallback], strategy_type=ServiceSwitcherStrategyFailover)
+    if hasattr(primary, "set_stall_handoff"):
+        # A stuck primary socket hands the caller audio it could not send to
+        # the fallback before the switch (decoupled_stt_io; call 3e327e8a).
+        primary.set_stall_handoff(fallback)
     logger.info("stt: waterfall %s → %s", type(primary).__name__, type(fallback).__name__)
     return switcher, primary, fallback
 

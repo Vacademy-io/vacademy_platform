@@ -46,6 +46,11 @@ import {
     type CustomFieldSetupItem,
 } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 import { StudentTable } from '@/types/student-table-types';
+import {
+    useStudentCredentails,
+    type StudentCredentialsType,
+} from '@/services/student-list-section/getStudentCredentails';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
@@ -122,10 +127,17 @@ interface IndividualSendDialogProps {
     instituteId: string;
 }
 
-// System fields the user can map a variable to. Resolved against the StudentTable.
+// System fields the user can map a variable to. Resolved against the StudentTable, plus the
+// learner's portal credentials for username/password (fetched only when one of them is mapped).
+// Both come from auth-service only — the login checks against that row, so no other field is
+// used as a stand-in for the username.
 const buildSystemFields = (
     t: TFunction
-): Array<{ value: string; label: string; resolve: (s: StudentTable) => string }> => [
+): Array<{
+    value: string;
+    label: string;
+    resolve: (s: StudentTable, creds?: StudentCredentialsType | null) => string;
+}> => [
     { value: 'system:full_name', label: t('systemFields.fullName'), resolve: (s) => s.full_name || '' },
     { value: 'system:email', label: t('systemFields.email'), resolve: (s) => s.email || '' },
     {
@@ -151,7 +163,19 @@ const buildSystemFields = (
         label: t('systemFields.mothersName'),
         resolve: (s) => s.mothers_name || '',
     },
+    {
+        value: 'system:username',
+        label: t('systemFields.username'),
+        resolve: (_s, creds) => creds?.username || '',
+    },
+    {
+        value: 'system:password',
+        label: t('systemFields.password'),
+        resolve: (_s, creds) => creds?.password || '',
+    },
 ];
+
+const CREDENTIAL_MAPPINGS = ['system:username', 'system:password'];
 
 const buildStepTitlesEmail = (t: TFunction): string[] => [
     t('steps.selectTemplate'),
@@ -185,6 +209,8 @@ function autoMapVariable(varKey: string): string | undefined {
     if (k === 'region' || k === 'state') return 'system:region';
     if (k === 'gender') return 'system:gender';
     if (k === 'enrollment_id' || k === 'enrollment_number') return 'system:enrollment_id';
+    if (k === 'username' || k === 'user_name' || k === 'login_id') return 'system:username';
+    if (k === 'password') return 'system:password';
     return undefined;
 }
 
@@ -396,6 +422,17 @@ export function IndividualSendDialog({
         });
     }, [variableKeys]);
 
+    // Credentials are only fetched once a variable is mapped to username/password, so opening the
+    // dialog for an ordinary template does not read the learner's password.
+    const needsCredentials = Object.values(variableMapping).some((m) =>
+        CREDENTIAL_MAPPINGS.includes(m)
+    );
+    const credentialsQuery = useStudentCredentails({
+        userId: open && needsCredentials ? student?.user_id || student?.id || '' : '',
+    });
+    const credentials = credentialsQuery.data;
+    const credentialsPending = needsCredentials && credentialsQuery.isFetching;
+
     // Mapping options shown in dropdowns
     const mappingOptions = useMemo(() => {
         const customs = customFieldSetup
@@ -404,8 +441,20 @@ export function IndividualSendDialog({
                 value: `custom:${f.custom_field_id}`,
                 label: f.field_name || f.field_key,
             }));
-        return [...SYSTEM_FIELDS.map((f) => ({ value: f.value, label: f.label })), ...customs];
-    }, [customFieldSetup, SYSTEM_FIELDS]);
+        const all = [
+            ...SYSTEM_FIELDS.map((f) => ({ value: f.value, label: f.label })),
+            ...customs,
+            { value: 'literal:value', label: t('variableMappingStep.literalOption') },
+        ];
+        // The searchable list matches and highlights by label, so two custom fields sharing a
+        // name would act as one row. Number the repeats to keep every option distinct.
+        const seen: Record<string, number> = {};
+        return all.map((o) => {
+            const n = (seen[o.label] ?? 0) + 1;
+            seen[o.label] = n;
+            return n > 1 ? { ...o, label: `${o.label} (${n})` } : o;
+        });
+    }, [customFieldSetup, SYSTEM_FIELDS, t]);
 
     // Resolve a single variable's runtime value from the current student
     const resolveValue = useCallback(
@@ -418,7 +467,7 @@ export function IndividualSendDialog({
             }
             if (mapping.startsWith('system:')) {
                 const sys = SYSTEM_FIELDS.find((f) => f.value === mapping);
-                return sys?.resolve(student) ?? '';
+                return sys?.resolve(student, credentials) ?? '';
             }
             if (mapping.startsWith('custom:')) {
                 const fieldId = mapping.slice('custom:'.length);
@@ -426,7 +475,7 @@ export function IndividualSendDialog({
             }
             return '';
         },
-        [student, variableMapping, literalValues, SYSTEM_FIELDS]
+        [student, variableMapping, literalValues, SYSTEM_FIELDS, credentials]
     );
 
     const resolvedVariables = useMemo(() => {
@@ -454,7 +503,7 @@ export function IndividualSendDialog({
                 case 2:
                     return subject.trim() !== '' && body.trim() !== '';
                 case 3:
-                    return true; // mapping optional
+                    return !credentialsPending; // mapping optional
                 default:
                     return false;
             }
@@ -466,7 +515,7 @@ export function IndividualSendDialog({
             case 2:
                 // A media-header template without its media is guaranteed to be rejected
                 // by the provider, so block it here instead of failing at send time.
-                return !waHeaderKind || headerMediaUrl.trim() !== '';
+                return (!waHeaderKind || headerMediaUrl.trim() !== '') && !credentialsPending;
             default:
                 return false;
         }
@@ -479,6 +528,7 @@ export function IndividualSendDialog({
         selectedWaTemplate,
         waHeaderKind,
         headerMediaUrl,
+        credentialsPending,
     ]);
 
     const handleNext = useCallback(() => {
@@ -975,34 +1025,17 @@ export function IndividualSendDialog({
                                     {`{{${varKey}}}`}
                                 </span>
                                 <div className="flex min-w-0 flex-col gap-1">
-                                    <Select
+                                    <SearchableSelect
+                                        options={mappingOptions}
                                         value={mapping}
-                                        onValueChange={(val) => handleMappingChange(varKey, val)}
-                                    >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue
-                                                placeholder={t(
-                                                    'variableMappingStep.sourcePlaceholder'
-                                                )}
-                                            />
-                                        </SelectTrigger>
-                                        {/* Cap the popover height to whatever room
-                                            Radix has between the trigger and the
-                                            viewport edge, so it never overflows the
-                                            dialog when flipped above the trigger. */}
-                                        <SelectContent
-                                            className="max-h-[var(--radix-select-content-available-height)]" // design-lint-ignore: dynamic Radix-computed CSS var (available viewport space), not a fixed magic number a token could represent
-                                        >
-                                            {mappingOptions.map((opt) => (
-                                                <SelectItem key={opt.value} value={opt.value}>
-                                                    {opt.label}
-                                                </SelectItem>
-                                            ))}
-                                            <SelectItem value="literal:value">
-                                                {t('variableMappingStep.literalOption')}
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        onChange={(val) => handleMappingChange(varKey, val)}
+                                        placeholder={t('variableMappingStep.sourcePlaceholder')}
+                                        searchPlaceholder={t(
+                                            'variableMappingStep.sourceSearchPlaceholder'
+                                        )}
+                                        emptyText={t('variableMappingStep.sourceNoMatch')}
+                                        portal={false}
+                                    />
                                     {isLiteral && (
                                         <Input
                                             value={literalValues[varKey] ?? ''}

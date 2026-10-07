@@ -127,7 +127,9 @@
         "showRecordings": "إظهار التسجيلات",
         "showAttendance": "إظهار الحضور",
         "showActivityStats": "إظهار إحصاءات النشاط",
-        "showClassMaterials": "إظهار مواد الحصة"
+        "showClassMaterials": "إظهار مواد الحصة",
+        "showUnassignedPublicSessions": "إظهار الحصص العامة غير المرتبطة بدفعة لجميع المتعلمين المسجلين",
+        "showUnassignedPublicSessionsHint": "تظهر الحصص العامة غير المسندة إلى أي دفعة أو متعلم في قائمة الحصص المباشرة لكل متعلم مسجل."
     },
     "tutorials": {
         "cardTitle": "دروس التطبيق التعليمية",

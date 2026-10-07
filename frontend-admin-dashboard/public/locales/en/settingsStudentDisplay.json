@@ -128,7 +128,9 @@
         "showRecordings": "Show Recordings",
         "showAttendance": "Show Attendance",
         "showActivityStats": "Show Activity Stats",
-        "showClassMaterials": "Show Class Materials"
+        "showClassMaterials": "Show Class Materials",
+        "showUnassignedPublicSessions": "Show public classes with no batch to all enrolled learners",
+        "showUnassignedPublicSessionsHint": "Public classes not assigned to any batch or learner appear in every enrolled learner's Live Classes list."
     },
     "tutorials": {
         "cardTitle": "App Tutorials",

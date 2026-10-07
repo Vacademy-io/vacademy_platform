@@ -73,6 +73,15 @@ class Settings:
     # call 28570ec0 (Smallest deaf for the last 70 s): "sarvam stt and have
     # waterfall if sarvam fails to smallest".
     stt_fallback_provider: str = field(default_factory=lambda: _env("STT_FALLBACK_PROVIDER", ""))
+    # The STT vendor's socket I/O runs in its own task (providers.decoupled_stt_io)
+    # and a send that has not completed in this many seconds is a stuck socket:
+    # the queued caller audio goes to the fallback STT and the waterfall fails
+    # over. Call 3e327e8a (2026-10-02): Sarvam closed the stream ("Credits
+    # exhausted") and held the TCP open; every send waited 10 s, and so did the
+    # opening and everything else queued behind the STT. A healthy socket
+    # finishes a send in microseconds whether or not the caller is talking.
+    # Kill switch: STT_STALL_SECS=0 (sends inline again, as pipecat does).
+    stt_stall_secs: float = field(default_factory=lambda: float(_env("STT_STALL_SECS", "1.5")))
     google_stt_language: str = field(
         default_factory=lambda: _env("GOOGLE_STT_LANGUAGE", "hi-IN"))
     # Smallest Pulse STT (STT_PROVIDER=smallest). Chosen 2026-09-12 from a

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StudentFilterRequest } from '@/types/student-table-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getBatchOwnName } from '@/utils/helpers/student-management/batch-display-name';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useSelectedSessionStore } from '@/stores/study-library/selected-session-store';
 import {
@@ -260,15 +261,19 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             }
         }
 
-        // Batch filter from URL
+        // Batch filter from URL. The label is the batch's own name where it has
+        // one — labelling it with the course name gave every batch of a course an
+        // identical chip, so the chip never said which batch was being shown.
         if (searchParams.batch) {
             const batches = Array.isArray(searchParams.batch) ? searchParams.batch : [searchParams.batch];
-            const batchOptions = instituteDetails.batches_for_sessions
-                ?.filter((batch) => batches.includes(batch.id))
-                .map((batch) => ({
-                    id: batch.id,
-                    label: batch.package_dto?.package_name || batch.id,
-                })) || [];
+            const batchOptions =
+                instituteDetails.batches_for_sessions
+                    ?.filter((batch) => batches.includes(batch.id))
+                    .map((batch) => ({
+                        id: batch.id,
+                        label:
+                            getBatchOwnName(batch) || batch.package_dto?.package_name || batch.id,
+                    })) || [];
             if (batchOptions.length > 0) {
                 initialFilters.push({ id: 'batch', value: batchOptions });
             }

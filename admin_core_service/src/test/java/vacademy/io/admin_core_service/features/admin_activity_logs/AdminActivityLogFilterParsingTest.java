@@ -10,7 +10,9 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import vacademy.io.admin_core_service.features.admin_activity_logs.controller.AdminActivityLogController;
 import vacademy.io.admin_core_service.features.admin_activity_logs.dto.AdminActivityLogFilterDTO;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.admin_activity_logs.service.AdminActivityLogReadService;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
@@ -20,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +44,7 @@ class AdminActivityLogFilterParsingTest {
     private AdminActivityLogReadService readService;
     private AdminActivityLogController controller;
     private MockHttpServletRequest request;
+    private InstituteAccessValidator validator;
 
     @BeforeEach
     void setUp() {
@@ -49,6 +54,8 @@ class AdminActivityLogFilterParsingTest {
 
         controller = new AdminActivityLogController();
         ReflectionTestUtils.setField(controller, "readService", readService);
+        validator = mock(InstituteAccessValidator.class);
+        ReflectionTestUtils.setField(controller, "instituteAccessValidator", validator);
 
         request = new MockHttpServletRequest();
         request.addHeader("clientId", INSTITUTE);
@@ -132,6 +139,19 @@ class AdminActivityLogFilterParsingTest {
 
         assertThrows(VacademyException.class, () -> controller.list(
                 anonymous, null, null, null, null, null, null, null, null, null, 0, 20));
+    }
+
+    @Test
+    @DisplayName("the log is admin-only: a non-admin is refused before anything is read")
+    void refusesNonAdmin() {
+        doThrow(new ForbiddenException("Access denied: institute admin role required"))
+                .when(validator).requireInstituteAdmin(any(), eq(INSTITUTE));
+
+        assertThrows(ForbiddenException.class, () -> controller.list(
+                request, null, null, null, null, null, null, null, null, null, 0, 20));
+        assertThrows(ForbiddenException.class, () -> controller.exportCsv(
+                request, null, null, null, null, null, null, null, null, null));
+        verifyNoInteractions(readService);
     }
 
     private AdminActivityLogFilterDTO captureFilter() {

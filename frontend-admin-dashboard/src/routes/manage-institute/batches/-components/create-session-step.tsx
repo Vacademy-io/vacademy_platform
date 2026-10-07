@@ -2,7 +2,8 @@
 import { AddSessionInput } from '@/components/design-system/add-session-input';
 import { BatchItemSelect } from './batch-item-select';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { RadioGroupItem, RadioGroup } from '@/components/ui/radio-group';
+import { RadioGroup } from '@/components/ui/radio-group';
+import { ChoiceCard } from './choice-card';
 
 import { useEffect, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
@@ -10,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 // import { Session } from '@/components/common/study-library/add-course/add-course-form';
 import { MyButton } from '@/components/design-system/button';
-import { X } from '@phosphor-icons/react';
+import { CalendarCheck, Plus, X } from '@phosphor-icons/react';
 import { Session } from '@/components/common/study-library/add-course/add-course-form';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -79,21 +80,28 @@ export const CreateSessionStep = () => {
         }
     }, [watch('sessionCreationType'), newSessionName, newSessionStartDate]);
 
+    const sessionTerm = getTerminology(ContentTerms.Session, SystemTerms.Session);
+    const sessionLower = sessionTerm.toLocaleLowerCase();
+
     return (
         <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+                <p className="text-title font-semibold text-neutral-800">
+                    {t('title', { session: sessionTerm })}
+                </p>
+                <p className="text-body text-neutral-500">
+                    {t('subtitle', { session: sessionLower })}
+                </p>
+            </div>
+
             <FormField
                 control={form.control}
                 name="sessionCreationType"
                 render={({ field }) => (
-                    <FormItem className="space-y-3">
-                        <FormLabel className="text-base font-medium text-neutral-700">
-                            {t('selectionLabel', {
-                                session: getTerminology(ContentTerms.Session, SystemTerms.Session),
-                            })}
-                        </FormLabel>
+                    <FormItem>
                         <FormControl>
                             <RadioGroup
-                                className="flex gap-6 pt-1"
+                                className="grid gap-4 md:grid-cols-2"
                                 onValueChange={(value) => {
                                     field.onChange(value);
                                     form.setValue('selectedSession', null); // Reset dependent field
@@ -101,49 +109,30 @@ export const CreateSessionStep = () => {
                                 }}
                                 value={field.value}
                             >
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                        {/* Nothing to select when the course has no sessions —
-                                            matching how the course step disables its own
-                                            "existing" option on an empty list. */}
-                                        <RadioGroupItem
-                                            value="existing"
-                                            id="existing-session"
-                                            disabled={sessionList.length === 0}
-                                        />
-                                    </FormControl>
-                                    <FormLabel
-                                        htmlFor="existing-session"
-                                        className={`cursor-pointer font-normal ${
-                                            sessionList.length === 0
-                                                ? 'text-neutral-400'
-                                                : 'text-neutral-600'
-                                        }`}
-                                    >
-                                        {t('selectExisting', {
-                                            session: getTerminology(
-                                                ContentTerms.Session,
-                                                SystemTerms.Session
-                                            ).toLocaleLowerCase(),
-                                        })}
-                                    </FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                        <RadioGroupItem value="new" id="new-session" />
-                                    </FormControl>
-                                    <FormLabel
-                                        htmlFor="new-session"
-                                        className="cursor-pointer font-normal text-neutral-600"
-                                    >
-                                        {t('createNew', {
-                                            session: getTerminology(
-                                                ContentTerms.Session,
-                                                SystemTerms.Session
-                                            ).toLocaleLowerCase(),
-                                        })}
-                                    </FormLabel>
-                                </FormItem>
+                                {/* Nothing to select when the course has no sessions —
+                                    matching how the course step disables its own
+                                    "existing" option on an empty list. */}
+                                <ChoiceCard
+                                    id="existing-session"
+                                    value="existing"
+                                    selected={field.value === 'existing'}
+                                    disabled={sessionList.length === 0}
+                                    icon={<CalendarCheck size={22} />}
+                                    iconClassName="bg-primary-50 text-primary-500"
+                                    title={t('selectExisting', { session: sessionLower })}
+                                    description={t('selectExistingHint', {
+                                        session: sessionLower,
+                                    })}
+                                />
+                                <ChoiceCard
+                                    id="new-session"
+                                    value="new"
+                                    selected={field.value === 'new'}
+                                    icon={<Plus size={22} />}
+                                    iconClassName="bg-success-50 text-success-600"
+                                    title={t('createNew', { session: sessionLower })}
+                                    description={t('createNewHint', { session: sessionLower })}
+                                />
                             </RadioGroup>
                         </FormControl>
                         <FormMessage />
@@ -158,7 +147,7 @@ export const CreateSessionStep = () => {
                     rules={{ required: t('validation.selectSession') }}
                     render={({ field }) => (
                         <FormItem className="flex flex-col gap-1.5">
-                            <FormLabel className="text-neutral-700">
+                            <FormLabel className="text-subtitle font-semibold text-neutral-700">
                                 {getTerminology(ContentTerms.Session, SystemTerms.Session)}{' '}
                                 <span className="text-danger-500">*</span>
                             </FormLabel>
@@ -198,7 +187,7 @@ export const CreateSessionStep = () => {
 
             {form.watch('sessionCreationType') === 'new' &&
                 (newSessionName !== '' && newSessionStartDate !== '' ? (
-                    <div className="flex items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                    <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                         <div className="flex grow flex-col">
                             <p className="text-sm font-medium text-neutral-700">{newSessionName}</p>
                             <p className="text-xs text-neutral-500">

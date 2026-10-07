@@ -1435,6 +1435,26 @@ export default function StudentDisplaySettings(): JSX.Element {
                         />
                         <Label className="text-xs">{t('liveClasses.showClassMaterials')}</Label>
                     </div>
+                    {/* Independent of Past Sessions: also governs the live/upcoming list. */}
+                    <div className="flex items-start gap-2 border-t pt-3">
+                        <Switch
+                            checked={settings.liveClasses.showUnassignedPublicSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showUnassignedPublicSessions: v,
+                                })
+                            }
+                        />
+                        <div className="space-y-0.5">
+                            <Label className="text-xs">
+                                {t('liveClasses.showUnassignedPublicSessions')}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {t('liveClasses.showUnassignedPublicSessionsHint')}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </Card>
 

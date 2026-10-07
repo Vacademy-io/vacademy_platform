@@ -217,6 +217,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         showAttendance: false,
         showActivityStats: false,
         showClassMaterials: false,
+        showUnassignedPublicSessions: false,
     },
     tutorials: {
         // Off by default; admins opt in from Student Display settings.

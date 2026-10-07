@@ -34,7 +34,13 @@ from ..services.assistant_tool_registry import (
     is_tool_allowed,
 )
 from .access import setting_for_tool_gate
-from .constants import MCP_EXPOSED_TOOLS, MCP_TOOL_GROUP_LABELS, MCP_TOOL_GROUP_SUMMARIES
+from .constants import (
+    MCP_EXPOSED_TOOLS,
+    MCP_TOOL_AREAS,
+    MCP_TOOL_GROUP_LABELS,
+    MCP_TOOL_GROUP_SUMMARIES,
+    MCP_TOOL_PLACEMENT,
+)
 from .repository import McpOAuthRepository
 
 logger = logging.getLogger(__name__)
@@ -51,6 +57,15 @@ def exposed_specs() -> List[ToolSpec]:
             continue
         specs.append(spec)
     return specs
+
+
+def _placement(key: str) -> Dict[str, Any]:
+    """Where a group sits on the settings page: its area (row), level and risk."""
+    place = MCP_TOOL_PLACEMENT.get(key) or {"area": key, "level": "view"}
+    area = MCP_TOOL_AREAS.get(place["area"]) or {"label": MCP_TOOL_GROUP_LABELS.get(key, key), "summary": ""}
+    return {"area": place["area"], "area_label": area["label"], "area_summary": area["summary"],
+            "area_order": list(MCP_TOOL_AREAS).index(place["area"]) if place["area"] in MCP_TOOL_AREAS else 99,
+            "level": place["level"], "risk": place.get("risk"), "sub_label": place.get("sub_label")}
 
 
 def tool_catalog() -> List[Dict[str, Any]]:
@@ -80,6 +95,7 @@ def tool_catalog() -> List[Dict[str, Any]]:
                 "mode": spec.mode,
                 # Not a toggle: on for everyone who may connect (identity only).
                 "always_on": bool(spec.always_allowed),
+                **_placement(key),
             }
         )
     return catalog

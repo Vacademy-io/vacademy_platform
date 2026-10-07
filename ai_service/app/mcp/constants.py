@@ -148,9 +148,49 @@ MCP_TOOL_GROUP_SUMMARIES: Dict[str, str] = {
         "changes the institute-wide drip switches."
     ),
     "course_invite_edits": (
-        "Let the connected AI app create invite links and payment plans for courses. It only creates — "
-        "existing invites and plans are never edited or removed."
+        "Let the connected AI app create invite links and payment plans for courses, and edit an invite's page "
+        "(name, dates, text, images, where learners land after enrolling) and its registration form (add your "
+        "existing fields, remove, reorder, make required). Invite edits apply right away, also on live "
+        "courses. Payment plans are never edited or removed."
     ),
+}
+
+#: Settings-page areas, in display order. Each exposed tool group sits in one
+#: area as its `view` or one of its `edit` capabilities, so the page can show
+#: one row per area (Off / View / Edit) instead of one toggle per tool.
+MCP_TOOL_AREAS: Dict[str, Dict[str, str]] = {
+    "identity": {"label": "Who is connected", "summary": "Name, contact details and the institute's branding."},
+    "institute": {"label": "Institute stats", "summary": "Profile, outstanding fees, live classes, learner counts."},
+    "website": {"label": "Website", "summary": "Pages, sections, theme, SEO and site traffic."},
+    "lead_forms": {"label": "Lead forms", "summary": "Lead campaigns, their form fields and leads received."},
+    "automations": {"label": "Automations", "summary": "Workflows, their runs, and email / WhatsApp templates."},
+    "blog": {"label": "Blog", "summary": "Blog posts and the pages that show them."},
+    "courses": {"label": "Courses", "summary": "Course content, drip rules, invite links and pricing."},
+}
+
+#: group key → where it sits on the settings page.
+#:   level: "view" | "edit"   (edit needs view — the page turns view on with it)
+#:   risk:  what an edit can touch — "drafts" (nothing goes live), "additive"
+#:          (only adds), "not_live" (only courses not live yet), "live"
+#:          (changes what learners see straight away)
+#:   sub_label: the edit's own name, shown when an area has several edits
+MCP_TOOL_PLACEMENT: Dict[str, Dict[str, str]] = {
+    "identity": {"area": "identity", "level": "view"},
+    "institute_overview": {"area": "institute", "level": "view"},
+    "website_builder": {"area": "website", "level": "view"},
+    "website_builder_edits": {"area": "website", "level": "edit", "risk": "drafts", "sub_label": "Build and edit pages"},
+    "audience_forms": {"area": "lead_forms", "level": "view"},
+    "audience_forms_edits": {"area": "lead_forms", "level": "edit", "risk": "additive",
+                             "sub_label": "Create campaigns and add fields"},
+    "workflows": {"area": "automations", "level": "view"},
+    "workflows_edits": {"area": "automations", "level": "edit", "risk": "drafts", "sub_label": "Draft automations"},
+    "blog": {"area": "blog", "level": "view"},
+    "blog_edits": {"area": "blog", "level": "edit", "risk": "drafts", "sub_label": "Draft posts"},
+    "courses": {"area": "courses", "level": "view"},
+    "course_edits": {"area": "courses", "level": "edit", "risk": "drafts", "sub_label": "Content (chapters, slides)"},
+    "course_drip_edits": {"area": "courses", "level": "edit", "risk": "not_live", "sub_label": "Drip release rules"},
+    "course_invite_edits": {"area": "courses", "level": "edit", "risk": "live",
+                            "sub_label": "Invite links, pricing and enrolment forms"},
 }
 
 #: Roles that must NEVER reach this server, even if an admin lists them. The MCP
@@ -220,6 +260,8 @@ __all__ = [
     "MCP_ALLOWED_WRITE_TOOLS",
     "MCP_TOOL_GROUP_LABELS",
     "MCP_TOOL_GROUP_SUMMARIES",
+    "MCP_TOOL_AREAS",
+    "MCP_TOOL_PLACEMENT",
     "LEARNER_ROLES",
     "DEFAULT_ALLOWED_ROLES",
     "MCP_SCOPE_READ",

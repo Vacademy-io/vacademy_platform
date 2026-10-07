@@ -123,6 +123,23 @@ def test_catalog_describes_each_exposed_tool_for_the_settings_ui():
     assert next(c for c in catalog if c["name"] == "whoami")["always_on"] is True
 
 
+def test_catalog_places_every_tool_in_an_area_with_one_view_and_risk_rated_edits():
+    from app.mcp.constants import MCP_TOOL_AREAS
+    catalog = adapter.tool_catalog()
+    for c in catalog:
+        assert c["area"] in MCP_TOOL_AREAS, c["key"]
+        assert c["level"] in ("view", "edit")
+        # The page shows one row per area: every edit sits next to its area's view
+        # (edit turns view on), and a WRITE tool is never presented as a view.
+        assert (c["level"] == "edit") == (c["mode"] == "WRITE"), c["key"]
+        if c["level"] == "edit":
+            assert c["risk"] in ("drafts", "additive", "not_live", "live") and c["sub_label"]
+    for area in {c["area"] for c in catalog}:
+        assert sum(1 for c in catalog if c["area"] == area and c["level"] == "view") == 1, area
+    invites = next(c for c in catalog if c["key"] == "course_invite_edits")
+    assert invites["area"] == "courses" and invites["risk"] == "live"
+
+
 # ── the per-tool gate ────────────────────────────────────────────────────
 def test_tool_is_hidden_when_the_institute_has_not_enabled_it():
     assert gated(adapter.list_tools_for(principal(), setting([]))) == []

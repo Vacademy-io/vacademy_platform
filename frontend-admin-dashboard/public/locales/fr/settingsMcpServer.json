@@ -42,12 +42,26 @@
     },
     "tools": {
         "title": "Ce que les applications d'IA peuvent faire",
-        "description": "Seul ce que vous activez ici est disponible, et seules des actions en lecture seule sont proposées.",
+        "description": "Choisissez, domaine par domaine, si les applications d'IA peuvent seulement consulter ou aussi modifier. Ouvrez une ligne pour voir précisément ce qu'elle autorise.",
         "empty": "Aucun outil n'est encore disponible sur ce serveur.",
-        "modeRead": "Lecture seule",
-        "modeWrite": "Modifie les brouillons",
-        "actionsLabel": "Peut faire :",
-        "alwaysOn": "Toujours actif"
+        "alwaysOn": "Toujours actif",
+        "level": {
+            "off": "Désactivé",
+            "view": "Consulter",
+            "edit": "Modifier"
+        },
+        "levelAria": "Accès : {{area}}",
+        "risk": {
+            "drafts": "Brouillons uniquement",
+            "additive": "Ajouts uniquement",
+            "not_live": "Cours non publiés uniquement",
+            "live": "Modifie en direct"
+        },
+        "preset": {
+            "viewOnly": "Consultation seule",
+            "everything": "Tout activer"
+        },
+        "summaryLine": "{{on}} domaines sur {{total}} activés · {{editing}} peuvent modifier"
     },
     "roles": {
         "title": "Qui peut se connecter",

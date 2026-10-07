@@ -42,12 +42,26 @@
     },
     "tools": {
         "title": "What AI apps can do",
-        "description": "Only what you enable here is available, and only read-only actions are offered.",
+        "description": "Choose, area by area, whether AI apps can only view or also make changes. Open a row to see exactly what it allows.",
         "empty": "No tools are available on this server yet.",
-        "modeRead": "View only",
-        "modeWrite": "Edits drafts",
-        "actionsLabel": "Can do:",
-        "alwaysOn": "Always on"
+        "alwaysOn": "Always on",
+        "level": {
+            "off": "Off",
+            "view": "View",
+            "edit": "Edit"
+        },
+        "levelAria": "{{area}} access",
+        "risk": {
+            "drafts": "Drafts only",
+            "additive": "Adds only",
+            "not_live": "Not-live courses only",
+            "live": "Changes live"
+        },
+        "preset": {
+            "viewOnly": "View only",
+            "everything": "Turn everything on"
+        },
+        "summaryLine": "{{on}} of {{total}} areas on · {{editing}} can make changes"
     },
     "roles": {
         "title": "Who can connect",

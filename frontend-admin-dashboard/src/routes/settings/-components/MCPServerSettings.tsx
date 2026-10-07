@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
 import { MyDropdown } from '@/components/design-system/dropdown';
-import { StatusChip } from '@/components/design-system/status-chips';
 import {
     getAllRoles,
     type CustomRole,
@@ -29,6 +28,12 @@ import {
     type McpServerSettingData,
     type McpToolCatalogEntry,
 } from '../-constants/mcp-server';
+import {
+    McpAccessPresets,
+    McpToolAccessList,
+    groupToolsByArea,
+    withViewsForEdits,
+} from './McpToolAccessList';
 
 export default function MCPServerSettings() {
     const { t, i18n } = useTranslation('settingsMcpServer');
@@ -114,9 +119,11 @@ export default function MCPServerSettings() {
         return Array.from(names);
     }, [customRoles]);
 
-    const tools: McpToolCatalogEntry[] = info?.tools ?? [];
+    const tools: McpToolCatalogEntry[] = useMemo(() => info?.tools ?? [], [info?.tools]);
     // Always-on tools (identity) are shown but never written into the setting.
     const toggleableTools = tools.filter((tool) => !tool.always_on);
+    // One row per area (Website, Courses, …) with Off / View / Edit.
+    const areas = useMemo(() => groupToolsByArea(tools), [tools]);
 
     // The allow-list as a LIST, not a switch per role: institutes have a dozen+
     // roles and only a couple ever connect, so the page shows who is allowed
@@ -189,15 +196,8 @@ export default function MCPServerSettings() {
         setHasChanges(true);
     };
 
-    const isToolEnabled = (key: string) => settings.enabled_tools.includes(key);
-
-    const toggleTool = (key: string, on: boolean) => {
-        setSettings((prev) => ({
-            ...prev,
-            enabled_tools: on
-                ? Array.from(new Set([...prev.enabled_tools, key]))
-                : prev.enabled_tools.filter((k) => k !== key),
-        }));
+    const setEnabledTools = (enabled_tools: string[]) => {
+        setSettings((prev) => ({ ...prev, enabled_tools }));
         setHasChanges(true);
     };
 
@@ -213,22 +213,27 @@ export default function MCPServerSettings() {
         setHasChanges(true);
     };
 
-    const isToolEnabledForRole = (role: string, key: string) =>
-        settings.role_overrides[role]?.enabled_tools.includes(key) ?? false;
-
-    const toggleToolForRole = (role: string, key: string, on: boolean) => {
-        setSettings((prev) => {
-            const current = prev.role_overrides[role]?.enabled_tools ?? [];
-            const updated = on
-                ? Array.from(new Set([...current, key]))
-                : current.filter((k) => k !== key);
-            return {
-                ...prev,
-                role_overrides: { ...prev.role_overrides, [role]: { enabled_tools: updated } },
-            };
-        });
+    const setRoleTools = (role: string, enabled_tools: string[]) => {
+        setSettings((prev) => ({
+            ...prev,
+            role_overrides: { ...prev.role_overrides, [role]: { enabled_tools } },
+        }));
         setHasChanges(true);
     };
+
+    // Edit includes view: settings saved before areas existed could hold an edit
+    // tool with its view off, so every save tops the views up.
+    const handleSave = () =>
+        save({
+            ...settings,
+            enabled_tools: withViewsForEdits(areas, settings.enabled_tools),
+            role_overrides: Object.fromEntries(
+                Object.entries(settings.role_overrides).map(([role, o]) => [
+                    role,
+                    { ...o, enabled_tools: withViewsForEdits(areas, o.enabled_tools) },
+                ])
+            ),
+        });
 
     const handleCreateClient = () => {
         const client_name = newClientName.trim();
@@ -535,58 +540,26 @@ export default function MCPServerSettings() {
                 <CardContent className="space-y-4">
                     {tools.length === 0 ? (
                         <p className="text-body text-neutral-500">
-                            {infoError ? t('errors.infoUnavailable') : t('tools.empty')}
+                            {infoLoading
+                                ? t('loading')
+                                : infoError
+                                  ? t('errors.infoUnavailable')
+                                  : t('tools.empty')}
                         </p>
                     ) : (
-                        tools.map((tool) => (
-                            <div key={tool.key} className="flex items-start gap-3">
-                                <Switch
-                                    id={`mcp-tool-${tool.key}`}
-                                    checked={tool.always_on || isToolEnabled(tool.key)}
-                                    disabled={tool.always_on}
-                                    onCheckedChange={(v) => toggleTool(tool.key, v)}
-                                />
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <Label
-                                            htmlFor={`mcp-tool-${tool.key}`}
-                                            className="cursor-pointer text-body font-medium text-neutral-800"
-                                        >
-                                            {tool.label}
-                                        </Label>
-                                        <StatusChip
-                                            status={
-                                                tool.always_on
-                                                    ? 'SUCCESS'
-                                                    : tool.mode === 'WRITE'
-                                                      ? 'WARNING'
-                                                      : 'INFO'
-                                            }
-                                            textSize="text-caption"
-                                            showIcon={false}
-                                            text={
-                                                tool.always_on
-                                                    ? t('tools.alwaysOn')
-                                                    : tool.mode === 'WRITE'
-                                                      ? t('tools.modeWrite')
-                                                      : t('tools.modeRead')
-                                            }
-                                        />
-                                    </div>
-                                    <p className="mt-0.5 text-caption text-neutral-600">
-                                        {tool.summary || tool.description}
-                                    </p>
-                                    {tool.actions && tool.actions.length > 0 && (
-                                        <p className="mt-0.5 text-caption text-neutral-500">
-                                            {t('tools.actionsLabel')}{' '}
-                                            {tool.actions
-                                                .map((a) => a.replace(/_/g, ' '))
-                                                .join(' · ')}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        ))
+                        <>
+                            <McpAccessPresets
+                                areas={areas}
+                                enabled={settings.enabled_tools}
+                                onChange={setEnabledTools}
+                            />
+                            <McpToolAccessList
+                                areas={areas}
+                                enabled={settings.enabled_tools}
+                                onChange={setEnabledTools}
+                                idPrefix="mcp-tools"
+                            />
+                        </>
                     )}
                 </CardContent>
             </Card>
@@ -682,27 +655,14 @@ export default function MCPServerSettings() {
                                     )}
 
                                     {customized && toggleableTools.length > 0 && (
-                                        <div className="space-y-2 border-t border-neutral-100 pt-3">
-                                            {toggleableTools.map((tool) => (
-                                                <label
-                                                    key={tool.key}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    <Switch
-                                                        checked={isToolEnabledForRole(
-                                                            role,
-                                                            tool.key
-                                                        )}
-                                                        onCheckedChange={(v) =>
-                                                            toggleToolForRole(role, tool.key, v)
-                                                        }
-                                                    />
-                                                    <span className="text-caption text-neutral-700">
-                                                        {tool.label}
-                                                    </span>
-                                                </label>
-                                            ))}
-                                        </div>
+                                        <McpToolAccessList
+                                            areas={areas.filter((area) => !area.alwaysOn)}
+                                            enabled={
+                                                settings.role_overrides[role]?.enabled_tools ?? []
+                                            }
+                                            onChange={(next) => setRoleTools(role, next)}
+                                            idPrefix={`mcp-role-${role}`}
+                                        />
                                     )}
                                 </div>
                             );
@@ -759,7 +719,7 @@ export default function MCPServerSettings() {
                 <MyButton
                     buttonType="primary"
                     scale="medium"
-                    onClick={() => save(settings)}
+                    onClick={handleSave}
                     disable={saving || !hasChanges}
                 >
                     {saving ? t('footer.saving') : t('footer.save')}

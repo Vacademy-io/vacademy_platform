@@ -42,7 +42,21 @@ export interface McpToolCatalogEntry {
     mode: 'READ' | 'WRITE';
     /** Not a toggle: on for everyone who may connect (identity only). */
     always_on?: boolean;
+    /** The settings-page row this tool belongs to, e.g. "courses". */
+    area?: string;
+    area_label?: string;
+    area_summary?: string;
+    area_order?: number;
+    /** An area has one view tool and any number of edit tools (edit includes view). */
+    level?: 'view' | 'edit';
+    /** What an edit can touch; null for view tools. */
+    risk?: McpToolRisk | null;
+    /** The edit's own name when its area has several. */
+    sub_label?: string | null;
 }
+
+/** drafts: nothing goes live · additive: only adds · not_live: courses not live yet · live: learners see it at once. */
+export type McpToolRisk = 'drafts' | 'additive' | 'not_live' | 'live';
 
 export interface McpManualClient {
     client_id: string;

@@ -51,6 +51,17 @@ export interface RecentLeadDetail {
     follow_up_overdue?: boolean | null;
     /** Custom pipeline status (enquiry_status), e.g. NEW / INTERESTED. */
     lead_status?: string | null;
+    /** Interest level. The tier stored on the lead profile, falling back to the one
+     *  derived from the score — the same precedence the lead tables render. */
+    lead_tier?: string | null;
+    /** Lead owner. Resolved from the linked enquiry, else from the lead profile. */
+    assigned_counselor_id?: string | null;
+    assigned_counselor_name?: string | null;
+    // ── The next scheduled follow-up's own fields (what the counsellor wrote) ──
+    follow_up_content?: string | null;
+    follow_up_student_response?: string | null;
+    follow_up_mode?: string | null;
+    follow_up_next_action?: string | null;
 }
 
 export interface RecentLeadsResponse {

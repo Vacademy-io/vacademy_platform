@@ -76,7 +76,13 @@
             "phone": "Phone",
             "source": "Source",
             "status": "Status",
-            "dueAt": "Due at"
+            "dueAt": "Due at",
+            "leadOwner": "Lead owner",
+            "interestLevel": "Interest level",
+            "followUpNote": "Follow-up note",
+            "studentResponse": "Student response",
+            "followUpMode": "Follow-up mode",
+            "nextAction": "Next action"
         },
         "progress": "Exporting follow-ups… {{done}} of {{total}}",
         "done_one": "Exported {{count}} follow-up",

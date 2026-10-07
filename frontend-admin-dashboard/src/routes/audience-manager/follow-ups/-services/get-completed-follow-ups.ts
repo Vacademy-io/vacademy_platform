@@ -27,6 +27,19 @@ export interface CompletedFollowUp {
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;
+    /** Hydrated only on this endpoint — a completed follow-up is the only view of
+     *  the lead the row gets, so it has to stand on its own. */
+    lead_email: string | null;
+    lead_source: string | null;
+    lead_status: string | null;
+    lead_tier: string | null;
+    assigned_counselor_name: string | null;
+    /** Form answers keyed by custom_field_id, same shape as the leads endpoint. */
+    custom_field_values?: Record<string, string | null>;
+    custom_field_metadata?: Record<
+        string,
+        { fieldName?: string; field_name?: string; fieldType?: string; field_type?: string }
+    >;
 }
 
 export interface CompletedFollowUpsPage {

@@ -76,7 +76,13 @@
             "phone": "फ़ोन",
             "source": "सोर्स",
             "status": "स्टेटस",
-            "dueAt": "कब तक"
+            "dueAt": "कब तक",
+            "leadOwner": "लीड ओनर",
+            "interestLevel": "रुचि स्तर",
+            "followUpNote": "फ़ॉलो-अप नोट",
+            "studentResponse": "छात्र की प्रतिक्रिया",
+            "followUpMode": "फ़ॉलो-अप माध्यम",
+            "nextAction": "अगला कदम"
         },
         "progress": "फ़ॉलो-अप एक्सपोर्ट हो रहे हैं… {{total}} में से {{done}}",
         "done_one": "{{count}} फ़ॉलो-अप एक्सपोर्ट हुआ",

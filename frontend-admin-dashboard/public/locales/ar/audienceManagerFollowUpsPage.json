@@ -112,7 +112,13 @@
             "phone": "الهاتف",
             "source": "المصدر",
             "status": "الحالة",
-            "dueAt": "الاستحقاق"
+            "dueAt": "الاستحقاق",
+            "leadOwner": "مالك العميل المحتمل",
+            "interestLevel": "مستوى الاهتمام",
+            "followUpNote": "ملاحظة المتابعة",
+            "studentResponse": "رد الطالب",
+            "followUpMode": "طريقة المتابعة",
+            "nextAction": "الإجراء التالي"
         },
         "progress": "جارٍ تصدير المتابعات… {{done}} من {{total}}",
         "done_one": "تم تصدير متابعة واحدة",

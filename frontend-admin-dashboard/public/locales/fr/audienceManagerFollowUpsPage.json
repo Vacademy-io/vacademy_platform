@@ -84,7 +84,13 @@
             "phone": "Téléphone",
             "source": "Source",
             "status": "Statut",
-            "dueAt": "Échéance"
+            "dueAt": "Échéance",
+            "leadOwner": "Responsable du lead",
+            "interestLevel": "Niveau d'intérêt",
+            "followUpNote": "Note de suivi",
+            "studentResponse": "Réponse de l'étudiant",
+            "followUpMode": "Mode de suivi",
+            "nextAction": "Action suivante"
         },
         "progress": "Export des suivis… {{done}} sur {{total}}",
         "done_one": "{{count}} suivi exporté",

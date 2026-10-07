@@ -729,20 +729,7 @@ const FollowUpsContent = () => {
                     exportFields
                 );
             },
-            labels: {
-                progress: (done, total) =>
-                    total > 0
-                        ? t('export.progress', {
-                              done: done.toLocaleString(),
-                              total: total.toLocaleString(),
-                          })
-                        : t('export.running'),
-                done: (count) => t('export.done', { count }),
-                failed: t('export.failed'),
-                alreadyRunning: t('export.alreadyRunning'),
-                truncated: (count) => t('export.truncated', { count }),
-                partial: (count) => t('export.partial', { count }),
-            },
+            labels,
         });
     };
 

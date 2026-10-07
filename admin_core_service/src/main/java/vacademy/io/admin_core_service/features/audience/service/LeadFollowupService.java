@@ -47,6 +47,10 @@ public class LeadFollowupService {
     private final AudienceRepository audienceRepository;
     private final vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
     private final vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchLeadRepository workbenchLeadRepository;
+    private final vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
+    private final vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
+    private final vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository customFieldValuesRepository;
+    private final vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository customFieldRepository;
 
     @Transactional
     public LeadFollowupDto create(CreateLeadFollowupRequest request, CustomUserDetails user) {
@@ -189,7 +193,7 @@ public class LeadFollowupService {
         Pageable paged = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
 
         if (instituteId == null || instituteId.isBlank()) {
-            return hydrate(leadFollowupRepository
+            return hydrateFull(leadFollowupRepository
                     .findByCreatedByAndIsClosedTrue(user.getUserId(), paged));
         }
 
@@ -230,7 +234,7 @@ public class LeadFollowupService {
             }
         }
 
-        return hydrate(leadFollowupRepository.findCompleted(
+        return hydrateFull(leadFollowupRepository.findCompleted(
                 instituteId, createdByCsv, closedFrom, closedTo,
                 search == null || search.isBlank() ? null : search.trim(),
                 searchUserIdsCsv, paged));
@@ -242,6 +246,21 @@ public class LeadFollowupService {
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList()));
         return new PageImpl<>(dtos, page.getPageable(), page.getTotalElements());
+    }
+
+    /**
+     * hydrate() plus everything that makes a completed follow-up readable on its own:
+     * email, pipeline status, interest tier, the counsellor who owns the lead, and the
+     * lead's custom field answers.
+     *
+     * <p>Four batched queries for the whole page, never one per row. They are only paid
+     * on the Completed queue, which is where a row has to stand alone - the pending
+     * queues render next to the lead itself.
+     */
+    private Page<LeadFollowupDto> hydrateFull(Page<LeadFollowup> page) {
+        Page<LeadFollowupDto> hydrated = hydrate(page);
+        withLeadDetail(hydrated.getContent());
+        return hydrated;
     }
 
     /**
@@ -295,6 +314,124 @@ public class LeadFollowupService {
             }
         }
         return dtos;
+    }
+
+    /**
+     * Second hydration pass: the lead fields a stand-alone row needs. Everything here
+     * is decoration on the queue, so a failure logs and leaves the fields null rather
+     * than failing the list.
+     */
+    private void withLeadDetail(List<LeadFollowupDto> dtos) {
+        List<String> responseIds = dtos.stream()
+                .map(LeadFollowupDto::getAudienceResponseId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (responseIds.isEmpty()) return;
+
+        try {
+            Map<String, AudienceResponse> responseById = audienceResponseRepository.findAllById(responseIds)
+                    .stream()
+                    .collect(Collectors.toMap(AudienceResponse::getId, r -> r, (a, b) -> a));
+
+            // Pipeline status: the lead's own lead_status_id resolved to its label, else
+            // the profile's conversion_status mapped through the same catalog. Same
+            // precedence the leads list uses, so the two never disagree.
+            List<String> statusIds = responseById.values().stream()
+                    .map(AudienceResponse::getLeadStatusId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+            List<vacademy.io.admin_core_service.features.audience.entity.LeadStatus> statuses = statusIds.isEmpty()
+                    ? List.of()
+                    : leadStatusRepository.findAllById(statusIds);
+            Map<String, String> statusIdToLabel = statuses.stream()
+                    .collect(Collectors.toMap(
+                            vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                            vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
+                            (a, b) -> a));
+
+            String instituteId = dtos.stream()
+                    .map(LeadFollowupDto::getInstituteId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .findFirst().orElse(null);
+
+            List<String> userIds = responseById.values().stream()
+                    .map(AudienceResponse::getUserId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+            Map<String, vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile> profileByUserId =
+                    (userIds.isEmpty() || instituteId == null)
+                            ? Map.of()
+                            : userLeadProfileRepository.findByUserIdInAndInstituteId(userIds, instituteId).stream()
+                                    .collect(Collectors.toMap(
+                                            vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
+                                            p -> p,
+                                            (a, b) -> a));
+
+            List<vacademy.io.admin_core_service.features.common.entity.CustomFieldValues> cfValues =
+                    customFieldValuesRepository.findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", responseIds);
+            Map<String, List<vacademy.io.admin_core_service.features.common.entity.CustomFieldValues>> cfByResponseId =
+                    cfValues.stream().collect(Collectors.groupingBy(
+                            vacademy.io.admin_core_service.features.common.entity.CustomFieldValues::getSourceId));
+            List<String> fieldIds = cfValues.stream()
+                    .map(vacademy.io.admin_core_service.features.common.entity.CustomFieldValues::getCustomFieldId)
+                    .distinct().collect(Collectors.toList());
+            Map<String, vacademy.io.admin_core_service.features.common.entity.CustomFields> fieldDefsById =
+                    fieldIds.isEmpty() ? Map.of()
+                            : customFieldRepository.findAllById(fieldIds).stream()
+                                    .collect(Collectors.toMap(
+                                            vacademy.io.admin_core_service.features.common.entity.CustomFields::getId,
+                                            f -> f, (a, b) -> a));
+
+            // Audience names come from the institute's own list, which is a handful of
+            // rows and already cached by every other caller here.
+            Map<String, String> audienceNameById = instituteId == null
+                    ? Map.of()
+                    : audienceRepository.findByInstituteId(instituteId).stream()
+                            .filter(a -> a.getId() != null && a.getCampaignName() != null)
+                            .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName,
+                                    (a, b) -> a));
+
+            for (LeadFollowupDto dto : dtos) {
+                AudienceResponse ar = responseById.get(dto.getAudienceResponseId());
+                if (ar == null) continue;
+                dto.setLeadEmail(ar.getParentEmail());
+                dto.setLeadSource(audienceNameById.get(ar.getAudienceId()));
+
+                var profile = ar.getUserId() != null ? profileByUserId.get(ar.getUserId()) : null;
+                if (ar.getLeadStatusId() != null && statusIdToLabel.containsKey(ar.getLeadStatusId())) {
+                    dto.setLeadStatus(statusIdToLabel.get(ar.getLeadStatusId()));
+                } else if (profile != null) {
+                    dto.setLeadStatus(profile.getConversionStatus());
+                }
+                if (profile != null) {
+                    dto.setLeadTier(profile.getLeadTier());
+                    dto.setAssignedCounselorName(profile.getAssignedCounselorName());
+                }
+
+                var rowValues = cfByResponseId.get(ar.getId());
+                if (rowValues == null || rowValues.isEmpty()) continue;
+                Map<String, String> values = new java.util.HashMap<>();
+                Map<String, Object> metadata = new java.util.HashMap<>();
+                for (var cfv : rowValues) {
+                    values.put(cfv.getCustomFieldId(), cfv.getValue());
+                    var def = fieldDefsById.get(cfv.getCustomFieldId());
+                    if (def != null) {
+                        Map<String, String> meta = new java.util.HashMap<>();
+                        meta.put("fieldName", def.getFieldName());
+                        meta.put("fieldKey", def.getFieldKey());
+                        meta.put("fieldType", def.getFieldType());
+                        metadata.put(cfv.getCustomFieldId(), meta);
+                    }
+                }
+                dto.setCustomFieldValues(values);
+                dto.setCustomFieldMetadata(metadata);
+            }
+        } catch (Exception e) {
+            log.warn("[LeadFollowup] lead detail hydration failed: {}", e.getMessage());
+        }
     }
 
     private static boolean isBlank(String s) {

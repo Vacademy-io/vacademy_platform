@@ -4,6 +4,7 @@ import { FilterConfig } from '@/routes/manage-students/students-list/-types/stud
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
+import { getBatchOwnName } from '@/utils/helpers/student-management/batch-display-name';
 import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 
@@ -63,10 +64,15 @@ export const GetFilterData = (
         {
             id: 'batch',
             title: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+            // Label by the batch's own name where it has one. Composing it from
+            // course + level gave an institute whose batches share a course ten
+            // identical entries, with no way to tell which one you were picking.
             filterList: batchesInScope
                 .map((batch) => ({
                     id: batch.id,
-                    label: `${removeDefaultPrefix(batch.package_dto.package_name)}${batch.level.level_name && batch.level.level_name !== 'DEFAULT' ? ` - ${removeDefaultPrefix(batch.level.level_name)}` : ''}`.trim(),
+                    label:
+                        getBatchOwnName(batch) ||
+                        `${removeDefaultPrefix(batch.package_dto.package_name)}${batch.level.level_name && batch.level.level_name !== 'DEFAULT' ? ` - ${removeDefaultPrefix(batch.level.level_name)}` : ''}`.trim(),
                 }))
                 .slice(0, 10),
         },

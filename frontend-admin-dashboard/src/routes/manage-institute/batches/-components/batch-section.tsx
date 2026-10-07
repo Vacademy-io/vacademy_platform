@@ -18,7 +18,6 @@ import {
     Users,
 } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { useGetStudentBatch } from '@/routes/manage-students/students-list/-hooks/useGetStudentBatch';
 import { EnrollManuallyButton } from '@/components/common/students/enroll-manually/enroll-manually-button';
 import { useDeleteBatches } from '@/routes/manage-institute/batches/-services/delete-batches';
 import { toast } from 'sonner';
@@ -70,13 +69,15 @@ const useBatchActions = (batch: BatchType) => {
     const deleteBatchesMutation = useDeleteBatches();
     const { instituteDetails } = useInstituteDetailsStore();
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-    const { levelName, packageName } = useGetStudentBatch(batch.package_session_id);
-
+    // `batch` is read back as a package_session id — the learner list matches it
+    // against batches_for_sessions to hydrate its Batch filter chip. It used to be
+    // sent as a display label, which matched no id, so View Batch landed on a list
+    // that was silently pinned to this batch with no filter shown for it.
     const viewBatch = () =>
         navigate({
             to: '/manage-students/students-list',
             search: {
-                batch: `${levelName} ${packageName}`,
+                batch: batch.package_session_id,
                 package_session_id: batch.package_session_id,
             },
         });

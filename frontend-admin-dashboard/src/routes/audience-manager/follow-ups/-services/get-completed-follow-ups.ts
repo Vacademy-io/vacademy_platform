@@ -27,6 +27,19 @@ export interface CompletedFollowUp {
     lead_name: string | null;
     lead_mobile: string | null;
     lead_user_id: string | null;
+    /** Hydrated only on this endpoint — a completed follow-up is the only view of
+     *  the lead the row gets, so it has to stand on its own. */
+    lead_email: string | null;
+    lead_source: string | null;
+    lead_status: string | null;
+    lead_tier: string | null;
+    assigned_counselor_name: string | null;
+    /** Form answers keyed by custom_field_id, same shape as the leads endpoint. */
+    custom_field_values?: Record<string, string | null>;
+    custom_field_metadata?: Record<
+        string,
+        { fieldName?: string; field_name?: string; fieldType?: string; field_type?: string }
+    >;
 }
 
 export interface CompletedFollowUpsPage {
@@ -46,6 +59,14 @@ export async function fetchCompletedFollowUps(params: {
     closedTo?: string;
     page: number;
     size: number;
+    /**
+     * Ask for the lead's email, source, status, interest level, owner and custom
+     * fields on every row. Off by default — the table reads none of them and the
+     * tile's count probe reads only the total, so switching it on there would cost
+     * four server-side queries per page load for data nobody renders. The CSV
+     * export sets it, because a row there is read on its own.
+     */
+    includeLeadDetail?: boolean;
 }): Promise<CompletedFollowUpsPage | undefined> {
     const res = await authenticatedAxiosInstance.get(COMPLETED_LEAD_FOLLOWUPS, {
         params: {
@@ -56,6 +77,7 @@ export async function fetchCompletedFollowUps(params: {
             closedTo: params.closedTo,
             page: params.page,
             size: params.size,
+            includeLeadDetail: params.includeLeadDetail || undefined,
         },
     });
     return res?.data;

@@ -3490,12 +3490,16 @@ public class AudienceService {
         // column. We pick the earliest OPEN row per lead — that is the next callback the counsellor
         // promised. If nothing is scheduled, we fall back to lastAction + followUpSlaHours (and
         // ultimately to null → the cell shows the em-dash placeholder).
-        final Map<String, Timestamp> scheduledFollowupByResponseId = !responseIds.isEmpty()
+        // Keep the whole row, not just its schedule time: the follow-up's own notes
+        // (content / student response / mode / next action) ride along on the DTO so a
+        // CSV export of a follow-up queue can carry what the counsellor wrote without a
+        // second request per lead. Same row either way, so this costs nothing extra.
+        final Map<String, LeadFollowup> scheduledFollowupByResponseId = !responseIds.isEmpty()
                 ? leadFollowupRepository.findOpenByAudienceResponseIds(responseIds).stream()
                         .collect(Collectors.toMap(
                                 LeadFollowup::getAudienceResponseId,
-                                LeadFollowup::getScheduleTime,
-                                (a, b) -> a.before(b) ? a : b))
+                                f -> f,
+                                (a, b) -> a.getScheduleTime().before(b.getScheduleTime()) ? a : b))
                 : Collections.emptyMap();
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
@@ -3648,7 +3652,10 @@ public class AudienceService {
             // followUpSlaHours) — the cell is about "when did the counsellor promise to call
             // back", not "when does the SLA reminder fire". The SLA breach is surfaced
             // separately via tat_reminder_stage / follow_up_overdue.
-            Timestamp computedFollowUpDueAt = scheduledFollowupByResponseId.get(response.getId());
+            LeadFollowup scheduledFollowup = scheduledFollowupByResponseId.get(response.getId());
+            Timestamp computedFollowUpDueAt = scheduledFollowup != null
+                    ? scheduledFollowup.getScheduleTime()
+                    : null;
             // First-response timestamp powers the "Reach out by → ✓ Responded" display.
             // TAT definition: first response event on the lead minus submitted_at.
             vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
@@ -3692,13 +3699,28 @@ public class AudienceService {
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
                     .leadScore(score != null ? score.getRawScore() : null)
-                    .leadTier(score != null
-                            ? leadTierService.deriveTier(instituteId, score.getRawScore())
-                            : null)
+                    // Stored tier wins over the one derived from the score - see the field
+                    // doc on LeadDetailDTO.
+                    .leadTier(profile != null && StringUtils.hasText(profile.getLeadTier())
+                            ? profile.getLeadTier()
+                            : (score != null
+                                    ? leadTierService.deriveTier(instituteId, score.getRawScore())
+                                    : null))
                     .percentileRank(score != null && score.getPercentileRank() != null
                             ? score.getPercentileRank().doubleValue()
                             : null)
-                    .assignedCounselorId(counselorId)
+                    // A lead with no linked enquiry (every CRM-imported one) carries its
+                    // counsellor only on the profile, so the enquiry lookup alone returned
+                    // null for all of them.
+                    .assignedCounselorId(StringUtils.hasText(counselorId)
+                            ? counselorId
+                            : (profile != null ? profile.getAssignedCounselorId() : null))
+                    .assignedCounselorName(profile != null ? profile.getAssignedCounselorName() : null)
+                    .followUpContent(scheduledFollowup != null ? scheduledFollowup.getContent() : null)
+                    .followUpStudentResponse(
+                            scheduledFollowup != null ? scheduledFollowup.getStudentResponse() : null)
+                    .followUpMode(scheduledFollowup != null ? scheduledFollowup.getFollowUpMode() : null)
+                    .followUpNextAction(scheduledFollowup != null ? scheduledFollowup.getNextAction() : null)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)

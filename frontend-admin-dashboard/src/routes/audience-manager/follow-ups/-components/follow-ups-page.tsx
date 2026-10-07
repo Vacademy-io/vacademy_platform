@@ -46,6 +46,13 @@ import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
+import { useCustomFieldSetup } from '@/routes/audience-manager/list/-hooks/useCustomFieldSetup';
+import {
+    buildExportHeader,
+    completedToExportRow,
+    exportCustomFields,
+    leadToExportRow,
+} from './follow-up-export-columns';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -644,45 +651,85 @@ const FollowUpsContent = () => {
     // lands in the CSV is what the filter says — not the twenty rows on screen. The walk
     // runs in the background and paces itself; see background-export.ts for why.
     const isExporting = useIsExporting('follow-ups');
+    // Every custom field the institute has configured becomes a column, so an
+    // institute with a "Courses" field gets Courses without this file naming it.
+    const { data: customFieldSetup } = useCustomFieldSetup(instituteId ?? undefined);
+    const exportFields = useMemo(() => exportCustomFields(customFieldSetup), [customFieldSetup]);
+    const exportHeader = buildExportHeader(
+        {
+            name: t('export.columns.name'),
+            email: t('export.columns.email'),
+            phone: t('export.columns.phone'),
+            source: t('export.columns.source'),
+            leadOwner: t('export.columns.leadOwner'),
+            status: t('export.columns.status'),
+            interestLevel: t('export.columns.interestLevel'),
+            dueAt: t('export.columns.dueAt'),
+            followUpNote: t('export.columns.followUpNote'),
+            studentResponse: t('export.columns.studentResponse'),
+            followUpMode: t('export.columns.followUpMode'),
+            nextAction: t('export.columns.nextAction'),
+        },
+        exportFields
+    );
     const handleExport = () => {
+        const fileName = `follow-ups_${bucket}_${new Date().toISOString().slice(0, 10)}.csv`;
+        const labels = {
+            progress: (done: number, total: number) =>
+                total > 0
+                    ? t('export.progress', {
+                          done: done.toLocaleString(),
+                          total: total.toLocaleString(),
+                      })
+                    : t('export.running'),
+            done: (count: number) => t('export.done', { count }),
+            failed: t('export.failed'),
+            alreadyRunning: t('export.alreadyRunning'),
+            truncated: (count: number) => t('export.truncated', { count }),
+            partial: (count: number) => t('export.partial', { count }),
+        };
+
+        // Completed is its own endpoint — a row there is a closed follow-up, not a
+        // lead, so the leads walk would have exported the wrong thing entirely (and
+        // used to be disabled for exactly that reason).
+        if (bucket === 'completed') {
+            startBackgroundExport({
+                key: 'follow-ups',
+                fileName,
+                header: exportHeader,
+                fetchPage: (page, size) =>
+                    fetchCompletedFollowUps({
+                        instituteId: instituteId ?? '',
+                        counsellorUserId: effectiveCounsellorId,
+                        ...completedParams,
+                        page,
+                        size,
+                        includeLeadDetail: true,
+                    }),
+                toRow: (row) => completedToExportRow(row, exportFields),
+                labels,
+            });
+            return;
+        }
+
         const window = toWindowParams(bucket);
         startBackgroundExport({
             key: 'follow-ups',
-            fileName: `follow-ups_${bucket}_${new Date().toISOString().slice(0, 10)}.csv`,
-            header: [
-                t('export.columns.name'),
-                t('export.columns.email'),
-                t('export.columns.phone'),
-                t('export.columns.source'),
-                t('export.columns.status'),
-                t('export.columns.dueAt'),
-            ],
+            fileName,
+            header: exportHeader,
             fetchPage: (page, size) => fetchRecentLeads({ ...baseFilter, ...window, page, size }),
             toRow: (lead) => {
                 const vm = recentLeadToVM(lead);
-                return [
+                return leadToExportRow(
+                    lead,
                     vm.name,
                     vm.email,
                     vm.phone,
                     vm.audience,
-                    vm.leadStatus ?? '',
-                    vm.followUpDueAt ?? vm.tatDueAt ?? '',
-                ];
+                    exportFields
+                );
             },
-            labels: {
-                progress: (done, total) =>
-                    total > 0
-                        ? t('export.progress', {
-                              done: done.toLocaleString(),
-                              total: total.toLocaleString(),
-                          })
-                        : t('export.running'),
-                done: (count) => t('export.done', { count }),
-                failed: t('export.failed'),
-                alreadyRunning: t('export.alreadyRunning'),
-                truncated: (count) => t('export.truncated', { count }),
-                partial: (count) => t('export.partial', { count }),
-            },
+            labels,
         });
     };
 
@@ -721,7 +768,7 @@ const FollowUpsContent = () => {
                     <MyButton
                         buttonType="secondary"
                         scale="medium"
-                        disabled={isExporting || counts[bucket] === 0 || bucket === 'completed'}
+                        disabled={isExporting || counts[bucket] === 0}
                         onClick={handleExport}
                     >
                         <DownloadSimple className="size-4" />

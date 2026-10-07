@@ -47,10 +47,20 @@ public class LeadDetailDTO {
 
     // ── Lead Score (auto-populated from lead_score table) ──
     private Integer leadScore;              // Raw score 0-100
-    private String leadTier;                // HOT / WARM / COLD
+    /**
+     * HOT / WARM / COLD. The tier stored on the lead profile wins; the tier derived
+     * from leadScore is only the fallback. That is the same precedence the lead
+     * tables use (tierCatalog.resolve(profile.lead_tier, profile.best_score)), and it
+     * matters for an institute that imported its own interest level - deriving from
+     * the score would quietly report a different tier than the UI shows.
+     */
+    private String leadTier;
     private Double percentileRank;          // 0-100
 
     // ── Counselor Assignment ──
+    // Resolved from the linked ENQUIRY first, then from the lead profile. Leads that
+    // never came through an enquiry (e.g. a CRM import) carry their counsellor only
+    // on the profile, so reading the enquiry alone returns null for all of them.
     private String assignedCounselorId;
     private String assignedCounselorName;
 
@@ -72,6 +82,15 @@ public class LeadDetailDTO {
 
     // ── Opt-Out Source ──
     private String sourceAudienceName; // name of the audience the user opted out FROM
+
+    // ── Next scheduled follow-up (the counsellor's own notes on it) ──
+    // These mirror the earliest OPEN lead_followup row, the same one followUpDueAt
+    // is read from, so a CSV export of a follow-up queue can carry what the
+    // counsellor actually wrote without a second round of requests.
+    private String followUpContent;
+    private String followUpStudentResponse;
+    private String followUpMode;
+    private String followUpNextAction;
 
     // ── TAT / Follow-up SLA (deadlines computed live from SLA config; badges from scheduler state) ──
     private Timestamp tatDueAt;          // reach-out deadline: admin override, else working-hours-aware lead_sla_due_at (live when TAT enabled)

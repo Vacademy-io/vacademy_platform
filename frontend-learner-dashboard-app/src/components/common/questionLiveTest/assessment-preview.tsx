@@ -21,6 +21,7 @@ import { PluginListenerHandle } from "@capacitor/core";
 import { Clock } from "@phosphor-icons/react";
 import { QuestionHtmlContent } from "./question-html-content";
 import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { useIOSSafeAreaInsets } from "@/hooks/use-ios-safe-area-insets";
 import { useExamExperienceSettings } from "@/hooks/use-exam-experience-settings";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { topSafeAreaInset, bottomSafeAreaInset } from "@/utils/safe-area";
@@ -64,6 +65,7 @@ export function AssessmentPreview() {
   const examExperience = useExamExperienceSettings();
   // Same full-bleed safe zone as the brief and the live test.
   useImmersiveMode(examExperience.mobile.hideAppNavigation);
+  useIOSSafeAreaInsets();
   const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
   const [backButtonListener, setBackButtonListener] =
     useState<PluginListenerHandle | null>(null);

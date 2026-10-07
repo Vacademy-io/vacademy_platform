@@ -17,6 +17,7 @@ import { useAssessmentStore } from "@/stores/assessment-store";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { cn } from "@/lib/utils";
 import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { useIOSSafeAreaInsets } from "@/hooks/use-ios-safe-area-insets";
 import { topSafeAreaInset } from "@/utils/safe-area";
 import NetworkStatus from "./network-status";
 import { Preferences } from "@capacitor/preferences";
@@ -409,6 +410,7 @@ function LiveTestShell() {
   // Take Android's system bars down for the attempt — they otherwise sit on top
   // of this shell's own header and footer.
   useImmersiveMode(hideAppChrome);
+  useIOSSafeAreaInsets();
 
   const showPalette = settings.questionPalette.enabled;
   // The header's panel toggle brings a collapsed rail back (see Navbar).

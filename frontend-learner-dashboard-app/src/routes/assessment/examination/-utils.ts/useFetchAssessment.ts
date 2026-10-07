@@ -55,7 +55,7 @@ const getStartAssessmentDetails = async () => {
   };
 };
 
-const getDuration = async (): Promise<{
+export const getDuration = async (): Promise<{
   can_switch_section: boolean;
   duration: number;
   distribution_duration: distribution_duration_types;

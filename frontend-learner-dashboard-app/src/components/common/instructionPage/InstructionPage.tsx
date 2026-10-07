@@ -16,6 +16,7 @@ import { SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useExamExperienceSettings } from "@/hooks/use-exam-experience-settings";
 import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { useIOSSafeAreaInsets } from "@/hooks/use-ios-safe-area-insets";
 import { useLiveTestStore } from "@/stores/live-test-store";
 import { bottomSafeAreaInset } from "@/utils/safe-area";
 import { ProctorCheckIn } from "@/components/common/proctoring/ProctorCheckIn";
@@ -39,6 +40,7 @@ const InstructionPage = () => {
   // with a sticky Start bar, so Android's system bars must come down here too,
   // not only once the paper opens.
   useImmersiveMode(examExperience.mobile.hideAppNavigation);
+  useIOSSafeAreaInsets();
   const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
 
   const fetchInstructions = async () => {

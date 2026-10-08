@@ -38,7 +38,8 @@
         "neverConnected": "-",
         "copyKey": "Copy Google key",
         "urlLabel": "URL",
-        "keyLabel": "Key"
+        "keyLabel": "Key",
+        "googleSetup": "Setup & status"
     },
     "vendor": {
         "meta": "Meta",
@@ -91,13 +92,26 @@
         "saveError": "Failed to save Google connector",
         "saving": "Creating...",
         "save": "Create connector",
-        "createHint": "Pick the audience these leads should go to. A secure webhook URL and key are generated for you.",
-        "setupTitle": "Connector created. Finish setup in Google Ads",
         "webhookUrlLabel": "Webhook URL",
-        "setupStep1": "In Google Ads, open the lead form and find \"Webhook integration\" under lead delivery.",
-        "setupStep2": "Paste the webhook URL and the key into their fields.",
-        "setupStep3": "Click \"Send test data\". Google should report success; test leads are not saved as real leads.",
-        "done": "Done"
+        "howItWorksTitle": "How it works",
+        "howItWorks1": "Choose the audience these leads should go to and create the connector.",
+        "howItWorks2": "Paste the webhook URL and key we generate into your Google Ads lead form.",
+        "howItWorks3": "Click \"Send test data\" in Google Ads. This page confirms when it arrives.",
+        "dialogTitle": "Google Ads lead form setup",
+        "dialogDescription": "Leads from this connector go to {{audience}}.",
+        "dialogDescriptionNoAudience": "Paste these two values into your Google Ads lead form.",
+        "setupStep1": "In Google Ads, open the lead form you want to connect (under Assets) and edit it.",
+        "setupStep2": "In the lead delivery section, choose \"Webhook integration\". Older accounts show it under \"Export leads\" → \"Other data integration options\".",
+        "setupStep3": "Paste the Webhook URL and the Key above into their fields. Both must match exactly.",
+        "setupStep4": "Click \"Send test data\". Google should report success, and the status below updates within a few seconds.",
+        "setupStep5": "Save the lead form. Real leads then arrive in the audience above, tagged with their campaign ID.",
+        "statusHeading": "Delivery status",
+        "statusWaiting": "Nothing received from Google yet. Send test data from your Google Ads lead form; this updates automatically.",
+        "statusReceived": "Google reached this connector on {{time}}. The setup works.",
+        "troubleshootHeading": "If Google's test fails",
+        "troubleshoot404": "\"Not found\" (404): the webhook URL was copied incompletely, or this connector was deactivated. Copy the URL again.",
+        "troubleshoot401": "\"Unauthorized\" (401): the Key in Google Ads does not match. Copy the key again; it is case-sensitive.",
+        "troubleshootNoLeads": "Test data is never saved as a lead. Real leads appear once the form runs on a live campaign."
     },
     "meta": {
         "sessionExpiredReconnect": "Your Meta session expired. Please reconnect Meta.",

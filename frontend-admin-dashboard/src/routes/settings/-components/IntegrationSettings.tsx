@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { formatDateTime } from '@/lib/formatters';
 import {
     Copy,
     Check,
@@ -424,6 +425,7 @@ function ConnectorTable({
     onTest,
     onResubscribe,
     onSyncNow,
+    onGoogleSetup,
     testingId,
     syncingId,
 }: {
@@ -434,6 +436,7 @@ function ConnectorTable({
     onTest: (id: string) => void;
     onResubscribe: (id: string) => void;
     onSyncNow: (id: string) => void;
+    onGoogleSetup: (id: string) => void;
     testingId: string | null;
     syncingId: string | null;
 }) {
@@ -665,6 +668,15 @@ function ConnectorTable({
                                                     <ArrowsClockwise className="size-4" />
                                                 </button>
                                             )}
+                                        {c.vendor === 'GOOGLE_LEAD_ADS' && (
+                                            <button
+                                                onClick={() => onGoogleSetup(c.id)}
+                                                className="text-neutral-400 hover:text-primary-600"
+                                                title={t('table.googleSetup')}
+                                            >
+                                                <Pulse className="size-4" />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => onEdit(c)}
                                             className="text-neutral-400 hover:text-primary-600"
@@ -827,15 +839,141 @@ function CopyableValue({ label, value }: { label: string; value: string }) {
     );
 }
 
-function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
+/** The server sends zone-less LocalDateTime strings; the admin_core JVM runs in UTC. */
+function parseServerUtc(value: string): Date {
+    return new Date(/([zZ]|[+-]\d\d:\d\d)$/.test(value) ? value : `${value}Z`);
+}
+
+/** The Google Ads side of the setup, in the order the admin does it. */
+function GoogleSetupSteps() {
+    const { t } = useTranslation('settingsIntegration');
+    return (
+        <ol className="list-decimal space-y-1.5 ps-5 text-sm text-neutral-700">
+            <li>{t('google.setupStep1')}</li>
+            <li>{t('google.setupStep2')}</li>
+            <li>{t('google.setupStep3')}</li>
+            <li>{t('google.setupStep4')}</li>
+            <li>{t('google.setupStep5')}</li>
+        </ol>
+    );
+}
+
+/**
+ * Whether Google has reached this connector yet and how that went. The webhook stamps
+ * lastCheckedAt on every delivery with a known key; statusDetail says why one failed.
+ */
+function GoogleDeliveryStatus({ connector }: { connector: ConnectorListItem }) {
+    const { t } = useTranslation('settingsIntegration');
+    if (!connector.lastCheckedAt) {
+        return (
+            <div className="flex items-start gap-2 rounded-md border bg-neutral-50 p-3 text-sm text-neutral-600">
+                <CircleNotch className="mt-0.5 size-4 shrink-0 animate-spin" />
+                <span>{t('google.statusWaiting')}</span>
+            </div>
+        );
+    }
+    const when = formatDateTime(parseServerUtc(connector.lastCheckedAt), { second: '2-digit' });
+    if (connector.connectionStatus === 'ACTION_REQUIRED') {
+        return (
+            <div className="flex items-start gap-2 rounded-md border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
+                <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
+                <span>
+                    {connector.statusDetail ?? t('table.statusActionNeeded')}{' '}
+                    <span className="text-caption">({when})</span>
+                </span>
+            </div>
+        );
+    }
+    return (
+        <div className="flex items-start gap-2 rounded-md border border-success-200 bg-success-50 p-3 text-sm text-success-700">
+            <Check className="mt-0.5 size-4 shrink-0" weight="bold" />
+            <span>{t('google.statusReceived', { time: when })}</span>
+        </div>
+    );
+}
+
+/**
+ * Setup & status for one Google connector: the two values to paste, the Google Ads
+ * steps, live delivery status (the parent polls the list while this is open) and what
+ * Google's test errors mean. Opens right after a connector is created, and from the row.
+ */
+export function GoogleSetupDialog({
+    connector,
+    audienceName,
+    open,
+    onOpenChange,
+}: {
+    connector: ConnectorListItem | null;
+    audienceName: string | undefined;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const { t } = useTranslation('settingsIntegration');
+    const googleKey = connector?.vendorId;
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>{t('google.dialogTitle')}</DialogTitle>
+                    <DialogDescription>
+                        {audienceName
+                            ? t('google.dialogDescription', { audience: audienceName })
+                            : t('google.dialogDescriptionNoAudience')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                {!connector || !googleKey ? (
+                    <div className="flex items-center gap-2 py-4 text-sm text-neutral-500">
+                        <CircleNotch className="size-4 animate-spin" />
+                        {t('activeConnectors.loading')}
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <CopyableValue
+                                label={t('google.webhookUrlLabel')}
+                                value={buildGoogleWebhookUrl(googleKey)}
+                            />
+                            <CopyableValue label={t('google.keyLabel')} value={googleKey} />
+                        </div>
+                        <GoogleSetupSteps />
+                        <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-neutral-500">
+                                {t('google.statusHeading')}
+                            </p>
+                            <GoogleDeliveryStatus connector={connector} />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-xs font-medium text-neutral-500">
+                                {t('google.troubleshootHeading')}
+                            </p>
+                            <ul className="list-disc space-y-1 ps-5 text-caption text-neutral-600">
+                                <li>{t('google.troubleshoot404')}</li>
+                                <li>{t('google.troubleshoot401')}</li>
+                                <li>{t('google.troubleshootNoLeads')}</li>
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                <DialogFooter>
+                    <MyButton scale="medium" onClick={() => onOpenChange(false)}>
+                        {t('health.close')}
+                    </MyButton>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function AddGoogleForm({ onCreated }: { onCreated: (connectorId: string) => void }) {
     const { t } = useTranslation('settingsIntegration');
     const [audienceId, setAudienceId] = useState('');
-    // The server mints the key; it comes back once the connector exists.
-    const [createdKey, setCreatedKey] = useState<string | null>(null);
     const instituteId = getCurrentInstituteId() ?? '';
     const { data: audiences = [] } = useAudienceList(instituteId);
 
     const { mutate: save, isPending } = useMutation({
+        // No googleKey: the server generates it and the setup dialog shows it.
         mutationFn: () =>
             saveGoogleConnector({
                 vendor: 'GOOGLE_LEAD_ADS',
@@ -845,41 +983,11 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
             }),
         onSuccess: (result) => {
             toast.success(result.message);
-            setCreatedKey(result.google_key ?? null);
-            onSaved();
+            setAudienceId('');
+            onCreated(result.connector_id);
         },
         onError: () => toast.error(t('google.saveError')),
     });
-
-    if (createdKey) {
-        return (
-            <div className="space-y-3 rounded-lg border bg-white p-4">
-                <p className="text-sm font-medium text-neutral-800">{t('google.setupTitle')}</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <CopyableValue
-                        label={t('google.webhookUrlLabel')}
-                        value={buildGoogleWebhookUrl(createdKey)}
-                    />
-                    <CopyableValue label={t('google.keyLabel')} value={createdKey} />
-                </div>
-                <ol className="list-decimal space-y-1 ps-5 text-xs text-neutral-600">
-                    <li>{t('google.setupStep1')}</li>
-                    <li>{t('google.setupStep2')}</li>
-                    <li>{t('google.setupStep3')}</li>
-                </ol>
-                <MyButton
-                    buttonType="secondary"
-                    scale="small"
-                    onClick={() => {
-                        setCreatedKey(null);
-                        setAudienceId('');
-                    }}
-                >
-                    {t('google.done')}
-                </MyButton>
-            </div>
-        );
-    }
 
     return (
         <div className="space-y-3 rounded-lg border bg-white p-4">
@@ -892,7 +1000,16 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                     audiencePlaceholder={t('google.selectAudiencePlaceholder')}
                 />
             </div>
-            <p className="text-xs text-neutral-500">{t('google.createHint')}</p>
+            <div className="rounded-md bg-neutral-50 p-3">
+                <p className="mb-1.5 text-xs font-medium text-neutral-600">
+                    {t('google.howItWorksTitle')}
+                </p>
+                <ol className="list-decimal space-y-1 ps-5 text-xs text-neutral-600">
+                    <li>{t('google.howItWorks1')}</li>
+                    <li>{t('google.howItWorks2')}</li>
+                    <li>{t('google.howItWorks3')}</li>
+                </ol>
+            </div>
             <MyButton
                 buttonType="primary"
                 scale="small"
@@ -1371,6 +1488,9 @@ export default function IntegrationSettings() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [oauthError, sessionKeyFromUrl]);
 
+    // Google connector whose Setup & status dialog is open (also opened right after create).
+    const [googleSetupId, setGoogleSetupId] = useState<string | null>(null);
+
     // Fetch existing connectors
     const {
         data: connectors = [],
@@ -1381,7 +1501,11 @@ export default function IntegrationSettings() {
         queryFn: () => listConnectors(instituteId),
         enabled: !!instituteId,
         retry: false,
+        // While the Google setup dialog is open, poll so "Send test data" shows up live.
+        refetchInterval: googleSetupId ? 5000 : false,
     });
+    const googleSetupConnector =
+        (Array.isArray(connectors) ? connectors : []).find((c) => c.id === googleSetupId) ?? null;
 
     const { mutate: deleteConnector } = useMutation({
         mutationFn: deactivateConnector,
@@ -1508,6 +1632,7 @@ export default function IntegrationSettings() {
                             onTest={(id) => testConnector(id)}
                             onResubscribe={(id) => resubscribe(id)}
                             onSyncNow={(id) => syncNow(id)}
+                            onGoogleSetup={(id) => setGoogleSetupId(id)}
                             testingId={testingId}
                             syncingId={syncingId}
                         />
@@ -1553,7 +1678,15 @@ export default function IntegrationSettings() {
                             onSaved={handleSaved}
                         />
                     )}
-                    {showAddGoogle && <AddGoogleForm onSaved={handleSaved} />}
+                    {showAddGoogle && (
+                        <AddGoogleForm
+                            onCreated={(connectorId) => {
+                                handleSaved();
+                                setShowAddGoogle(false);
+                                setGoogleSetupId(connectorId);
+                            }}
+                        />
+                    )}
                 </CardContent>
             </Card>
 
@@ -1574,6 +1707,19 @@ export default function IntegrationSettings() {
                     })
                 }
                 isSaving={isSavingEdits}
+            />
+
+            <GoogleSetupDialog
+                connector={googleSetupConnector}
+                audienceName={
+                    googleSetupConnector
+                        ? audiences.find((a) => a.id === googleSetupConnector.audienceId)?.name
+                        : undefined
+                }
+                open={!!googleSetupId}
+                onOpenChange={(o) => {
+                    if (!o) setGoogleSetupId(null);
+                }}
             />
 
             <ConnectorHealthDialog

@@ -38,7 +38,8 @@
         "neverConnected": null,
         "copyKey": "Google की कॉपी करें",
         "urlLabel": "URL",
-        "keyLabel": "की"
+        "keyLabel": "की",
+        "googleSetup": "सेटअप और स्टेटस"
     },
     "vendor": {
         "meta": "Meta",
@@ -91,13 +92,26 @@
         "saveError": "Google कनेक्टर सहेजने में विफल",
         "saving": "बनाया जा रहा है...",
         "save": "कनेक्टर बनाएँ",
-        "createHint": "चुनें कि ये लीड किस ऑडियंस में जाएँ। एक सुरक्षित वेबहुक URL और की आपके लिए बनाई जाएगी।",
-        "setupTitle": "कनेक्टर बन गया। Google Ads में सेटअप पूरा करें",
         "webhookUrlLabel": "वेबहुक URL",
-        "setupStep1": "Google Ads में लीड फ़ॉर्म खोलें और लीड डिलीवरी में \"Webhook integration\" ढूँढें।",
-        "setupStep2": "वेबहुक URL और की को उनके फ़ील्ड में पेस्ट करें।",
-        "setupStep3": "\"Send test data\" पर क्लिक करें। Google को सफलता दिखानी चाहिए; टेस्ट लीड असली लीड के रूप में सेव नहीं होतीं।",
-        "done": "हो गया"
+        "howItWorksTitle": "यह कैसे काम करता है",
+        "howItWorks1": "चुनें कि ये लीड किस ऑडियंस में जाएँ और कनेक्टर बनाएँ।",
+        "howItWorks2": "हमारे बनाए वेबहुक URL और की को अपने Google Ads लीड फ़ॉर्म में पेस्ट करें।",
+        "howItWorks3": "Google Ads में \"Send test data\" पर क्लिक करें। डेटा पहुँचते ही यह पेज पुष्टि करेगा।",
+        "dialogTitle": "Google Ads लीड फ़ॉर्म सेटअप",
+        "dialogDescription": "इस कनेक्टर की लीड {{audience}} में जाती हैं।",
+        "dialogDescriptionNoAudience": "ये दोनों वैल्यू अपने Google Ads लीड फ़ॉर्म में पेस्ट करें।",
+        "setupStep1": "Google Ads में वह लीड फ़ॉर्म खोलें जिसे जोड़ना है (Assets में) और उसे एडिट करें।",
+        "setupStep2": "लीड डिलीवरी सेक्शन में \"Webhook integration\" चुनें। पुराने अकाउंट में यह \"Export leads\" → \"Other data integration options\" में होता है।",
+        "setupStep3": "ऊपर दिए Webhook URL और Key को उनके फ़ील्ड में पेस्ट करें। दोनों बिल्कुल मेल खाने चाहिए।",
+        "setupStep4": "\"Send test data\" पर क्लिक करें। Google को सफलता दिखानी चाहिए, और नीचे का स्टेटस कुछ सेकंड में अपडेट होगा।",
+        "setupStep5": "लीड फ़ॉर्म सेव करें। असली लीड ऊपर दी गई ऑडियंस में अपने कैंपेन ID के साथ आएँगी।",
+        "statusHeading": "डिलीवरी स्टेटस",
+        "statusWaiting": "Google से अभी तक कुछ नहीं मिला। अपने Google Ads लीड फ़ॉर्म से टेस्ट डेटा भेजें; यह अपने आप अपडेट होगा।",
+        "statusReceived": "Google इस कनेक्टर तक {{time}} पर पहुँचा। सेटअप काम कर रहा है।",
+        "troubleshootHeading": "अगर Google का टेस्ट फ़ेल हो",
+        "troubleshoot404": "\"Not found\" (404): वेबहुक URL अधूरा कॉपी हुआ है, या यह कनेक्टर बंद कर दिया गया है। URL फिर से कॉपी करें।",
+        "troubleshoot401": "\"Unauthorized\" (401): Google Ads में डाली गई Key मेल नहीं खाती। की फिर से कॉपी करें; इसमें छोटे-बड़े अक्षर मायने रखते हैं।",
+        "troubleshootNoLeads": "टेस्ट डेटा कभी लीड के रूप में सेव नहीं होता। असली लीड तब आती हैं जब फ़ॉर्म किसी चालू कैंपेन पर चलता है।"
     },
     "meta": {
         "sessionExpiredReconnect": "आपका Meta सेशन समाप्त हो गया है। कृपया Meta को फिर से कनेक्ट करें।",

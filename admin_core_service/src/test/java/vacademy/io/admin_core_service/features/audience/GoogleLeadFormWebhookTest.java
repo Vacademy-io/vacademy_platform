@@ -154,6 +154,7 @@ class GoogleLeadFormWebhookTest {
         void unknownKeyIs404AndNotRetried() {
             assertEquals(404, service.handleGoogleWebhook("nope", payload("nope", false)).status());
             verifyNoInteractions(audienceService);
+            verify(repo, never()).updateDeliveryStatus(any(), any(), any(), any());
         }
 
         @Test
@@ -167,12 +168,23 @@ class GoogleLeadFormWebhookTest {
             assertEquals(401, service.handleGoogleWebhook(KEY, payload("someone-elses-key", false)).status());
             assertEquals(401, service.handleGoogleWebhook(KEY, payload(null, false)).status());
             verifyNoInteractions(audienceService);
+            // The admin's Setup & status view says why Google's test failed.
+            verify(repo, times(2)).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTION_REQUIRED"),
+                    contains("Key on the Google Ads lead form does not match"));
         }
 
         @Test
         void testLeadIsAcknowledgedButNotSaved() {
             assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, true)).status());
             verifyNoInteractions(audienceService);
+            verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTIVE"), isNull());
+        }
+
+        @Test
+        void aFailedStatusWriteDoesNotChangeTheAnswer() {
+            doThrow(new RuntimeException("db down")).when(repo).updateDeliveryStatus(any(), any(), any(), any());
+
+            assertEquals(200, service.handleGoogleWebhook(KEY, payload(KEY, true)).status());
         }
 
         @Test
@@ -188,6 +200,7 @@ class GoogleLeadFormWebhookTest {
             assertEquals("21345678901", metadata.get("utm_campaign"));
             assertEquals("lead-abc", metadata.get("platform_lead_id"));
             assertEquals("21345678901", data.getValue().getFormFields().get("campaign_id"));
+            verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTIVE"), isNull());
         }
 
         @Test
@@ -196,6 +209,9 @@ class GoogleLeadFormWebhookTest {
                     .thenThrow(new VacademyException("Audience campaign is not active"));
 
             assertEquals(500, service.handleGoogleWebhook(KEY, payload(KEY, false)).status());
+            verify(repo).updateDeliveryStatus(eq("conn-1"), any(), eq("ACTION_REQUIRED"),
+                    eq("Google delivered a lead but it could not be saved: Audience campaign is not active. "
+                            + "Google will retry."));
         }
     }
 

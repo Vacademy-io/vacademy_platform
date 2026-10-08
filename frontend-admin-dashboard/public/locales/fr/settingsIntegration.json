@@ -38,7 +38,8 @@
         "neverConnected": null,
         "copyKey": "Copier la clé Google",
         "urlLabel": "URL",
-        "keyLabel": "Clé"
+        "keyLabel": "Clé",
+        "googleSetup": "Configuration et statut"
     },
     "vendor": {
         "meta": "Meta",
@@ -91,13 +92,26 @@
         "saveError": "Échec de l'enregistrement du connecteur Google",
         "saving": "Création...",
         "save": "Créer le connecteur",
-        "createHint": "Choisissez l'audience qui recevra ces prospects. Une URL de webhook et une clé sécurisées sont générées pour vous.",
-        "setupTitle": "Connecteur créé. Terminez la configuration dans Google Ads",
         "webhookUrlLabel": "URL du webhook",
-        "setupStep1": "Dans Google Ads, ouvrez le formulaire de prospects et trouvez l'intégration webhook dans les options de livraison des prospects.",
-        "setupStep2": "Collez l'URL du webhook et la clé dans leurs champs.",
-        "setupStep3": "Cliquez sur « Envoyer des données de test ». Google doit indiquer un succès ; les prospects de test ne sont pas enregistrés comme de vrais prospects.",
-        "done": "Terminé"
+        "howItWorksTitle": "Fonctionnement",
+        "howItWorks1": "Choisissez l'audience qui recevra ces prospects et créez le connecteur.",
+        "howItWorks2": "Collez l'URL du webhook et la clé générées dans votre formulaire de prospects Google Ads.",
+        "howItWorks3": "Cliquez sur « Envoyer des données de test » dans Google Ads. Cette page confirme leur réception.",
+        "dialogTitle": "Configuration du formulaire Google Ads",
+        "dialogDescription": "Les prospects de ce connecteur sont envoyés vers {{audience}}.",
+        "dialogDescriptionNoAudience": "Collez ces deux valeurs dans votre formulaire de prospects Google Ads.",
+        "setupStep1": "Dans Google Ads, ouvrez le formulaire de prospects à connecter (dans Éléments) et modifiez-le.",
+        "setupStep2": "Dans la section de livraison des prospects, choisissez l'intégration webhook. Sur les anciens comptes, elle se trouve sous l'export des prospects, dans les autres options d'intégration de données.",
+        "setupStep3": "Collez l'URL du webhook et la clé ci-dessus dans leurs champs. Les deux doivent correspondre exactement.",
+        "setupStep4": "Cliquez sur « Envoyer des données de test ». Google doit indiquer un succès, et le statut ci-dessous se met à jour en quelques secondes.",
+        "setupStep5": "Enregistrez le formulaire. Les vrais prospects arrivent ensuite dans l'audience ci-dessus, avec l'ID de leur campagne.",
+        "statusHeading": "Statut de livraison",
+        "statusWaiting": "Rien reçu de Google pour l'instant. Envoyez des données de test depuis votre formulaire Google Ads ; ce statut se met à jour automatiquement.",
+        "statusReceived": "Google a atteint ce connecteur le {{time}}. La configuration fonctionne.",
+        "troubleshootHeading": "Si le test de Google échoue",
+        "troubleshoot404": "« Not found » (404) : l'URL du webhook est incomplète, ou ce connecteur a été désactivé. Copiez à nouveau l'URL.",
+        "troubleshoot401": "« Unauthorized » (401) : la clé saisie dans Google Ads ne correspond pas. Copiez à nouveau la clé ; elle respecte la casse.",
+        "troubleshootNoLeads": "Les données de test ne sont jamais enregistrées comme prospects. Les vrais prospects arrivent quand le formulaire tourne sur une campagne active."
     },
     "meta": {
         "sessionExpiredReconnect": "Votre session Meta a expiré. Veuillez reconnecter Meta.",

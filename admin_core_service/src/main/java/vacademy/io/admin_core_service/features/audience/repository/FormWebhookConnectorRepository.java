@@ -84,6 +84,22 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
             @org.springframework.data.repository.query.Param("leadId") String leadId);
 
     /**
+     * Record the outcome of the latest Google webhook delivery — the "did my test data
+     * arrive?" signal the admin's setup dialog shows. Targeted update so it can't clobber
+     * a concurrent full-row save of the connector's other columns.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(
+        "UPDATE FormWebhookConnector c SET c.lastCheckedAt = :ts, c.connectionStatus = :status, " +
+        "c.statusDetail = :detail WHERE c.id = :id")
+    void updateDeliveryStatus(
+            @org.springframework.data.repository.query.Param("id") String id,
+            @org.springframework.data.repository.query.Param("ts") java.time.LocalDateTime ts,
+            @org.springframework.data.repository.query.Param("status") String status,
+            @org.springframework.data.repository.query.Param("detail") String detail);
+
+    /**
      * Find all active connectors for a given vendor where tokens are expiring soon.
      * Used by MetaTokenRefreshJob to proactively refresh tokens.
      */

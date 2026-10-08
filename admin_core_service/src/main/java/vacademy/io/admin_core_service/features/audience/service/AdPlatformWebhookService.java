@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.audience.strategy.MetaLeadAdsStra
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.logging.SentryLogger;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -179,6 +180,9 @@ public class AdPlatformWebhookService {
 
         if (!googleLeadFormStrategy.googleKeyMatches(root, connector.getVendorId())) {
             log.warn("google_key mismatch for connector {}", connector.getId());
+            recordGoogleDelivery(connector, "ACTION_REQUIRED",
+                    "Google reached this connector, but the Key on the Google Ads lead form does not match. "
+                            + "Copy the key again from Setup & status.");
             return new GoogleWebhookResult(401,
                     "The Key set on the Google Ads lead form does not match this connector's key.");
         }
@@ -188,6 +192,7 @@ public class AdPlatformWebhookService {
             // a test lead would otherwise become a real user, enter the workflows and
             // email the admins.
             log.info("Google test lead received for connector {} — acknowledged, not saved", connector.getId());
+            recordGoogleDelivery(connector, "ACTIVE", null);
             return GoogleWebhookResult.ok();
         }
 
@@ -201,8 +206,16 @@ public class AdPlatformWebhookService {
             for (NormalizedLeadData lead : leads) {
                 submitNormalizedLead(lead, connector);
             }
+            recordGoogleDelivery(connector, "ACTIVE", null);
             return GoogleWebhookResult.ok();
         } catch (Exception e) {
+            // Our own validation messages ("Audience campaign is not active") tell the admin
+            // what to fix; anything else is ours to fix, and Sentry already has it.
+            String reason = e instanceof VacademyException && StringUtils.hasText(e.getMessage())
+                    ? e.getMessage().replaceAll("[.\\s]+$", "")
+                    : "an unexpected error; our team has been alerted";
+            recordGoogleDelivery(connector, "ACTION_REQUIRED",
+                    "Google delivered a lead but it could not be saved: " + reason + ". Google will retry.");
             log.error("Failed to ingest Google lead {} for connector {}", leadId, connector.getId(), e);
             Map<String, String> tags = new LinkedHashMap<>();
             tags.put("feature", "ad_platform_connector");
@@ -212,6 +225,20 @@ public class AdPlatformWebhookService {
             if (leadId != null) tags.put("platform_lead_id", leadId);
             SentryLogger.logError(e, "Google lead ingest failed — Google will retry", tags);
             return new GoogleWebhookResult(500, "Lead could not be saved; please retry");
+        }
+    }
+
+    /**
+     * Stamp the latest delivery outcome on the connector for the admin's Setup & status
+     * view (and the connector table's Action-needed badge). Best effort: a failed write
+     * must never change what Google is told.
+     */
+    private void recordGoogleDelivery(FormWebhookConnector connector, String status, String detail) {
+        try {
+            connectorRepository.updateDeliveryStatus(connector.getId(), LocalDateTime.now(), status, detail);
+        } catch (Exception e) {
+            log.warn("Could not record Google delivery status for connector {}: {}",
+                    connector.getId(), e.getMessage());
         }
     }
 

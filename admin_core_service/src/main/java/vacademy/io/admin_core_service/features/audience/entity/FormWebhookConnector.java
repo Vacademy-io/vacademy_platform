@@ -146,7 +146,9 @@ public class FormWebhookConnector {
     @Column(name = "status_detail", columnDefinition = "TEXT")
     private String statusDetail;
 
-    /** When the connector health check last ran. */
+    /** When the connector health check last ran. For Google connectors: when Google last
+     *  reached the webhook with a known key (test data or a lead); statusDetail then holds
+     *  why that delivery failed, or null if it was accepted. */
     @Column(name = "last_checked_at")
     private LocalDateTime lastCheckedAt;
 

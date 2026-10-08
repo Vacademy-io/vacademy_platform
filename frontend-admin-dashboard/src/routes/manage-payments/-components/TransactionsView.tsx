@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { resolveInstituteCurrency } from '@/utils/institute-currency';
 import type { SelectOption } from '@/components/design-system/SelectChips';
 import type {
     PaymentLogEntry,
@@ -293,6 +294,21 @@ export function TransactionsView() {
         retry: false,
     });
 
+    // The server's currency is the most common one on live plans, and free plans carry a default
+    // INR — a UK institute with only free plans read ₹0. With every figure at zero no money backs
+    // that pick, so the institute's own currency is shown, as on the home Dashboard. Once any
+    // money exists the server's currency stands: an Indian institute charging in USD must read $.
+    const instituteCurrency = resolveInstituteCurrency(instituteDetails);
+    const billingHasMoney =
+        !!billingSummary &&
+        [
+            billingSummary.collected,
+            billingSummary.due,
+            billingSummary.upcoming,
+            billingSummary.outstanding,
+            billingSummary.upcoming_all,
+        ].some(Boolean);
+
     // No client-side fallback for the balance cards: pricing the rows on screen is exactly the
     // model that reported abandoned checkouts and coupon discounts as debt. Without the server
     // figures Due and Upcoming show a dash.
@@ -315,10 +331,13 @@ export function TransactionsView() {
                       usesInstallments: billingSummary.uses_installments,
                       instalmentPlanCount: billingSummary.instalment_plan_count,
                       livePlanCount: billingSummary.live_plan_count,
-                      currency: billingSummary.currency || '',
+                      currency:
+                          (!billingHasMoney && billingSummary.currency && instituteCurrency) ||
+                          billingSummary.currency ||
+                          '',
                   }
                 : null,
-        [billingSummary]
+        [billingSummary, billingHasMoney, instituteCurrency]
     );
 
     // Which cards — and their tabs — the admin chose to show. Defaults follow the fee model.

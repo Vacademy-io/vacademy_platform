@@ -141,6 +141,10 @@ const CONTENT_CARD_SHELL =
  * A locked item gets the padlock centred ON the artwork behind a scrim, not a
  * small glyph tucked under the title: on a card whose image is the whole
  * visual, that is the only place the lock actually reads as "this is shut".
+ *
+ * No crossOrigin on these <img>s: nothing reads their pixels, and a CORS
+ * request fails outright on a CDN copy cached without Access-Control-Allow-Origin
+ * — the card showed a broken image while the admin's plain <img> loaded fine.
  */
 const ContentCardThumb = ({
   url,
@@ -162,7 +166,6 @@ const ContentCardThumb = ({
           "size-full",
           fit === "contain" ? "object-contain" : "object-cover",
         )}
-        crossOrigin="anonymous"
         referrerPolicy="no-referrer"
         loading="eager"
       />
@@ -1695,7 +1698,6 @@ export const CourseStructureDetails = ({
                           src={thumbUrlById[`subject:${subject.id}`]}
                           alt={toTitleCase(subject.subject_name)}
                           className="w-6 h-6 rounded-sm object-cover border border-border"
-                          crossOrigin="anonymous"
                           referrerPolicy="no-referrer"
                           loading="eager"
                         />
@@ -1799,7 +1801,6 @@ export const CourseStructureDetails = ({
                                       }
                                       alt={mod.module.module_name}
                                       className="w-5 h-5 rounded-sm object-cover border border-border"
-                                      crossOrigin="anonymous"
                                       referrerPolicy="no-referrer"
                                       loading="eager"
                                     />
@@ -1913,7 +1914,6 @@ export const CourseStructureDetails = ({
                                                   ch.chapter_name,
                                                 )}
                                                 className="w-4 h-4 rounded-sm object-cover border border-border"
-                                                crossOrigin="anonymous"
                                                 referrerPolicy="no-referrer"
                                                 loading="eager"
                                               />

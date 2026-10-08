@@ -324,7 +324,10 @@ export const useVideoSync = () => {
           source_id: '',
           source_type: activity.source,
           user_id: userId,
-          slide_id: activeItem?.id || "",
+          // The slide this activity was recorded on — must match the slideId
+          // query param below. activeItem may already be a different slide
+          // when a delayed tick flushes an older activity.
+          slide_id: activity.id || activeItem?.id || "",
           start_time_in_millis: activity.start_time,
           end_time_in_millis: activity.end_time,
           percentage_watched: parseFloat(activity.percentage_watched),

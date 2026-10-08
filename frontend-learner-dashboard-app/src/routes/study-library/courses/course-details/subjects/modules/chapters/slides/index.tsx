@@ -770,7 +770,13 @@ function Slides() {
       // Default: first slide. Reached on initial load / chapter change, or when
       // the previously active slide is no longer in the list. The preserve-
       // current-slide guard above already short-circuits plain cache refreshes.
-      setActiveItem(slidesWithFeedback[0] ?? null);
+      const firstSlide = slidesWithFeedback[0] ?? null;
+      setActiveItem(firstSlide);
+      // Next/Prev unit navigate with slideId "" — write the resolved slide back
+      // so URL readers (tab-close video flush, quiz/assignment submit) have it.
+      if (!slideId && firstSlide && firstSlide.id !== "feedback-slide") {
+        handleNavigateToSlide(firstSlide.id);
+      }
     }
   }, [
     slides,
@@ -790,6 +796,7 @@ function Slides() {
     dripConditionFor,
     dripAnchors,
     dripNow,
+    handleNavigateToSlide,
   ]);
 
   const [moduleName, setModuleName] = useState("");

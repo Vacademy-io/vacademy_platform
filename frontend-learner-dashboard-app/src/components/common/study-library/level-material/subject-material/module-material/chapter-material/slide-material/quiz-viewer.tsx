@@ -23,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Slide } from "@/hooks/study-library/use-slides";
 import { useSelectedSessionStore } from "@/stores/study-library/selected-session-store";
 import { useQuizActiveStore } from "@/stores/study-library/quiz-active-store";
+import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { refreshProgressAfterSubmit as invalidateProgressCaches } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 
 interface Option {
@@ -222,11 +223,19 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     setQuizActive(true);
     return () => setQuizActive(false);
   }, [setQuizActive]);
+  // The quiz being rendered is the store's active slide. The URL slideId is
+  // empty after Next/Prev unit ("default to first slide") and stale after
+  // in-chapter Prev/Next, which move the store without touching the URL.
+  const activeSlideId = useContentStore((state) => state.activeItem?.id);
   const currentSlideIdForAttempts = useMemo(() => {
-    return new URLSearchParams(window.location.search).get("slideId") || undefined;
+    return (
+      activeSlideId ||
+      new URLSearchParams(window.location.search).get("slideId") ||
+      undefined
+    );
   // Re-compute when questions change (indicates slide navigation)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questions]);
+  }, [questions, activeSlideId]);
   const attemptLogsQuery = useGetQuizSlideActivityLogs(currentUserId, currentSlideIdForAttempts);
 
   // Attempts already consumed (server-recorded). `reAttemptCount` is the TOTAL
@@ -390,8 +399,14 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     // Use sessionId only if it's explicitly provided and non-empty
     const packageSessionId = (sessionId && sessionId.trim()) || courseId || sessionFromStore;
     
+    // Prefer the slide actually on screen over the URL (see activeSlideId).
+    const activeId = useContentStore.getState().activeItem?.id;
+
     return {
-      slideId: urlParams.get("slideId") || "",
+      slideId:
+        (activeId && activeId !== "feedback-slide" ? activeId : "") ||
+        urlParams.get("slideId") ||
+        "",
       chapterId: urlParams.get("chapterId") || "",
       moduleId: urlParams.get("moduleId") || "",
       subjectId: urlParams.get("subjectId") || "",

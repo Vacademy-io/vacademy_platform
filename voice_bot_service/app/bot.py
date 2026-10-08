@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional
 from pipecat.frames.frames import (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame, 
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    CancelFrame,
     EndFrame,
     Frame,
     InterimTranscriptionFrame,
@@ -81,6 +82,7 @@ from pipecat.turns.user_turn_strategies import (
 from . import admin_core
 from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         apply_decision, stall_recovery_still_needed, unplayed_confirmed,
+                        note_reply_cancelled, reply_unheard,
                         NONE, CANCEL_STARVED, REISSUE_STOP,
                         CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP,
                         LLM_BRIDGE,
@@ -3172,6 +3174,9 @@ class RunGuard(FrameProcessor):
         self._reply_unheard = reply_unheard or (lambda since: False)
         self._runs_noted = runs_noted or (lambda: None)
         self._pushed_t = 0.0           # when the last run went to the LLM (0 = none, or flushed)
+        # Caller words in the whole context when that run went: a newer run
+        # supersedes it only if the caller has said something since.
+        self._pushed_words = 0
         # The bot's OWN runs (single-flight step 5): cue text → on_drop. A run
         # whose last user message is a registered cue is the bot's; any caller
         # words after the cue make it the caller's turn instead.
@@ -3216,8 +3221,30 @@ class RunGuard(FrameProcessor):
     def allow_rerun(self):
         """The last run FAILED at the vendor (call f58ca825): the same context
         must be allowed to run again on the fallback, which the unchanged-
-        context block would otherwise refuse."""
+        context block would otherwise refuse. The failed run is gone, so its
+        re-run supersedes nothing: read as "a newer run over an unheard reply"
+        it pushed a supersede that cancelled nothing in the LLM but flushed the
+        "Just a second." bridge queued for the stall (review 2026-10-08,
+        timing sim vertex_stall_failover_slow_tts: 4.55 s → 6.2 s of silence)."""
         self._last_allowed_fp = None
+        self._pushed_t = 0.0
+
+    @staticmethod
+    def _all_caller_words(msgs) -> int:
+        """Caller words in every user message of the context, steering cues
+        excluded — grows only when the caller says something."""
+        n = 0
+        for msg in msgs or []:
+            role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
+            if role != "user":
+                continue
+            content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+            if isinstance(content, list):
+                content = " ".join(str(part.get("text", "")) if isinstance(part, dict) else str(part)
+                                   for part in content)
+            text = re.sub(r"\[[^\]]*\]", " ", str(content or ""))
+            n += len([w for w in re.split(r"[\s,.!?।]+", text) if w])
+        return n
 
     @staticmethod
     def _last_user_text(msgs) -> str:
@@ -3338,16 +3365,25 @@ class RunGuard(FrameProcessor):
     async def _let_through(self, frame: Frame, direction: FrameDirection):
         """Every run that reaches the LLM goes through here (pass or release)."""
         self._pushed_t = time.time()
+        try:
+            self._pushed_words = self._all_caller_words(self._context.get_messages())
+        except Exception:
+            self._pushed_words = 0
         self._note_run()
         await self.push_frame(frame, direction)
 
-    async def _supersede_unheard(self) -> bool:
+    async def _supersede_unheard(self, msgs=None) -> bool:
         """A newer caller run has arrived. If the run before it went to the LLM
         and its reply has not made a sound yet, cancel it: the newer context
         holds every word it answered, plus the rest. Pushed DOWNSTREAM only —
-        upstream, the user aggregator would drop the caller's queued finals."""
+        upstream, the user aggregator would drop the caller's queued finals.
+        Only for a run that carries caller words the earlier one did not — a
+        re-run of the same context (failover) or a cue on top of it is not the
+        caller going on."""
         since = self._pushed_t
         if not since or not self._supersede():
+            return False
+        if msgs is not None and self._all_caller_words(msgs) <= self._pushed_words:
             return False
         try:
             unheard = self._reply_unheard(since)
@@ -3577,7 +3613,7 @@ class RunGuard(FrameProcessor):
                     # first (call 84e52d17: runs of 10 and 12 caller words
                     # 0.55 s apart, both replies played). Before this run is
                     # held or passed, so the cancel lands first.
-                    await self._supersede_unheard()
+                    await self._supersede_unheard(msgs)
                 if self._caller_forming():
                     # Their turn is still forming. Its own run arrives when it
                     # closes and supersedes this one (the _drop_held above), so
@@ -3695,6 +3731,18 @@ class SentinelGate(FrameProcessor):
         # One send per artefact per call. The model re-states its offer when the caller
         # says 'haan' twice, and the caller must not get the brochure twice for it.
         self._sends_fired: set = set()
+        # Sends of the CURRENT reply, held until its words start to play (the
+        # first bot audio) or the next reply begins, and dropped if RunGuard
+        # supersedes the reply before a sound of it — the newer reply decides,
+        # and a parent must not get a brochure the bot never offered aloud
+        # (review 2026-10-08). A cancel by anything else, or the call ending,
+        # fires them, as when they fired at token time. Not at the reply's own
+        # End: its orphan End reaches us BEFORE the supersede does.
+        self._pending_sends: list = []
+        # This reply asked for a human. outcome.transfer_requested is still set
+        # at once (BotStopped acts on it), but a superseded reply's request is
+        # taken back — like END, whose latch is per response.
+        self._transfer_this_response = False
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -3793,8 +3841,10 @@ class SentinelGate(FrameProcessor):
             # deliberately interrupted. 6-13% of generations die pre-playout.
             if isinstance(frame, SupersedeInterruptionFrame):
                 self._on_interrupted(superseded=True)   # replaced on purpose, not lost
+                self._revoke_superseded()
             else:
                 self._on_interrupted()
+                self._fire_pending_sends("the reply was cut")
             await self.push_frame(frame, direction)
             return
 
@@ -3815,6 +3865,10 @@ class SentinelGate(FrameProcessor):
             # was consumed upstream); swallowing this response's End instead
             # would corrupt the aggregator bracket the OTHER way.
             self._swallow_next_end = False
+            # The previous reply was not superseded (that comes BEFORE the
+            # newer reply's Start): its sends stand, played or not.
+            self._fire_pending_sends("a newer reply began")
+            self._transfer_this_response = False
             await self.push_frame(frame, direction)
             return
 
@@ -3831,6 +3885,7 @@ class SentinelGate(FrameProcessor):
                     self._buffer = _TOOL_CALL_RE.sub("", self._buffer)
             if TRANSFER_MARKER in self._buffer:
                 self._outcome.transfer_requested = True
+                self._transfer_this_response = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
             if END_MARKER in self._buffer:
                 # PER-RESPONSE latch. Promoted to outcome.end_requested only when
@@ -3862,6 +3917,7 @@ class SentinelGate(FrameProcessor):
                     # A max_tokens cut mid-"<<TRANSFER>>" is a request for a HUMAN —
                     # ending instead hung up on exactly the callers who asked for one.
                     self._outcome.transfer_requested = True
+                    self._transfer_this_response = True
                 elif self._buffer.startswith("<<"):
                     self._end_this_response = True
                 self._buffer = ""
@@ -3909,8 +3965,12 @@ class SentinelGate(FrameProcessor):
         if isinstance(frame, BotStartedSpeakingFrame):
             self._set_bot_speaking(True)
             self._on_activity(user=False)
+            self._fire_pending_sends("its words are playing")
             await self.push_frame(frame, direction)
             return
+
+        if isinstance(frame, (EndFrame, CancelFrame)):
+            self._fire_pending_sends("the call is ending")
 
         if isinstance(frame, BotStoppedSpeakingFrame):
             self._set_bot_speaking(False)
@@ -3960,6 +4020,38 @@ class SentinelGate(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
+    def _revoke_superseded(self) -> None:
+        """RunGuard superseded the reply in progress before a sound of it played:
+        the newer reply answers the whole turn, and decides for itself whether
+        to transfer, send or end. Whatever this one asked for is taken back —
+        nothing it said was heard. A transfer already registered stays (the
+        handoff is under way), as does one asked for by an earlier reply."""
+        if self._pending_sends:
+            logger.info("sentinel: dropping send(s) %s of a superseded reply corr=%s",
+                        self._pending_sends, self._outcome.corr)
+            self._pending_sends = []
+        if (self._transfer_this_response and self._outcome.transfer_requested
+                and not self._outcome.transfer_registered):
+            logger.info("sentinel: transfer asked by a superseded reply — taken back corr=%s",
+                        self._outcome.corr)
+            self._outcome.transfer_requested = False
+        self._transfer_this_response = False
+        self._end_this_response = False
+
+    def _fire_pending_sends(self, why: str) -> None:
+        sends, self._pending_sends = self._pending_sends, []
+        for key in sends:
+            if key in self._sends_fired:
+                continue
+            self._sends_fired.add(key)
+            logger.info("sentinel: mid-call send %s (%s) corr=%s", key, why, self._outcome.corr)
+            try:
+                self._on_send(key)
+            except Exception:
+                # The voice path outranks the send, always.
+                logger.exception("sentinel: send hook failed for %s corr=%s",
+                                 key, self._outcome.corr)
+
     def _flush_utterance(self):
         # Transcript commits moved to PlayedTranscriptRecorder (playout-ordered,
         # played-text-only — deep-review A3). The utterance accumulator remains
@@ -3980,7 +4072,8 @@ class SentinelGate(FrameProcessor):
         self._outcome.transfer_registered = registered is not None
 
     def _extract_sends(self, buffer: str) -> str:
-        """Strip every COMPLETE send marker and fire it; leave a partial one in place.
+        """Strip every COMPLETE send marker and queue it (fired once the reply's
+        words play — _fire_pending_sends); leave a partial one in place.
 
         A partial marker stays in the buffer and _split_safe holds it back from the TTS,
         so a marker split across two token chunks is never spoken and never lost.
@@ -4002,18 +4095,12 @@ class SentinelGate(FrameProcessor):
             if not _valid_send_key(key):
                 logger.info("sentinel: ignoring malformed send marker %r corr=%s",
                             key, self._outcome.corr)
-            elif key in self._sends_fired:
+            elif key in self._sends_fired or key in self._pending_sends:
                 logger.info("sentinel: send %s already fired this call corr=%s",
                             key, self._outcome.corr)
             else:
-                self._sends_fired.add(key)
-                logger.info("sentinel: mid-call send %s corr=%s", key, self._outcome.corr)
-                try:
-                    self._on_send(key)
-                except Exception:
-                    # The voice path outranks the send, always.
-                    logger.exception("sentinel: send hook failed for %s corr=%s",
-                                     key, self._outcome.corr)
+                # Fired when this reply's words start to play (_fire_pending_sends).
+                self._pending_sends.append(key)
         return "".join(out)
 
     @staticmethod
@@ -5906,12 +5993,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         line by the floor) — RunGuard may supersede it with the caller's next
         piece. Any bot audio since `since` (that reply's, a filler's) or audio
         playing now means the caller is hearing us: that is a barge-in, the
-        turn-gate's business, as before. A reply already cut needs nothing."""
-        if flags["bot_speaking"] or flags["bot_started_t"] >= since:
-            return False
-        if flags["reply_cancelled_t"] >= since:
-            return False
-        return _reply_in_flight()
+        turn-gate's business, as before. A reply already cut needs nothing —
+        but a supersede is not a cut of the run that replaced it, or a third
+        piece could not supersede the second (callstate.reply_unheard)."""
+        return reply_unheard(flags, since, _reply_in_flight)
 
     def _caller_forming() -> bool:
         """The caller's words are in the user aggregator, not yet pushed as a
@@ -6234,7 +6319,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # later silence was tagged awaiting_playout_<stale seconds> — 401 of
         # 549 s of "dead air" across the 8 worst calls of 2026-09-09..12, while
         # the recordings held no such gaps.
-        flags["reply_cancelled_t"] = time.time()
+        note_reply_cancelled(flags, time.time(), superseded=superseded)
     sentinel.set_on_interrupted(_note_killed_before_playout)
 
     def _defer_stop():

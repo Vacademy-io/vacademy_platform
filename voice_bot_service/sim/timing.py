@@ -141,6 +141,12 @@ class Scenario:
     # Settings overridden for this scenario only (restored after it), e.g. a
     # kill switch: {"run_forming_hold": False}.
     settings: Dict[str, Any] = field(default_factory=dict)
+    # Caller runs FORCED at fixed times — (absolute seconds, user text), each
+    # pushed from the input transport as LLMMessagesAppendFrame(run_llm=True),
+    # i.e. a caller turn reaching RunGuard exactly then. For races the audio
+    # path stages only on some machines (review 2026-10-08: on the CI runner
+    # Smart Turn never cut the first piece off, and the race did not happen).
+    inject: List[Any] = field(default_factory=list)
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -162,6 +168,7 @@ class Line:
         self.say_chunks: Dict[int, int] = {}
         self.say_finals: Dict[int, List[str]] = {}
         self.stt_switches: List[tuple] = []    # (t, service) when the STT switcher moved
+        self.injected: List[tuple] = []        # (t, text) of Scenario.inject runs
 
     def now(self) -> float:
         return time.perf_counter() - self.t0
@@ -640,6 +647,17 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
         """Streams the line in 20 ms frames of silence or fixture speech, in real
         time, and fires each Say when its trigger is met."""
         await transport.connected()
+        if scenario.inject:
+            from pipecat.frames.frames import LLMMessagesAppendFrame as _Append
+
+            async def _injector():
+                for at, text in scenario.inject:
+                    await asyncio.sleep(max(0.0, at - line.now()))
+                    line.injected.append((round(line.now(), 2), text))
+                    log("INJECTED caller run:", repr(text))
+                    await inp.push_frame(_Append(messages=[{"role": "user", "content": text}],
+                                                 run_llm=True), FrameDirection.DOWNSTREAM)
+            inp.create_task(_injector())
         frame_n = SR_LINE // 50
         silence = np.zeros(frame_n, dtype=np.int16).tobytes()
         speaking: Optional[Say] = None
@@ -851,6 +869,7 @@ async def _run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool,
         "unsaid_reverted": getattr(d, "unsaid_reverted", 0) or 0,
         "stt_stalls": getattr(d, "stt_stalls", 0) or 0,
         "runs_superseded": getattr(d, "runs_superseded", 0) or 0,
+        "injected": list(line.injected),
         "short_answer_forming_waits": getattr(d, "short_answer_forming_waits", 0) or 0,
         "stt_switches": list(line.stt_switches),
         "stt_vendor_finals": list(line.vendor_finals),
@@ -1352,9 +1371,73 @@ def chk_pieces_one_reply_superseded(res):
     check can see it): the stale run goes through, and the turn's own run must
     cancel it before a sound of it plays."""
     f = chk_pieces_one_reply(res)
-    if not res.get("runs_superseded"):
-        f.append("no run was superseded — the stale run was not the one cancelled")
+    stale = [g for g in res.get("llm_gens") or []
+             if (g.get("trigger") or "").strip(" .").casefold() == "yes"]
+    if not stale:
+        # The outcome is judged above; the race itself did not happen (the CI
+        # runner, 2026-10-08: Smart Turn kept "Yes." in the turn, one run).
+        f.append("SHAPE: no run went for the first piece alone — the race this scenario "
+                 "stages did not happen here (pieces_supersede_forced forces it)")
+    elif not res.get("runs_superseded"):
+        f.append("a run for the first piece alone went and was not superseded")
     return f
+
+
+# The same races FORCED: caller runs injected at RunGuard 0.3-0.4 s apart,
+# while the previous run is still composing (first token 0.8 s) — the shape of
+# live call 84e52d17 (runs of 10 and 12 caller words 0.55 s apart), on every
+# machine. Each newer run must cancel the one before it; only the reply to
+# all the pieces may reach the line.
+FORCED_CALLER = [Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6)]
+# Distinct words of their own: a reply that echoed the caller's would lose its
+# first sentence to the no-echo trimmer and hide from the check.
+FORCED_ONE = "Marigold classes start at nine every morning. Anything else?"
+FORCED_TWO = "Sunflower batches run on weekends at the studio. Could you tell me more?"
+FORCED_ALL = "Lotus is our evening programme for working parents. What time suits you for a demo?"
+
+
+def _forced_reply(last_user: str) -> str:
+    u = (last_user or "").casefold()
+    if "go ahead" in u:
+        return PITCH_Q
+    if "piece three" in u or "closes the whole turn" in u:
+        return FORCED_ALL
+    if "piece two" in u:
+        return FORCED_TWO
+    if "piece one" in u:
+        return FORCED_ONE
+    return "Understood. And how many students join each class?"
+
+
+def chk_forced_supersede(pieces: int):
+    def chk(res):
+        f = []
+        if len(res.get("injected") or []) != pieces:
+            return [f"injected {len(res.get('injected') or [])} runs (want {pieces})"]
+        t0 = res["injected"][0][0]
+        texts = " ".join(_assistant_texts(res)).casefold()
+        final = FORCED_ALL if pieces == 3 else FORCED_TWO
+        for stale in ([FORCED_ONE, FORCED_TWO] if pieces == 3 else [FORCED_ONE]):
+            if stale.split()[0].casefold() in texts:
+                f.append(f"a superseded reply reached the line: {stale[:32]!r}")
+        if final.split()[0].casefold() not in texts:
+            f.append(f"the reply to all {pieces} pieces never played")
+        gens = [g for g in res.get("llm_gens") or [] if g["requested"] >= t0 - 0.05]
+        live = [g for g in gens if g.get("cancelled") is None and g.get("errored") is None]
+        if len(live) != 1:
+            f.append(f"{len(live)} replies composed for the pieces (want 1): "
+                     + "; ".join(f"{g['requested']:.2f}s {g.get('trigger', '')[:28]!r}"
+                                 for g in live))
+        if res.get("runs_superseded") != pieces - 1:
+            f.append(f"runs superseded: {res.get('runs_superseded')} (want {pieces - 1})")
+        last = res["injected"][-1][0]
+        after = [a for a, _ in res["bot"] if a >= last]
+        if not after:
+            f.append("nothing played after the last piece")
+        elif after[0] - last > 2.5:
+            f.append(f"the reply started {after[0] - last:.2f}s after the last piece (bar 2.5)")
+        return f
+    return chk
 
 
 NV_HELD = "Got it, eighth class. And how were her marks last year?"
@@ -1693,7 +1776,7 @@ def chk_reply_plays_whole(expected: List[str], max_gap: float = 0.8,
     return chk
 
 
-def chk_vertex_stall_failover(res, bar: float = 7.0):
+def chk_vertex_stall_failover(res, bar: float = 7.0, bridge_bar: float = 5.0):
     """Call c05f6c83 and 12 more on 2026-10-01: no Vertex first token within
     3 s → a non-fatal ErrorFrame → the switcher moves to the fallback and
     run_bot re-runs the failed turn there. The turn gets ONE fallback reply,
@@ -1741,6 +1824,15 @@ def chk_vertex_stall_failover(res, bar: float = 7.0):
         f.append("the failed turn was never answered on the line")
     elif reply[0][0] - cend > bar:
         f.append(f"reply started {reply[0][0] - cend:.2f}s after the caller stopped (bar {bar})")
+    # The stall is covered: the bridge PLAYS, a few seconds after they stop.
+    # c73f60c10d's supersede flushed it from the TTS when the fallback re-ran
+    # the turn (slow TTS: 4.55 s → 6.2 s of silence, "dead air 5.7s"); the
+    # loose reply bar above could not see it.
+    if "Just a second" not in " ".join(_assistant_texts(res)):
+        f.append("the 'Just a second.' bridge never reached the caller")
+    first = [a for a, _ in res["bot"] if a >= cend]
+    if first and first[0] - cend > bridge_bar:
+        f.append(f"first sound {first[0] - cend:.2f}s after the caller stopped (bar {bridge_bar})")
     return f
 
 
@@ -2089,6 +2181,21 @@ SCENARIOS: List[Scenario] = [
              settings={"run_forming_hold": False},
              note="the same with the rest of the turn invisible to RunGuard (production's "
                   "race): the turn's run must supersede the stale one"),
+    Scenario("pieces_supersede_forced",
+             caller=FORCED_CALLER, replies=[], reply_for=_forced_reply, ttft=0.8,
+             inject=[(24.0, "I have piece one of my answer here."),
+                     (24.4, "And piece two follows now right away.")],
+             checks=chk_forced_supersede(2), max_secs=34,
+             note="84e52d17 forced: a second caller run 0.4 s after the first, which is "
+                  "still composing — it must be cancelled, one reply"),
+    Scenario("pieces_supersede_chain",
+             caller=FORCED_CALLER, replies=[], reply_for=_forced_reply, ttft=0.8,
+             inject=[(24.0, "I have piece one of my answer here."),
+                     (24.3, "And piece two follows now right away."),
+                     (24.6, "And then piece three closes the whole turn.")],
+             checks=chk_forced_supersede(3), max_secs=34,
+             note="review 2026-10-08: the supersede's own cancel stamp made the 2nd run look "
+                  "cut, so the 3rd could not supersede it — two replies"),
     Scenario("navana_held_reply_is_not_heard",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
                      Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,
@@ -2248,7 +2355,7 @@ SCENARIOS: List[Scenario] = [
              replies=[PITCH_Q],
              llm_stalls=[4.0], fallback_ttft=0.8, tts_ttfb=0.9,
              # +1 s: the bridge and the reply each pay the slower TTS.
-             checks=lambda r: chk_vertex_stall_failover(r, bar=8.0), max_secs=30,
+             checks=lambda r: chk_vertex_stall_failover(r, bar=8.0, bridge_bar=6.0), max_secs=30,
              note="the same with a 0.9 s TTS: the 'Just a second.' bridge is not yet HEARD when the "
                   "errored reply ends"),
     Scenario("busy_over_cached_opening_late",
@@ -2470,7 +2577,8 @@ async def main():
             res = await run_scenario(sc, sc_ctx, args.verbose, args.real_stt)
         except Exception as e:  # noqa: BLE001
             res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"], "turn_latency": []}
-        if res["fails"] and args.ci:
+        behaviour = [x for x in res["fails"] if not x.startswith("SHAPE:")]
+        if behaviour and args.ci:
             # ONE immediate re-run of a failed scenario. hindi_pieces_bare_acks
             # (2026-09-29) passed 11/11 alone and 3/5 in full runs, failing only
             # with zero LLM runs — the CI runner's timing, not the pipeline
@@ -2482,13 +2590,20 @@ async def main():
             except Exception as e:  # noqa: BLE001
                 res = {"key": k, "fails": [f"run error: {type(e).__name__}: {str(e)[:160]}"],
                        "turn_latency": []}
-            if not res["fails"]:
+            if not [x for x in res["fails"] if not x.startswith("SHAPE:")]:
                 res["flaky_first_run"] = first
                 print(f"FLAKY {k}: failed once, passed on re-run — first run: {first}")
                 print(f"::warning title=Timing simulator flaky::{k} failed once and passed "
                       f"on re-run: {'; '.join(first)[:300]}")
         results.append(res)
-        st = "FAIL" if res["fails"] else "ok  "
+        # SHAPE: the behaviour checks passed but the scenario did not stage the
+        # case it exists for on this machine — reported, never a pass, never a
+        # deploy blocker (its forced twin is).
+        bad = [x for x in res["fails"] if not x.startswith("SHAPE:")]
+        st = "FAIL" if bad else ("SHAPE" if res["fails"] else "ok  ")
+        if st == "SHAPE" and args.ci:
+            print(f"::warning title=Timing simulator scenario shape::{k}: "
+                  f"{'; '.join(res['fails'])[:300]}")
         print(f"{st} {k:28s} latency {res.get('turn_latency')} ended {res.get('ended_at')} nudges {res.get('nudges', '?')} llm_runs {res.get('llm_runs', '?')}")
         for f in res["fails"]:
             print(f"       ✗ {f}")
@@ -2512,7 +2627,8 @@ async def main():
     if alive_objs:
         for line in _holders(alive_objs[0], ignore={id(alive_objs)}):
             print(f"       ✗ held by: {line}")
-    if args.ci and (alive or any(r["fails"] for r in results)):
+    if args.ci and (alive or any(x for r in results for x in r["fails"]
+                                 if not x.startswith("SHAPE:"))):
         sys.exit(1)
 
 

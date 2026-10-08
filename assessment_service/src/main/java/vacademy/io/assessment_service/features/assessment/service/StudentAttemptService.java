@@ -163,6 +163,17 @@ public class StudentAttemptService {
             if (!AssessmentAttemptResultEnum.COMPLETED.name().equals(attempt.getResultStatus())) {
                 attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
             }
+            // Nothing automatic will ever release a manually-evaluated attempt
+            // (autoRelease is skipped below), so make the hold explicit. Left
+            // NULL, the attempt was invisible on the learner's Reports list —
+            // it filters on report_release_status IN ('RELEASED','PENDING') —
+            // and read "Not available" in the admin's Result Status column;
+            // the PDF-upload submit path already writes PENDING. Only fill the
+            // gap: a RELEASED attempt that comes back through here (a
+            // re-calculation) must stay released.
+            if (attempt.getReportReleaseStatus() == null) {
+                attempt.setReportReleaseStatus(ReleaseResultStatusEnum.PENDING.name());
+            }
         } else {
             attempt.setResultMarks(totalMarks);
             attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
@@ -252,7 +263,12 @@ public class StudentAttemptService {
                 return !alreadyReleased;
             } else if (ResultTypeEnum.AUTO_AFTER_ASSESSMENT_END.name().equals(resultType)) {
                 Date now = new Date();
-                if (assessment.getBoundEndTime() != null && now.after(assessment.getBoundEndTime())) {
+                // A mock or practice test never ends (its window closes in 9999),
+                // so "after the assessment ends" would mean never. Release on
+                // submission instead - the only reading that shows results at all.
+                boolean openEnded = OPEN_ENDED_PLAY_MODES.contains(
+                        assessment.getPlayMode() == null ? "" : assessment.getPlayMode().toUpperCase());
+                if (openEnded || (assessment.getBoundEndTime() != null && now.after(assessment.getBoundEndTime()))) {
                     attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
                     attempt.setReportLastReleaseDate(now);
                     return !alreadyReleased;
@@ -663,6 +679,21 @@ public class StudentAttemptService {
 
     public List<StudentAttempt> getAllLiveAttempt() {
         return studentAttemptRepository.findByStatusNotIn(List.of(AssessmentAttemptEnum.ENDED.name()));
+    }
+
+    /**
+     * Assessment types with no clock. A practice test is "no time limits" and a
+     * survey cannot even be given a duration; the learner app shows them no
+     * timer. Their attempts must never be ended for running out of time.
+     */
+    public static final List<String> UNTIMED_PLAY_MODES = List.of("PRACTICE", "SURVEY");
+
+    /** Always-available types: their live window is "now until 9999", so they never end. */
+    public static final List<String> OPEN_ENDED_PLAY_MODES = List.of("MOCK", "PRACTICE");
+
+    public Set<String> getOpenUntimedAttemptIds() {
+        return new HashSet<>(studentAttemptRepository.findOpenAttemptIdsByPlayModes(
+                List.of(AssessmentAttemptEnum.ENDED.name()), UNTIMED_PLAY_MODES));
     }
 
     public List<StudentAttempt> getAllAttemptsFromIds(List<String> attemptIds) {

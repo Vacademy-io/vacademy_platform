@@ -22,6 +22,67 @@ describe('splitDescriptionParts', () => {
         return (parts as string[]).filter((_, index) => index % 2 === 1);
     };
 
+    it('bolds the assessment name on assessment actions reported by assessment_service', () => {
+        expect(nameParts('created assessment Class X Science - Part Test 2')).toEqual([
+            'Class X Science - Part Test 2',
+        ]);
+        expect(nameParts('published assessment Weekly Quiz 4')).toEqual(['Weekly Quiz 4']);
+        expect(nameParts('deleted assessment Weekly Quiz 4')).toEqual(['Weekly Quiz 4']);
+        expect(nameParts('updated sections and questions of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+        expect(nameParts('edited 1 question of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+        expect(nameParts('edited 3 questions of assessment Weekly Quiz 4')).toEqual([
+            'Weekly Quiz 4',
+        ]);
+    });
+
+    it('bolds the plan name on payment and fee plan actions', () => {
+        expect(nameParts('created payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('updated payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('deleted payment plan Annual Membership')).toEqual(['Annual Membership']);
+        expect(nameParts('created fee plan Grade 10 Tuition 2026')).toEqual([
+            'Grade 10 Tuition 2026',
+        ]);
+        expect(nameParts('approved fee plan Grade 10 Tuition 2026')).toEqual([
+            'Grade 10 Tuition 2026',
+        ]);
+        expect(nameParts('updated fee type Admission Fee')).toEqual(['Admission Fee']);
+        // The trailing clause stays plain; only the plan name is emphasised.
+        expect(nameParts('made payment plan Annual Membership the default')).toEqual([
+            'Annual Membership',
+        ]);
+    });
+
+    it('leaves a bulk plan delete unemphasised — there is no single name to bold', () => {
+        expect(splitDescriptionParts('deleted 3 payment plan(s)')).toBeNull();
+    });
+
+    it('bolds the invite name on invite link actions', () => {
+        expect(nameParts('created invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);
+        expect(nameParts('updated invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);
+        expect(nameParts('deleted invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);
+        // Both the invite and the course it now fronts are emphasised; the
+        // connective "the default for" stays plain.
+        expect(nameParts('made invite link Early Bird the default for Physics 201')).toEqual([
+            'Early Bird',
+            'Physics 201',
+        ]);
+        expect(nameParts('assigned fee plan to invite link Early Bird for Physics 201')).toEqual([
+            'Early Bird',
+            'Physics 201',
+        ]);
+        expect(nameParts('updated payment plans of invite link Early Bird')).toEqual([
+            'Early Bird',
+        ]);
+    });
+
+    it('leaves a bulk invite delete unemphasised', () => {
+        expect(splitDescriptionParts('deleted 3 invite link(s)')).toBeNull();
+    });
+
     it('bolds the audience name on campaign actions', () => {
         expect(nameParts('created audience Winter Admissions 2026')).toEqual([
             'Winter Admissions 2026',

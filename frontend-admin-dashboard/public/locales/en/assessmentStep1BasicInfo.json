@@ -137,5 +137,9 @@
         "timeIncreaseRequest": {
             "label": "Allow Students to Raise Time Increase Request"
         }
+    },
+    "validation": {
+        "cannotSave": "Can't save yet",
+        "cannotSaveGeneric": "Can't save yet — some required details are missing or invalid."
     }
 }

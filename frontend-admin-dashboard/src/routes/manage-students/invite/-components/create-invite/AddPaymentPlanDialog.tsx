@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import { useTranslation } from 'react-i18next';
+import { splitPlansByType, type PaymentOption } from './-utils/helper';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -123,15 +124,23 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 }),
             };
 
-            await savePaymentOption(paymentOptionRequest);
-            if (plan.type === 'FREE') {
-                const freePlans = form.getValues('freePlans');
-                form.setValue('freePlans', [...freePlans, paymentOptionRequest]);
-            } else {
-                const paidPlans = form.getValues('paidPlans');
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-expect-error
-                form.setValue('paidPlans', [...paidPlans, paymentOptionRequest]);
+            const saved = await savePaymentOption(paymentOptionRequest);
+            // Show the new plan immediately, in the picker's own shape (name, price,
+            // created date, creator), while the list refetches behind it. The server
+            // response is the source of truth: it carries the generated id, and the
+            // request object used to be pushed raw here and rendered as "Free for 0 days".
+            const { freePlans: newFree, paidPlans: newPaid } = splitPlansByType(
+                saved && saved.id ? [saved as unknown as PaymentOption] : []
+            );
+            if (newFree.length > 0) {
+                form.setValue('freePlans', [...form.getValues('freePlans'), ...newFree]);
+            }
+            if (newPaid.length > 0) {
+                form.setValue('paidPlans', [
+                    ...form.getValues('paidPlans'),
+                    // The form schema's price is a transformed string; the helper leaves it optional.
+                    ...newPaid.map((plan) => ({ ...plan, price: plan.price ?? '' })),
+                ]);
             }
             form.setValue('showAddPlanDialog', false);
             setEditingPlan(null);

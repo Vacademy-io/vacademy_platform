@@ -39,11 +39,12 @@
         "hintSuffix": "of the selected tags receives this."
     },
     "audience": {
-        "label": "Campaign",
+        "label": "Campaigns",
         "loading": "Loading campaigns…",
-        "placeholder": "Select a campaign",
+        "placeholder": "Select one or more campaigns",
         "searchPlaceholder": "Search campaigns…",
-        "emptyText": "No campaigns found."
+        "emptyText": "No campaigns found.",
+        "hint": "Anyone in any of the selected campaigns receives this."
     },
     "customFieldFilter": {
         "hintPrefix": "Everyone whose profile matches the filters below receives this. Add them under",

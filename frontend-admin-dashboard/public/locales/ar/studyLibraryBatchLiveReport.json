@@ -63,10 +63,13 @@
     "export": {
         "generatedOn": "أُنشئ في {{date}}",
         "exportSuccess": "تم تصدير تقرير الحصص المباشرة",
-        "exportFailed": "فشل تصدير ملف PDF"
+        "exportFailed": "فشل تصدير ملف PDF",
+        "csvExportSuccess": "تم تصدير CSV",
+        "csvExportFailed": "فشل تصدير CSV"
     },
     "errors": {
-        "loadFailed": "حدث خطأ أثناء تحميل التقرير. يرجى المحاولة مرة أخرى."
+        "loadFailed": "حدث خطأ أثناء تحميل التقرير. يرجى المحاولة مرة أخرى.",
+        "batchLoadFailed": "تعذر تحميل تقرير {{name}}."
     },
     "emptyState": {
         "title": "لم يتم العثور على حصص مباشرة",
@@ -75,7 +78,8 @@
     "actions": {
         "attendanceTracker": "متتبّع الحضور",
         "exporting": "جارٍ التصدير…",
-        "exportPdf": "تصدير PDF"
+        "exportPdf": "تصدير PDF",
+        "exportCsv": "تصدير CSV"
     },
     "metrics": {
         "avgAttendance": "متوسط الحضور",
@@ -99,5 +103,34 @@
         "classBreakdownSubtitle": "الحضور والمدة والتفاعل لكل حصة مُنعقدة",
         "leaderboardTitle": "لوحة الصدارة",
         "leaderboardSubtitle": "مرتّبة حسب الحضور ثم التفاعل. مجاميع التفاعل مجمّعة عبر جميع حصص الفترة المحددة."
+    },
+    "multiBatchTitle": "تقرير {{term}} · تم اختيار {{count}}",
+    "comparison": {
+        "title": "مقارنة {{term}}",
+        "subtitle": "الحضور والمدة والتفاعل لكل دفعة مختارة جنبًا إلى جنب",
+        "learners": "المتعلمون"
+    },
+    "csv": {
+        "fileStem": "live-class-report",
+        "summaryTitle": "الملخص",
+        "startDate": "تاريخ البدء",
+        "endDate": "تاريخ الانتهاء",
+        "avgAttendancePct": "متوسط الحضور (%)",
+        "avgDurationMin": "متوسط المدة (دقيقة)",
+        "avgEngagementIndex": "متوسط التفاعل (نقاط)",
+        "classesTitle": "التفصيل حسب الحصة",
+        "unmarked": "غير محدد",
+        "invited": "المدعوون",
+        "attendancePct": "الحضور (%)",
+        "leaderboardTitle": "لوحة المتصدرين",
+        "attended": "الحصص المحضورة",
+        "totalClasses": "إجمالي الحصص",
+        "engagementIndex": "التفاعل (نقاط)",
+        "engagementScore": "درجة التفاعل (0-100)",
+        "talkTimeMin": "وقت التحدث (دقيقة)",
+        "chats": "الدردشات",
+        "polls": "أصوات الاستطلاع",
+        "raiseHands": "رفع اليد",
+        "emojis": "الرموز التعبيرية"
     }
 }

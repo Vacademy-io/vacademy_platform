@@ -128,5 +128,11 @@
         "htmlBlockLabel": "HTML Block",
         "htmlBlockEmpty": "Empty HTML block",
         "unknownComponent": "Unknown component: {{type}}"
+    },
+    "documentViewer": {
+        "noFile": "No PDF yet",
+        "addPdf": "Add a PDF in the panel on the right",
+        "openDocument": "Open document",
+        "download": "Download PDF"
     }
 }

@@ -44,7 +44,8 @@
     },
     "tabs": {
         "mine": "My knowledge bases",
-        "library": "Library"
+        "library": "Library",
+        "curriculum": "Curriculum"
     },
     "mine": {
         "heading": "Knowledge bases",

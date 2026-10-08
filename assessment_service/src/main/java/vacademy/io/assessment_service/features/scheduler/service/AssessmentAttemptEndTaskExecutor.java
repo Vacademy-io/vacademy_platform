@@ -41,10 +41,14 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
     public void execute(SchedulerActivityLog activityLog, String source) {
 
         List<StudentAttempt> allLiveAttempts = studentAttemptService.getAllLiveAttempt();
+        // Practice tests and surveys have no clock. Before this they were ended
+        // here on the hour: a missing duration is max_time 0, and start + 0 is
+        // always "over" - every open practice attempt was cut off at :00.
+        Set<String> untimed = studentAttemptService.getOpenUntimedAttemptIds();
         List<StudentAttempt> attempts = new ArrayList<>();
 
         allLiveAttempts.forEach(attempt->{
-            if(isAttemptTimeOver(attempt)){
+            if(!untimed.contains(attempt.getId()) && isAttemptTimeOver(attempt)){
                 attempts.add(attempt);
             }
         });
@@ -83,6 +87,10 @@ public class AssessmentAttemptEndTaskExecutor implements TaskExecutor {
 
     private boolean isAttemptTimeOver(StudentAttempt attempt) {
         try{
+            // No duration means no deadline, not a deadline that passed at start.
+            if (attempt.getMaxTime() == null || attempt.getMaxTime() <= 0) {
+                return false;
+            }
             Date currentTime = new Date();
 
             Date attemptEndTime = new Date(attempt.getStartTime().getTime() + attempt.getMaxTime() * 60 * 1000);

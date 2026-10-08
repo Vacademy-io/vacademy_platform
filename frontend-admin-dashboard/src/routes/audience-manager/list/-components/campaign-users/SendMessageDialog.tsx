@@ -19,6 +19,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    getEmailConfigurations,
+    type EmailConfiguration,
+} from '@/services/email-configuration-service';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     ChatCircleDots,
@@ -207,6 +211,11 @@ export function SendMessageDialog({
     // Email state
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
+    // The institute's configured senders. The type code is what the backend resolves
+    // EMAIL_SETTING.data.<type> by, so the dropdown must offer the real codes — a
+    // hardcoded list silently fell back to the default sender whenever it didn't match
+    // (e.g. a marketing address saved as MARKETING_EMAIL).
+    const [emailSenders, setEmailSenders] = useState<EmailConfiguration[]>([]);
     const [emailType, setEmailType] = useState('UTILITY_EMAIL');
     const [emailTemplates, setEmailTemplates] = useState<MessageTemplate[]>([]);
     const [loadingEmailTemplates, setLoadingEmailTemplates] = useState(false);
@@ -308,6 +317,30 @@ export function SendMessageDialog({
             cancelled = true;
         };
     }, [channel, instituteId]);
+
+    // -----------------------------------------------------------------------
+    // Fetch the institute's configured email senders when channel is EMAIL
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        if (channel !== 'EMAIL') return;
+        let cancelled = false;
+        getEmailConfigurations()
+            .then((configs) => {
+                if (cancelled) return;
+                setEmailSenders(configs);
+                // Keep the current pick if it still exists, else use the first sender.
+                setEmailType((prev) =>
+                    configs.some((c) => c.type === prev) ? prev : configs[0]?.type ?? prev
+                );
+            })
+            .catch(() => {
+                // Non-fatal: the select falls back to the default sender below.
+                if (!cancelled) setEmailSenders([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [channel]);
 
     // -----------------------------------------------------------------------
     // Fetch saved email templates when channel is EMAIL
@@ -731,18 +764,31 @@ export function SendMessageDialog({
                     <div className="space-y-2">
                         <Label>{t('emailStep.emailTypeLabel')}</Label>
                         <Select value={emailType} onValueChange={setEmailType}>
-                            <SelectTrigger className="w-60">
+                            <SelectTrigger className="w-80">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="UTILITY_EMAIL">
-                                    {t('emailStep.utilityEmail')}
-                                </SelectItem>
-                                <SelectItem value="PROMOTIONAL_EMAIL">
-                                    {t('emailStep.promotionalEmail')}
-                                </SelectItem>
+                                {emailSenders.length > 0 ? (
+                                    emailSenders.map((c) => (
+                                        <SelectItem key={c.type} value={c.type}>
+                                            {c.name} ({c.email})
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <>
+                                        <SelectItem value="UTILITY_EMAIL">
+                                            {t('emailStep.utilityEmail')}
+                                        </SelectItem>
+                                        <SelectItem value="PROMOTIONAL_EMAIL">
+                                            {t('emailStep.promotionalEmail')}
+                                        </SelectItem>
+                                    </>
+                                )}
                             </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">
+                            {t('emailStep.emailTypeHint')}
+                        </p>
                     </div>
                     <div className="space-y-2">
                         <Label>{t('emailStep.subjectLabel')}</Label>

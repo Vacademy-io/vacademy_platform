@@ -20,6 +20,9 @@ import {
 } from '../-services/inbox-api';
 import { useInboxStore } from '../-stores/inbox-store';
 import { describeApiError, explainWhatsAppFailure } from '../-utils/whatsapp-errors';
+import { templateHeaderKind } from '../-utils/template-header';
+import { TemplateSendDialog } from './template-send-dialog';
+import { splitTemplateText } from '@/components/templates/template-text';
 import { getInstituteId } from '@/constants/helper';
 import { getChatUser } from '@/services/chat/getChatUser';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
@@ -114,6 +117,8 @@ export function ReplyBox({ phone }: Props) {
     const [showTemplates, setShowTemplates] = useState(false);
     const [templates, setTemplates] = useState<WhatsAppTemplateDTO[]>([]);
     const [templateSearch, setTemplateSearch] = useState('');
+    /** The template open in the preview dialog; null = closed. */
+    const [previewTemplate, setPreviewTemplate] = useState<WhatsAppTemplateDTO | null>(null);
     const appendMessage = useInboxStore((s) => s.appendMessage);
     const updateConversationLastMessage = useInboxStore((s) => s.updateConversationLastMessage);
     const markConversationAnswered = useInboxStore((s) => s.markConversationAnswered);
@@ -361,59 +366,65 @@ export function ReplyBox({ phone }: Props) {
         t,
     ]);
 
-    const handleSendTemplate = useCallback(async (template: WhatsAppTemplateDTO) => {
+    /**
+     * Picking a template opens the preview dialog; nothing is sent until the admin confirms
+     * there. The variable values arrive already keyed by position ("1", "2", …), which is
+     * what the send API expects.
+     */
+    const handleSendTemplate = useCallback(async (
+        template: WhatsAppTemplateDTO,
+        variables: Record<string, string>
+    ): Promise<boolean> => {
+        // A template approved with a media header MUST be sent with that header: Meta rejects the
+        // message otherwise (error 132012 "header: Format mismatch, expected DOCUMENT, received
+        // UNKNOWN"). The Inbox has no file picker, so the file is the sample the template was
+        // approved with — the same default the other send dialogs use. The dialog already blocks
+        // this case; the check stays as the last line of defence.
+        const headerKind = templateHeaderKind(template);
+        const headerUrl = template.headerSampleUrl?.trim() || '';
+        if (headerKind && !headerUrl) {
+            toast.error(t('toast.templateNotSent', { name: template.name }), {
+                description: t('toast.templateHeaderFileMissing', {
+                    name: template.name,
+                    kind: t(`mediaKindLabel.${headerKind}`),
+                }),
+            });
+            return false;
+        }
+
         setSending(true);
         try {
-            // Count how many {{N}} params the template needs
-            const placeholderMatches = (template.bodyText || '').match(/\{\{\d+\}\}/g);
-            const paramCount = placeholderMatches ? placeholderMatches.length : 0;
-
-            const variables: Record<string, string> = {};
-
-            if (paramCount > 0) {
-                // Build default values from variable names or sample values
-                const defaults: string[] = [];
-                for (let i = 0; i < paramCount; i++) {
-                    const varName = template.bodyVariableNames?.[i] || '';
-                    const sampleVal = template.bodySampleValues?.[i] || '';
-                    defaults.push(sampleVal || varName || '');
-                }
-
-                // Always prompt user for parameter values
-                const labels = defaults.map((d, i) => {
-                    const name = template.bodyVariableNames?.[i] || t('templatePrompt.paramFallback', { n: i + 1 });
-                    return `${name}${d ? t('templatePrompt.exampleSuffix', { value: d }) : ''}`;
-                }).join(', ');
-
-                const userInput = prompt(
-                    `${t('templatePrompt.header', { name: template.name, count: paramCount })}\n${labels}\n\n${t('templatePrompt.footer')}`
-                );
-                if (userInput === null) { setSending(false); return; }
-
-                const parts = userInput.split(',').map(s => s.trim());
-                for (let i = 0; i < paramCount; i++) {
-                    variables[String(i + 1)] = parts[i] || defaults[i] || '';
-                }
-            }
-
             const response = await sendNotification({
                 instituteId,
                 channel: 'WHATSAPP',
                 templateName: template.name,
                 languageCode: template.language || 'en',
                 recipients: [{ phone, variables }],
-                options: { source: 'inbox-template-send' },
+                options: {
+                    source: 'inbox-template-send',
+                    ...(headerKind ? { headerType: headerKind, headerUrl } : {}),
+                },
             });
 
             if (response.status === 'COMPLETED' && response.accepted > 0) {
                 toast.success(t('toast.templateSent', { name: template.name }));
-                // Add to message list
+                // The bubble shows the message as sent — values in, placeholders out — so the
+                // thread reads the same before and after a reload.
+                const renderedBody = splitTemplateText(template.bodyText, {
+                    variableNames: template.bodyVariableNames,
+                    values: variables,
+                })
+                    .map((part) =>
+                        part.kind === 'text' ? part.text : (part.value ?? `{{${part.token}}}`)
+                    )
+                    .join('');
                 appendMessage({
                     id: Date.now().toString(),
-                    body: `${t('templateLabel', { name: template.name })} ${template.bodyText || ''}`,
+                    body: `${t('templateLabel', { name: template.name })} ${renderedBody}`,
                     direction: 'OUTGOING',
                     timestamp: new Date().toISOString(),
                     source: 'unified-send',
+                    ...(headerKind ? { headerType: headerKind, headerMediaUrl: headerUrl } : {}),
                 });
                 updateConversationLastMessage(
                     phone,
@@ -421,14 +432,15 @@ export function ReplyBox({ phone }: Props) {
                     'OUTGOING'
                 );
                 setShowTemplates(false);
-            } else {
-                const failure = explainWhatsAppFailure(response.results?.[0]?.error);
-                toast.error(t('toast.templateNotSent', { name: template.name }), {
-                    description: failure
-                        ? [failure.title, failure.detail].filter(Boolean).join(' — ')
-                        : t('toast.providerRejectedNoReason'),
-                });
+                return true;
             }
+            const failure = explainWhatsAppFailure(response.results?.[0]?.error);
+            toast.error(t('toast.templateNotSent', { name: template.name }), {
+                description: failure
+                    ? [failure.title, failure.detail].filter(Boolean).join(' — ')
+                    : t('toast.providerRejectedNoReason'),
+            });
+            return false;
         } catch (err) {
             console.error(err);
             const { title, detail } = describeApiError(
@@ -436,6 +448,7 @@ export function ReplyBox({ phone }: Props) {
                 t('toast.couldNotSendTemplate', { name: template.name })
             );
             toast.error(title, detail ? { description: detail } : undefined);
+            return false;
         } finally {
             setSending(false);
         }
@@ -455,6 +468,16 @@ export function ReplyBox({ phone }: Props) {
 
     return (
         <div className="relative shrink-0">
+            <TemplateSendDialog
+                template={previewTemplate}
+                phone={phone}
+                onClose={() => setPreviewTemplate(null)}
+                onSend={async (template, variables) => {
+                    // Stay open on failure so the values can be corrected and retried.
+                    if (await handleSendTemplate(template, variables)) setPreviewTemplate(null);
+                }}
+            />
+
             {/* Template picker dropdown */}
             {showTemplates && (
                 <div className="absolute bottom-full left-0 right-0 bg-white border-t shadow-lg max-h-72 flex flex-col">
@@ -480,7 +503,10 @@ export function ReplyBox({ phone }: Props) {
                             filteredTemplates.map((tpl) => (
                                 <button
                                     key={tpl.id}
-                                    onClick={() => handleSendTemplate(tpl)}
+                                    onClick={() => {
+                                        setPreviewTemplate(tpl);
+                                        setShowTemplates(false);
+                                    }}
                                     disabled={sending}
                                     className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-50 disabled:opacity-50"
                                 >

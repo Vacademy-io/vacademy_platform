@@ -46,6 +46,7 @@ public class AiEvaluationSubmissionEnqueuer {
                         AiEvaluationStatusEnum.EVALUATING.name());
 
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
+        private final EvaluationUtilityService evaluationUtilityService;
 
         /**
          * Kill switch. Turning this off stops all automatic evaluation without touching
@@ -79,6 +80,14 @@ public class AiEvaluationSubmissionEnqueuer {
                         // NULL means off. Every assessment that existed before V43 reads as
                         // NULL here, so none of them start spending credits on their own.
                         if (!Boolean.TRUE.equals(assessment.getAiEvaluationEnabled())) {
+                                return null;
+                        }
+                        // The AI check grades a scanned/uploaded copy. An online attempt with
+                        // no file would be dispatched only to fail with "nothing to grade";
+                        // 88 such rows sat in the queue on one institute before this guard.
+                        String fileId = evaluationUtilityService.extractFileId(attempt.getAttemptData());
+                        if (fileId == null || fileId.isBlank()) {
+                                log.info("[AI-EVAL-ENQUEUE] Attempt {} has no submission file; not queued", attempt.getId());
                                 return null;
                         }
 

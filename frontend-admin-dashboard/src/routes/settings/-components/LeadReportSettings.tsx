@@ -50,18 +50,54 @@ const SETTING_KEY = 'LEAD_SETTING';
 const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 
 /**
- * Curated IANA timezones — default (Asia/Kolkata) first. Extend the list if an
- * institute outside these regions onboards; the value is a free-form IANA id
- * on the backend, only this picker is curated. Exported so other timezone
+ * Curated IANA timezones — default (Asia/Kolkata) first, then the rest in
+ * west-to-east offset order. Extend the list if an institute outside these
+ * regions onboards; the value is a free-form IANA id on the backend, only
+ * this picker is curated. Exported so other timezone
  * pickers (Settings > Language Settings) share one curated list.
  */
 export const REPORT_TIMEZONES = [
     'Asia/Kolkata',
-    'Asia/Dubai',
-    'Asia/Singapore',
-    'Europe/London',
-    'America/New_York',
+    'Pacific/Honolulu',
+    'America/Anchorage',
     'America/Los_Angeles',
+    'America/Denver',
+    'America/Chicago',
+    'America/Mexico_City',
+    'America/New_York',
+    'America/Bogota',
+    'America/Halifax',
+    'America/Sao_Paulo',
+    'America/Argentina/Buenos_Aires',
+    'Europe/London',
+    'Europe/Lisbon',
+    'Africa/Lagos',
+    'Europe/Paris',
+    'Africa/Johannesburg',
+    'Europe/Athens',
+    'Europe/Istanbul',
+    'Africa/Nairobi',
+    'Europe/Moscow',
+    'Asia/Riyadh',
+    'Asia/Tehran',
+    'Asia/Dubai',
+    'Asia/Karachi',
+    'Asia/Colombo',
+    'Asia/Kathmandu',
+    'Asia/Dhaka',
+    'Asia/Bangkok',
+    'Asia/Jakarta',
+    'Asia/Singapore',
+    'Asia/Hong_Kong',
+    'Asia/Manila',
+    'Asia/Shanghai',
+    'Asia/Tokyo',
+    'Asia/Seoul',
+    'Australia/Perth',
+    'Australia/Adelaide',
+    'Australia/Brisbane',
+    'Australia/Sydney',
+    'Pacific/Auckland',
     'UTC',
 ] as const;
 

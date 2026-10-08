@@ -8,7 +8,8 @@
         "shareCredentials": "Share Credentials",
         "sendWhatsappMessage": "Send WhatsApp Message",
         "sendEmail": "Send Email",
-        "createCertificate": "Create Certificate"
+        "createCertificate": "Create Certificate",
+        "awardBadge": "Award Badge"
     },
     "actionInfo": {
         "selectedStudents_one": "{{count}} student",

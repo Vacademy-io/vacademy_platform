@@ -67,6 +67,9 @@ public class StudentListManager {
     vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
 
     @Autowired
+    vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver utmListFilterResolver;
+
+    @Autowired
     StudentSessionRepository studentSessionRepository;
 
     @Autowired
@@ -379,6 +382,35 @@ public class StudentListManager {
                     typedResolution.matchedIds == null ? null : new ArrayList<>(typedResolution.matchedIds));
             studentListFilter.setCfTypedExcludedUserIds(
                     typedResolution.excludedIds == null ? null : new ArrayList<>(typedResolution.excludedIds));
+        }
+        // Campaign (UTM) filter: resolve touches → user ids and fold them into
+        // the same matched / excluded user-id sets the typed custom-field
+        // filters use, so it rides the existing custom-repo path unchanged.
+        if (vacademy.io.admin_core_service.features.utm_attribution.service.UtmListFilterResolver
+                .hasFilter(studentListFilter.getUtmFilters())) {
+            String utmInstituteId = (studentListFilter.getInstituteIds() != null
+                    && !studentListFilter.getInstituteIds().isEmpty())
+                    ? studentListFilter.getInstituteIds().get(0) : null;
+            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                    existing = new vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution(
+                            studentListFilter.getCfTypedMatchedUserIds() == null ? null
+                                    : new java.util.HashSet<>(studentListFilter.getCfTypedMatchedUserIds()),
+                            studentListFilter.getCfTypedExcludedUserIds() == null ? null
+                                    : new java.util.HashSet<>(studentListFilter.getCfTypedExcludedUserIds()));
+            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                    combined = existing.and(utmListFilterResolver.resolve(
+                            studentListFilter.getUtmFilters(),
+                            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.USER,
+                            utmInstituteId));
+            if (combined.shortCircuitsToEmpty()) {
+                return ResponseEntity.ok(AllStudentV2Response.builder()
+                        .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
+                        .totalElements(0L).totalPages(0).last(true).build());
+            }
+            studentListFilter.setCfTypedMatchedUserIds(
+                    combined.matchedIds == null ? null : new ArrayList<>(combined.matchedIds));
+            studentListFilter.setCfTypedExcludedUserIds(
+                    combined.excludedIds == null ? null : new ArrayList<>(combined.excludedIds));
         }
         boolean hasTypedCustomFieldFilters =
                 (studentListFilter.getCfTypedMatchedUserIds() != null && !studentListFilter.getCfTypedMatchedUserIds().isEmpty())

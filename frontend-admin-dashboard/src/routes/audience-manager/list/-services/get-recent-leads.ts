@@ -115,6 +115,9 @@ export interface RecentLeadsRequest {
      *  custom_field_values row for {field_id} matches one of {values} (OR within
      *  the entry); across entries the backend AND-combines them. Omitted = none. */
     custom_field_filters?: LeadCustomFieldFilter[];
+    /** Campaign (UTM) attribution filter — same wire shape on every list
+     *  surface; see services/utm-list-filters. Omitted = none. */
+    utm_filters?: import('@/services/utm-list-filters').UtmListFiltersPayload;
     /** Column to sort by — SUBMITTED_AT (default) | LEAD_SCORE | LEAD_TIER | STATUS. */
     sort_by?: string;
     sort_direction?: 'ASC' | 'DESC';

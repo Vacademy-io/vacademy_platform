@@ -12,6 +12,7 @@ import vacademy.io.assessment_service.features.assessment.repository.AiEvaluatio
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -35,7 +36,12 @@ class AiEvaluationSubmissionEnqueuerTest {
         @BeforeEach
         void setUp() {
                 repository = mock(AiEvaluationProcessRepository.class);
-                enqueuer = new AiEvaluationSubmissionEnqueuer(repository);
+                // Real fileId parsing over a mocked section repository: the guard under
+                // test reads attempt_data, nothing else.
+                EvaluationUtilityService utility = new EvaluationUtilityService(
+                                new com.fasterxml.jackson.databind.ObjectMapper(),
+                                mock(vacademy.io.assessment_service.features.assessment.repository.QuestionAssessmentSectionMappingRepository.class));
+                enqueuer = new AiEvaluationSubmissionEnqueuer(repository, utility);
                 ReflectionTestUtils.setField(enqueuer, "onSubmitEnabled", true);
                 when(repository.findActiveByAttemptId(anyString(), anyList())).thenReturn(List.of());
                 when(repository.save(any(AiEvaluationProcess.class))).thenAnswer(invocation -> {
@@ -48,7 +54,18 @@ class AiEvaluationSubmissionEnqueuerTest {
         private StudentAttempt attempt(String id) {
                 StudentAttempt attempt = new StudentAttempt();
                 attempt.setId(id);
+                // A submitted copy: the AI check needs a file to grade.
+                attempt.setAttemptData("{\"fileId\":\"file-" + id + "\"}");
                 return attempt;
+        }
+
+        @Test
+        void anAttemptWithoutASubmissionFileIsNotQueued() {
+                StudentAttempt online = new StudentAttempt();
+                online.setId("attempt-online");
+                online.setAttemptData("{\"sections\":[]}");
+                assertNull(enqueuer.enqueueIfEnabled(online, assessment(true)));
+                verify(repository, never()).save(any(AiEvaluationProcess.class));
         }
 
         private Assessment assessment(Boolean aiEnabled) {

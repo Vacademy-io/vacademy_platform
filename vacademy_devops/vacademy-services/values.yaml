@@ -68,6 +68,9 @@ services:
       cpuThreads: "2"
       numWorkers: "1"
       modelSize: ""  # blank = use code default (medium for non-English, base for English)
+    mcp:
+      enabled: false
+      issuerUrl: ""
   # Vacademy AI Agent real-time voice bot (Plivo <Stream> ↔ Pipecat+Sarvam).
   # Env (PUBLIC_BASE, ADMIN_CORE_BASE, VOICE_BOT_CLIENT_NAME/SECRET, SARVAM_API_KEY)
   # is set by the docker-publish-voice-bot-service workflow, mirroring ai_service.
@@ -187,6 +190,8 @@ env:
   cdnPrivateKeyPairId: ""         # CDN_PRIVATE_KEY_PAIR_ID (CloudFront public-key ID)
   teacherPortalClientUrl: ""
   toolExecutorBaseUrl: ""
+  aiServicePublicUrl: "https://backend-stage.vacademy.io"
+  adminDashboardUrl: "https://dash.vacademy.io"
   schedulingTimeFrame: "30"
   s3:
     region: ap-south-1

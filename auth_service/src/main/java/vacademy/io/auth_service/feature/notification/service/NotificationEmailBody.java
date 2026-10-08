@@ -878,4 +878,157 @@ public class NotificationEmailBody {
                         instituteName);
     }
 
+    /**
+     * A plain re-send of someone's login details, branded for the institute.
+     *
+     * <p>Used when an admin re-shares credentials from the dashboard (Manage VLEs → Share
+     * credentials). The enrollment mails above announce a course enrollment and the
+     * send-passwords mail is unbranded with a fixed learner-portal link — neither reads right
+     * for a channel-partner admin who simply never received, or lost, their password. The
+     * caller passes the portal the recipient actually signs in to.
+     */
+    public static String createLoginDetailsEmailBody(
+            String instituteName,
+            String name,
+            String username,
+            String password,
+            String loginUrl,
+            String themeColor) {
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Your Login Details - %s</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #fafafa;
+                            line-height: 1.6;
+                        }
+                        .container {
+                            max-width: 640px;
+                            margin: 40px auto;
+                            padding: 0 20px;
+                        }
+                        .card {
+                            background: #ffffff;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                            border: 1px solid #eee;
+                        }
+                        .header {
+                            padding: 32px 40px;
+                            border-bottom: 1px solid #F0F0F0;
+                        }
+                        .content {
+                            padding: 40px;
+                            color: #444444;
+                        }
+                        .footer {
+                            padding: 24px 40px;
+                            background-color: #f8f8f8;
+                            border-top: 1px solid #F0F0F0;
+                            border-radius: 0 0 8px 8px;
+                        }
+                        h1 {
+                            color: %s;
+                            font-size: 24px;
+                            margin: 0 0 8px 0;
+                            font-weight: 600;
+                        }
+                        .credentials-box {
+                            background: #f8f8f8;
+                            border-radius: 6px;
+                            padding: 24px;
+                            margin: 32px 0;
+                        }
+                        .credential-item {
+                            margin: 12px 0;
+                            font-size: 15px;
+                        }
+                        .credential-label {
+                            color: %s;
+                            font-weight: 500;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        .login-button {
+                            display: inline-block;
+                            padding: 12px 32px;
+                            background-color: %s;
+                            color: white !important;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            transition: background-color 0.2s;
+                        }
+                        .login-button:hover {
+                            background-color: %s;
+                        }
+                        .text-muted {
+                            color: #666666;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="card">
+                            <div class="header">
+                                <h1>Your Login Details</h1>
+                                <p class="text-muted">How to sign in to %s</p>
+                            </div>
+
+                            <div class="content">
+                                <p>Dear %s,</p>
+                                <p>Here are your login details for <strong>%s</strong>. Use them to sign in to your account.</p>
+
+                                <div class="credentials-box">
+                                    <p style="margin: 0 0 16px 0; font-weight: 500;">Login Details</p>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Username</span>
+                                        %s
+                                    </div>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Password</span>
+                                        %s
+                                    </div>
+                                </div>
+
+                                <p style="text-align: center; margin: 32px 0;">
+                                    <a href="%s" class="login-button">Sign In</a>
+                                </p>
+
+                                <p class="text-muted">For security, please keep your login details private. If you did not ask for this email, you can ignore it or reset your password from the login page.</p>
+
+                                <p class="text-muted">If you need any help, feel free to reach out.</p>
+                            </div>
+
+                            <div class="footer">
+                                <p class="text-muted" style="margin: 0;">
+                                    Best regards,<br>
+                                    <strong>%s</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                .formatted(
+                        instituteName, // title
+                        themeColor, // h1 color
+                        themeColor, // label color
+                        themeColor, // button color
+                        darkenWelcomeColor(themeColor), // hover color
+                        instituteName, // header subtitle
+                        name,
+                        instituteName,
+                        username, password,
+                        loginUrl,
+                        instituteName);
+    }
+
 }

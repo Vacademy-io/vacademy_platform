@@ -5,12 +5,21 @@ import {
     type CommunicationItem,
     type StatusEvent,
 } from '@/services/communication-timeline-service';
+import {
+    fetchCallHistory,
+    type CallLogItem,
+} from '@/components/shared/leads/services/call-history';
+import { CallRecordingPlayButton } from '@/components/shared/leads/lead-call-history';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
     ChatsCircle,
     Envelope,
     EnvelopeSimple,
+    Phone,
+    PhoneIncoming,
+    PhoneOutgoing,
+    Robot,
     WhatsappLogo,
     BellRinging,
     ChatTeardrop,
@@ -144,6 +153,14 @@ const buildChannelConfig = (t: TFunction): ChannelConfig => ({
         iconClass: 'text-warning-600',
         label: t('channels.SMS'),
     },
+    // Calls come from admin_core's telephony_call_log, not notification_service.
+    // Separate databases, so this is the one channel merged client-side.
+    CALL: {
+        icon: Phone,
+        pillClass: 'bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200',
+        iconClass: 'text-neutral-600',
+        label: t('channels.CALL'),
+    },
 });
 
 // Status pill classes use semantic tokens only (no raw colors).
@@ -188,13 +205,14 @@ const buildStatusConfig = (t: TFunction): StatusConfig => ({
     },
 });
 
-const buildFilterOptions = (
-    t: TFunction
-): Array<{ key: 'ALL' | 'EMAIL' | 'WHATSAPP' | 'PUSH'; label: string }> => [
+type ChannelFilter = 'ALL' | 'EMAIL' | 'WHATSAPP' | 'PUSH' | 'CALL';
+
+const buildFilterOptions = (t: TFunction): Array<{ key: ChannelFilter; label: string }> => [
     { key: 'ALL', label: t('filters.all') },
     { key: 'EMAIL', label: t('channels.EMAIL') },
     { key: 'WHATSAPP', label: t('channels.WHATSAPP') },
     { key: 'PUSH', label: t('channels.PUSH') },
+    { key: 'CALL', label: t('channels.CALL') },
 ];
 
 // ─── Status Mini Timeline ───────────────────────────────────────────────────
@@ -589,6 +607,102 @@ function toTimelineItem(
     };
 }
 
+// ─── Call items ─────────────────────────────────────────────────────────────
+// A call is not a message: no subject, no body, no delivery statuses. What
+// matters is who dialled whom, whether it connected, how long it ran, and the
+// recording. Rendered as a compact card so it sits alongside messages without
+// pretending to be one.
+
+const ENDED_WELL = new Set(['COMPLETED']);
+const ENDED_BADLY = new Set(['NO_ANSWER', 'BUSY', 'FAILED', 'CANCELLED']);
+
+const callStatusTone = (status: string) =>
+    ENDED_WELL.has(status) ? 'success' : ENDED_BADLY.has(status) ? 'danger' : 'primary';
+
+const callStatusPill = (status: string) =>
+    ENDED_WELL.has(status)
+        ? 'bg-success-50 text-success-700 ring-1 ring-success-200'
+        : ENDED_BADLY.has(status)
+          ? 'bg-danger-50 text-danger-700 ring-1 ring-danger-200'
+          : 'bg-info-50 text-info-700 ring-1 ring-info-200';
+
+const formatCallDuration = (t: TFunction, seconds?: number | null): string | null => {
+    if (!seconds || seconds <= 0) return null;
+    return t('call.duration', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 });
+};
+
+/** Call time: startTime is the provider's answer; AI calls only set createdAt. */
+const callTimestamp = (c: CallLogItem): string =>
+    c.startTime || c.createdAt || c.endTime || new Date(0).toISOString();
+
+const CallItemBody = ({ item, instituteId }: { item: CallLogItem; instituteId: string }) => {
+    const { t } = useTranslation('manageStudentsCommunicationTimeline');
+    const duration = formatCallDuration(t, item.durationSeconds);
+    const statusLabel = t(`call.status.${item.status}`, { defaultValue: item.status });
+    return (
+        <div className="mt-1.5 rounded-md border border-neutral-200 bg-white p-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                    className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium',
+                        callStatusPill(item.status)
+                    )}
+                >
+                    {statusLabel}
+                </span>
+                {duration && <span className="text-2xs text-neutral-500">{duration}</span>}
+                {item.aiDisposition && (
+                    <span className="text-2xs text-neutral-600">
+                        {t('call.outcome')}:{' '}
+                        <span className="font-medium">{item.aiDisposition}</span>
+                    </span>
+                )}
+                {item.aiCallRetry != null && item.aiCallRetry > 0 && (
+                    <span className="text-2xs text-neutral-400">
+                        {t('call.attempt', { n: item.aiCallRetry + 1 })}
+                    </span>
+                )}
+            </div>
+            {/* The recording is the whole reason this channel exists in the tab.
+                Presigned URL is fetched on first play, not on render — the
+                counsellor may scroll past a dozen calls without listening. */}
+            <div className="mt-2">
+                {item.hasRecording ? (
+                    <CallRecordingPlayButton callLogId={item.id} instituteId={instituteId} />
+                ) : (
+                    <span className="text-2xs text-neutral-400">{t('call.noRecording')}</span>
+                )}
+            </div>
+        </div>
+    );
+};
+
+function toCallTimelineItem(
+    item: CallLogItem,
+    t: TFunction,
+    instituteId: string
+): ProfileTimelineItem {
+    const isAi = !!item.aiDisposition || item.aiCallRetry != null;
+    const title = isAi
+        ? t('call.aiCall')
+        : item.direction === 'INBOUND'
+          ? t('call.inbound')
+          : t('call.outbound');
+    return {
+        id: `call-${item.id}`,
+        icon: isAi ? Robot : item.direction === 'INBOUND' ? PhoneIncoming : PhoneOutgoing,
+        tone: callStatusTone(item.status),
+        title: <span className="truncate font-medium text-neutral-800">{title}</span>,
+        meta: formatDistanceToNow(new Date(callTimestamp(item)), { addSuffix: true }),
+        body: <CallItemBody item={item} instituteId={instituteId} />,
+    };
+}
+
+/** One row of the merged feed — a message or a call — with the sort key hoisted. */
+type FeedEntry =
+    | { kind: 'message'; ts: string; item: CommunicationItem }
+    | { kind: 'call'; ts: string; item: CallLogItem };
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export const StudentCommunicationTimeline = () => {
@@ -597,7 +711,7 @@ export const StudentCommunicationTimeline = () => {
     const filterOptions = buildFilterOptions(t);
     const { selectedStudent } = useStudentSidebar();
     const [page, setPage] = useState(0);
-    const [channelFilter, setChannelFilter] = useState<string>('ALL');
+    const [channelFilter, setChannelFilter] = useState<ChannelFilter>('ALL');
     const pageSize = 20;
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
@@ -606,11 +720,15 @@ export const StudentCommunicationTimeline = () => {
     const email = selectedStudent?.email || undefined;
     const phone = selectedStudent?.mobile_number || undefined;
     const hasContact = !!(email || phone);
+    const userId = selectedStudent?.user_id || undefined;
 
+    // Messages come from notification_service, keyed by email/phone. Not asked
+    // for at all under the CALL chip — that channel is unknown to it.
+    const wantMessages = channelFilter !== 'CALL';
     const {
         data: timelineData,
-        isLoading,
-        error,
+        isLoading: messagesLoading,
+        error: messagesError,
         refetch,
     } = useQuery({
         queryKey: ['communication-timeline', email, phone, page, channelFilter],
@@ -622,9 +740,32 @@ export const StudentCommunicationTimeline = () => {
                 size: pageSize,
                 channels: channelFilter === 'ALL' ? undefined : [channelFilter],
             }),
-        enabled: hasContact,
+        enabled: hasContact && wantMessages,
         staleTime: 30000,
     });
+
+    // Calls come from admin_core, keyed by the learner's user id — every call
+    // to this person, whoever placed it and however (counsellor, admin, AI).
+    // Fetched under ALL and CALL; the same page index as the messages so the
+    // two paged sources interleave as evenly as two independent pages can.
+    const wantCalls = channelFilter === 'ALL' || channelFilter === 'CALL';
+    const {
+        data: callsData,
+        isLoading: callsLoading,
+        error: callsError,
+        refetch: refetchCalls,
+    } = useQuery({
+        queryKey: ['telephony-call-history', userId, instituteId, page, pageSize],
+        queryFn: () => fetchCallHistory(userId!, instituteId, page, pageSize),
+        enabled: !!userId && !!instituteId && wantCalls,
+        staleTime: 30000,
+    });
+
+    const isLoading =
+        (wantMessages && hasContact && messagesLoading) || (wantCalls && !!userId && callsLoading);
+    // Under ALL, a failed call fetch must not blank the messages — degrade to
+    // messages-only. Under CALL there is nothing else to show, so surface it.
+    const error = wantMessages ? messagesError : callsError;
 
     // ─── Guard states ────────────────────────────────────────────────────────
 
@@ -647,27 +788,38 @@ export const StudentCommunicationTimeline = () => {
             <ProfileError
                 title={t('emptyStates.loadErrorTitle')}
                 hint={t('emptyStates.loadErrorHint')}
-                onRetry={() => void refetch()}
+                onRetry={() => {
+                    void refetch();
+                    void refetchCalls();
+                }}
             />
         );
     }
 
-    const communications = timelineData?.content || [];
+    const communications = wantMessages ? timelineData?.content || [] : [];
+    const calls = wantCalls ? callsData?.content || [] : [];
+
+    // Merge the two sources into one feed, newest first. Each is already a
+    // page from its own service; sorting the union keeps the page coherent
+    // even though the boundary between pages is only approximate.
+    const feed: FeedEntry[] = [
+        ...communications.map((item): FeedEntry => ({ kind: 'message', ts: item.timestamp, item })),
+        ...calls.map((item): FeedEntry => ({ kind: 'call', ts: callTimestamp(item), item })),
+    ].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
 
     // Group by date for separators
-    const groupedItems: Array<
-        { type: 'date'; date: Date } | { type: 'item'; item: CommunicationItem }
-    > = [];
+    const groupedItems: Array<{ type: 'date'; date: Date } | { type: 'item'; entry: FeedEntry }> =
+        [];
     let lastDate: string | null = null;
 
-    for (const item of communications) {
-        const itemDate = new Date(item.timestamp);
+    for (const entry of feed) {
+        const itemDate = new Date(entry.ts);
         const dateKey = format(itemDate, 'yyyy-MM-dd');
         if (dateKey !== lastDate) {
             groupedItems.push({ type: 'date', date: itemDate });
             lastDate = dateKey;
         }
-        groupedItems.push({ type: 'item', item });
+        groupedItems.push({ type: 'item', entry });
     }
 
     // Count by channel for filter chip badges
@@ -678,6 +830,17 @@ export const StudentCommunicationTimeline = () => {
         },
         {} as Record<string, number>
     );
+    if (calls.length > 0) channelCounts.CALL = calls.length;
+
+    // Two paged sources → the feed's page count is whichever runs longer, and
+    // its total is the sum. Good enough for a per-student view.
+    const totalPages = Math.max(
+        wantMessages ? timelineData?.totalPages ?? 0 : 0,
+        wantCalls ? callsData?.totalPages ?? 0 : 0
+    );
+    const totalElements =
+        (wantMessages ? timelineData?.totalElements ?? 0 : 0) +
+        (wantCalls ? callsData?.totalElements ?? 0 : 0);
 
     return (
         <div className="flex flex-col gap-4">
@@ -747,27 +910,29 @@ export const StudentCommunicationTimeline = () => {
                         ) : null}
                     </button>
                 ))}
-                {timelineData?.totalElements != null && (
+                {(timelineData || callsData) && (
                     <span className="ml-auto text-xs text-neutral-400">
-                        {t('totalCount', { count: timelineData.totalElements })}
+                        {t('totalCount', { count: totalElements })}
                     </span>
                 )}
             </div>
 
             {/* ── Timeline or empty state ──────────────────────────────────── */}
-            {communications.length === 0 ? (
+            {feed.length === 0 ? (
                 <ProfileEmpty
-                    icon={ChatsCircle}
+                    icon={channelFilter === 'CALL' ? Phone : ChatsCircle}
                     title={t('emptyStates.noCommunicationsTitle')}
                     hint={
-                        channelFilter !== 'ALL'
-                            ? t('emptyStates.noChannelMessages', {
-                                  channel: (
-                                      channelConfig[channelFilter]?.label ?? channelFilter
-                                  ).toLowerCase(),
-                                  allLabel: t('filters.all'),
-                              })
-                            : t('emptyStates.noMessagesYet')
+                        channelFilter === 'CALL'
+                            ? t('emptyStates.noCalls')
+                            : channelFilter !== 'ALL'
+                              ? t('emptyStates.noChannelMessages', {
+                                    channel: (
+                                        channelConfig[channelFilter]?.label ?? channelFilter
+                                    ).toLowerCase(),
+                                    allLabel: t('filters.all'),
+                                })
+                              : t('emptyStates.noMessagesYet')
                     }
                     action={
                         channelFilter === 'ALL' ? (
@@ -814,8 +979,14 @@ export const StudentCommunicationTimeline = () => {
                                     date: entry.date,
                                     key: `date-${entry.date.toISOString()}`,
                                 });
+                            } else if (entry.entry.kind === 'call') {
+                                currentGroup.push(
+                                    toCallTimelineItem(entry.entry.item, t, instituteId)
+                                );
                             } else {
-                                currentGroup.push(toTimelineItem(entry.item, t, channelConfig));
+                                currentGroup.push(
+                                    toTimelineItem(entry.entry.item, t, channelConfig)
+                                );
                             }
                         }
                         if (currentGroup.length > 0) {
@@ -838,7 +1009,7 @@ export const StudentCommunicationTimeline = () => {
             )}
 
             {/* ── Pagination ───────────────────────────────────────────────── */}
-            {timelineData && timelineData.totalPages > 1 && (
+            {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-3 border-t border-neutral-200 pt-4">
                     <MyButton
                         type="button"
@@ -852,15 +1023,15 @@ export const StudentCommunicationTimeline = () => {
                     <span className="text-xs text-neutral-500">
                         {t('pagination.pageOf', {
                             current: page + 1,
-                            total: timelineData.totalPages,
+                            total: totalPages,
                         })}
                     </span>
                     <MyButton
                         type="button"
                         buttonType="secondary"
                         scale="small"
-                        disable={page >= timelineData.totalPages - 1}
-                        onClick={() => setPage(Math.min(timelineData.totalPages - 1, page + 1))}
+                        disable={page >= totalPages - 1}
+                        onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                     >
                         {t('pagination.next')}
                     </MyButton>

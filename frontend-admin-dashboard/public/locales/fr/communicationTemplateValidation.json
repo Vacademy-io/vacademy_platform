@@ -22,6 +22,7 @@
     "headerTooManyVariables_other": "Un en-tête texte peut contenir au maximum une variable ; celui-ci en a {{count}}.",
     "headerSampleValueMissing": "La variable d'en-tête a besoin d'une valeur d'exemple pour l'examen par Meta.",
     "headerSampleUrlRequired": "Une URL {{type}} d'exemple est requise pour les modèles à en-tête {{type}}.",
+    "headerSampleUrlExpiring": "Le lien d'exemple {{type}} est une URL signée temporaire (elle contient un paramètre Signature/Expires) et cessera de fonctionner à son expiration — Meta approuverait le modèle, puis chaque envoi échouerait. Utilisez Téléverser pour héberger le fichier de façon permanente.",
     "footerTooLong": "Le pied de page contient {{length}} caractères ; Meta en autorise au maximum {{max}}.",
     "footerCannotContainVariables": "Les pieds de page ne peuvent pas contenir de variables — retirez {{token}} du pied de page.",
     "tooManyButtons": "Un modèle peut avoir au maximum {{max}} boutons.",

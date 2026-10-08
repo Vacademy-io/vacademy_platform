@@ -248,5 +248,10 @@
         "cartCtaLabel": "Add to Cart",
         "checkoutCtaLabel": "Proceed to checkout",
         "viewCourseLabel": "View course"
+    },
+    "documentViewer": {
+        "heading": "Browse our catalogue",
+        "subheading": "Flip through every page right here.",
+        "buttonText": "Open the catalogue"
     }
 }

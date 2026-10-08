@@ -14,6 +14,8 @@
         "botSilent": "एजेंट कभी नहीं बोला — कॉलर को कुछ भी सुनाई नहीं दिया",
         "replyLoop": "एजेंट बार-बार वही जवाब दोबारा शुरू करता रहा",
         "handbackLoop": "एजेंट के पास कहने को कुछ नहीं था और वह कॉलर से बार-बार बोलने को कहता रहा",
+        "openingReplayed": "एजेंट ने कॉल के बीच में अपनी शुरुआती लाइन फिर से बोल दी",
+        "repeatedLine": "एजेंट ने एक ही लाइन दो बार बोली",
         "deadAir": "कॉल के दौरान लंबी खामोशी रही",
         "falseReask": "एजेंट ने उन जवाबों के लिए दोबारा पूछा जो वह पहले ही सुन चुका था",
         "likelyMachine": "संभवतः एक आंसरिंग मशीन थी, इंसान नहीं",
@@ -31,6 +33,8 @@
         "botSilent": "एजेंट खामोश",
         "replyLoop": "जवाब लूप",
         "handbackLoop": "कहने को कुछ नहीं",
+        "openingReplayed": "शुरुआत दोहराई",
+        "repeatedLine": "लाइन दोहराई",
         "deadAir": "खामोशी",
         "falseReask": "गलत दोबारा-प्रश्न",
         "likelyMachine": "संभावित मशीन",
@@ -97,7 +101,12 @@
         "sttReconnect_one": "{{count}} स्पीच-पहचान पुनः कनेक्शन",
         "sttReconnect_other": "{{count}} स्पीच-पहचान पुनः कनेक्शन",
         "transferFailed": "ट्रांसफर का अनुरोध किया गया, लेकिन प्रोवाइडर के साथ कभी दर्ज नहीं हुआ",
-        "promptUnresolved": "अनसुलझा: {{fields}}"
+        "promptUnresolved": "अनसुलझा: {{fields}}",
+        "openingReplayed_one": "शुरुआती लाइन {{count}} बार दोहराई",
+        "openingReplayed_other": "शुरुआती लाइन {{count}} बार दोहराई",
+        "repeatedLine_one": "{{count}} लाइन दो बार बोली",
+        "repeatedLine_other": "{{count}} लाइनें दो बार बोलीं",
+        "repeatedLineSample": "जैसे “{{text}}”"
     },
     "faultBlock": {
         "unrecognisedCode": "अपरिचित फॉल्ट कोड — यह कॉल इस डैशबोर्ड से नए बॉट द्वारा रिपोर्ट की गई थी।"

@@ -27,6 +27,7 @@ import {
     type EmailInboxFilters,
     type EmailMessage,
 } from '../../-services/email-inbox-api';
+import { isSystemMessage, isSystemSender, resolveOrigin } from '../../-utils/email-text';
 import { EmailConversationList } from './email-conversation-list';
 import { EmailThread } from './email-thread';
 import { EmailReplyComposer } from './email-reply-composer';
@@ -214,6 +215,12 @@ export function EmailInboxPanel() {
     }, [instituteId, searchQuery, filters]);
 
     const selectedConvo = conversations.find((c) => c.email === selectedEmail);
+    // A bounce daemon / postmaster thread: nothing a human will ever read a reply to. The row may
+    // be absent from the list (direction filter / search narrowed it away) or come from a backend
+    // that predates `system`, so the same sender rule the backend uses is applied here too.
+    const selectedIsSystem =
+        selectedConvo?.system ??
+        isSystemSender(selectedEmail ?? undefined, selectedConvo?.lastMessageSubject);
 
     const handleRefresh = () => {
         loadFirstPage();
@@ -266,8 +273,13 @@ export function EmailInboxPanel() {
                         loading={loadingMessages}
                         hasMore={hasMoreMessages}
                         onLoadOlder={handleLoadOlder}
-                        onReply={selectedEmail ? () => setReplyOpen(true) : undefined}
+                        onReply={
+                            selectedEmail && !selectedIsSystem
+                                ? () => setReplyOpen(true)
+                                : undefined
+                        }
                         onBack={() => setSelectedEmail(null)}
+                        system={selectedIsSystem}
                     />
                 </div>
             </div>
@@ -290,15 +302,25 @@ export function EmailInboxPanel() {
 }
 
 /**
- * Build "Re: <subject>" from the latest message in the thread that has a subject.
- * Avoids prefixing with "Re:" twice. Returns empty string when nothing useful is available.
+ * Build "Re: <subject>" for the composer. Prefers the subject the PERSON last wrote in (their
+ * latest non-bounce inbound message), then our own latest inbox reply, and only then any other
+ * outgoing subject — otherwise a campaign or OTP sent after their question would prefill
+ * "Re: <our campaign title>". Avoids prefixing with "Re:" twice; empty when nothing is usable.
  */
 function buildReplySubject(messages: EmailMessage[]): string {
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        const subj = msg?.subject?.trim();
-        if (subj) {
-            return /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+    const passes: ((msg: EmailMessage) => boolean)[] = [
+        (msg) => msg.direction === 'INCOMING' && !isSystemMessage(msg),
+        (msg) => msg.direction === 'OUTGOING' && resolveOrigin(msg) === 'INBOX_REPLY',
+        () => true,
+    ];
+    for (const matches of passes) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (!msg || !matches(msg)) continue;
+            const subj = msg.subject?.trim();
+            if (subj) {
+                return /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+            }
         }
     }
     return '';

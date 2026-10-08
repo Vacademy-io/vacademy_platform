@@ -71,7 +71,8 @@
         "previewEmptyState": "सामग्री लिखने के लिए कोई टेम्पलेट चुनें या 'HTML संपादित करें' पर जाएं।",
         "bodyPlaceholder": "ईमेल बॉडी का HTML दर्ज करें... प्लेसहोल्डर के लिए {{token}} का उपयोग करें",
         "placeholderHintPrefix": "इस तरह के प्लेसहोल्डर",
-        "placeholderHintSuffix": "भेजते समय प्रत्येक प्राप्तकर्ता के लिए बदल दिए जाते हैं। इन्हें अगले चरण में मैप करें।"
+        "placeholderHintSuffix": "भेजते समय प्रत्येक प्राप्तकर्ता के लिए बदल दिए जाते हैं। इन्हें अगले चरण में मैप करें।",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "शीर्षक",

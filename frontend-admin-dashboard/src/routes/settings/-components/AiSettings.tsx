@@ -121,6 +121,7 @@ interface ActivityLogResponse {
 
 import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
+import CurriculumLibrarySettings from './CurriculumLibrarySettings';
 import { StudentAiSettingsSection } from './StudentAiSettingsSection';
 import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 import { noAutofillProps } from '@/lib/no-autofill';
@@ -1121,6 +1122,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 </section>
 
                 <section id="grp-knowledge" className="space-y-6">
+                    {/* Pre-loaded curriculum (NCERT…) — which boards/classes this institute sees */}
+                    <CurriculumLibrarySettings />
                     {/* Knowledge Base */}
                     <KnowledgeBase />
                 </section>

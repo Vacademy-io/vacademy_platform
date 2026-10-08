@@ -50,6 +50,9 @@ export function convertDateFormat(dateStr: string) {
     const normalized = hasTimezone ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
     const date = new Date(normalized);
     if (isNaN(date.getTime())) return '';
+    // "Open until 9999-12-31 UTC" is the year 10000 east of Greenwich - a value
+    // no datetime-local input can hold. It means "never closes", not a date.
+    if (date.getFullYear() >= 9000) return '';
 
     // Emit LOCAL wall-clock components for the datetime-local input, which
     // interprets its value as local time. Using toISOString() here would leak

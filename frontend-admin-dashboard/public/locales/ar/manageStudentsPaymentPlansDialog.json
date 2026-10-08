@@ -36,5 +36,22 @@
     },
     "actions": {
         "addNewPaymentPlan": "+ إضافة خطة دفع جديدة"
+    },
+    "search": {
+        "placeholder": "ابحث عن الخطط بالاسم…",
+        "noResults": "لا توجد خطط تطابق بحثك أو الفلتر.",
+        "clear": "مسح"
+    },
+    "filters": {
+        "all": "الكل",
+        "FREE": "مجاني",
+        "ONE_TIME": "دفعة واحدة",
+        "DONATION": "تبرع",
+        "SUBSCRIPTION": "اشتراك",
+        "CPO": "CPO"
+    },
+    "meta": {
+        "created": "أُنشئ في {{date}}",
+        "createdBy": "بواسطة {{name}}"
     }
 }

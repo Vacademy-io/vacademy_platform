@@ -39,7 +39,10 @@
         "refresh": "Refresh",
         "refreshTooltip": "Reload submissions and recalculate the summary",
         "revaluateTooltip": "Re-run evaluation for the selected submissions",
-        "aiEvaluationsTooltip": "Open AI evaluation for this assessment"
+        "aiEvaluationsTooltip": "Open AI evaluation for this assessment",
+        "bulkAiCheck": "Bulk AI check",
+        "bulkAiCheckTooltip": "Upload many scanned copies; names are read and matched, checks run in the background",
+        "bulkAiBatches": "Bulk checks"
     },
     "dialogs": {
         "revaluate": {

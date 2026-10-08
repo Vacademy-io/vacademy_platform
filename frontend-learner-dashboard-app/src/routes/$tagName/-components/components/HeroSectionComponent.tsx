@@ -11,6 +11,7 @@ import {
   isValidVideoUrl,
 } from "../../-utils/video-url";
 import { cn } from "@/lib/utils";
+import { isHexDark } from "../../-utils/catalogue-style-engine";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -483,7 +484,11 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
+      // A dark author colour flips the band's tokens to light ink (`dark`):
+      // the title/description are painted with token classes that no
+      // props.textColor can override, so without this a navy hero renders
+      // its headline navy-on-navy.
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg", isHexDark(backgroundColor) && "dark")}
       // Author-painted color must beat the token hero surface: the class's
       // opaque gradient stack would otherwise cover the inline color.
       style={{ textAlign, backgroundColor: backgroundColor || undefined, ...(backgroundColor ? { backgroundImage: 'none' } : {}) }} // design-lint-ignore: page-builder background color
@@ -901,7 +906,9 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
+      // Same dark-band flip as the placeholder variant; a background IMAGE
+      // keeps the token ink, since its brightness is unknown.
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg", !hasBgImage && isHexDark(backgroundColor) && "dark")}
       style={{
         textAlign,
         backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color

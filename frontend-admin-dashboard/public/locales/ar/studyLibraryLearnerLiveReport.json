@@ -14,10 +14,13 @@
     "export": {
         "generatedOn": "تم الإنشاء {{date}}",
         "exportSuccess": "تم تصدير تقرير المتعلم",
-        "exportFailed": "فشل تصدير ملف PDF"
+        "exportFailed": "فشل تصدير ملف PDF",
+        "csvExportSuccess": "تم تصدير CSV",
+        "csvExportFailed": "فشل تصدير CSV"
     },
     "errors": {
-        "loadFailed": "حدث خطأ أثناء تحميل التقرير. يرجى المحاولة مرة أخرى."
+        "loadFailed": "حدث خطأ أثناء تحميل التقرير. يرجى المحاولة مرة أخرى.",
+        "batchLoadFailed": "تعذر تحميل تقرير {{name}}."
     },
     "emptyState": {
         "title": "لم يتم العثور على حصص مباشرة",
@@ -26,7 +29,8 @@
     "actions": {
         "attendanceTracker": "متتبع الحضور",
         "exporting": "جارٍ التصدير…",
-        "exportPdf": "تصدير PDF"
+        "exportPdf": "تصدير PDF",
+        "exportCsv": "تصدير CSV"
     },
     "metrics": {
         "attendance": "الحضور",
@@ -41,5 +45,26 @@
     "sections": {
         "classHistoryTitle": "سجل الحصص",
         "classHistorySubtitle": "الحضور والمشاركة لكل حصة خلال الفترة"
+    },
+    "batchCount": "{{term}} · تم اختيار {{count}}",
+    "csv": {
+        "fileStem": "learner-live-class-report",
+        "summaryTitle": "الملخص",
+        "learner": "المتعلم",
+        "email": "البريد الإلكتروني",
+        "startDate": "تاريخ البدء",
+        "endDate": "تاريخ الانتهاء",
+        "attendancePct": "الحضور (%)",
+        "batchAttendancePct": "حضور {{batch}} (%)",
+        "attended": "الحصص المحضورة",
+        "totalClasses": "إجمالي الحصص",
+        "avgDurationMin": "متوسط المدة (دقيقة)",
+        "batchAvgDurationMin": "متوسط مدة {{batch}} (دقيقة)",
+        "engagementScore": "درجة التفاعل (0-100)",
+        "batchEngagementScore": "درجة تفاعل {{batch}} (0-100)",
+        "classesTitle": "سجل الحصص",
+        "durationMin": "المدة (دقيقة)",
+        "talkTimeMin": "وقت التحدث (دقيقة)",
+        "emojis": "الرموز التعبيرية"
     }
 }

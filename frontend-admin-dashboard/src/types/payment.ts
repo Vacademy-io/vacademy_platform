@@ -45,6 +45,13 @@ export interface PaymentOptionApi {
     plan_change_allowed?: boolean;
     /** Populated when type='CPO'. Points at the underlying ComplexPaymentOption row. */
     complex_payment_option_id?: string;
+    // Read-only provenance, server-stamped. The plan picker sorts on created_at and
+    // shows who added the plan; both are absent on rows created before V507.
+    created_at?: string | null;
+    updated_at?: string | null;
+    created_by_user_id?: string | null;
+    /** Resolved from auth_service on the list endpoint; null when unknown. */
+    created_by_name?: string | null;
 }
 
 export interface PaymentPlan {

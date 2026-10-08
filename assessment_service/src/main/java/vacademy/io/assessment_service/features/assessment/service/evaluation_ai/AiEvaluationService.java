@@ -66,6 +66,17 @@ public class AiEvaluationService {
         }
 
         private String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel) {
+                return initiateEvaluationForAttempt(attempt, preferredModel, false);
+        }
+
+        /**
+         * @param queueOnly create the row as PENDING and let {@link AiEvaluationQueuePoller}
+         *                  dispatch it under the in-flight cap, instead of starting it now.
+         *                  Bulk runs must use this: dispatching 200 copies at once floods
+         *                  the single AI pod. A teacher's one-off check keeps the
+         *                  immediate path, so the page it opens shows progress at once.
+         */
+        public String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel, boolean queueOnly) {
                 String attemptId = attempt.getId();
 
                 // Idempotency: reuse an already-running evaluation for this attempt
@@ -94,6 +105,11 @@ public class AiEvaluationService {
 
                 // Clear any stale cancellation flags from previous runs
                 cancellationService.clearFlag(savedProcess.getId());
+
+                if (queueOnly) {
+                        log.info("Queued AI evaluation {} for attempt {} (poller will dispatch)", savedProcess.getId(), attemptId);
+                        return savedProcess.getId();
+                }
 
                 // Defer the @Async dispatch until AFTER the parent transaction
                 // commits. Without this, the async thread starts in parallel and

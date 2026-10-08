@@ -71,7 +71,8 @@
         "previewEmptyState": "Pick a template or switch to Edit HTML to write content.",
         "bodyPlaceholder": "Enter email body HTML... use {{token}} for placeholders",
         "placeholderHintPrefix": "Placeholders like",
-        "placeholderHintSuffix": "are replaced per-recipient on send. Map them in the next step."
+        "placeholderHintSuffix": "are replaced per-recipient on send. Map them in the next step.",
+        "emailTypeHint": "Sent from this address. Manage senders and their daily limits in Settings → Notifications."
     },
     "pushStep": {
         "titleLabel": "Title",

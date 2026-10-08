@@ -610,6 +610,16 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
 
     List<StudentAttempt> findByStatusNotIn(List<String> name);
 
+    /**
+     * Open attempts on assessments that have no clock (practice, survey). One
+     * query, so the hourly attempt-end sweep does not walk a lazy
+     * registration -> assessment chain per attempt outside a transaction.
+     */
+    @Query("SELECT sa.id FROM StudentAttempt sa WHERE sa.status NOT IN :statuses "
+            + "AND sa.registration.assessment.playMode IN :playModes")
+    List<String> findOpenAttemptIdsByPlayModes(@Param("statuses") List<String> statuses,
+                                               @Param("playModes") List<String> playModes);
+
     Optional<StudentAttempt> findTopByRegistrationOrderByCreatedAtDesc(vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration registration);
 
     /**

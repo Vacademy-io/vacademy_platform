@@ -12,7 +12,10 @@
         "to": "तक",
         "apply": "लागू करें",
         "reset": "रीसेट करें",
-        "noInstitute": "कॉल लॉग देखने के लिए एक संस्थान चुनें।"
+        "noInstitute": "कॉल लॉग देखने के लिए एक संस्थान चुनें।",
+        "presetHours": "{{hours}} घं.",
+        "customHoursPlaceholder": "पिछले N घंटे",
+        "customHoursLabel": "पिछले N घंटे"
     },
     "counsellorPicker": {
         "ariaLabel": "काउंसलर के अनुसार फ़िल्टर करें",

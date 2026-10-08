@@ -107,6 +107,7 @@
     "recentLeads": "العملاء المحتملون الأخيرون",
     "regularizations": "التسويات",
     "reports": "التقارير",
+    "utmCampaigns": "الحملات (UTM)",
     "requests": "الطلبات",
     "runs": "عمليات التشغيل",
     "salarySetup": "إعداد الرواتب",
@@ -132,5 +133,6 @@
     "websiteBuilder": "منشئ المواقع",
     "whatsappInbox": "صندوق وارد واتساب",
     "whatsappTemplates": "قوالب واتساب",
-    "workflows": "سير العمل"
+    "workflows": "سير العمل",
+    "dailyEngagement": "المشاركة اليومية"
 }

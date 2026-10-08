@@ -1,13 +1,60 @@
 {
     "inviteLinks": "Invite Links",
     "add": "Add",
-    "inviteLinksLabel": "Invite Links:",
-    "view": "View",
     "defaultTag": "DEFAULT",
-    "makeDefault": "Make Default",
-    "noInviteLinksAvailable": "No invite links available.",
+    "makeDefault": "Make default",
+    "madeDefault": "Invite link set as default",
+    "noInviteLinksAvailable": "No invite links yet. Use Add to create one for a batch.",
     "invitePage": "Invite Page",
     "copyFailed": "Copy failed",
-    "failedToSubmitRating": "Failed to submit rating",
-    "unexpectedError": "An unexpected error occurred"
+    "unexpectedError": "An unexpected error occurred",
+    "searchPlaceholder": "Search by invite name or code",
+    "clearSearch": "Clear search",
+    "resultCount_one": "{{count}} invite link",
+    "resultCount_other": "{{count}} invite links",
+    "sortedNewest": "newest first",
+    "linkCount_one": "{{count}} link",
+    "linkCount_other": "{{count}} links",
+    "noSearchResults": "No invite links match “{{term}}”.",
+    "edit": "Edit",
+    "delete": "Delete",
+    "copyLink": "Copy link",
+    "copied": "Copied",
+    "shortUrlUnavailable": "No short URL for this invite yet",
+    "qr": {
+        "title": "Invite QR code",
+        "description": "Scanning this code opens the enrolment form for “{{name}}”.",
+        "copyLink": "Copy link",
+        "downloadPng": "Download PNG",
+        "downloaded": "QR code downloaded",
+        "downloadFailed": "Could not download the QR code",
+        "useShortUrl": "Encode the short URL instead",
+        "useShortUrlHint": "A shorter address gives a simpler code that scans better from a distance, but it depends on the short link staying active.",
+        "shortUrlWarning": "This code points at the short link. If the short link is ever disabled, printed copies stop working.",
+        "fullUrlNote": "This code encodes the full invite URL, so it keeps working for as long as the invite does."
+    },
+    "deleteDialog": {
+        "heading": "Delete invite link",
+        "confirmText": "Delete the invite link “{{name}}”? Anyone opening it afterwards will no longer be able to enrol.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "deleting": "Deleting…",
+        "success": "Deleted invite link “{{name}}”",
+        "error": "Failed to delete the invite link"
+    },
+    "meta": {
+        "created": "Created",
+        "by": "by",
+        "unknownDate": "date unavailable"
+    },
+    "actions": "More actions",
+    "shortUrlCopied": "Short URL copied: {{url}}",
+    "menu": {
+        "copyShortUrl": "Copy short URL",
+        "qrCode": "QR code",
+        "utmGenerator": "UTM generator"
+    },
+    "loading": "Loading",
+    "loadError": "Could not load invite links.",
+    "retry": "Try again"
 }

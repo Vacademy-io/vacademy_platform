@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Map;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
@@ -51,6 +52,45 @@ public class InternalClientUtils {
                 String.class);
 
         return response;
+    }
+
+    /**
+     * Same as {@link #makeHmacRequest}, but for a route whose query values the
+     * caller has ALREADY percent-encoded.
+     *
+     * <p>
+     * The plain {@code makeHmacRequest} hands {@code RestTemplate} a URL
+     * <em>string</em>, which its {@code DefaultUriBuilderFactory} then encodes —
+     * so anything the caller encoded first comes out double-encoded ({@code %20}
+     * becomes {@code %2520}). That silently broke user lookup for every account
+     * whose username contained a non-ASCII character. Building the {@link URI}
+     * here with {@code build(true)} — "the route is already encoded" — and
+     * passing the URI object means nothing encodes it a second time.
+     *
+     * <p>
+     * Use this whenever a query value can contain anything but
+     * {@code [A-Za-z0-9._~-]}, and percent-encode those values yourself
+     * (e.g. {@code URLEncoder.encode(v, StandardCharsets.UTF_8)}).
+     */
+    public ResponseEntity<String> makeHmacRequestWithEncodedRoute(String clientName, String method, String baseUrl,
+            String encodedRoute, Object content) {
+        String secretKey = hmacUtils.retrieveSecretKeyFromDatabase(clientName);
+        if (secretKey == null) {
+            throw new RuntimeException("Secret key not found for client: " + clientName);
+        }
+
+        URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl + encodedRoute).build(true).toUri();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("clientName", clientName);
+        headers.set("Signature", secretKey);
+        headers.set("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+
+        return restTemplate.exchange(
+                uri,
+                HttpMethod.valueOf(method),
+                new HttpEntity<>(content, headers),
+                String.class);
     }
 
     public ResponseEntity<String> makeHmacRequestForMultipartFile(String clientName,

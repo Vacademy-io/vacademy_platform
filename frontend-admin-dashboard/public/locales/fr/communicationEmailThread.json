@@ -7,5 +7,29 @@
     "sent": "Envoyé",
     "received": "Reçu",
     "selectConversation": "Sélectionnez une conversation par e-mail",
-    "selectConversationHint": "Cliquez sur une ligne à gauche pour afficher sa conversation"
+    "selectConversationHint": "Cliquez sur une ligne à gauche pour afficher sa conversation",
+    "you": "Vous",
+    "viaAddress": "via {{address}}",
+    "noSubject": "(sans objet)",
+    "openEmail": "Ouvrir l'e-mail",
+    "collapseEmail": "Réduire",
+    "origin": {
+        "CAMPAIGN": "Campagne",
+        "INBOX_REPLY": "Réponse depuis la boîte de réception",
+        "OTP": "E-mail OTP",
+        "AUTOMATION": "Automatisation",
+        "EMAIL": "E-mail",
+        "REPLY": "A répondu à votre e-mail",
+        "INCOMING": "Nouvel e-mail"
+    },
+    "showQuotedText_one": "Afficher le texte cité ({{count}} ligne)",
+    "showQuotedText_many": "Afficher le texte cité ({{count}} lignes)",
+    "showQuotedText_other": "Afficher le texte cité ({{count}} lignes)",
+    "hideQuotedText": "Masquer le texte cité",
+    "deliveryFailed": "Échec de la distribution",
+    "deliveryFailedTo": "Impossible de distribuer à {{address}}",
+    "deliveryFailedHint": "Notification automatique du système de messagerie — l'adresse est injoignable.",
+    "showDetails": "Afficher les détails",
+    "hideDetails": "Masquer les détails",
+    "automatedSender": "Expéditeur automatique — réponse impossible"
 }

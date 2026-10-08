@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import math
+from typing import Optional
 
 logger = logging.getLogger("voice_bot")
 
@@ -76,6 +77,10 @@ class ProsodyShaper:
         self.xfade_ms = xfade_ms
         self._f0_points: list[float] = []
         self._states: dict[int, dict] = {}
+        # Set by process(): audio of a DIFFERENT rate that had to be released
+        # before this chunk to keep playout order. The frame glue emits it first.
+        self.pending_other_rate: bytes = b""
+        self.last_flushed_rate: Optional[int] = None
         self.blocks_shaped = 0
         self.blocks_passed = 0
         self.cpu_secs = 0.0
@@ -174,10 +179,26 @@ class ProsodyShaper:
 
     # ── public API ───────────────────────────────────────────────────────────
     def process(self, pcm: bytes, sample_rate: int) -> bytes:
-        """Feed one chunk; returns whatever output is ready (possibly b"")."""
+        """Feed one chunk; returns whatever output is ready (possibly b"").
+
+        ORDER IS PRESERVED ACROSS SAMPLE RATES. Live TTS arrives at 24 kHz and
+        speech-cache hits at 8 kHz in the same call, sometimes sentence by
+        sentence. The first version kept one buffer per rate and released each
+        on its own schedule, so a cached "Got it." left its tail in the 8 kHz
+        buffer while the live 24 kHz sentence streamed past — and the tail came
+        out mid-sentence ("Since you're Got it. So you have…", call 5a9fe35a,
+        2026-09-11). A rate change now flushes the other rate first; the
+        returned bytes are then at the incoming frame's rate only because the
+        flushed tail is handed back separately via `pending_other_rate`.
+        """
         if not pcm or sample_rate <= 0 or self.expand <= 1.0:
             return pcm
         import numpy as np
+        self.pending_other_rate = b""
+        for other in list(self._states):
+            if other != sample_rate:
+                self.pending_other_rate += self.flush(other)
+                del self._states[other]
         st = self._st(sample_rate)
         x = np.frombuffer(pcm, dtype=np.int16).astype(np.float64)
         st["buf"] = np.concatenate([st["buf"], x])
@@ -201,6 +222,8 @@ class ProsodyShaper:
             st = self._states.get(sr)
             if st is None:
                 continue
+            if len(st["buf"]) or st["tail"] is not None:
+                self.last_flushed_rate = sr
             if len(st["buf"]):
                 hist = st["hist"]
                 seg = np.concatenate([hist, st["buf"]])
@@ -257,7 +280,10 @@ def make_prosody_processor(shaper: ProsodyShaper, *, idle_flush_secs: float = 0.
         def __init__(self, shaper: ProsodyShaper):
             super().__init__()
             self._shaper = shaper
-            self._last: OutputAudioRawFrame | None = None
+            # A template frame PER SAMPLE RATE: a flushed 8 kHz cache tail must
+            # never be wrapped in the 24 kHz live frame that happened to come
+            # last, or it plays three times too fast.
+            self._last_by_rate: dict[int, OutputAudioRawFrame] = {}
             self._idle_task = None
 
         def _cancel_idle(self):
@@ -273,22 +299,33 @@ def make_prosody_processor(shaper: ProsodyShaper, *, idle_flush_secs: float = 0.
             self._idle_task = None
             await self._release(FrameDirection.DOWNSTREAM)
 
+        async def _emit(self, rate: int, audio: bytes, direction):
+            base = self._last_by_rate.get(rate)
+            if audio and base is not None:
+                await self.push_frame(dataclasses.replace(base, audio=audio), direction)
+
         async def _release(self, direction):
-            tail = self._shaper.flush()
-            if tail and self._last is not None:
-                await self.push_frame(dataclasses.replace(self._last, audio=tail), direction)
+            # One flush per rate, each in its own correctly-rated frame.
+            for rate in list(self._shaper._states):
+                await self._emit(rate, self._shaper.flush(rate), direction)
 
         async def process_frame(self, frame: Frame, direction: FrameDirection):
             await super().process_frame(frame, direction)
             if (direction == FrameDirection.DOWNSTREAM
                     and isinstance(frame, OutputAudioRawFrame) and frame.audio):
                 self._cancel_idle()
-                self._last = frame
+                self._last_by_rate[frame.sample_rate] = frame
                 try:
                     out = self._shaper.process(frame.audio, frame.sample_rate)
                 except Exception:
                     logger.exception("prosody: process failed — passing audio through")
-                    out = self._shaper.flush() + frame.audio
+                    self._shaper.reset()
+                    out = frame.audio
+                # Anything of another rate that had to go out first (order!).
+                if self._shaper.pending_other_rate and self._shaper.last_flushed_rate:
+                    await self._emit(self._shaper.last_flushed_rate,
+                                     self._shaper.pending_other_rate, direction)
+                    self._shaper.pending_other_rate = b""
                 self._idle_task = self.create_task(self._idle_flush())
                 if not out:
                     return                        # buffered; nothing ready yet

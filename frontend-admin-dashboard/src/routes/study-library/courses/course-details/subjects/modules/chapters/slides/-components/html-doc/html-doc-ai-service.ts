@@ -94,6 +94,12 @@ export async function generateHtmlDocument({
 export type StreamHandlers = {
     /** Called with the accumulated HTML so far as tokens arrive. */
     onDelta?: (accumulated: string) => void;
+    /**
+     * Progress of the illustration pass that runs after the text is written
+     * (the page's textbook images are generated, then patched into the final
+     * document). `completed` of `total` pictures are done.
+     */
+    onImageProgress?: (completed: number, total: number) => void;
     /** Abort to cancel generation. */
     signal?: AbortSignal;
 };
@@ -104,7 +110,7 @@ export type StreamHandlers = {
  */
 export async function generateHtmlDocumentStream(
     params: GenerateHtmlParams,
-    { onDelta, signal }: StreamHandlers = {}
+    { onDelta, onImageProgress, signal }: StreamHandlers = {}
 ): Promise<string> {
     // NOTE: this uses raw fetch (SSE), so it must replicate what
     // authenticatedAxiosInstance injects — crucially the `clientId` header:
@@ -152,7 +158,15 @@ export async function generateHtmlDocumentStream(
         for (const evt of events) {
             const line = evt.split('\n').find((l) => l.startsWith('data:'));
             if (!line) continue;
-            let obj: { delta?: string; done?: boolean; html?: string; error?: string };
+            let obj: {
+                delta?: string;
+                done?: boolean;
+                html?: string;
+                error?: string;
+                status?: string;
+                completed?: number;
+                total?: number;
+            };
             try {
                 obj = JSON.parse(line.slice(5).trim());
             } catch {
@@ -161,6 +175,8 @@ export async function generateHtmlDocumentStream(
             if (obj.delta) {
                 acc += obj.delta;
                 onDelta?.(acc);
+            } else if (obj.status === 'images') {
+                onImageProgress?.(obj.completed ?? 0, obj.total ?? 0);
             } else if (obj.done) {
                 finalHtml = obj.html || acc;
             } else if (obj.error) {

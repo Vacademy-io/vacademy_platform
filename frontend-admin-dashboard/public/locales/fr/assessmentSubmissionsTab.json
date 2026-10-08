@@ -32,7 +32,10 @@
     "buttons": {
         "offlineEntry": "Saisie hors ligne",
         "revaluate": "Réévaluer",
-        "aiEvaluations": "Évaluations IA"
+        "aiEvaluations": "Évaluations IA",
+        "bulkAiCheck": "Vérification IA en masse",
+        "bulkAiCheckTooltip": "Téléversez de nombreuses copies ; les noms sont lus et associés, les corrections tournent en arrière-plan",
+        "bulkAiBatches": "Lots"
     },
     "dialogs": {
         "revaluate": {

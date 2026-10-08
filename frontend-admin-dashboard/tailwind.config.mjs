@@ -40,11 +40,18 @@ module.exports = {
                 // dialog one is the "show me properly" view.
                 'preview-inline': '22rem',
                 'preview-dialog': 'min(72vh, 44rem)',
+                // Full-height document dialogs (the answer-sheet viewer): a
+                // fixed height, not just a cap, so the PDF viewer inside has
+                // something to fill. Mirrors maxHeight.dialog-tall.
+                'dialog-tall': 'min(88vh, 56rem)',
             },
             maxHeight: {
                 // Tall dialogs that scroll their own body (section-variant
                 // previews). Named for the same reason as dialog-chat above.
                 'dialog-tall': 'min(88vh, 56rem)',
+                // A file / row list inside a dialog: scrolls itself so a
+                // 200-file upload never pushes the dialog's buttons off-screen.
+                'list-md': '16rem',
             },
             width: {
                 // DialogContent's base class is `w-[400px] max-w-[90vw]` — a
@@ -70,6 +77,9 @@ module.exports = {
                 'slide-dialog-sm': '25rem',
                 'slide-dialog-md': '31.25rem',
                 'slide-dialog-lg': '32.5rem',
+                // A data table inside an overflow-x-auto wrapper: below this it
+                // scrolls sideways instead of crushing its columns on a phone.
+                'table-sm': '40rem',
             },
             minHeight: {
                 // Floor for the multi-step send/compose dialogs, whose steps

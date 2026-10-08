@@ -134,5 +134,11 @@
         "htmlBlockLabel": "Bloc HTML",
         "htmlBlockEmpty": "Bloc HTML vide",
         "unknownComponent": "Composant inconnu : {{type}}"
+    },
+    "documentViewer": {
+        "noFile": "Aucun PDF pour l'instant",
+        "addPdf": "Ajoutez un PDF dans le panneau de droite",
+        "openDocument": "Ouvrir le document",
+        "download": "Télécharger le PDF"
     }
 }

@@ -40,6 +40,7 @@
         "ariaLabel": "Actions for {{name}}",
         "thisRow": "this row",
         "openDetails": "Open details",
-        "copyInviteLink": "Copy invite link"
+        "copyInviteLink": "Copy invite link",
+        "shareCredentials": "Share credentials"
     }
 }

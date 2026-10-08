@@ -20,6 +20,7 @@ import { ThemeProvider as ColorThemeProvider } from "./providers/theme/theme-pro
 import { ThemeProvider as ModeThemeProvider } from "./providers/theme-provider";
 import { SidebarProvider } from "./components/ui/sidebar";
 import { routeTree } from "./routeTree.gen";
+import { registerAppRoutePaths } from "./services/reserved-app-routes";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
 import "./lib/debug";
@@ -239,6 +240,11 @@ const router = createRouter({
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0,
 });
+
+// Catalogue link builders need to know which first segments the app owns —
+// see reserved-app-routes.ts for why a root-mounted catalogue page named
+// "privacy-policy" would otherwise open the app's own page.
+registerAppRoutePaths(Object.keys(router.routesByPath));
 
 // Register the router instance for type safety
 declare module "@tanstack/react-router" {

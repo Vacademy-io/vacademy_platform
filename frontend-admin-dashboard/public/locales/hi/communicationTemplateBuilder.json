@@ -24,7 +24,11 @@
         "approvedByMeta": "टेम्पलेट Meta द्वारा स्वीकृत हो गया है और उपयोग के लिए तैयार है।",
         "submittedToMeta": "टेम्पलेट अनुमोदन के लिए Meta को सबमिट किया गया।",
         "metaRejected": "Meta ने टेम्पलेट को अस्वीकार कर दिया। आपका ड्राफ्ट सहेज लिया गया है।",
-        "draftSavedRetry": "आपका ड्राफ्ट सहेजा गया है — ऊपर बताई गई समस्या ठीक करें और फिर से सबमिट करें।"
+        "draftSavedRetry": "आपका ड्राफ्ट सहेजा गया है — ऊपर बताई गई समस्या ठीक करें और फिर से सबमिट करें।",
+        "sampleUploaded": "सैंपल {{kind}} अपलोड हो गया — सार्वजनिक URL भर दिया गया है।",
+        "sampleUploadFailed": "सैंपल {{kind}} अपलोड नहीं हो सका।",
+        "sampleWrongType": "यह फ़ाइल समर्थित {{kind}} नहीं है। {{formats}} का उपयोग करें।",
+        "sampleTooLarge": "यह फ़ाइल बहुत बड़ी है। {{formats}} का उपयोग करें।"
     },
     "problemsBanner": {
         "single": "इस टेम्पलेट में एक सुधार चाहिए",
@@ -70,7 +74,15 @@
         "buttonPhonePlaceholder": "+919876543210",
         "addQuickReply": "+ त्वरित उत्तर",
         "addUrlButton": "+ URL बटन",
-        "addPhone": "+ फ़ोन"
+        "addPhone": "+ फ़ोन",
+        "headerSampleUpload": "अपलोड करें",
+        "headerSampleUploading": "अपलोड हो रहा है…",
+        "headerSampleUrlHint": "फ़ाइल अपलोड करें या सार्वजनिक URL पेस्ट करें — Meta समीक्षा के लिए इसे डाउनलोड करता है। {{formats}}।",
+        "headerSampleFormats": {
+            "image": "JPG या PNG, अधिकतम 5 MB",
+            "video": "MP4, अधिकतम 16 MB",
+            "document": "PDF, अधिकतम 100 MB"
+        }
     },
     "headerKind": {
         "image": "छवि",

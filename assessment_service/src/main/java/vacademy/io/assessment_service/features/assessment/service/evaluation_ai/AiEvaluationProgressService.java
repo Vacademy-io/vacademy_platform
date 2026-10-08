@@ -11,6 +11,7 @@ import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.Part
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.QuestionEvaluationResultDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
+import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.client.AiServiceCopyCheckClient;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AiQuestionEvaluationRepository;
@@ -81,11 +82,16 @@ public class AiEvaluationProgressService {
                 String assessmentId = null;
                 String fileId = null;
 
+                // The checked copy THIS run rendered, read from the persisted
+                // complete payload. Deliberately not studentAttempt.evaluatedFileId:
+                // that column is per attempt, overwritten by every later run and
+                // left alone when a later render fails, so an older run's page
+                // would show another run's marks. Null when this run produced no
+                // copy; the FE then falls back to the raw sheet with its overlay.
+                fileId = evaluatedFileIdOf(process);
+
                 if (process.getStudentAttempt() != null) {
                         var studentAttempt = process.getStudentAttempt();
-
-                        // Get file ID from student attempt
-                        fileId = studentAttempt.getEvaluatedFileId();
 
                         // Get participant details from registration
                         if (studentAttempt.getRegistration() != null) {
@@ -138,6 +144,23 @@ public class AiEvaluationProgressService {
                                 .rubricVersion(rubricVersion)
                                 .aiServiceJobId(process.getAiServiceJobId())
                                 .build();
+        }
+
+        private String evaluatedFileIdOf(AiEvaluationProcess process) {
+                if (!AiEvaluationStatusEnum.COMPLETED.name().equals(process.getStatus())) {
+                        return null;
+                }
+                String json = process.getEvaluationJson();
+                if (json == null || json.isBlank()) {
+                        return null;
+                }
+                try {
+                        JsonNode node = objectMapper.readTree(json).path("evaluated_file_id");
+                        return node.isTextual() && !node.asText().isBlank() ? node.asText() : null;
+                } catch (Exception e) {
+                        log.warn("[copy-check] unreadable evaluation_json on process {}", process.getId());
+                        return null;
+                }
         }
 
         /**

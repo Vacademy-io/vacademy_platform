@@ -137,5 +137,9 @@
         "timeIncreaseRequest": {
             "label": "Autoriser les étudiants à demander une prolongation du temps"
         }
+    },
+    "validation": {
+        "cannotSave": "Impossible d'enregistrer",
+        "cannotSaveGeneric": "Impossible d'enregistrer — certains détails requis sont manquants ou invalides."
     }
 }

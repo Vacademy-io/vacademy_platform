@@ -152,5 +152,11 @@
         "htmlBlockLabel": "كتلة HTML",
         "htmlBlockEmpty": "كتلة HTML فارغة",
         "unknownComponent": "مكوّن غير معروف: {{type}}"
+    },
+    "documentViewer": {
+        "noFile": "لا يوجد ملف PDF بعد",
+        "addPdf": "أضف ملف PDF من اللوحة على اليمين",
+        "openDocument": "فتح المستند",
+        "download": "تنزيل PDF"
     }
 }

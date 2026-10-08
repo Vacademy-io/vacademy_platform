@@ -88,6 +88,9 @@ public enum WorkflowTriggerEvent {
     // locked out of a live paper, so it is the assessment event most worth routing to email /
     // WhatsApp / push rather than leaving in an inbox nobody refreshes.
     ASSESSMENT_REATTEMPT_REQUESTED,
+    // A bulk AI copy-check (uploaded scanned copies) finished: every copy graded,
+    // failed, or waiting for an admin to pick the student. Fired by assessment_service.
+    ASSESSMENT_AI_EVALUATION_COMPLETED,
 
     // Onboarding. STEP_* are keyed by eventId = onboarding_step.id (the step definition,
     // not the instance) so admins can target a specific step from the trigger config UI.

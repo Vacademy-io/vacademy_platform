@@ -32,7 +32,10 @@
     "buttons": {
         "offlineEntry": "ऑफ़लाइन एंट्री",
         "revaluate": "पुनर्मूल्यांकन करें",
-        "aiEvaluations": "AI मूल्यांकन"
+        "aiEvaluations": "AI मूल्यांकन",
+        "bulkAiCheck": "बल्क AI जाँच",
+        "bulkAiCheckTooltip": "कई स्कैन कॉपियाँ अपलोड करें; नाम पढ़कर मिलाए जाते हैं, जाँच पृष्ठभूमि में चलती है",
+        "bulkAiBatches": "बल्क जाँचें"
     },
     "dialogs": {
         "revaluate": {

@@ -297,6 +297,22 @@ public class CounselorPoolService {
      * Validates: every id must be an existing member of (pool, audience); the input
      * list must cover EVERY current member (no missing, no extras).
      */
+    /**
+     * Choose WHEN this list hands out a counsellor — at intake (default) or only on demand.
+     * On-demand is the AI-first setting: the lead stays unowned so the CALL_AI node dials it,
+     * and the pool assigns only when the outcome processor asks (qualified, or retries
+     * exhausted). Nothing else about the pool changes; members and rotation are untouched.
+     */
+    @Transactional
+    public void updateAudienceAssignOnIntake(String poolId, String audienceId, boolean assignOnIntake) {
+        CounselorPoolAudience link = poolAudienceRepository.findByAudienceId(audienceId)
+                .filter(a -> poolId.equals(a.getPoolId()))
+                .orElseThrow(() -> new VacademyException("Audience is not attached to this pool"));
+        link.setAssignOnIntake(assignOnIntake);
+        poolAudienceRepository.save(link);
+        log.info("Pool {} audience {}: assign_on_intake={}", poolId, audienceId, assignOnIntake);
+    }
+
     @Transactional
     public void updateAudienceMemberOrder(String poolId, String audienceId,
                                           List<String> orderedCounselorUserIds) {
@@ -670,6 +686,7 @@ public class CounselorPoolService {
                 .lastAssignedCounselorId(a.getLastAssignedCounselorId())
                 .lastAssignedAt(a.getLastAssignedAt())
                 .addedAt(a.getAddedAt())
+                .assignOnIntake(a.getAssignOnIntake() == null || a.getAssignOnIntake())
                 .build();
     }
 

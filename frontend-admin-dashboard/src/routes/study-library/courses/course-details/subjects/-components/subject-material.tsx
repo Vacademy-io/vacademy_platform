@@ -1,6 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
+import { EngagementTab } from '../../-components/engagement/EngagementTab';
 // class-study-material.tsx
 import { useRouter } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
@@ -905,6 +906,11 @@ export const SubjectMaterial = () => {
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Activity packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
+        [TabType.ENGAGEMENT]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <EngagementTab packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
         [TabType.PULSE]: (

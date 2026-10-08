@@ -29,6 +29,16 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
     @Query("UPDATE EnrollInvite ei SET ei.status = :status WHERE ei.id IN :enrollInviteIds")
     void updateStatusByIds(@Param("enrollInviteIds") List<String> enrollInviteIds, @Param("status") String status);
 
+    /**
+     * The invite list behind the Invite page and the course-details "Invite Links"
+     * dialog. Every filter is optional; {@code searchName} matches name or invite
+     * code and is applied ON TOP of the package-session scope, so a search inside
+     * one course's dialog never leaks invites from the rest of the institute.
+     *
+     * <p>Carries no ORDER BY of its own — the caller's {@link Pageable} sort is
+     * appended by Spring Data (qualified to the {@code ei} alias), and
+     * {@code EnrollInviteService} defaults it to {@code created_at DESC}.
+     */
     @Query(value = """
     SELECT
         ei.id AS id,
@@ -45,6 +55,8 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
         ei.web_page_meta_data_json AS webPageMetaDataJson,
         ei.created_at AS createdAt,
         ei.updated_at AS updatedAt,
+        ei.created_by_user_id AS createdByUserId,
+        ei.updated_by_user_id AS updatedByUserId,
         ei.short_url AS shortUrl,
         (
             SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL)
@@ -68,6 +80,9 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
           WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
+      AND (:#{#searchName == null || #searchName.isBlank()} = true
+           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%'))
+           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%')))
     """,
             countQuery = """
     SELECT COUNT(*)
@@ -84,6 +99,9 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
           WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
+      AND (:#{#searchName == null || #searchName.isBlank()} = true
+           OR LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%'))
+           OR LOWER(ei.invite_code) LIKE LOWER(CONCAT('%', :searchName, '%')))
     """,
             nativeQuery = true)
     Page<EnrollInviteWithSessionsProjection> getEnrollInvitesWithFilters(
@@ -93,6 +111,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("tags") List<String> tags,
             @Param("enrollInviteStatus") List<String> enrollInviteStatus,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
+            @Param("searchName") String searchName,
             Pageable pageable
     );
 
@@ -101,6 +120,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "ei.status as \"status\", ei.institute_id as \"instituteId\", ei.vendor as \"vendor\", ei.vendor_id as \"vendorId\", " +
             "ei.currency as \"currency\", ei.tag as \"tag\", ei.web_page_meta_data_json as \"webPageMetaDataJson\", " +
             "ei.created_at as \"createdAt\", ei.updated_at as \"updatedAt\", ei.short_url as \"shortUrl\", " +
+            "ei.created_by_user_id as \"createdByUserId\", ei.updated_by_user_id as \"updatedByUserId\", " +
             "ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL) as \"packageSessionIds\" " +
             "FROM enroll_invite ei " +
             "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +

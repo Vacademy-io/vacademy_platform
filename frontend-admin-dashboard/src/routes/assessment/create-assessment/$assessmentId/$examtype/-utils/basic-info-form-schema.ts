@@ -41,7 +41,9 @@ export const BasicInfoFormSchema = z.object({
     submissionType: z.string(),
     durationDistribution: z.string(),
     evaluationType: z.string(),
-    resultType: z.string().default('MANUAL'),
+    // No schema default: an unselected radio must fail loudly, not quietly
+    // become a manually-checked assessment (see defaultResultTypeFor).
+    resultType: z.string().min(1, 'Choose how results are evaluated'),
     // Automatic AI evaluation on submit. Off by default: it spends institute credits.
     aiEvaluationEnabled: z.boolean().default(false),
     switchSections: z.boolean(),

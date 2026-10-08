@@ -39,11 +39,12 @@
         "hintSuffix": "des étiquettes sélectionnées reçoit ceci."
     },
     "audience": {
-        "label": "Campagne",
+        "label": "Campagnes",
         "loading": "Chargement des campagnes…",
-        "placeholder": "Sélectionner une campagne",
+        "placeholder": "Sélectionner une ou plusieurs campagnes",
         "searchPlaceholder": "Rechercher des campagnes…",
-        "emptyText": "Aucune campagne trouvée."
+        "emptyText": "Aucune campagne trouvée.",
+        "hint": "Toute personne appartenant à l’une des campagnes sélectionnées le reçoit."
     },
     "customFieldFilter": {
         "hintPrefix": "Toute personne dont le profil correspond aux filtres ci-dessous reçoit ceci. Ajoutez-les sous",

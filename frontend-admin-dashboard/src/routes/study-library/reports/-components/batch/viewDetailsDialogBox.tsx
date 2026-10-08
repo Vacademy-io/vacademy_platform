@@ -38,7 +38,13 @@ export const ViewDetails = ({ row }: { row: Row<SubjectOverviewBatchColumnType> 
     ]);
     const [viewDetailsState, setViewDetailsState] = useState(false);
     const [chapterReportData, setChapterReportData] = useState<ChapterReport>();
-    const { pacageSessionId, course, session, level } = usePacageDetails();
+    const store = usePacageDetails();
+    // Multi-batch reports tag every row with its own batch; the store only
+    // remembers the first batch generated, so prefer the row.
+    const pacageSessionId = row.original.package_session_id || store.pacageSessionId;
+    const course = row.original.course_name ?? store.course;
+    const session = row.original.session_name ?? store.session;
+    const level = row.original.level_name ?? store.level;
     const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const ChapterWiseMutation = useMutation({
         mutationFn: fetchChapterWiseProgress,

@@ -323,6 +323,36 @@ export function calculateTotalMarks(questions: AdaptiveMarkingQuestion[]) {
     return String(totalMarks);
 }
 
+/**
+ * What "result / evaluation type" a brand-new assessment starts with.
+ *
+ * Only a Manual Upload Exam is checked by a teacher; every other type carries
+ * objective questions and must grade itself. This used to fall through to a
+ * silent schema default of MANUAL when the admin never touched the radio, which
+ * turned a Mock with ten MCQs into "Upload Answer" for every learner.
+ */
+export const defaultResultTypeFor = (examType: string | undefined) =>
+    examType === 'MANUAL_UPLOAD_EXAM' ? 'MANUAL' : 'AUTO_AFTER_SUBMISSION';
+
+/** Always-available types: their live window runs to 9999, so they never "end". */
+export const isOpenEndedExamType = (examType: string | undefined) =>
+    examType === 'MOCK' || examType === 'PRACTICE';
+
+/**
+ * A stored result type made sense of for this assessment type. "Auto after
+ * assessment end" on a mock/practice test meant results never released (the
+ * end never comes); the backend now treats it as after-submission, and the
+ * form shows the same so the radio is never blank on edit.
+ */
+export const normalizeResultTypeFor = (examType: string | undefined, resultType: string) =>
+    isOpenEndedExamType(examType) && resultType === 'AUTO_AFTER_ASSESSMENT_END'
+        ? 'AUTO_AFTER_SUBMISSION'
+        : resultType;
+
+/** The submission a Manual Upload Exam collects; nothing for self-grading types. */
+export const defaultSubmissionTypeFor = (examType: string | undefined) =>
+    examType === 'MANUAL_UPLOAD_EXAM' ? 'PDF' : '';
+
 export const syncStep1DataWithStore = (form: UseFormReturn<BasicSectionFormType>) => {
     const setBasicInfo = useBasicInfoStore.getState().setBasicInfo;
     const { getValues } = form;
@@ -919,3 +949,51 @@ export const convertDataToStep3 = (
     convertedData.notify_parent = parentNotifications;
     return convertedData;
 };
+
+/** react-hook-form nests errors like the form values; list every leaf with its path. */
+export function flattenFormErrors(
+    errors: unknown,
+    prefix = ''
+): { path: string; message: string }[] {
+    if (!errors || typeof errors !== 'object') return [];
+    const out: { path: string; message: string }[] = [];
+    for (const [key, value] of Object.entries(errors as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object') continue;
+        const path = prefix ? `${prefix}.${key}` : key;
+        const message = (value as { message?: unknown }).message;
+        if (typeof message === 'string' && message) {
+            out.push({ path, message });
+        } else if (!('ref' in (value as object))) {
+            out.push(...flattenFormErrors(value, path));
+        }
+    }
+    return out;
+}
+
+/** Years at or past this mean "never closes", not a schedule. */
+const NO_EXPIRY_YEAR = 9000;
+
+export function convertDateFormat(dateStr: string) {
+    if (dateStr === '') return '';
+
+    // Backend sends timestamps as UTC but sometimes omits the trailing 'Z'.
+    // `new Date("2026-07-11T12:37:00")` without a zone marker is parsed as
+    // *local* time by browsers, silently shifting the instant. Force UTC
+    // interpretation when no zone marker is present.
+    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(dateStr);
+    const normalized = hasTimezone ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return '';
+    // Mock/practice tests are stored as "open until 9999-12-31 UTC". East of
+    // Greenwich that instant is the year 10000, which no datetime-local input
+    // can hold - the value parsed as Invalid Date and the hidden end-date rule
+    // silently blocked every Update of a mock or practice test in India.
+    if (date.getFullYear() >= NO_EXPIRY_YEAR) return '';
+
+    // Emit LOCAL wall-clock components for the datetime-local input, which
+    // interprets its value as local time. Using toISOString() here would leak
+    // UTC digits into the form, shifting the shown time by the TZ offset and
+    // corrupting the stored instant on re-save.
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}

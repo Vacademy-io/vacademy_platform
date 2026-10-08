@@ -79,7 +79,19 @@ type ApiCourseData = {
     }[];
 };
 
-type FreePlan = {
+/**
+ * Server-stamped provenance carried onto every picker plan so the dialog can sort
+ * newest-first and say who added a plan. All optional: rows created before the
+ * created_by column existed have no creator, and a plan appended locally right
+ * after "Add New Payment Plan" has neither until the list refetches.
+ */
+export interface PlanProvenance {
+    createdAt?: string | null;
+    createdByUserId?: string | null;
+    createdByName?: string | null;
+}
+
+type FreePlan = PlanProvenance & {
     id: string;
     name: string;
     description: string;
@@ -90,7 +102,7 @@ type FreePlan = {
     type?: string;
 };
 
-interface PaidPlan {
+interface PaidPlan extends PlanProvenance {
     id: string;
     name: string;
     description: string;
@@ -140,6 +152,9 @@ export interface PaymentOption {
     payment_option_metadata_json: string; // or parsed as: PaymentOptionMetadata if you want to parse it
     /** Set when type='CPO'. FK to the underlying ComplexPaymentOption row. */
     complex_payment_option_id?: string | null;
+    created_at?: string | null;
+    created_by_user_id?: string | null;
+    created_by_name?: string | null;
 }
 
 interface PaymentPlansInterface {
@@ -561,6 +576,77 @@ export function convertInviteData(
     return convertedData;
 }
 
+const provenanceOf = (item: PaymentOption): PlanProvenance => ({
+    createdAt: item.created_at ?? null,
+    createdByUserId: item.created_by_user_id ?? null,
+    createdByName: item.created_by_name ?? null,
+});
+
+const createdAtMillis = (plan: PlanProvenance): number => {
+    if (!plan.createdAt) return Number.POSITIVE_INFINITY;
+    const t = new Date(plan.createdAt).getTime();
+    return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+};
+
+/**
+ * Newest plan first. A plan without a created date sorts to the top: the only
+ * way one reaches the picker is the local append right after "Add New Payment
+ * Plan", and that is exactly the plan the admin is looking for. Stable, so the
+ * backend's own created_at DESC order survives for ties.
+ */
+export function sortPlansNewestFirst<T extends PlanProvenance>(plans: T[]): T[] {
+    return plans
+        .map((plan, index) => ({ plan, index }))
+        .sort((a, b) => createdAtMillis(b.plan) - createdAtMillis(a.plan) || a.index - b.index)
+        .map(({ plan }) => plan);
+}
+
+/** Picker filter values. ONE_TIME also covers the legacy lowercase 'upfront' rows. */
+export type PlanTypeFilter = 'FREE' | 'ONE_TIME' | 'DONATION' | 'SUBSCRIPTION' | 'CPO';
+
+export const PLAN_TYPE_FILTERS: PlanTypeFilter[] = [
+    'FREE',
+    'ONE_TIME',
+    'DONATION',
+    'SUBSCRIPTION',
+    'CPO',
+];
+
+export const normalizePlanType = (type?: string | null): PlanTypeFilter | null => {
+    switch ((type ?? '').toLowerCase()) {
+        case 'free':
+            return 'FREE';
+        case 'one_time':
+        case 'upfront':
+            return 'ONE_TIME';
+        case 'donation':
+            return 'DONATION';
+        case 'subscription':
+            return 'SUBSCRIPTION';
+        case 'cpo':
+            return 'CPO';
+        default:
+            return null;
+    }
+};
+
+/**
+ * Applies the picker's search box and type pills. Search is a case-insensitive
+ * substring match on the plan name; an empty query and a null type mean "all".
+ */
+export function filterPlans<T extends PlanProvenance & { name: string; type?: string }>(
+    plans: T[],
+    query: string,
+    type: PlanTypeFilter | null
+): T[] {
+    const q = query.trim().toLowerCase();
+    return plans.filter((plan) => {
+        if (type && normalizePlanType(plan.type) !== type) return false;
+        if (q && !(plan.name ?? '').toLowerCase().includes(q)) return false;
+        return true;
+    });
+}
+
 export function splitPlansByType(data: PaymentOption[]): {
     freePlans: FreePlan[];
     paidPlans: PaidPlan[];
@@ -577,6 +663,7 @@ export function splitPlansByType(data: PaymentOption[]): {
             // that plan; metadata_json is typically empty for CPOs.
             const syntheticPlan = item.payment_plans?.[0];
             paidPlans.push({
+                ...provenanceOf(item),
                 id: item.id,
                 name: item.name,
                 description: i18next.t(
@@ -593,6 +680,7 @@ export function splitPlansByType(data: PaymentOption[]): {
             const parsedData = JSON.parse(item.payment_option_metadata_json);
             if (type === 'donation') {
                 freePlans.push({
+                    ...provenanceOf(item),
                     id: item.id,
                     name: item.name,
                     description: i18next.t(
@@ -608,6 +696,7 @@ export function splitPlansByType(data: PaymentOption[]): {
                 });
             } else {
                 freePlans.push({
+                    ...provenanceOf(item),
                     id: item.id,
                     name: item.name,
                     description: i18next.t(
@@ -621,6 +710,7 @@ export function splitPlansByType(data: PaymentOption[]): {
             const parsedData = JSON.parse(item.payment_option_metadata_json);
             if (type === 'upfront' || type === 'one_time') {
                 paidPlans.push({
+                    ...provenanceOf(item),
                     id: item.id,
                     name: item.name,
                     description: i18next.t(
@@ -632,6 +722,7 @@ export function splitPlansByType(data: PaymentOption[]): {
                 });
             } else {
                 paidPlans.push({
+                    ...provenanceOf(item),
                     id: item.id,
                     name: item.name,
                     description: i18next.t(

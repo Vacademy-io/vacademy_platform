@@ -3,7 +3,8 @@
         "EMAIL": "E-mail",
         "WHATSAPP": "WhatsApp",
         "PUSH": "Notification push",
-        "SMS": "SMS"
+        "SMS": "SMS",
+        "CALL": "Appel"
     },
     "statuses": {
         "PENDING": "En attente",
@@ -47,7 +48,8 @@
         "noCommunicationsTitle": "Aucun échange trouvé",
         "noChannelMessages": "Aucun message {{channel}} pour l'instant. Essayez de sélectionner « {{allLabel}} » pour voir les autres canaux.",
         "noMessagesYet": "Aucun message n'a encore été envoyé à cet élève ou reçu de sa part.",
-        "sendFirstMessage": "Envoyer le premier message"
+        "sendFirstMessage": "Envoyer le premier message",
+        "noCalls": "Aucun appel avec cet élève pour l'instant. Utilisez le bouton Appeler de l'onglet Aperçu pour en passer un."
     },
     "sendCard": {
         "heading": "Envoyer une notification",
@@ -60,5 +62,28 @@
     },
     "totalCount_one": "{{count}} message au total",
     "totalCount_many": "{{count}} de messages au total",
-    "totalCount_other": "{{count}} messages au total"
+    "totalCount_other": "{{count}} messages au total",
+    "call": {
+        "outbound": "Appel sortant",
+        "inbound": "Appel entrant",
+        "aiCall": "Appel IA",
+        "status": {
+            "COMPLETED": "Répondu",
+            "NO_ANSWER": "Sans réponse",
+            "BUSY": "Occupé",
+            "FAILED": "Échoué",
+            "CANCELLED": "Annulé",
+            "IN_PROGRESS": "En cours",
+            "QUEUED": "Lancé",
+            "INITIATED": "Lancé",
+            "COUNSELLOR_RINGING": "Sonnerie",
+            "COUNSELLOR_ANSWERED": "Connexion"
+        },
+        "duration": "{{minutes}} min {{seconds}} s",
+        "outcome": "Résultat",
+        "attempt": "Tentative {{n}}",
+        "recordingHeading": "Enregistrement",
+        "noRecording": "Aucun enregistrement pour cet appel",
+        "byCounsellor": "par {{name}}"
+    }
 }

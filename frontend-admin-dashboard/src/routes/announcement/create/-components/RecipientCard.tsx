@@ -171,8 +171,8 @@ export function RecipientCard(props: RecipientCardProps) {
                                 orgRole: undefined,
                                 userIds: [],
                                 tagIds: [],
-                                campaignId: '',
-                                campaignName: '',
+                                campaignIds: [],
+                                campaignNames: {},
                                 fieldFilters:
                                     value === 'CUSTOM_FIELD_FILTER' ? rule.fieldFilters : [],
                             })
@@ -385,6 +385,7 @@ export function RecipientCard(props: RecipientCardProps) {
                                 options={tagOptions}
                                 selected={rule.tagIds}
                                 onChange={(ids) => onChange({ tagIds: ids })}
+                                checkboxes
                                 placeholder={tagsLoading ? t('tag.loading') : t('tag.placeholder')}
                                 disabled={tagsLoading}
                             />
@@ -404,34 +405,38 @@ export function RecipientCard(props: RecipientCardProps) {
                         {campaignsError ? (
                             <LoadFailure message={campaignsError} onRetry={onReloadCampaigns} />
                         ) : (
-                            <SearchableSelect
-                                value={rule.campaignId}
-                                onChange={(value) => {
-                                    const campaign = campaigns.find(
-                                        (c) => (c.id || c.campaign_id) === value
-                                    );
-                                    onChange({
-                                        campaignId: value,
-                                        campaignName: campaign?.campaign_name ?? '',
-                                    });
-                                }}
+                            <MultiSelect
                                 options={campaigns
                                     .filter((c) => !!(c.id || c.campaign_id))
                                     .map((c) => ({
                                         value: (c.id || c.campaign_id) as string,
                                         label: `${c.campaign_name} · ${c.status}`,
                                     }))}
+                                selected={rule.campaignIds}
+                                checkboxes
+                                onChange={(ids) => {
+                                    // Keep a name for every picked id so the payload and summary
+                                    // can label it even before (or without) the campaign list.
+                                    const campaignNames: Record<string, string> = {};
+                                    ids.forEach((id) => {
+                                        const campaign = campaigns.find(
+                                            (c) => (c.id || c.campaign_id) === id
+                                        );
+                                        campaignNames[id] =
+                                            campaign?.campaign_name ?? rule.campaignNames[id] ?? '';
+                                    });
+                                    onChange({ campaignIds: ids, campaignNames });
+                                }}
                                 placeholder={
                                     campaignsLoading
                                         ? t('audience.loading')
                                         : t('audience.placeholder')
                                 }
-                                searchPlaceholder={t('audience.searchPlaceholder')}
-                                emptyText={t('audience.emptyText')}
                                 disabled={campaignsLoading}
-                                triggerClassName={cn(err('campaign') && 'border-danger-400')}
+                                className={cn(err('campaign') && 'border-danger-400')}
                             />
                         )}
+                        <FieldHint>{t('audience.hint')}</FieldHint>
                         <FieldError message={err('campaign')} />
                     </div>
                 )}

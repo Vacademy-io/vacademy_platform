@@ -64,6 +64,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PagedResponse, SystemAlertItem } from '@/services/notifications/system-alerts';
+import { useSystemAlertToasts } from '@/components/common/notifications/useSystemAlertToasts';
 import { getDefaultAdminDisplaySettings } from '@/constants/display-settings/admin-defaults';
 import { getDefaultTeacherDisplaySettings } from '@/constants/display-settings/teacher-defaults';
 import { MyButton } from '@/components/design-system/button';
@@ -149,10 +150,13 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const canViewInstitute = effectiveDS.permissions.canViewInstituteDetails;
     const canEditInstitute = effectiveDS.permissions.canEditInstituteDetails;
 
-    // Alerts: last 5
+    // Alerts: last 5. Polled while the tab is visible so a job finishing in
+    // the background (a bulk AI check, say) reaches the bell - and a toast -
+    // without a page change.
     const { data: alertsList, isLoading: isAlertsLoading } = useSuspenseQuery<
         PagedResponse<SystemAlertItem>
-    >(getSystemAlertsQuery(userId, 5));
+    >({ ...getSystemAlertsQuery(userId, 5), refetchInterval: 60_000 });
+    useSystemAlertToasts(alertsList?.content);
 
     // Alerts: full list (infinite)
     const infiniteAlerts = useInfiniteQuery<PagedResponse<SystemAlertItem>>({

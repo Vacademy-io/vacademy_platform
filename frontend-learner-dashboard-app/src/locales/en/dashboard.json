@@ -242,7 +242,11 @@
         "awardedTooltip": "{{name}} — Awarded by your institute",
         "awardedTooltipWithReason": "{{name}} — Awarded by your institute: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} unlocked",
-        "emptyPrompt": "Complete your first {{slide}} to unlock a badge"
+        "emptyPrompt": "Complete your first {{slide}} to unlock a badge",
+        "manualLockedHint": "Awarded by your institute — not unlocked automatically",
+        "manualLockedTooltip": "{{name}} — Awarded by your institute, not unlocked automatically",
+        "celebrateTitle": "New badge unlocked!",
+        "celebrateAwardedTitle": "Your institute awarded you a badge"
     },
     "tnc": {
         "title": "Accept Terms & Conditions",
@@ -424,7 +428,7 @@
     },
     "getApp": {
         "title": "Get the app",
-        "subtitle": "Learn on the go — download our app for your device.",
+        "subtitle": "For a seamless experience, download our apps.",
         "android": "Android app",
         "ios": "iPhone & iPad app",
         "windows": "Windows app",

@@ -25,6 +25,7 @@
     "headerTooManyVariables_other": "يمكن أن تحتوي ترويسة النص على متغير واحد كحد أقصى؛ هذه تحتوي على {{count}}.",
     "headerSampleValueMissing": "يحتاج متغير الترويسة إلى قيمة نموذجية ليراجعها Meta.",
     "headerSampleUrlRequired": "رابط {{type}} نموذجي مطلوب لقوالب ترويسة {{type}}.",
+    "headerSampleUrlExpiring": "رابط نموذج {{type}} هو رابط موقّع مؤقت (يحتوي على معلمة Signature/Expires) وسيتوقف عن العمل بعد انتهاء صلاحيته — ستوافق Meta على القالب ثم يفشل كل إرسال. استخدم «رفع» لاستضافة الملف بشكل دائم بدلًا من ذلك.",
     "footerTooLong": "التذييل يحتوي على {{length}} حرفًا؛ يسمح Meta بحد أقصى {{max}}.",
     "footerCannotContainVariables": "لا يمكن أن تحتوي التذييلات على متغيرات — أزل {{token}} من التذييل.",
     "tooManyButtons": "يمكن أن يحتوي القالب على {{max}} أزرار كحد أقصى.",

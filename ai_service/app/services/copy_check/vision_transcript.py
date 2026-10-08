@@ -98,6 +98,33 @@ def _row_tolerance(words: list[dict[str, Any]]) -> float:
     return max(6.0, median * 0.6)
 
 
+def drop_slivers(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold rows shorter than 40% of the page's median row height into the
+    nearest full-height row.
+
+    A sliver is a detector fragment - an underline, a stray tick of the pen,
+    the tail of a 'g' - not a line the student wrote. Left in, it is a row
+    the grader can anchor to, and a score placed on it lands in the middle of
+    the real line below. Its text is kept by appending to the neighbour so no
+    reading is lost.
+    """
+    if len(rows) < 3:
+        return rows
+    heights = sorted(float(r["box"][3]) for r in rows)
+    median = heights[len(heights) // 2]
+    keep = [r for r in rows if float(r["box"][3]) >= 0.40 * median]
+    if not keep or len(keep) == len(rows):
+        return rows
+    for r in rows:
+        if float(r["box"][3]) >= 0.40 * median:
+            continue
+        cy = float(r["box"][1]) + float(r["box"][3]) / 2
+        near = min(keep, key=lambda k: abs(float(k["box"][1]) + float(k["box"][3]) / 2 - cy))
+        if r.get("text"):
+            near["text"] = (near.get("text", "") + " " + r["text"]).strip()
+    return keep
+
+
 def merge_words_into_rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     """Group word-level OCR boxes into visual rows. Pure geometry.
 
@@ -353,7 +380,7 @@ async def enrich_layout_with_vision(
     # every model call below fails, because it fixes annotation anchoring.
     rows_by_page: dict[str, list[dict[str, Any]]] = {}
     for page in pages:
-        rows = merge_words_into_rows(page)
+        rows = drop_slivers(merge_words_into_rows(page))
         if rows:
             # The word boxes are deliberately NOT kept on the page. This layout
             # is persisted per attempt in copy_check_layout.layout_json, and a

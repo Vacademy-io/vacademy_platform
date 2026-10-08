@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -251,6 +252,20 @@ public interface StudentSessionInstituteGroupMappingRepository
   Optional<String> findLatestPackageSessionIdByUserIdAndInstituteId(
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
+
+  /**
+   * Of the given user ids, those that have ANY mapping row in the institute (enrolled in a
+   * batch or an audience-only contact, any status). Used to keep staff badge awards inside
+   * the tenant: an id with no row here is skipped, never written or notified.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE institute_id = :instituteId
+      AND user_id IN (:userIds)
+      """, nativeQuery = true)
+  List<String> findUserIdsInInstitute(
+      @Param("instituteId") String instituteId,
+      @Param("userIds") Collection<String> userIds);
 
   /**
    * All package_session_ids a learner is enrolled in within one institute, filtered
@@ -535,6 +550,20 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("instituteId") String instituteId,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * Learners enrolled in one batch — the recipient list for a daily-engagement push.
+   * Distinct so a re-enrolled learner is not notified twice.
+   */
+  @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE package_session_id = :packageSessionId
+        AND status IN (:statuses)
+        AND user_id IS NOT NULL
+      """, nativeQuery = true)
+  List<String> findDistinctUserIdsByPackageSessionAndStatus(
+      @Param("packageSessionId") String packageSessionId,
+      @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT DISTINCT institute_id FROM student_session_institute_group_mapping
       WHERE user_id = :userId
@@ -655,6 +684,10 @@ public interface StudentSessionInstituteGroupMappingRepository
       ORDER BY ssigm.sub_org_id, ssigm.created_at
       """, nativeQuery = true)
   List<Object[]> findRootAdminBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
+  /** Every mapping one user holds inside one sub-org, oldest first (partner onboarding picks the ROOT_ADMIN one). */
+  List<StudentSessionInstituteGroupMapping> findBySubOrg_IdAndUserIdAndStatusOrderByCreatedAtAsc(
+      String subOrgId, String userId, String status);
 
   /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session

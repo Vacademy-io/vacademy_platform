@@ -30,6 +30,10 @@
         "noneFound": "कोई {{type}} नहीं मिला",
         "summaryNone": "कोई चयन नहीं — वर्कफ़्लो आपके संस्थान के हर {{type}} के लिए चलेगा।",
         "summarySelected_one": "वर्कफ़्लो केवल चयनित {{type}} के लिए चलेगा।",
-        "summarySelected_other": "वर्कफ़्लो {{count}} चयनित {{type}}(ओं) के लिए चलेगा। प्रत्येक चयन के लिए एक ट्रिगर पंक्ति बनाई जाएगी।"
+        "summarySelected_other": "वर्कफ़्लो {{count}} चयनित {{type}}(ओं) के लिए चलेगा। प्रत्येक चयन के लिए एक ट्रिगर पंक्ति बनाई जाएगी।",
+        "searchPlaceholder": "{{type}} खोजें...",
+        "noMatches": "“{{search}}” से कुछ भी मेल नहीं खाता।",
+        "hiddenBySearch_one": "{{count}} चयनित आइटम खोज के कारण छिपा है",
+        "hiddenBySearch_other": "{{count}} चयनित आइटम खोज के कारण छिपे हैं"
     }
 }

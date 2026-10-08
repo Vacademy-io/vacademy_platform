@@ -219,6 +219,10 @@ export const inviteLinkSchema = z.object({
                 minAmount: z.number().optional(),
                 currency: z.string().optional(),
                 type: z.string().optional(),
+                // Server-stamped; the picker sorts on createdAt and shows the creator.
+                createdAt: z.string().nullable().optional(),
+                createdByUserId: z.string().nullable().optional(),
+                createdByName: z.string().nullable().optional(),
             })
         )
         .default([]),
@@ -247,6 +251,9 @@ export const inviteLinkSchema = z.object({
                     )
                     .optional(),
                 type: z.string().optional(),
+                createdAt: z.string().nullable().optional(),
+                createdByUserId: z.string().nullable().optional(),
+                createdByName: z.string().nullable().optional(),
             })
         )
         .default([]),

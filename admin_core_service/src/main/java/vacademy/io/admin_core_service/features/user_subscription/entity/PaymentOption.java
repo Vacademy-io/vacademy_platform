@@ -76,6 +76,17 @@ public class PaymentOption {
     @Column(name = "complex_payment_option_id")
     private String complexPaymentOptionId;
 
+    /**
+     * auth_service user id of the admin who created this option. Stamped by the
+     * service on insert from the request's JWT, never from the client DTO.
+     *
+     * updatable = false on purpose: the Settings page edits a plan through the same
+     * POST, which rebuilds the entity from the DTO and merges it — with an updatable
+     * column that merge would silently null the creator on every edit.
+     */
+    @Column(name = "created_by_user_id", updatable = false)
+    private String createdByUserId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -129,6 +140,9 @@ public class PaymentOption {
                 .unit(this.unit)
                 .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
                 .complexPaymentOptionId(this.complexPaymentOptionId)
+                .createdByUserId(this.createdByUserId)
+                .createdAt(this.createdAt)
+                .updatedAt(this.updatedAt)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()
                         .map(PaymentPlan::mapToPaymentPlanDTO)
@@ -151,6 +165,9 @@ public class PaymentOption {
             .unit(this.unit)
             .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
             .complexPaymentOptionId(this.complexPaymentOptionId)
+            .createdByUserId(this.createdByUserId)
+            .createdAt(this.createdAt)
+            .updatedAt(this.updatedAt)
             .build();
     }
 

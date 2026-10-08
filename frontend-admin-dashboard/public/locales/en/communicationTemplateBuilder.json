@@ -24,7 +24,11 @@
         "approvedByMeta": "Template approved by Meta and ready to use.",
         "submittedToMeta": "Template submitted to Meta for approval.",
         "metaRejected": "Meta rejected the template. Your draft has been saved.",
-        "draftSavedRetry": "Your draft is saved — fix the problem above and submit again."
+        "draftSavedRetry": "Your draft is saved — fix the problem above and submit again.",
+        "sampleUploaded": "Sample {{kind}} uploaded — the public URL has been filled in.",
+        "sampleUploadFailed": "Could not upload the sample {{kind}}.",
+        "sampleWrongType": "That file isn't a supported {{kind}}. Use {{formats}}.",
+        "sampleTooLarge": "That file is too large. Use {{formats}}."
     },
     "problemsBanner": {
         "single": "This template needs a fix",
@@ -70,7 +74,15 @@
         "buttonPhonePlaceholder": "+919876543210",
         "addQuickReply": "+ Quick Reply",
         "addUrlButton": "+ URL Button",
-        "addPhone": "+ Phone"
+        "addPhone": "+ Phone",
+        "headerSampleUpload": "Upload",
+        "headerSampleUploading": "Uploading…",
+        "headerSampleUrlHint": "Upload a file or paste a public URL — Meta downloads it for review. {{formats}}.",
+        "headerSampleFormats": {
+            "image": "JPG or PNG, up to 5 MB",
+            "video": "MP4, up to 16 MB",
+            "document": "PDF, up to 100 MB"
+        }
     },
     "headerKind": {
         "image": "image",

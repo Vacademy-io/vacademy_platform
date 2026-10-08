@@ -47,6 +47,16 @@ public class MigrateLeadsRequestDTO {
      * See {@link WorkflowAnchorMode}. Defaults to PRESERVE.
      */
     private String workflowAnchor;
+    /**
+     * Opt-in: after the move, fire the target list's event-driven automations for each moved
+     * lead — i.e. emit {@code AUDIENCE_LEAD_SUBMISSION} on the target audience exactly as a
+     * fresh submission would, with {@code leadSource = "LEAD_MOVED"} in the context so a
+     * workflow can tell the two apart. Defaults to false: a move is bookkeeping unless the
+     * admin says otherwise, because those workflows send real messages and place real calls
+     * (AI-call lists in particular). Independent of {@link #workflowAnchor}, which governs
+     * the SCHEDULED drips; this governs the EVENT-driven ones.
+     */
+    private Boolean runDestinationAutomations;
 
     /**
      * How a moved lead relates to the target list's automation.

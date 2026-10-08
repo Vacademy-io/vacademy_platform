@@ -959,6 +959,52 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("limit") int limit);
 
     /**
+     * Outbound EMAIL rows for one counterparty inside a closed timestamp window
+     * {@code [from, to]} — the rows the thread page BEFORE {@code from} already showed. The inbox
+     * feeds them to the twin merger as context so an announcement row that lands on the next
+     * page still finds (and folds into) the HTML row shown on the previous one, instead of
+     * rendering as a second title-only card. Same cursor casting rules as
+     * {@link #findEmailMessagesForConversation}.
+     */
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE channel_id = :email
+              AND institute_id = :instituteId
+              AND (:senderFilter IS NULL OR sender_business_channel_id = :senderFilter)
+              AND notification_type = 'EMAIL'
+              AND notification_date >= CAST(:fromTs AS TIMESTAMP)
+              AND notification_date <= CAST(:toTs AS TIMESTAMP)
+            ORDER BY notification_date DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<NotificationLog> findOutboundEmailsInWindow(
+            @Param("email") String email,
+            @Param("instituteId") String instituteId,
+            @Param("senderFilter") String senderFilter,
+            @Param("fromTs") String fromTs,
+            @Param("toTs") String toTs,
+            @Param("limit") int limit);
+
+    /**
+     * Latest non-blank inbound sender display name per counterparty, institute-scoped —
+     * outbound EMAIL rows never carry sender_name, so the conversation list would otherwise
+     * lose the person's name the moment the institute replies. Rows: [channel_id, sender_name].
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (nl.channel_id) nl.channel_id, nl.sender_name
+            FROM notification_log nl
+            WHERE nl.institute_id = :instituteId
+              AND nl.channel_id IN (:emails)
+              AND nl.notification_type = 'INBOUND_EMAIL'
+              AND nl.sender_name IS NOT NULL
+              AND nl.sender_name <> ''
+            ORDER BY nl.channel_id, nl.notification_date DESC
+            """, nativeQuery = true)
+    List<Object[]> findLatestInboundSenderNames(
+            @Param("instituteId") String instituteId,
+            @Param("emails") List<String> emails);
+
+    /**
      * Batch unread counts for email conversations: number of INBOUND_EMAIL rows newer than
      * the latest OUTBOUND EMAIL row to the same counterparty. Mirrors WhatsApp behavior.
      * Not affected by the direction filter — unread is intrinsically about inbound vs outbound.

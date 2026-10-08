@@ -17,12 +17,13 @@ import { cn } from '@/lib/utils';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { getBadgeIcon, BadgeVisual } from '@/routes/settings/-constants/badge-icon-map';
+import { BadgeVisual } from '@/routes/settings/-constants/badge-icon-map';
 import { isLibraryToken } from '@/routes/settings/-constants/badge-library';
 import {
     getBadgeStats,
     getCourseLeaderboardAdmin,
     getInstituteLeaderboardAdmin,
+    type BadgeStat,
     type LeaderboardEntry,
 } from '@/services/leaderboard';
 
@@ -41,6 +42,29 @@ function RankCell({ rank }: { rank: number | null }) {
     );
 }
 
+/**
+ * Collapse stats rows that share a `badgeId` (the server groups by the snapshot name/icon, so a
+ * badge renamed or re-skinned after some awards comes back as several rows and duplicate keys).
+ * Counts are summed; the last row's non-empty name/icon wins (the most recently written snapshot).
+ */
+export function aggregateBadgeStats(rows: BadgeStat[]): BadgeStat[] {
+    const byId = new Map<string, BadgeStat>();
+    for (const row of rows) {
+        const prev = byId.get(row.badgeId);
+        if (!prev) {
+            byId.set(row.badgeId, { ...row, count: Number(row.count) || 0 });
+            continue;
+        }
+        byId.set(row.badgeId, {
+            badgeId: row.badgeId,
+            badgeName: row.badgeName || prev.badgeName,
+            badgeIcon: row.badgeIcon || prev.badgeIcon,
+            count: prev.count + (Number(row.count) || 0),
+        });
+    }
+    return [...byId.values()].sort((a, b) => b.count - a.count);
+}
+
 function BadgesStatsPanel() {
     const { t } = useTranslation('studyLibraryLeaderboardReports');
     const { data, isLoading } = useQuery({
@@ -48,6 +72,7 @@ function BadgesStatsPanel() {
         queryFn: getBadgeStats,
         staleTime: 5 * 60 * 1000,
     });
+    const badgeRows = useMemo(() => aggregateBadgeStats(data?.badges ?? []), [data]);
 
     if (isLoading) {
         return (
@@ -74,24 +99,25 @@ function BadgesStatsPanel() {
                     <p className="text-caption text-neutral-500">{t('badgesStats.learnersRecognised')}</p>
                 </div>
             </div>
-            {data.badges.length > 0 ? (
+            {badgeRows.length > 0 ? (
                 <div className="flex flex-col gap-2">
-                    {data.badges.map((b) => {
-                        const Icon = getBadgeIcon(b.badgeIcon || 'Trophy');
-                        return (
-                            <div key={b.badgeId} className="flex items-center gap-3">
-                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50">
-                                    <Icon weight="fill" className="size-4 text-primary-500" />
-                                </div>
-                                <span className="flex-1 truncate text-body text-neutral-700">
-                                    {b.badgeName || b.badgeId}
-                                </span>
-                                <span className="text-caption font-semibold text-neutral-600">
-                                    {b.count}
-                                </span>
+                    {badgeRows.map((b) => (
+                        <div key={b.badgeId} className="flex items-center gap-3">
+                            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-50">
+                                <BadgeVisual
+                                    icon={b.badgeIcon || 'Trophy'}
+                                    size={isLibraryToken(b.badgeIcon) ? 28 : 18}
+                                    className="text-primary-500"
+                                />
                             </div>
-                        );
-                    })}
+                            <span className="flex-1 truncate text-body text-neutral-700">
+                                {b.badgeName || b.badgeId}
+                            </span>
+                            <span className="text-caption font-semibold text-neutral-600">
+                                {b.count}
+                            </span>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <p className="text-caption italic text-muted-foreground">{t('badgesStats.noneAwarded')}</p>

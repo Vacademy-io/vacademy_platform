@@ -20,6 +20,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
+import vacademy.io.common.auth.config.JsonAuthEntryPoint;
 
 @Configuration
 @EnableMethodSecurity
@@ -149,6 +150,11 @@ public class ApplicationSecurityConfig {
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
+
+    // Replaces the default bodyless 403 (which is re-dispatched to a secured
+    // /error and comes back empty) with a JSON body naming the actual reason.
+    @Autowired
+    private JsonAuthEntryPoint jsonAuthEntryPoint;
     @Autowired
     UserDetailsService userDetailsService;
 
@@ -179,7 +185,10 @@ public class ApplicationSecurityConfig {
                 .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jsonAuthEntryPoint)
+                        .accessDeniedHandler(jsonAuthEntryPoint));
         return http.build();
     }
 

@@ -78,7 +78,14 @@ function validateBasics(t: TFunction, input: ValidationInput): SectionValidation
     return v;
 }
 
-function validateRecipients(t: TFunction, input: ValidationInput): SectionValidation {
+/**
+ * Exported on its own because the email-campaign page shares the audience builder and needs the
+ * same rules without the rest of the announcement input.
+ */
+export function validateRecipients(
+    t: TFunction,
+    input: Pick<ValidationInput, 'rules' | 'batchById'>
+): SectionValidation {
     const v = empty();
     if (input.rules.length === 0) {
         add(v, 'recipients', t('recipients.noAudience'));
@@ -115,7 +122,7 @@ function validateRecipients(t: TFunction, input: ValidationInput): SectionValida
                     add(v, `${path}.tags`, t('recipients.tags.required', { label }));
                 break;
             case 'AUDIENCE':
-                if (!rule.campaignId)
+                if (rule.campaignIds.length === 0)
                     add(v, `${path}.campaign`, t('recipients.campaign.required', { label }));
                 break;
             case 'CUSTOM_FIELD_FILTER': {

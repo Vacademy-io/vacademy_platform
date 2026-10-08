@@ -32,7 +32,10 @@ public class OutstandingLearnerDTO {
 
     private Double billed;
     private Double paid;
+    /** Overdue right now — what puts the learner on this list. */
     private Double due;
+    /** Falling due within the upcoming horizon. */
+    private Double upcoming;
 
     private Long planCount;
     private Long pendingInstallments;

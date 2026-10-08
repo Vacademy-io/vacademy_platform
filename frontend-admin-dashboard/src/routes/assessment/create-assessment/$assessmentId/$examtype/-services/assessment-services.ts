@@ -6,8 +6,11 @@ import {
     STEP2_QUESTIONS_URL,
     STEP3_ASSESSMENT_URL,
     STEP4_ASSESSMENT_URL,
+    STEP2_QUESTIONS_FULL_URL,
+    STEP2_EDIT_QUESTIONS_URL,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { QuestionResponse } from '@/types/assessments/question-paper-template';
 import {
     ConvertedCustomField,
     CustomFields,
@@ -63,6 +66,46 @@ export const getAssessmentDetails = ({
         staleTime: 60 * 60 * 1000,
         enabled: !!assessmentId,
     };
+};
+
+/**
+ * The assessment's questions as full question-paper style DTOs (text, options,
+ * answer key, explanation) - what the question editor understands - keyed by
+ * section id. The preview shape from getQuestionsDataForStep2 drops the
+ * explanation and the key, so it cannot round-trip an edit.
+ */
+export const getFullQuestionsOfSections = async ({
+    assessmentId,
+    sectionIds,
+}: {
+    assessmentId: string;
+    sectionIds: string | undefined;
+}): Promise<Record<string, QuestionResponse[]>> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: STEP2_QUESTIONS_FULL_URL,
+        params: { assessmentId, sectionIds },
+    });
+    return response?.data ?? {};
+};
+
+/** Rewrite questions of this assessment in place (same ids, so every section keeps them). */
+export const editAssessmentQuestions = async ({
+    assessmentId,
+    instituteId,
+    updatedQuestions,
+}: {
+    assessmentId: string;
+    instituteId: string | undefined;
+    updatedQuestions: unknown[];
+}): Promise<boolean> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'PATCH',
+        url: STEP2_EDIT_QUESTIONS_URL,
+        params: { assessmentId, instituteId },
+        data: { updated_questions: updatedQuestions, added_questions: [], deleted_questions: [] },
+    });
+    return Boolean(response?.data);
 };
 
 export const getQuestionsDataForStep2 = async ({

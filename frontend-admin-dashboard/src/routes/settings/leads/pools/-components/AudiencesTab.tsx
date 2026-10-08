@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import MultiSelectAddList from './MultiSelectAddList';
 import {
     handleFetchCampaignsList,
@@ -27,6 +28,7 @@ import {
     useCounselorPools,
     useInvalidatePool,
     useRemoveAudienceFromPool,
+    useUpdateAudienceAssignOnIntake,
 } from '@/services/counselor-pool';
 
 interface AudiencesTabProps {
@@ -54,6 +56,8 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
 
     const { mutateAsync: addAudiencesAsync } = useAddAudiencesToPool(pool.id);
     const { mutate: removeAudience, isPending: removing } = useRemoveAudienceFromPool(pool.id);
+    const { mutate: updateAssignOnIntake, isPending: updatingAssignment } =
+        useUpdateAudienceAssignOnIntake(pool.id);
     const invalidatePool = useInvalidatePool();
 
     // audience_id -> name of the OTHER pool holding it. This pool is skipped so
@@ -81,6 +85,8 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
                     `(unknown — ${a.audience_id.slice(0, 8)}…)`,
                 lastAssignedCounselorId: a.last_assigned_counselor_id,
                 lastAssignedAt: a.last_assigned_at,
+                // Absent on older rows = the default, assign at intake.
+                assignOnIntake: a.assign_on_intake !== false,
             })),
         [pool.audiences, allCampaigns]
     );
@@ -121,6 +127,22 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
             toast.error(extractError(err) ?? 'Failed to attach campaigns');
             return ids;
         }
+    };
+
+    const handleAssignOnIntakeChange = (audienceId: string, assignOnIntake: boolean) => {
+        updateAssignOnIntake(
+            { audienceId, assignOnIntake },
+            {
+                onSuccess: () =>
+                    toast.success(
+                        assignOnIntake
+                            ? 'Leads will be assigned as soon as they arrive'
+                            : 'Leads will be assigned only after the AI call'
+                    ),
+                onError: (err) =>
+                    toast.error(extractError(err) ?? 'Failed to update assignment timing'),
+            }
+        );
     };
 
     const handleRemove = (audienceId: string, campaignName: string) => {
@@ -206,6 +228,24 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
                                                 {new Date(a.lastAssignedAt).toLocaleString()}
                                             </p>
                                         )}
+                                        <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                                            {/* ON = the default (assign the moment a lead arrives); OFF = AI-first.
+                                                Polarity matters: every existing list is ON, so the page reads
+                                                "all normal" rather than "everything switched off". */}
+                                            <Switch
+                                                checked={a.assignOnIntake}
+                                                disabled={updatingAssignment}
+                                                onCheckedChange={(checked) =>
+                                                    handleAssignOnIntakeChange(a.audienceId, checked)
+                                                }
+                                                aria-label="Auto-assign when a lead arrives"
+                                            />
+                                            <span>
+                                                {a.assignOnIntake
+                                                    ? 'Auto-assigns when a lead arrives'
+                                                    : 'Off — AI-first: assigns only after the AI call qualifies the lead'}
+                                            </span>
+                                        </label>
                                     </div>
                                     <button
                                         type="button"

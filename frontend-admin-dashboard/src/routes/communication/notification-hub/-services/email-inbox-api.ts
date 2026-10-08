@@ -1,26 +1,51 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { EMAIL_INBOX_BASE } from '@/constants/urls';
 
+/** Where an outbound email came from (what the admin sees as a chip on the bubble). */
+export type EmailOutgoingOrigin = 'CAMPAIGN' | 'INBOX_REPLY' | 'OTP' | 'AUTOMATION' | 'EMAIL';
+/** What an inbound email is: a reply to something we sent, unsolicited, or a mail-system bounce. */
+export type EmailIncomingOrigin = 'REPLY' | 'INCOMING' | 'BOUNCE';
+
 export interface EmailConversation {
     email: string;
     name?: string;
     userId?: string;
     lastMessageDirection?: 'OUTGOING' | 'INCOMING';
+    /** Subject when known, else a clean body snippet. No "You:" prefix — the list adds it. */
     lastMessagePreview?: string;
     lastMessageTime?: string;
     unreadCount?: number;
+    /** The counterparty is a mail-system sender (mailer-daemon / postmaster / no-reply-aws). */
+    system?: boolean;
+    lastMessageSubject?: string;
 }
 
 export interface EmailMessage {
     id: string;
     direction: 'OUTGOING' | 'INCOMING';
+    /** Populated for OUTGOING too when the backend knows it (payload subject or campaign title). */
     subject?: string;
+    /** Clean plain text (entities decoded, hidden preheader characters removed), <= 120 chars. */
     bodyPreview?: string;
+    /** OUTGOING: raw HTML. INCOMING: plain text, quoted chain included. */
     body?: string;
     counterpartyEmail: string;
+    /** Display name of the other party when known (inbound From personal name). */
+    counterpartyName?: string;
     instituteAddress?: string;
     timestamp: string;
+    /**
+     * Raw producer tag kept for compatibility ('unified-send', 'announcement-service', or — on
+     * older inbound rows — the parent outbound log UUID). Never render it verbatim; use
+     * resolveOrigin() from ../-utils/email-text instead.
+     */
     source?: string;
+    /** Absent from responses of a backend that predates the field; resolveOrigin() derives it. */
+    origin?: EmailOutgoingOrigin | EmailIncomingOrigin;
+    /** True for bounces / mail-system auto notifications. */
+    system?: boolean;
+    /** INCOMING only: the outbound notification_log id this replies to. */
+    inReplyToId?: string;
 }
 
 export interface EmailInboxStatus {

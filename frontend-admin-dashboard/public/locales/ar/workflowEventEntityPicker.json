@@ -38,6 +38,14 @@
         "summarySelected_two": "سيتم تشغيل سير العمل لـ {{type}}ين محددين. سيتم إنشاء صف مُشغّل لكل تحديد.",
         "summarySelected_few": "سيتم تشغيل سير العمل لعدد {{count}} من {{type}} المحددة. سيتم إنشاء صف مُشغّل لكل تحديد.",
         "summarySelected_many": "سيتم تشغيل سير العمل لعدد {{count}} من {{type}} المحددة. سيتم إنشاء صف مُشغّل لكل تحديد.",
-        "summarySelected_other": "سيتم تشغيل سير العمل لعدد {{count}} من {{type}} المحددة. سيتم إنشاء صف مُشغّل لكل تحديد."
+        "summarySelected_other": "سيتم تشغيل سير العمل لعدد {{count}} من {{type}} المحددة. سيتم إنشاء صف مُشغّل لكل تحديد.",
+        "searchPlaceholder": "ابحث في {{type}}...",
+        "noMatches": "لا توجد نتائج لـ ”{{search}}“.",
+        "hiddenBySearch_zero": "لا توجد عناصر محددة مخفية بسبب البحث",
+        "hiddenBySearch_one": "عنصر محدد واحد مخفي بسبب البحث",
+        "hiddenBySearch_two": "عنصران محددان مخفيان بسبب البحث",
+        "hiddenBySearch_few": "{{count}} عناصر محددة مخفية بسبب البحث",
+        "hiddenBySearch_many": "{{count}} عنصرًا محددًا مخفية بسبب البحث",
+        "hiddenBySearch_other": "{{count}} عنصر محدد مخفي بسبب البحث"
     }
 }

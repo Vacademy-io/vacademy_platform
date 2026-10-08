@@ -69,7 +69,9 @@ function describeRule(
                 tags: rule.tagIds.map((id) => tagNameById[id] ?? id).join(', '),
             });
         case 'AUDIENCE':
-            return t('rule.audience', { campaign: rule.campaignName || rule.campaignId });
+            return t('rule.audience', {
+                campaign: rule.campaignIds.map((id) => rule.campaignNames[id] || id).join(', '),
+            });
         case 'CUSTOM_FIELD_FILTER':
             return t('rule.customFieldFilter', {
                 filters: rule.fieldFilters

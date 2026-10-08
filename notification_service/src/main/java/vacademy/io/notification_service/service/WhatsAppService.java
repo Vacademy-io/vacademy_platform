@@ -15,9 +15,12 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.common.logging.SentryLogger;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -380,12 +383,44 @@ public class WhatsAppService {
             config.put("type", type);
             config.put("url", url);
             if ("document".equals(type)) {
-                config.put("filename", "file.pdf");
+                config.put("filename", documentFilenameFromUrl(url));
             }
             return config;
         }
 
         return null;
+    }
+
+    private static final Pattern UPLOAD_KEY_PREFIX =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-");
+
+    /**
+     * The name WhatsApp shows on a document header — the recipient sees this in the chat, so it
+     * should be the file's own name, not a placeholder. Our uploads are stored as
+     * {@code <uuid>-<original name>}; the uuid prefix is stripped. Falls back to "file.pdf" when
+     * the URL carries nothing usable (no path, no extension).
+     */
+    static String documentFilenameFromUrl(String url) {
+        String fallback = "file.pdf";
+        if (url == null || url.isBlank()) return fallback;
+        String path = url;
+        int q = path.indexOf('?');
+        if (q >= 0) path = path.substring(0, q);
+        int h = path.indexOf('#');
+        if (h >= 0) path = path.substring(0, h);
+        String segment = path.substring(path.lastIndexOf('/') + 1);
+        try {
+            // URLDecoder is form-decoding: a literal '+' in the name would become a space, so
+            // shield it first. Anything that decodes to a path separator is dropped as well.
+            segment = URLDecoder.decode(segment.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            // malformed %-escape: keep the raw segment
+        }
+        segment = segment.substring(segment.lastIndexOf('/') + 1);
+        segment = UPLOAD_KEY_PREFIX.matcher(segment).replaceFirst("").trim();
+        int dot = segment.lastIndexOf('.');
+        if (segment.isEmpty() || dot <= 0 || dot == segment.length() - 1) return fallback;
+        return segment;
     }
 
     private List<Map<String, Object>> buildButtonConfig(String phoneNumber,

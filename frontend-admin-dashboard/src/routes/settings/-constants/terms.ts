@@ -157,6 +157,7 @@ export const enum SettingsTabs {
     AiCalling = 'aiCalling',
     CrmIntelligence = 'crmIntelligence',
     AssistantTools = 'assistantTools',
+    McpServer = 'mcpServer',
     BadgesRewards = 'badgesRewards',
     Language = 'language',
     OnboardingSettings = 'onboardingSettings',

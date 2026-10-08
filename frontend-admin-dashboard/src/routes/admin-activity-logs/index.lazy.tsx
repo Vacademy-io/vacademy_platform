@@ -1,6 +1,7 @@
 import { createLazyFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { useTranslation } from 'react-i18next';
 import { Notebook } from '@phosphor-icons/react';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -40,14 +41,15 @@ function AdminActivityLogsPage() {
 }
 
 function AdminActivityLogsView() {
+    const { t } = useTranslation('adminActivityLogsIndexLazy');
     const { setNavHeading } = useNavHeadingStore();
     const search = useSearch({ from: '/admin-activity-logs/' });
     const navigate = useNavigate({ from: '/admin-activity-logs/' });
     const [selectedLog, setSelectedLog] = useState<AdminActivityLog | null>(null);
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-subtitle font-medium">Admin Activity Logs</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-subtitle font-medium">{t('navHeading')}</h1>);
+    }, [setNavHeading, t]);
 
     const filters: AdminActivityLogFilters = useMemo(
         () => ({
@@ -106,11 +108,8 @@ function AdminActivityLogsView() {
     return (
         <>
             <Helmet>
-                <title>Admin Activity Logs</title>
-                <meta
-                    name="description"
-                    content="Audit trail of administrative actions across the institute."
-                />
+                <title>{t('helmet.title')}</title>
+                <meta name="description" content={t('helmet.description')} />
             </Helmet>
 
             {/* Page header */}
@@ -121,18 +120,16 @@ function AdminActivityLogsView() {
                     </span>
                     <div>
                         <h1 className="text-h3 font-semibold tracking-tight text-neutral-700">
-                            Admin Activity Logs
+                            {t('pageTitle')}
                         </h1>
                         <p className="mt-0.5 text-body text-neutral-600">
-                            Forensic record of admin actions — who did what, when, and on which
-                            resource.
+                            {t('pageDescription')}
                         </p>
                     </div>
                 </div>
                 {data?.totalElements != null && (
                     <div className="mt-2 text-caption text-neutral-500 sm:mt-0">
-                        {data.totalElements.toLocaleString()} total{' '}
-                        {data.totalElements === 1 ? 'entry' : 'entries'}
+                        {t('totalEntries', { count: data.totalElements })}
                     </div>
                 )}
             </header>

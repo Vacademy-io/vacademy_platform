@@ -10,7 +10,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { cn } from '@/lib/utils';
-import { splitTemplateText } from './template-text';
+import { mediaFileName, splitTemplateText } from './template-text';
 
 /**
  * The message as WhatsApp will render it — header, body, footer and buttons in a chat bubble.
@@ -63,6 +63,9 @@ const DEFAULT_LABELS = {
 /**
  * The approved media, or a labelled tile when there is none to show.
  *
+ * A document renders the way WhatsApp draws one — icon and the file's name — and opens the file
+ * in a new tab, because "a PDF goes out" is not a preview: the admin needs to see WHICH one.
+ *
  * Remounted per URL by its `key` so a broken image from a previous template cannot leave the tile
  * stuck in its error state.
  */
@@ -70,6 +73,7 @@ function MediaHeader({ kind, url, label }: { kind: string; url?: string; label: 
     const [broken, setBroken] = React.useState(false);
     const Icon = kind === 'IMAGE' ? ImageSquare : kind === 'VIDEO' ? VideoCamera : FileText;
     const showImage = kind === 'IMAGE' && !!url && !broken;
+    const fileName = kind === 'DOCUMENT' ? mediaFileName(url) : '';
 
     return (
         <div className="p-1.5">
@@ -80,6 +84,23 @@ function MediaHeader({ kind, url, label }: { kind: string; url?: string; label: 
                     onError={() => setBroken(true)}
                     className="h-36 w-full rounded-md object-cover"
                 />
+            ) : fileName ? (
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={fileName}
+                    className="flex items-center gap-2 rounded-md bg-neutral-100 px-3 py-2 text-neutral-700 transition-colors hover:bg-neutral-200"
+                >
+                    <Icon className="size-6 shrink-0 text-neutral-500" />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-medium">{fileName}</span>
+                        <span className="text-2xs font-medium uppercase tracking-wide text-neutral-500">
+                            {label}
+                        </span>
+                    </span>
+                    <ArrowSquareOut className="size-3.5 shrink-0 text-neutral-400" />
+                </a>
             ) : (
                 <div
                     className={cn(

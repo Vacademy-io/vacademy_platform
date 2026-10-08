@@ -40,6 +40,7 @@
         "ariaLabel": "{{name}} के लिए कार्रवाइयां",
         "thisRow": "इस पंक्ति",
         "openDetails": "विवरण खोलें",
-        "copyInviteLink": "आमंत्रण लिंक कॉपी करें"
+        "copyInviteLink": "आमंत्रण लिंक कॉपी करें",
+        "shareCredentials": "लॉगिन विवरण साझा करें"
     }
 }

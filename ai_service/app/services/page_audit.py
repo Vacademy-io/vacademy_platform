@@ -283,6 +283,7 @@ def audit_reference_fidelity(
     page: Dict[str, Any],
     global_settings: Optional[Dict[str, Any]],
     inspiration: Dict[str, Any],
+    theme_locked: bool = False,
 ) -> List[Dict[str, Any]]:
     """Did the page actually adopt the reference design it was given?
 
@@ -303,7 +304,10 @@ def audit_reference_fidelity(
     theme = theme if isinstance(theme, dict) else {}
     palette = inspiration.get("palette") if isinstance(inspiration.get("palette"), dict) else {}
 
-    want_primary = str(palette.get("primary") or "").lower()
+    # theme_locked: the site keeps its own theme and the reference contributes
+    # layout only — demanding its colour or canvas here would send the repair
+    # pass to paint them back on. Section coverage still applies.
+    want_primary = "" if theme_locked else str(palette.get("primary") or "").lower()
     got_primary = str(theme.get("primaryColor") or "").lower()
     if want_primary and got_primary and want_primary != got_primary:
         issues.append(_issue(
@@ -312,7 +316,7 @@ def audit_reference_fidelity(
             f"Set globalSettings.theme.primaryColor to \"{want_primary}\".",
         ))
 
-    want_bg = str(palette.get("background") or "").lower()
+    want_bg = "" if theme_locked else str(palette.get("background") or "").lower()
     if want_bg and want_bg not in ("#ffffff", "#fefefe") and not page.get("backgroundColor"):
         issues.append(_issue(
             "reference-canvas-ignored", "fix",

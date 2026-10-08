@@ -28,7 +28,11 @@
         "approvedByMeta": "تمت الموافقة على القالب من قبل Meta وهو جاهز للاستخدام.",
         "submittedToMeta": "تم إرسال القالب إلى Meta للموافقة عليه.",
         "metaRejected": "رفضت Meta القالب. تم حفظ مسودتك.",
-        "draftSavedRetry": "تم حفظ مسودتك — أصلح المشكلة أعلاه وأرسل مرة أخرى."
+        "draftSavedRetry": "تم حفظ مسودتك — أصلح المشكلة أعلاه وأرسل مرة أخرى.",
+        "sampleUploaded": "تم رفع نموذج {{kind}} — تم ملء الرابط العام.",
+        "sampleUploadFailed": "تعذر رفع نموذج {{kind}}.",
+        "sampleWrongType": "هذا الملف ليس {{kind}} مدعومًا. استخدم {{formats}}.",
+        "sampleTooLarge": "هذا الملف كبير جدًا. استخدم {{formats}}."
     },
     "problemsBanner": {
         "single": "يحتاج هذا القالب إلى إصلاح",
@@ -78,7 +82,15 @@
         "buttonPhonePlaceholder": "+919876543210",
         "addQuickReply": "+ رد سريع",
         "addUrlButton": "+ زر رابط",
-        "addPhone": "+ هاتف"
+        "addPhone": "+ هاتف",
+        "headerSampleUpload": "رفع",
+        "headerSampleUploading": "جارٍ الرفع…",
+        "headerSampleUrlHint": "ارفع ملفًا أو الصق رابطًا عامًا — تقوم Meta بتنزيله للمراجعة. {{formats}}.",
+        "headerSampleFormats": {
+            "image": "JPG أو PNG، حتى 5 ميغابايت",
+            "video": "MP4، حتى 16 ميغابايت",
+            "document": "PDF، حتى 100 ميغابايت"
+        }
     },
     "headerKind": {
         "image": "صورة",

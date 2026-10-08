@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 #   "audio_minutes" → flat_base + minutes × per_unit  (minutes from
 #                     duration_seconds or audio_minutes), floored at params.min_credits
 #   "chars"         → flat_base + ceil(transcript_chars / params.chars_per_unit) × per_unit
+#   "images"        → flat_base + num_images × per_unit
 #   "flat"          → flat_base (+ params.questions_add / homework_add toggles)
 # ============================================================================
 DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
@@ -132,7 +133,8 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "params": {},
     },
     # HTML Document slide AI authoring — one large creative-HTML LLM call
-    # (claude-sonnet-5, up to ~32k output tokens), flat per call, charged as
+    # (see _DEFAULT_MODEL in routers/html_document.py, up to ~32k output
+    # tokens), flat per call, charged as
     # max(flat, actual). A full CREATE costs more than a conversational EDIT
     # (which reuses the existing page), so they are priced separately.
     "html_document": {          # first generation (create)
@@ -157,6 +159,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("0"),
         "per_unit_credits": Decimal("0.5"),
         "unit_field": "pages",
+        "params": {},
+    },
+    # Per generated textbook illustration on an HTML doc page (real image-model
+    # spend). Charged as num_images × per_unit for the pictures that actually
+    # came back, on top of the generation charge.
+    "html_document_image": {
+        "request_type": "image",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("2"),
+        "unit_field": "images",
         "params": {},
     },
     # AI Page Builder — one wizard run composes a full catalogue page as
@@ -553,6 +565,16 @@ class ToolCostEstimator:
                 "component": "length",
                 "detail": f"{chars} chars → {units} unit(s) × {per_unit}",
                 "credits": float(char_credits),
+            })
+
+        elif unit_field == "images":
+            num_images = max(0, int(params.get("num_images") or 0))
+            image_credits = Decimal(num_images) * per_unit
+            total += image_credits
+            breakdown.append({
+                "component": "images",
+                "detail": f"{num_images} image(s) × {per_unit}",
+                "credits": float(image_credits),
             })
 
         elif unit_field == "pages":

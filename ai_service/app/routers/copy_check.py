@@ -29,6 +29,8 @@ from ..repositories.copy_check_rubric_repository import CopyCheckRubricRepositor
 from ..schemas.copy_check import (
     CopyCheckGradeRequest,
     CopyCheckGradeResponse,
+    CopyCheckIdentifyRequest,
+    CopyCheckIdentifyResponse,
     RubricResponse,
     UpsertQuestionAnswerRequest,
     UpsertRubricRequest,
@@ -67,6 +69,34 @@ async def submit_grade_job(
     # the BG task to own its own session that survives the response cycle.
     background.add_task(_run_with_session, payload, job_id)
     return CopyCheckGradeResponse(job_id=job_id, status="PROCESSING")
+
+
+@router.post(
+    "/identify",
+    response_model=CopyCheckIdentifyResponse,
+    dependencies=[Depends(require_internal_service_token)],
+)
+async def identify_copy(req: CopyCheckIdentifyRequest, db: Session = Depends(db_dependency)):
+    """Who wrote this copy: the name / roll number / class handwritten at the top.
+
+    Synchronous and cheap (one or two header images); the caller matches the
+    reading against its students. Billing rides on the batch that uses it.
+    """
+    from ..api_key_resolver import ApiKeyResolver
+    from ..chat_llm_client import ChatLLMClient
+    from ..services.copy_check.grader import DEFAULT_MODEL
+    from ..services.copy_check.identify import identify_student
+
+    llm = ChatLLMClient(ApiKeyResolver(db))
+    try:
+        result = await identify_student(
+            req.pdf_url, llm, req.preferred_model or DEFAULT_MODEL, institute_id=req.institute_id,
+        )
+    except Exception as e:
+        logger.warning("copy-check identify failed for %s: %s", req.pdf_url[:120], e)
+        raise HTTPException(status_code=422, detail=f"could not read the copy: {e}")
+    result.pop("usage", None)
+    return CopyCheckIdentifyResponse(**result)
 
 
 async def _run_with_session(payload: dict, job_id: str) -> None:

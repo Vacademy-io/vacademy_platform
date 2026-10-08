@@ -636,6 +636,27 @@ def _caption_from_page_text(page_text: str) -> Optional[str]:
 # URL / YouTube / raw text
 # ---------------------------------------------------------------------------
 
+def assert_public_http_url(url: str) -> None:
+    """Refuse anything that is not a public http(s) URL.
+
+    Same SSRF rule the scraper applies (no private / loopback / link-local
+    targets), surfaced as ValueError so a background ingest records a readable
+    failure instead of leaking an HTTPException out of a job.
+    """
+    from urllib.parse import urlparse
+
+    from fastapi import HTTPException
+
+    from ..scraper_service import ScraperService
+
+    if urlparse(url).scheme not in ("http", "https"):
+        raise ValueError("PDF URLs must be http(s)")
+    try:
+        ScraperService()._validate_url(url)  # noqa: SLF001 — the one shared SSRF gate
+    except HTTPException as exc:
+        raise ValueError(str(exc.detail)) from exc
+
+
 async def parse_url(url: str) -> ParsedDocument:
     """Scrape a web page into a single-page document.
 

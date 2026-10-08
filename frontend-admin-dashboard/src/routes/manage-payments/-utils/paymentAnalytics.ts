@@ -15,10 +15,13 @@ import { classifyEntry, isCancelledEntry, isDueEligibleEntry } from './paymentSu
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Bucketing is shared with the KPI cards so the two can never disagree about what's still due. */
-const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'PENDING' => {
+/** Bucketing is shared with the KPI cards so the two can never disagree about what's in flight. */
+const normStatus = (entry: PaymentLogEntry): 'PAID' | 'FAILED' | 'ABANDONED' | 'PENDING' => {
     const bucket = classifyEntry(entry);
-    return bucket === 'paid' ? 'PAID' : bucket === 'failed' ? 'FAILED' : 'PENDING';
+    if (bucket === 'paid') return 'PAID';
+    if (bucket === 'failed') return 'FAILED';
+    if (bucket === 'abandoned') return 'ABANDONED';
+    return 'PENDING';
 };
 
 /** created_at is the real instant; `date` (UTC-midnight DATE) is the pre-created_at fallback. */
@@ -126,8 +129,10 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
     const collected = { amount: 0, count: 0 };
     const outstanding = { amount: 0, count: 0 };
     const failed = { amount: 0, count: 0 };
-    // Unsettled records on a dead enrolment. Kept out of `outstanding` (nobody owes this) but held
-    // here so the funnel's "Invoiced" stage still totals every record it says it counts.
+    // Unsettled records that will never settle: on a dead enrolment, or a checkout whose gateway
+    // order expired unfinished (ABANDONED). Kept out of `outstanding` (nobody owes this) and out
+    // of the ageing — a cart abandoned a month ago is not "30+ days overdue" — but held here so
+    // the funnel's "Invoiced" stage still totals every record it says it counts.
     const notDue = { amount: 0, count: 0 };
 
     const methodMix: Record<string, AmountSlice> = {};
@@ -156,7 +161,8 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
             slice.count += 1;
         };
 
-        if (status !== 'PENDING') {
+        // Abandoned never reached the gateway either — the order was created, nobody paid.
+        if (status !== 'PENDING' && status !== 'ABANDONED') {
             attemptedAmount += amount;
             attemptedCount += 1;
         }
@@ -170,10 +176,10 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
         } else if (status === 'FAILED') {
             failed.amount += amount;
             failed.count += 1;
-        } else if (!isDueEligibleEntry(entry)) {
-            // Unsettled, but hanging off a cancelled/terminated/expired enrolment — never going to
-            // be collected, so it is neither outstanding nor worth ageing. Same rule the Due card
-            // and the server's billed_plans use. Still a payment record, so it stays in the funnel.
+        } else if (status === 'ABANDONED' || !isDueEligibleEntry(entry)) {
+            // Unsettled, but never going to be collected — an expired checkout, or a record
+            // hanging off a cancelled/terminated/expired enrolment. Neither outstanding nor worth
+            // ageing. Still a payment record, so it stays in the funnel.
             notDue.amount += amount;
             notDue.count += 1;
         } else {

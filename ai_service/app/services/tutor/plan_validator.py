@@ -36,6 +36,9 @@ class Limits:
     # Whiteboards teach with pictures: every board must carry at least one
     # svg / image / video (media tasks count). Off for quizzes.
     require_visual_per_topic: bool = True
+    # Images are on for this course, so a slide is expected to carry real
+    # illustrations, not only shapes. Advice only, like the rest of this block.
+    expect_images: bool = False
     # Engagement rules (soft: one repair round, never a failed plan): a recap
     # board + spoken recap per topic, an example per topic, a mix of quick
     # checks, a hint per check, short open questions. Off for quizzes.
@@ -226,6 +229,15 @@ def board_quality_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LI
         if topic_words > limits.board_words_per_topic:
             errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board should fit one screen "
                           f"(<= {limits.board_words_per_topic})")
+    if limits.expect_images:
+        images = sum(1 for t in plan.topics for c in t.concepts
+                     for op in iter_element_ops(ops_to_dicts(c.board_ops)) if op.get("op") == "image")
+        want = 1 if len(plan.topics) <= 2 else 2 if len(plan.topics) <= 4 else 3
+        if images < want:
+            errors.append(
+                f"plan: only {images} real illustration(s) for {len(plan.topics)} board(s); aim for about {want}. "
+                f"Students learn from pictures: add an `image` op where a picture teaches better than shapes "
+                f"(a real scene, an object, an organism, an apparatus, a labelled textbook illustration)")
     return errors
 
 

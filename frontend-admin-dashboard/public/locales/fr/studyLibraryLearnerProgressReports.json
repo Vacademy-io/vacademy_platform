@@ -15,14 +15,9 @@
         "status": "Statut",
         "chaptersDone": "Chapitres terminés"
     },
-    "picker": {
-        "selectA": "Sélectionner un(e) {{term}}",
-        "searchTerm": "Rechercher {{term}}..."
-    },
     "emptyBatch": {
-        "selectBatch": "Sélectionnez un groupe pour voir la progression des {{learner}}.",
-        "selectCourse": "Sélectionnez un(e) {{course}} pour voir la progression des {{learner}}.",
-        "autoPicked": "{{session}} et {{level}} sont sélectionnés automatiquement lorsqu'il n'y en a qu'un seul."
+        "selectBatch": "Sélectionnez un {{batch}} pour voir la progression des {{learner}}.",
+        "multiHint": "Choisissez plusieurs {{batch}} pour voir les apprenants de ces {{batch}} dans une seule liste."
     },
     "stats": {
         "enrolled_one": "{{learner}} inscrit",
@@ -46,11 +41,29 @@
     },
     "empty": {
         "noMatch": "Aucun {{learner}} ne correspond à « {{search}} ».",
-        "noneEnrolled": "Aucun {{learner}} n'est encore inscrit dans ce groupe.",
+        "noneEnrolled": "Aucun {{learner}} n’est encore inscrit dans les {{batch}} sélectionnés.",
         "tryDifferentName": "Essayez un autre nom.",
         "progressAppearsHere": "La progression apparaît ici une fois que des {{learner}}s sont inscrits."
     },
     "drawer": {
         "percentComplete": "{{percent}} % du {{course}} terminé"
+    },
+    "csv": {
+        "fileStem": "progression-{{learner}}",
+        "exportCsv": "Exporter en CSV",
+        "preparing": "Préparation…",
+        "exporting": "Export {{done}}/{{total}}…",
+        "exportSuccess": "CSV exporté · {{count}} lignes",
+        "exportTruncated": "CSV exporté · {{count}} premiers seulement",
+        "exportFailed": "Échec de l'export CSV",
+        "summaryTitle": "Progression des {{learner}}",
+        "email": "E-mail",
+        "username": "Nom d'utilisateur",
+        "enrollmentNumber": "Numéro d'inscription",
+        "courseProgress": "Progression {{course}} (%)",
+        "chaptersDone": "Chapitres terminés",
+        "chaptersTotal": "Chapitres au total",
+        "subjectTitle": "Progression des {{learner}} par matière",
+        "moduleProgress": "Progression {{module}} (%)"
     }
 }

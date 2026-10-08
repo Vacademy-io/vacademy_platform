@@ -12,6 +12,12 @@ import {
     INIT_INSTITUTE,
 } from '@/constants/urls';
 
+/**
+ * Show the search box only once the list is long enough to need it — filtering
+ * two batches is noise, filtering four hundred is the only way through.
+ */
+const SEARCHABLE_FROM = 8;
+
 interface EventEntityPickerProps {
     eventAppliedType: string;
     /** Single value — backward compat (used if multiValue not provided) */
@@ -168,6 +174,7 @@ function buildTypeLabels(t: TFunction): Record<string, string> {
 export function EventEntityPicker({ eventAppliedType, value, onChange, multiValue, onMultiChange, instituteId }: EventEntityPickerProps) {
     const { t } = useTranslation('workflowEventEntityPicker');
     const [showManual, setShowManual] = useState(false);
+    const [search, setSearch] = useState('');
     const hasDropdownSupport = ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType);
     const { data: options = [], isLoading, isError } = useEntityOptions(eventAppliedType, instituteId);
 
@@ -240,6 +247,22 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
         );
     }
 
+    // Filter what's shown, never the selection: an institute with hundreds of
+    // batches can't scroll to the one it wants, but a ticked row that scrolls
+    // out of the filter must stay ticked. selectedIds is untouched, and the
+    // summary below says when the search is hiding some of it.
+    const needle = search.trim().toLowerCase();
+    const visibleOptions = needle
+        ? options.filter(
+            (opt) =>
+                opt.label.toLowerCase().includes(needle)
+                || (opt.subtitle?.toLowerCase().includes(needle) ?? false)
+        )
+        : options;
+    const hiddenSelectedCount = selectedIds.filter(
+        (id) => !visibleOptions.some((opt) => opt.id === id)
+    ).length;
+
     // Checkbox list mode for supported types (multi-select)
     return (
         <div className="space-y-2">
@@ -256,6 +279,17 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
                 </button>
             </div>
 
+            {/* Only worth the extra control once the list is long enough that
+                scrolling is the problem it solves. */}
+            {options.length > SEARCHABLE_FROM && (
+                <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-8 text-sm"
+                    placeholder={t('checklist.searchPlaceholder', { type: typeLabel })}
+                />
+            )}
+
             <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
                 {isLoading && (
                     <div className="px-3 py-2 text-xs text-gray-400">{t('checklist.loading')}</div>
@@ -263,7 +297,12 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
                 {!isLoading && options.length === 0 && (
                     <div className="px-3 py-2 text-xs text-gray-400">{t('checklist.noneFound', { type: typeLabel })}</div>
                 )}
-                {options.map((opt) => {
+                {!isLoading && options.length > 0 && visibleOptions.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-gray-400">
+                        {t('checklist.noMatches', { search: search.trim() })}
+                    </div>
+                )}
+                {visibleOptions.map((opt) => {
                     const checked = selectedIds.includes(opt.id);
                     return (
                         <label
@@ -295,6 +334,9 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
                     ? t('checklist.summaryNone', { type: typeLabel })
                     : t('checklist.summarySelected', { count: selectedIds.length, type: typeLabel })
                 }
+                {/* The count above covers the whole selection, so say when the
+                    search is hiding part of it rather than let it read wrong. */}
+                {hiddenSelectedCount > 0 && ` — ${t('checklist.hiddenBySearch', { count: hiddenSelectedCount })}`}
             </p>
         </div>
     );

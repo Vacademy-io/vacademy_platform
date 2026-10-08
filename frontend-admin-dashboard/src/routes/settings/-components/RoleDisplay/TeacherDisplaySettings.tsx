@@ -2280,6 +2280,13 @@ export default function TeacherDisplaySettings({ onDirtyChange }: RoleDisplayPan
                         listCustomFieldControls: next,
                     }))
                 }
+                utmValue={settings.listUtmFilterControls}
+                onUtmChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        listUtmFilterControls: next,
+                    }))
+                }
             />
 
             <Card>

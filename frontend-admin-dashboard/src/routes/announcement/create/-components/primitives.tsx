@@ -10,6 +10,8 @@ interface SectionCardProps {
     title: string;
     description?: string;
     Icon?: Icon;
+    /** Rendered in place of the icon — e.g. a step number. */
+    badge?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
     className?: string;
@@ -21,6 +23,7 @@ export function SectionCard({
     title,
     description,
     Icon: SectionIcon,
+    badge,
     action,
     children,
     className,
@@ -36,7 +39,8 @@ export function SectionCard({
         >
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
                 <div className="flex min-w-0 items-start gap-3">
-                    {SectionIcon && (
+                    {badge}
+                    {!badge && SectionIcon && (
                         <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
                             <SectionIcon className="size-5" weight="duotone" />
                         </span>

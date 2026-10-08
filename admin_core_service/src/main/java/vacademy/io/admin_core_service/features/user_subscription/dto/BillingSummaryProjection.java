@@ -1,21 +1,19 @@
 package vacademy.io.admin_core_service.features.user_subscription.dto;
 
 /**
- * Raw aggregate behind the billing summary: what live enrolments were billed, what has been
- * collected against them, and how many plans each figure covers.
+ * Raw aggregate behind the billing summary: what came in, what learners with access still owe,
+ * and what falls due next. See {@code UserPlanRepository.DUE_OBLIGATION_CTES} for the rule.
  */
 public interface BillingSummaryProjection {
-
-    Double getTotalBilled();
-
     Double getCollected();
-
-    /** Unpaid remainder across live enrolments (plan price minus what was paid). */
+    /** Overdue obligations on live enrolments and unpaid invoices. */
     Double getDue();
-
+    /** Obligations falling due within the upcoming horizon. */
+    Double getUpcoming();
+    Long getLearnersOwing();
+    Long getLearnersUpcoming();
     Long getPlanCount();
-
-    Long getSettledPlanCount();
-
+    /** Live, priced one-time plans with no payment recorded — activated by hand. */
+    Long getActivatedWithoutPaymentCount();
     String getCurrency();
 }

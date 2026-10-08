@@ -12,7 +12,10 @@
         "to": "Au",
         "apply": "Appliquer",
         "reset": "Réinitialiser",
-        "noInstitute": "Choisissez un établissement pour afficher le journal des appels."
+        "noInstitute": "Choisissez un établissement pour afficher le journal des appels.",
+        "presetHours": "{{hours}} h",
+        "customHoursPlaceholder": "N dern. heures",
+        "customHoursLabel": "N dernières heures"
     },
     "counsellorPicker": {
         "ariaLabel": "Filtrer par conseiller",

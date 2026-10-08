@@ -752,6 +752,17 @@ public class SubOrgLearnerService {
             log.info("Generated password for user with email: {}", request.getUser().getEmail());
         }
 
+        // Default the username to the email. The learner-portal sub-org members page
+        // (single add + bulk upload) sends no username, so auth-service used to invent
+        // one ("vitt" + 4 random chars) that then rode into the enrolment workflow and
+        // the welcome email while the admin wizard, which has a username field, enrols
+        // the same people as email/email. Only applies to a NEW account — auth-service
+        // ignores the username when it matches an existing user by email.
+        if (!StringUtils.hasText(request.getUser().getUsername())
+                && StringUtils.hasText(request.getUser().getEmail())) {
+            request.getUser().setUsername(request.getUser().getEmail().trim().toLowerCase());
+        }
+
         boolean sendCredentials = readCourseSettingEnrollmentFlag(
                 request.getInstituteId(), "showSendCredentials");
         if (!sendCredentials) {

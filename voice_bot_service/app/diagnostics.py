@@ -84,11 +84,22 @@ REPLY_LOOP = "REPLY_LOOP"
 # fragment, DEAD_AIR named the symptom, LIKELY_MACHINE was simply wrong. The
 # thing that actually broke the call had no counter at all.
 HANDBACK_LOOP = "HANDBACK_LOOP"
+# 2026-09-15, six founder-found defects in one day that the counters above did
+# not name. Both computed from the PLAYED transcript at report time — what the
+# caller actually heard, the same invariants sim.replay checks offline.
+# The opening was said again after the person had already spoken (call
+# 196838de: a screener flag left armed; the father's "Hello?" 2 min in
+# replayed the whole opening and he hung up).
+OPENING_REPLAYED = "OPENING_REPLAYED"
+# A sentence of five or more words was played twice and the caller had not
+# asked for it (calls f28888b2, af7e93bd: heard lines un-recorded and said
+# again; 71e8f39b: the same restatement five times).
+REPEATED_LINE = "REPEATED_LINE"
 
 ALL_FAULTS = (
     CRASH, TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK,
     LIKELY_MACHINE, STT_DEAF, SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
-    BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP,
+    BOT_SILENT, REPLY_LOOP, HANDBACK_LOOP, OPENING_REPLAYED, REPEATED_LINE,
 )
 
 # Headline = the first FIRED fault in this order, so UI copy is deterministic.
@@ -99,9 +110,9 @@ ALL_FAULTS = (
 # HANDBACK_LOOP outranks ANSWER_DELETED and DEAD_AIR deliberately: on call
 # 3148ccd4 all three fired, and the other two describe consequences of it.
 HEADLINE_PRIORITY = (
-    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, HANDBACK_LOOP, TTS_WEDGE, REPLY_UNPLAYED,
-    ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE, SLOW_TTS, SLOW_LLM,
-    TRANSFER_FAILED, PROMPT_UNFILLED,
+    CRASH, BOT_SILENT, STT_DEAF, REPLY_LOOP, OPENING_REPLAYED, HANDBACK_LOOP, REPEATED_LINE,
+    TTS_WEDGE, REPLY_UNPLAYED, ANSWER_DELETED, DEAD_AIR, FALSE_REASK, LIKELY_MACHINE,
+    SLOW_TTS, SLOW_LLM, TRANSFER_FAILED, PROMPT_UNFILLED,
 )
 
 GREEN, AMBER, RED = "GREEN", "AMBER", "RED"
@@ -211,6 +222,16 @@ class CallDiagnostics:
     # unchanged — call 17be14f2). Each one is a reply-to-nothing that used to
     # re-deliver the intro. Evidence, not a fault.
     empty_runs_blocked: int = 0
+    # Short-answer runs ("Yes." + a breath) dropped because the caller's voice
+    # resumed inside the grace — the whole turn was answered once instead
+    # (bot.RunGuard, 2026-09-15). The fix working, not a fault.
+    short_answer_holds: int = 0
+    # From the PLAYED transcript at report time (report._played_invariants):
+    # the opening said again after a substantive caller turn; 5+-word
+    # sentences played twice without a caller "hello?"/"say again" between.
+    opening_replays: int = 0
+    repeated_lines: int = 0
+    repeated_line_samples: List[str] = field(default_factory=list)
     # Opening clauses dropped because they only parroted the caller's own answer
     # back at them ("ओके, सुबोध अभी आठवीं क्लास में है, तो …"). A high count is the
     # model reaching for the restatement on every turn despite the prompt rule —
@@ -268,6 +289,10 @@ class CallDiagnostics:
 
     # ── infrastructure ──
     stt_reconnects: int = 0
+    # The STT waterfall took over mid-call (STT_FALLBACK_PROVIDER): primary
+    # failed audibly (no transcript for a heard utterance) or on its socket.
+    stt_failovers: int = 0
+    stt_vendor_final: str = ""
     hearing_failures: int = 0     # times we gave up and closed out honestly
     # Caller utterances DETECTED by VAD that produced no transcript at all. This
     # is the only signal that separates "nobody answered" from "we went deaf".
@@ -707,6 +732,13 @@ def verdict(d: CallDiagnostics) -> Dict[str, Any]:
     elif d.tts_stalls == 1 or d.tts_wedges >= 1 or d.tts_letterless_skipped >= 1:
         fire(TTS_WEDGE, AMBER)
 
+    if d.opening_replays >= 1:
+        fire(OPENING_REPLAYED, RED)
+    if d.repeated_lines >= 2:
+        fire(REPEATED_LINE, RED)
+    elif d.repeated_lines == 1:
+        fire(REPEATED_LINE, AMBER)
+
     if d.replies_never_played >= 2:
         fire(REPLY_UNPLAYED, RED)
     elif d.replies_never_played == 1:
@@ -811,6 +843,8 @@ _HEADLINE_TEXT = {
     PROMPT_UNFILLED: "Agent prompt has unresolved placeholders",
     BOT_SILENT: "The agent never spoke — the caller heard nothing",
     REPLY_LOOP: "The agent kept restarting the same reply",
+    OPENING_REPLAYED: "The agent said its opening again mid-call",
+    REPEATED_LINE: "The agent said the same line twice",
     HANDBACK_LOOP: "The agent had nothing to say and kept asking the caller to talk",
 }
 
@@ -872,6 +906,10 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "contentFreeTurns": d.content_free_turns,
                 "unsaidReverted": d.unsaid_reverted,
                 "emptyRunsBlocked": d.empty_runs_blocked,
+                "shortAnswerHolds": d.short_answer_holds,
+                "openingReplays": d.opening_replays,
+                "repeatedLines": d.repeated_lines,
+                "repeatedLineSamples": d.repeated_line_samples[:3],
                 "maxReplyRestarts": d.max_reply_restarts,
                 "orphanReasks": d.orphan_reasks,
                 "orphanFalseReasks": d.orphan_false_reasks,
@@ -910,6 +948,8 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             },
             "infra": {
                 "sttReconnects": d.stt_reconnects,
+                "sttFailovers": d.stt_failovers,
+                "sttVendorFinal": d.stt_vendor_final or None,
                 "hearingFailures": d.hearing_failures,
                 "unheardUtterances": d.unheard_utterances,
                 "promptUnfilled": d.prompt_unfilled or None,

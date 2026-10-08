@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isUntimedPlayMode } from "@/lib/untimed-play-mode";
+import { readStoredPlayMode } from "@/hooks/use-stored-play-mode";
 import { useTranslation } from "react-i18next";
 import { QuestionDisplay } from "./question-display";
 import { SectionTabs } from "./section-tabs";
@@ -71,9 +73,14 @@ export const formatDataFromStore = async (
 
   const state = useAssessmentStore.getState();
   const attemptId = state.assessment?.attempt_id;
+  // With a clock, elapsed = duration - remaining. Without one (practice,
+  // survey) count from the server start time, so the report's "time taken"
+  // is real instead of 0.
   const timeElapsedInSeconds = state.assessment?.duration
     ? state.assessment.duration * 60 - state.entireTestTimer
-    : 0;
+    : start_time > 0
+      ? Math.max(0, Math.round((Date.now() - start_time) / 1000))
+      : 0;
   const clientLastSync = new Date(
     start_time + timeElapsedInSeconds * 1000
   ).toISOString();
@@ -193,6 +200,8 @@ function LiveTestShell() {
   // down the next question, often mid-options. Reset it on every change.
   const questionScrollRef = useRef<HTMLElement>(null);
   const [playMode, setPlayMode] = useState<string>("");
+  // Read by the autosave interval, whose closure is created once.
+  const playModeRef = useRef<string>("");
   const [evaluationType, setEvaluationType] = useState<string>("");
   // Latches so we show the "save failed" toast exactly once per failure streak
   // and the "recovered" toast exactly once when it clears.
@@ -275,10 +284,18 @@ function LiveTestShell() {
     };
 
     const sent = async () => {
-      // Check if isSubmitted is false and time is not up before sending data
+      // Save while the attempt is open and the clock (if it has one) is still
+      // running. Practice tests and surveys have no clock, so their timer is 0
+      // from the start - skipping them here left those answers unsaved.
       const state = useAssessmentStore.getState();
+      if (!playModeRef.current) {
+        playModeRef.current = (await readStoredPlayMode()) ?? "";
+      }
 
-      if (!isSubmitted && state.entireTestTimer > 0) {
+      if (
+        !isSubmitted &&
+        (state.entireTestTimer > 0 || isUntimedPlayMode(playModeRef.current))
+      ) {
         await sendData();
       }
     };
@@ -360,6 +377,7 @@ function LiveTestShell() {
       } | null>(storedMode.value, null);
       if (parsedData) {
         setPlayMode(parsedData.play_mode ?? "");
+        playModeRef.current = parsedData.play_mode ?? "";
         setEvaluationType(parsedData.evaluation_type ?? "");
       }
     };

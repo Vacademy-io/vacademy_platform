@@ -405,11 +405,25 @@ class CourseOutlineGenerationService:
                 with db_session() as db:
                     repo = KbRepository(db)
                     kb = repo.get_kb(kb_id, institute_id)
+                    # A course built from a few chapters of a textbook library
+                    # must only sweep THOSE chapters: every chapter is its own
+                    # source restarting at page 1, and an unscoped census would
+                    # hand other chapters' opening pages to these slides as
+                    # "uncovered" material. Slides carry their node ids; nodes
+                    # of an authored tree carry their source.
+                    slide_nodes = [
+                        (t.metadata or {}).get("node_id") for t in content_todos
+                        if (t.metadata or {}).get("node_id")
+                    ]
+                    sweep_sources = (
+                        repo.get_node_source_ids(kb_id, slide_nodes) if kb and slide_nodes else []
+                    )
                     all_chunks = (
                         repo.get_all_chunk_summaries(
                             kb_id=kb_id,
                             institute_id=kb["institute_id"],
                             limit=course_grounding.MAX_SWEEP_CHUNKS,
+                            source_ids=sweep_sources or None,
                         )
                         if kb
                         else []

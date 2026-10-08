@@ -74,7 +74,9 @@ function buildHeadlineText(t: TFunction): Record<string, string> {
         ANSWER_DELETED: t('headline.answerDeleted'),
         BOT_SILENT: t('headline.botSilent'),
         REPLY_LOOP: t('headline.replyLoop'),
+        OPENING_REPLAYED: t('headline.openingReplayed'),
         HANDBACK_LOOP: t('headline.handbackLoop'),
+        REPEATED_LINE: t('headline.repeatedLine'),
         DEAD_AIR: t('headline.deadAir'),
         FALSE_REASK: t('headline.falseReask'),
         LIKELY_MACHINE: t('headline.likelyMachine'),
@@ -95,7 +97,9 @@ function buildFaultLabel(t: TFunction): Record<string, string> {
         ANSWER_DELETED: t('faultLabel.answerDeleted'),
         BOT_SILENT: t('faultLabel.botSilent'),
         REPLY_LOOP: t('faultLabel.replyLoop'),
+        OPENING_REPLAYED: t('faultLabel.openingReplayed'),
         HANDBACK_LOOP: t('faultLabel.handbackLoop'),
+        REPEATED_LINE: t('faultLabel.repeatedLine'),
         DEAD_AIR: t('faultLabel.deadAir'),
         FALSE_REASK: t('faultLabel.falseReask'),
         LIKELY_MACHINE: t('faultLabel.likelyMachine'),
@@ -219,6 +223,23 @@ function faultEvidence(t: TFunction, code: string, d: CallDiagnostics): string[]
                     : null,
                 turn.repeatEscalations
                     ? t('evidence.saidAnyway', { count: turn.repeatEscalations })
+                    : null
+            );
+            break;
+        case 'OPENING_REPLAYED':
+            out.push(
+                turn.openingReplays
+                    ? pluralCount(t, 'evidence.openingReplayed', turn.openingReplays)
+                    : null
+            );
+            break;
+        case 'REPEATED_LINE':
+            out.push(
+                turn.repeatedLines
+                    ? pluralCount(t, 'evidence.repeatedLine', turn.repeatedLines)
+                    : null,
+                turn.repeatedLineSamples?.[0]
+                    ? t('evidence.repeatedLineSample', { text: turn.repeatedLineSamples[0] })
                     : null
             );
             break;

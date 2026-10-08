@@ -15,14 +15,9 @@
         "status": "Status",
         "chaptersDone": "Chapters done"
     },
-    "picker": {
-        "selectA": "Select a {{term}}",
-        "searchTerm": "Search {{term}}..."
-    },
     "emptyBatch": {
-        "selectBatch": "Select a batch to view {{learner}} progress.",
-        "selectCourse": "Select a {{course}} to see {{learner}} progress.",
-        "autoPicked": "{{session}} and {{level}} are picked automatically when there is only one."
+        "selectBatch": "Select a {{batch}} to view {{learner}} progress.",
+        "multiHint": "Pick several {{batch}} to see their {{batch}} learners in one list."
     },
     "stats": {
         "enrolled_one": "Enrolled {{learner}}",
@@ -44,11 +39,29 @@
     },
     "empty": {
         "noMatch": "No {{learner}} matches “{{search}}”.",
-        "noneEnrolled": "No {{learner}} is enrolled in this batch yet.",
+        "noneEnrolled": "No {{learner}} is enrolled in the selected {{batch}} yet.",
         "tryDifferentName": "Try a different name.",
         "progressAppearsHere": "Progress appears here once {{learner}}s are enrolled."
     },
     "drawer": {
         "percentComplete": "{{percent}}% of {{course}} complete"
+    },
+    "csv": {
+        "fileStem": "{{learner}}-progress",
+        "exportCsv": "Export CSV",
+        "preparing": "Preparing…",
+        "exporting": "Exporting {{done}}/{{total}}…",
+        "exportSuccess": "CSV exported · {{count}} rows",
+        "exportTruncated": "CSV exported · first {{count}} only",
+        "exportFailed": "Failed to export CSV",
+        "summaryTitle": "{{learner}} progress",
+        "email": "Email",
+        "username": "Username",
+        "enrollmentNumber": "Enrollment number",
+        "courseProgress": "{{course}} progress (%)",
+        "chaptersDone": "Chapters done",
+        "chaptersTotal": "Chapters total",
+        "subjectTitle": "{{learner}} progress by subject",
+        "moduleProgress": "{{module}} progress (%)"
     }
 }

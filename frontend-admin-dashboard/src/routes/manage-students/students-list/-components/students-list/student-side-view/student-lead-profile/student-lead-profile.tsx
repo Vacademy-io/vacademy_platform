@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
 import { FollowUpsWidget } from './follow-ups-widget';
+import { LeadFreebiesWidget } from './lead-freebies-widget';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
@@ -1521,6 +1522,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             {effectiveResponseId && (
                 <FollowUpsWidget audienceResponseId={effectiveResponseId} userId={userId} />
             )}
+
+            {/* ── Freebies taken from the website (self-hides when none) ── */}
+            <LeadFreebiesWidget userId={userId} />
 
             {/* ── Add Note / Log Activity ── */}
             <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />

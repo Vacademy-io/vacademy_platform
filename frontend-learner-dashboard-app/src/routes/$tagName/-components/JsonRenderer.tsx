@@ -61,7 +61,7 @@ import { HeroSectionComponent } from "./components/HeroSectionComponent";
 import { MediaShowcaseComponent } from "./components/MediaShowcaseComponent";
 import { PlainVideoPlayer } from "./components/PlainVideoPlayer";
 import { isDirectVideoFile } from "../-utils/video-url";
-import { useResourceUnlocked } from "../-utils/resource-unlock";
+import { normalizeResourceUrl, trackResourceDownload, useResourceUnlocked } from "../-utils/resource-unlock";
 import { StatsHighlightsComponent } from "./components/StatsHighlightsComponent";
 import { CourseShowcaseComponent } from "./components/CourseShowcaseComponent";
 import { TestimonialSectionComponent } from "./components/TestimonialSectionComponent";
@@ -1431,7 +1431,7 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
 }) => {
   const unlocked = useResourceUnlocked(gateAudienceId);
   const chips: string[] = (f.chips || []).filter(Boolean);
-  const cta = f.link?.text && f.link?.url ? f.link : null;
+  const cta = f.link?.text && f.link?.url ? { ...f.link, url: normalizeResourceUrl(f.link.url) } : null;
   // `gateAll` = the author gated the whole section; `cta.gated` = this card only.
   const gated = !!(cta && (gateAll || cta.gated) && gateAudienceId && !unlocked);
   const badge = (f.badge || '').trim();
@@ -1447,6 +1447,10 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
     }));
   };
 
+  const trackOpen = () => {
+    if (cta && !cta.url.startsWith('#')) trackResourceDownload({ url: cta.url, title: f.title, audienceId: gateAudienceId });
+  };
+
   return (
     <article
       data-stagger-item
@@ -1454,6 +1458,7 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
       className="catalogue-card-elevated group flex flex-col overflow-hidden text-start"
     >
       {f.image && (
+        unlockTitle: f.title,
         <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
           <img
             src={f.image}
@@ -1492,9 +1497,19 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
                 {cta.text}
               </button>
             ) : (
-              <CatalogueLink to={cta.url} className="catalogue-btn catalogue-btn-primary w-full justify-center">
-                {cta.text}
-              </CatalogueLink>
+              // Every open counts — after the unlock and on ungated cards too — so
+              // the admin sees each lead's full list, not just the first file.
+              // Captured on a wrapper, not passed as the link's onClick: that
+              // would replace CatalogueLink's own handler for site pages.
+              // onAuxClick covers a middle-click into a new tab.
+              <div
+                onClickCapture={trackOpen}
+                onAuxClick={(e) => { if (e.button === 1) trackOpen(); }}
+              >
+                <CatalogueLink to={cta.url} className="catalogue-btn catalogue-btn-primary w-full justify-center">
+                  {cta.text}
+                </CatalogueLink>
+              </div>
             )}
           </div>
         )}

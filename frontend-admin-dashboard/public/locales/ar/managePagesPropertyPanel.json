@@ -905,7 +905,10 @@
     "uploadPdf": "أو ارفع ملف PDF (يملأ رابط URL)",
     "gateToggle": "اطلب البريد أولاً",
     "gateNeedsList": "اختر قائمة في «البريد الإلكتروني قبل التنزيل» أعلاه، وإلا ستُفتح هذه البطاقة دون طلب.",
-    "gateAll": "اطلب البيانات قبل فتح كل بطاقة في هذا القسم"
+    "gateAll": "اطلب البيانات قبل فتح كل بطاقة في هذا القسم",
+    "useFreebiesList": "استخدم قائمة Freebies (تُنشأ تلقائيًا)",
+    "attachingFreebiesList": "جارٍ إعداد قائمة Freebies…",
+    "freebiesListError": "تعذّر إعداد قائمة Freebies. اختر قائمة من الأعلى."
   },
   "imageBlock": {
     "captionOptional": "التسمية التوضيحية (اختياري)",

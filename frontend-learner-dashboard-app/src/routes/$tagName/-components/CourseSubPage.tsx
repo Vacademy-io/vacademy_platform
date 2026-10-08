@@ -10,6 +10,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
@@ -50,12 +51,16 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
-  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string } | null>(null);
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string; unlockTitle?: string } | null>(null);
 
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
   useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
   useEffect(() => { captureUtmOnce(); }, []);
+  // Freebie downloads need the institute/page; resource cards do not know it.
+  useResourceTrackingContext(
+    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: page ?? "" } : null
+  );
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -216,6 +221,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           // Set by gated resource cards — the file to hand over after submit.
           unlockUrl: detail.unlockUrl,
           unlockLabel: detail.unlockLabel,
+          unlockTitle: detail.unlockTitle,
         });
       }
     };
@@ -462,6 +468,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           instituteId={instituteId}
           unlockUrl={audienceForm.unlockUrl}
           unlockLabel={audienceForm.unlockLabel}
+          unlockTitle={audienceForm.unlockTitle}
         />
       )}
       {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection.enabled && (!showIntroPage || introCompleted) && (

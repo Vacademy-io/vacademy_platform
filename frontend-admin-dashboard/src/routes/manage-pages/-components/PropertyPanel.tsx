@@ -29,7 +29,7 @@ import {
     Eye,
     EyeSlash,
 } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
@@ -4605,6 +4605,76 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
  */
 const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
     value: string;
+/**
+ * Fields a website form list starts with. Richer fields stay in Audience Manager.
+ * `phoneRequired` is for the Freebies list, where the phone is what a
+ * counsellor calls back on.
+ */
+const websiteFormFields = (instituteId: string | null | undefined, phoneRequired = false) => {
+    const mkField = (fieldName: string, fieldType: string, isMandatory: boolean, order: number) => ({
+        instituteId,
+        type: 'AUDIENCE_FORM',
+        groupName: '',
+        individualOrder: order,
+        groupInternalOrder: 0,
+        isMandatory,
+        status: 'ACTIVE',
+        customField: { fieldName, fieldType, defaultValue: '', config: '{}', formOrder: order, isMandatory, status: 'ACTIVE' },
+    });
+    return [
+        mkField('Full Name', 'TEXT', true, 1),
+        mkField('Email', 'TEXT', true, 2),
+        mkField('Phone Number', 'TEXT', phoneRequired, 3),
+    ];
+};
+
+/** Name of the one institute-wide list every freebie form collects into. */
+const FREEBIES_LIST_NAME = 'Freebies';
+// One creation at a time: two sections switched to Resource in quick
+// succession must end up on the same list, not two lists named Freebies.
+let freebiesListInFlight: Promise<{ id: string; name: string }> | null = null;
+
+/**
+ * Finds the institute's "Freebies" list, creating it (Name / Email / Phone, all
+ * required) the first time. Resource sections attach to it automatically so an
+ * admin never has to build a list before gating a freebie, and every freebie
+ * lead lands in one place.
+ */
+const useFreebiesList = () => {
+    const queryClient = useQueryClient();
+    const instituteId = getCurrentInstituteId();
+    return (): Promise<{ id: string; name: string }> => {
+        if (freebiesListInFlight) return freebiesListInFlight;
+        freebiesListInFlight = (async () => {
+            const data: any = await queryClient.fetchQuery(
+                handleFetchCampaignsList({ institute_id: instituteId || '', status: 'ACTIVE', page: 0, size: 100, campaign_name: FREEBIES_LIST_NAME })
+            );
+            const existing = ((data?.content || []) as any[]).find(
+                (c) => String(c.campaign_name || '').trim().toLowerCase() === FREEBIES_LIST_NAME.toLowerCase()
+            );
+            if (existing) return { id: existing.id || existing.audience_id || existing.campaign_id, name: existing.campaign_name };
+            const { data: newId } = await axios.post(
+                AUDIENCE_CAMPAIGN,
+                {
+                    institute_id: instituteId,
+                    campaign_name: FREEBIES_LIST_NAME,
+                    campaign_type: 'WEBSITE',
+                    campaign_objective: 'LEAD_GENERATION',
+                    description: 'Free resources on the website. Created by the website builder.',
+                    status: 'ACTIVE',
+                    institute_custom_fields: websiteFormFields(instituteId, true),
+                },
+                { headers: { Authorization: `Bearer ${getTokenFromCookie(TokenKey.accessToken)}` } },
+            );
+            queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
+            return { id: String(newId).replace(/^"|"$/g, ''), name: FREEBIES_LIST_NAME };
+        })().finally(() => {
+            freebiesListInFlight = null;
+        });
+        return freebiesListInFlight;
+    };
+};
+
     onChange: (id: string, name: string) => void;
     label?: string;
     allowEmpty?: boolean;
@@ -4630,16 +4700,6 @@ const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
     const [newName, setNewName] = useState('');
     const createMutation = useMutation({
         mutationFn: async (campaignName: string) => {
-            const mkField = (fieldName: string, fieldType: string, isMandatory: boolean, order: number) => ({
-                instituteId,
-                type: 'AUDIENCE_FORM',
-                groupName: '',
-                individualOrder: order,
-                groupInternalOrder: 0,
-                isMandatory,
-                status: 'ACTIVE',
-                customField: { fieldName, fieldType, defaultValue: '', config: '{}', formOrder: order, isMandatory, status: 'ACTIVE' },
-            });
             const { data: newId } = await axios.post(
                 AUDIENCE_CAMPAIGN,
                 {
@@ -4649,11 +4709,7 @@ const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
                     campaign_objective: 'LEAD_GENERATION',
                     description: 'Created from the website builder',
                     status: 'ACTIVE',
-                    institute_custom_fields: [
-                        mkField('Full Name', 'TEXT', true, 1),
-                        mkField('Email', 'TEXT', true, 2),
-                        mkField('Phone Number', 'TEXT', false, 3),
-                    ],
+                    institute_custom_fields: websiteFormFields(instituteId),
                 },
                 { headers: { Authorization: `Bearer ${getTokenFromCookie(TokenKey.accessToken)}` } },
             );
@@ -6734,8 +6790,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
     const features = props.features || [];
     const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
-    const updateProp = (key: string, value: any) =>
-        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const updateProp = (key: string, value: any) => commitProps({ ...props, [key]: value });
 
     const addFeature = () => updateProp('features', [...features, { icon: '⭐', title: t('featureGrid.defaults.title'), description: t('featureGrid.defaults.description') }]);
     const deleteFeature = (i: number) => { updateProp('features', features.filter((_: any, idx: number) => idx !== i)); if (expandedIdx === i) setExpandedIdx(null); };
@@ -6778,7 +6833,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
                     {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo', 'resource'].map((s) => (
-                        <button key={s} onClick={() => updateProp('style', s)}
+                        <button key={s} onClick={() => chooseStyle(s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
@@ -6814,14 +6869,17 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                     <CampaignPicker
                         label={t('featureGrid.gateList')}
                         value={props.gateAudienceId || ''}
-                        onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, gateAudienceId: id, gateAudienceName: name } })}
+                        onChange={(id, name) => commitProps({ ...props, gateAudienceId: id, gateAudienceName: name })}
                     />
                     <Input value={props.gateTitle || ''} onChange={(e) => updateProp('gateTitle', e.target.value)} placeholder={t('featureGrid.gateTitlePlaceholder')} />
                     <label className="flex items-center gap-2 text-caption text-gray-600">
                         <input
                             type="checkbox"
                             checked={!!props.gateAll}
-                            onChange={(e) => updateProp('gateAll', e.target.checked || undefined)}
+                            onChange={(e) => {
+                                updateProp('gateAll', e.target.checked || undefined);
+                                if (e.target.checked) void attachFreebiesList();
+                            }}
                         />
                         {t('featureGrid.gateAll')}
                     </label>
@@ -6832,6 +6890,15 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label className="text-xs">{t('featureGrid.textAlignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['center', 'left'].map((a) => (
+    // Latest props, including an update not yet re-rendered: the Freebies list
+    // arrives after a network call (or a cache hit, before React re-renders),
+    // and must merge into what the admin just chose, not a stale copy.
+    const propsRef = useRef(props);
+    propsRef.current = props;
+    const commitProps = (next: any) => {
+        propsRef.current = next;
+        updateComponent(pageId, component.id, { props: next });
+    };
                         <button key={a} onClick={() => updateProp('align', a)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
@@ -6860,6 +6927,35 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     {f.icon} {f.title || t('featureGrid.featureN', { n: i + 1 })}
                                 </button>
                                 <Button variant="ghost" size="sm" onClick={() => moveFeature(i, -1)} disabled={i === 0} title={t('actions.moveUp')} aria-label={t('actions.moveUp')} className="size-6 p-0"><ArrowUp className="size-3" /></Button>
+    // Resource sections collect into the institute's Freebies list without the
+    // admin picking one.
+    const ensureFreebiesList = useFreebiesList();
+    const { toast } = useToast();
+    const [attachingList, setAttachingList] = useState(false);
+    const attachFreebiesList = async () => {
+        if (propsRef.current.gateAudienceId || attachingList) return;
+        setAttachingList(true);
+        try {
+            const list = await ensureFreebiesList();
+            if (propsRef.current.gateAudienceId) return;
+            commitProps({ ...propsRef.current, gateAudienceId: list.id, gateAudienceName: list.name });
+        } catch {
+            toast({ title: t('featureGrid.freebiesListError'), variant: 'destructive' });
+        } finally {
+            setAttachingList(false);
+        }
+    };
+    // Switching a section to Resource gates every card by default; an existing
+    // resource section keeps whatever it had.
+    const chooseStyle = (style: string) => {
+        if (style === 'resource' && props.style !== 'resource' && !props.gateAudienceId) {
+            commitProps({ ...props, style, gateAll: true });
+            void attachFreebiesList();
+            return;
+        }
+        updateProp('style', style);
+    };
+
                                 <Button variant="ghost" size="sm" onClick={() => moveFeature(i, 1)} disabled={i === features.length - 1} title={t('actions.moveDown')} aria-label={t('actions.moveDown')} className="size-6 p-0"><ArrowDown className="size-3" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => duplicateFeature(i)} title={t('actions.duplicate')} aria-label={t('actions.duplicate')} className="size-6 p-0"><Copy className="size-3" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} title={t('actions.delete')} aria-label={t('actions.delete')} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
@@ -6926,12 +7022,25 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                                     type="checkbox"
                                                     disabled={!!props.gateAll}
                                                     checked={!!props.gateAll || !!f.link?.gated}
-                                                    onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), gated: e.target.checked || undefined })}
+                                                    onChange={(e) => {
+                                                        updateFeature(i, 'link', { ...(f.link || {}), gated: e.target.checked || undefined });
+                                                        if (e.target.checked) void attachFreebiesList();
+                                                    }}
                                                 />
                                                 {t('featureGrid.gateToggle')}
                                             </label>
                                             {(props.gateAll || f.link?.gated) && !props.gateAudienceId && (
-                                                <p className="text-caption text-amber-600">{t('featureGrid.gateNeedsList')}</p>
+                                                <div className="space-y-1">
+                                                    <p className="text-caption text-amber-600">{t('featureGrid.gateNeedsList')}</p>
+                                                    <button
+                                                        type="button"
+                                                        disabled={attachingList}
+                                                        onClick={() => void attachFreebiesList()}
+                                                        className="text-caption font-medium text-primary-500 hover:underline disabled:opacity-60"
+                                                    >
+                                                        {attachingList ? t('featureGrid.attachingFreebiesList') : t('featureGrid.useFreebiesList')}
+                                                    </button>
+                                                </div>
                                             )}
                                         </>
                                     )}

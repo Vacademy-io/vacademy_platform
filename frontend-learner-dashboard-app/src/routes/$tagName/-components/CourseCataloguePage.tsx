@@ -11,6 +11,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
+import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
@@ -64,7 +65,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
-  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string } | null>(null);
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string; unlockUrl?: string; unlockLabel?: string; unlockTitle?: string } | null>(null);
 
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
@@ -76,6 +77,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // counted — the GA4/Pixel hooks above only serve the institute's own tools,
   // and most institutes never connect one.
   useCataloguePageView(
+    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+  );
+  // Freebie downloads need the same institute/page; resource cards do not know it.
+  useResourceTrackingContext(
     catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
@@ -324,6 +329,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           // Set by gated resource cards — the file to hand over after submit.
           unlockUrl: detail.unlockUrl,
           unlockLabel: detail.unlockLabel,
+          unlockTitle: detail.unlockTitle,
         });
       }
     };
@@ -676,6 +682,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           instituteId={instituteId}
           unlockUrl={audienceForm.unlockUrl}
           unlockLabel={audienceForm.unlockLabel}
+          unlockTitle={audienceForm.unlockTitle}
         />
       )}
       {showLeadCollection && !isPreviewMode && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (

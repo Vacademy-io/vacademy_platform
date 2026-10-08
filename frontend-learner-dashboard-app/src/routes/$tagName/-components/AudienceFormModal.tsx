@@ -2,7 +2,11 @@ import React, { useEffect, useState } from "react";
 import { ArrowSquareOut, X } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { LeadFormComponent } from "./components/LeadFormComponent";
-import { markResourceUnlocked } from "../-utils/resource-unlock";
+import {
+  markResourceUnlocked,
+  rememberResourceIdentity,
+  trackResourceDownload,
+} from "../-utils/resource-unlock";
 
 /**
  * Audience Form popup — lets ANY catalogue button open a campaign's form as a
@@ -31,6 +35,8 @@ export interface AudienceFormModalProps {
   unlockUrl?: string;
   /** Button text for that resource (the card's own label, e.g. "Download"). */
   unlockLabel?: string;
+  /** The card's title — what the admin sees in the lead's download list. */
+  unlockTitle?: string;
 }
 
 export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
@@ -41,6 +47,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
   instituteId,
   unlockUrl,
   unlockLabel,
+  unlockTitle,
 }) => {
   const { t } = useTranslation("coursePlayerA");
   const [unlocked, setUnlocked] = useState(false);
@@ -107,7 +114,8 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
           layout="bare"
           onSubmitted={
             unlockUrl
-              ? () => {
+              ? (identity) => {
+                  rememberResourceIdentity(identity);
                   markResourceUnlocked(audienceId);
                   setUnlocked(true);
                 }
@@ -121,6 +129,10 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
               href={unlockUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => trackResourceDownload({ url: unlockUrl, title: unlockTitle, audienceId })}
+              onAuxClick={(e) => {
+                if (e.button === 1) trackResourceDownload({ url: unlockUrl, title: unlockTitle, audienceId });
+              }}
               className="catalogue-btn catalogue-btn-primary w-full justify-center sm:w-auto"
             >
               <ArrowSquareOut className="size-4" weight="bold" aria-hidden="true" />

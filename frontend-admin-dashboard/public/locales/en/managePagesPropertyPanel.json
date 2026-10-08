@@ -879,7 +879,10 @@
     "uploadPdf": "Or upload a PDF (fills the link URL)",
     "gateToggle": "Ask for email first",
     "gateNeedsList": "Pick a list under \"Email before download\" above, otherwise this card opens without asking.",
-    "gateAll": "Ask for details before opening every card in this section"
+    "gateAll": "Ask for details before opening every card in this section",
+    "useFreebiesList": "Use the Freebies list (created for you)",
+    "attachingFreebiesList": "Setting up the Freebies list…",
+    "freebiesListError": "Could not set up the Freebies list. Pick a list above instead."
   },
   "imageBlock": {
     "captionOptional": "Caption (optional)",

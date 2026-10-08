@@ -120,6 +120,7 @@ import {
 import { usePoolForAudience } from '@/services/counselor-pool';
 import { UsersThree, Tag } from '@phosphor-icons/react';
 import { BulkLeadStatusDialog } from '@/components/shared/leads/bulk-lead-status-dialog';
+import { FreebieDownloadsPanel } from '@/components/shared/freebies/FreebieDownloadsPanel';
 
 // Every row in this view is from the same audience, so "Lead source" is
 // redundant — hidden by default and not offered in the Manage Column list.
@@ -1170,6 +1171,12 @@ const CampaignUsersContent = ({
                     </Button>
                 )}
             </div>
+
+            {/* Which freebies this list's leads took from the website. Renders nothing
+                for lists that never gated a resource. */}
+            {campaignId && !isOptOut && (
+                <FreebieDownloadsPanel audienceId={campaignId} hideWhenEmpty collapsible />
+            )}
 
             {/* Toolbar — left filters, right actions */}
             <div className="flex flex-wrap items-center justify-between gap-2">

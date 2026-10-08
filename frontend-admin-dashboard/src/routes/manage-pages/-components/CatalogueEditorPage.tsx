@@ -17,6 +17,7 @@ import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
 import { AiCopilotPanel } from './AiCopilotPanel';
 import { SiteAnalyticsPanel } from './SiteAnalyticsPanel';
+import { FreebieDownloadsPanel } from '@/components/shared/freebies/FreebieDownloadsPanel';
 import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
@@ -597,6 +598,9 @@ export const CatalogueEditorPage = () => {
                             {rightTab === 'analytics' ? (
                                 <div className="flex-1 overflow-auto">
                                     <SiteAnalyticsPanel />
+                                    <div className="border-t border-neutral-200">
+                                        <FreebieDownloadsPanel narrow />
+                                    </div>
                                 </div>
                             ) : rightTab === 'properties' ? (
                                 <div className="flex-1 overflow-auto">

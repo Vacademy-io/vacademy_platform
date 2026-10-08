@@ -1371,6 +1371,9 @@ export const CATALOGUE_REVISION_GET = (revisionId: string) =>
 // Catalogue site analytics (first-party page views, joined to leads)
 export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
     `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+// Freebie (resource card) downloads per file and per lead; audienceId narrows to one list's leads.
+export const CATALOGUE_RESOURCE_DOWNLOADS = `${BASE_URL}/admin-core-service/v1/catalogue-resources/downloads`;
+export const CATALOGUE_RESOURCE_LEAD_DOWNLOADS = `${BASE_URL}/admin-core-service/v1/catalogue-resources/downloads/lead`;
 // Catalogue blog posts — rows an admin writes in Manage Pages → Blog, read live
 // by the `blog` section of any of the institute's sites.
 export const CATALOGUE_BLOG_BASE_URL = `${BASE_URL}/admin-core-service/v1/catalogue-blog`;

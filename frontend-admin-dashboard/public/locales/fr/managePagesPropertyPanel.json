@@ -884,7 +884,10 @@
     "uploadPdf": "Ou téléverser un PDF (remplit l'URL du lien)",
     "gateToggle": "Demander l'e-mail d'abord",
     "gateNeedsList": "Choisissez une liste dans « E-mail avant téléchargement » ci-dessus, sinon cette carte s'ouvre sans rien demander.",
-    "gateAll": "Demander les coordonnées avant d'ouvrir chaque carte de cette section"
+    "gateAll": "Demander les coordonnées avant d'ouvrir chaque carte de cette section",
+    "useFreebiesList": "Utiliser la liste Freebies (créée pour vous)",
+    "attachingFreebiesList": "Préparation de la liste Freebies…",
+    "freebiesListError": "Impossible de créer la liste Freebies. Choisissez une liste ci-dessus."
   },
   "imageBlock": {
     "captionOptional": "Légende (optionnel)",

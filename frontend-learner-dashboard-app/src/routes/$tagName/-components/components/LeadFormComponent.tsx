@@ -58,8 +58,12 @@ interface LeadFormProps {
   backgroundColor?: string;
   /** 'section' renders the full catalogue section; 'embedded' just the form. */
   variant?: "section" | "embedded";
-  /** Fired once the visitor's submission is accepted (the gated-resource modal unlocks on it). */
-  onSubmitted?: () => void;
+  /**
+   * Fired once the visitor's submission is accepted (the gated-resource modal
+   * unlocks on it). Carries the email/phone they typed when a lead was really
+   * created, so later freebie downloads can be tied to that lead.
+   */
+  onSubmitted?: (identity?: { email: string; mobileNumber: string }) => void;
   instituteId?: string;
   isPreviewMode?: boolean;
 }
@@ -250,7 +254,10 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       // and in the redirect query string.
       setRespondent(extractRespondentIdentity(formValues));
       setDone(true);
-      onSubmitted?.();
+      onSubmitted?.({
+        email: payload.user_dto?.email || "",
+        mobileNumber: payload.user_dto?.mobile_number || "",
+      });
     } catch {
       setError(t("leadForm.genericError"));
     } finally {

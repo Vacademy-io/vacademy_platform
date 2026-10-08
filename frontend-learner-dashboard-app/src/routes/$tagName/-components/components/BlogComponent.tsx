@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, CalendarBlank, Clock, LinkSimple, UserCircle } f
 import { RouteMatcher } from "../../-services/route-matcher";
 import { BlogService, type BlogPostPage, type BlogPostSummary } from "../../-services/blog-service";
 import { blogPlainText, sanitizeBlogHtml } from "../../-utils/blog-html";
-import { markResourceUnlocked, useResourceUnlocked } from "../../-utils/resource-unlock";
+import { markResourceUnlocked, rememberResourceIdentity, useResourceUnlocked } from "../../-utils/resource-unlock";
 import { LeadFormComponent } from "./LeadFormComponent";
 import "./catalogue-blog.css";
 
@@ -634,7 +634,12 @@ const BlogPost: React.FC<BlogPostProps> = ({
               subtitle={t("blog.gateSubtitle")}
               variant="embedded"
               layout="card"
-              onSubmitted={() => markResourceUnlocked(gateAudienceId)}
+              onSubmitted={(identity) => {
+                // Same browser identity as the resource cards, so files this reader
+                // opens next are credited to them.
+                rememberResourceIdentity(identity);
+                markResourceUnlocked(gateAudienceId);
+              }}
             />
           </div>
         ) : (

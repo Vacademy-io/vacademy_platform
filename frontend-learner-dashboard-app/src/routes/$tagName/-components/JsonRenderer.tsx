@@ -1436,6 +1436,10 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
   const gated = !!(cta && (gateAll || cta.gated) && gateAudienceId && !unlocked);
   const badge = (f.badge || '').trim();
 
+  const trackOpen = () => {
+    if (cta && !cta.url.startsWith('#')) trackResourceDownload({ url: cta.url, title: f.title, audienceId: gateAudienceId });
+  };
+
   const openGate = () => {
     window.dispatchEvent(new CustomEvent('openAudienceForm', {
       detail: {
@@ -1443,12 +1447,9 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
         title: gateTitle || f.title,
         unlockUrl: cta.url,
         unlockLabel: cta.text,
+        unlockTitle: f.title,
       },
     }));
-  };
-
-  const trackOpen = () => {
-    if (cta && !cta.url.startsWith('#')) trackResourceDownload({ url: cta.url, title: f.title, audienceId: gateAudienceId });
   };
 
   return (
@@ -1458,7 +1459,6 @@ const ResourceCard: React.FC<{ feature: any; index: number; gateAudienceId: stri
       className="catalogue-card-elevated group flex flex-col overflow-hidden text-start"
     >
       {f.image && (
-        unlockTitle: f.title,
         <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
           <img
             src={f.image}

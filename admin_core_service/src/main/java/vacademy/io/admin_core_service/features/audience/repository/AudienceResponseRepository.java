@@ -587,7 +587,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN act.last_called_at END ASC NULLS LAST,
                               CASE WHEN :sortBy = 'LAST_CALLED' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN act.last_called_at END DESC NULLS LAST,
-                              ar.submitted_at DESC
+                              ar.submitted_at DESC,
+                              ar.id DESC
                         """, countQuery = """
                             SELECT COUNT(*)
                             FROM audience_response ar
@@ -1328,7 +1329,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN act.last_called_at END ASC NULLS LAST,
                               CASE WHEN :sortBy = 'LAST_CALLED' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN act.last_called_at END DESC NULLS LAST,
-                              ar.submitted_at DESC
+                              ar.submitted_at DESC,
+                              ar.id DESC
                         """, countQuery = """
                             SELECT COUNT(*)
                             FROM audience_response ar

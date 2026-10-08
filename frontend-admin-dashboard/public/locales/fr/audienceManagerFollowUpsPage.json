@@ -115,6 +115,12 @@
         "custom": "Plage personnalisée",
         "from": "Date de début",
         "to": "Date de fin",
-        "preset_many": "{{count}} derniers jours"
+        "preset_many": "{{count}} derniers jours",
+        "allTime": "Toute la période"
+    },
+    "dueRange": {
+        "from": "Échéance du",
+        "to": "Échéance au",
+        "clear": "Effacer les dates d'échéance"
     }
 }

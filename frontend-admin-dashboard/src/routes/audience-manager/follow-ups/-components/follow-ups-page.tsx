@@ -8,8 +8,9 @@ import {
     ListBullets,
     MagnifyingGlass,
     Megaphone,
+    X,
 } from '@phosphor-icons/react';
-import { useSearch } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
@@ -86,9 +87,16 @@ import {
     COMPLETED_CUSTOM_RANGE,
     COMPLETED_DEFAULT_RANGE,
     COMPLETED_RANGE_PRESETS,
+    completedRangeForPreset,
     completedWindow,
 } from './completed-range';
-import { bucketWindow, effectiveDueMs, type FollowUpBucket } from './follow-up-buckets';
+import {
+    bucketWindow,
+    effectiveDueMs,
+    intersectWindows,
+    type FollowUpBucket,
+} from './follow-up-buckets';
+import { dateRangeFileSuffix, dueDateWindow } from './due-range';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 import { useFollowUpsViewState } from './use-follow-ups-view-state';
 import { parseLockedParams } from '../../recent-leads/-components/pinned-filters';
@@ -127,11 +135,19 @@ const EMPTY_COUNTS: Record<FollowUpBucket, number> = {
     upcoming: 0,
     all: 0,
 };
-/** Bucket window as the API's snake-case params. */
-const toWindowParams = (b: FollowUpBucket, now: Date = new Date()) => {
-    const w = bucketWindow(b, now);
+/** Bucket window, narrowed by the due-date filter, as the API's snake-case params. */
+const toWindowParams = (
+    b: FollowUpBucket,
+    now: Date = new Date(),
+    due: { from?: string; to?: string } = {}
+) => {
+    // Today is already one day, so the due-date filter has nothing to narrow there — and
+    // it is hidden on that tile, so a range set elsewhere must not quietly empty it.
+    const w = intersectWindows(bucketWindow(b, now), b === 'today' ? {} : due);
     return { follow_up_from: w.from, follow_up_to: w.to };
 };
+/** "All time" on the Completed range — completedWindow() reads it as no window. */
+const COMPLETED_ALL_TIME = 'ALL';
 // Hidden on this surface to keep triage focused.
 const HIDDEN_COLUMNS = new Set(['score']);
 // Static cache keys every mutation on this page must refresh.
@@ -237,8 +253,15 @@ const FollowUpsContent = () => {
     // audience) are two different things to the client, and neither is a UTM tag.
     // Same wiring as Recent Leads: picking Sources narrows which Labels the second
     // dropdown offers, and the request carries the resolved audience ids.
-    // ?lock=bucket — the sub-tab owns its bucket, so a card click must not move off it.
+    // ?lock=bucket — the sub-tab owns its bucket. A card click used to be ignored there,
+    // which left every sidebar sub-tab with five dead tiles; it now moves to that
+    // bucket's own sub-tab instead, so the URL and the sidebar highlight follow it.
     const bucketLocked = parseLockedParams(lock).has('bucket');
+    const navigate = useNavigate({ from: '/audience-manager/follow-ups/' });
+    const selectBucket = (b: FollowUpBucket) => {
+        if (bucketLocked) navigate({ search: (prev) => ({ ...prev, bucket: b }) });
+        else setBucket(b);
+    };
     const terminology = useLeadTerminology();
     // Admins switch individual filters off from the gear below; a hidden filter
     // must also stop filtering, or it would narrow the list invisibly.
@@ -333,6 +356,11 @@ const FollowUpsContent = () => {
         [completedSearch, completedRange, completedFrom, completedTo]
     );
 
+    // Due-date filter for the open buckets; see due-range.ts. Empty = any date.
+    const [dueFrom, setDueFrom] = useState('');
+    const [dueTo, setDueTo] = useState('');
+    const dueWindow = useMemo(() => dueDateWindow(dueFrom, dueTo), [dueFrom, dueTo]);
+
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [page, setPage] = useState(0);
@@ -351,6 +379,7 @@ const FollowUpsContent = () => {
             audienceParams,
             utmFiltersPayload,
             completedParams,
+            dueWindow,
         ]
     );
 
@@ -384,6 +413,7 @@ const FollowUpsContent = () => {
             instituteId,
             effectiveCounsellorId,
             completedParams,
+            dueWindow,
         ],
         queryFn: async () => {
             const buckets: FollowUpBucket[] = ['overdue', 'today', 'upcoming', 'all'];
@@ -395,7 +425,7 @@ const FollowUpsContent = () => {
                     buckets.map((b) =>
                         fetchRecentLeads({
                             ...baseFilter,
-                            ...toWindowParams(b, now),
+                            ...toWindowParams(b, now, dueWindow),
                             page: 0,
                             size: 1,
                         })
@@ -419,11 +449,11 @@ const FollowUpsContent = () => {
     });
 
     const { data, isLoading, error } = useQuery({
-        queryKey: ['follow-ups', 'list', baseFilter, bucket, page, view],
+        queryKey: ['follow-ups', 'list', baseFilter, bucket, page, view, dueWindow],
         queryFn: () =>
             fetchRecentLeads({
                 ...baseFilter,
-                ...toWindowParams(bucket),
+                ...toWindowParams(bucket, undefined, dueWindow),
                 page: view === 'calendar' ? 0 : page,
                 // The calendar lets the user jump to any day, so it needs the whole bucket
                 // rather than one page of it.
@@ -673,7 +703,17 @@ const FollowUpsContent = () => {
         exportFields
     );
     const handleExport = () => {
-        const fileName = `follow-ups_${bucket}_${new Date().toISOString().slice(0, 10)}.csv`;
+        // The file says which slice it is: bucket plus the date range it was cut to, so
+        // five downloads side by side in a folder don't need opening to tell apart.
+        const completedDates =
+            completedRange === COMPLETED_CUSTOM_RANGE
+                ? { from: completedFrom, to: completedTo }
+                : completedRangeForPreset(completedRange);
+        let rangeSuffix = '';
+        if (bucket === 'completed')
+            rangeSuffix = dateRangeFileSuffix(completedDates.from, completedDates.to);
+        else if (bucket !== 'today') rangeSuffix = dateRangeFileSuffix(dueFrom, dueTo);
+        const fileName = `follow-ups_${bucket}${rangeSuffix}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
         const labels = {
             progress: (done: number, total: number) =>
                 total > 0
@@ -706,18 +746,20 @@ const FollowUpsContent = () => {
                         size,
                         includeLeadDetail: true,
                     }),
+                rowKey: (row) => row.id,
                 toRow: (row) => completedToExportRow(row, exportFields),
                 labels,
             });
             return;
         }
 
-        const window = toWindowParams(bucket);
+        const window = toWindowParams(bucket, undefined, dueWindow);
         startBackgroundExport({
             key: 'follow-ups',
             fileName,
             header: exportHeader,
             fetchPage: (page, size) => fetchRecentLeads({ ...baseFilter, ...window, page, size }),
+            rowKey: (lead) => lead.response_id,
             toRow: (lead) => {
                 const vm = recentLeadToVM(lead);
                 return leadToExportRow(
@@ -778,12 +820,7 @@ const FollowUpsContent = () => {
             </div>
 
             {/* Bucket cards — the dominant element */}
-            <FollowUpStatTiles
-                counts={counts}
-                active={bucket}
-                onChange={setBucket}
-                locked={bucketLocked}
-            />
+            <FollowUpStatTiles counts={counts} active={bucket} onChange={selectBucket} />
 
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}
@@ -857,6 +894,47 @@ const FollowUpsContent = () => {
                     selection={utmFilters}
                     onChange={setUtmFilter}
                 />
+                {/* Completed has its own range below — it filters on when a follow-up
+                    was closed, this one on when it is due. Today is one day already. */}
+                {bucket !== 'completed' && bucket !== 'today' && (
+                    <div className="flex items-center gap-1.5">
+                        <CalendarBlank className="size-4 shrink-0 text-neutral-400" />
+                        <Input
+                            type="date"
+                            value={dueFrom}
+                            max={dueTo || undefined}
+                            onChange={(e) => setDueFrom(e.target.value)}
+                            className="h-10 w-40"
+                            aria-label={t('dueRange.from')}
+                            title={t('dueRange.from')}
+                        />
+                        <span className="text-caption text-muted-foreground">→</span>
+                        <Input
+                            type="date"
+                            value={dueTo}
+                            min={dueFrom || undefined}
+                            onChange={(e) => setDueTo(e.target.value)}
+                            className="h-10 w-40"
+                            aria-label={t('dueRange.to')}
+                            title={t('dueRange.to')}
+                        />
+                        {(dueFrom || dueTo) && (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => {
+                                    setDueFrom('');
+                                    setDueTo('');
+                                }}
+                                aria-label={t('dueRange.clear')}
+                                title={t('dueRange.clear')}
+                            >
+                                <X className="size-4" />
+                            </MyButton>
+                        )}
+                    </div>
+                )}
                 <ManageListFiltersLink surface="LEADS" />
             </div>
 
@@ -889,6 +967,9 @@ const FollowUpsContent = () => {
                                         {t('completedRange.preset', { count: Number(p) })}
                                     </SelectItem>
                                 ))}
+                                <SelectItem value={COMPLETED_ALL_TIME}>
+                                    {t('completedRange.allTime')}
+                                </SelectItem>
                                 <SelectItem value={COMPLETED_CUSTOM_RANGE}>
                                     {t('completedRange.custom')}
                                 </SelectItem>

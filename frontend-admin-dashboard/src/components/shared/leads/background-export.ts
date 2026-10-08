@@ -47,6 +47,12 @@ export interface BackgroundExportSpec<TRow> {
     header: string[];
     fetchPage: (page: number, size: number) => Promise<ExportPage<TRow> | undefined>;
     toRow: (row: TRow) => (string | number | null | undefined)[];
+    /**
+     * Identity of a row. When given, a row seen on an earlier page is skipped: offset
+     * paging over rows that change mid-run (or tie on the sort key) can hand the same
+     * row back on the next page, and a CSV with duplicates reads as wrong numbers.
+     */
+    rowKey?: (row: TRow) => string | undefined;
     labels: {
         /** e.g. "Exporting 20,364 follow-ups…" — called with what the server reported. */
         progress: (done: number, total: number) => string;
@@ -120,6 +126,7 @@ export function startBackgroundExport<TRow>(spec: BackgroundExportSpec<TRow>): b
 
     void (async () => {
         const rows: string[] = [];
+        const seen = new Set<string>();
         let total = 0;
         let truncated = false;
         try {
@@ -136,8 +143,14 @@ export function startBackgroundExport<TRow>(spec: BackgroundExportSpec<TRow>): b
                 }
                 const elapsed = Date.now() - startedAt;
 
-                for (const row of res?.content ?? [])
+                for (const row of res?.content ?? []) {
+                    const id = spec.rowKey?.(row);
+                    if (id) {
+                        if (seen.has(id)) continue;
+                        seen.add(id);
+                    }
                     rows.push(spec.toRow(row).map(csvCell).join(','));
+                }
                 if (page === 0) total = res?.totalElements ?? rows.length;
 
                 const lastPage = res?.last ?? page + 1 >= (res?.totalPages ?? 0);

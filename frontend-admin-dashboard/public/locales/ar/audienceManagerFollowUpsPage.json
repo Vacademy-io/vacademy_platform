@@ -155,6 +155,12 @@
         "preset_zero": "آخر {{count}} أيام",
         "preset_two": "آخر {{count}} أيام",
         "preset_few": "آخر {{count}} أيام",
-        "preset_many": "آخر {{count}} أيام"
+        "preset_many": "آخر {{count}} أيام",
+        "allTime": "كل الوقت"
+    },
+    "dueRange": {
+        "from": "الاستحقاق من",
+        "to": "الاستحقاق إلى",
+        "clear": "مسح تواريخ الاستحقاق"
     }
 }

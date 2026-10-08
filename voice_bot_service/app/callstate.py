@@ -89,6 +89,12 @@ class CallState:
     # When a composed reply was cancelled before it played (barge-in). A silence
     # after that is the caller's, not "awaiting playout" of a dead reply.
     reply_cancelled_t: float = 0.0
+    # The same, for every cancel EXCEPT RunGuard's supersede: "was the reply to
+    # the run let through at t cut since?" (reply_unheard). The supersede's own
+    # stamp lands after the newer run has gone through, so read from
+    # reply_cancelled_t it made that newer run look cut, and a third piece
+    # could not supersede the second (review 2026-10-08: two replies again).
+    reply_cut_t: float = 0.0
     # Bot audio is DUCKED (held in DuckGate) because the caller started speaking
     # over a reply. Set at VAD onset; cleared by TurnGate absorb/interrupt or by
     # the watchdog's DUCK_RESUME when the voiced sound produced no words at all.
@@ -305,6 +311,29 @@ def watchdog_decide(s: CallState, now: float, cfg: WatchdogConfig) -> Decision:
     if not s.nudged and s.nudge_count < cfg.max_nudges:
         return Decision(NUDGE)
     return Decision(IDLE_HANGUP)
+
+
+def note_reply_cancelled(s: CallState, now: float, superseded: bool = False) -> None:
+    """An interruption reached the sentinel: whatever reply was composing is
+    gone. A supersede is a cancel too, but not a cut of the run that replaces
+    it (see reply_cut_t)."""
+    s.reply_cancelled_t = now
+    if not superseded:
+        s.reply_cut_t = now
+
+
+def reply_unheard(s: CallState, since: float, in_flight) -> bool:
+    """Has the reply to the run let through at `since` made no sound, and is it
+    still on its way? RunGuard supersedes only such a reply. Any bot audio
+    since `since` (that reply's, a filler's) or audio playing now: the caller
+    is hearing us — a barge-in, not a supersede. A reply cut since then needs
+    nothing. `in_flight`: a reply is composing, rendering or held (callable or
+    bool; read last)."""
+    if s.bot_speaking or s.bot_started_t >= since:
+        return False
+    if s.reply_cut_t >= since:
+        return False
+    return bool(in_flight() if callable(in_flight) else in_flight)
 
 
 def unplayed_confirmed(s: CallState, now: float, cfg: WatchdogConfig) -> bool:

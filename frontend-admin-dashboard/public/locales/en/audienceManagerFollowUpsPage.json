@@ -103,6 +103,12 @@
         "preset_other": "Last {{count}} days",
         "custom": "Custom range",
         "from": "From date",
-        "to": "To date"
+        "to": "To date",
+        "allTime": "All time"
+    },
+    "dueRange": {
+        "from": "Due from",
+        "to": "Due to",
+        "clear": "Clear due dates"
     }
 }

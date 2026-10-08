@@ -97,6 +97,20 @@ export const bucketWindow = (
     }
 };
 
+/**
+ * A bucket's window narrowed by the due-date filter: the later `from`, the earlier `to`.
+ * A range outside the bucket (Upcoming + last week) comes back with from > to, which the
+ * server answers with nothing — the right answer, not an error.
+ */
+export const intersectWindows = (
+    a: { from?: string; to?: string },
+    b: { from?: string; to?: string }
+): { from?: string; to?: string } => {
+    const later = (x?: string, y?: string) => (!x ? y : !y ? x : x > y ? x : y);
+    const earlier = (x?: string, y?: string) => (!x ? y : !y ? x : x < y ? x : y);
+    return { from: later(a.from, b.from), to: earlier(a.to, b.to) };
+};
+
 /** Filter VMs to a specific bucket (or all). */
 export const filterToBucket = (
     vms: LeadCardVM[],

@@ -26,9 +26,6 @@ interface FollowUpStatTilesProps {
     counts: Record<FollowUpBucket, number>;
     active: FollowUpBucket;
     onChange: (bucket: FollowUpBucket) => void;
-    /** Pinned by the route (?lock=bucket): the cards still report their counts,
-     *  they just stop being a way to leave the sub-tab you opened. */
-    locked?: boolean;
 }
 
 interface TileSpec {
@@ -100,12 +97,7 @@ const TONE_BORDER: Record<TileSpec['tone'], string> = {
     success: 'border-success-200',
 };
 
-export function FollowUpStatTiles({
-    counts,
-    active,
-    onChange,
-    locked = false,
-}: FollowUpStatTilesProps) {
+export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTilesProps) {
     const { t } = useTranslation('audienceManagerFollowUpStatTiles');
     const tiles = buildTiles(t);
     return (
@@ -117,14 +109,10 @@ export function FollowUpStatTiles({
                     <button
                         key={bucket}
                         type="button"
-                        onClick={() => !locked && onChange(bucket)}
-                        aria-disabled={locked || undefined}
+                        onClick={() => onChange(bucket)}
                         className={cn(
                             'flex min-w-44 flex-1 items-center gap-3 rounded-xl border px-5 py-4 text-left transition-all',
                             TONE_BG[tone],
-                            // A pinned row is still readable; it just is not a control.
-                            locked && 'cursor-default',
-                            locked && !isActive && 'opacity-60',
                             isActive
                                 ? 'border-primary-400 ring-2 ring-primary-200'
                                 : cn(TONE_BORDER[tone], 'hover:border-neutral-300')

@@ -62,6 +62,8 @@ const RESOURCE_LABELS: Record<string, string> = {
     LEAD_TIER: 'Lead tier',
     LEAD_FOLLOWUP: 'Follow-up',
     LEAD_SLA_CONFIG: 'Lead SLA',
+    LEAD_TAT_DEADLINE: 'Lead TAT deadline',
+    LEAD_LOOKUP: 'Lead lookup',
     LEAD_CONNECTOR: 'Lead connector',
     ENQUIRY: 'Enquiry',
     COUNSELLOR: 'Counsellor',
@@ -75,6 +77,7 @@ const RESOURCE_LABELS: Record<string, string> = {
     AUTOMATION: 'Automation',
     COURSE: 'Course',
     LIVE_SESSION: 'Live session',
+    LIVE_SESSION_MATERIAL: 'Class material',
     ENROLL_INVITE: 'Invite link',
     LEARNER: 'Learner',
     GUARDIAN_LINK: 'Guardian link',
@@ -131,6 +134,12 @@ const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
     /^(edited \d+ questions? of assessment )(.+)$/i,
     /^(created booking )(.+)$/i,
     /^(scheduled live session )(.+)$/i,
+    // Class materials / recordings added to course chapters from a live session.
+    // Greedy name: split on the LAST " to "/" from ", since titles like
+    // "Intro to Algebra" are far more common than such chapter names.
+    /^((?:added|removed) (?:class material|recording) )(.+)( (?:to|from) )(.+)$/i,
+    /^((?:added|removed) (?:class material|recording) )(.+)$/i,
+    /^(renamed (?:class material|recording) )(.+)( to )(.+)$/i,
     // "generated progress report for Anmol Agarwal (2026-04-01 to 2026-09-29)"
     /^(generated progress report for )(.+?)( \(.+\))$/i,
 

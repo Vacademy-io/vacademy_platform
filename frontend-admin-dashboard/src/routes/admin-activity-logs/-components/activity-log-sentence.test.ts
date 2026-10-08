@@ -66,6 +66,26 @@ describe('splitDescriptionParts', () => {
         ).toEqual(['Anmol Agarwal']);
     });
 
+    it('bolds the material and its chapter on live-session class material actions', () => {
+        expect(
+            nameParts('added class material Revision Class for all chapter to Lecture PDF, Notes')
+        ).toEqual(['Revision Class for all chapter', 'Lecture PDF, Notes']);
+        expect(nameParts('added recording Maths Live 3 Oct to Recordings')).toEqual([
+            'Maths Live 3 Oct',
+            'Recordings',
+        ]);
+        expect(nameParts('removed class material Intro to Algebra from Lecture PDF')).toEqual([
+            'Intro to Algebra',
+            'Lecture PDF',
+        ]);
+        expect(nameParts('renamed class material Old Notes to Chapter 3 Revision')).toEqual([
+            'Old Notes',
+            'Chapter 3 Revision',
+        ]);
+        // Chapter could not be resolved — still bold the material.
+        expect(nameParts('added class material Revision Class')).toEqual(['Revision Class']);
+    });
+
     it('bolds the invite name on invite link actions', () => {
         expect(nameParts('created invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);
         expect(nameParts('updated invite link Summer Batch 2026')).toEqual(['Summer Batch 2026']);

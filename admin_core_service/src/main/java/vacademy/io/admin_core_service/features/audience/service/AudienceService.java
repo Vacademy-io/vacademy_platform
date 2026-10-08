@@ -139,6 +139,9 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.utm_attribution.repository.UtmAttributionRepository utmAttributionRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService utmAttributionService;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -5265,10 +5268,19 @@ public class AudienceService {
         // 2. Create audience response with calculated workflowActivateDayAt
         Timestamp workflowActivateDayAt = calculateWorkflowActivateDayAt(audience);
 
+        // Ad-platform webhooks pass the campaign that produced the lead as source_id
+        // (Google Lead Forms: campaign_id) — the column's documented purpose, and what
+        // the leads list's sourceId filter matches. Everything else keeps the old marker.
+        Map<String, String> webhookMetadata = processedData.getMetadata() != null
+                ? processedData.getMetadata() : Map.of();
+        String webhookSourceId = StringUtils.hasText(webhookMetadata.get("source_id"))
+                ? webhookMetadata.get("source_id")
+                : formProvider + "_WEBHOOK";
+
         AudienceResponse response = AudienceResponse.builder()
                 .audienceId(audienceId)
                 .sourceType(formProvider) // ZOHO_FORMS, GOOGLE_FORMS, etc.
-                .sourceId(formProvider + "_WEBHOOK")
+                .sourceId(webhookSourceId.length() > 100 ? webhookSourceId.substring(0, 100) : webhookSourceId)
                 .userId(userId)
                 .parentEmail(processedData.getEmail())
                 .parentMobile(truncateForParentMobileColumn(processedData.getPhone()))
@@ -5279,6 +5291,17 @@ public class AudienceService {
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response: responseId={}, userId={}", savedResponse.getId(), userId);
         logLeadSubmitted(savedResponse);
+
+        // Campaign touch for leads that arrive tagged (Google Lead Forms send utm_* built
+        // from the campaign / ad group ids). record() never throws and no-ops untagged.
+        Map<String, String> webhookUtm = new HashMap<>();
+        webhookMetadata.forEach((key, value) -> {
+            if (key.startsWith("utm_")) webhookUtm.put(key, value);
+        });
+        if (!webhookUtm.isEmpty()) {
+            utmAttributionService.record(instituteId, userId, processedData.getEmail(),
+                    processedData.getPhone(), "AUDIENCE", audienceId, webhookUtm);
+        }
 
         // 3. Map field_name to custom_field_id and save custom field values
         if (processedData.getFormFields() != null && !processedData.getFormFields().isEmpty()) {

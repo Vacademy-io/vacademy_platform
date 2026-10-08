@@ -50,6 +50,14 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
     java.util.Optional<FormWebhookConnector> findByVendorAndVendorId(String vendor, String vendorId);
 
     /**
+     * Active connector for one vendor + vendorId — the Google webhook lookup. Scoped by
+     * vendor so a Zoho/Meta row that happens to share the id can never answer for it, and
+     * findFirst so a stray duplicate row (vendor_id has no unique constraint) can't throw.
+     */
+    java.util.Optional<FormWebhookConnector> findFirstByVendorAndVendorIdAndIsActiveTrueOrderByUpdatedAtDesc(
+            String vendor, String vendorId);
+
+    /**
      * Find connector by platform form ID and vendor — used for ad platform webhooks.
      * Meta sends form_id in webhook payload; Google sends campaign_id as google_key context.
      */

@@ -35,7 +35,10 @@
         "resubscribeTooltip": "إعادة الاشتراك (بعد منح التحكم الكامل)",
         "editDefaultValues": "تعديل القيم الافتراضية",
         "deactivateConnector": "إلغاء تفعيل الموصل",
-        "neverConnected": null
+        "neverConnected": null,
+        "copyKey": "نسخ مفتاح Google",
+        "urlLabel": "الرابط",
+        "keyLabel": "المفتاح"
     },
     "vendor": {
         "meta": "Meta",
@@ -83,12 +86,18 @@
     },
     "google": {
         "keyLabel": "مفتاح Google",
-        "keyPlaceholder": "مثال: my-leads-abc123",
         "audienceLabel": "الجمهور",
         "selectAudiencePlaceholder": "اختر جمهورًا...",
         "saveError": "فشل حفظ موصل Google",
-        "saving": "جارٍ الحفظ...",
-        "save": "حفظ"
+        "saving": "جارٍ الإنشاء...",
+        "save": "إنشاء الموصل",
+        "createHint": "اختر الجمهور الذي سيستقبل هؤلاء العملاء المحتملين. سننشئ لك رابط ويب هوك ومفتاحًا آمنين.",
+        "setupTitle": "تم إنشاء الموصل. أكمل الإعداد في Google Ads",
+        "webhookUrlLabel": "رابط الويب هوك",
+        "setupStep1": "في Google Ads، افتح نموذج العملاء المحتملين وابحث عن تكامل الويب هوك ضمن خيارات تسليم العملاء المحتملين.",
+        "setupStep2": "الصق رابط الويب هوك والمفتاح في حقليهما.",
+        "setupStep3": "انقر على «إرسال بيانات اختبار». يجب أن يُظهر Google نجاح العملية؛ ولا يتم حفظ العملاء المحتملين التجريبيين كعملاء حقيقيين.",
+        "done": "تم"
     },
     "meta": {
         "sessionExpiredReconnect": "انتهت صلاحية جلسة Meta الخاصة بك. يرجى إعادة الاتصال بـ Meta.",

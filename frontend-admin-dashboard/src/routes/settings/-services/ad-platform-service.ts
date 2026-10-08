@@ -54,6 +54,8 @@ export interface ConnectorSaveResult {
     message: string;
     page_name?: string;
     webhook_url?: string;
+    /** Google only: the server-generated key — paste it into Google Ads with the URL. */
+    google_key?: string;
     /** "true"/"false" — whether the page→app webhook subscribe actually succeeded. */
     subscribed?: string;
 }
@@ -130,9 +132,12 @@ export const saveMetaConnector = async (
 
 // ── Google endpoints ──────────────────────────────────────────────────────────
 
-/** Save a Google Lead Form connector (no OAuth needed). */
+/**
+ * Save a Google Lead Form connector (no OAuth needed). Omit googleKey to have the
+ * server generate one; it comes back as google_key. platform_form_id is set server-side.
+ */
 export const saveGoogleConnector = async (
-    request: AdConnectorSetupRequest
+    request: Omit<AdConnectorSetupRequest, 'platformFormId'>
 ): Promise<ConnectorSaveResult> => {
     const res = await authenticatedAxiosInstance.post(`${BASE}/google/connector`, request);
     return res.data;

@@ -35,7 +35,10 @@
         "resubscribeTooltip": "Se réabonner (après avoir accordé le contrôle total)",
         "editDefaultValues": "Modifier les valeurs par défaut",
         "deactivateConnector": "Désactiver le connecteur",
-        "neverConnected": null
+        "neverConnected": null,
+        "copyKey": "Copier la clé Google",
+        "urlLabel": "URL",
+        "keyLabel": "Clé"
     },
     "vendor": {
         "meta": "Meta",
@@ -83,12 +86,18 @@
     },
     "google": {
         "keyLabel": "Clé Google",
-        "keyPlaceholder": "ex. my-leads-abc123",
         "audienceLabel": "Audience",
         "selectAudiencePlaceholder": "Sélectionner une audience...",
         "saveError": "Échec de l'enregistrement du connecteur Google",
-        "saving": "Enregistrement...",
-        "save": "Enregistrer"
+        "saving": "Création...",
+        "save": "Créer le connecteur",
+        "createHint": "Choisissez l'audience qui recevra ces prospects. Une URL de webhook et une clé sécurisées sont générées pour vous.",
+        "setupTitle": "Connecteur créé. Terminez la configuration dans Google Ads",
+        "webhookUrlLabel": "URL du webhook",
+        "setupStep1": "Dans Google Ads, ouvrez le formulaire de prospects et trouvez l'intégration webhook dans les options de livraison des prospects.",
+        "setupStep2": "Collez l'URL du webhook et la clé dans leurs champs.",
+        "setupStep3": "Cliquez sur « Envoyer des données de test ». Google doit indiquer un succès ; les prospects de test ne sont pas enregistrés comme de vrais prospects.",
+        "done": "Terminé"
     },
     "meta": {
         "sessionExpiredReconnect": "Votre session Meta a expiré. Veuillez reconnecter Meta.",

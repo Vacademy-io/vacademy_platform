@@ -35,7 +35,10 @@
         "resubscribeTooltip": "Re-subscribe (after granting Full control)",
         "editDefaultValues": "Edit default values",
         "deactivateConnector": "Deactivate connector",
-        "neverConnected": "-"
+        "neverConnected": "-",
+        "copyKey": "Copy Google key",
+        "urlLabel": "URL",
+        "keyLabel": "Key"
     },
     "vendor": {
         "meta": "Meta",
@@ -83,12 +86,18 @@
     },
     "google": {
         "keyLabel": "Google Key",
-        "keyPlaceholder": "e.g. my-leads-abc123",
         "audienceLabel": "Audience",
         "selectAudiencePlaceholder": "Select audience...",
         "saveError": "Failed to save Google connector",
-        "saving": "Saving...",
-        "save": "Save"
+        "saving": "Creating...",
+        "save": "Create connector",
+        "createHint": "Pick the audience these leads should go to. A secure webhook URL and key are generated for you.",
+        "setupTitle": "Connector created. Finish setup in Google Ads",
+        "webhookUrlLabel": "Webhook URL",
+        "setupStep1": "In Google Ads, open the lead form and find \"Webhook integration\" under lead delivery.",
+        "setupStep2": "Paste the webhook URL and the key into their fields.",
+        "setupStep3": "Click \"Send test data\". Google should report success; test leads are not saved as real leads.",
+        "done": "Done"
     },
     "meta": {
         "sessionExpiredReconnect": "Your Meta session expired. Please reconnect Meta.",

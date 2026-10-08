@@ -458,6 +458,15 @@ function ConnectorTable({
         }
     };
 
+    // Google Ads asks for the key separately from the URL; vendorId is that key.
+    const copyGoogleKey = (c: ConnectorListItem) => {
+        if (c.vendor === 'GOOGLE_LEAD_ADS' && c.vendorId) {
+            navigator.clipboard.writeText(c.vendorId);
+            setCopiedId(`${c.id}:key`);
+            setTimeout(() => setCopiedId(null), 2000);
+        }
+    };
+
     return (
         <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-left text-sm">
@@ -581,17 +590,34 @@ function ConnectorTable({
                                 </td>
                                 <td className="px-4 py-2.5">
                                     {c.vendor === 'GOOGLE_LEAD_ADS' && c.platformFormId && (
-                                        <button
-                                            onClick={() => copyWebhookUrl(c)}
-                                            className="text-neutral-400 hover:text-neutral-700"
-                                            title={t('table.copyWebhookUrl')}
-                                        >
-                                            {copiedId === c.id ? (
-                                                <Check className="size-4 text-green-600" />
-                                            ) : (
-                                                <Copy className="size-4" />
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => copyWebhookUrl(c)}
+                                                className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-700"
+                                                title={t('table.copyWebhookUrl')}
+                                            >
+                                                {copiedId === c.id ? (
+                                                    <Check className="size-4 text-green-600" />
+                                                ) : (
+                                                    <Copy className="size-4" />
+                                                )}
+                                                {t('table.urlLabel')}
+                                            </button>
+                                            {c.vendorId && (
+                                                <button
+                                                    onClick={() => copyGoogleKey(c)}
+                                                    className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-700"
+                                                    title={t('table.copyKey')}
+                                                >
+                                                    {copiedId === `${c.id}:key` ? (
+                                                        <Check className="size-4 text-green-600" />
+                                                    ) : (
+                                                        <Copy className="size-4" />
+                                                    )}
+                                                    {t('table.keyLabel')}
+                                                </button>
                                             )}
-                                        </button>
+                                        </div>
                                     )}
                                     {c.vendor === 'META_LEAD_ADS' && (
                                         <span className="text-xs text-neutral-400">
@@ -773,13 +799,40 @@ function ConnectorHealthDialog({
 
 // ── Add Google form ──────────────────────────────────────────────────────────
 
+/** One read-only value with a copy button — the Google setup panel shows two. */
+function CopyableValue({ label, value }: { label: string; value: string }) {
+    const [copied, setCopied] = useState(false);
+    return (
+        <div className="space-y-1">
+            <Label className="text-xs">{label}</Label>
+            <div className="flex items-center gap-2 rounded-md border bg-neutral-50 px-3 py-2">
+                <code className="flex-1 truncate text-xs">{value}</code>
+                <button
+                    onClick={() => {
+                        navigator.clipboard.writeText(value);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="shrink-0 text-neutral-500 hover:text-neutral-700"
+                    title={label}
+                >
+                    {copied ? (
+                        <Check className="size-4 text-green-600" />
+                    ) : (
+                        <Copy className="size-4" />
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
     const { t } = useTranslation('settingsIntegration');
-    const [googleKey, setGoogleKey] = useState('');
     const [audienceId, setAudienceId] = useState('');
-    const [copied, setCopied] = useState(false);
+    // The server mints the key; it comes back once the connector exists.
+    const [createdKey, setCreatedKey] = useState<string | null>(null);
     const instituteId = getCurrentInstituteId() ?? '';
-    const webhookUrl = googleKey ? buildGoogleWebhookUrl(googleKey) : '';
     const { data: audiences = [] } = useAudienceList(instituteId);
 
     const { mutate: save, isPending } = useMutation({
@@ -788,30 +841,49 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                 vendor: 'GOOGLE_LEAD_ADS',
                 instituteId,
                 audienceId,
-                googleKey,
-                platformFormId: googleKey,
                 producesSourceType: 'GOOGLE_ADS',
             }),
         onSuccess: (result) => {
             toast.success(result.message);
-            setGoogleKey('');
-            setAudienceId('');
+            setCreatedKey(result.google_key ?? null);
             onSaved();
         },
         onError: () => toast.error(t('google.saveError')),
     });
 
+    if (createdKey) {
+        return (
+            <div className="space-y-3 rounded-lg border bg-white p-4">
+                <p className="text-sm font-medium text-neutral-800">{t('google.setupTitle')}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <CopyableValue
+                        label={t('google.webhookUrlLabel')}
+                        value={buildGoogleWebhookUrl(createdKey)}
+                    />
+                    <CopyableValue label={t('google.keyLabel')} value={createdKey} />
+                </div>
+                <ol className="list-decimal space-y-1 ps-5 text-xs text-neutral-600">
+                    <li>{t('google.setupStep1')}</li>
+                    <li>{t('google.setupStep2')}</li>
+                    <li>{t('google.setupStep3')}</li>
+                </ol>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => {
+                        setCreatedKey(null);
+                        setAudienceId('');
+                    }}
+                >
+                    {t('google.done')}
+                </MyButton>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-3 rounded-lg border bg-white p-4">
             <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                    <Label className="text-xs">{t('google.keyLabel')}</Label>
-                    <Input
-                        placeholder={t('google.keyPlaceholder')}
-                        value={googleKey}
-                        onChange={(e) => setGoogleKey(e.target.value)}
-                    />
-                </div>
                 <AudiencePickerByType
                     audiences={audiences}
                     audienceId={audienceId}
@@ -820,30 +892,12 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
                     audiencePlaceholder={t('google.selectAudiencePlaceholder')}
                 />
             </div>
-            {webhookUrl && (
-                <div className="flex items-center gap-2 rounded-md border bg-neutral-50 px-3 py-2">
-                    <code className="flex-1 truncate text-xs">{webhookUrl}</code>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(webhookUrl);
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
-                        }}
-                        className="shrink-0 text-neutral-500 hover:text-neutral-700"
-                    >
-                        {copied ? (
-                            <Check className="size-4 text-green-600" />
-                        ) : (
-                            <Copy className="size-4" />
-                        )}
-                    </button>
-                </div>
-            )}
+            <p className="text-xs text-neutral-500">{t('google.createHint')}</p>
             <MyButton
                 buttonType="primary"
                 scale="small"
                 onClick={() => save()}
-                disable={isPending || !googleKey || !audienceId}
+                disable={isPending || !audienceId}
             >
                 {isPending ? t('google.saving') : t('google.save')}
             </MyButton>

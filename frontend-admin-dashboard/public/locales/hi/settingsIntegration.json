@@ -35,7 +35,10 @@
         "resubscribeTooltip": "फिर से सब्सक्राइब करें (पूर्ण नियंत्रण देने के बाद)",
         "editDefaultValues": "डिफ़ॉल्ट मान संपादित करें",
         "deactivateConnector": "कनेक्टर निष्क्रिय करें",
-        "neverConnected": null
+        "neverConnected": null,
+        "copyKey": "Google की कॉपी करें",
+        "urlLabel": "URL",
+        "keyLabel": "की"
     },
     "vendor": {
         "meta": "Meta",
@@ -83,12 +86,18 @@
     },
     "google": {
         "keyLabel": "Google Key",
-        "keyPlaceholder": "उदा. my-leads-abc123",
         "audienceLabel": "ऑडियंस",
         "selectAudiencePlaceholder": "ऑडियंस चुनें...",
         "saveError": "Google कनेक्टर सहेजने में विफल",
-        "saving": "सहेजा जा रहा है...",
-        "save": "सहेजें"
+        "saving": "बनाया जा रहा है...",
+        "save": "कनेक्टर बनाएँ",
+        "createHint": "चुनें कि ये लीड किस ऑडियंस में जाएँ। एक सुरक्षित वेबहुक URL और की आपके लिए बनाई जाएगी।",
+        "setupTitle": "कनेक्टर बन गया। Google Ads में सेटअप पूरा करें",
+        "webhookUrlLabel": "वेबहुक URL",
+        "setupStep1": "Google Ads में लीड फ़ॉर्म खोलें और लीड डिलीवरी में \"Webhook integration\" ढूँढें।",
+        "setupStep2": "वेबहुक URL और की को उनके फ़ील्ड में पेस्ट करें।",
+        "setupStep3": "\"Send test data\" पर क्लिक करें। Google को सफलता दिखानी चाहिए; टेस्ट लीड असली लीड के रूप में सेव नहीं होतीं।",
+        "done": "हो गया"
     },
     "meta": {
         "sessionExpiredReconnect": "आपका Meta सेशन समाप्त हो गया है। कृपया Meta को फिर से कनेक्ट करें।",

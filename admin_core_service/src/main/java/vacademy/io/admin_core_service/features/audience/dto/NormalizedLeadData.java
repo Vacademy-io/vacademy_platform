@@ -35,4 +35,10 @@ public class NormalizedLeadData {
 
     /** True if this is a platform test lead — should be processed but flagged */
     private boolean testLead;
+
+    /** Ad campaign the lead came from, stored as audience_response.source_id. Null = none known. */
+    private String campaignId;
+
+    /** utm_source/utm_medium/utm_campaign/utm_content for the lead's utm_attribution row. Null/empty = none. */
+    private Map<String, String> utmParams;
 }

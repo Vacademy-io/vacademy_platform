@@ -164,7 +164,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                                 })}
                             />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-popover-above-modal">
                             {packageGroups.map((g) => (
                                 <SelectItem key={g.package_dto.id} value={g.package_dto.id}>
                                     {g.package_dto.package_name}
@@ -190,7 +190,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                                 })}
                             />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-popover-above-modal">
                             {batches.map((b) => (
                                 <SelectItem key={b.id} value={b.id}>
                                     {batchLabel(b)}
@@ -207,7 +207,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         <SelectTrigger>
                             <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-popover-above-modal">
                             <SelectItem value="ACTIVE">{t('status.active')}</SelectItem>
                             <SelectItem value="INACTIVE">{t('status.inactive')}</SelectItem>
                             <SelectItem value="INVITED">{t('status.invited')}</SelectItem>

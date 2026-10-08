@@ -10,7 +10,7 @@ import {
     Megaphone,
     X,
 } from '@phosphor-icons/react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
@@ -253,15 +253,8 @@ const FollowUpsContent = () => {
     // audience) are two different things to the client, and neither is a UTM tag.
     // Same wiring as Recent Leads: picking Sources narrows which Labels the second
     // dropdown offers, and the request carries the resolved audience ids.
-    // ?lock=bucket — the sub-tab owns its bucket. A card click used to be ignored there,
-    // which left every sidebar sub-tab with five dead tiles; it now moves to that
-    // bucket's own sub-tab instead, so the URL and the sidebar highlight follow it.
+    // ?lock=bucket — the sub-tab owns its bucket, so a card click must not move off it.
     const bucketLocked = parseLockedParams(lock).has('bucket');
-    const navigate = useNavigate({ from: '/audience-manager/follow-ups/' });
-    const selectBucket = (b: FollowUpBucket) => {
-        if (bucketLocked) navigate({ search: (prev) => ({ ...prev, bucket: b }) });
-        else setBucket(b);
-    };
     const terminology = useLeadTerminology();
     // Admins switch individual filters off from the gear below; a hidden filter
     // must also stop filtering, or it would narrow the list invisibly.
@@ -820,7 +813,12 @@ const FollowUpsContent = () => {
             </div>
 
             {/* Bucket cards — the dominant element */}
-            <FollowUpStatTiles counts={counts} active={bucket} onChange={selectBucket} />
+            <FollowUpStatTiles
+                counts={counts}
+                active={bucket}
+                onChange={setBucket}
+                locked={bucketLocked}
+            />
 
             {/* View toggle on the left, counsellor filter on the right — this row
                 renders in both views, which the search toolbar below does not. */}

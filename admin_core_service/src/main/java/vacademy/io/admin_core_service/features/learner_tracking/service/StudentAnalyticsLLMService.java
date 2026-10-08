@@ -12,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistryService;
+import vacademy.io.admin_core_service.features.ai_models.service.LlmGatewayRouter;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
@@ -21,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Service to analyze student activity data using LLM
@@ -53,17 +55,20 @@ public class StudentAnalyticsLLMService {
         private final AiTokenUsageService aiTokenUsageService;
         private final AIModelRegistryService aiModelRegistryService;
         private final CreditClient creditClient;
+        private final LlmGatewayRouter gatewayRouter;
 
         public StudentAnalyticsLLMService(
                         @Value("${openrouter.api.key}") String apiKey,
                         ObjectMapper objectMapper,
                         AiTokenUsageService aiTokenUsageService,
                         AIModelRegistryService aiModelRegistryService,
-                        CreditClient creditClient) {
+                        CreditClient creditClient,
+                        LlmGatewayRouter gatewayRouter) {
                 this.objectMapper = objectMapper;
                 this.aiTokenUsageService = aiTokenUsageService;
                 this.aiModelRegistryService = aiModelRegistryService;
                 this.creditClient = creditClient;
+                this.gatewayRouter = gatewayRouter;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -186,28 +191,52 @@ public class StudentAnalyticsLLMService {
                                 "max_tokens", MAX_COMPLETION_TOKENS,
                                 "response_format", Map.of("type", "json_object"));
 
-                long requestStart = System.nanoTime();
+                // Deferred so every retry re-resolves the route and honours a gateway cooldown.
+                return Mono.defer(() -> {
+                        LlmGatewayRouter.Route route = gatewayRouter.resolve(model);
+                        AtomicReference<String> servedBy = new AtomicReference<>(route.gateway());
+                        long requestStart = System.nanoTime();
 
+                        Mono<String> call;
+                        if (route.isOpenRouter()) {
+                                call = postToOpenRouter(LlmGatewayRouter.withOpenRouterReasoning(payload, route));
+                        } else {
+                                // One try on OpenRouter when the gateway itself fails, mirroring ai_service.
+                                call = gatewayRouter.post(route, payload, Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+                                                .onErrorResume(LlmGatewayRouter::isGatewayFailure, error -> {
+                                                        gatewayRouter.coolDown(route.gateway(), error);
+                                                        servedBy.set(LlmGatewayRouter.OPENROUTER);
+                                                        return postToOpenRouter(LlmGatewayRouter.withOpenRouterReasoning(
+                                                                        payload, gatewayRouter.openRouterFallback(model, route)));
+                                                });
+                        }
+
+                        return call
+                                        .doOnSubscribe(sub -> log.debug("[LLM-Analytics] POST model={} via {} payloadChars={}",
+                                                        model, route.gateway(), prompt.length()))
+                                        .doOnNext(response -> {
+                                                long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
+                                                log.info("[LLM-Analytics] Response received model={} via {} in {} ms, size={} chars",
+                                                                model, servedBy.get(), durationMs, response.length());
+                                                // Recorded and charged under the registry id - that is what ai_models prices.
+                                                logTokenUsage(response, model, instituteId, userId);
+                                        })
+                                        .doOnError(error -> {
+                                                long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
+                                                log.warn("[LLM-Analytics] Request failed model={} via {} after {} ms: {}",
+                                                                model, servedBy.get(), durationMs, error.getMessage());
+                                        });
+                })
+                                .flatMap(response -> parseResponse(response, model));
+        }
+
+        private Mono<String> postToOpenRouter(Map<String, Object> payload) {
                 return webClient.post()
                                 .uri("/api/v1/chat/completions")
                                 .bodyValue(payload)
                                 .retrieve()
                                 .bodyToMono(String.class)
-                                .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                                .doOnSubscribe(sub -> log.debug("[LLM-Analytics] POST {} model={} payloadChars={}",
-                                                API_URL + "/api/v1/chat/completions", model, prompt.length()))
-                                .doOnNext(response -> {
-                                        long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
-                                        log.debug("[LLM-Analytics] Response received model={} in {} ms, size={} chars",
-                                                        model, durationMs, response.length());
-                                        logTokenUsage(response, model, instituteId, userId);
-                                })
-                                .doOnError(error -> {
-                                        long durationMs = Duration.ofNanos(System.nanoTime() - requestStart).toMillis();
-                                        log.warn("[LLM-Analytics] Request failed model={} after {} ms: {}",
-                                                        model, durationMs, error.getMessage());
-                                })
-                                .flatMap(response -> parseResponse(response, model));
+                                .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS));
         }
 
         /**

@@ -35,7 +35,6 @@ from typing import Any, Dict, List, Optional
 from pipecat.frames.frames import (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame, 
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
-    CancelFrame,
     EndFrame,
     Frame,
     InterimTranscriptionFrame,
@@ -3363,10 +3362,22 @@ class RunGuard(FrameProcessor):
         await self._let_through(frame, direction)
 
     async def _let_through(self, frame: Frame, direction: FrameDirection):
-        """Every run that reaches the LLM goes through here (pass or release)."""
+        """Every run that reaches the LLM goes through here (pass or release).
+
+        What goes is the context as it stands NOW (the LLM reads the shared
+        context, not the one the run arrived with): a held short answer
+        released the instant the aggregator appended the rest of the turn —
+        before RunGuard has handled the rest's own run — answers the rest too.
+        So the fingerprint and the caller-word count are taken from it here:
+        that newer run then reads "context unchanged" and is blocked, instead
+        of being let through as a second run over the same context with
+        nothing to supersede (review 2026-10-08, finding 5)."""
         self._pushed_t = time.time()
         try:
-            self._pushed_words = self._all_caller_words(self._context.get_messages())
+            msgs = self._context.get_messages()
+            self._pushed_words = self._all_caller_words(msgs)
+            if msgs:
+                self._last_allowed_fp = self._fingerprint(msgs)[1]
         except Exception:
             self._pushed_words = 0
         self._note_run()
@@ -3719,8 +3730,21 @@ class SentinelGate(FrameProcessor):
                  on_reply_start=None, on_send=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
-                 transfer_fail_closing: str = TRANSFER_FAIL_CLOSING):
+                 transfer_fail_closing: str = TRANSFER_FAIL_CLOSING, diag=None):
         super().__init__()
+        self._diag = diag
+        # SUPERSEDED REPLIES (RunGuard, config.run_supersede). Their markers
+        # follow the caller's own agreement or request, so a <<SEND:…>> still
+        # fires at token time and a <<TRANSFER>> stands — the newer reply plays
+        # and the handoff follows (decision 2026-10-08; the sends are counted).
+        # END is different: the superseded reply's goodbye never played, and
+        # its orphan End reaches us BEFORE the supersede, so the latch below
+        # has already promoted it — taken back at the supersede, or a "ठीक है"
+        # in the newer reply's time-to-first-token is swallowed as the
+        # goodbye and the line starts closing (review 2026-10-08, finding 6).
+        self._audio_since_start = False   # bot audio started since this reply began
+        self._end_unheard = False         # END promoted by a reply nothing of which played
+        self._sends_this_response = 0
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
@@ -3731,18 +3755,6 @@ class SentinelGate(FrameProcessor):
         # One send per artefact per call. The model re-states its offer when the caller
         # says 'haan' twice, and the caller must not get the brochure twice for it.
         self._sends_fired: set = set()
-        # Sends of the CURRENT reply, held until its words start to play (the
-        # first bot audio) or the next reply begins, and dropped if RunGuard
-        # supersedes the reply before a sound of it — the newer reply decides,
-        # and a parent must not get a brochure the bot never offered aloud
-        # (review 2026-10-08). A cancel by anything else, or the call ending,
-        # fires them, as when they fired at token time. Not at the reply's own
-        # End: its orphan End reaches us BEFORE the supersede does.
-        self._pending_sends: list = []
-        # This reply asked for a human. outcome.transfer_requested is still set
-        # at once (BotStopped acts on it), but a superseded reply's request is
-        # taken back — like END, whose latch is per response.
-        self._transfer_this_response = False
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -3841,10 +3853,9 @@ class SentinelGate(FrameProcessor):
             # deliberately interrupted. 6-13% of generations die pre-playout.
             if isinstance(frame, SupersedeInterruptionFrame):
                 self._on_interrupted(superseded=True)   # replaced on purpose, not lost
-                self._revoke_superseded()
+                self._superseded()
             else:
                 self._on_interrupted()
-                self._fire_pending_sends("the reply was cut")
             await self.push_frame(frame, direction)
             return
 
@@ -3865,10 +3876,9 @@ class SentinelGate(FrameProcessor):
             # was consumed upstream); swallowing this response's End instead
             # would corrupt the aggregator bracket the OTHER way.
             self._swallow_next_end = False
-            # The previous reply was not superseded (that comes BEFORE the
-            # newer reply's Start): its sends stand, played or not.
-            self._fire_pending_sends("a newer reply began")
-            self._transfer_this_response = False
+            self._audio_since_start = False
+            self._end_unheard = False
+            self._sends_this_response = 0
             await self.push_frame(frame, direction)
             return
 
@@ -3885,7 +3895,6 @@ class SentinelGate(FrameProcessor):
                     self._buffer = _TOOL_CALL_RE.sub("", self._buffer)
             if TRANSFER_MARKER in self._buffer:
                 self._outcome.transfer_requested = True
-                self._transfer_this_response = True
                 self._buffer = self._buffer.replace(TRANSFER_MARKER, "")
             if END_MARKER in self._buffer:
                 # PER-RESPONSE latch. Promoted to outcome.end_requested only when
@@ -3917,7 +3926,6 @@ class SentinelGate(FrameProcessor):
                     # A max_tokens cut mid-"<<TRANSFER>>" is a request for a HUMAN —
                     # ending instead hung up on exactly the callers who asked for one.
                     self._outcome.transfer_requested = True
-                    self._transfer_this_response = True
                 elif self._buffer.startswith("<<"):
                     self._end_this_response = True
                 self._buffer = ""
@@ -3936,6 +3944,7 @@ class SentinelGate(FrameProcessor):
                                 "the marker — ending anyway corr=%s", self._outcome.corr)
                 self._outcome.end_requested = True
                 self._end_this_response = False
+                self._end_unheard = not self._audio_since_start
             self._response_active = False
             self._flush_utterance()
             if self._swallow_next_end:
@@ -3965,12 +3974,11 @@ class SentinelGate(FrameProcessor):
         if isinstance(frame, BotStartedSpeakingFrame):
             self._set_bot_speaking(True)
             self._on_activity(user=False)
-            self._fire_pending_sends("its words are playing")
+            self._audio_since_start = True
+            self._end_unheard = False
+            self._sends_this_response = 0     # counted only while nothing has played
             await self.push_frame(frame, direction)
             return
-
-        if isinstance(frame, (EndFrame, CancelFrame)):
-            self._fire_pending_sends("the call is ending")
 
         if isinstance(frame, BotStoppedSpeakingFrame):
             self._set_bot_speaking(False)
@@ -4020,37 +4028,19 @@ class SentinelGate(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
-    def _revoke_superseded(self) -> None:
-        """RunGuard superseded the reply in progress before a sound of it played:
-        the newer reply answers the whole turn, and decides for itself whether
-        to transfer, send or end. Whatever this one asked for is taken back —
-        nothing it said was heard. A transfer already registered stays (the
-        handoff is under way), as does one asked for by an earlier reply."""
-        if self._pending_sends:
-            logger.info("sentinel: dropping send(s) %s of a superseded reply corr=%s",
-                        self._pending_sends, self._outcome.corr)
-            self._pending_sends = []
-        if (self._transfer_this_response and self._outcome.transfer_requested
-                and not self._outcome.transfer_registered):
-            logger.info("sentinel: transfer asked by a superseded reply — taken back corr=%s",
-                        self._outcome.corr)
-            self._outcome.transfer_requested = False
-        self._transfer_this_response = False
+    def _superseded(self) -> None:
+        """RunGuard cancelled the reply in progress before a sound of it played
+        (see __init__, SUPERSEDED REPLIES)."""
         self._end_this_response = False
-
-    def _fire_pending_sends(self, why: str) -> None:
-        sends, self._pending_sends = self._pending_sends, []
-        for key in sends:
-            if key in self._sends_fired:
-                continue
-            self._sends_fired.add(key)
-            logger.info("sentinel: mid-call send %s (%s) corr=%s", key, why, self._outcome.corr)
-            try:
-                self._on_send(key)
-            except Exception:
-                # The voice path outranks the send, always.
-                logger.exception("sentinel: send hook failed for %s corr=%s",
-                                 key, self._outcome.corr)
+        if self._end_unheard and self._outcome.end_requested and not self._stop_armed:
+            self._outcome.end_requested = False
+            self._clear_end_pending()
+            logger.info("sentinel: the goodbye of a superseded reply never played — the "
+                        "call is not ending corr=%s", self._outcome.corr)
+        self._end_unheard = False
+        if self._sends_this_response and self._diag is not None:
+            self._diag.bump("sends_from_superseded_reply", self._sends_this_response)
+        self._sends_this_response = 0
 
     def _flush_utterance(self):
         # Transcript commits moved to PlayedTranscriptRecorder (playout-ordered,
@@ -4072,8 +4062,7 @@ class SentinelGate(FrameProcessor):
         self._outcome.transfer_registered = registered is not None
 
     def _extract_sends(self, buffer: str) -> str:
-        """Strip every COMPLETE send marker and queue it (fired once the reply's
-        words play — _fire_pending_sends); leave a partial one in place.
+        """Strip every COMPLETE send marker and fire it; leave a partial one in place.
 
         A partial marker stays in the buffer and _split_safe holds it back from the TTS,
         so a marker split across two token chunks is never spoken and never lost.
@@ -4095,12 +4084,19 @@ class SentinelGate(FrameProcessor):
             if not _valid_send_key(key):
                 logger.info("sentinel: ignoring malformed send marker %r corr=%s",
                             key, self._outcome.corr)
-            elif key in self._sends_fired or key in self._pending_sends:
+            elif key in self._sends_fired:
                 logger.info("sentinel: send %s already fired this call corr=%s",
                             key, self._outcome.corr)
             else:
-                # Fired when this reply's words start to play (_fire_pending_sends).
-                self._pending_sends.append(key)
+                self._sends_fired.add(key)
+                self._sends_this_response += 1
+                logger.info("sentinel: mid-call send %s corr=%s", key, self._outcome.corr)
+                try:
+                    self._on_send(key)
+                except Exception:
+                    # The voice path outranks the send, always.
+                    logger.exception("sentinel: send hook failed for %s corr=%s",
+                                     key, self._outcome.corr)
         return "".join(out)
 
     @staticmethod
@@ -6169,7 +6165,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
                             transfer_closing=transfer_closing, end_closing=end_closing,
-                            on_send=_fire_mid_call_send)
+                            on_send=_fire_mid_call_send, diag=diag)
 
     run_guard = RunGuard(llm_context,
                          enabled=lambda: settings.run_guard_enabled,

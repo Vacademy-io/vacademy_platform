@@ -217,6 +217,9 @@ class CallDiagnostics:
     # that run was cancelled and the newer one answers the whole turn, once.
     runs_superseded: int = 0
     short_answer_forming_waits: int = 0  # a held short answer waited for the rest of the turn
+    # <<SEND:…>>s fired by a reply that was then superseded (they still go —
+    # the marker follows the caller's agreement; counted to watch the rate).
+    sends_from_superseded_reply: int = 0
     # Times we said a repeat anyway rather than hand back twice running. Healthy
     # in ones; a run of them means the model is stuck on a line it cannot get past.
     repeat_escalations: int = 0
@@ -1010,6 +1013,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "cueRunsDropped": d.cue_runs_dropped,
                 "runsSuperseded": d.runs_superseded,
                 "shortAnswerFormingWaits": d.short_answer_forming_waits,
+                "sendsFromSupersededReply": d.sends_from_superseded_reply,
                 "floorHoldsReleased": d.floor_holds_released,
                 "floorHoldsCapped": d.floor_holds_capped,
                 "voiceCuts": d.voice_cuts,

@@ -3471,11 +3471,6 @@ async def test_single_bracket_send_fires_and_is_never_spoken():
     for chunk in ("क्या मैं ये link भेज दूँ? <SEND:schol", "arship_quiz> ठीक है।"):
         await sg.process_frame(LLMTextFrame(chunk), d)
     await sg.process_frame(LLMFullResponseEndFrame(), d)
-    # Fired when the reply's words start to play (a superseded reply's never
-    # do — review 2026-10-08), not at token time.
-    assert sent == [], sent
-    from pipecat.frames.frames import BotStartedSpeakingFrame
-    await sg.process_frame(BotStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
     assert sent == ["scholarship_quiz"], sent
     spoken = "".join(out)
     assert "<" not in spoken and "SEND" not in spoken, spoken
@@ -7584,79 +7579,111 @@ async def test_supersede_chains_through_the_real_cancel_stamps():
 
 
 def _sentinel_for_markers():
-    sent, out = [], []
+    import app.diagnostics as dg
+    sent = []
     o = FakeOutcome()
     o.transfer_registered = False
+    o.transcript = [{"role": "user", "text": "हाँ"}]
+    d = dg.CallDiagnostics()
     sg = b.SentinelGate(o, lambda user=True: None, lambda s: None, on_send=sent.append)
+    sg._diag = d                                   # run_bot passes diag=diag
 
     async def _push(frame, direction=None):
-        out.append(frame)
+        pass
     sg.push_frame = _push
     b.FrameProcessor.process_frame = _noop_super
-    return sg, o, sent
+    return sg, o, sent, d
 
 
 async def _marker_reply(sg, text, end=True):
     from pipecat.frames.frames import LLMFullResponseStartFrame, LLMFullResponseEndFrame, LLMTextFrame
-    d = b.FrameDirection.DOWNSTREAM
-    await sg.process_frame(LLMFullResponseStartFrame(), d)
-    await sg.process_frame(LLMTextFrame(text), d)
+    D = b.FrameDirection.DOWNSTREAM
+    await sg.process_frame(LLMFullResponseStartFrame(), D)
+    await sg.process_frame(LLMTextFrame(text), D)
     if end:
-        await sg.process_frame(LLMFullResponseEndFrame(), d)
+        await sg.process_frame(LLMFullResponseEndFrame(), D)
 
 
 @pytest.mark.asyncio
-async def test_a_superseded_reply_neither_transfers_nor_sends():
-    """review 2026-10-08 (scratchpad rvA-exp/transfer_leak.py): the superseded
-    reply's <<TRANSFER>> and <<SEND:brochure>> took effect although the newer
-    reply — the one the caller heard — said neither."""
-    from pipecat.frames.frames import BotStartedSpeakingFrame
-    sg, o, sent = _sentinel_for_markers()
+async def test_a_superseded_replys_goodbye_does_not_close_the_call():
+    """Review 2026-10-08 (finding 6): the superseded reply carried END; its
+    orphan End reaches the sentinel BEFORE the supersede, so the latch had
+    already promoted it — a "ठीक है" in the newer reply's time-to-first-token
+    was then swallowed as the goodbye. Nothing of that goodbye played."""
+    sg, o, sent, d = _sentinel_for_markers()
     D = b.FrameDirection.DOWNSTREAM
-    await _marker_reply(sg, "जी, मैं आपको senior से connect करती हूँ। <<TRANSFER>> <<SEND:brochure>>")
-    assert o.transfer_requested is True and sent == []
+    await _marker_reply(sg, "ठीक है, धन्यवाद। <<END_CALL>>")       # orphan End first
+    assert o.end_requested is True
     await sg.process_frame(b.SupersedeInterruptionFrame(runs_flushed=1), D)
-    assert o.transfer_requested is False, "a superseded reply's transfer stood"
-    await _marker_reply(sg, "ठीक है, मैं शाम को call करवा दूँगी।")
-    await sg.process_frame(BotStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
-    assert sent == [], "a superseded reply's send fired"
-    assert o.transfer_requested is False
-    # The newer reply asks for the brochure itself: it goes, once its words play.
-    await _marker_reply(sg, "मैं brochure भेज देती हूँ। <<SEND:brochure>>")
-    await sg.process_frame(BotStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
-    assert sent == ["brochure"]
+    assert o.end_requested is False, "a goodbye nobody heard is closing the call"
 
 
 @pytest.mark.asyncio
-async def test_only_a_supersede_takes_markers_back():
-    from pipecat.frames.frames import InterruptionFrame, BotStartedSpeakingFrame
-    D = b.FrameDirection.DOWNSTREAM
-    # An ordinary cut (barge-in) keeps the old behaviour: transfer stands, the
-    # send fires (it used to fire at token time).
-    sg, o, sent = _sentinel_for_markers()
-    await _marker_reply(sg, "connect करती हूँ। <<TRANSFER>> <<SEND:brochure>>", end=False)
+async def test_a_goodbye_that_played_still_closes_after_a_supersede():
+    from pipecat.frames.frames import (BotStartedSpeakingFrame, LLMFullResponseStartFrame,
+                                       LLMFullResponseEndFrame, LLMTextFrame)
+    D, U = b.FrameDirection.DOWNSTREAM, b.FrameDirection.UPSTREAM
+    sg, o, _sent, _d = _sentinel_for_markers()
+    await sg.process_frame(LLMFullResponseStartFrame(), D)
+    await sg.process_frame(LLMTextFrame("ठीक है, धन्यवाद। <<END_CALL>>"), D)
+    await sg.process_frame(BotStartedSpeakingFrame(), U)            # the goodbye is playing
+    await sg.process_frame(LLMFullResponseEndFrame(), D)
+    await sg.process_frame(b.SupersedeInterruptionFrame(), D)
+    assert o.end_requested is True
+    # Promoted, unheard — but the close is already armed: the line is going.
+    sg, o, _sent, _d = _sentinel_for_markers()
+    await _marker_reply(sg, "धन्यवाद। <<END_CALL>>")
+    sg._stop_armed = True
+    await sg.process_frame(b.SupersedeInterruptionFrame(), D)
+    assert o.end_requested is True
+    # An ordinary cut is not a supersede: unchanged.
+    from pipecat.frames.frames import InterruptionFrame
+    sg, o, _sent, _d = _sentinel_for_markers()
+    await _marker_reply(sg, "धन्यवाद। <<END_CALL>>")
     await sg.process_frame(InterruptionFrame(), D)
-    assert o.transfer_requested is True and sent == ["brochure"]
-    # A transfer asked for by an EARLIER reply survives a later supersede.
-    sg, o, sent = _sentinel_for_markers()
-    await _marker_reply(sg, "connect करती हूँ। <<TRANSFER>>")
-    await sg.process_frame(BotStartedSpeakingFrame(), b.FrameDirection.UPSTREAM)
-    await _marker_reply(sg, "एक moment।")
-    await sg.process_frame(b.SupersedeInterruptionFrame(), D)
+    assert o.end_requested is True
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_reply_still_sends_and_transfers_as_live():
+    """Decision 2026-10-08: <<SEND:…>> and <<TRANSFER>> follow the caller's own
+    agreement or request, made earlier and heard — a superseded reply's markers
+    stand (sim rvc_send_superseded_780: holding the send lost the quiz link
+    the parent had asked for). The sends are counted."""
+    sg, o, sent, d = _sentinel_for_markers()
+    D = b.FrameDirection.DOWNSTREAM
+    await _marker_reply(sg, "जी, link भेज रही हूँ। <<SEND:quiz>>")
+    assert sent == ["quiz"], "fires at token time, as on the live build"
+    await sg.process_frame(b.SupersedeInterruptionFrame(runs_flushed=1), D)
+    assert sent == ["quiz"] and d.sends_from_superseded_reply == 1
+    sg, o, sent, d = _sentinel_for_markers()
+    await _marker_reply(sg, "जी, मैं senior से connect करती हूँ। <<TRANSFER>>")
+    await sg.process_frame(b.SupersedeInterruptionFrame(runs_flushed=1), D)
     assert o.transfer_requested is True
-    # …and so does one already registered (the handoff is under way).
-    sg, o, sent = _sentinel_for_markers()
-    await _marker_reply(sg, "connect करती हूँ। <<TRANSFER>>")
-    o.transfer_registered = True
-    await sg.process_frame(b.SupersedeInterruptionFrame(), D)
-    assert o.transfer_requested is True
-    # A send of a reply that was never superseded fires when the next reply
-    # begins, even if no new audio started in between.
-    sg, o, sent = _sentinel_for_markers()
-    await _marker_reply(sg, "भेज देती हूँ। <<SEND:quiz>>")
-    assert sent == []
-    await _marker_reply(sg, "और कुछ?")
-    assert sent == ["quiz"]
+    assert d.sends_from_superseded_reply == 0
+
+
+@pytest.mark.asyncio
+async def test_a_held_answer_released_with_the_rest_answers_it_once():
+    """Review 2026-10-08 (finding 5): a held short answer released the instant
+    the aggregator appended piece 2 — before RunGuard handled piece 2's own
+    run — goes with piece 2 in the context. Counted from the arrival snapshot,
+    piece 2's run was not "more words", nothing was superseded, and the model
+    ran twice over the same context."""
+    from pipecat.frames.frames import LLMRunFrame
+    forming = {"v": False}
+    g, ctx, rec, d, _ = _supersede_guard(True, grace=0.3, forming=lambda: forming["v"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "हाँ जी।"}]
+    await g.process_frame(LLMRunFrame(), D)               # held: 2 words
+    forming["v"] = True                                    # the rest is forming
+    await asyncio.sleep(0.45)
+    forming["v"] = False                                   # the aggregator closes the turn…
+    ctx.messages = ctx.messages + [{"role": "user", "content": "पर पहले fees बता दीजिए कितनी है।"}]
+    await asyncio.sleep(0.15)                              # …and the held run goes first
+    await g.process_frame(LLMRunFrame(), D)               # the rest's own run
+    assert rec.kinds() == ["LLMRunFrame"], rec.kinds()
+    assert d.runs_superseded == 0
 
 
 def test_a_staged_race_that_did_not_happen_is_a_shape_note_not_a_failure():

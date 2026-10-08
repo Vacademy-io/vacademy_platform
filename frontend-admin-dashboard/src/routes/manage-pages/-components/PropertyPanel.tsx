@@ -4603,8 +4603,6 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
  * campaigns from Audience Manager; the empty choice means the auto-provisioned
  * default website-leads list.
  */
-const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
-    value: string;
 /**
  * Fields a website form list starts with. Richer fields stay in Audience Manager.
  * `phoneRequired` is for the Freebies list, where the phone is what a
@@ -4675,6 +4673,8 @@ const useFreebiesList = () => {
     };
 };
 
+const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
+    value: string;
     onChange: (id: string, name: string) => void;
     label?: string;
     allowEmpty?: boolean;
@@ -6789,6 +6789,15 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const features = props.features || [];
     const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+    // Latest props, including an update not yet re-rendered: the Freebies list
+    // arrives after a network call (or a cache hit, before React re-renders),
+    // and must merge into what the admin just chose, not a stale copy.
+    const propsRef = useRef(props);
+    propsRef.current = props;
+    const commitProps = (next: any) => {
+        propsRef.current = next;
+        updateComponent(pageId, component.id, { props: next });
+    };
 
     const updateProp = (key: string, value: any) => commitProps({ ...props, [key]: value });
 
@@ -6815,6 +6824,35 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
         setExpandedIdx(i + 1);
     };
     const isResource = props.style === 'resource';
+
+    // Resource sections collect into the institute's Freebies list without the
+    // admin picking one.
+    const ensureFreebiesList = useFreebiesList();
+    const { toast } = useToast();
+    const [attachingList, setAttachingList] = useState(false);
+    const attachFreebiesList = async () => {
+        if (propsRef.current.gateAudienceId || attachingList) return;
+        setAttachingList(true);
+        try {
+            const list = await ensureFreebiesList();
+            if (propsRef.current.gateAudienceId) return;
+            commitProps({ ...propsRef.current, gateAudienceId: list.id, gateAudienceName: list.name });
+        } catch {
+            toast({ title: t('featureGrid.freebiesListError'), variant: 'destructive' });
+        } finally {
+            setAttachingList(false);
+        }
+    };
+    // Switching a section to Resource gates every card by default; an existing
+    // resource section keeps whatever it had.
+    const chooseStyle = (style: string) => {
+        if (style === 'resource' && props.style !== 'resource' && !props.gateAudienceId) {
+            commitProps({ ...props, style, gateAll: true });
+            void attachFreebiesList();
+            return;
+        }
+        updateProp('style', style);
+    };
 
     return (
         <div className="space-y-4">
@@ -6890,15 +6928,6 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label className="text-xs">{t('featureGrid.textAlignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['center', 'left'].map((a) => (
-    // Latest props, including an update not yet re-rendered: the Freebies list
-    // arrives after a network call (or a cache hit, before React re-renders),
-    // and must merge into what the admin just chose, not a stale copy.
-    const propsRef = useRef(props);
-    propsRef.current = props;
-    const commitProps = (next: any) => {
-        propsRef.current = next;
-        updateComponent(pageId, component.id, { props: next });
-    };
                         <button key={a} onClick={() => updateProp('align', a)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
@@ -6927,35 +6956,6 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     {f.icon} {f.title || t('featureGrid.featureN', { n: i + 1 })}
                                 </button>
                                 <Button variant="ghost" size="sm" onClick={() => moveFeature(i, -1)} disabled={i === 0} title={t('actions.moveUp')} aria-label={t('actions.moveUp')} className="size-6 p-0"><ArrowUp className="size-3" /></Button>
-    // Resource sections collect into the institute's Freebies list without the
-    // admin picking one.
-    const ensureFreebiesList = useFreebiesList();
-    const { toast } = useToast();
-    const [attachingList, setAttachingList] = useState(false);
-    const attachFreebiesList = async () => {
-        if (propsRef.current.gateAudienceId || attachingList) return;
-        setAttachingList(true);
-        try {
-            const list = await ensureFreebiesList();
-            if (propsRef.current.gateAudienceId) return;
-            commitProps({ ...propsRef.current, gateAudienceId: list.id, gateAudienceName: list.name });
-        } catch {
-            toast({ title: t('featureGrid.freebiesListError'), variant: 'destructive' });
-        } finally {
-            setAttachingList(false);
-        }
-    };
-    // Switching a section to Resource gates every card by default; an existing
-    // resource section keeps whatever it had.
-    const chooseStyle = (style: string) => {
-        if (style === 'resource' && props.style !== 'resource' && !props.gateAudienceId) {
-            commitProps({ ...props, style, gateAll: true });
-            void attachFreebiesList();
-            return;
-        }
-        updateProp('style', style);
-    };
-
                                 <Button variant="ghost" size="sm" onClick={() => moveFeature(i, 1)} disabled={i === features.length - 1} title={t('actions.moveDown')} aria-label={t('actions.moveDown')} className="size-6 p-0"><ArrowDown className="size-3" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => duplicateFeature(i)} title={t('actions.duplicate')} aria-label={t('actions.duplicate')} className="size-6 p-0"><Copy className="size-3" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} title={t('actions.delete')} aria-label={t('actions.delete')} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>

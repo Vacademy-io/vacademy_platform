@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { isUserAdmin } from '@/utils/userDetails';
+import { parseUtcDate } from '@/utils/dateUtils';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
@@ -429,7 +430,7 @@ function AnnouncementHistoryPage() {
                                             </div>
                                         )}
                                     </TableCell>
-                                    <TableCell>{formatDateTime(a.createdAt)}</TableCell>
+                                    <TableCell>{formatUtcDateTime(a.createdAt)}</TableCell>
                                     <TableCell className="space-x-2 text-right">
                                         <Button
                                             variant="secondary"
@@ -905,9 +906,11 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
                                     <TableCell>
                                         <Badge variant="outline">{statusLabel(t, r.status)}</Badge>
                                     </TableCell>
-                                    <TableCell>{formatDateTime(r.readAt ?? undefined)}</TableCell>
                                     <TableCell>
-                                        {formatDateTime(r.dismissedAt ?? undefined)}
+                                        {formatUtcDateTime(r.readAt ?? undefined)}
+                                    </TableCell>
+                                    <TableCell>
+                                        {formatUtcDateTime(r.dismissedAt ?? undefined)}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -945,10 +948,22 @@ function RecipientsSection({ announcementId }: { announcementId: string }) {
     );
 }
 
+// Scheduling start/end are wall-clock times in the announcement's own timezone,
+// so they are shown as-is rather than parsed as UTC.
 function formatDateTime(v?: string) {
     if (!v) return '-';
     try {
         return new Date(v).toLocaleString();
+    } catch {
+        return v;
+    }
+}
+
+// createdAt / readAt / dismissedAt are UTC LocalDateTime strings without an offset.
+function formatUtcDateTime(v?: string) {
+    if (!v) return '-';
+    try {
+        return parseUtcDate(v).toLocaleString();
     } catch {
         return v;
     }

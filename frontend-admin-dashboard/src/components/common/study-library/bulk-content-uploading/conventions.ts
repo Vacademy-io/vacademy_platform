@@ -7,13 +7,13 @@ export const MAX_ZIP_BYTES = 1 * 1024 * 1024 * 1024; // 1 GB hard cap
 export const WARN_ZIP_BYTES = 500 * 1024 * 1024; // warn ≥ 500 MB
 export const MAX_FILE_COUNT = 2000;
 export const WARN_FILE_COUNT = 500;
-export const MAX_SINGLE_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
+export const MAX_SINGLE_FILE_BYTES = 800 * 1024 * 1024; // 800 MB
 export const MAX_PPTX_BYTES = 20 * 1024 * 1024; // server-side conversion multipart limit
 // admin_core_service spring.servlet.multipart.max-file-size on stage/prod. The
 // SCORM package is posted whole, so anything larger is rejected server-side —
 // catch it here instead of after a long upload. Raising this alone does nothing:
 // the ingress proxy-body-size and media_service's own multipart limit cap it too.
-export const MAX_SCORM_BYTES = 300 * 1024 * 1024;
+export const MAX_SCORM_BYTES = 800 * 1024 * 1024;
 
 export const DEFAULT_ENTITY_NAME = 'DEFAULT';
 

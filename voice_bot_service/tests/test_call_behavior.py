@@ -7237,3 +7237,265 @@ def test_errored_primary_skip_only_while_its_failover_rerun_is_coming():
     assert 'flags["stopping_since"] is not None' in reason
     assert "end_pending_since" not in reason, "a goodbye a noise killed must still be re-asked"
     assert 'flags["reply_started_t"] == for_reply' in reason
+
+
+# ── single-flight step 6 (2026-10-08): ONE reply per caller turn, however many
+#    pieces it comes in. Calls 84e52d17 ("आप।" / "आप teachers से कहें…" /
+#    "बात करें।"), b51093dc, 0ae77e88, e11cc15b: two runs ~0.55 s apart, the
+#    LLM queued the second behind the first, both replies played ─────────────
+class _RGDirRec:
+    def __init__(self):
+        self.frames = []
+
+    async def push(self, frame, direction=None):
+        self.frames.append((frame, direction))
+
+    def kinds(self):
+        return [type(f).__name__ for f, _ in self.frames]
+
+
+def _supersede_guard(unheard, *, on=True, grace=0.0, quiet=lambda: 5.0,
+                     forming=lambda: False, noted=lambda: 7):
+    import app.diagnostics as dg
+    d = dg.CallDiagnostics()
+    ctx = _FakeCtx()
+    rec = _RGDirRec()
+    seen = []
+
+    def _unheard(since):
+        seen.append(since)
+        return unheard() if callable(unheard) else unheard
+    g = b.RunGuard(ctx, enabled=lambda: True, diag=d,
+                   short_answer_grace_secs=grace, short_answer_max_words=3,
+                   quiet_for=quiet, caller_forming=forming,
+                   supersede=lambda: on, reply_unheard=_unheard, runs_noted=noted)
+    g.push_frame = rec.push
+    g.create_task = lambda coro: asyncio.get_event_loop().create_task(coro)
+    b.FrameProcessor.process_frame = _noop_super
+    return g, ctx, rec, d, seen
+
+
+_PIECE_1 = {"role": "user", "content": "आप। आप teachers से कहें मुझसे भी direct बात करें।"}
+_PIECE_2 = {"role": "user", "content": "बात करें।"}
+
+
+@pytest.mark.asyncio
+async def test_the_callers_next_piece_cancels_a_reply_that_has_not_made_a_sound():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d, seen = _supersede_guard(True)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [_PIECE_1]
+    t0 = time.time()
+    await g.process_frame(LLMRunFrame(), D)             # run 1: 10 caller words, passes
+    assert rec.kinds() == ["LLMRunFrame"]
+    ctx.messages = ctx.messages + [_PIECE_2]
+    await g.process_frame(LLMRunFrame(), D)             # run 2, 0.55 s later on the call
+    assert rec.kinds() == ["LLMRunFrame", "SupersedeInterruptionFrame", "LLMRunFrame"], rec.kinds()
+    cut, direction = rec.frames[1]
+    assert isinstance(cut, b.InterruptionFrame), "pipecat must treat it as an interruption"
+    assert direction == D, "upstream it would reach the user aggregator and drop queued finals"
+    assert cut.runs_flushed == 7
+    assert seen and abs(seen[0] - t0) < 0.5, "asked about the reply to run 1, by its pass time"
+    assert d.runs_superseded == 1
+
+
+@pytest.mark.asyncio
+async def test_a_reply_the_caller_is_hearing_is_never_superseded():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d, _ = _supersede_guard(False)          # audio on the line: a barge-in
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [_PIECE_1]
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = ctx.messages + [_PIECE_2]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.kinds() == ["LLMRunFrame", "LLMRunFrame"], rec.kinds()
+    assert d.runs_superseded == 0
+
+
+@pytest.mark.asyncio
+async def test_run_supersede_kill_switch_restores_two_runs():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d, seen = _supersede_guard(True, on=False)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [_PIECE_1]
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = ctx.messages + [_PIECE_2]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.kinds() == ["LLMRunFrame", "LLMRunFrame"]
+    assert seen == [] and d.runs_superseded == 0
+
+
+@pytest.mark.asyncio
+async def test_the_bots_own_run_never_supersedes_and_one_superseded_run_is_cancelled_once():
+    from pipecat.frames.frames import LLMRunFrame
+    g, ctx, rec, d, _ = _supersede_guard(True)
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [_PIECE_1]
+    await g.process_frame(LLMRunFrame(), D)
+    cue = "[A noise on the line cut your reply off…]"
+    g.register_cue(cue)
+    ctx.messages = ctx.messages + [{"role": "user", "content": cue}]
+    await g.process_frame(LLMRunFrame(), D)             # the bot's own run: not the caller
+    assert "SupersedeInterruptionFrame" not in rec.kinds(), rec.kinds()
+    ctx.messages = ctx.messages + [_PIECE_2]
+    await g.process_frame(LLMRunFrame(), D)
+    ctx.messages = ctx.messages + [{"role": "user", "content": "हाँ जी।"}]
+    await g.process_frame(LLMRunFrame(), D)
+    # Each caller run cancels the one before it (the cue's, then its own
+    # predecessor's) — never twice for the same run.
+    assert rec.kinds().count("SupersedeInterruptionFrame") == 2, rec.kinds()
+
+
+@pytest.mark.asyncio
+async def test_a_newer_run_that_is_held_still_cancels_the_unheard_one_first():
+    """The rest of the turn arrives while still forming (held for it): the
+    earlier run must not play in the meantime."""
+    from pipecat.frames.frames import LLMRunFrame
+    forming = {"v": False}
+    g, ctx, rec, d, _ = _supersede_guard(True, forming=lambda: forming["v"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [_PIECE_1]
+    await g.process_frame(LLMRunFrame(), D)
+    forming["v"] = True
+    ctx.messages = ctx.messages + [_PIECE_2]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.kinds() == ["LLMRunFrame", "SupersedeInterruptionFrame"], rec.kinds()
+    forming["v"] = False
+    await asyncio.sleep(0.6)                             # formed + 0.3 s still
+    assert rec.kinds() == ["LLMRunFrame", "SupersedeInterruptionFrame", "LLMRunFrame"]
+
+
+@pytest.mark.asyncio
+async def test_a_held_short_answer_waits_while_the_rest_of_the_turn_forms():
+    """The replayed mechanism (84e52d17, b51093dc, 0ae77e88, e11cc15b): "हाँ"
+    held, the caller goes on, the rest sits in the user aggregator (Smart
+    Turn INCOMPLETE) — the context looks still, and the hold used to release
+    on "हाँ" alone 0.55 s before the turn's own run."""
+    from pipecat.frames.frames import LLMRunFrame
+    state = {"quiet": 0.1, "forming": False}
+    g, ctx, rec, d, _ = _supersede_guard(False, grace=0.5, quiet=lambda: state["quiet"],
+                                         forming=lambda: state["forming"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "हाँ"}]
+    await g.process_frame(LLMRunFrame(), D)
+    assert rec.frames == []
+    await asyncio.sleep(0.45)                            # voice resumed: waiting for the rest
+    state["quiet"], state["forming"] = 5.0, True         # they stopped; the rest is forming
+    await asyncio.sleep(1.4)                             # past the 0.5 s still-context wait
+    assert rec.frames == [], "released on the first piece while the rest was forming"
+    assert d.short_answer_forming_waits == 1
+    ctx.messages = ctx.messages + [{"role": "user", "content": "मैं शाम को क्लास लेती हूँ"}]
+    state["forming"] = False
+    await g.process_frame(LLMRunFrame(), D)              # the turn's own run
+    await asyncio.sleep(0.3)
+    assert rec.kinds() == ["LLMRunFrame"], rec.kinds()
+
+
+@pytest.mark.asyncio
+async def test_without_supersede_the_held_answer_releases_on_a_still_context():
+    """RUN_SUPERSEDE=0 is the old behaviour, exactly: the stale release."""
+    from pipecat.frames.frames import LLMRunFrame
+    state = {"quiet": 0.1, "forming": False}
+    g, ctx, rec, d, _ = _supersede_guard(False, on=False, grace=0.5,
+                                         quiet=lambda: state["quiet"],
+                                         forming=lambda: state["forming"])
+    D = b.FrameDirection.DOWNSTREAM
+    ctx.messages = _CONVO + [{"role": "user", "content": "हाँ"}]
+    await g.process_frame(LLMRunFrame(), D)
+    await asyncio.sleep(0.45)
+    state["quiet"], state["forming"] = 5.0, True
+    await asyncio.sleep(1.4)
+    assert rec.kinds() == ["LLMRunFrame"]
+    assert d.short_answer_forming_waits == 0
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_run_leaves_the_newer_run_on_its_way_in_the_ledger():
+    """note_run for the newer run happens synchronously right after RunGuard
+    pushes the supersede; the frame reaches NoRepeatGate later. Flushing
+    "everything passed" there read "nothing pending" for the newer run's whole
+    time-to-first-token."""
+    from pipecat.frames.frames import (LLMFullResponseStartFrame, LLMFullResponseEndFrame,
+                                       InterruptionFrame)
+    rec = _NRRec()
+    g = _no_repeat(rec)
+    D = b.FrameDirection.DOWNSTREAM
+    g.note_run()                                          # run 1
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    flushed = g.runs_noted()
+    g.note_run()                                          # run 2, right after the supersede
+    await g.process_frame(b.SupersedeInterruptionFrame(runs_flushed=flushed), D)
+    assert g.generating(), "the newer run is on its way"
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    await g.process_frame(LLMFullResponseEndFrame(), D)
+    assert not g.generating()
+    # A held newer run (noted later, at release) is not pending in between.
+    g.note_run()
+    await g.process_frame(LLMFullResponseStartFrame(), D)
+    await g.process_frame(b.SupersedeInterruptionFrame(runs_flushed=g.runs_noted()), D)
+    assert not g.generating()
+    # An ordinary barge-in still flushes everything.
+    g.note_run()
+    await g.process_frame(InterruptionFrame(), D)
+    assert not g.generating()
+
+
+@pytest.mark.asyncio
+async def test_superseded_words_are_unrecorded_but_never_resumed():
+    """Never heard, so not "already said" — and replaced by the newer reply, so
+    a "हाँ" in its time-to-first-token must not speak them verbatim."""
+    from pipecat.frames.frames import InterruptionFrame
+    Q = "पिछली class में कितने marks आए थे? "
+    g, rec, played = _gate_with_playout()
+    await _reply(g, Q)
+    await g.process_frame(b.SupersedeInterruptionFrame(runs_flushed=1), b.FrameDirection.DOWNSTREAM)
+    assert g.take_unplayed_tail() == "", "a superseded reply's words were kept for a resume"
+    rec.text.clear()
+    await _reply(g, "जी। ", Q)
+    assert "कितने marks" in " ".join(rec.text), "a never-heard question stayed 'already said'"
+    # An ordinary cut of an unheard reply still keeps its words for the resume.
+    g2, _rec2, _ = _gate_with_playout()
+    await _reply(g2, Q)
+    await g2.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    assert "कितने marks" in g2.take_unplayed_tail()
+
+
+@pytest.mark.asyncio
+async def test_a_supersede_is_not_a_cut_of_what_the_caller_heard():
+    from pipecat.frames.frames import InterruptionFrame
+    cuts = []
+    duck = b.DuckGate(enabled=lambda: True, is_bot_speaking=lambda: False,
+                      on_duck=lambda: None, on_unduck=lambda: None, diag=dg_mod.CallDiagnostics(),
+                      on_interrupt=lambda: cuts.append(1))
+    pushed = []
+
+    async def _push(frame, direction=None):
+        pushed.append(type(frame).__name__)
+    duck.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    await duck.process_frame(b.SupersedeInterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    assert cuts == [], "a superseded reply made no sound: nothing to 'carry on' from"
+    assert pushed == ["SupersedeInterruptionFrame"], "it must still reach the transport"
+    await duck.process_frame(InterruptionFrame(), b.FrameDirection.DOWNSTREAM)
+    assert cuts == [1]
+
+
+def test_supersede_is_wired_to_what_the_caller_actually_heard():
+    src = inspect.getsource(b.run_bot)
+    body = src[src.index("def _reply_unheard(since: float) -> bool:"):]
+    body = body[:body.index("\n    def ")]
+    assert 'flags["bot_speaking"] or flags["bot_started_t"] >= since' in body
+    assert 'flags["reply_cancelled_t"] >= since' in body
+    assert "return _reply_in_flight()" in body
+    guard = src[src.index("run_guard = RunGuard("):]
+    guard = guard[:guard.index("run_guard._one_door")]
+    assert "supersede=lambda: settings.run_supersede" in guard
+    assert "reply_unheard=_reply_unheard" in guard
+    assert "runs_noted=lambda: no_repeat.runs_noted()" in guard
+    sent = inspect.getsource(b.SentinelGate.process_frame)
+    assert "self._on_interrupted(superseded=True)" in sent
+    hook = src[src.index("def _note_killed_before_playout"):]
+    hook = hook[:hook.index("sentinel.set_on_interrupted")]
+    assert "and not superseded" in hook, "a replaced reply is not a lost one"
+    from app.config import Settings
+    assert Settings().run_supersede is True, "on by default (RUN_SUPERSEDE=0 is the kill switch)"

@@ -764,6 +764,14 @@ class Settings:
     cue_one_door: bool = field(default_factory=lambda: _env("CUE_ONE_DOOR", "1") == "1")
     forming_hold_cap_secs: float = field(
         default_factory=lambda: float(_env("FORMING_HOLD_CAP_SECS", "5.5")))
+    # Single-flight step 6 (2026-10-08): ONE reply per caller turn, however many
+    # pieces it arrives in. A caller run supersedes an earlier run whose reply
+    # has not put a sound on the line yet (RunGuard cancels it — the LLM's
+    # queue too — before the newer run goes through), and a held short answer
+    # is never released while the rest of the turn is still forming. Calls
+    # 84e52d17, b51093dc, 0ae77e88, e11cc15b: two runs ~0.55 s apart, both
+    # replies played back to back. Kill switch: RUN_SUPERSEDE=0.
+    run_supersede: bool = field(default_factory=lambda: _env("RUN_SUPERSEDE", "1") == "1")
     reply_inflight_grace_secs: float = field(
         default_factory=lambda: float(_env("REPLY_INFLIGHT_GRACE_SECS", "6.0")))
     # FloorGate: a reply whose first audio is ready while the caller is talking

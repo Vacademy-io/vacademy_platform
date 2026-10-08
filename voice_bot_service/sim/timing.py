@@ -79,6 +79,10 @@ class Say:
     finals: List[str] | None = None     # split into several finals (fragments)
     clip: str | None = None             # CLIPS key, when the text has no clip of its own
     final_times: List[float] | None = None  # absolute seconds per final (replay); else after the voice
+    # Seconds from this utterance's voice START per final — a final can land
+    # mid-speech or after it, as Sarvam's do (live call 84e52d17: 'आप teachers
+    # से कहें…' 1.5 s into the voice, 'बात करें।' 0.3 s later at its end).
+    final_offsets: List[float] | None = None
 
 
 @dataclass
@@ -134,6 +138,9 @@ class Scenario:
     # the dict is the fault plan per vendor ({"sarvam": {"hang_on_audio": 1}}).
     # Call 3e327e8a (2026-10-02): a Sarvam socket that closed and hung.
     stt_fake: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    # Settings overridden for this scenario only (restored after it), e.g. a
+    # kill switch: {"run_forming_hold": False}.
+    settings: Dict[str, Any] = field(default_factory=dict)
 
 
 # ── the simulated line ──────────────────────────────────────────────────────
@@ -677,16 +684,19 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                     chunk = np.pad(chunk, (0, frame_n - len(chunk)))
                 pos += frame_n; spoken_frames += 1
                 await inp.push_audio_frame(InputAudioRawFrame(chunk.tobytes(), SR_LINE, 1))
-                if (speaking is not None and spoken_frames == 1 and speaking.final_times
+                if (speaking is not None and spoken_frames == 1
+                        and (speaking.final_times or speaking.final_offsets)
                         and not real_stt):
                     # Replay: finals land at their RECORDED times, mid-speech or
                     # after it, independent of the voice clip.
                     s = speaking
+                    times = (s.final_times if s.final_times
+                             else [line.now() + o for o in s.final_offsets])
 
-                    async def _emit_at(s=s):
+                    async def _emit_at(s=s, times=times):
                         t_prev = line.now()
                         for k, f in enumerate(s.finals or []):
-                            at = s.final_times[k] if k < len(s.final_times) else t_prev + 0.5
+                            at = times[k] if k < len(times) else t_prev + 0.5
                             await asyncio.sleep(max(0.0, at - line.now()))
                             t_prev = line.now()
                             if f:
@@ -694,7 +704,7 @@ def build(scenario: Scenario, line: Line, verbose: bool = False, real_stt: bool 
                     inp.create_task(_emit_at())
                 if spoken_frames >= total_frames:
                     s = speaking; speaking = None
-                    if real_stt or s.final_times or scenario.stt_fake:
+                    if real_stt or s.final_times or s.final_offsets or scenario.stt_fake:
                         continue                    # the vendor / the record decides what was said
                     finals = s.finals or [s.text]
 
@@ -777,6 +787,19 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
     _p = os.environ.get("SIM_FILLER_PROBABILITY")
     object.__setattr__(_gs(), "filler_probability",
                        float(_p) if _p not in (None, "") else scenario.filler)
+    _saved_settings = {k: getattr(_gs(), k) for k in scenario.settings}
+    for k, v in scenario.settings.items():
+        object.__setattr__(_gs(), k, v)
+    try:
+        return await _run_scenario(scenario, ctx, verbose, real_stt)
+    finally:
+        for k, v in _saved_settings.items():
+            object.__setattr__(_gs(), k, v)
+
+
+async def _run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool,
+                        real_stt: bool) -> Dict[str, Any]:
+    from app import bot as b
     line = Line()
     line.vendor_finals = []
     line.stt_server = None
@@ -827,6 +850,8 @@ async def run_scenario(scenario: Scenario, ctx: Dict[str, Any], verbose: bool = 
         "repeats_suppressed": getattr(d, "repeats_suppressed", 0) or 0,
         "unsaid_reverted": getattr(d, "unsaid_reverted", 0) or 0,
         "stt_stalls": getattr(d, "stt_stalls", 0) or 0,
+        "runs_superseded": getattr(d, "runs_superseded", 0) or 0,
+        "short_answer_forming_waits": getattr(d, "short_answer_forming_waits", 0) or 0,
         "stt_switches": list(line.stt_switches),
         "stt_vendor_finals": list(line.vendor_finals),
         "stt_conns": [{"vendor": c["vendor"], "hung_at": c["hung_at"],
@@ -1258,6 +1283,77 @@ def chk_pieces_with_gaps(res):
         f.append("the answer to the pieces was cut short")
     if "Three girls" not in " ".join(_assistant_texts(res)):
         f.append("the answer to both pieces never played")
+    return f
+
+
+# ONE reply for a turn spoken in pieces (live calls 84e52d17, b51093dc,
+# 0ae77e88, e11cc15b, 2026-10-06..08). A short first piece ("Yes.", a complete
+# utterance to Smart Turn) is held for its grace; the rest follows 0.35 s
+# later, 1.8 s of voice whose finals land 1.5 s and 1.8 s in. Smart Turn calls
+# the rest INCOMPLETE, so it sits in the user aggregator until its 1.5 s stop
+# — while the held run, seeing a context that had been still for 0.5 s, went
+# ahead on "Yes." alone. The turn's own run followed ~0.55 s later and the LLM
+# queued it behind the first: the caller heard an answer to "Yes." and then
+# the answer to the whole turn, back to back.
+PIECES_HALF = "Great, so you handle it all yourself. How many classes do you take a week?"
+PIECES_FULL = ("Got it — you, and your sister on the WhatsApp reminders. "
+               "How many classes do you take a week?")
+PIECES_CALLER = [
+    Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
+    Say("Yes.", after_bot_stop=2, offset=0.8, stt_latency=0.3),
+    Say("and my sister sends the WhatsApp reminders.", 1.8, after_bot_stop=2, offset=1.56,
+        finals=["and my sister sends the", "WhatsApp reminders."], final_offsets=[1.5, 1.8]),
+]
+
+
+def _pieces_reply(last_user: str) -> str:
+    u = (last_user or "").casefold()
+    if "go ahead" in u:
+        return PITCH_Q
+    if "sister" in u or "whatsapp" in u:
+        return PIECES_FULL
+    if u.strip(" .") == "yes":
+        return PIECES_HALF
+    return "Understood. And how many students join each class?"
+
+
+def chk_pieces_one_reply(res):
+    """The pieces get ONE reply, to all of them: the answer to the first piece
+    alone never reaches the line, no two runs compose for one moment, and the
+    answer to the whole turn plays without a pause longer than a normal turn."""
+    f = []
+    if len(res["caller"]) < 3:
+        return ["caller turns missing"]
+    p1, p2 = res["caller"][1], res["caller"][2]
+    texts = " ".join(_assistant_texts(res)).casefold()
+    if "all yourself" in texts:
+        f.append("the answer to the first piece alone reached the line")
+    if "your sister" not in texts:
+        f.append("the answer to the whole turn never played")
+    gens = [g for g in res.get("llm_gens") or [] if g["requested"] >= p1[0]
+            and g.get("dropped") is None]
+    live = [g for g in gens if g.get("cancelled") is None and g.get("errored") is None]
+    if len(live) != 1:
+        f.append(f"{len(live)} replies composed for the turn (want 1): "
+                 + "; ".join(f"{g['requested']:.2f}s {g.get('trigger', '')[:24]!r}" for g in live))
+    elif "sister" not in (live[0].get("trigger") or ""):
+        f.append(f"the one reply answered {live[0].get('trigger', '')[:32]!r}, not the whole turn")
+    after = [a for a, _ in res["bot"] if a >= p2[1] - 0.2]
+    if not after:
+        f.append("nothing played after the pieces")
+    elif after[0] - p2[1] > 3.5:
+        f.append(f"the reply started {after[0] - p2[1]:.2f}s after they stopped (bar 3.5 s)")
+    return f
+
+
+def chk_pieces_one_reply_superseded(res):
+    """The same, with the forming test blind (RUN_FORMING_HOLD=0 — the shape
+    of production's race, where the rest sat in the aggregator's queue where no
+    check can see it): the stale run goes through, and the turn's own run must
+    cancel it before a sound of it plays."""
+    f = chk_pieces_one_reply(res)
+    if not res.get("runs_superseded"):
+        f.append("no run was superseded — the stale run was not the one cancelled")
     return f
 
 
@@ -1982,6 +2078,17 @@ SCENARIOS: List[Scenario] = [
                       "Okay."],
              checks=chk_pieces_with_gaps, max_secs=45,
              note="call 358e5026: a reply started over every next piece and was cut to a stub"),
+    Scenario("pieces_one_reply",
+             caller=PIECES_CALLER, replies=[], reply_for=_pieces_reply,
+             checks=chk_pieces_one_reply, max_secs=40,
+             note="calls 84e52d17/b51093dc: a held short piece released stale while the rest "
+                  "formed — two replies back to back"),
+    Scenario("pieces_one_reply_forming_unseen",
+             caller=PIECES_CALLER, replies=[], reply_for=_pieces_reply,
+             checks=chk_pieces_one_reply_superseded, max_secs=40,
+             settings={"run_forming_hold": False},
+             note="the same with the rest of the turn invisible to RunGuard (production's "
+                  "race): the turn's run must supersede the stale one"),
     Scenario("navana_held_reply_is_not_heard",
              caller=[Say(OPEN_ANSWER, 1.2, after_bot_stop=1, offset=0.6),
                      Say("My daughter is in the eighth class", 1.1, after_bot_stop=2,

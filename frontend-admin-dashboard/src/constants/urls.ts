@@ -1057,6 +1057,8 @@ export const LIVE_SESSION_CONTENT_LINK = `${BASE_URL}/admin-core-service/live-se
 export const LIVE_SESSION_CONTENT_LINKS = `${BASE_URL}/admin-core-service/live-sessions/content/links`;
 export const LIVE_SESSION_CONTENT_UNLINK = (linkId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/content/link/${linkId}`;
+export const LIVE_SESSION_CONTENT_RENAME = (linkId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/content/link/${linkId}/title`;
 
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;

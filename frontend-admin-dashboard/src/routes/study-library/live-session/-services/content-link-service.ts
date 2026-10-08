@@ -11,6 +11,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     LIVE_SESSION_CONTENT_LINK,
     LIVE_SESSION_CONTENT_LINKS,
+    LIVE_SESSION_CONTENT_RENAME,
     LIVE_SESSION_CONTENT_UNLINK,
 } from '@/constants/urls';
 
@@ -108,6 +109,11 @@ export const unlinkSessionContent = async (linkId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(LIVE_SESSION_CONTENT_UNLINK(linkId));
 };
 
+/** Renames the slide a link created (slide title + its document/video row). */
+export const renameSessionContent = async (linkId: string, title: string): Promise<void> => {
+    await authenticatedAxiosInstance.put(LIVE_SESSION_CONTENT_RENAME(linkId), { title });
+};
+
 /**
  * Pulls the readable reason out of a failed link/unlink call.
  *
@@ -191,6 +197,18 @@ export const useUnlinkSessionContent = () => {
         onSuccess: () => {
             // sessionId isn't known at the mutation call site in every caller,
             // so invalidate every content-links query — cheap and infrequent.
+            queryClient.invalidateQueries({ queryKey: ['LIVE_SESSION_CONTENT_LINKS'] });
+        },
+    });
+};
+
+/** Renames the slide behind a link; the chip re-reads its title from the links query. */
+export const useRenameSessionContent = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ linkId, title }: { linkId: string; title: string }) =>
+            renameSessionContent(linkId, title),
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['LIVE_SESSION_CONTENT_LINKS'] });
         },
     });

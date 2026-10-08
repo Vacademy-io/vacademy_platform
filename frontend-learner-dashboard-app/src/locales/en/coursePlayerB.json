@@ -409,5 +409,25 @@
         "launchingOnHint": "Launching {{date}}. Leave your details and we'll tell you the moment it's live.",
         "notifyHint": "Leave your details and we'll tell you the moment it's live.",
         "notifyTitle": "Get notified when {{title}} launches"
+    },
+    "folderBrowser": {
+        "home": "All",
+        "back": "Back",
+        "breadcrumbLabel": "Folders",
+        "searchPlaceholder": "Search folders and courses",
+        "searchLabel": "Search this section",
+        "resultCount_one": "{{count}} match",
+        "resultCount_other": "{{count}} matches",
+        "noResults": "Nothing matches “{{query}}”.",
+        "inPath": "in {{path}}",
+        "folderCount_one": "{{count}} folder",
+        "folderCount_other": "{{count}} folders",
+        "viewCourses": "View {{courses}}",
+        "coursesInside": "{{courses}} inside",
+        "emptyTitle": "Nothing here yet",
+        "emptyHint": "Check back soon.",
+        "loadError": "This section could not load. Please refresh the page.",
+        "previewPickLibrary": "Pick a folder library for this section in its properties.",
+        "previewEmptyLibrary": "This folder library has nothing students can see yet."
     }
 }

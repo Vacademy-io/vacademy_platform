@@ -20,7 +20,8 @@ from .catalogue_summary import CAPTURE_TYPES, heading_of, strip_html, walk_compo
 #: Sections that count as "proof" / "conversion" on a landing page.
 PROOF_TYPES = frozenset({"statsHighlights", "testimonialSection", "logoCloud", "trustChip"})
 CONVERSION_TYPES = frozenset({"ctaBanner", "leadForm", "contactForm", "newsletterSignup", "pricingTable",
-                              "courseCatalog", "courseShowcase", "productCourseGrid", "productPageOffer"})
+                              "courseCatalog", "courseShowcase", "productCourseGrid", "productPageOffer",
+                              "folderBrowser"})
 BAND_TYPES = frozenset({"heroSection", "ctaBanner", "statsHighlights", "logoCloud", "marquee", "trustChip", "spacer"})
 
 _PLACEHOLDER_RE = re.compile(

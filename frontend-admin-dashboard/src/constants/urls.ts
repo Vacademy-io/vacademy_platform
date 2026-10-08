@@ -1387,6 +1387,9 @@ export const CATALOGUE_BLOG_POST_UNPUBLISH = (instituteId: string, postId: strin
     `${CATALOGUE_BLOG_BASE_URL}/post/unpublish?instituteId=${instituteId}&postId=${postId}`;
 export const CATALOGUE_BLOG_POST_ARCHIVE = (instituteId: string, postId: string) =>
     `${CATALOGUE_BLOG_BASE_URL}/post/archive?instituteId=${instituteId}&postId=${postId}`;
+// Folder libraries — admin-curated folder trees (product pages as leaves),
+// read live by the `folderBrowser` section of any of the institute's sites.
+export const FOLDER_LIBRARY_BASE_URL = `${BASE_URL}/admin-core-service/v1/folder-library`;
 
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;

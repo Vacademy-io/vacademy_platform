@@ -122,6 +122,14 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                     ...cctx,
                 });
             }
+            if (c?.type === 'folderBrowser' && !String(p.libraryId || '').trim()) {
+                issues.push({
+                    severity: 'error',
+                    title: 'A Folder Browser section has no folder library selected',
+                    fix: 'Pick a library in its properties (or create one with the Folders button), or remove the section. It is hidden from visitors as-is.',
+                    ...cctx,
+                });
+            }
             // A blog on the home page still works (?post=<slug>), but every
             // article then shares the home URL — no clean links, no sitemap entries.
             if (c?.type === 'blog' && c?.enabled !== false) {

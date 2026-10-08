@@ -887,6 +887,43 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
         },
     },
 
+    // Admin-curated folders (Class → Subject → …) from a shared library in
+    // Manage Pages → Folders; a product page inside the open folder shows its
+    // courses with add-to-cart. Only the library id is stored — the tree is
+    // read live, so one library edit reaches every section showing it.
+    folderBrowser: {
+        type: 'folderBrowser',
+        enabled: true,
+        props: {
+            libraryId: '',
+            libraryName: '',
+            // '' = the library's top level; else start inside that folder.
+            rootFolderId: '',
+            title: t('folderBrowser.title'),
+            subtitle: t('folderBrowser.subtitle'),
+            align: 'left',
+            // How folders are listed. A folder can override these for its own
+            // contents in the folder manager.
+            layout: 'cards',
+            imageShape: 'landscape',
+            columns: 3,
+            showDescription: true,
+            showCounts: true,
+            showBreadcrumbs: true,
+            showSearch: true,
+            // A folder with nothing a visitor can open (all hidden, or only
+            // inactive product pages) would be a dead end.
+            hideEmptyFolders: true,
+            // Courses of a product page inside a folder. The basket is per
+            // product page, same as the Product Page Offer section.
+            enableCart: true,
+            showPrice: true,
+            showViewCourse: true,
+            courseColumns: 3,
+            coursePageSize: 9,
+        },
+    },
+
     htmlBlock: {
         type: 'htmlBlock',
         enabled: true,

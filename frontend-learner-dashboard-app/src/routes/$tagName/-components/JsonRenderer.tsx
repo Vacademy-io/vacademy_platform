@@ -47,6 +47,7 @@ import { HeaderComponent } from "./components/HeaderComponent";
 import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
+import { FolderBrowserComponent } from "./components/FolderBrowserComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { BlogComponent } from "./components/BlogComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
@@ -345,6 +346,19 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // the renderer, everything else from props.
         return (
           <ProductPageOfferComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            tagName={tagName}
+            isPreviewMode={isPreviewMode}
+          />
+        );
+
+      case "folderBrowser":
+        // A shared folder library (Manage Pages → Folders), read live; a
+        // product page inside the open folder shows its courses inline.
+        return (
+          <FolderBrowserComponent
             key={id}
             {...props}
             instituteId={instituteId}

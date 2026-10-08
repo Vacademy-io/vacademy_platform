@@ -48,7 +48,7 @@ _LIST_PROPS: Dict[str, str] = {
 # no way to convert, which is the whole reason the page exists.
 _CONVERSION_TYPES = {
     "ctaBanner", "leadForm", "contactForm", "newsletterSignup",
-    "courseCatalog", "productPageOffer", "pricingTable", "bookCatalogue",
+    "courseCatalog", "productPageOffer", "folderBrowser", "pricingTable", "bookCatalogue",
 }
 _CONVERSION_ACTIONS = {"openLeadCollection", "openAudienceForm", "enroll", "enrol"}
 
@@ -173,6 +173,16 @@ def audit_component(comp: Dict[str, Any]) -> List[Dict[str, Any]]:
             "offer-unbound", "fix",
             "'productPageOffer' has no productPageCode, so the section is invisible to visitors.",
             "Remove this component — only an admin can pick the product page, so it cannot be "
+            "generated. Use courseCatalog if the page needs a live listing.",
+            cid,
+        ))
+
+    # 2b. Same for a folder browser with no library: the folders are the admin's.
+    if ctype == "folderBrowser" and not str(props.get("libraryId") or "").strip():
+        issues.append(_issue(
+            "folders-unbound", "fix",
+            "'folderBrowser' has no libraryId, so the section is invisible to visitors.",
+            "Remove this component — only an admin can pick the folder library, so it cannot be "
             "generated. Use courseCatalog if the page needs a live listing.",
             cid,
         ))
@@ -333,7 +343,7 @@ def audit_reference_fidelity(
         "features": {"featureGrid", "detailBlocks", "tabsAccordion"},
         "stats": {"statsHighlights", "trustChip"},
         "steps": {"stepsProcess"},
-        "courses": {"courseCatalog", "featureGrid", "detailBlocks", "productPageOffer", "bookCatalogue"},
+        "courses": {"courseCatalog", "featureGrid", "detailBlocks", "productPageOffer", "folderBrowser", "bookCatalogue"},
         "testimonials": {"testimonialSection"},
         "faq": {"tabsAccordion", "faqSection"},
         "cta": {"ctaBanner", "leadForm", "contactForm", "newsletterSignup"},

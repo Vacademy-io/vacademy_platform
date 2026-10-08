@@ -62,6 +62,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
+import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -1978,6 +1979,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <HtmlPageEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productPageOffer':
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'folderBrowser':
+            return <FolderBrowserEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'leadForm':
             return <LeadFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productCourseGrid':

@@ -34,6 +34,7 @@ COMPONENT_LABELS: Dict[str, str] = {
     "courseCatalog": "Course Catalog",
     "bookCatalogue": "Book Catalogue",
     "productPageOffer": "Product Page Offer",
+    "folderBrowser": "Folder Browser",
     "productCourseGrid": "Course Grid (full catalogue)",
     "mediaShowcase": "Media Showcase",
     "courseShowcase": "Course showcase",
@@ -74,7 +75,7 @@ COMPONENT_LABELS: Dict[str, str] = {
 
 #: Blocks whose content comes from live institute data rather than authored props.
 LIVE_DATA_TYPES = frozenset({
-    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer",
+    "courseCatalog", "productCourseGrid", "courseShowcase", "productPageOffer", "folderBrowser",
     "courseDetails", "bookCatalogue", "bookDetails", "announcementFeed", "leadForm",
 })
 
@@ -264,6 +265,13 @@ def data_binding(comp: Dict[str, Any], campaign_names: Optional[Dict[str, str]] 
             return "product page: NONE selected (section hidden from visitors)"
         cart = ", multi-course basket ON" if p.get("enableCart") else ""
         return f'courses from product page "{name or code}" (code {code}, live){cart}'
+    if t == "folderBrowser":
+        lib = str(p.get("libraryId") or "").strip()
+        name = str(p.get("libraryName") or "").strip()
+        if not lib:
+            return "folder library: NONE selected (section hidden from visitors)"
+        start = " from a chosen folder" if str(p.get("rootFolderId") or "").strip() else ""
+        return f'folders from library "{name or lib}"{start} (live; product pages inside show their courses)'
     if t == "courseDetails":
         return "the selected course's details (live)"
     if t in ("bookCatalogue", "bookDetails"):
@@ -635,6 +643,13 @@ def run_publish_checks(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "severity": "error",
                     "title": "A course section has no product page selected",
                     "fix": "Pick a product page in its properties, or remove the section. It is hidden from visitors as-is.",
+                    **cctx,
+                })
+            if c.get("type") == "folderBrowser" and not str(p.get("libraryId") or "").strip():
+                issues.append({
+                    "severity": "error",
+                    "title": "A Folder Browser section has no folder library selected",
+                    "fix": "Pick a library in its properties (or create one with the Folders button), or remove the section. It is hidden from visitors as-is.",
                     **cctx,
                 })
 

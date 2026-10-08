@@ -260,5 +260,9 @@
         "readMoreLabel": "Read more",
         "backLabel": "All posts",
         "emptyMessage": "No posts yet — check back soon."
+    },
+    "folderBrowser": {
+        "title": "Browse our courses",
+        "subtitle": "Pick your class and subject to see the courses."
     }
 }

@@ -137,6 +137,12 @@ interface ProductPageOfferProps {
   scrollable?: boolean;
   scrollMaxHeight?: number;
   backgroundColor?: string;
+  /**
+   * Rendered inside another section (a folder of the Folder Browser) rather
+   * than as a page section of its own: no section padding or background, so it
+   * flows in its host's band instead of opening a second one.
+   */
+  embedded?: boolean;
   instituteId?: string;
   /** Catalogue slug — the details page lives at /{tagName}/{courseId}. */
   tagName?: string;
@@ -341,6 +347,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   scrollable = false,
   scrollMaxHeight = 640,
   backgroundColor,
+  embedded = false,
   instituteId,
   tagName,
   isPreviewMode = false,
@@ -809,11 +816,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       </div>
     ) : null;
 
+  const sectionClass = embedded ? undefined : "catalogue-section bg-catalogue-bg";
+  const sectionStyle = backgroundColor && !embedded ? { backgroundColor } : undefined;
+
   const section = (children: React.ReactNode) => (
-    <section
-      className="catalogue-section bg-catalogue-bg"
-      style={backgroundColor ? { backgroundColor } : undefined}
-    >
+    <section className={sectionClass} style={sectionStyle}>
       <div className="catalogue-shell">
         {header}
         {children}
@@ -1310,11 +1317,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // must be a DIRECT child of the full-width section to bleed to the viewport
   // edge — everything else stays inside the shell column.
   return (
-    <section
-      ref={setSectionNode}
-      className="catalogue-section bg-catalogue-bg"
-      style={backgroundColor ? { backgroundColor } : undefined}
-    >
+    <section ref={setSectionNode} className={sectionClass} style={sectionStyle}>
       <div className="catalogue-shell">
         {header}
         {finderChips}

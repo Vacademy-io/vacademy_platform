@@ -990,6 +990,32 @@
       "dataBound": "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the header props (align: left|center — left with headerScale 'md' and showViewAll true is the app-style rail look; headerScale: md|lg; viewAllLabel), the browse props (layout: grid|carousel — carousel is one swipeable edge-to-edge row, pair it with align 'left'; pageSize — courses per page, 9 is a good default, 0 disables paging; showSearch; scrollable + scrollMaxHeight to cap a grid's height) and the display toggles — productPageCode must be chosen by the admin from their existing product pages, so leave it as an empty string and NEVER invent a code or course entries. Use it when the brief mentions selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid."
     },
     {
+      "type": "folderBrowser",
+      "templateKey": "folderBrowser",
+      "exampleProps": {
+        "libraryId": "",
+        "libraryName": "",
+        "rootFolderId": "",
+        "title": "Browse our courses",
+        "subtitle": "Pick your class and subject to see the courses.",
+        "align": "left",
+        "layout": "cards",
+        "imageShape": "landscape",
+        "columns": 3,
+        "showDescription": true,
+        "showCounts": true,
+        "showBreadcrumbs": true,
+        "showSearch": true,
+        "hideEmptyFolders": true,
+        "enableCart": true,
+        "showPrice": true,
+        "showViewCourse": true,
+        "courseColumns": 3,
+        "coursePageSize": 9
+      },
+      "dataBound": "Renders a LIVE folder library (Class → Subject → …) that visitors open one level at a time; a product page inside the open folder shows its courses with add-to-cart. The folders live in a shared library the admin builds in Manage Pages → Folders and binds by hand, so NEVER ADD this section to a page (a generated one has no library and renders as nothing). When a page already has one, keep its libraryId/rootFolderId exactly as they are; you may change only title/subtitle/align and the look (layout: cards|tiles|list, imageShape: landscape|square|portrait|none, columns 2-5, show* toggles). For a generated course listing use courseCatalog or productPageOffer."
+    },
+    {
       "type": "htmlBlock",
       "templateKey": "htmlBlock",
       "exampleProps": {

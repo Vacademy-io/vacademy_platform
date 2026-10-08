@@ -183,6 +183,14 @@ const DATA_BOUND = {
         "productPageCode must be chosen by the admin from their existing product pages, so leave it as " +
         "an empty string and NEVER invent a code or course entries. Use it when the brief mentions " +
         "selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid.",
+    folderBrowser:
+        "Renders a LIVE folder library (Class → Subject → …) that visitors open one level at a time; a " +
+        "product page inside the open folder shows its courses with add-to-cart. The folders live in a " +
+        "shared library the admin builds in Manage Pages → Folders and binds by hand, so NEVER ADD this " +
+        "section to a page (a generated one has no library and renders as nothing). When a page already " +
+        "has one, keep its libraryId/rootFolderId exactly as they are; you may change only title/subtitle/" +
+        "align and the look (layout: cards|tiles|list, imageShape: landscape|square|portrait|none, columns " +
+        "2-5, show* toggles). For a generated course listing use courseCatalog or productPageOffer.",
     courseCatalog: 'Renders the institute\'s LIVE course grid. Configure filters/title only — never invent course entries.',
     bookCatalogue: 'Renders the LIVE book store. Configure presentation only.',
     cartComponent: 'Live cart. Placement only.',

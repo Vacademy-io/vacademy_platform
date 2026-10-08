@@ -22,13 +22,15 @@ import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
 import { BlogManagerDialog } from './blog/BlogManagerDialog';
+import { FolderLibraryDialog } from './folders/FolderLibraryDialog';
+import { useFolderLibraryStore } from '../-stores/folder-library-store';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { runPublishChecks, type PublishIssue } from '../-utils/publish-checks';
 import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine, Newspaper } from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine, Newspaper, Folders } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -66,6 +68,7 @@ export const CatalogueEditorPage = () => {
     } = useEditorStore();
     const { toast } = useToast();
     const openBlog = useBlogManagerStore((s) => s.open);
+    const openFolders = useFolderLibraryStore((s) => s.open);
     const { canWrite } = useCataloguePermissions();
 
     // Drag-from-library: pointer sensor with a small activation distance to allow clicks
@@ -399,6 +402,14 @@ export const CatalogueEditorPage = () => {
                     <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => openFolders()}
+                        title="Folders — organise product pages into folders for the Folder Browser section"
+                    >
+                        <Folders className="size-4" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setShowHistory(true)}
                         title="Version history"
                         disabled={!catalogueId}
@@ -454,6 +465,7 @@ export const CatalogueEditorPage = () => {
 
             {/* Blog posts, managed without leaving the builder */}
             <BlogManagerDialog />
+            <FolderLibraryDialog />
 
             {/* Version history */}
             <RevisionHistoryDialog

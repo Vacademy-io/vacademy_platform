@@ -19,6 +19,7 @@ import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/u
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { FolderBrowserPreview } from './folders/FolderBrowserPreview';
 
 interface P { props: any }
 
@@ -1858,6 +1859,8 @@ const ComponentPreviewSwitch: React.FC<{ component: { type: string; props: any }
         }
         case 'productPageOffer':
             return <ProductPageOfferPreview props={props} />;
+        case 'folderBrowser':
+            return <FolderBrowserPreview props={props} />;
         case 'detailBlocks':
             return <DetailBlocksPreview props={props} />;
         case 'leadForm':

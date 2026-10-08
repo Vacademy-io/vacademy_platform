@@ -413,6 +413,42 @@ public class InvoiceService {
      * Returns the new file id, or null if any step fails. Caller is responsible for
      * persisting the new id on the Invoice row.
      */
+    /**
+     * Rewrites tax-inclusive line prices to their taxable value so the item column adds up to the
+     * subtotal, leaving the tax to be stated once in the totals block.
+     *
+     * <p>Scales proportionally rather than dividing each line by (1 + rate) independently: with
+     * several lines, per-line division rounds each one and the roundings need not sum back to the
+     * subtotal the totals block prints. The last line absorbs the remainder, so item total ==
+     * subtotal exactly, to the paisa.
+     *
+     * <p>Leaves everything alone when the gross is zero or negative (nothing meaningful to split)
+     * and when a line carries no amount.
+     */
+    private void restateLineItemsNetOfTax(List<InvoiceLineItemData> items, BigDecimal subtotal) {
+        if (items == null || items.isEmpty() || subtotal == null) return;
+        BigDecimal gross = BigDecimal.ZERO;
+        for (InvoiceLineItemData item : items) {
+            if (item.getAmount() != null) gross = gross.add(item.getAmount());
+        }
+        if (gross.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < items.size(); i++) {
+            InvoiceLineItemData item = items.get(i);
+            if (item.getAmount() == null) continue;
+            BigDecimal net = (i == items.size() - 1)
+                    ? subtotal.subtract(allocated)
+                    : item.getAmount().multiply(subtotal).divide(gross, 2, RoundingMode.HALF_UP);
+            allocated = allocated.add(net);
+            item.setAmount(net);
+            Integer qty = item.getQuantity();
+            item.setUnitPrice(qty != null && qty > 0
+                    ? net.divide(BigDecimal.valueOf(qty), 2, RoundingMode.HALF_UP)
+                    : net);
+        }
+    }
+
     private String regenerateInvoicePdf(Invoice invoice) {
         try {
             List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
@@ -952,8 +988,21 @@ public class InvoiceService {
             taxLineDescription = taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%";
         }
 
-        // Add tax as line item if applicable
-        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+        // How tax appears depends on whether the price the learner paid already contains it.
+        //
+        // Tax-INCLUSIVE (taxIncluded = true): the line prices ARE gross. Adding a separate tax row
+        // then shows the same money twice on the face of the document -- an item column reading
+        // 4,800.00 + 228.57 = 5,028.57 against a total of 4,800.00. Restate each line at its
+        // taxable value instead, so the column sums to the subtotal and the tax is stated once, in
+        // the totals block: 4,571.43 + 228.57 GST = 4,800.00, which is the usual GST layout.
+        //
+        // Tax-EXCLUSIVE (the default, and every institute that has never set taxIncluded): tax
+        // genuinely sits on top of the line prices, so it keeps its own row exactly as before.
+        boolean pricesIncludeTax = Boolean.TRUE.equals(taxIncluded)
+                && taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0;
+        if (pricesIncludeTax) {
+            restateLineItemsNetOfTax(allLineItems, subtotal);
+        } else if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             InvoiceLineItemData taxItem = InvoiceLineItemData.builder()
                     .itemType("TAX")
                     .description(taxLineDescription)

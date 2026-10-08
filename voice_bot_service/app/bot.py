@@ -1678,8 +1678,11 @@ class DuckGate(FrameProcessor):
         if isinstance(frame, InterruptionFrame):
             # Stamp WHEN the reply died, so a backchannel whose words land after
             # the cut can still be answered with "carry on" instead of the model
-            # replying to a bare "haan" from a standing start.
-            self._on_interrupt()
+            # replying to a bare "haan" from a standing start. Not for a
+            # superseded reply: it never made a sound, there is nothing to
+            # carry on from, and the newer reply is already on its way.
+            if not isinstance(frame, SupersedeInterruptionFrame):
+                self._on_interrupt()
             # The reply is formally dead — the held tail must never play.
             if self._held or self._ducked:
                 logger.info("duck: interruption — dropping %d held frame(s)",
@@ -2215,6 +2218,11 @@ class NoRepeatGate(FrameProcessor):
         self._runs_passed += 1
         self._last_run_t = time.time()
 
+    def runs_noted(self) -> int:
+        """Runs counted so far — RunGuard stamps it on a SupersedeInterruptionFrame
+        so the ledger flushes exactly the superseded runs, not the newer one."""
+        return self._runs_passed
+
     def _newer_run_queued(self) -> bool:
         """A run passed that has not started its response yet — this reply is
         about to be followed by the answer to something newer. Bounded in time:
@@ -2610,9 +2618,20 @@ class NoRepeatGate(FrameProcessor):
             return
 
         if isinstance(frame, InterruptionFrame):
-            # An interruption flushes the LLM's queued runs: nothing is queued now.
-            self._responses_started = max(self._responses_started, self._runs_passed)
-            self._responses_ended = self._responses_started
+            supersede_cut = isinstance(frame, SupersedeInterruptionFrame)
+            flushed = getattr(frame, "runs_flushed", None) if supersede_cut else None
+            if flushed is not None:
+                # RunGuard's supersede: it flushes the runs counted when it was
+                # sent. The newer run it was sent for was counted right after
+                # (note_run is synchronous, this frame is not) and is still
+                # on its way — counting it as flushed read "nothing pending"
+                # for the newer run's whole time-to-first-token.
+                self._responses_started = max(self._responses_started, flushed)
+                self._responses_ended = max(self._responses_ended, flushed)
+            else:
+                # An interruption flushes the LLM's queued runs: nothing is queued now.
+                self._responses_started = max(self._responses_started, self._runs_passed)
+                self._responses_ended = self._responses_started
             # Whatever the previous interruption left unsaid is history: only
             # THIS cut's words may be resumed (else a stale tail could surface
             # minutes later, mid-topic).
@@ -2678,6 +2697,13 @@ class NoRepeatGate(FrameProcessor):
                     self._unplayed_tail = " ".join(unplayed).strip()
                 except Exception:
                     logger.exception("no-repeat: unplayed-revert failed — keeping all")
+            if supersede_cut:
+                # Superseded, not cut: the newer run answers the whole turn, so
+                # these words are never to be resumed on their own (a "हाँ"
+                # inside its time-to-first-token would have spoken a stale
+                # answer verbatim).
+                self._unplayed_tail = ""
+                self._unplayed_entries = []
             self._pending = []
             self._buf, self._held_tail, self._cf_held = "", "", ""
             self._echo_held = ""
@@ -3086,6 +3112,22 @@ class NoRepeatGate(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+@dataclass
+class SupersedeInterruptionFrame(InterruptionFrame):
+    """RunGuard's own interruption, pushed DOWNSTREAM only, right before a newer
+    caller run: the earlier run's reply has not made a sound yet, so it is
+    cancelled — in the LLM and in its queue — instead of being played ahead of
+    the answer to the whole turn (config.run_supersede).
+
+    An InterruptionFrame to pipecat (the LLM, the TTS, the transport drop what
+    they hold), but nothing the CALLER heard was cut: DuckGate does not stamp a
+    cut (no "carry on" reading of their next "हाँ"), NoRepeatGate keeps no
+    unplayed tail to resume (the newer reply replaces it), and the sentinel does
+    not suspect a lost reply. `runs_flushed` is the run ledger's count when the
+    earlier run was superseded — every run up to it is gone, a newer one is not."""
+    runs_flushed: Optional[int] = None
+
+
 class RunGuard(FrameProcessor):
     """Between aggregators.user() and the LLM: a generation must ANSWER something.
 
@@ -3111,8 +3153,25 @@ class RunGuard(FrameProcessor):
                  short_answer_grace_secs: float = 0.0, short_answer_max_words: int = 3,
                  quiet_for=None, on_run=None, opening_pending=None,
                  noise_cap_secs: float = 3.0, caller_forming=None,
-                 forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None):
+                 forming_cap_secs: float = 5.5, bot_run_drop_reason=None, voice_live=None,
+                 supersede=None, reply_unheard=None, runs_noted=None):
         super().__init__()
+        # ONE REPLY PER CALLER TURN (config.run_supersede). A parent who speaks
+        # in pieces — "आप।" / "आप teachers से कहें मुझसे भी direct बात करें।" /
+        # "बात करें।", finals 0.3-1 s apart — reaches us as several runs. A run
+        # that has gone through is in the LLM, and pipecat's LLM services
+        # QUEUE a second context behind the first rather than replace it: on
+        # call 84e52d17 run 1 (10 caller words) and run 2 (12) went through
+        # 0.55 s apart, nothing interrupted either, and both replies played
+        # back to back. So a caller run that arrives while the reply to the
+        # previous run has not made a sound (`reply_unheard(pushed_t)`) cancels
+        # that run first — the newer context holds all of its words too.
+        # Once the earlier reply is audible this does nothing: the turn-gate's
+        # barge-in owns that case, as before.
+        self._supersede = supersede or (lambda: False)
+        self._reply_unheard = reply_unheard or (lambda since: False)
+        self._runs_noted = runs_noted or (lambda: None)
+        self._pushed_t = 0.0           # when the last run went to the LLM (0 = none, or flushed)
         # The bot's OWN runs (single-flight step 5): cue text → on_drop. A run
         # whose last user message is a registered cue is the bot's; any caller
         # words after the cue make it the caller's turn instead.
@@ -3274,14 +3333,68 @@ class RunGuard(FrameProcessor):
             self._diag.bump("forming_hold_cap_releases")
         logger.info("run-guard: run held for a forming turn released after %.2fs%s",
                     time.time() - t0, " (cap)" if capped else "")
+        await self._let_through(frame, direction)
+
+    async def _let_through(self, frame: Frame, direction: FrameDirection):
+        """Every run that reaches the LLM goes through here (pass or release)."""
+        self._pushed_t = time.time()
         self._note_run()
         await self.push_frame(frame, direction)
+
+    async def _supersede_unheard(self) -> bool:
+        """A newer caller run has arrived. If the run before it went to the LLM
+        and its reply has not made a sound yet, cancel it: the newer context
+        holds every word it answered, plus the rest. Pushed DOWNSTREAM only —
+        upstream, the user aggregator would drop the caller's queued finals."""
+        since = self._pushed_t
+        if not since or not self._supersede():
+            return False
+        try:
+            unheard = self._reply_unheard(since)
+        except Exception:
+            logger.exception("run-guard: reply_unheard check failed — not superseding")
+            return False
+        if not unheard:
+            return False
+        try:
+            flushed = self._runs_noted()
+        except Exception:
+            flushed = None
+        self._pushed_t = 0.0
+        if self._diag is not None:
+            self._diag.bump("runs_superseded")
+        logger.info("run-guard: the caller went on before the reply to their last piece "
+                    "made a sound (%.2fs ago) — cancelling it; this run answers the whole "
+                    "turn", time.time() - since)
+        await self.push_frame(SupersedeInterruptionFrame(runs_flushed=flushed),
+                              FrameDirection.DOWNSTREAM)
+        return True
+
+    async def _wait_out_forming(self) -> None:
+        """Before a held short answer runs: if the caller's next words are
+        already in the user aggregator, the turn is not over. Their own run
+        arrives when the turn closes and supersedes this one (_drop_held); the
+        cap only matters if it never does. Calls 84e52d17, b51093dc, 0ae77e88,
+        e11cc15b replayed: the hold released on a context that had been still
+        for 0.5 s while the rest of the turn sat in the aggregator (Smart Turn
+        INCOMPLETE keeps it up to 1.5 s), and the turn's own run followed
+        ~0.55 s later — two replies, the first to a stale half."""
+        if not self._supersede() or not self._caller_forming():
+            return
+        if self._diag is not None:
+            self._diag.bump("short_answer_forming_waits")
+        logger.info("run-guard: the rest of their turn is still forming — the short "
+                    "answer waits for it")
+        t0 = time.time()
+        while self._caller_forming() and time.time() - t0 < self._forming_cap:
+            await asyncio.sleep(0.1)
 
     async def _release(self, frame: Frame, direction: FrameDirection):
         # Silence already elapsed counts: a final that landed 0.4 s after the
         # voice stopped waits 0.2 s, not 0.6.
         t0 = time.time()
         q0 = self._quiet_for()
+        noisy = False
         await asyncio.sleep(max(0.0, self._grace - q0))
         if self._quiet_for() < 0.4:
             # They went on. Wait for the rest, then run ONCE on everything the
@@ -3304,6 +3417,7 @@ class RunGuard(FrameProcessor):
                 # Their "voice" never stopped: a noisy line, not a sentence.
                 # Call 59888de8: "नहीं यही सब" waited for a quiet that never
                 # came, and she hung up 27 s later.
+                noisy = True
                 logger.info("run-guard: voice never went quiet in %.1fs after a short answer "
                             "— treating it as line noise and running", self._noise_cap)
                 if self._diag is not None:
@@ -3322,11 +3436,15 @@ class RunGuard(FrameProcessor):
                     n, stable = m, 0.0
                 else:
                     stable += 0.1
+        # The context is still, but the rest of the turn may be in the user
+        # aggregator, which the context cannot show. Not on a noisy line: a
+        # turn whose voice never stops does not close either.
+        if not noisy:
+            await self._wait_out_forming()
         self._held = None
         logger.info("run-guard: short answer's run released after %.2fs (quiet %.2fs at hold)",
                     time.time() - t0, q0 if q0 != float("inf") else -1.0)
-        self._note_run()
-        await self.push_frame(frame, direction)
+        await self._let_through(frame, direction)
 
     # A turn Smart Turn closed in the middle of a clause: no sentence-final
     # mark and the last word is one that never ends a sentence ("अ, Rishika के
@@ -3421,7 +3539,8 @@ class RunGuard(FrameProcessor):
                     logger.info("run-guard: blocking generation — context unchanged "
                                 "since the previous run")
                     return
-                cue = self._bot_cue(msgs) if self._one_door() else None
+                own_cue = self._bot_cue(msgs)
+                cue = own_cue if self._one_door() else None
                 if cue is not None:
                     # The BOT's own run. One door: never beside a reply that is
                     # already on its way, never once the call is ending, and
@@ -3451,6 +3570,14 @@ class RunGuard(FrameProcessor):
                 # 2026-10-01, the single-flight map).
                 self._drop_held("a newer turn arrived")
                 self._last_allowed_fp = fp
+                words = self._caller_words(msgs)
+                if own_cue is None and words > 0:
+                    # …and a run that already went to the LLM, if its reply
+                    # has not made a sound: the caller's next piece arrived
+                    # first (call 84e52d17: runs of 10 and 12 caller words
+                    # 0.55 s apart, both replies played). Before this run is
+                    # held or passed, so the cancel lands first.
+                    await self._supersede_unheard()
                 if self._caller_forming():
                     # Their turn is still forming. Its own run arrives when it
                     # closes and supersedes this one (the _drop_held above), so
@@ -3463,7 +3590,6 @@ class RunGuard(FrameProcessor):
                                 "holding this run for it")
                     self._held = self.create_task(self._release_when_formed(frame, direction))
                     return
-                words = self._caller_words(msgs)
                 unfinished = self._grace > 0 and len(msgs) > 2 and self._ends_mid_clause(msgs)
                 if self._grace > 0 and len(msgs) > 2 and (0 < words <= self._max_words or unfinished):
                     logger.info("run-guard: holding the run for a %d-word %s (quiet %.2fs)",
@@ -3472,7 +3598,8 @@ class RunGuard(FrameProcessor):
                     self._held = self.create_task(self._release(frame, direction))
                     return
                 logger.info("run-guard: run passed (%d caller words)", words)
-                self._note_run()
+                await self._let_through(frame, direction)
+                return
         await self.push_frame(frame, direction)
 
 
@@ -3636,10 +3763,13 @@ class SentinelGate(FrameProcessor):
             except Exception:
                 pass
 
-    def _on_interrupted(self) -> None:
+    def _on_interrupted(self, superseded: bool = False) -> None:
         if self._on_interrupted_cb is not None:
             try:
-                self._on_interrupted_cb()
+                if superseded:
+                    self._on_interrupted_cb(superseded=True)
+                else:
+                    self._on_interrupted_cb()
             except Exception:
                 logger.exception("sentinel: on_interrupted callback failed")
 
@@ -3661,7 +3791,10 @@ class SentinelGate(FrameProcessor):
             # BEFORE playout — no BotStarted, no BotStopped — leaves it armed and
             # the watchdog "recovers" by re-speaking a reply the caller
             # deliberately interrupted. 6-13% of generations die pre-playout.
-            self._on_interrupted()
+            if isinstance(frame, SupersedeInterruptionFrame):
+                self._on_interrupted(superseded=True)   # replaced on purpose, not lost
+            else:
+                self._on_interrupted()
             await self.push_frame(frame, direction)
             return
 
@@ -5767,6 +5900,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         return (flags["bot_stopped_t"] < st
                 and (time.time() - st) < settings.reply_inflight_grace_secs)
 
+    def _reply_unheard(since: float) -> bool:
+        """The reply to the run RunGuard let through at `since` has not made a
+        sound and is still on its way (composing, rendering, or held off the
+        line by the floor) — RunGuard may supersede it with the caller's next
+        piece. Any bot audio since `since` (that reply's, a filler's) or audio
+        playing now means the caller is hearing us: that is a barge-in, the
+        turn-gate's business, as before. A reply already cut needs nothing."""
+        if flags["bot_speaking"] or flags["bot_started_t"] >= since:
+            return False
+        if flags["reply_cancelled_t"] >= since:
+            return False
+        return _reply_in_flight()
+
     def _caller_forming() -> bool:
         """The caller's words are in the user aggregator, not yet pushed as a
         turn (pipecat clears _aggregation BEFORE it pushes, so this is exact)."""
@@ -5957,7 +6103,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                          forming_cap_secs=settings.forming_hold_cap_secs,
                          bot_run_drop_reason=lambda for_reply=0.0: _bot_run_drop_reason(for_reply),
                          voice_live=lambda: (flags["voice_tick_t"] > 0
-                                             and time.time() - flags["voice_tick_t"] < 0.4))
+                                             and time.time() - flags["voice_tick_t"] < 0.4),
+                         supersede=lambda: settings.run_supersede,
+                         reply_unheard=_reply_unheard,
+                         runs_noted=lambda: no_repeat.runs_noted())
     run_guard._one_door = lambda: settings.cue_one_door
 
     # One EQ per call: it carries IIR state across frames, so it must not be
@@ -6074,10 +6223,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     sentinel.set_arm_stop(_begin_stop)
 
-    def _note_killed_before_playout():
+    def _note_killed_before_playout(superseded: bool = False):
         # Suspicion only — unplayed_confirmed() turns it into a fact if silence
-        # outlasts the confirm window (95% of these replies play anyway).
-        if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"]:
+        # outlasts the confirm window (95% of these replies play anyway). A
+        # SUPERSEDED reply is not lost: it was replaced, on purpose.
+        if flags["tts_gen_t"] != 0.0 and not flags["bot_speaking"] and not superseded:
             if flags["unplayed_pending_t"] == 0.0:
                 flags["unplayed_pending_t"] = time.time()
         # A cancelled reply is no longer "awaiting playout": without this every

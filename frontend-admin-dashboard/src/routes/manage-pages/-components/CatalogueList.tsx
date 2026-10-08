@@ -41,6 +41,9 @@ import { UtmBuilderDialog } from '@/components/common/utm/utm-builder-dialog';
 import { useUtmBuilderEnabled } from '@/hooks/use-utm-builder-enabled';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { BlogManagerDialog } from './blog/BlogManagerDialog';
+import { FolderLibraryDialog } from './folders/FolderLibraryDialog';
+import { useFolderLibraryStore } from '../-stores/folder-library-store';
+import { Folders } from '@phosphor-icons/react';
 
 // Deterministic gradient from tag name
 const GRADIENTS = [
@@ -76,6 +79,7 @@ export const CatalogueList = () => {
     const instituteId = getCurrentInstituteId();
     const navigate = useNavigate();
     const openBlog = useBlogManagerStore((s) => s.open);
+    const openFolders = useFolderLibraryStore((s) => s.open);
     // `?blog=list` / `?blog=<postId>` — deep link into the blog manager (MCP
     // hands these out). Consumed once, then stripped so closing the dialog
     // doesn't reopen it on the next render.
@@ -166,6 +170,15 @@ export const CatalogueList = () => {
                     >
                         <Newspaper className="size-4" />
                         Blog
+                    </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => openFolders()}
+                        className="gap-1.5"
+                        title="Organise product pages into folders students can browse"
+                    >
+                        <Folders className="size-4" />
+                        Folders
                     </Button>
                     <Button
                         onClick={() => setIsCreateDialogOpen(true)}
@@ -393,6 +406,7 @@ export const CatalogueList = () => {
             />
 
             <BlogManagerDialog />
+            <FolderLibraryDialog />
             <CreateCatalogueDialog
                 open={isCreateDialogOpen}
                 onOpenChange={setIsCreateDialogOpen}

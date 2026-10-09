@@ -9,6 +9,18 @@
         "_owner": "Feature 'sidebar' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogSections": {
+        "freeTitle": "नए हैं? निःशुल्क शुरू करें",
+        "seeAllFree": "सभी {{count}} निःशुल्क देखें",
+        "startFree": "निःशुल्क शुरू करें",
+        "freeBadge": "निःशुल्क",
+        "comingSoonTitle": "जल्द आ रहा है",
+        "carouselLabel": "विशेष कार्यक्रम",
+        "carouselRole": "कैरोसेल",
+        "slideRole": "स्लाइड",
+        "previousSlide": "पिछली स्लाइड",
+        "nextSlide": "अगली स्लाइड",
+        "goToSlide": "स्लाइड {{n}} पर जाएँ",
+        "slideOf": "{{n}} / {{total}}",
         "_owner": "Feature 'sections' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogCards": {

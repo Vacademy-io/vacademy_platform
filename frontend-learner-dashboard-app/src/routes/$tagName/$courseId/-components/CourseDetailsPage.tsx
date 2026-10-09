@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "../../-components/LeadCollectionModal";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -50,9 +51,39 @@ import { cn, sanitizeHtml } from "@/lib/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
   type CourseAuthor as CourseInstructor,
+  type RawCourseInstructor,
   mapCourseAuthors,
   visibleCourseAuthors,
 } from "../../-utils/course-authors";
+import {
+  CatalogueLocaleProvider,
+  useCatalogueLocale,
+  useSiteT,
+} from "../../-utils/catalogue-locale";
+import { withSearchParams } from "../../-utils/catalogue-url-state";
+import {
+  courseLanguagesOf,
+  languageOfLevel,
+  preferredCourseLanguage,
+} from "../../-utils/course-variants";
+import { isSiteCartEnabled, type SiteCartItem } from "../../-utils/site-cart";
+import { useSiteCartStore } from "../../-stores/site-cart-store";
+import {
+  primeOpenEnrollInvite,
+  primeProductPage,
+  type CourseInitLike,
+} from "../../-services/course-levels-service";
+import { useCourseVersions } from "../-hooks/use-course-versions";
+import {
+  SITE_CART_OPEN_EVENT,
+  buildCourseCartItem,
+  localizeCourseDisplay,
+  resolveVersionOffer,
+  versionSearchUpdates,
+  type SiteCartOpenDetail,
+} from "../-utils/course-version-selection";
+import { CourseLanguagePicker } from "./CourseLanguagePicker";
+import { CourseCartActions } from "./CourseCartActions";
 import {
   BookOpen,
   CaretDown,
@@ -267,10 +298,16 @@ export const CourseHighlightsAccordion: React.FC<{
   primaryInstructor,
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  // Live course text in the visitor's site language (identity on a
+  // single-language site). Display only: the props stay the base values.
+  const siteT = useSiteT();
+  const whyLearnText = siteT(whyLearn);
+  const aboutCourseText = siteT(aboutCourse);
+  const whoShouldLearnText = siteT(whoShouldLearn);
   const [open, setOpen] = useState(true);
-  const hasWhy = hasContent(whyLearn);
-  const hasAbout = hasContent(aboutCourse);
-  const hasWho = hasContent(whoShouldLearn);
+  const hasWhy = hasContent(whyLearnText);
+  const hasAbout = hasContent(aboutCourseText);
+  const hasWho = hasContent(whoShouldLearnText);
   // Student Display Settings > "Show Teachers" decides whether the WHOLE
   // roster is listed. Off (the default) still shows the first author -- the
   // overview always has -- and now with the profile the admin wrote for them
@@ -279,7 +316,12 @@ export const CourseHighlightsAccordion: React.FC<{
     instructors,
     showInstructors,
     primaryInstructor,
-  );
+  ).map((inst) => ({
+    ...inst,
+    name: siteT(inst.name),
+    subtitle: inst.subtitle ? siteT(inst.subtitle) : inst.subtitle,
+    description: inst.description ? siteT(inst.description) : inst.description,
+  }));
   const hasInstructors = visibleInstructors.length > 0;
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
@@ -327,7 +369,7 @@ export const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-info-500/5 to-transparent"
             >
               <HtmlWithViewMore
-                html={aboutCourse || ""}
+                html={aboutCourseText || ""}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
               <CourseHighlightDialog
@@ -337,7 +379,7 @@ export const CourseHighlightsAccordion: React.FC<{
               >
                 <div
                   className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(aboutCourse || "") }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(aboutCourseText || "") }}
                 />
               </CourseHighlightDialog>
             </HighlightSectionCard>
@@ -356,13 +398,13 @@ export const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-success-500/5 to-transparent"
             >
               <HtmlWithViewMore
-                html={whyLearn}
+                html={whyLearnText}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
               <CourseHighlightDialog title={t("courseDetails.accordion.whatYoullLearn")}>
                 <div
                   className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whyLearn) }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whyLearnText) }}
                 />
               </CourseHighlightDialog>
             </HighlightSectionCard>
@@ -381,13 +423,13 @@ export const CourseHighlightsAccordion: React.FC<{
               overlayClass="from-purple-500/5 to-transparent"
             >
               <HtmlWithViewMore
-                html={whoShouldLearn}
+                html={whoShouldLearnText}
                 className="text-sm text-catalogue-text-secondary leading-relaxed"
               />
               <CourseHighlightDialog title={t("courseDetails.accordion.whoShouldJoin")}>
                 <div
                   className="richtext-content text-sm leading-relaxed text-catalogue-text-secondary"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whoShouldLearn) }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(whoShouldLearnText) }}
                 />
               </CourseHighlightDialog>
             </HighlightSectionCard>
@@ -532,6 +574,9 @@ interface CourseData {
   /** Set while the admin has the course on Coming Soon: every enrol CTA becomes "Notify me". */
   comingSoon?: ComingSoonInfo | null;
   levelId?: string;
+  /** Set once a course version is selected (BookDetailsComponent reads sessionId). */
+  sessionId?: string;
+  sessionName?: string;
   courseId?: string;
   course_banner_media_id?: string;
   comma_separeted_tags?: string;
@@ -541,7 +586,12 @@ interface CourseData {
   available_slots?: number;
 }
 
-export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
+interface CourseDetailsPageContentProps extends CourseDetailsPageProps {
+  /** Loaded by the CourseDetailsPage shell (it also feeds the language provider). */
+  catalogueData: CourseCatalogueData | null;
+}
+
+const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   courseId,
   tagName,
   instituteId,
@@ -553,16 +603,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   price,
   available_slots,
   productPageCode,
+  catalogueData,
 }) => {
   const { t, i18n } = useTranslation("coursePlayerB");
   // Institute terminology must be seeded before the first paint — see
   // institute-naming-seed.ts.
   const namingReady = useInstituteNamingSettings(instituteId);
   const navigate = useNavigate();
+  const router = useRouter();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
   const isIOS = Capacitor.getPlatform() === "ios";
-  const [courseData, setCourseData] = useState<CourseData | null>(null);
+  // The course as course-init + the URL describe it. `courseData` (below) is
+  // this with the selected language version applied, when the site has them.
+  const [loadedCourseData, setCourseData] = useState<CourseData | null>(null);
+  const [courseInit, setCourseInit] = useState<CourseInitLike | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -586,8 +641,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     );
   };
   const [showLeadCollection, setShowLeadCollection] = useState(false);
-  const [catalogueData, setCatalogueData] =
-    useState<CourseCatalogueData | null>(null);
   // Teachers/Instructors section is hidden unless the institute opts in via
   // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
   // because this catalogue page is unauthenticated.
@@ -642,8 +695,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       : courseView.mode === "TILES"
         ? "tiles"
         : resolveLearnerStructureVariant(learnerCourseDetails);
+  // The version last picked with the Language picker. Picking writes
+  // ?packageSessionId; a version the admin mapped to its own page must not
+  // whisk the visitor off this page mid-choice.
+  const pickedVersionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!customCoursePageRoute) return;
+    if (packageSessionId && pickedVersionRef.current === packageSessionId) return;
     navigate({
       to: `${RouteMatcher.basePath(tagName)}/${customCoursePageRoute}`,
       search: { enrollInviteId, packageSessionId, bannerImage, level },
@@ -682,66 +740,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // "Notify me" form for a Coming Soon course.
   const [showNotifyForm, setShowNotifyForm] = useState(false);
 
-  // Fetch catalogue data for header and footer
-  useEffect(() => {
-    const fetchCatalogueData = async () => {
-      try {
-        const data = await CourseCatalogueService.getCourseCatalogueByTag(
-          instituteId,
-          tagName,
-        );
-        setCatalogueData(data);
-      } catch (error) {
-        console.error(
-          "[CourseDetailsPage] Failed to fetch catalogue data:",
-          error,
-        );
-        console.error("[CourseDetailsPage] Error details:", {
-          message: error instanceof Error ? error.message : "Unknown error",
-          stack: error instanceof Error ? error.stack : undefined,
-          response: (error as any)?.response?.data,
-        });
-        // Set empty catalogue data as fallback
-        setCatalogueData({
-          globalSettings: {
-            courseCatalogeType: {
-              enabled: false,
-              value: "",
-            },
-            mode: "light",
-            compactness: "medium",
-            audience: "all",
-            leadCollection: {
-              enabled: false,
-              mandatory: false,
-              inviteLink: null,
-              formStyle: {
-                type: "single",
-                showProgress: false,
-                progressType: "bar",
-                transition: "slide",
-              },
-              fields: [],
-            },
-            enrquiry: {
-              enabled: true,
-              requirePayment: false,
-            },
-            payment: {
-              enabled: true,
-              provider: "razorpay",
-              fields: [],
-            },
-          },
-          pages: [],
-        });
-      }
-    };
-
-    if (instituteId && tagName) {
-      fetchCatalogueData();
-    }
-  }, [instituteId, tagName]);
+  // Catalogue data (header, footer, details page, settings) is fetched by the
+  // CourseDetailsPage shell at the bottom of this file.
 
   // Apply font from JSON if fonts.enabled is true
   useEffect(() => {
@@ -829,6 +829,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               const productPage = await axios.get(
                 GET_PRODUCT_PAGE_BY_CODE(productPageCode, instituteId),
               );
+              // Reused by the language versions (no second request).
+              primeProductPage(instituteId, productPageCode, productPage.data);
               offeredByProductPage = (productPage.data?.mappings ?? []).some(
                 (m: { status?: string; package_id?: string }) =>
                   (m.status ?? "ACTIVE") === "ACTIVE" && m.package_id === courseId,
@@ -898,6 +900,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             );
 
             const enrollInviteData = enrollInviteResponse.data;
+            // Reused by the language versions (no second request).
+            primeOpenEnrollInvite(instituteId, enrollInviteId, enrollInviteData);
             fetchedInviteAvailability = enrollInviteData?.availability_status;
             fetchedInviteSettingJson = enrollInviteData?.setting_json;
 
@@ -1135,6 +1139,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           available_slots: available_slots,
         } as any;
 
+        setCourseInit(courseResponse as CourseInitLike);
         setCourseData(courseData);
 
         // Check if lead collection should be shown based on JSON configuration
@@ -1165,6 +1170,155 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       fetchCourseDetails();
     }
   }, [courseId, tagName, instituteId, productPageCode]);
+
+  /* ── Language versions + site cart (both opt-in per site) ─────────────
+   * globalSettings.courseLanguages: a course's levels are its language
+   *   versions ("Hindi", "English"); the overview cards get a Language picker.
+   * globalSettings.siteCart: the enrol CTA adds the version to the site cart.
+   * With neither, nothing below requests or renders anything new and
+   * `courseData` is exactly the course-init + URL data the page always used.
+   */
+  const siteLocale = useCatalogueLocale();
+  const siteT = siteLocale.t;
+  const courseLanguageSettings = catalogueData?.globalSettings?.courseLanguages;
+  const courseLanguagesEnabled = !!courseLanguageSettings?.enabled;
+  // A product page visit keeps that page's own mapping, price and checkout.
+  const siteCartActive =
+    isSiteCartEnabled(catalogueData?.globalSettings?.siteCart) && !productPageCode;
+  const configuredLanguages = useMemo(
+    () => courseLanguagesOf(courseLanguageSettings),
+    [courseLanguageSettings],
+  );
+  const versionLanguages = useMemo(
+    () => (courseLanguagesEnabled ? configuredLanguages : []),
+    [courseLanguagesEnabled, configuredLanguages],
+  );
+  const courseVersions = useCourseVersions({
+    enabled: courseLanguagesEnabled || siteCartActive,
+    instituteId,
+    courseId,
+    productPageCode,
+    courseInit,
+    urlPackageSessionId: packageSessionId,
+    urlEnrollInviteId: enrollInviteId,
+    languages: versionLanguages,
+    preferredLanguage: courseLanguagesEnabled
+      ? preferredCourseLanguage(siteLocale.locale, versionLanguages)
+      : null,
+  });
+  const selectedVersion = courseVersions.selected;
+  const selectedVersionInvite = courseVersions.invite;
+  const selectedVersionInviteId = courseVersions.selectedInviteId;
+
+  // Everything below reads `courseData`; with a version selected it carries
+  // that version's invite, price, availability, level, duration and authors.
+  const courseData = useMemo<CourseData | null>(() => {
+    if (!loadedCourseData || !selectedVersion) return loadedCourseData;
+    // Until its invite loads, the version the page opened on keeps the price
+    // the page already fetched for that same invite (no flicker through the
+    // search row's price); any other version shows its search row meanwhile.
+    const keepLoadedOffer =
+      !selectedVersionInvite &&
+      selectedVersion.source === "catalogue" &&
+      selectedVersion.packageSessionId === loadedCourseData.packageSessionId &&
+      (selectedVersionInviteId ?? undefined) === loadedCourseData.enrollInviteId;
+    const offer = keepLoadedOffer
+      ? null
+      : resolveVersionOffer(selectedVersion, selectedVersionInvite);
+    const versionAuthors = (selectedVersion.instructors ?? []) as RawCourseInstructor[];
+    return {
+      ...loadedCourseData,
+      packageSessionId: selectedVersion.packageSessionId,
+      enrollInviteId: selectedVersionInviteId ?? undefined,
+      level: selectedVersion.levelName || loadedCourseData.level,
+      levelId: selectedVersion.levelId ?? loadedCourseData.levelId,
+      sessionId: selectedVersion.sessionId ?? undefined,
+      sessionName: selectedVersion.sessionName ?? undefined,
+      ...(offer
+        ? {
+            price: offer.price,
+            elevatedPrice: offer.elevatedPrice,
+            currency: offer.currency ?? loadedCourseData.currency,
+            enrollInviteAvailability: offer.availability,
+            unavailableMessageHtml: extractUnavailableMessageHtml(offer.settingJson),
+          }
+        : {}),
+      available_slots: selectedVersion.availableSlots ?? loadedCourseData.available_slots,
+      duration: selectedVersion.durationMinutes
+        ? getBackendCourseDuration(selectedVersion.durationMinutes)
+        : loadedCourseData.duration,
+      ...(versionAuthors.length
+        ? {
+            instructor: versionAuthors[0]?.full_name || loadedCourseData.instructor,
+            instructors: mapCourseAuthors(
+              versionAuthors,
+              t("courseDetails.unknownTeacher", {
+                teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+              }),
+            ),
+          }
+        : {}),
+    };
+  }, [loadedCourseData, selectedVersion, selectedVersionInvite, selectedVersionInviteId, t]);
+
+  // A link with no price context (a bare /<tag>/<courseId>) has no real price
+  // until the versions arrive — show a placeholder rather than "Free".
+  const pricePending = courseVersions.status === "loading" && !enrollInviteId && !price;
+
+  // Display copy of the live course text in the visitor's site language, for
+  // the JSON details page (hero, HTML page tokens). The same object on a
+  // single-language site. Never submitted anywhere.
+  const displayCourseData = useMemo(
+    () =>
+      courseData && siteLocale.dict ? localizeCourseDisplay(courseData, siteT) : courseData,
+    [courseData, siteLocale.dict, siteT],
+  );
+
+  const hydrateSiteCart = useSiteCartStore((s) => s.hydrate);
+  const addToSiteCart = useSiteCartStore((s) => s.add);
+  const siteCartReady = useSiteCartStore(
+    (s) => s.hydrated && s.instituteId === instituteId,
+  );
+  // The version a cart line is for: the selected one, else (no versions) the
+  // one the link named — never the course-id fallback, which is no version.
+  const cartPackageSessionId = selectedVersion
+    ? selectedVersion.packageSessionId
+    : courseVersions.status === "loading"
+      ? null
+      : (packageSessionId ?? null);
+  const inSiteCart = useSiteCartStore(
+    (s) =>
+      !!cartPackageSessionId &&
+      s.items.some((i) => i.packageSessionId === cartPackageSessionId),
+  );
+  const otherVersionInCart = useSiteCartStore((s): SiteCartItem | null =>
+    cartPackageSessionId
+      ? (s.items.find(
+          (i) => i.courseId === courseId && i.packageSessionId !== cartPackageSessionId,
+        ) ?? null)
+      : null,
+  );
+  useEffect(() => {
+    if (siteCartActive && instituteId) void hydrateSiteCart(instituteId);
+  }, [siteCartActive, instituteId, hydrateSiteCart]);
+
+  const handleVersionSelect = (nextPackageSessionId: string) => {
+    const next = courseVersions.versions.find(
+      (v) => v.packageSessionId === nextPackageSessionId,
+    );
+    if (!next || !next.enrollInviteId) return;
+    courseVersions.select(nextPackageSessionId);
+    pickedVersionRef.current = nextPackageSessionId;
+    // Mirror the choice into the URL (replace: no history entry per click) so a
+    // reload or a shared link opens the same version. Works for both mounts —
+    // the $courseId route and the root-mounted segment read the same params.
+    const location = router.state.location;
+    router.history.replace(
+      `${location.pathname}${withSearchParams(location.searchStr, versionSearchUpdates(next))}${
+        location.hash ? `#${location.hash}` : ""
+      }`,
+    );
+  };
 
   // Apply institute theme
   useEffect(() => {
@@ -1294,11 +1448,100 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const unavailableMessageHtml = courseData.unavailableMessageHtml ?? "";
 
   const comingSoon = courseData.comingSoon ?? null;
-  const comingSoonCta = comingSoon ? comingSoon.buttonText || t("comingSoon.notifyMe") : null;
+  const comingSoonCta = comingSoon
+    ? comingSoon.buttonText
+      ? siteT(comingSoon.buttonText)
+      : t("comingSoon.notifyMe")
+    : null;
   const comingSoonLaunch = formatLaunchDate(comingSoon?.launchDate, i18n.language);
   const comingSoonHint = comingSoonLaunch
     ? t("comingSoon.launchingOnHint", { date: comingSoonLaunch })
     : t("comingSoon.notifyHint");
+
+  // Language picker: only when the site has language versions and this course
+  // is offered in at least two languages. It stands in for the Level row.
+  const showLanguagePicker = courseLanguagesEnabled && courseVersions.options.length >= 2;
+  const languagePicker = showLanguagePicker ? (
+    <CourseLanguagePicker
+      options={courseVersions.options}
+      selectedPackageSessionId={selectedVersion?.packageSessionId ?? null}
+      onSelect={handleVersionSelect}
+    />
+  ) : null;
+
+  // Site cart: "Add to cart" + "Buy now" replace the enrol button. A Coming
+  // Soon course still collects interest and a closed invite still explains
+  // itself, through the original button.
+  const siteCartMode = siteCartActive && !comingSoon && !isEnrollmentClosed;
+  const siteCartItem =
+    siteCartMode && cartPackageSessionId
+      ? buildCourseCartItem({
+          courseId,
+          // Base-language values: the cart translates at display time.
+          title: courseData.title,
+          packageSessionId: cartPackageSessionId,
+          levelName: selectedVersion ? selectedVersion.levelName : (level ?? null),
+          languages: configuredLanguages,
+          price: courseData.price,
+          elevatedPrice: courseData.elevatedPrice,
+          currency: courseData.currency,
+          // ?bannerImage, else preview / banner / thumbnail media id (catalogue order).
+          image: courseData.thumbnail,
+          enrollInviteId: courseData.enrollInviteId,
+        })
+      : null;
+  const showCartActions =
+    siteCartMode && (!!siteCartItem || courseVersions.status === "loading");
+  const cartActionsReady = siteCartReady && !!siteCartItem;
+  const otherVersionLabel = otherVersionInCart
+    ? (configuredLanguages.find((l) => l.code === otherVersionInCart.languageCode) ??
+        languageOfLevel(otherVersionInCart.levelName, configuredLanguages))?.label ??
+      otherVersionInCart.levelName ??
+      ""
+    : "";
+  const cartNote =
+    otherVersionInCart && !inSiteCart
+      ? otherVersionLabel
+        ? t("courseDetails.siteCart.replacesVersion", {
+            defaultValue: "Your cart has the {{version}} version. Adding this one replaces it.",
+            version: siteT(otherVersionLabel),
+          })
+        : t(
+            "courseDetails.siteCart.replacesOther",
+            "Adding this replaces the version already in your cart.",
+          )
+      : null;
+
+  const openSiteCart = (intent: SiteCartOpenDetail["intent"]) => {
+    const detail: SiteCartOpenDetail = {
+      intent,
+      packageSessionId: siteCartItem?.packageSessionId,
+      source: "course",
+    };
+    window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail }));
+  };
+  // The store may refuse an item (e.g. a full cart), so success is read back
+  // from it rather than assumed.
+  const addSiteCartItem = (item: SiteCartItem): boolean => {
+    addToSiteCart(item); // no-op when it is already in the cart
+    const added = useSiteCartStore.getState().has(item.packageSessionId);
+    if (!added) {
+      toast.error(t("courseDetails.siteCart.notAdded", "Could not add this to your cart."));
+    }
+    return added;
+  };
+  const handleAddToCart = () => {
+    if (!siteCartItem || !siteCartReady) return;
+    if (addSiteCartItem(siteCartItem)) {
+      toast.success(t("courseDetails.siteCart.added", "Added to your cart"));
+    }
+  };
+  // Checkout runs through the cart, which pre-checks every item against the
+  // store product page before handing off, so nothing is silently dropped.
+  const handleBuyNow = () => {
+    if (!siteCartItem || !siteCartReady) return;
+    openSiteCart(addSiteCartItem(siteCartItem) ? "checkout" : "view");
+  };
 
   /**
    * Every enroll CTA on this page (desktop sidebar, inline card, mobile bar)
@@ -1323,7 +1566,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       return;
     }
 
-    const psId = courseData.packageSessionId || packageSessionId;
+    // The version on screen (Language picker), else what the URL named.
+    const psId =
+      selectedVersion?.packageSessionId || courseData.packageSessionId || packageSessionId;
     if (productPageCode && psId) {
       navigate({
         to: "/product-pages/$productPageCode",
@@ -1334,6 +1579,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           defaultTab: "CART" as const,
         },
       });
+      return;
+    }
+
+    // Site cart: an HTML page's data-vacademy="enrol" buys like "Buy now".
+    if (siteCartMode && siteCartItem) {
+      handleBuyNow();
       return;
     }
 
@@ -1368,6 +1619,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       variant={structureVariant}
     />
   );
+
+  // Empty unless the site has versions or languages, so other sites keep the
+  // plain page-id key (no remounts).
+  const detailsTokenKey =
+    courseVersions.status !== "off" || siteLocale.enabled
+      ? `:${courseData.packageSessionId}:${siteLocale.locale}:${courseData.price}`
+      : "";
 
   return (
     <div
@@ -1443,16 +1701,25 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 (page) =>
                   page.id === "details" || page.route === "course-details",
               )
-              ?.map((page) => (
-                <JsonRenderer
-                  key={page.id}
-                  page={page}
-                  globalSettings={catalogueData.globalSettings}
-                  instituteId={instituteId}
-                  tagName={tagName}
-                  courseData={courseData}
-                />
-              ))}
+              ?.map((page) => {
+                // A bookDetails block adds the course to the book cart from
+                // this data, so it gets the base-language values; everything
+                // else shows the course in the visitor's site language.
+                const submitsCourse = page.components?.some((c) => c?.type === "bookDetails");
+                // An htmlPage fills {{course.*}} once per course id: remount it
+                // when the version or the site language changes.
+                const fillsTokens = page.components?.some((c) => c?.type === "htmlPage");
+                return (
+                  <JsonRenderer
+                    key={fillsTokens ? `${page.id}${detailsTokenKey}` : page.id}
+                    page={page}
+                    globalSettings={catalogueData.globalSettings}
+                    instituteId={instituteId}
+                    tagName={tagName}
+                    courseData={submitsCourse ? courseData : displayCourseData}
+                  />
+                );
+              })}
           </div>
         </>
       )}
@@ -1508,6 +1775,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Course Stats */}
                     <div className="space-y-2">
+                      {/* Language versions (sites with courseLanguages on) */}
+                      {languagePicker}
+
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
@@ -1516,13 +1786,24 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             <Tag size={13} className="text-primary-400" />
                             {t("courseDetails.price")}
                           </span>
-                          <PriceWithMrp
-                            actual={courseData.price}
-                            elevated={courseData.elevatedPrice}
-                            currency={courseData.currency}
-                            size="md"
-                            className="text-primary-500 font-semibold"
-                          />
+                          {pricePending ? (
+                            <span
+                              role="status"
+                              className="block h-6 w-20 animate-pulse rounded-catalogue-sm bg-catalogue-bg-muted"
+                            >
+                              <span className="sr-only">
+                                {t("courseDetails.priceLoading", "Loading price")}
+                              </span>
+                            </span>
+                          ) : (
+                            <PriceWithMrp
+                              actual={courseData.price}
+                              elevated={courseData.elevatedPrice}
+                              currency={courseData.currency}
+                              size="md"
+                              className="text-primary-500 font-semibold"
+                            />
+                          )}
                         </div>
                       )}
 
@@ -1555,15 +1836,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Level (hidden when the level is a sentinel like "Default") */}
-                      {displayLevelName(courseData.level) && (
+                      {/* Level (hidden when the level is a sentinel like "Default",
+                          and when the Language picker already names it) */}
+                      {!showLanguagePicker && displayLevelName(courseData.level) && (
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
-                            {displayLevelName(courseData.level)}
+                            {siteT(displayLevelName(courseData.level))}
                           </span>
                         </div>
                       )}
@@ -1585,28 +1867,41 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Enroll Button */}
                     <div className="pt-1 space-y-2">
-                      <button
-                        onClick={handleEnrollClick}
-                        className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                        style={{
-                          backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
-                        }}
-                      >
-                        {comingSoonCta ??
-                          (catalogueData?.globalSettings?.payment?.enabled !==
-                          false
-                            ? courseData.price === 0
-                              ? t("courseDetails.enrollForFree")
-                              : t("courseDetails.enrollNow")
-                            : t("courseDetails.getStarted"))}
-                      </button>
-                      <p className="text-xs text-catalogue-text-muted text-center">
-                        {comingSoon
-                          ? comingSoonHint
-                          : t("courseDetails.clickToRegister", {
-                              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
-                            })}
-                      </p>
+                      {showCartActions ? (
+                        <CourseCartActions
+                          inCart={inSiteCart}
+                          ready={cartActionsReady}
+                          onAdd={handleAddToCart}
+                          onBuyNow={handleBuyNow}
+                          onViewCart={() => openSiteCart("view")}
+                          note={cartNote}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleEnrollClick}
+                            className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                            style={{
+                              backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
+                            }}
+                          >
+                            {comingSoonCta ??
+                              (catalogueData?.globalSettings?.payment?.enabled !==
+                              false
+                                ? courseData.price === 0 && !pricePending
+                                  ? t("courseDetails.enrollForFree")
+                                  : t("courseDetails.enrollNow")
+                                : t("courseDetails.getStarted"))}
+                          </button>
+                          <p className="text-xs text-catalogue-text-muted text-center">
+                            {comingSoon
+                              ? comingSoonHint
+                              : t("courseDetails.clickToRegister", {
+                                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1639,6 +1934,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Course Stats */}
                     <div className="space-y-2">
+                      {/* Language versions (sites with courseLanguages on) */}
+                      {languagePicker}
+
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
@@ -1647,13 +1945,24 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             <Tag size={13} className="text-primary-400" />
                             {t("courseDetails.price")}
                           </span>
-                          <PriceWithMrp
-                            actual={courseData.price}
-                            elevated={courseData.elevatedPrice}
-                            currency={courseData.currency}
-                            size="md"
-                            className="text-primary-500 font-semibold"
-                          />
+                          {pricePending ? (
+                            <span
+                              role="status"
+                              className="block h-6 w-20 animate-pulse rounded-catalogue-sm bg-catalogue-bg-muted"
+                            >
+                              <span className="sr-only">
+                                {t("courseDetails.priceLoading", "Loading price")}
+                              </span>
+                            </span>
+                          ) : (
+                            <PriceWithMrp
+                              actual={courseData.price}
+                              elevated={courseData.elevatedPrice}
+                              currency={courseData.currency}
+                              size="md"
+                              className="text-primary-500 font-semibold"
+                            />
+                          )}
                         </div>
                       )}
 
@@ -1686,15 +1995,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Level (hidden when the level is a sentinel like "Default") */}
-                      {displayLevelName(courseData.level) && (
+                      {/* Level (hidden when the level is a sentinel like "Default",
+                          and when the Language picker already names it) */}
+                      {!showLanguagePicker && displayLevelName(courseData.level) && (
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
-                            {displayLevelName(courseData.level)}
+                            {siteT(displayLevelName(courseData.level))}
                           </span>
                         </div>
                       )}
@@ -1716,22 +2026,35 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                     {/* Enroll Button */}
                     <div className="pt-1 space-y-2">
-                      <button
-                        onClick={handleEnrollClick}
-                        className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                        style={{
-                          backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
-                        }}
-                      >
-                        {comingSoonCta ?? t("courseDetails.enrollNow")}
-                      </button>
-                      <p className="text-xs text-catalogue-text-muted text-center">
-                        {comingSoon
-                          ? comingSoonHint
-                          : t("courseDetails.clickToRegister", {
-                              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
-                            })}
-                      </p>
+                      {showCartActions ? (
+                        <CourseCartActions
+                          inCart={inSiteCart}
+                          ready={cartActionsReady}
+                          onAdd={handleAddToCart}
+                          onBuyNow={handleBuyNow}
+                          onViewCart={() => openSiteCart("view")}
+                          note={cartNote}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleEnrollClick}
+                            className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                            style={{
+                              backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
+                            }}
+                          >
+                            {comingSoonCta ?? t("courseDetails.enrollNow")}
+                          </button>
+                          <p className="text-xs text-catalogue-text-muted text-center">
+                            {comingSoon
+                              ? comingSoonHint
+                              : t("courseDetails.clickToRegister", {
+                                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                                })}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1765,7 +2088,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           isOpen={showNotifyForm}
           onClose={() => setShowNotifyForm(false)}
           audienceId={comingSoon.audienceId}
-          title={t("comingSoon.notifyTitle", { title: courseData.title })}
+          title={t("comingSoon.notifyTitle", { title: siteT(courseData.title) })}
           instituteId={instituteId}
         />
       )}
@@ -1955,26 +2278,122 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             </div>
 
             {/* Get Started / Enroll Button */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={handleEnrollClick}
-                className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md shadow-md transition-all duration-200"
-                style={{
-                  backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
-                }}
-              >
-                {comingSoonCta ??
-                  (catalogueData?.globalSettings?.payment?.enabled !== false
-                    ? courseData.price === 0
-                      ? t("courseDetails.enrollForFree")
-                      : t("courseDetails.enrollNow")
-                    : t("courseDetails.getStarted"))}
-              </button>
-              <span className="text-xs text-catalogue-text-secondary text-center">{t("courseDetails.forNewUsers")}</span>
-            </div>
+            {showCartActions ? (
+              <CourseCartActions
+                layout="row"
+                inCart={inSiteCart}
+                ready={cartActionsReady}
+                onAdd={handleAddToCart}
+                onBuyNow={handleBuyNow}
+                onViewCart={() => openSiteCart("view")}
+              />
+            ) : (
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={handleEnrollClick}
+                  className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md shadow-md transition-all duration-200"
+                  style={{
+                    backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
+                  }}
+                >
+                  {comingSoonCta ??
+                    (catalogueData?.globalSettings?.payment?.enabled !== false
+                      ? courseData.price === 0 && !pricePending
+                        ? t("courseDetails.enrollForFree")
+                        : t("courseDetails.enrollNow")
+                      : t("courseDetails.getStarted"))}
+                </button>
+                <span className="text-xs text-catalogue-text-secondary text-center">{t("courseDetails.forNewUsers")}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
+  );
+};
+
+/**
+ * The public course page (/<tag>/<courseId>, and /<courseId> on a
+ * root-mounted host). This shell loads the site's catalogue JSON — header,
+ * footer, details page and settings — and provides the visitor's site
+ * language (globalSettings.i18n, remembered per site under the tag name), so
+ * the sections and the live course text below render in हिन्दी or EN. On a
+ * single-language site the provider is the base language with no dictionary
+ * and the page renders exactly as before.
+ */
+export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = (props) => {
+  const { instituteId, tagName } = props;
+  const [catalogueData, setCatalogueData] =
+    useState<CourseCatalogueData | null>(null);
+
+  // Fetch catalogue data for header and footer
+  useEffect(() => {
+    const fetchCatalogueData = async () => {
+      try {
+        const data = await CourseCatalogueService.getCourseCatalogueByTag(
+          instituteId,
+          tagName,
+        );
+        setCatalogueData(data);
+      } catch (error) {
+        console.error(
+          "[CourseDetailsPage] Failed to fetch catalogue data:",
+          error,
+        );
+        console.error("[CourseDetailsPage] Error details:", {
+          message: error instanceof Error ? error.message : "Unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
+          response: (error as any)?.response?.data,
+        });
+        // Set empty catalogue data as fallback
+        setCatalogueData({
+          globalSettings: {
+            courseCatalogeType: {
+              enabled: false,
+              value: "",
+            },
+            mode: "light",
+            compactness: "medium",
+            audience: "all",
+            leadCollection: {
+              enabled: false,
+              mandatory: false,
+              inviteLink: null,
+              formStyle: {
+                type: "single",
+                showProgress: false,
+                progressType: "bar",
+                transition: "slide",
+              },
+              fields: [],
+            },
+            enrquiry: {
+              enabled: true,
+              requirePayment: false,
+            },
+            payment: {
+              enabled: true,
+              provider: "razorpay",
+              fields: [],
+            },
+          },
+          pages: [],
+        });
+      }
+    };
+
+    if (instituteId && tagName) {
+      fetchCatalogueData();
+    }
+  }, [instituteId, tagName]);
+
+  return (
+    <CatalogueLocaleProvider
+      settings={catalogueData?.globalSettings?.i18n}
+      scope={tagName}
+    >
+      <CourseDetailsPageContent {...props} catalogueData={catalogueData} />
+    </CatalogueLocaleProvider>
   );
 };

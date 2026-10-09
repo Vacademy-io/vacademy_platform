@@ -57,6 +57,8 @@ export interface EditorialFilterGroupProps {
   /** Author colours (hex, already validated). */
   dividerColor?: string | null;
   boxColor?: string | null;
+  /** A custom body instead of option rows (the legacy min / max price inputs). */
+  children?: React.ReactNode;
 }
 
 export const EditorialFilterGroup: React.FC<EditorialFilterGroupProps> = ({
@@ -75,13 +77,14 @@ export const EditorialFilterGroup: React.FC<EditorialFilterGroupProps> = ({
   flushTop = false,
   dividerColor,
   boxColor,
+  children,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const listId = useId();
   const name = useId();
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  if (!options.length) return null;
+  if (!options.length && children === undefined) return null;
 
   const limit = visibleCount && visibleCount < options.length ? visibleCount : null;
   // A selected option never hides behind "show more".
@@ -192,27 +195,34 @@ export const EditorialFilterGroup: React.FC<EditorialFilterGroupProps> = ({
       ) : (
         <h3 className="m-0 flex w-full pb-1.5 font-bold text-palette-muted">{heading}</h3>
       )}
-      {open && (
-        <div
-          id={listId}
-          className="flex flex-col gap-0.5"
-          role={mode === "single" ? "radiogroup" : "group"}
-          aria-label={title}
-        >
-          {mode === "single" && anyLabel && row("__any__", anyLabel, selected.length === 0, () => onClear?.())}
-          {shown.map((o) =>
-            row(
-              o.value,
-              o.label,
-              selected.includes(o.value),
-              () => onToggle(o.value),
-              o.count,
-              o.disabled && !selected.includes(o.value),
-            ),
-          )}
-        </div>
-      )}
-      {open && limit !== null && (hiddenCount > 0 || expanded) && (
+      {/* Always mounted (hidden when folded) so aria-controls names a real element;
+          the display class follows `open` too, as `flex` would beat the [hidden] rule. */}
+      <div
+        id={listId}
+        hidden={!open}
+        className={cn("flex-col gap-0.5", open ? "flex" : "hidden")}
+        role={children === undefined && mode === "single" ? "radiogroup" : "group"}
+        aria-label={title}
+      >
+        {children !== undefined ? (
+          children
+        ) : (
+          <>
+            {mode === "single" && anyLabel && row("__any__", anyLabel, selected.length === 0, () => onClear?.())}
+            {shown.map((o) =>
+              row(
+                o.value,
+                o.label,
+                selected.includes(o.value),
+                () => onToggle(o.value),
+                o.count,
+                o.disabled && !selected.includes(o.value),
+              ),
+            )}
+          </>
+        )}
+      </div>
+      {open && children === undefined && limit !== null && (hiddenCount > 0 || expanded) && (
         <button
           type="button"
           aria-expanded={expanded}

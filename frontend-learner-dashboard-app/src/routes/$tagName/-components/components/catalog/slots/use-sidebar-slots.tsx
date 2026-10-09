@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+import React, { useId, useMemo, useState } from "react";
+import { CaretDown, Funnel } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NO_SLOTS, type CatalogSlotContext, type SidebarSlotOutputs } from "./catalog-slot-types";
 import {
@@ -144,28 +145,104 @@ export const useSidebarSlots = (ctx: CatalogSlotContext): SidebarSlotOutputs => 
     sidebarColumnStyle: { "--fs-width": `${sidebar.width}px` } as React.CSSProperties,
     sidebarStickyClassName: cn("flex flex-col gap-5", sidebar.sticky && stickyTop),
     sidebarPanel: () => (
-      <div className={PANEL} data-filter-sidebar="editorial">
+      <EditorialPanel
+        ctx={ctx}
+        title={sidebar.title || t("catalogSidebar.filters", "Filters")}
+        clearAll={clearAll}
+        // Without the phone sheet the card itself folds behind a toggle below lg.
+        foldOnPhone={!ctx.mobileFilterSheet}
+      >
+        {renderGroups(false)}
+      </EditorialPanel>
+    ),
+    // The phone sheet has its own title bar and Clear all: groups only.
+    filterGroups: () => <div data-filter-sidebar="editorial">{renderGroups(true)}</div>,
+    // The promo is a desktop card (with the phone sheet the whole column is
+    // hidden below lg); without the sheet keep it off phones as well.
+    ...(sidebar.promo
+      ? {
+          sidebarBottom: () =>
+            ctx.mobileFilterSheet ? (
+              <SidebarPromoCard promo={sidebar.promo!} />
+            ) : (
+              <div className="hidden lg:block">
+                <SidebarPromoCard promo={sidebar.promo!} />
+              </div>
+            ),
+        }
+      : {}),
+    mainColumnClassName: ctx.showFiltersPanel ? "order-2 w-full min-w-0 lg:flex-1" : "w-full",
+  };
+};
+
+/**
+ * The editorial filter card. With `foldOnPhone` (a section without the phone
+ * filter sheet) it starts folded below lg behind a "Filters" toggle, with a
+ * "Show results" button that folds it again — as the original card does.
+ */
+const EditorialPanel: React.FC<{
+  ctx: CatalogSlotContext;
+  title: string;
+  clearAll: string;
+  foldOnPhone: boolean;
+  children: React.ReactNode;
+}> = ({ ctx, title, clearAll, foldOnPhone, children }) => {
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const bodyId = useId();
+  const { t } = ctx;
+  return (
+    <div className={PANEL} data-filter-sidebar="editorial">
+      {foldOnPhone && (
+        <button
+          type="button"
+          aria-expanded={phoneOpen}
+          aria-controls={bodyId}
+          onClick={() => setPhoneOpen((v) => !v)}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 rounded-catalogue-xs text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 lg:hidden",
+            phoneOpen && "mb-3.5",
+          )}
+          data-filter-sidebar-toggle=""
+        >
+          <span className="flex items-center gap-2">
+            <Funnel size={16} aria-hidden="true" className="text-palette-muted" />
+            <span className={PANEL_TITLE}>{title}</span>
+            {ctx.hasActiveFilters && (
+              <span className="catalogue-badge catalogue-badge-primary rounded-full">{ctx.filterBadgeCount}</span>
+            )}
+          </span>
+          <CaretDown
+            size={14}
+            aria-hidden="true"
+            className={cn("text-palette-muted transition-transform", phoneOpen && "rotate-180")}
+          />
+        </button>
+      )}
+      <div id={bodyId} className={foldOnPhone ? cn("lg:block", phoneOpen ? "block" : "hidden") : undefined}>
         <div className="flex items-center justify-between gap-3 pb-3.5">
-          <h2 className={PANEL_TITLE}>{sidebar.title || t("catalogSidebar.filters", "Filters")}</h2>
+          <h2 className={cn(PANEL_TITLE, foldOnPhone && "hidden lg:block")}>{title}</h2>
           <button
             type="button"
             onClick={ctx.hasActiveFilters ? ctx.clearAllFilters : undefined}
             aria-disabled={!ctx.hasActiveFilters}
-            className="rounded-catalogue-xs text-xs font-bold text-palette-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+            className="ms-auto rounded-catalogue-xs text-xs font-bold text-palette-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
           >
             {clearAll}
           </button>
         </div>
-        {renderGroups(false)}
+        {children}
+        {foldOnPhone && (
+          <button
+            type="button"
+            onClick={() => setPhoneOpen(false)}
+            className="mt-4 w-full rounded-catalogue-sm bg-palette-primary px-4 py-2.5 text-sm font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 lg:hidden"
+          >
+            {t("courseCatalog.showResults", "Show results")}
+          </button>
+        )}
       </div>
-    ),
-    // The phone sheet has its own title bar and Clear all: groups only.
-    filterGroups: () => <div data-filter-sidebar="editorial">{renderGroups(true)}</div>,
-    ...(sidebar.promo
-      ? { sidebarBottom: () => <SidebarPromoCard promo={sidebar.promo!} /> }
-      : {}),
-    mainColumnClassName: ctx.showFiltersPanel ? "order-2 w-full min-w-0 lg:flex-1" : "w-full",
-  };
+    </div>
+  );
 };
 
 /** The editorial groups this section shows, in the authored order. */
@@ -318,6 +395,24 @@ function buildEditorialGroups(
         visibleCount={3}
         showAllLabel={sidebar.showMoreLabel || undefined}
       />
+    );
+  }
+
+  // The filtersConfig price range: its original min / max inputs in an editorial section.
+  const range = filterData.legacy.priceRange;
+  if (range.shown) {
+    byId.priceRange = (flushTop) => (
+      <EditorialFilterGroup
+        {...common}
+        flushTop={flushTop}
+        id="priceRange"
+        title={range.title}
+        options={[]}
+        selected={[]}
+        onToggle={() => {}}
+      >
+        {range.inputs}
+      </EditorialFilterGroup>
     );
   }
 

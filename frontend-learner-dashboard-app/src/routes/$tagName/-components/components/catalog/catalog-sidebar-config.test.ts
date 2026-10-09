@@ -109,6 +109,8 @@ describe("group order", () => {
       "level",
     ]);
     expect(orderGroupIds(available, [])).toEqual(available);
+    // Ids keep their casing; the (lower-cased) authored order still matches them.
+    expect(orderGroupIds(["price", "level", "priceRange"], resolveFilterSidebar({ variant: "editorial", order: ["priceRange"] })!.order)).toEqual(["priceRange", "price", "level"]);
   });
 });
 

@@ -167,10 +167,15 @@ export const LEGACY_GROUP_ORDER = ["level", "session", "tags", "instructor", "pr
 
 /**
  * Group ids in display order: the authored `order` first (unknown ids
- * ignored), then every remaining id in its original position.
+ * ignored; matched case-insensitively, as the resolver lower-cases it —
+ * 'priceRange' / 'pricerange'), then every remaining id in its original position.
  */
 export const orderGroupIds = (available: string[], order: string[]): string[] => {
-  const listed = order.filter((id) => available.includes(id));
+  const listed: string[] = [];
+  for (const raw of order) {
+    const id = available.find((a) => a.toLowerCase() === raw.toLowerCase());
+    if (id && !listed.includes(id)) listed.push(id);
+  }
   return [...listed, ...available.filter((id) => !listed.includes(id))];
 };
 

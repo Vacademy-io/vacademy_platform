@@ -327,8 +327,34 @@ describe("editorial filter sidebar", () => {
     expect(forGroup.getAttribute("style")).toContain("--fs-box: #CFC0A0"); // design-lint-ignore: test fixture colour
     expect([...forGroup.querySelectorAll("button")].map((b) => b.textContent)).toContain("+ Show more");
     await click(forGroup.querySelector("h3 button")!);
-    expect(group(host, "for").querySelectorAll("label").length).toBe(0);
-    expect(group(host, "for").querySelector("h3 button")!.textContent).toContain("+");
+    const folded = group(host, "for");
+    const toggle = folded.querySelector("h3 button")!;
+    expect(toggle.textContent).toContain("+");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // The list stays mounted (hidden), so aria-controls still names it.
+    const list = folded.querySelector<HTMLElement>(`[id="${toggle.getAttribute("aria-controls")}"]`)!;
+    expect(list).toBeTruthy();
+    expect(list.hidden).toBe(true);
+    expect(list.className).toContain("hidden");
+    expect(folded.textContent).not.toContain("+ Show more");
+    await click(toggle);
+    expect(group(host, "for").querySelector<HTMLElement>("[role=group]")!.hidden).toBe(false);
+  });
+
+  it("every aria-controls in the card points at an element that exists", async () => {
+    const host = await mount({ ...BASE, ...SIDEBAR });
+    for (const g of panel(host).querySelectorAll<HTMLElement>("[data-filter-group]")) await click(g.querySelector("h3 button")!);
+    const controls = [...panel(host).querySelectorAll("[aria-controls]")];
+    expect(controls.length).toBeGreaterThan(0);
+    for (const c of controls) expect(host.querySelector(`[id="${c.getAttribute("aria-controls")}"]`)).toBeTruthy();
+  });
+
+  it("for: '+ Show more' only when options are hidden behind it", async () => {
+    const forAll = { ...SIDEBAR.customFilters[1], visibleCount: 3 };
+    const host = await mount({ ...BASE, ...SIDEBAR, customFilters: [SIDEBAR.customFilters[0], forAll] });
+    const forGroup = group(host, "for");
+    expect(forGroup.querySelectorAll("label").length).toBe(3);
+    expect(forGroup.textContent).not.toContain("Show more");
   });
 
   it("reads ?format= / ?for= / ?category= when the section syncs its URL", async () => {
@@ -354,6 +380,59 @@ describe("sections without the sidebar props", () => {
     const host = await mount({ ...BASE, ...SIDEBAR, filtersConfig: [{ id: "level", type: "checkbox", field: "level" }] });
     const ids = [...panel(host).querySelectorAll("[data-filter-group]")].map((g) => g.getAttribute("data-filter-group"));
     expect(ids).toEqual(["price", "language", "format", "category", "for", "level"]);
+  });
+
+  it("editorial: a filtersConfig price range keeps its min / max inputs (and the 'priceRange' order slot)", async () => {
+    const host = await mount({
+      ...BASE,
+      ...SIDEBAR,
+      filtersConfig: [{ id: "price-range", type: "range", field: "price", label: "Budget" }],
+      filterSidebar: { ...SIDEBAR.filterSidebar, order: ["priceRange", "price"] },
+    });
+    const ids = [...panel(host).querySelectorAll("[data-filter-group]")].map((g) => g.getAttribute("data-filter-group"));
+    expect(ids[0]).toBe("priceRange");
+    const range = group(host, "priceRange");
+    expect(range.querySelector("h3")?.textContent).toContain("Budget");
+    const inputs = range.querySelectorAll<HTMLInputElement>('input[type="number"]');
+    expect(inputs.length).toBe(2);
+    // Same state as the default card: a max of 150 leaves the free courses and Course 1.
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(inputs[1], "150");
+      inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(tick);
+    expect(group(host, "priceRange").querySelectorAll<HTMLInputElement>('input[type="number"]')[1].value).toBe("150");
+    expect(shownCourses(host)).toEqual(["Course 1", "Course 3"]);
+  });
+
+  it("editorial without the phone sheet: the card folds behind a phone toggle, promo off phones", async () => {
+    const host = await mount({ ...BASE, ...SIDEBAR, mobileFilterSheet: false });
+    const p = panel(host);
+    const column = p.parentElement!.parentElement!;
+    expect(column.className).not.toContain("hidden");
+    const toggle = p.querySelector<HTMLButtonElement>("[data-filter-sidebar-toggle]")!;
+    expect(toggle.className).toContain("lg:hidden");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const body = host.querySelector<HTMLElement>(`[id="${toggle.getAttribute("aria-controls")}"]`)!;
+    expect(body.className.split(" ")).toEqual(expect.arrayContaining(["lg:block", "hidden"]));
+    await click(toggle);
+    expect(panel(host).querySelector("[data-filter-sidebar-toggle]")!.getAttribute("aria-expanded")).toBe("true");
+    expect(body.className.split(" ")).toContain("block");
+    expect(body.className.split(" ")).not.toContain("hidden");
+    const showResults = [...body.querySelectorAll("button")].find((b) => b.textContent === "Show results")!;
+    expect(showResults.className).toContain("lg:hidden");
+    await click(showResults);
+    expect(body.className.split(" ")).toContain("hidden");
+    expect(host.querySelector("aside")!.parentElement!.className).toBe("hidden lg:block");
+  });
+
+  it("editorial with the phone sheet: no phone toggle in the card (column hidden below lg)", async () => {
+    const host = await mount({ ...BASE, ...SIDEBAR });
+    const p = panel(host);
+    expect(p.querySelector("[data-filter-sidebar-toggle]")).toBeNull();
+    expect(p.parentElement!.parentElement!.className).toContain("hidden lg:block");
+    expect([...p.querySelectorAll("button")].some((b) => b.textContent === "Show results")).toBe(false);
   });
 
   it("customFilters alone add the groups in the original group style", async () => {

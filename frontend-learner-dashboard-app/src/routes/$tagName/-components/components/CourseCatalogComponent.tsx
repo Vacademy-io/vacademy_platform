@@ -1838,6 +1838,42 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   const shownName = <T extends { id: string; name: string }>(items: T[]) =>
     items.map((item) => ({ ...item, name: siteT(item.name) }));
 
+  // The min / max inputs of the legacy price-range group (also the editorial
+  // sidebar's 'priceRange' section, feature 'sidebar').
+  const priceRangeInputs = (
+    <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
+      <div className="flex-1 space-y-1">
+        <label className="block text-xs text-catalogue-text-secondary">
+          {t("courseCatalog.min")}
+        </label>
+        <input
+          type="number"
+          min={0}
+          value={priceRange?.min ?? ""}
+          onChange={(e) =>
+            handlePriceInputChange("min", e.target.value)
+          }
+          className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+        />
+      </div>
+      <span className="pb-2 text-catalogue-text-muted">–</span>
+      <div className="flex-1 space-y-1">
+        <label className="block text-xs text-catalogue-text-secondary">
+          {t("courseCatalog.max")}
+        </label>
+        <input
+          type="number"
+          min={0}
+          value={priceRange?.max ?? ""}
+          onChange={(e) =>
+            handlePriceInputChange("max", e.target.value)
+          }
+          className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+        />
+      </div>
+    </div>
+  );
+
   // The original filter groups, shared by the sidebar and the bottom sheet.
   const legacyFilterGroups = (
     <>
@@ -1924,37 +1960,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
           <h3 className="text-sm font-semibold text-catalogue-text-primary">
             {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
           </h3>
-          <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
-            <div className="flex-1 space-y-1">
-              <label className="block text-xs text-catalogue-text-secondary">
-                {t("courseCatalog.min")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={priceRange?.min ?? ""}
-                onChange={(e) =>
-                  handlePriceInputChange("min", e.target.value)
-                }
-                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-            </div>
-            <span className="pb-2 text-catalogue-text-muted">–</span>
-            <div className="flex-1 space-y-1">
-              <label className="block text-xs text-catalogue-text-secondary">
-                {t("courseCatalog.max")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={priceRange?.max ?? ""}
-                onChange={(e) =>
-                  handlePriceInputChange("max", e.target.value)
-                }
-                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-            </div>
-          </div>
+          {priceRangeInputs}
         </div>
       )}
     </>
@@ -2075,7 +2081,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
           selected: selectedInstructors,
           toggle: (id) => toggleItem(id, selectedInstructors, setSelectedInstructors),
         },
-        priceRange: { shown: shouldShowPriceFilter },
+        priceRange: {
+          shown: shouldShowPriceFilter,
+          title: priceFilterConfig?.label ?? t("courseCatalog.priceRange"),
+          inputs: priceRangeInputs,
+        },
       },
     },
     renderCourseCard: (card, index, opts) => renderCourseCard(card, index, opts),

@@ -6,6 +6,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import { cn } from "@/lib/utils";
 import { useSiteCartStore } from "../../../-stores/site-cart-store";
+import { SITE_CART_MAX_ITEMS } from "../../../-utils/site-cart";
+import { useCourseTerms } from "../../../-utils/catalogue-naming";
 import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import { rowLanguage, type CatalogRowLike } from "./catalog-cards";
 import { cartVersionOf, packageSessionOf, toSiteCartItem } from "./catalog-site-cart";
@@ -40,6 +42,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   themeAnchor: React.RefObject<HTMLElement | null>;
 }) => {
   const { t } = useTranslation("coursePlayerB");
+  const terms = useCourseTerms();
   const items = useSiteCartStore((s) => s.items);
   const add = useSiteCartStore((s) => s.add);
   const remove = useSiteCartStore((s) => s.remove);
@@ -57,8 +60,19 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
 
   const addVersion = (v: R) => {
     add(toSiteCartItem(v, courseId, languages));
-    toast.success(t("courseCatalog.addedToCart", { title: displayTitle }));
     setOpen(false);
+    // The store refuses a new course once the cart holds SITE_CART_MAX_ITEMS.
+    if (!useSiteCartStore.getState().has(packageSessionOf(v))) {
+      toast.error(
+        t("siteCart.full", {
+          max: SITE_CART_MAX_ITEMS,
+          courses: terms.courses.toLocaleLowerCase(),
+          defaultValue: "Your cart is full — up to {{max}} {{courses}} per order.",
+        }),
+      );
+      return;
+    }
+    toast.success(t("courseCatalog.addedToCart", { title: displayTitle }));
   };
   const removeVersion = (v: R) => {
     remove(packageSessionOf(v));

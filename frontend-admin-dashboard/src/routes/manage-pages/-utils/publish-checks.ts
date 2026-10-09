@@ -13,6 +13,8 @@
 
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { localesOf } from './catalogue-i18n';
+import { collectSiteStrings, coverageOf, languageName } from '../-components/i18n/site-strings';
 
 export type CheckSeverity = 'error' | 'warning';
 
@@ -176,6 +178,26 @@ export const runPublishChecks = (config: any): PublishIssue[] => {
                 });
             }
         });
+    }
+
+    // Site languages: an untranslated text shows in the base language to a
+    // visitor who picked another one. Only for sites that switched languages on.
+    const i18n = config?.globalSettings?.i18n;
+    if (i18n?.enabled) {
+        const sources = collectSiteStrings(config);
+        const [base, ...others] = localesOf(i18n);
+        const baseName = base ? languageName(base.code, base.label) : 'the base language';
+        for (const locale of others) {
+            const { total, translated } = coverageOf(sources, i18n.strings?.[locale.code]);
+            if (total > 0 && translated < total) {
+                const name = languageName(locale.code, locale.label);
+                issues.push({
+                    severity: 'warning',
+                    title: `${name}: ${total - translated} of ${total} texts are not translated yet`,
+                    fix: `Visitors who choose ${name} see these in ${baseName}. Finish them in Global Settings → Languages → Translations.`,
+                });
+            }
+        }
     }
 
     // Site-wide: measurement is the difference between a website and a

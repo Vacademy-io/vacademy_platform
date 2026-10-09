@@ -12,6 +12,8 @@ import { Monitor, DeviceTablet, DeviceMobile, ArrowSquareOut } from '@phosphor-i
 import { Button } from '@/components/ui/button';
 import { componentLabel } from '../-utils/component-labels';
 import { useEditorStore } from '../-stores/editor-store';
+import { activeEditingLocale, useLocalizedView } from '../-hooks/use-localized-editing';
+import { LOCALE_PARAM } from '../-utils/catalogue-i18n';
 import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
 import { buildComponentStyle, hasSectionShell, buildSectionShellStyles, buildPrimaryScaleVars } from '../-utils/style-utils';
@@ -164,7 +166,8 @@ const ColumnLayoutCanvas = ({
 
 export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     const {
-        config,
+        config: storeConfig,
+        editingLocale,
         selectedPageId,
         selectedComponentId,
         selectComponent,
@@ -173,6 +176,10 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
         previewViewport,
         setViewport,
     } = useEditorStore();
+    // Editing another language: the canvas shows the site as it reads in that
+    // language (the store config itself in the base language). Localized here,
+    // never inside renderComponentPreview, which other screens share.
+    const config = useLocalizedView(storeConfig, editingLocale);
 
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
     const { setNodeRef, isOver } = useDroppable({ id: 'canvas-drop-zone' });
@@ -203,7 +210,11 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     const fullRoute = isHomePage
         ? encodeURIComponent(tagName)
         : `${encodeURIComponent(tagName)}/${encodeURIComponent(pageRoute)}`;
-    const previewUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/${fullRoute}`;
+    // Editing another language: "View live" opens the page in that language.
+    const liveLocale = activeEditingLocale(storeConfig?.globalSettings?.i18n, editingLocale);
+    const previewUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/${fullRoute}${
+        liveLocale ? `?${LOCALE_PARAM}=${encodeURIComponent(liveLocale)}` : ''
+    }`;
     const isPageUnpublished = !!page && !page.published;
 
     const canvasWidth = previewViewport === 'desktop' ? '100%' : currentSize.width;

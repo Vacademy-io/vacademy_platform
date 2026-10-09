@@ -1,7 +1,26 @@
 import { create } from 'zustand';
-import { CatalogueConfig, Page, Component } from '../-types/editor-types';
+import { CatalogueConfig, Page, Component, GlobalSettings } from '../-types/editor-types';
+import { mergeTranslations } from '../-utils/catalogue-i18n';
 
 const MAX_HISTORY_LENGTH = 50;
+
+/**
+ * One edit made while the builder is in another language (see
+ * -hooks/use-localized-editing.ts): the change to the shared base config plus
+ * the dictionary entries for `locale`, committed together so a single undo
+ * reverts both.
+ */
+export interface LocalizedEditCommit {
+    locale: string;
+    /** source text → translation ('' removes the entry), merged with mergeTranslations. */
+    translations?: Record<string, string>;
+    /** A component's base change, applied exactly like updateComponent (shallow merge). */
+    component?: { pageId: string; componentId: string; updates: Partial<Component> };
+    /** Top-level globalSettings keys to replace (shallow merge), e.g. { layout }. */
+    globalSettings?: Partial<GlobalSettings>;
+    /** A page's full replacement seo. */
+    pageSeo?: { pageId: string; seo: Page['seo'] };
+}
 
 interface EditorState {
     config: CatalogueConfig | null;
@@ -18,6 +37,12 @@ interface EditorState {
     activeTab: 'visual' | 'json';
     previewViewport: 'desktop' | 'tablet' | 'mobile';
     clipboard: Component | null;
+    /**
+     * UI only: the site language being edited, null = the base language.
+     * Deliberately outside `config`, so it is never saved, never part of the
+     * undo history and never marks the site dirty.
+     */
+    editingLocale: string | null;
 
     // Actions
     setConfig: (config: CatalogueConfig) => void;
@@ -27,8 +52,11 @@ interface EditorState {
     selectGlobalLayout: (section: 'header' | 'footer') => void;
     setViewport: (viewport: 'desktop' | 'tablet' | 'mobile') => void;
     setActiveTab: (tab: 'visual' | 'json') => void;
+    setEditingLocale: (locale: string | null) => void;
 
     updateConfig: (newConfig: CatalogueConfig) => void;
+    /** Base change + dictionary entries in ONE set and ONE history entry. */
+    commitLocalizedEdit: (edit: LocalizedEditCommit) => void;
     updateComponent: (pageId: string, componentId: string, updates: Partial<Component>) => void;
     updateGlobalSettings: (updates: any) => void;
     reorderComponents: (pageId: string, newComponents: Component[]) => void;
@@ -149,6 +177,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     activeTab: 'visual',
     previewViewport: 'desktop',
     clipboard: null,
+    editingLocale: null,
 
     setConfig: (config) =>
         set({
@@ -159,6 +188,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             selectedPageId: config.pages[0]?.id || null,
             selectedGlobalSettings: false,
             selectedGlobalLayout: null,
+            // A freshly loaded site always opens in its base language.
+            editingLocale: null,
         }),
 
     selectPage: (id) =>
@@ -170,8 +201,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         set((state) => ({ selectedGlobalSettings: false, selectedGlobalLayout: section, selectedPageId: state.selectedPageId, selectedComponentId: null })),
     setViewport: (v) => set({ previewViewport: v }),
     setActiveTab: (t) => set({ activeTab: t }),
+    setEditingLocale: (locale) => set({ editingLocale: locale || null }),
 
     updateConfig: (newConfig) => set((state) => pushToHistory(state, newConfig)),
+
+    commitLocalizedEdit: (edit) =>
+        set((state) => {
+            if (!state.config) return {};
+            let next: CatalogueConfig = state.config;
+
+            if (edit.component) {
+                const { pageId, componentId, updates } = edit.component;
+                next = {
+                    ...next,
+                    pages: next.pages.map((page) =>
+                        page.id !== pageId
+                            ? page
+                            : {
+                                  ...page,
+                                  components: mapComponents(page.components, (comp) =>
+                                      comp.id === componentId ? { ...comp, ...updates } : comp
+                                  ),
+                              }
+                    ),
+                };
+            }
+
+            if (edit.pageSeo) {
+                const { pageId, seo } = edit.pageSeo;
+                next = {
+                    ...next,
+                    pages: next.pages.map((p) => (p.id === pageId ? { ...p, seo } : p)),
+                };
+            }
+
+            if (edit.globalSettings && Object.keys(edit.globalSettings).length > 0) {
+                next = {
+                    ...next,
+                    globalSettings: { ...next.globalSettings, ...edit.globalSettings },
+                };
+            }
+
+            const translations = edit.translations || {};
+            if (edit.locale && Object.keys(translations).length > 0) {
+                const i18n = next.globalSettings.i18n || {};
+                const strings = i18n.strings || {};
+                const dict = mergeTranslations(strings[edit.locale], translations);
+                next = {
+                    ...next,
+                    globalSettings: {
+                        ...next.globalSettings,
+                        i18n: { ...i18n, strings: { ...strings, [edit.locale]: dict } },
+                    },
+                };
+            }
+
+            if (next === state.config) return {};
+            return pushToHistory(state, next);
+        }),
 
     updateComponent: (pageId, componentId, updates) =>
         set((state) => {

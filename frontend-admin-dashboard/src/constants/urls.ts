@@ -1407,6 +1407,10 @@ export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-buil
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
 export const AI_PAGE_BUILDER_INTAKE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/intake`;
+// Site languages: AI translation of site texts (Global Settings → Languages → Translations).
+export const AI_PAGE_BUILDER_TRANSLATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/translate`;
+// The public course search the live catalogue reads — course names to translate.
+export const OPEN_CATALOGUE_COURSE_SEARCH_V2 = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 // Course field AI assist (ai_service) — inline generate on the Add Course form
 export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
 export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;

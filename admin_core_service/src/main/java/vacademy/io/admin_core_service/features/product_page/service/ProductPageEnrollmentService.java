@@ -233,12 +233,15 @@ public class ProductPageEnrollmentService {
                         .map(ProductPageSelectedMappingDTO::getPsInvitePaymentOptionId)
                         .collect(Collectors.toList()));
 
-        // Validate + compute total server-side
+        // Validate + compute total server-side. Every line is priced on the plan
+        // locked on its mapping, never on a plan the request picks (lockedPlanId).
         double serverTotal = 0.0;
         Map<String, PaymentPlan> planByMappingId = new LinkedHashMap<>();
         for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
-            PaymentPlan plan = paymentPlanRepository.findById(sel.getPaymentPlanId())
-                    .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + sel.getPaymentPlanId()));
+            String planId = lockedPlanId(
+                    sel.getPsInvitePaymentOptionId(), sel.getPaymentPlanId(), selectedMappings);
+            PaymentPlan plan = paymentPlanRepository.findById(planId)
+                    .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + planId));
             planByMappingId.put(sel.getPsInvitePaymentOptionId(), plan);
             serverTotal += plan.getActualPrice();
         }
@@ -638,8 +641,9 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Product page does not belong to this institute");
         }
 
-        ProductPageInviteMapping mapping = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of("ACTIVE"))
+        List<ProductPageInviteMapping> pageMappings = mappingRepository
+                .findOrderedWithBridge(page.getId(), List.of(STATUS_ACTIVE));
+        ProductPageInviteMapping mapping = pageMappings
                 .stream()
                 .filter(m -> m.getPsInvitePaymentOption().getId().equals(request.getPsInvitePaymentOptionId()))
                 .findFirst()
@@ -653,8 +657,11 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Payment option " + bridge.getPaymentOption().getId() + " is not CPO type");
         }
 
-        PaymentPlan plan = paymentPlanRepository.findById(request.getPaymentPlanId())
-                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + request.getPaymentPlanId()));
+        // The plan locked on the mapping, as for one-time checkout (lockedPlanId).
+        String planId = lockedPlanId(
+                request.getPsInvitePaymentOptionId(), request.getPaymentPlanId(), pageMappings);
+        PaymentPlan plan = paymentPlanRepository.findById(planId)
+                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + planId));
 
         // Create / find user — ensure STUDENT role is assigned
         if (request.getUserDetails().getRoles() == null || request.getUserDetails().getRoles().isEmpty()) {
@@ -1033,8 +1040,11 @@ public class ProductPageEnrollmentService {
             throw new VacademyException("Course page does not belong to this institute");
         }
 
+        // In display order, with each bridge row loaded in the same query. The
+        // first selected course decides the gateway and currency below, so the
+        // order must be the page's own rather than whatever the database returns.
         List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
+                .findOrderedWithBridge(page.getId(), List.of(STATUS_ACTIVE));
 
         Set<String> activePoIds = activeMappings.stream()
                 .map(m -> m.getPsInvitePaymentOption().getId())
@@ -1049,6 +1059,54 @@ public class ProductPageEnrollmentService {
         return activeMappings.stream()
                 .filter(m -> psInvitePoIds.contains(m.getPsInvitePaymentOption().getId()))
                 .collect(Collectors.toList());
+    }
+
+    static final String PRICE_CHANGED_MESSAGE =
+            "The price of a course in your cart has changed. Please reload the page and try again.";
+
+    /**
+     * The plan a selected course is priced and enrolled on: the plan the page
+     * locked on that course's mapping, never one the request picks.
+     *
+     * Nothing in the learner app lets a visitor choose among a payment
+     * option's plans. The cart sends each mapping's own payment_plan_id back,
+     * and plan tiles choose between MAPPINGS, each still on its locked plan
+     * (PlanTiles groups mappings by payment_plan_id). The server used to price
+     * whatever plan id arrived, so a crafted request could buy any course on
+     * any plan it could name, at that plan's price and validity.
+     *
+     * A request naming no plan gets the locked one. A page that maps one
+     * bridge row more than once, on different plans, accepts each of those
+     * plans as it always has. Anything else is refused before any user,
+     * payment or enrollment is created.
+     *
+     * Visible for testing.
+     *
+     * @param pageMappings the page's ACTIVE mappings (at least every one on this bridge row)
+     */
+    static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings) {
+        Set<String> locked = new LinkedHashSet<>();
+        for (ProductPageInviteMapping m : pageMappings) {
+            if (m.getPsInvitePaymentOption() != null
+                    && Objects.equals(m.getPsInvitePaymentOption().getId(), psInvitePaymentOptionId)
+                    && StringUtils.hasText(m.getPaymentPlanId())) {
+                locked.add(m.getPaymentPlanId());
+            }
+        }
+        if (locked.isEmpty()) {
+            throw new VacademyException("Mapping " + psInvitePaymentOptionId + " is not part of this course page");
+        }
+        if (!StringUtils.hasText(requestedPlanId)) {
+            return locked.iterator().next();
+        }
+        String requested = requestedPlanId.trim();
+        if (!locked.contains(requested)) {
+            log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
+                    requested, psInvitePaymentOptionId, locked);
+            throw new VacademyException(PRICE_CHANGED_MESSAGE);
+        }
+        return requested;
     }
 
     private PaymentInitiationRequestDTO clonePaymentRequest(PaymentInitiationRequestDTO source) {

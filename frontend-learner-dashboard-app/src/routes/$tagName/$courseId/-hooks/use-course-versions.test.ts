@@ -67,8 +67,8 @@ const Harness: React.FC<{ opts: HookOpts }> = ({ opts }) => {
 
 const flush = async () => {
   await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
+    // Versions, then the link's invite, then the selected version's invite.
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
   });
 };
 
@@ -161,6 +161,164 @@ describe("useCourseVersions", () => {
     await flush();
     expect(latest?.selected?.packageSessionId).toBe("ps-hi");
     expect(latest?.selectedInviteId).toBe("special");
+  });
+
+  describe("a promo invite from the link (?enrollInviteId=PROMO)", () => {
+    const sells = (map: Record<string, string[]>) =>
+      service.getOpenEnrollInvite.mockImplementation(async (_inst: string, id: string) => ({
+        id,
+        availability_status: "AVAILABLE",
+        package_session_to_payment_options: (map[id] ?? []).map((ps) => ({ package_session_id: ps })),
+      }));
+
+    it("keeps PROMO for every version it sells, switching away and back", async () => {
+      sells({ promo: ["ps-en", "ps-hi"] });
+      const landing = { ...baseOpts, urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo" };
+      await mount(landing);
+      // Read even though the link also names the version.
+      expect(service.getOpenEnrollInvite).toHaveBeenCalledWith("inst", "promo");
+      expect(latest?.selectedInviteId).toBe("promo");
+
+      let updates: Record<string, string | null> | null = null;
+      act(() => {
+        updates = latest!.select("ps-hi");
+      });
+      expect(updates).toMatchObject({ packageSessionId: "ps-hi", enrollInviteId: "promo", level: "Hindi" });
+      await rerender({ ...landing, urlPackageSessionId: "ps-hi" });
+      expect(latest?.selected?.packageSessionId).toBe("ps-hi");
+      expect(latest?.selectedInviteId).toBe("promo");
+      expect(latest?.invite?.id).toBe("promo");
+
+      act(() => {
+        updates = latest!.select("ps-en");
+      });
+      expect(updates).toMatchObject({ packageSessionId: "ps-en", enrollInviteId: "promo" });
+      await rerender(landing);
+      expect(latest?.selectedInviteId).toBe("promo");
+    });
+
+    it("uses a version's own invite where PROMO does not sell it, and finds PROMO again", async () => {
+      sells({ promo: ["ps-en"] });
+      const landing = { ...baseOpts, urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo" };
+      await mount(landing);
+
+      let updates: Record<string, string | null> | null = null;
+      act(() => {
+        updates = latest!.select("ps-hi");
+      });
+      expect(updates).toMatchObject({ packageSessionId: "ps-hi", enrollInviteId: "inv-hi" });
+      // The URL now carries Hindi's own invite — written here, so PROMO is kept.
+      await rerender({ ...landing, urlPackageSessionId: "ps-hi", urlEnrollInviteId: "inv-hi" });
+      expect(latest?.selectedInviteId).toBe("inv-hi");
+
+      act(() => {
+        updates = latest!.select("ps-en");
+      });
+      expect(updates).toMatchObject({ packageSessionId: "ps-en", enrollInviteId: "promo" });
+      await rerender(landing);
+      expect(latest?.selectedInviteId).toBe("promo");
+      expect(latest?.invite?.id).toBe("promo");
+    });
+
+    it("lets the visitor pick a version only PROMO sells", async () => {
+      service.fetchCourseLevels.mockResolvedValue([en, { ...hi, enrollInviteId: null }]);
+      sells({ promo: ["ps-en", "ps-hi"] });
+      await mount({ ...baseOpts, urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo" });
+      expect(latest?.options.find((o) => o.code === "hi")?.disabled).toBe(false);
+      let updates: Record<string, string | null> | null = null;
+      act(() => {
+        updates = latest!.select("ps-hi");
+      });
+      expect(updates).toMatchObject({ packageSessionId: "ps-hi", enrollInviteId: "promo" });
+    });
+
+    it("refuses a version nothing can enrol in", async () => {
+      service.fetchCourseLevels.mockResolvedValue([en, { ...hi, enrollInviteId: null }]);
+      await mount(baseOpts);
+      expect(latest?.options.find((o) => o.code === "hi")?.disabled).toBe(true);
+      let updates: Record<string, string | null> | null = { x: "not called" };
+      act(() => {
+        updates = latest!.select("ps-hi");
+      });
+      expect(updates).toBeNull();
+      expect(latest?.selected?.packageSessionId).toBe("ps-en");
+    });
+
+    it("stays loading until it knows what the link's invite sells", async () => {
+      let release: (value: unknown) => void = () => {};
+      service.getOpenEnrollInvite.mockImplementation((_inst: string, id: string) =>
+        id === "promo"
+          ? new Promise((resolve) => (release = resolve))
+          : Promise.resolve({ id, package_session_to_payment_options: [] }),
+      );
+      await mount({ ...baseOpts, urlEnrollInviteId: "promo" });
+      expect(latest?.versions).toHaveLength(2);
+      expect(latest?.status).toBe("loading");
+      release({ id: "promo", package_session_to_payment_options: [{ package_session_id: "ps-hi" }] });
+      await flush();
+      expect(latest?.status).toBe("ready");
+      expect(latest?.selected?.packageSessionId).toBe("ps-hi");
+      expect(latest?.selectedInviteId).toBe("promo");
+    });
+
+    it("settles on the link's invite when it cannot be read", async () => {
+      service.getOpenEnrollInvite.mockImplementation(async (_inst: string, id: string) => {
+        if (id === "promo") throw new Error("offline");
+        return { id, package_session_to_payment_options: [] };
+      });
+      await mount({ ...baseOpts, urlPackageSessionId: "ps-hi", urlEnrollInviteId: "promo" });
+      expect(latest?.status).toBe("ready");
+      // The version the link named keeps the link's invite; the others their own.
+      expect(latest?.selectedInviteId).toBe("promo");
+      let updates: Record<string, string | null> | null = null;
+      act(() => {
+        updates = latest!.select("ps-en");
+      });
+      expect(updates).toMatchObject({ enrollInviteId: "inv-en" });
+      await flush();
+    });
+
+    it("lets a new link's invite replace the held one", async () => {
+      sells({ promo: ["ps-en", "ps-hi"], other: ["ps-hi"] });
+      const landing = { ...baseOpts, urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo" };
+      await mount(landing);
+      // e.g. an in-page link to the Hindi version with another invite
+      await rerender({ ...landing, urlPackageSessionId: "ps-hi", urlEnrollInviteId: "other" });
+      expect(service.getOpenEnrollInvite).toHaveBeenCalledWith("inst", "other");
+      expect(latest?.selectedInviteId).toBe("other");
+      // English is not sold by "other": its own invite.
+      let updates: Record<string, string | null> | null = null;
+      act(() => {
+        updates = latest!.select("ps-en");
+      });
+      expect(updates).toMatchObject({ enrollInviteId: "inv-en" });
+      await flush();
+    });
+  });
+
+  it("offers a Level picker when the selected language has several versions", async () => {
+    service.fetchCourseLevels.mockResolvedValue([
+      level({ packageSessionId: "ps-hi-b", levelName: "Beginner Hindi", enrollInviteId: "inv-b" }),
+      level({ packageSessionId: "ps-hi-a", levelName: "Advanced Hindi", enrollInviteId: "inv-a" }),
+      en,
+    ]);
+    await mount({ ...baseOpts, urlPackageSessionId: "ps-hi-b" });
+    expect(latest?.levelOptions.map((o) => o.label)).toEqual(["Beginner Hindi", "Advanced Hindi"]);
+    act(() => {
+      latest!.select("ps-hi-a");
+    });
+    await flush();
+    expect(latest?.selected?.packageSessionId).toBe("ps-hi-a");
+    expect(latest?.selectedInviteId).toBe("inv-a");
+  });
+
+  it("offers no Level picker when language versions are off", async () => {
+    service.fetchCourseLevels.mockResolvedValue([
+      level({ packageSessionId: "ps-1", levelName: "Batch 1", enrollInviteId: "inv-1" }),
+      level({ packageSessionId: "ps-2", levelName: "Batch 2", enrollInviteId: "inv-2" }),
+    ]);
+    await mount({ ...baseOpts, languages: [] });
+    expect(latest?.levelOptions).toEqual([]);
   });
 
   it("stays usable when the versions cannot be loaded", async () => {

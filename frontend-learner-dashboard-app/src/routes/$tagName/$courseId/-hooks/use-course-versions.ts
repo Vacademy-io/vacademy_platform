@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CourseLanguageOption } from "../../-utils/course-variants";
 import {
   fetchCourseLevels,
@@ -12,10 +12,13 @@ import {
 import {
   effectiveInviteIdFor,
   languageOptionsFor,
+  levelOptionsFor,
   orderVersions,
   pickInitialVersion,
-  urlDesignatedVersion,
+  versionSearchUpdates,
+  type InviteGrant,
   type LanguageVersionOption,
+  type VersionPickerOption,
   type VersionSelectionInput,
 } from "../-utils/course-version-selection";
 
@@ -32,17 +35,31 @@ export interface CourseVersionsState {
   invite: OpenEnrollInvite | null;
   /** Language picker segments (fewer than two = no picker). */
   options: LanguageVersionOption[];
-  /** Shows another version (the caller mirrors it into the URL). */
-  select: (packageSessionId: string) => void;
+  /** Level picker segments: the selected language's versions when it has several. */
+  levelOptions: VersionPickerOption[];
+  /**
+   * Shows another version. Returns the query-string updates the caller
+   * mirrors into the URL (replace), or null when the version cannot be
+   * picked (unknown, or nothing to enrol through).
+   */
+  select: (packageSessionId: string) => Record<string, string | null> | null;
 }
+
+/** The grant for one course (fetchKey); `settled` once its invite was read (or could not be). */
+type HeldGrant = InviteGrant & { key: string; settled: boolean };
 
 /**
  * The course's versions and the one on screen. Selection is derived from the
  * URL (?packageSessionId / ?enrollInviteId), then the visitor's language, then
- * the first version with an invite — so a shared link, a reload and the
- * Language picker (which writes the URL) all agree. Nothing is fetched while
- * `enabled` is false, which keeps sites that did not opt in on exactly the
- * requests they made before.
+ * the first version that can be enrolled in — so a shared link, a reload and
+ * the Language picker (which writes the URL) all agree. Nothing is fetched
+ * while `enabled` is false, which keeps sites that did not opt in on exactly
+ * the requests they made before.
+ *
+ * The invite the visit's link carried (?enrollInviteId, often a promo) is kept
+ * for the whole visit together with the package sessions it sells: every
+ * version it sells is enrolled through it, even after the visitor switched to
+ * a version it does not sell and back.
  */
 export const useCourseVersions = (opts: {
   enabled: boolean;
@@ -95,26 +112,49 @@ export const useCourseVersions = (opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey]);
 
-  // "?enrollInviteId's level" when the link carries a non-default invite: the
-  // invite itself says which package sessions it sells. Usually a cache hit
-  // (the page fetched this invite for its price).
-  const [urlInviteSells, setUrlInviteSells] = useState<{ inviteId: string; ids: string[] } | null>(null);
+  // The link's invite, held for the visit. The invite itself lists the
+  // package sessions it sells (usually a cache hit: the page fetched this
+  // invite for its price). Invites this hook wrote into the URL on a pick are
+  // not a new link, so they never replace it.
+  const [grant, setGrant] = useState<HeldGrant | null>(null);
+  const grantRef = useRef<HeldGrant | null>(null);
+  const writtenRef = useRef<{ key: string | null; ids: Set<string> }>({ key: null, ids: new Set() });
   useEffect(() => {
-    if (!enabled || !instituteId || !urlEnrollInviteId || urlPackageSessionId) return;
-    let cancelled = false;
+    if (!fetchKey || !instituteId || !urlEnrollInviteId) return;
+    const held = grantRef.current;
+    if (held && held.key === fetchKey) {
+      if (held.inviteId === urlEnrollInviteId) return;
+      const written = writtenRef.current;
+      if (written.key === fetchKey && written.ids.has(urlEnrollInviteId)) return;
+    }
+    const next: HeldGrant = {
+      key: fetchKey,
+      inviteId: urlEnrollInviteId,
+      packageSessionIds: null,
+      landingPackageSessionId: urlPackageSessionId ?? null,
+      settled: false,
+    };
+    grantRef.current = next;
+    setGrant(next);
+    const isNext = (g: HeldGrant | null): g is HeldGrant =>
+      !!g && g.key === next.key && g.inviteId === next.inviteId;
+    // Not cancelled when the URL moves on: the URL's next invite is usually
+    // one this hook wrote, and the grant still needs its list.
     getOpenEnrollInvite(instituteId, urlEnrollInviteId)
       .then((invite) => {
-        if (!cancelled) setUrlInviteSells({ inviteId: urlEnrollInviteId, ids: invitePackageSessionIds(invite) });
+        const ids = invitePackageSessionIds(invite);
+        // An invite listing nothing stays "unknown": the version the link
+        // named keeps it, as before.
+        setGrant((g) => (isNext(g) ? { ...g, packageSessionIds: ids.length ? ids : null, settled: true } : g));
       })
       .catch(() => {
-        /* the default-invite match still applies */
+        // Unknown: the version the link named keeps the invite.
+        setGrant((g) => (isNext(g) ? { ...g, settled: true } : g));
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, instituteId, urlEnrollInviteId, urlPackageSessionId]);
+  }, [fetchKey, instituteId, urlEnrollInviteId, urlPackageSessionId]);
 
   const current = loaded && loaded.key === fetchKey ? loaded : null;
+  const activeGrant: HeldGrant | null = grant && grant.key === fetchKey ? grant : null;
 
   const versions = useMemo(
     () => (current?.status === "ready" ? orderVersions(mergeCourseInit(current.levels, courseInit), languages) : []),
@@ -124,10 +164,17 @@ export const useCourseVersions = (opts: {
   // A pick made on this page (instant; the URL catches up a tick later).
   const [picked, setPicked] = useState<{ key: string; packageSessionId: string } | null>(null);
   const select = useCallback(
-    (packageSessionId: string) => {
-      if (fetchKey) setPicked({ key: fetchKey, packageSessionId });
+    (packageSessionId: string): Record<string, string | null> | null => {
+      if (!fetchKey) return null;
+      const next = versions.find((v) => v.packageSessionId === packageSessionId);
+      const inviteId = next ? effectiveInviteIdFor(next, activeGrant) : null;
+      if (!next || !inviteId) return null;
+      setPicked({ key: fetchKey, packageSessionId });
+      if (writtenRef.current.key !== fetchKey) writtenRef.current = { key: fetchKey, ids: new Set() };
+      writtenRef.current.ids.add(inviteId);
+      return versionSearchUpdates(next, inviteId);
     },
-    [fetchKey],
+    [fetchKey, versions, activeGrant],
   );
   // A later URL that names another version (an in-page link, Back/Forward)
   // takes over from the pick.
@@ -138,20 +185,9 @@ export const useCourseVersions = (opts: {
   }, [urlPackageSessionId]);
 
   const selectionInput = useMemo<VersionSelectionInput>(
-    () => ({
-      urlPackageSessionId,
-      urlEnrollInviteId,
-      urlInvitePackageSessionIds:
-        urlInviteSells && urlEnrollInviteId && urlInviteSells.inviteId === urlEnrollInviteId
-          ? urlInviteSells.ids
-          : undefined,
-      preferredLanguage,
-      languages,
-    }),
-    [urlPackageSessionId, urlEnrollInviteId, urlInviteSells, preferredLanguage, languages],
+    () => ({ urlPackageSessionId, urlEnrollInviteId, grant: activeGrant, preferredLanguage, languages }),
+    [urlPackageSessionId, urlEnrollInviteId, activeGrant, preferredLanguage, languages],
   );
-
-  const urlVersion = useMemo(() => urlDesignatedVersion(versions, selectionInput), [versions, selectionInput]);
 
   const selected = useMemo(() => {
     const pick =
@@ -159,7 +195,7 @@ export const useCourseVersions = (opts: {
     return pick ?? pickInitialVersion(versions, selectionInput);
   }, [picked, fetchKey, versions, selectionInput]);
 
-  const selectedInviteId = selected ? effectiveInviteIdFor(selected, urlEnrollInviteId, urlVersion) : null;
+  const selectedInviteId = selected ? effectiveInviteIdFor(selected, activeGrant) : null;
 
   const [inviteState, setInviteState] = useState<{ inviteId: string; invite: OpenEnrollInvite | null } | null>(null);
   useEffect(() => {
@@ -181,15 +217,21 @@ export const useCourseVersions = (opts: {
   const invite = inviteState && inviteState.inviteId === selectedInviteId ? inviteState.invite : null;
 
   const options = useMemo(
-    () => languageOptionsFor(versions, languages, selected?.packageSessionId),
-    [versions, languages, selected],
+    () => languageOptionsFor(versions, languages, selected?.packageSessionId, activeGrant),
+    [versions, languages, selected, activeGrant],
+  );
+  const levelOptions = useMemo(
+    () => (languages.length ? levelOptionsFor(versions, languages, selected?.packageSessionId, activeGrant) : []),
+    [versions, languages, selected, activeGrant],
   );
 
+  // Still "loading" until the link's invite has been read: what it sells can
+  // change the version on screen and the invite it is enrolled through.
   const status: CourseVersionsState["status"] = !fetchKey
     ? "off"
-    : !current || current.status === "loading"
+    : !current || current.status === "loading" || (activeGrant && !activeGrant.settled)
       ? "loading"
       : current.status;
 
-  return { status, versions, selected, selectedInviteId, invite, options, select };
+  return { status, versions, selected, selectedInviteId, invite, options, levelOptions, select };
 };

@@ -11,6 +11,7 @@ const axiosMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("axios", () => ({ default: axiosMock }));
 
 import {
+  courseLevelsCacheSize,
   fetchCatalogueCourseLevels,
   fetchProductPageCourseLevels,
   getOpenEnrollInvite,
@@ -138,6 +139,30 @@ describe("mergeCourseInit", () => {
     expect(merged[0]).toMatchObject({ levelId: "lvl-hi", sessionId: "ses-1", levelName: "Hindi", sessionName: "2026", durationMinutes: 150 });
   });
 
+  it("records a version course-init knows with no faculty as having none ([]), not unknown", () => {
+    const noFaculty = {
+      ...init,
+      sessions: [
+        {
+          session_dto: { id: "ses-1" },
+          level_with_details: [{ id: "lvl-hi", name: "Hindi", read_time_in_minutes: 0, instructors: [] }],
+        },
+      ],
+    };
+    const [pp] = mergeCourseInit(
+      mapProductPageMappings([{ package_id: COURSE, package_session_id: "ps-hi", status: "ACTIVE" }], COURSE),
+      noFaculty,
+    );
+    expect(pp.instructors).toEqual([]);
+    expect(pp.durationMinutes).toBe(0);
+    // A row with authors still wins over course-init's empty list.
+    const [row] = mergeCourseInit(mapCatalogueRows([searchRows[0]], COURSE), {
+      ...noFaculty,
+      sessions: [{ session_dto: { id: "ses-1" }, level_with_details: [{ id: "lvl-en", instructors: [] }] }],
+    });
+    expect(row.instructors).toEqual([{ id: "u1", full_name: "Row Author" }]);
+  });
+
   it("keeps the row's values when course-init has nothing for the version", () => {
     const rowOnly: CourseLevel[] = mapCatalogueRows(searchRows, COURSE);
     expect(mergeCourseInit(rowOnly, { sessions: [], package_sessions: [] })[0]).toMatchObject({
@@ -202,6 +227,38 @@ describe("network", () => {
     // Cached: a second read (a version switch, a remount) does not refetch.
     await fetchCatalogueCourseLevels("inst-1", COURSE);
     expect(axiosMock.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches this course's versions, not the (possibly whole-catalogue) response", async () => {
+    const everyCourse = [
+      ...searchRows,
+      ...Array.from({ length: 200 }, (_, i) => ({ id: `pkg-${i}`, package_session_id: `ps-${i}`, enroll_invite_id: `inv-${i}` })),
+    ];
+    axiosMock.post.mockResolvedValue({ data: { content: everyCourse } });
+    const first = await fetchCatalogueCourseLevels("inst-cache", COURSE);
+    const second = await fetchCatalogueCourseLevels("inst-cache", COURSE);
+    expect(first.map((l) => l.packageSessionId)).toEqual(["ps-en", "ps-hi"]);
+    // The same mapped list both times: nothing is re-read from a kept response.
+    expect(second).toBe(first);
+    expect(axiosMock.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops expired entries and never grows past its cap", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-09T10:00:00Z"));
+      for (let i = 0; i < 60; i += 1) primeOpenEnrollInvite("inst-cap", `inv-${i}`, { id: `inv-${i}` });
+      expect(courseLevelsCacheSize()).toBeLessThanOrEqual(40);
+      // The newest entries are the ones kept.
+      await expect(getOpenEnrollInvite("inst-cap", "inv-59")).resolves.toMatchObject({ id: "inv-59" });
+      expect(axiosMock.get).not.toHaveBeenCalled();
+
+      vi.setSystemTime(new Date("2026-10-09T10:02:00Z")); // past the 60 s TTL
+      primeOpenEnrollInvite("inst-cap", "fresh", { id: "fresh" });
+      expect(courseLevelsCacheSize()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reads a product page's mappings for a product page visit", async () => {

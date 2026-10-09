@@ -234,7 +234,13 @@ export const mergeCourseInit = (levels: CourseLevel[], init: CourseInitLike | nu
       levelName: level.levelName ?? str(ps?.level?.level_name) ?? str(details?.name),
       sessionName: level.sessionName ?? str(ps?.session?.session_name) ?? str(session?.session_dto?.session_name),
       durationMinutes: num(details?.read_time_in_minutes) ?? level.durationMinutes,
-      instructors: initInstructors && initInstructors.length ? initInstructors : level.instructors,
+      // course-init's authors, else the row's; a version course-init knows
+      // with no faculty at all ends up with [] (known: none), not null.
+      instructors: initInstructors?.length
+        ? initInstructors
+        : level.instructors?.length
+          ? level.instructors
+          : (initInstructors ?? level.instructors),
     };
   });
 };
@@ -268,18 +274,38 @@ export const invitePackageSessionIds = (invite: OpenEnrollInvite | null | undefi
 /* ── network (short in-memory cache: a version switch must not refetch) ── */
 
 const CACHE_TTL_MS = 60_000;
+/** A visitor browsing course after course never holds more than this many entries. */
+const CACHE_MAX_ENTRIES = 40;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+
+/** Stores an entry, dropping expired ones and, past the cap, the oldest. */
+const store = (key: string, value: Promise<unknown>) => {
+  const now = Date.now();
+  for (const [k, entry] of cache) {
+    if (now - entry.at >= CACHE_TTL_MS) cache.delete(k);
+  }
+  cache.delete(key); // re-inserted last: Map order is insertion order
+  cache.set(key, { at: now, value });
+  while (cache.size > CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+};
 
 const cached = <T>(key: string, load: () => Promise<T>): Promise<T> => {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as Promise<T>;
   const value = load().catch((err) => {
-    cache.delete(key);
+    if (cache.get(key)?.value === value) cache.delete(key);
     throw err;
   });
-  cache.set(key, { at: Date.now(), value });
+  store(key, value);
   return value;
 };
+
+/** Number of cached entries (tests). */
+export const courseLevelsCacheSize = () => cache.size;
 
 const inviteKey = (instituteId: string, inviteId: string) => `invite:${instituteId}:${inviteId}`;
 const productPageKey = (instituteId: string, code: string) => `product-page:${instituteId}:${code}`;
@@ -296,19 +322,23 @@ export const getOpenEnrollInvite = (instituteId: string, enrollInviteId: string)
 /** Records an invite the page already fetched, so the version layer reuses it. */
 export const primeOpenEnrollInvite = (instituteId: string, enrollInviteId: string, data: unknown) => {
   if (!instituteId || !enrollInviteId || !data) return;
-  cache.set(inviteKey(instituteId, enrollInviteId), { at: Date.now(), value: Promise.resolve(data) });
+  store(inviteKey(instituteId, enrollInviteId), Promise.resolve(data));
 };
 
 /** Records a product page (by code) the page already fetched. */
 export const primeProductPage = (instituteId: string, code: string, data: unknown) => {
   if (!instituteId || !code || !data) return;
-  cache.set(productPageKey(instituteId, code), { at: Date.now(), value: Promise.resolve(data) });
+  store(productPageKey(instituteId, code), Promise.resolve(data));
 };
 
-/** The course's rows from the open catalogue search. */
-export const fetchCatalogueCourseLevels = async (instituteId: string, courseId: string): Promise<CourseLevel[]> => {
-  const res = await cached(`catalogue:${instituteId}:${courseId}`, () =>
-    axios.post(
+/**
+ * The course's rows from the open catalogue search. Only the mapped versions
+ * are cached: a backend that ignores `package_ids` answers with the whole
+ * catalogue, which is not worth keeping per course.
+ */
+export const fetchCatalogueCourseLevels = (instituteId: string, courseId: string): Promise<CourseLevel[]> =>
+  cached(`catalogue:${instituteId}:${courseId}`, async () => {
+    const res = await axios.post(
       urlCourseDetails,
       {
         status: [],
@@ -326,12 +356,11 @@ export const fetchCatalogueCourseLevels = async (instituteId: string, courseId: 
         params: { instituteId, page: 0, size: 1000, sort: "createdAt,desc" },
         headers: { "Content-Type": "application/json" },
       },
-    ),
-  );
-  const data = (res as { data?: unknown }).data as { content?: unknown } | unknown[] | undefined;
-  const rows = Array.isArray(data) ? data : (data as { content?: unknown } | undefined)?.content;
-  return mapCatalogueRows(rows, courseId);
-};
+    );
+    const data = (res as { data?: unknown }).data as { content?: unknown } | unknown[] | undefined;
+    const rows = Array.isArray(data) ? data : (data as { content?: unknown } | undefined)?.content;
+    return mapCatalogueRows(rows, courseId);
+  });
 
 /** The course's versions as a product page sells them. */
 export const fetchProductPageCourseLevels = async (

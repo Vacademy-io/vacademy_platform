@@ -78,7 +78,21 @@ vi.mock("../../-components/EnrollmentPaymentDialog", () => ({
 }));
 vi.mock("../../-components/LeadCollectionModal", () => ({ LeadCollectionModal: () => null }));
 vi.mock("../../-components/AudienceFormModal", () => ({ AudienceFormModal: () => null }));
-vi.mock("../../-components/CourseStructureDetails", () => ({ CourseStructureDetails: () => null }));
+// Records each mount of the syllabus (a remount runs the mount effect again).
+const syllabus = vi.hoisted(() => ({ mounts: [] as string[] }));
+vi.mock("../../-components/CourseStructureDetails", async () => {
+  const React = await import("react");
+  return {
+    CourseStructureDetails: ({ packageSessionId }: { packageSessionId: string }) => {
+      React.useEffect(() => {
+        syllabus.mounts.push(packageSessionId);
+      }, []);
+      return null;
+    },
+  };
+});
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toasts }));
 vi.mock("@/components/common/enroll-by-invite/-components/InviteUnavailableMessage", () => ({
   InviteUnavailableMessage: () => null,
 }));
@@ -147,17 +161,35 @@ const settings = (extra: Record<string, unknown> = {}) => ({
   pages: [{ id: "details", route: "course-details", components: [{ id: "hero", type: "heroSection", props: {} }] }],
 });
 
-const routeNetwork = (courseId: string, invites: Record<string, unknown>, mappings: unknown[] = []) => {
+const routeNetwork = (
+  courseId: string,
+  invites: Record<string, unknown>,
+  mappings: unknown[] = [],
+  over: { init?: unknown[]; rows?: unknown[] } = {},
+) => {
   net.get.mockImplementation(async (url: string) => {
-    if (url.includes("course-init")) return { data: courseInit(courseId) };
+    if (url.includes("course-init")) return { data: over.init ?? courseInit(courseId) };
     if (url.includes("student-display")) return { data: { courseDetails: {} } };
     if (url.includes("by-code")) return { data: { mappings } };
     const inviteId = url.split("/").pop() as string;
     if (invites[inviteId]) return { data: invites[inviteId] };
     throw new Error(`unexpected GET ${url}`);
   });
-  net.post.mockImplementation(async () => ({ data: { content: searchRows(courseId) } }));
+  net.post.mockImplementation(async () => ({ data: { content: over.rows ?? searchRows(courseId) } }));
 };
+
+/** An invite selling several package sessions, each with its own plan. */
+const bundleInvite = (id: string, prices: Record<string, number>) => ({
+  id,
+  availability_status: "AVAILABLE",
+  package_session_to_payment_options: Object.entries(prices).map(([psId, price]) => ({
+    package_session_id: psId,
+    payment_option: { id: `po-${id}-${psId}`, payment_plans: [{ actual_price: price, currency: "INR" }] },
+  })),
+});
+
+const lastUrlParams = () =>
+  new URLSearchParams(((router.replace.mock.calls.at(-1)?.[0] as string) ?? "").split("?")[1] ?? "");
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -194,6 +226,9 @@ beforeEach(() => {
   router.navigate.mockReset();
   router.location = { pathname: "/site/pkg", searchStr: "", hash: "" };
   children.dialog = null;
+  syllabus.mounts = [];
+  toasts.success.mockReset();
+  toasts.error.mockReset();
   memoryStorage.clear();
   useSiteCartStore.setState({ instituteId: null, items: [], hydrated: false, lastAddedAt: 0 });
 });
@@ -225,11 +260,27 @@ describe("CourseDetailsPage — a site without the new settings", () => {
     expect(radios()).toHaveLength(0); // no Language picker
     expect(host!.textContent).toContain("English"); // the Level row is still there
     expect(buttonByText("Add to cart")).toHaveLength(0);
+    expect(syllabus.mounts).toEqual([`${c}-en`]); // mounted once, never remounted
+    const enrol = buttonByText("courseDetails.enrollNow");
+    expect(enrol.every((b) => !b.disabled && !b.hasAttribute("aria-busy"))).toBe(true);
 
-    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    act(() => enrol[0].click());
     expect(children.dialog).toMatchObject({
       open: true,
       courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en`, price: 999 }),
+    });
+  });
+
+  it("shows the plan of the linked package session's invite entry (what the dialog charges)", async () => {
+    const c = "c-bundle";
+    routeNetwork(c, { bundle: bundleInvite("bundle", { [`${c}-en`]: 999, [`${c}-hi`]: 449 }) });
+    catalogue.data = settings();
+    await renderPage({ courseId: c, packageSessionId: `${c}-hi`, enrollInviteId: "bundle", level: "Hindi" });
+
+    expect(net.post).not.toHaveBeenCalled();
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ packageSessionId: `${c}-hi`, enrollInviteId: "bundle", price: 449 }),
     });
   });
 });
@@ -295,7 +346,156 @@ describe("CourseDetailsPage — language versions", () => {
   });
 });
 
+describe("CourseDetailsPage — language versions: links, syllabus, levels", () => {
+  it("keeps a promo link's invite for every version it sells, switching away and back", async () => {
+    const c = "c-promo";
+    routeNetwork(c, {
+      PROMO: bundleInvite("PROMO", { [`${c}-en`]: 700, [`${c}-hi`]: 300 }),
+      [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
+      [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
+    });
+    catalogue.data = settings({ courseLanguages: { enabled: true } });
+    router.location = { pathname: `/site/${c}`, searchStr: `?packageSessionId=${c}-en&enrollInviteId=PROMO`, hash: "" };
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "PROMO" });
+
+    act(() => radios()[1].click()); // Hindi
+    await settle();
+    expect(lastUrlParams().get("enrollInviteId")).toBe("PROMO");
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ packageSessionId: `${c}-hi`, enrollInviteId: "PROMO", price: 300 }),
+    });
+
+    act(() => radios()[0].click()); // back to English
+    await settle();
+    expect(lastUrlParams().get("enrollInviteId")).toBe("PROMO");
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: "PROMO", price: 700 }),
+    });
+  });
+
+  it("remounts the syllabus for the picked version, and shows that version's own read time", async () => {
+    const c = "c-syl";
+    const init = courseInit(c);
+    // The Hindi version has no read time and no faculty of its own.
+    (init[0].sessions[0].level_with_details[1] as { read_time_in_minutes: number }).read_time_in_minutes = 0;
+    routeNetwork(
+      c,
+      { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) },
+      [],
+      { init },
+    );
+    catalogue.data = settings({ courseLanguages: { enabled: true } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(syllabus.mounts).toEqual([`${c}-en`]);
+    const durationRows = () => (host!.textContent?.match(/courseDetails\.duration/g) ?? []).length;
+    expect(durationRows()).toBe(2); // English: 90 min, on both cards
+
+    act(() => radios()[1].click());
+    await settle();
+    expect(syllabus.mounts).toEqual([`${c}-en`, `${c}-hi`]);
+    expect(durationRows()).toBe(0); // not English's read time
+  });
+
+  it("offers a Level picker when the picked language has several versions", async () => {
+    const c = "c-lvl";
+    const rows = [
+      { id: c, package_session_id: `${c}-en`, level_name: "English", enroll_invite_id: "i-en", min_plan_actual_price: 999 },
+      { id: c, package_session_id: `${c}-hb`, level_name: "Beginner Hindi", enroll_invite_id: "i-hb", min_plan_actual_price: 399 },
+      { id: c, package_session_id: `${c}-ha`, level_name: "Advanced Hindi", enroll_invite_id: "i-ha", min_plan_actual_price: 599 },
+    ];
+    routeNetwork(
+      c,
+      { "i-en": invite("i-en", `${c}-en`, 999), "i-hb": invite("i-hb", `${c}-hb`, 399), "i-ha": invite("i-ha", `${c}-ha`, 599) },
+      [],
+      { rows },
+    );
+    catalogue.data = settings({ courseLanguages: { enabled: true } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-hb`, enrollInviteId: "i-hb" });
+
+    const labels = radios().map((r) => r.textContent);
+    // Language (EN / हिं) then Level (two Hindi versions), on both cards.
+    expect(labels.filter((l) => l === "Beginner Hindi")).toHaveLength(2);
+    expect(labels.filter((l) => l === "Advanced Hindi")).toHaveLength(2);
+    act(() => radios().find((r) => r.textContent === "Advanced Hindi")!.click());
+    await settle();
+    expect(lastUrlParams().get("packageSessionId")).toBe(`${c}-ha`);
+    expect(lastUrlParams().get("level")).toBe("Advanced Hindi");
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ packageSessionId: `${c}-ha`, enrollInviteId: "i-ha", price: 599 }),
+    });
+  });
+
+  it("holds the enrol button until the versions are known", async () => {
+    const c = "c-wait";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) });
+    let release: (value: unknown) => void = () => {};
+    net.post.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+    catalogue.data = settings({ courseLanguages: { enabled: true } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    const enrol = buttonByText("courseDetails.enrollNow");
+    expect(enrol.length).toBeGreaterThan(0);
+    expect(enrol.every((b) => b.disabled && b.getAttribute("aria-busy") === "true")).toBe(true);
+    act(() => enrol[0].click());
+    act(() => {
+      window.dispatchEvent(new Event("openCourseEnrollment")); // an HTML page's data-vacademy="enrol"
+    });
+    expect(children.dialog).toMatchObject({ open: false });
+
+    release({ data: { content: searchRows(c) } });
+    await settle();
+    const ready = buttonByText("courseDetails.enrollNow");
+    expect(ready.every((b) => !b.disabled)).toBe(true);
+    act(() => ready[0].click());
+    expect(children.dialog).toMatchObject({ open: true, courseData: expect.objectContaining({ packageSessionId: `${c}-en` }) });
+  });
+});
+
 describe("CourseDetailsPage — site cart", () => {
+  it("refuses a 41st course and opens the cart instead of checking out", async () => {
+    const c = "c-full";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = settings({ siteCart: { enabled: true, storeProductPageCode: "STORE" } });
+    const full = Array.from({ length: 40 }, (_, i) => ({ packageSessionId: `x-${i}`, courseId: `xc-${i}`, title: `X${i}` }));
+    useSiteCartStore.setState({ instituteId: "inst", items: full, hydrated: true });
+    const opened: unknown[] = [];
+    const onOpen = (e: Event) => opened.push((e as CustomEvent).detail);
+    window.addEventListener("siteCartOpen", onOpen);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    act(() => buttonByText("Add to cart")[0].click());
+    expect(useSiteCartStore.getState().items).toHaveLength(40);
+    expect(toasts.error).toHaveBeenCalledWith(expect.stringContaining("Your cart is full"));
+    expect(toasts.success).not.toHaveBeenCalled();
+
+    act(() => buttonByText("Buy now")[0].click());
+    expect(useSiteCartStore.getState().items).toHaveLength(40);
+    expect(opened).toEqual([expect.objectContaining({ intent: "view" })]);
+    window.removeEventListener("siteCartOpen", onOpen);
+  });
+
+  it("still swaps this course's version in a full cart", async () => {
+    const c = "c-swap";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) });
+    catalogue.data = settings({ courseLanguages: { enabled: true }, siteCart: { enabled: true, storeProductPageCode: "STORE" } });
+    const full = [
+      { packageSessionId: `${c}-en`, courseId: c, title: "Yoga" },
+      ...Array.from({ length: 39 }, (_, i) => ({ packageSessionId: `x-${i}`, courseId: `xc-${i}`, title: `X${i}` })),
+    ];
+    useSiteCartStore.setState({ instituteId: "inst", items: full, hydrated: true });
+    await renderPage({ courseId: c, packageSessionId: `${c}-hi`, enrollInviteId: `${c}-inv-hi` });
+
+    act(() => buttonByText("Add to cart")[0].click());
+    const items = useSiteCartStore.getState().items;
+    expect(items).toHaveLength(40);
+    expect(items.some((i) => i.packageSessionId === `${c}-hi`)).toBe(true);
+    expect(items.some((i) => i.packageSessionId === `${c}-en`)).toBe(false);
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
   it("adds the version to the site cart, then offers In cart and Buy now", async () => {
     const c = "c-cart";
     routeNetwork(c, {

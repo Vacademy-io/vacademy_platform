@@ -6,18 +6,28 @@ vi.mock("@/constants/urls", () => ({
   GET_PRODUCT_PAGE_BY_CODE: () => "https://api.test/by-code",
 }));
 
+import { defaultParseSearch } from "@tanstack/react-router";
 import { DEFAULT_COURSE_LANGUAGES, preferredCourseLanguage } from "../../-utils/course-variants";
+import { withSearchParams } from "../../-utils/catalogue-url-state";
 import type { CourseLevel } from "../../-services/course-levels-service";
 import {
+  SITE_CART_MAX_ITEMS,
   buildCourseCartItem,
+  cartCanTake,
   effectiveInviteIdFor,
+  grantCovers,
   languageOptionsFor,
+  levelOptionsFor,
   localizeCourseDisplay,
   orderVersions,
   pickInitialVersion,
   resolveVersionOffer,
+  searchParamValue,
+  searchText,
   urlDesignatedVersion,
+  versionOwnDetails,
   versionSearchUpdates,
+  type InviteGrant,
   type VersionSelectionInput,
 } from "./course-version-selection";
 
@@ -100,8 +110,18 @@ describe("pickInitialVersion", () => {
   it("2. else the level of ?enrollInviteId (default invite or one the invite sells)", () => {
     expect(pickInitialVersion(versions, input({ urlEnrollInviteId: "inv-hi", preferredLanguage: "en" }))).toBe(hi);
     expect(
-      pickInitialVersion(versions, input({ urlEnrollInviteId: "special", urlInvitePackageSessionIds: ["ps-hi"] })),
+      pickInitialVersion(
+        versions,
+        input({ urlEnrollInviteId: "special", grant: { inviteId: "special", packageSessionIds: ["ps-hi"] } }),
+      ),
     ).toBe(hi);
+    // What another invite sells says nothing about the URL's invite.
+    expect(
+      pickInitialVersion(
+        versions,
+        input({ urlEnrollInviteId: "special", grant: { inviteId: "other", packageSessionIds: ["ps-hi"] } }),
+      ),
+    ).toBe(en);
   });
 
   it("2b. one invite selling both languages resolves to the visitor's language", () => {
@@ -135,14 +155,162 @@ describe("pickInitialVersion", () => {
   });
 });
 
-describe("effectiveInviteIdFor", () => {
-  it("keeps the URL's invite for the version the URL names, the version's own otherwise", () => {
-    const urlVersion = urlDesignatedVersion([en, hi], input({ urlPackageSessionId: "ps-hi", urlEnrollInviteId: "promo" }));
-    expect(urlVersion).toBe(hi);
-    expect(effectiveInviteIdFor(hi, "promo", urlVersion)).toBe("promo");
-    expect(effectiveInviteIdFor(en, "promo", urlVersion)).toBe("inv-en");
-    expect(effectiveInviteIdFor(en, undefined, null)).toBe("inv-en");
-    expect(effectiveInviteIdFor(enNoInvite, undefined, null)).toBeNull();
+describe("effectiveInviteIdFor / grantCovers (the link's invite)", () => {
+  // ?enrollInviteId=PROMO, an invite that sells both language versions.
+  const promoBoth: InviteGrant = { inviteId: "promo", packageSessionIds: ["ps-en", "ps-hi"], landingPackageSessionId: "ps-en" };
+  // A promo that sells only English.
+  const promoEn: InviteGrant = { inviteId: "promo", packageSessionIds: ["ps-en"] };
+
+  it("enrols every version the link's invite sells through it, the rest through their own", () => {
+    expect(effectiveInviteIdFor(en, promoBoth)).toBe("promo");
+    expect(effectiveInviteIdFor(hi, promoBoth)).toBe("promo");
+    expect(effectiveInviteIdFor(hi, promoEn)).toBe("inv-hi");
+    expect(effectiveInviteIdFor(en, null)).toBe("inv-en");
+    expect(effectiveInviteIdFor(enNoInvite, null)).toBeNull();
+  });
+
+  it("switching away and back keeps the promo for the versions it sells", () => {
+    // Landed on English at the promo price; the URL now follows each pick.
+    const picks = [hi, en, hi, en];
+    expect(picks.map((v) => versionSearchUpdates(v, effectiveInviteIdFor(v, promoBoth)).enrollInviteId)).toEqual([
+      "promo",
+      "promo",
+      "promo",
+      "promo",
+    ]);
+    // A promo for English only: Hindi uses its own invite, English gets the promo back.
+    expect(picks.map((v) => versionSearchUpdates(v, effectiveInviteIdFor(v, promoEn)).enrollInviteId)).toEqual([
+      "inv-hi",
+      "promo",
+      "inv-hi",
+      "promo",
+    ]);
+  });
+
+  it("makes a version only the promo sells enrollable (and pickable)", () => {
+    const hiPromoOnly = version({ packageSessionId: "ps-hi", levelName: "Hindi" }); // no default invite
+    const grant: InviteGrant = { inviteId: "promo", packageSessionIds: ["ps-en", "ps-hi"] };
+    expect(effectiveInviteIdFor(hiPromoOnly, grant)).toBe("promo");
+    expect(languageOptionsFor([en, hiPromoOnly], languages, "ps-en", grant)).toEqual([
+      expect.objectContaining({ code: "en", disabled: false }),
+      expect.objectContaining({ code: "hi", packageSessionId: "ps-hi", disabled: false }),
+    ]);
+    expect(languageOptionsFor([en, hiPromoOnly], languages, "ps-en", null)[1].disabled).toBe(true);
+    // The first version that can be enrolled in, counting the promo's.
+    expect(pickInitialVersion([enNoInvite, hiPromoOnly], input({ grant }))).toBe(hiPromoOnly);
+    expect(pickInitialVersion([enNoInvite, hiPromoOnly], input())).toBe(enNoInvite);
+  });
+
+  it("while what the invite sells is unknown, only the version the link named keeps it", () => {
+    const unknown: InviteGrant = { inviteId: "promo", packageSessionIds: null, landingPackageSessionId: "ps-hi" };
+    expect(grantCovers(unknown, hi)).toBe(true);
+    expect(grantCovers(unknown, en)).toBe(false);
+    expect(effectiveInviteIdFor(en, unknown)).toBe("inv-en");
+    expect(grantCovers({ inviteId: "promo", packageSessionIds: null }, hi)).toBe(false);
+    // An invite that is a version's own default always covers that version.
+    expect(grantCovers({ inviteId: "inv-hi", packageSessionIds: null }, hi)).toBe(true);
+  });
+
+  it("does not hand a product page version another invite", () => {
+    const pp = version({ packageSessionId: "ps-hi", levelName: "Hindi", enrollInviteId: "pp-hi", source: "productPage" });
+    expect(effectiveInviteIdFor(pp, promoBoth)).toBe("pp-hi");
+  });
+
+  it("urlDesignatedVersion uses what the URL's invite sells", () => {
+    const grant: InviteGrant = { inviteId: "promo", packageSessionIds: ["ps-hi"] };
+    expect(urlDesignatedVersion([en, hi], input({ urlEnrollInviteId: "promo", grant }))).toBe(hi);
+    expect(urlDesignatedVersion([en, hi], input({ urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo", grant }))).toBe(en);
+    expect(urlDesignatedVersion([en, hi], input({ urlEnrollInviteId: "promo" }))).toBeNull();
+  });
+});
+
+describe("levelOptionsFor (several versions in one language)", () => {
+  const beginnerHi = version({ packageSessionId: "ps-hi-b", levelName: "Beginner Hindi", enrollInviteId: "inv-b" });
+  const advancedHi = version({ packageSessionId: "ps-hi-a", levelName: "Advanced Hindi" });
+  const all = orderVersions([beginnerHi, advancedHi, en], languages);
+
+  it("lists the selected language's versions, each pickable when it can be enrolled in", () => {
+    expect(levelOptionsFor(all, languages, "ps-hi-b")).toEqual([
+      { packageSessionId: "ps-hi-b", label: "Beginner Hindi", disabled: false },
+      { packageSessionId: "ps-hi-a", label: "Advanced Hindi", disabled: true },
+    ]);
+    // The language picker still offers one Hindi segment, represented by the selection.
+    expect(languageOptionsFor(all, languages, "ps-hi-b").map((o) => o.packageSessionId)).toEqual(["ps-en", "ps-hi-b"]);
+  });
+
+  it("is empty when the selected language has one version", () => {
+    expect(levelOptionsFor(all, languages, "ps-en")).toEqual([]);
+    expect(levelOptionsFor(all, languages, null)).toEqual([]);
+  });
+
+  it("tells two batches of the same level apart by session", () => {
+    const a = version({ packageSessionId: "a", levelName: "Hindi", sessionName: "2025", enrollInviteId: "i-a" });
+    const b = version({ packageSessionId: "b", levelName: "Hindi", sessionName: "2026", enrollInviteId: "i-b" });
+    const c = version({ packageSessionId: "c", levelName: "Hindi", enrollInviteId: "i-c" });
+    expect(levelOptionsFor([a, b, c], languages, "a").map((o) => o.label)).toEqual(["Hindi · 2025", "Hindi · 2026", "Hindi (3)"]);
+  });
+});
+
+describe("versionOwnDetails", () => {
+  it("uses the version's own read time and authors, even when empty", () => {
+    expect(versionOwnDetails({ durationMinutes: 90, instructors: [{ full_name: "A" }] }, 2)).toEqual({
+      durationMinutes: 90,
+      instructors: [{ full_name: "A" }],
+    });
+    expect(versionOwnDetails({ durationMinutes: null, instructors: null }, 2)).toEqual({ durationMinutes: null, instructors: [] });
+    expect(versionOwnDetails({ durationMinutes: 0, instructors: [] }, 1)).toEqual({ durationMinutes: 0, instructors: [] });
+  });
+
+  it("keeps the course-level values only for a lone version whose details are unknown", () => {
+    expect(versionOwnDetails({ durationMinutes: null, instructors: null }, 1)).toEqual({
+      durationMinutes: undefined,
+      instructors: undefined,
+    });
+  });
+});
+
+describe("cartCanTake (the 40-course cap)", () => {
+  const full = Array.from({ length: SITE_CART_MAX_ITEMS }, (_, i) => ({ packageSessionId: `ps-${i}`, courseId: `c-${i}` }));
+
+  it("refuses a new course when the cart is full", () => {
+    expect(SITE_CART_MAX_ITEMS).toBe(40);
+    expect(cartCanTake(full, { packageSessionId: "ps-new", courseId: "c-new" })).toBe(false);
+    expect(cartCanTake(full.slice(1), { packageSessionId: "ps-new", courseId: "c-new" })).toBe(true);
+  });
+
+  it("always takes a version already in the cart or a swap of a course's version", () => {
+    expect(cartCanTake(full, { packageSessionId: "ps-3", courseId: "c-3" })).toBe(true);
+    expect(cartCanTake(full, { packageSessionId: "ps-3-hi", courseId: "c-3" })).toBe(true);
+  });
+});
+
+describe("URL values (TanStack parses search values as JSON)", () => {
+  it("JSON-quotes only what the router would read back as something else", () => {
+    expect(searchParamValue("10")).toBe('"10"');
+    expect(searchParamValue("true")).toBe('"true"');
+    expect(searchParamValue("Hindi")).toBe("Hindi");
+    expect(searchParamValue("4f9c2a1e-77b0-4c1e-9d0a-2b8f6c0d1e2f")).toBe("4f9c2a1e-77b0-4c1e-9d0a-2b8f6c0d1e2f");
+  });
+
+  it("round-trips a picked version through the query string as strings", () => {
+    const numeric = version({ packageSessionId: "12345", levelName: "10", enrollInviteId: "true" });
+    const qs = withSearchParams("?lang=hi", versionSearchUpdates(numeric, "true"));
+    const parsed = defaultParseSearch(qs) as Record<string, unknown>;
+    expect(parsed).toMatchObject({ lang: "hi", packageSessionId: "12345", enrollInviteId: "true", level: "10" });
+    expect(defaultParseSearch(withSearchParams("", versionSearchUpdates(hi, "inv-hi")))).toEqual({
+      packageSessionId: "ps-hi",
+      enrollInviteId: "inv-hi",
+      level: "Hindi",
+    });
+  });
+
+  it("searchText turns a parsed value back into text", () => {
+    expect(searchText(10)).toBe("10");
+    expect(searchText(true)).toBe("true");
+    expect(searchText("ps-1")).toBe("ps-1");
+    expect(searchText("")).toBeUndefined();
+    expect(searchText(undefined)).toBeUndefined();
+    expect(searchText(null)).toBeUndefined();
   });
 });
 
@@ -180,14 +348,16 @@ describe("resolveVersionOffer", () => {
 });
 
 describe("versionSearchUpdates", () => {
-  it("names the picked version and drops the link's price/slots", () => {
-    expect(versionSearchUpdates(hi)).toEqual({
+  it("names the picked version and the invite it is enrolled through, and drops the link's price/slots", () => {
+    expect(versionSearchUpdates(hi, "inv-hi")).toEqual({
       packageSessionId: "ps-hi",
       enrollInviteId: "inv-hi",
       level: "Hindi",
       price: null,
       available_slots: null,
     });
+    expect(versionSearchUpdates(hi, "promo").enrollInviteId).toBe("promo");
+    expect(versionSearchUpdates(enNoInvite, null).enrollInviteId).toBeNull();
   });
 });
 

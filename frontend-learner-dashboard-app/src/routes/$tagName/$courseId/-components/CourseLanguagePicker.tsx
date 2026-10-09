@@ -4,27 +4,34 @@ import { Translate } from "@phosphor-icons/react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useSiteT } from "../../-utils/catalogue-locale";
-import type { LanguageVersionOption } from "../-utils/course-version-selection";
+import type {
+  LanguageVersionOption,
+  VersionPickerOption,
+} from "../-utils/course-version-selection";
 
 /**
- * Segmented "Language" control on the course overview cards: one segment per
- * language version of the course (labels and chips from
- * globalSettings.courseLanguages). A version without an invite cannot be
- * enrolled in, so its segment is disabled and says why. Renders nothing for
- * a course with fewer than two languages.
+ * Segmented control on the course overview cards that picks a version of the
+ * course: one segment per option, each selecting a package session. A version
+ * without an invite cannot be enrolled in, so its segment is disabled and says
+ * why. Renders nothing with fewer than two options. Labels are live data and
+ * go through the site dictionary at display time.
  */
-export const CourseLanguagePicker: React.FC<{
-  options: LanguageVersionOption[];
+export const CourseVersionPicker: React.FC<{
+  label: string;
+  icon: React.ReactNode;
+  options: VersionPickerOption[];
   selectedPackageSessionId: string | null;
   onSelect: (packageSessionId: string) => void;
   className?: string;
-}> = ({ options, selectedPackageSessionId, onSelect, className }) => {
+}> = ({ label, icon, options, selectedPackageSessionId, onSelect, className }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
   const labelId = useId();
   if (options.length < 2) return null;
 
-  const active = options.find((o) => o.packageSessionId === selectedPackageSessionId)?.code ?? "";
+  const active = options.some((o) => o.packageSessionId === selectedPackageSessionId)
+    ? (selectedPackageSessionId as string)
+    : "";
   const unavailable = t("courseDetails.languagePicker.unavailable", "Not open for enrolment yet");
 
   return (
@@ -33,16 +40,16 @@ export const CourseLanguagePicker: React.FC<{
         id={labelId}
         className="flex items-center gap-1.5 text-xs font-medium text-catalogue-text-secondary"
       >
-        <Translate size={13} className="text-catalogue-text-muted" weight="duotone" aria-hidden="true" />
-        {t("courseDetails.languagePicker.label", "Language")}
+        {icon}
+        {label}
       </span>
       <ToggleGroup
         type="single"
         value={active}
-        onValueChange={(code) => {
+        onValueChange={(packageSessionId) => {
           // Radix clears the value when the active segment is pressed again;
           // a version is always selected, so that press is ignored.
-          const option = options.find((o) => o.code === code);
+          const option = options.find((o) => o.packageSessionId === packageSessionId);
           if (!option || option.disabled || option.packageSessionId === selectedPackageSessionId) return;
           onSelect(option.packageSessionId);
         }}
@@ -51,8 +58,8 @@ export const CourseLanguagePicker: React.FC<{
       >
         {options.map((option) => (
           <ToggleGroupItem
-            key={option.code}
-            value={option.code}
+            key={option.packageSessionId}
+            value={option.packageSessionId}
             disabled={option.disabled}
             title={option.disabled ? unavailable : undefined}
             className={cn(
@@ -77,6 +84,26 @@ export const CourseLanguagePicker: React.FC<{
         ))}
       </ToggleGroup>
     </div>
+  );
+};
+
+/**
+ * The "Language" picker: one segment per language version of the course
+ * (labels and chips from globalSettings.courseLanguages).
+ */
+export const CourseLanguagePicker: React.FC<{
+  options: LanguageVersionOption[];
+  selectedPackageSessionId: string | null;
+  onSelect: (packageSessionId: string) => void;
+  className?: string;
+}> = (props) => {
+  const { t } = useTranslation("coursePlayerB");
+  return (
+    <CourseVersionPicker
+      {...props}
+      label={t("courseDetails.languagePicker.label", "Language")}
+      icon={<Translate size={13} className="text-catalogue-text-muted" weight="duotone" aria-hidden="true" />}
+    />
   );
 };
 

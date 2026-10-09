@@ -15,6 +15,8 @@ import {
 /**
  * Window event that opens the site cart drawer (the cart stream's
  * SiteCartButton listens). `detail.intent` is "view" or "checkout".
+ * The cart stream exports the same name from site-cart/site-cart-events.ts;
+ * this copy goes once the two streams are merged.
  */
 export const SITE_CART_OPEN_EVENT = "siteCartOpen";
 
@@ -25,8 +27,67 @@ export interface SiteCartOpenDetail {
   source: "course";
 }
 
+/**
+ * One store checkout holds at most this many courses — the cart stream's
+ * SITE_CART_MAX_ITEMS (site-cart/site-cart-items.ts), which the site cart
+ * store itself does not enforce.
+ */
+export const SITE_CART_MAX_ITEMS = 40;
+
+/**
+ * Whether the site cart can take `item`. A version already in the cart, or a
+ * course whose other version it replaces, does not grow the cart, so it is
+ * always accepted; a new course only below the cap (the cart stream's
+ * capCartAdd rule).
+ */
+export const cartCanTake = (
+  items: Pick<SiteCartItem, "packageSessionId" | "courseId">[],
+  item: Pick<SiteCartItem, "packageSessionId" | "courseId">,
+  max: number = SITE_CART_MAX_ITEMS,
+): boolean =>
+  items.some((i) => i.packageSessionId === item.packageSessionId || i.courseId === item.courseId) ||
+  items.length < max;
+
 const languageCodeOf = (version: Pick<CourseLevel, "levelName">, languages: CourseLanguageOption[]) =>
   languageOfLevel(version.levelName, languages)?.code ?? null;
+
+/**
+ * The invite a link carried (?enrollInviteId) — often a promo or a product
+ * page's invite rather than a version's default one — and the package
+ * sessions it sells. The page keeps it for the whole visit, so every version
+ * it sells is enrolled through it: switching language keeps the link's offer,
+ * and switching back finds it again.
+ */
+export interface InviteGrant {
+  inviteId: string;
+  /** Package sessions the invite sells; null while unknown (loading, unreadable or none listed). */
+  packageSessionIds: string[] | null;
+  /** ?packageSessionId of the link that carried the invite. */
+  landingPackageSessionId?: string | null;
+}
+
+/** Whether `grant` sells `version`. */
+export const grantCovers = (grant: InviteGrant | null | undefined, version: CourseLevel): boolean => {
+  if (!grant) return false;
+  if (version.enrollInviteId === grant.inviteId) return true;
+  if (grant.packageSessionIds) return grant.packageSessionIds.includes(version.packageSessionId);
+  // Not known (yet): the version the link named keeps the link's invite, as
+  // the page always did.
+  return !!grant.landingPackageSessionId && grant.landingPackageSessionId === version.packageSessionId;
+};
+
+/**
+ * The invite a version is enrolled through: the link's invite (grant) for
+ * every version it sells, else the version's own. A product page version
+ * keeps that page's own mapping invite (the page's checkout sells it).
+ */
+export const effectiveInviteIdFor = (
+  version: CourseLevel,
+  grant: InviteGrant | null | undefined,
+): string | null => {
+  if (version.source === "productPage" && version.enrollInviteId) return version.enrollInviteId;
+  return grant && grantCovers(grant, version) ? grant.inviteId : version.enrollInviteId;
+};
 
 /**
  * Versions in picker order: the site's language order first (English before
@@ -46,44 +107,85 @@ export const orderVersions = (versions: CourseLevel[], languages: CourseLanguage
     .map(({ v }) => v);
 };
 
-/** One segment of the Language picker. */
-export interface LanguageVersionOption {
-  code: string;
-  label: string;
-  chip?: string;
+/** One segment of a version picker (Language or Level). */
+export interface VersionPickerOption {
   /** The version this segment selects. */
   packageSessionId: string;
+  label: string;
+  chip?: string;
   /** No invite: the version cannot be enrolled in, so it cannot be picked. */
   disabled: boolean;
 }
 
+/** One segment of the Language picker. */
+export interface LanguageVersionOption extends VersionPickerOption {
+  code: string;
+}
+
 /**
  * One option per language the course is offered in, in the site's order.
- * When a language has several versions (two sessions), the selected one
- * represents it, else its first version with an invite, else its first.
+ * When a language has several versions (two levels or sessions), the selected
+ * one represents it, else its first version that can be enrolled in, else its
+ * first. A version is enrolled through the link's invite when that sells it
+ * (`grant`), so a version only the link's invite sells can still be picked.
  */
 export const languageOptionsFor = (
   versions: CourseLevel[],
   languages: CourseLanguageOption[],
   selectedPackageSessionId: string | null | undefined,
+  grant?: InviteGrant | null,
 ): LanguageVersionOption[] => {
+  const enrollable = (v: CourseLevel) => !!effectiveInviteIdFor(v, grant);
   const options: LanguageVersionOption[] = [];
   for (const lang of languages) {
     const ofLanguage = versions.filter((v) => languageCodeOf(v, languages) === lang.code);
     if (!ofLanguage.length) continue;
     const rep =
       ofLanguage.find((v) => v.packageSessionId === selectedPackageSessionId) ??
-      ofLanguage.find((v) => !!v.enrollInviteId) ??
+      ofLanguage.find(enrollable) ??
       ofLanguage[0];
     options.push({
       code: lang.code,
       label: lang.label,
       chip: lang.chip,
       packageSessionId: rep.packageSessionId,
-      disabled: !rep.enrollInviteId,
+      disabled: !enrollable(rep),
     });
   }
   return options;
+};
+
+/**
+ * The versions in the selected version's language when there are several
+ * ("Beginner Hindi" and "Advanced Hindi", or two batches of "Hindi"), for a
+ * Level picker under the Language picker. Labelled by level, with the session
+ * added where two share a level name. Empty when the language has one version.
+ */
+export const levelOptionsFor = (
+  versions: CourseLevel[],
+  languages: CourseLanguageOption[],
+  selectedPackageSessionId: string | null | undefined,
+  grant?: InviteGrant | null,
+): VersionPickerOption[] => {
+  const selected = versions.find((v) => v.packageSessionId === selectedPackageSessionId);
+  if (!selected) return [];
+  const code = languageCodeOf(selected, languages);
+  const group = versions.filter((v) => languageCodeOf(v, languages) === code);
+  if (group.length < 2) return [];
+  const nameOf = (v: CourseLevel) => v.levelName?.trim() || v.sessionName?.trim() || "";
+  return group.map((v, index) => {
+    const name = nameOf(v);
+    const shared = group.some((o) => o !== v && nameOf(o) === name);
+    const session = v.sessionName?.trim();
+    const label = !name
+      ? String(index + 1)
+      : shared
+        ? session && session !== name
+          ? `${name} · ${session}`
+          : `${name} (${index + 1})`
+        : name;
+    return { packageSessionId: v.packageSessionId, label, disabled: !effectiveInviteIdFor(v, grant) };
+  });
 };
 
 export interface VersionSelectionInput {
@@ -91,8 +193,8 @@ export interface VersionSelectionInput {
   urlPackageSessionId?: string | null;
   /** ?enrollInviteId */
   urlEnrollInviteId?: string | null;
-  /** Package sessions the URL's invite sells (a non-default invite is not on any version). */
-  urlInvitePackageSessionIds?: string[] | null;
+  /** The invite the visit's link carried and what it sells (see InviteGrant). */
+  grant?: InviteGrant | null;
   /** The visitor's course language, from the site locale (preferredCourseLanguage). */
   preferredLanguage?: string | null;
   languages: CourseLanguageOption[];
@@ -116,7 +218,10 @@ export const urlDesignatedVersion = (
     if (byPs) return byPs;
   }
   if (input.urlEnrollInviteId) {
-    const sold = new Set(input.urlInvitePackageSessionIds ?? []);
+    // What the URL's invite sells, when the grant is that invite (a
+    // non-default invite is no version's own).
+    const grant = input.grant && input.grant.inviteId === input.urlEnrollInviteId ? input.grant : null;
+    const sold = new Set(grant?.packageSessionIds ?? []);
     const candidates = versions.filter(
       (v) => v.enrollInviteId === input.urlEnrollInviteId || sold.has(v.packageSessionId),
     );
@@ -128,14 +233,14 @@ export const urlDesignatedVersion = (
 
 /**
  * The version to show first: what the URL names, else the visitor's language
- * (a version that can be enrolled in), else the first version with an invite,
- * else the first version. Null only when there are no versions.
+ * (a version that can be enrolled in), else the first version that can be
+ * enrolled in, else the first version. Null only when there are no versions.
  */
 export const pickInitialVersion = (versions: CourseLevel[], input: VersionSelectionInput): CourseLevel | null => {
   if (!versions.length) return null;
   const fromUrl = urlDesignatedVersion(versions, input);
   if (fromUrl) return fromUrl;
-  const enrollable = versions.filter((v) => !!v.enrollInviteId);
+  const enrollable = versions.filter((v) => !!effectiveInviteIdFor(v, input.grant));
   if (input.preferredLanguage) {
     const preferred = enrollable.find((v) => languageCodeOf(v, input.languages) === input.preferredLanguage);
     if (preferred) return preferred;
@@ -144,18 +249,21 @@ export const pickInitialVersion = (versions: CourseLevel[], input: VersionSelect
 };
 
 /**
- * The invite a version is enrolled through. The version the URL names keeps
- * the URL's invite (a shared link or a product page may carry a non-default
- * invite); every other version uses its own.
+ * Duration and authors to show for the selected version: its own, even when
+ * empty, so a version without faculty or read time never shows another
+ * version's. `undefined` keeps the course-level value the page read from
+ * course-init — only for a course's lone version whose details are unknown.
  */
-export const effectiveInviteIdFor = (
-  version: CourseLevel,
-  urlEnrollInviteId: string | null | undefined,
-  urlVersion: CourseLevel | null | undefined,
-): string | null =>
-  urlEnrollInviteId && urlVersion && urlVersion.packageSessionId === version.packageSessionId
-    ? urlEnrollInviteId
-    : version.enrollInviteId;
+export const versionOwnDetails = (
+  version: Pick<CourseLevel, "durationMinutes" | "instructors">,
+  versionCount: number,
+): { durationMinutes: number | null | undefined; instructors: unknown[] | undefined } => {
+  const own = versionCount > 1;
+  return {
+    durationMinutes: version.durationMinutes ?? (own ? null : undefined),
+    instructors: version.instructors ?? (own ? [] : undefined),
+  };
+};
 
 /** What the overview card shows for a version. */
 export interface VersionOffer {
@@ -199,13 +307,43 @@ export const resolveVersionOffer = (
 };
 
 /**
- * Query-string updates for a picked version (applied with replace). ?price and
- * ?available_slots described the version the link was built for, so they go.
+ * A value written straight into the query string, encoded the way the router
+ * would write it. TanStack Router parses every value as JSON on read ("10"
+ * comes back as the number 10, "true" as a boolean), so a string that would
+ * parse is JSON-quoted — exactly what its default stringifySearch does.
  */
-export const versionSearchUpdates = (version: CourseLevel): Record<string, string | null> => ({
-  packageSessionId: version.packageSessionId,
-  enrollInviteId: version.enrollInviteId,
-  level: version.levelName,
+export const searchParamValue = (value: string): string => {
+  try {
+    JSON.parse(value);
+    return JSON.stringify(value);
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * A search param as text. The router parses values as JSON, so a hand-typed
+ * or older link can hand the page a number or a boolean ("?level=10") where
+ * it compares and trims strings.
+ */
+export const searchText = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  const text = typeof value === "string" ? value : String(value);
+  return text === "" ? undefined : text;
+};
+
+/**
+ * Query-string updates for a picked version (applied with replace), enrolled
+ * through `inviteId` (effectiveInviteIdFor). ?price and ?available_slots
+ * described the version the link was built for, so they go.
+ */
+export const versionSearchUpdates = (
+  version: CourseLevel,
+  inviteId: string | null | undefined,
+): Record<string, string | null> => ({
+  packageSessionId: searchParamValue(version.packageSessionId),
+  enrollInviteId: inviteId ? searchParamValue(inviteId) : null,
+  level: version.levelName ? searchParamValue(version.levelName) : null,
   price: null,
   available_slots: null,
 });

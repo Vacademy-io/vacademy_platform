@@ -4,7 +4,7 @@ import { SITE_LANGUAGE_PARAM } from "./catalogue-route-search";
 import {
   hasVisibleWhenRules,
   localizeComponentProps,
-  repairRetainedLocaleParam,
+  repairRetainedLocaleHref,
   sectionVisibility,
   siteUsesDevanagari,
   withLocaleParam,
@@ -177,21 +177,41 @@ describe("retainSiteLanguage", () => {
   });
 });
 
-describe("repairRetainedLocaleParam", () => {
-  it("joins a retained ?lang= that landed after the link's own query string", () => {
-    expect(repairRetainedLocaleParam("?stream=shiksha?lang=hi")).toBe("?stream=shiksha&lang=hi");
-    expect(repairRetainedLocaleParam("?stream=shiksha&category=vedic?lang=hi")).toBe(
-      "?stream=shiksha&category=vedic&lang=hi",
+describe("repairRetainedLocaleHref", () => {
+  it("joins a carried ?lang= that landed after the link's own query string", () => {
+    expect(repairRetainedLocaleHref("/site/courses?stream=shiksha?lang=hi")).toBe("/site/courses?stream=shiksha&lang=hi");
+    expect(repairRetainedLocaleHref("/courses?stream=shiksha&category=vedic?lang=hi")).toBe(
+      "/courses?stream=shiksha&category=vedic&lang=hi",
     );
+    // Encoded authored values are kept byte for byte.
+    expect(repairRetainedLocaleHref("/courses?q=a%20b?lang=hi")).toBe("/courses?q=a%20b&lang=hi");
   });
 
-  it("leaves every well-formed or unrelated search string alone", () => {
-    expect(repairRetainedLocaleParam("")).toBeNull();
-    expect(repairRetainedLocaleParam(undefined)).toBeNull();
-    expect(repairRetainedLocaleParam("?lang=hi")).toBeNull();
-    expect(repairRetainedLocaleParam("?stream=shiksha&lang=hi")).toBeNull();
-    expect(repairRetainedLocaleParam("?q=what?")).toBeNull();
-    expect(repairRetainedLocaleParam("?a=1?b=2")).toBeNull();
-    expect(repairRetainedLocaleParam("?a=1?lang=hi&b=2")).toBeNull();
+  it("moves a carried ?lang= out of the link's #hash", () => {
+    expect(repairRetainedLocaleHref("/site/about#team?lang=hi")).toBe("/site/about?lang=hi#team");
+    expect(repairRetainedLocaleHref("/courses?stream=x#grid?lang=hi")).toBe("/courses?stream=x&lang=hi#grid");
+  });
+
+  it("keeps a language the link named itself", () => {
+    expect(repairRetainedLocaleHref("/about?lang=en?lang=hi")).toBe("/about?lang=en");
+    expect(repairRetainedLocaleHref("/courses?stream=x&lang=en?lang=hi")).toBe("/courses?stream=x&lang=en");
+  });
+
+  it("handles an empty query string", () => {
+    expect(repairRetainedLocaleHref("/courses??lang=hi")).toBe("/courses?lang=hi");
+  });
+
+  it("leaves every well-formed or unrelated address alone", () => {
+    expect(repairRetainedLocaleHref("")).toBeNull();
+    expect(repairRetainedLocaleHref(undefined)).toBeNull();
+    expect(repairRetainedLocaleHref("/site/about")).toBeNull();
+    expect(repairRetainedLocaleHref("/site/about?lang=hi")).toBeNull();
+    expect(repairRetainedLocaleHref("/courses?stream=shiksha&lang=hi")).toBeNull();
+    expect(repairRetainedLocaleHref("/courses?stream=shiksha&lang=hi#grid")).toBeNull();
+    expect(repairRetainedLocaleHref("/courses?q=what?")).toBeNull();
+    expect(repairRetainedLocaleHref("/courses?a=1?b=2")).toBeNull();
+    expect(repairRetainedLocaleHref("/courses?a=1?lang=hi&b=2")).toBeNull();
+    // The router's own (re-encoded) form cannot be told apart from a real value.
+    expect(repairRetainedLocaleHref("/courses?stream=x%3Flang%3Dhi")).toBeNull();
   });
 });

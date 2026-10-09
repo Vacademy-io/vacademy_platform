@@ -14,6 +14,7 @@ import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { CatalogueLocaleProvider, useSiteT } from "../-utils/catalogue-locale";
+import { useSiteNavigate } from "../-utils/catalogue-route-search";
 import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
 import { CatalogueSeoHead } from "./CatalogueSeoHead";
@@ -50,6 +51,8 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
   const navigate = useNavigate();
+  // Authored routes (the mobile bar) — see useSiteNavigate.
+  const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
   const [catalogueData, setCatalogueData] = useState<CourseCatalogueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -338,11 +341,17 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
    *  effect. An imported HTML page carries its own nav and footer. */
   const hidesSiteChrome = !!(currentPage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 
+  // The builder previews a sub-page here on classic hosts
+  // (/<tag>/<route>?preview=true): it shows the language its URL asks for and
+  // never reads or writes the visitor's remembered one (as CourseCataloguePage).
+  const isPreview =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "true";
+
   // If no matching page found, show not found (in the site's language)
   if (!currentPage) {
     console.warn("[CourseSubPage] No page found for route:", page);
     return (
-      <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName}>
+      <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
         <SubPageNotFound page={page} onBack={() => navigate({ to: RouteMatcher.pagePath(tagName) })} />
       </CatalogueLocaleProvider>
     );
@@ -368,7 +377,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   return (
     // Site language (?lang=, remembered per tag) for everything on the page.
     // A single-language site renders exactly as before.
-    <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName}>
+    <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
     <div
       // pt-20 exists to clear the fixed site header; with the chrome hidden it
       // would just open the page on an 80px blank strip.
@@ -521,12 +530,10 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
             }
           }}
-          onNavigate={(route) => {
-            // A route with its own query string must go through `href`, or a
-            // kept ?lang= would land after a second "?" (see CatalogueLink).
-            const target = RouteMatcher.pagePath(tagName, route);
-            void (target.includes("?") ? navigate({ href: target }) : navigate({ to: target }));
-          }}
+          // Same navigation as always; only while a site language is carried
+          // does a route with its own query string go by `href` (see
+          // useSiteNavigate), so ?lang= never follows a second "?".
+          onNavigate={(route) => void siteNavigate(RouteMatcher.pagePath(tagName, route))}
         />
       )}
     </div>

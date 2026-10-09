@@ -117,6 +117,15 @@ describe("edge SEO on a हिन्दी / EN site", () => {
     expect(html).toContain('<link rel="canonical" href="https://learn.example.com/shiksha/about?lang=hi" />');
   });
 
+  it("serves the base page for a language that has no translations yet", async () => {
+    const untranslated = { ...I18N, strings: {} };
+    const html = await crawl("https://learn.example.com/shiksha/about?lang=hi", { seo: {}, i18n: untranslated });
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain("<title>About Gurukul</title>");
+    expect(html).toContain('<link rel="canonical" href="https://learn.example.com/shiksha/about" />');
+    expect(html).not.toContain("hreflang");
+  });
+
   it("serves the base page for a language the site does not offer", async () => {
     const html = await crawl("https://learn.example.com/shiksha/about?lang=fr", { seo: {}, i18n: I18N });
     expect(html).toContain('<html lang="en">');

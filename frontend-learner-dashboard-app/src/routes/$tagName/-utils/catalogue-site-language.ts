@@ -91,15 +91,28 @@ export const withLocaleParam = (href: string, locale: string | null | undefined)
 };
 
 /**
- * Repairs the one malformed URL keeping ?lang= can produce: a navigation whose
- * `to` carried its own query string ("/courses?stream=x") gets the retained
- * parameter after a SECOND "?" ("?stream=x?lang=hi"), which would read as
- * stream = "x?lang=hi". Returns the fixed search string ("?stream=x&lang=hi"),
- * or null when there is nothing to fix. Only that exact shape is touched.
+ * Repairs the malformed address keeping ?lang= produces when a navigation's
+ * `to` carried its own query string or #hash (a caller that does not use
+ * useSiteNavigate): the router appends "?lang=hi" to the END of the address,
+ * so "/courses?stream=x" becomes "/courses?stream=x?lang=hi" (stream reads
+ * "x?lang=hi", lang is lost) and "/about#team" becomes "/about#team?lang=hi"
+ * (the language lands in the hash). Returns the fixed address
+ * ("/courses?stream=x&lang=hi", "/about?lang=hi#team"), or null when there is
+ * nothing to fix. Only those exact shapes are touched; a link that named a
+ * language itself keeps its own.
+ *
+ * Takes the RAW address (router.history.location.href): the router's parsed
+ * location has already re-encoded the second "?" as %3F and cannot be repaired.
  */
-export const repairRetainedLocaleParam = (searchStr: string | null | undefined): string | null => {
-  const match = new RegExp(`^(\\?[^?#]*)\\?(${LOCALE_PARAM}=[^?&#]*)$`).exec(searchStr || "");
-  return match ? `${match[1]}&${match[2]}` : null;
+export const repairRetainedLocaleHref = (href: string | null | undefined): string | null => {
+  const match = new RegExp(`^([^?#]*)(\\?[^?#]*)?(#[^?#]*)?\\?(${LOCALE_PARAM}=[^?&#]*)$`).exec(href || "");
+  if (!match) return null;
+  const [, path, query = "", hash = "", lang] = match;
+  // "/about?lang=hi" — the parameter is already where it belongs.
+  if (!query && !hash) return null;
+  const ownQuery = query.slice(1);
+  const joined = !ownQuery ? `?${lang}` : new URLSearchParams(ownQuery).has(LOCALE_PARAM) ? query : `${query}&${lang}`;
+  return `${path}${joined}${hash}`;
 };
 
 /* ── scripts that need their own font ───────────────────────────────── */

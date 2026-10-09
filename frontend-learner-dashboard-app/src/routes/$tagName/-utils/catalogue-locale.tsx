@@ -1,4 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import type { i18n as I18nInstance } from "i18next";
@@ -15,7 +24,8 @@ import {
 } from "./catalogue-i18n";
 import { useCatalogueSearchParams } from "./catalogue-url-state";
 import { forwardedEvents, siteI18nInstance } from "./catalogue-i18n-instance";
-import { repairRetainedLocaleParam } from "./catalogue-site-language";
+import { repairRetainedLocaleHref } from "./catalogue-site-language";
+import { holdSiteLanguage } from "./catalogue-route-search";
 
 /**
  * The visitor's site language, for every catalogue section (see
@@ -112,27 +122,42 @@ export const CatalogueLocaleProvider: React.FC<{
     }
   }, [persist, enabled, urlLocale, locale, stored, scope]);
 
-  // Catalogue routes keep ?lang= on navigation (catalogue-route-search). A
-  // navigation whose `to` carried its own query string gets it after a second
-  // "?" — repaired here, whoever navigated, so the page reads its parameters
-  // correctly. Never matches a URL without that exact shape.
-  const location = useLocation();
+  // The catalogue routes carry ?lang= across navigation only while a site
+  // with languages is on screen (catalogue-route-search), so a single-language
+  // site — even one whose URL has a stray ?lang= — navigates as it always did.
+  // A layout effect: it runs before every passive effect, so a section that
+  // navigates from its own mount effect (children's effects run first) still
+  // carries the language.
+  useLayoutEffect(() => (enabled ? holdSiteLanguage() : undefined), [enabled]);
+
+  // A caller that navigates with `to: "/courses?stream=x"` (instead of
+  // useSiteNavigate) gets the carried ?lang= after a second "?" — repaired
+  // here after that render, whoever navigated. Only on sites with languages,
+  // and from the RAW address: the router's own location has already encoded
+  // the second "?" as %3F.
+  const href = useLocation({ select: (current) => current.href });
   const router = useRouter();
   useEffect(() => {
-    const repaired = repairRetainedLocaleParam(location.searchStr);
-    if (repaired === null) return;
-    router.history.replace(`${location.pathname}${repaired}${location.hash ? `#${location.hash}` : ""}`);
-  }, [location.searchStr, location.pathname, location.hash, router]);
+    if (!enabled) return;
+    // Optional chaining: a router without a history location (a stub in
+    // another section's render test, say) simply has nothing to repair.
+    const raw = router.history?.location?.href;
+    const repaired = repairRetainedLocaleHref(raw);
+    if (raw && repaired !== null && repaired !== raw) router.history.replace(repaired);
+  }, [enabled, href, router]);
 
-  // Screen readers and the browser's own translate prompt read <html lang>.
+  // Screen readers and the browser's own translate prompt read <html lang>:
+  // the language the page's text is in, so the base language until this one
+  // has translations (the rule the edge middleware applies for crawlers).
+  const contentLocale = dict ? locale : baseLocale;
   useEffect(() => {
     if (!enabled || typeof document === "undefined") return;
     const previous = document.documentElement.lang;
-    document.documentElement.lang = locale;
+    document.documentElement.lang = contentLocale;
     return () => {
       document.documentElement.lang = previous;
     };
-  }, [enabled, locale]);
+  }, [enabled, contentLocale]);
 
   // setLocale stays the same function for the life of the provider: the URL
   // helper (`update`) changes with every URL change, and if setLocale followed

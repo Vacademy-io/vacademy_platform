@@ -20,9 +20,10 @@ const CourseCataloguePage = lazy(() =>
 );
 
 export const Route = createFileRoute("/$tagName/")({
-  // A site language picked on one page (?lang=hi) follows every link into
-  // another catalogue page. Catalogue routes only — /login and /dashboard
-  // never inherit it.
+  // On a site with languages, the language picked on one page (?lang=hi)
+  // follows every link into another catalogue page; on every other site this
+  // changes nothing. Catalogue routes only — /login and /dashboard never
+  // inherit it.
   search: { middlewares: [retainSiteLanguage] },
   // Reader mode (iOS always / reader-mode institutes): the public course
   // catalogue is a marketplace surface — block it (Apple 3.1.1).

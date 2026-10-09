@@ -84,10 +84,10 @@ export const computeCatalogueSeo = (input: CatalogueSeoInput): CatalogueSeo => {
 /* ── crawler tags (edge middleware) ─────────────────────────────────── */
 
 export interface SeoLocaleContext {
-  /** Language this request renders in. */
+  /** Language this request's text is in (canonical, <html lang>). */
   locale: string;
   baseLocale: string;
-  /** Every offered language, base first. */
+  /** Languages the page has text in: the base, then each with translations. */
   locales: string[];
   /** Translations for `locale` (undefined in the base language). */
   dict: TranslationDictionary | undefined;
@@ -97,18 +97,27 @@ export interface SeoLocaleContext {
  * The language of a crawler request (?lang=, else the site's base language).
  * null for a single-language site — the caller must then emit exactly what it
  * emitted before languages existed.
+ *
+ * Only languages with translations count: a site that turned languages on
+ * before translating anything serves base-language text on ?lang=hi, so that
+ * request is the base page (base canonical and <html lang>) and "hi" is not
+ * offered as an alternate — crawlers are never told an English page is Hindi.
  */
 export const seoLocaleContext = (
   settings: CatalogueI18nSettings | null | undefined,
   langParam: string | null | undefined,
 ): SeoLocaleContext | null => {
   if (!settings?.enabled) return null;
-  const locale = resolveSiteLocale({ settings, urlLocale: langParam });
+  const baseLocale = baseLocaleOf(settings);
+  const requested = resolveSiteLocale({ settings, urlLocale: langParam });
+  const dict = dictionaryFor(settings, requested);
   return {
-    locale,
-    baseLocale: baseLocaleOf(settings),
-    locales: localesOf(settings).map((l) => l.code),
-    dict: dictionaryFor(settings, locale),
+    locale: dict ? requested : baseLocale,
+    baseLocale,
+    locales: localesOf(settings)
+      .map((l) => l.code)
+      .filter((code) => code === baseLocale || dictionaryFor(settings, code) !== undefined),
+    dict,
   };
 };
 
@@ -125,15 +134,25 @@ export const localizedPageUrl = (origin: string, pathname: string, locale: strin
     : `${origin}${path}?${LOCALE_PARAM}=${encodeURIComponent(locale)}`;
 };
 
-/** <link rel="alternate" hreflang> targets: one per language, plus x-default (the base). */
+/**
+ * <link rel="alternate" hreflang> targets: one per language the page has text
+ * in, plus x-default (the base). None until a second language has
+ * translations — there is nothing to pair a lone version with.
+ */
 export const hreflangAlternates = (
   origin: string,
   pathname: string,
   ctx: Pick<SeoLocaleContext, "locales" | "baseLocale">,
-): Array<{ hreflang: string; href: string }> => [
-  ...ctx.locales.map((code) => ({ hreflang: code, href: localizedPageUrl(origin, pathname, code, ctx.baseLocale) })),
-  { hreflang: "x-default", href: localizedPageUrl(origin, pathname, ctx.baseLocale, ctx.baseLocale) },
-];
+): Array<{ hreflang: string; href: string }> =>
+  ctx.locales.length < 2
+    ? []
+    : [
+        ...ctx.locales.map((code) => ({
+          hreflang: code,
+          href: localizedPageUrl(origin, pathname, code, ctx.baseLocale),
+        })),
+        { hreflang: "x-default", href: localizedPageUrl(origin, pathname, ctx.baseLocale, ctx.baseLocale) },
+      ];
 
 /** Sets <html lang="…"> on a full HTML document (the attribute is added when missing). */
 export const withHtmlLang = (html: string, locale: string): string => {

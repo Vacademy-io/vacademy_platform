@@ -17,7 +17,8 @@ import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/$tagName/$pageSlug_/$postSlug")({
-  // Keep the visitor's site language (?lang=) across catalogue navigation.
+  // Keep the visitor's site language (?lang=) across catalogue navigation
+  // (sites with languages only; a no-op everywhere else).
   search: { middlewares: [retainSiteLanguage] },
   component: RouteComponent,
 });

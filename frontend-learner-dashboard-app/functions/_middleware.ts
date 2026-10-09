@@ -868,9 +868,10 @@ export const onRequest: PagesFunction = async (context) => {
   const pageSeo = resolved ? pageSeoOf(resolved.page, resolved.post) : null;
   const post = resolved?.post;
 
-  // The request's site language: ?lang= when the site offers it, else its base
-  // language. null for a site without languages — every tag below is then
-  // exactly what it was before languages existed.
+  // The request's site language: ?lang= when the site offers it and has
+  // translations for it, else its base language. null for a site without
+  // languages — every tag below is then exactly what it was before languages
+  // existed.
   const seoLocale = resolved
     ? seoLocaleContext(resolved.catalogue.i18n, url.searchParams.get(LOCALE_PARAM))
     : null;
@@ -940,7 +941,8 @@ export const onRequest: PagesFunction = async (context) => {
     : `${url.origin}${url.pathname.replace(/\/+$/, "") || "/"}`;
   const seoTags: string[] = [`<link rel="canonical" href="${escapeHtml(canonical)}" />`];
   if (seoLocale) {
-    // Every language version of this page, so search engines pair them.
+    // Every language version of this page (each language with translations),
+    // so search engines pair them; none while only the base has text.
     for (const alternate of hreflangAlternates(url.origin, url.pathname, seoLocale)) {
       seoTags.push(
         `<link rel="alternate" hreflang="${escapeHtml(alternate.hreflang)}" href="${escapeHtml(alternate.href)}" />`

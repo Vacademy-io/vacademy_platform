@@ -28,9 +28,9 @@ const CourseCataloguePage = lazy(() =>
  */
 export const Route = createFileRoute("/")({
   // The root-mounted catalogue's home: keep the visitor's site language
-  // (?lang=) when a link leads back here. Hosts without a root catalogue are
-  // redirected away by __root, and the routes they land on (/login,
-  // /dashboard) do not retain it.
+  // (?lang=) when a link leads back here — on sites with languages only.
+  // Hosts without a root catalogue are redirected away by __root, and the
+  // routes they land on (/login, /dashboard) do not retain it.
   search: { middlewares: [retainSiteLanguage] },
   // Same reader-mode gate as /$tagName: the catalogue is a marketplace surface.
   beforeLoad: async () => {

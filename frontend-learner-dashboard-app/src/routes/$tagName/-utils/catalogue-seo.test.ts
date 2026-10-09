@@ -111,6 +111,27 @@ describe("seoLocaleContext", () => {
     expect(unknown.dict).toBeUndefined();
     expect(seoLocaleContext(HI_SITE, null)!.locale).toBe("en");
   });
+
+  it("counts only languages with translations, so an English page is never called Hindi", () => {
+    // Languages on, nothing translated yet: ?lang=hi renders English.
+    const untranslated = seoLocaleContext({ ...HI_SITE, strings: {} }, "hi")!;
+    expect(untranslated.locale).toBe("en");
+    expect(untranslated.locales).toEqual(["en"]);
+    expect(untranslated.dict).toBeUndefined();
+    // An empty dictionary is no translation either.
+    expect(seoLocaleContext({ ...HI_SITE, strings: { hi: {} } }, "hi")!.locale).toBe("en");
+    // No locales configured: the default English / Hindi pair, Hindi untranslated.
+    const defaults = seoLocaleContext({ enabled: true }, "hi")!;
+    expect(defaults.locale).toBe("en");
+    expect(defaults.locales).toEqual(["en"]);
+    // A third language without translations is left out; Hindi still counts.
+    const mixed = seoLocaleContext(
+      { ...HI_SITE, locales: [...HI_SITE.locales!, { code: "mr", label: "मराठी" }] },
+      "mr",
+    )!;
+    expect(mixed.locale).toBe("en");
+    expect(mixed.locales).toEqual(["en", "hi"]);
+  });
 });
 
 describe("localizedPageUrl", () => {
@@ -137,6 +158,12 @@ describe("hreflangAlternates", () => {
       { hreflang: "hi", href: "https://learn.example.com/shiksha/about?lang=hi" },
       { hreflang: "x-default", href: "https://learn.example.com/shiksha/about" },
     ]);
+  });
+
+  it("emits nothing while only the base language has text", () => {
+    expect(hreflangAlternates("https://learn.example.com", "/shiksha/about", { locales: ["en"], baseLocale: "en" })).toEqual(
+      [],
+    );
   });
 });
 

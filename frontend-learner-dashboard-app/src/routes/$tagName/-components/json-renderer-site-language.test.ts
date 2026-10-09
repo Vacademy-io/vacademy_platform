@@ -10,7 +10,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * a section — or marks it, in the builder preview.
  */
 
-const nav = vi.hoisted(() => ({ searchStr: "", forbidLocation: false, replace: vi.fn() }));
+const nav = vi.hoisted(() => ({ searchStr: "", forbidLocation: false, replace: vi.fn(), noHistoryLocation: false }));
+// The ?lang= repair and real navigation are covered with a real router in
+// -utils/catalogue-locale-provider.test.ts and catalogue-route-search.test.ts.
 const captured = vi.hoisted(() => ({
   header: null as Record<string, unknown> | null,
   learningPath: null as Record<string, unknown> | null,
@@ -19,7 +21,15 @@ const captured = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => () => Promise.resolve(),
   useParams: () => ({ tagName: "site" }),
-  useRouter: () => ({ navigate: () => {}, history: { push: () => {}, replace: nav.replace } }),
+  useRouter: () => ({
+    navigate: () => Promise.resolve(),
+    latestLocation: { search: {} },
+    history: {
+      push: () => {},
+      replace: nav.replace,
+      location: nav.noHistoryLocation ? undefined : { href: `/site/courses${nav.searchStr}` },
+    },
+  }),
   useLocation: (opts?: { select?: (location: unknown) => unknown }) => {
     if (nav.forbidLocation) throw new Error("this page must not subscribe to the URL");
     const location = { pathname: "/site/courses", searchStr: nav.searchStr, search: {}, hash: "" };
@@ -117,6 +127,7 @@ beforeEach(() => {
   nav.searchStr = "";
   nav.forbidLocation = false;
   nav.replace.mockReset();
+  nav.noHistoryLocation = false;
   captured.header = null;
   captured.learningPath = null;
   localStorage.clear();
@@ -266,26 +277,18 @@ describe("learningPath", () => {
   });
 });
 
-describe("a retained ?lang= after a link's own query string", () => {
-  const mount = async () => {
+describe("a router stub without a history location", () => {
+  it("mounts a हिन्दी site's provider without trying to repair anything", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    nav.noHistoryLocation = true;
+    nav.searchStr = "?lang=hi";
     const host = document.createElement("div");
     const root = createRoot(host);
     await act(async () => {
       root.render(h(CatalogueLocaleProvider, { settings: HINDI_SITE, scope: "site", children: h("p", null, "page") }));
     });
-    await act(async () => root.unmount());
-  };
-
-  it("is joined back into one query string", async () => {
-    nav.searchStr = "?stream=shiksha?lang=hi";
-    await mount();
-    expect(nav.replace).toHaveBeenCalledWith("/site/courses?stream=shiksha&lang=hi");
-  });
-
-  it("leaves a well-formed URL alone", async () => {
-    nav.searchStr = "?stream=shiksha&lang=hi";
-    await mount();
+    expect(host.textContent).toBe("page");
     expect(nav.replace).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
   });
 });

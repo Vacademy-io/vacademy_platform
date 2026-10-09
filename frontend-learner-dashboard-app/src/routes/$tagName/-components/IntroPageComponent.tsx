@@ -278,7 +278,9 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             
             <img
               src={image.source}
-              alt={siteT(image.caption)}
+              // No caption keeps the attribute absent, as before (siteT
+              // would turn it into alt="", marking the image decorative).
+              alt={image.caption ? siteT(image.caption) : image.caption}
               className="w-full h-full object-cover mt-16 md:mt-20"
               style={{
                 objectFit: introPage.imageSlider.styles.objectFit,

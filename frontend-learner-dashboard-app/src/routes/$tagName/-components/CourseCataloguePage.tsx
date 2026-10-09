@@ -14,6 +14,7 @@ import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-
 import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { CatalogueLocaleProvider } from "../-utils/catalogue-locale";
+import { useSiteNavigate } from "../-utils/catalogue-route-search";
 import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { CatalogueSeoHead } from "./CatalogueSeoHead";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
@@ -60,6 +61,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
+  // Authored routes (the mobile bar) — see useSiteNavigate.
+  const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
   const isIOS = Capacitor.getPlatform() === 'ios';
@@ -730,12 +733,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
           onLogin={handleIntroLogin}
           onLegacyGetStarted={() => setShowLeadCollection(true)}
-          onNavigate={(route) => {
-            // A route with its own query string must go through `href`, or a
-            // kept ?lang= would land after a second "?" (see CatalogueLink).
-            const target = RouteMatcher.pagePath(tagName, route);
-            void (target.includes("?") ? navigate({ href: target }) : navigate({ to: target }));
-          }}
+          // Same navigation as always; only while a site language is carried
+          // does a route with its own query string go by `href` (see
+          // useSiteNavigate), so ?lang= never follows a second "?".
+          onNavigate={(route) => void siteNavigate(RouteMatcher.pagePath(tagName, route))}
           nativePad={isAndroid || isIOS}
         />
       )}

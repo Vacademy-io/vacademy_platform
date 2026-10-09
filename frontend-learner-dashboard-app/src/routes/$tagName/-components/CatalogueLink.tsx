@@ -1,9 +1,10 @@
 import React from 'react';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useParams } from '@tanstack/react-router';
 import { RouteMatcher } from '../-services/route-matcher';
 import { useCatalogueTag } from './CatalogueTagContext';
 import { useCatalogueLocale } from '../-utils/catalogue-locale';
 import { withLocaleParam } from '../-utils/catalogue-site-language';
+import { useSiteNavigate } from '../-utils/catalogue-route-search';
 
 interface CatalogueLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     /** The route value — can be a page slug ("about-us"), "homepage", full URL, or #anchor */
@@ -19,7 +20,7 @@ interface CatalogueLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElemen
  * - Internal routes → SPA navigation via TanStack Router
  */
 export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, target, className, style, ...rest }) => {
-    const navigate = useNavigate();
+    const siteNavigate = useSiteNavigate();
     const params = useParams({ strict: false }) as { tagName?: string };
     // Context first: on a root-mounted host the param is a page route, not the tag.
     const tagName = useCatalogueTag(params.tagName || '');
@@ -79,11 +80,12 @@ export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, targ
     const handleClick = (e: React.MouseEvent) => {
         if (e.metaKey || e.ctrlKey || target === '_blank') return;
         e.preventDefault();
-        // A link with its own query string ("/courses?stream=x") goes through
-        // `href`: with `to`, the router reads the query as part of the path and
-        // a search param it keeps (?lang=) would follow a second "?".
-        const go = linkPath.includes('?') ? navigate({ href: linkPath }) : navigate({ to: fullPath });
-        go.then(() => {
+        // `navigate({ to })` with the authored address, exactly as always —
+        // unless the router is carrying a site language, when an address with
+        // its own query string goes by `href` so ?lang= joins that query
+        // instead of following a second "?" (see siteNavigateOptions). Without
+        // a language to carry, linkPath is fullPath.
+        siteNavigate(linkPath).then(() => {
             if (hashPart) {
                 // Wait for page render, then scroll to anchor
                 requestAnimationFrame(() => {

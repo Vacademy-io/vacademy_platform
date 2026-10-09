@@ -9,6 +9,9 @@ import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 
+/** The catalogue home's body font when the site sets none (CourseCataloguePage). */
+const CATALOGUE_DEFAULT_FONT_STACK = "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+
 /**
  * Wraps a non-catalogue page in the catalogue's own chrome: theme preset,
  * light/dark mode, institute primary colour, fonts, and the header/footer the
@@ -74,7 +77,16 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
   // Fonts are part of "the theme" the admin picked; mirrors the catalogue page.
   useEffect(() => {
     const fonts = globalSettings?.fonts;
-    if (!fonts?.enabled || !fonts?.family) return;
+    if (!fonts?.enabled || !fonts?.family) {
+      // No catalogue font: the page keeps the app's own font, as before —
+      // except on a site offering हिन्दी / मराठी, which gets the catalogue
+      // home's default stack with the Devanagari face it just loaded (or the
+      // face would download and Hindi still render in the OS fallback).
+      if (devanagari) {
+        document.body.style.fontFamily = withDevanagariFallback(withArabicFallback(CATALOGUE_DEFAULT_FONT_STACK));
+      }
+      return;
+    }
     const family = devanagari
       ? withDevanagariFallback(withArabicFallback(fonts.family))
       : withArabicFallback(fonts.family);

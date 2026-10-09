@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CourseLanguagesSettingsCard } from './CourseLanguagesSettingsCard';
 import { SiteCartSettingsCard } from './SiteCartSettingsCard';
 import { DEFAULT_COURSE_LANGUAGES } from './course-languages';
@@ -10,7 +10,9 @@ import { DEFAULT_COURSE_LANGUAGES } from './course-languages';
  * page checks the whole cart out).
  */
 
-let productPages: any[] = [];
+let productPages: { id: string; code: string; name: string; status: string }[] = [];
+const syncCatalogue = vi.fn();
+const setQueryData = vi.fn();
 
 vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst-1' }));
 vi.mock('@tanstack/react-query', async (orig) => ({
@@ -19,19 +21,26 @@ vi.mock('@tanstack/react-query', async (orig) => ({
         queryKey[0] === 'PRODUCT_PAGES_FOR_CATALOGUE'
             ? { data: productPages, isLoading: false, isError: false }
             : { data: undefined, isLoading: false, isError: false },
-    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+    useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData, removeQueries: vi.fn() }),
 }));
 vi.mock('../../product-pages/-services/product-pages-service', () => ({
     getAllProductPages: vi.fn(),
     getProductPage: vi.fn(),
-    syncProductPageCatalogue: vi.fn(),
+    syncProductPageCatalogue: (...args: unknown[]) => syncCatalogue(...args),
 }));
 
 beforeEach(() => {
     productPages = [];
+    syncCatalogue.mockReset();
+    setQueryData.mockReset();
 });
 
 describe('CourseLanguagesSettingsCard', () => {
+    it('says each Courses section needs its own "One card per course" switch', () => {
+        render(<CourseLanguagesSettingsCard value={undefined} onChange={vi.fn()} />);
+        expect(screen.getByText(/switch on “One card per course” in each Courses section/)).toBeInTheDocument();
+    });
+
     it('shows the built-in English / Hindi rules once switched on', () => {
         render(<CourseLanguagesSettingsCard value={{ enabled: true }} onChange={vi.fn()} />);
         expect(screen.getByDisplayValue('English')).toBeInTheDocument();
@@ -134,6 +143,36 @@ describe('SiteCartSettingsCard', () => {
             'href',
             '/manage-pages/product-pages/editor/pp-1'
         );
+    });
+
+    it('syncs the store with "switch off" ticked and starts a fresh panel per store page', async () => {
+        productPages = [
+            { id: 'pp-1', code: 'store', name: 'Store', status: 'ACTIVE' },
+            { id: 'pp-2', code: 'shop', name: 'Shop', status: 'ACTIVE' },
+        ];
+        const store = { id: 'pp-1', code: 'store', name: 'Store', mappings: [] };
+        syncCatalogue.mockResolvedValue({ ...store, added: 3 });
+        const { rerender } = render(
+            <SiteCartSettingsCard
+                value={{ enabled: true, storeProductPageCode: 'store', storeProductPageName: 'Store' }}
+                onChange={vi.fn()}
+            />
+        );
+        expect(screen.getByRole('checkbox')).toBeChecked();
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+        expect(await screen.findByText('Added 3 course versions')).toBeInTheDocument();
+        expect(syncCatalogue).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true });
+        // No product page editor is open here, yet its cached copy is refreshed.
+        await waitFor(() => expect(setQueryData).toHaveBeenCalledWith(['productPage', 'pp-1'], store));
+
+        rerender(
+            <SiteCartSettingsCard
+                value={{ enabled: true, storeProductPageCode: 'shop', storeProductPageName: 'Shop' }}
+                onChange={vi.fn()}
+            />
+        );
+        expect(screen.queryByText('Added 3 course versions')).not.toBeInTheDocument();
     });
 
     it('flags a store page that no longer exists', () => {

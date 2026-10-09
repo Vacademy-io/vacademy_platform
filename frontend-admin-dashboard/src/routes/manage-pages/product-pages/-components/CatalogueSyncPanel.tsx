@@ -16,11 +16,15 @@ import {
 import { cn } from '@/lib/utils';
 import { getProductPage, syncProductPageCatalogue } from '../-services/product-pages-service';
 import type { ProductPageResponse } from '../-types/product-page-types';
+import { useStoreSites } from '../-hooks/use-store-sites';
 import {
-    groupSkipsByReason,
+    describeSyncReason,
+    groupSyncItemsByReason,
+    listCourseNames,
     parseSyncResponse,
     syncSummaryLine,
     type CatalogueSyncResult,
+    type SyncReasonGroup,
 } from '../-utils/catalogue-sync';
 
 /**
@@ -37,6 +41,15 @@ interface CatalogueSyncPanelProps {
     isDirty?: boolean;
     /** The page as it is after the sync — from the response, or refetched when the response carried none. */
     onSynced?: (page: ProductPageResponse) => void;
+    /** Told when a sync starts and ends, so the caller can lock its course rows meanwhile. */
+    onRunningChange?: (running: boolean) => void;
+    /**
+     * A site's store page, which should sell exactly what the Courses page
+     * shows: "switch off" then starts ticked. Leave it out and pass
+     * `productPageCode` to have the panel look it up in the sites' settings.
+     */
+    isStorePage?: boolean;
+    productPageCode?: string | null;
     /** Tighter copy for the site settings card. */
     compact?: boolean;
 }
@@ -46,16 +59,45 @@ const errorText = (e: unknown) => {
     return data?.ex || data?.message || 'The sync did not finish. Please try again.';
 };
 
+const RELOAD_FAILED =
+    'The sync finished, but the updated course list could not be loaded. Reload this page before you save — saving now would undo the sync.';
+
+const ReasonList = ({ title, groups }: { title: string; groups: SyncReasonGroup[] }) => (
+    <div>
+        <p className="text-caption font-medium text-neutral-700">{title}</p>
+        <ul className="ms-4 mt-0.5 list-disc space-y-1 text-caption text-neutral-600">
+            {groups.map((g) => {
+                const text = describeSyncReason(g.reason);
+                return (
+                    <li key={g.reason}>
+                        <span className="font-medium text-neutral-700">{text.label}</span> — {g.count}
+                        {g.names.length > 0 && `: ${listCourseNames(g.names)}`}
+                        {text.hint && <span className="block text-neutral-500">{text.hint}</span>}
+                    </li>
+                );
+            })}
+        </ul>
+    </div>
+);
+
 export const CatalogueSyncPanel = ({
     productPageId,
     instituteId,
     isDirty = false,
     onSynced,
+    onRunningChange,
+    isStorePage,
+    productPageCode,
     compact = false,
 }: CatalogueSyncPanelProps) => {
     const queryClient = useQueryClient();
+    const storeSites = useStoreSites(instituteId, isStorePage === undefined ? productPageCode : null);
+    const storePage = isStorePage ?? storeSites.length > 0;
+    // The admin's own tick wins; until then the default follows the kind of
+    // page (which may only be known once the sites' settings have loaded).
+    const [deactivateChoice, setDeactivateChoice] = useState<boolean | null>(null);
+    const deactivateMissing = deactivateChoice ?? storePage;
     const [confirmOpen, setConfirmOpen] = useState(false);
-    const [deactivateMissing, setDeactivateMissing] = useState(true);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState<CatalogueSyncResult | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -65,25 +107,51 @@ export const CatalogueSyncPanel = ({
     const run = async () => {
         setConfirmOpen(false);
         setRunning(true);
+        onRunningChange?.(true);
         setError(null);
+        setResult(null);
         try {
-            const parsed = parseSyncResponse(
-                await syncProductPageCatalogue(productPageId, instituteId, { deactivateMissing })
-            );
-            const page = parsed.page ?? (await getProductPage(productPageId));
+            let parsed: CatalogueSyncResult;
+            try {
+                parsed = parseSyncResponse(
+                    await syncProductPageCatalogue(productPageId, instituteId, { deactivateMissing })
+                );
+            } catch (e) {
+                setError(errorText(e));
+                return;
+            }
+            let page: ProductPageResponse;
+            try {
+                page = parsed.page ?? (await getProductPage(productPageId));
+                if (!page?.id) throw new Error('No product page in the response');
+            } catch {
+                // Saved on the server, but the fresh page never arrived. Drop a
+                // cached copy no screen is showing, so the editor fetches anew when
+                // it next opens; an open editor's copy is refetched in the
+                // background instead (removing it would blank the editor).
+                const key = ['productPage', productPageId];
+                queryClient.removeQueries({ queryKey: key, exact: true, type: 'inactive' });
+                queryClient.invalidateQueries({ queryKey: key, exact: true });
+                setError(RELOAD_FAILED);
+                return;
+            }
+            // The product page editor seeds its rows from this cache entry once
+            // per visit. Left at the pre-sync page, reopening the editor would
+            // show — and on Save write back — the rows from before the sync.
+            queryClient.setQueryData(['productPage', productPageId], page);
             setResult(parsed);
             onSynced?.(page);
             // Canvas previews and pickers that show this page's courses.
             queryClient.invalidateQueries({ queryKey: ['PP_OFFER_PREVIEW'] });
             queryClient.invalidateQueries({ queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId] });
-        } catch (e) {
-            setError(errorText(e));
         } finally {
             setRunning(false);
+            onRunningChange?.(false);
         }
     };
 
-    const skippedByReason = result ? groupSkipsByReason(result.skipped) : [];
+    const switchedOffByReason = result ? groupSyncItemsByReason(result.deactivatedMappings) : [];
+    const skippedByReason = result ? groupSyncItemsByReason(result.skipped) : [];
 
     return (
         <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4">
@@ -100,21 +168,35 @@ export const CatalogueSyncPanel = ({
                     buttonType="secondary"
                     scale="small"
                     disable={blocked || running}
-                    onClick={() => setConfirmOpen(true)}
+                    onClick={() => {
+                        // Settle the default now, so the dialog's wording and the sync agree
+                        // even if the store-page lookup finishes while it is open.
+                        setDeactivateChoice((choice) => choice ?? storePage);
+                        setConfirmOpen(true);
+                    }}
                 >
                     <ArrowsClockwise className={cn('size-3.5', running && 'animate-spin')} />
                     {running ? 'Syncing…' : 'Sync all catalogue courses'}
                 </MyButton>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 text-caption text-neutral-600">
-                <Checkbox
-                    checked={deactivateMissing}
-                    onCheckedChange={(v) => setDeactivateMissing(v === true)}
-                    disabled={running}
-                />
-                Also switch off courses that are no longer in the catalogue
-            </label>
+            <div className="space-y-1">
+                <label className="flex cursor-pointer items-start gap-2 text-caption text-neutral-600">
+                    <Checkbox
+                        className="mt-0.5"
+                        checked={deactivateMissing}
+                        onCheckedChange={(v) => setDeactivateChoice(v === true)}
+                        disabled={running}
+                    />
+                    Also switch off courses on this page that are not published to your catalogue (including any
+                    that never were) or can no longer be sold
+                </label>
+                <p className="ms-6 text-caption text-neutral-400">
+                    {storePage
+                        ? 'Ticked by default on a store page: it should sell exactly what your Courses page shows.'
+                        : 'Unticked by default here: courses this page sells that are not on your Courses page would be switched off.'}
+                </p>
+            </div>
 
             {isDirty && (
                 <p className="flex items-center gap-1.5 text-caption text-warning-600">
@@ -125,8 +207,8 @@ export const CatalogueSyncPanel = ({
             )}
 
             {error && (
-                <p role="alert" className="flex items-center gap-1.5 text-caption text-danger-600">
-                    <WarningCircle className="size-3.5 shrink-0" />
+                <p role="alert" className="flex items-start gap-1.5 text-caption text-danger-600">
+                    <WarningCircle className="mt-0.5 size-3.5 shrink-0" />
                     {error}
                 </p>
             )}
@@ -137,18 +219,8 @@ export const CatalogueSyncPanel = ({
                         <CheckCircle className="size-3.5 shrink-0" weight="fill" />
                         {syncSummaryLine(result)}
                     </p>
-                    {skippedByReason.length > 0 && (
-                        <div>
-                            <p className="text-caption font-medium text-neutral-700">Not added:</p>
-                            <ul className="ms-4 list-disc text-caption text-neutral-600">
-                                {skippedByReason.map((s) => (
-                                    <li key={s.reason}>
-                                        {s.reason} — {s.count}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
+                    {switchedOffByReason.length > 0 && <ReasonList title="Switched off:" groups={switchedOffByReason} />}
+                    {skippedByReason.length > 0 && <ReasonList title="Not added:" groups={skippedByReason} />}
                     {result.warnings.length > 0 && (
                         <div className="rounded border border-warning-200 bg-warning-50 p-2">
                             {result.warnings.map((w) => (
@@ -170,9 +242,10 @@ export const CatalogueSyncPanel = ({
                             Every course version published to your catalogue that this page does not sell yet is
                             added after the existing courses.
                             {deactivateMissing
-                                ? ' Courses that are no longer in the catalogue are switched off.'
-                                : ' Courses already here stay as they are.'}{' '}
-                            This is saved straight away; you can still reorder or remove courses afterwards.
+                                ? ' Courses on this page that are not published to your catalogue — including any that never were — or that can no longer be sold (a closed invite link, or an inactive payment option or plan) are switched off.'
+                                : ' Courses already on this page stay as they are.'}{' '}
+                            This is saved straight away — on a live page, visitors see the change at once. You can
+                            still reorder or remove courses afterwards.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

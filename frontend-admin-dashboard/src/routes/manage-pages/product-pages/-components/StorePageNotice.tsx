@@ -1,7 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
 import { WarningCircle } from '@phosphor-icons/react';
-import { getCatalogueTags } from '../../-services/catalogue-service';
-import { findStoreSites } from '../-utils/store-page';
+import { useStoreSites } from '../-hooks/use-store-sites';
 
 /**
  * Custom Fields tab warning for a site's STORE product page. Custom fields
@@ -19,14 +17,8 @@ interface StorePageNoticeProps {
 }
 
 export const StorePageNotice = ({ productPageCode, instituteId, inviteCount }: StorePageNoticeProps) => {
-    const { data: catalogues } = useQuery({
-        // Shared with the sites list, so opening this tab usually costs nothing.
-        queryKey: ['catalogueTags', instituteId],
-        queryFn: () => getCatalogueTags(instituteId),
-        enabled: !!instituteId && !!productPageCode,
-        staleTime: 60_000,
-    });
-    const sites = findStoreSites(catalogues, productPageCode);
+    // Shared with the sites list, so opening this tab usually costs nothing.
+    const sites = useStoreSites(instituteId, productPageCode);
     if (!sites.length) return null;
 
     const names = sites.map((s) => `“${s.tagName}”`).join(', ');

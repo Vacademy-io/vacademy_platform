@@ -76,7 +76,9 @@ export const CourseLanguagesSettingsCard = ({ value, onChange }: CourseLanguages
             <p className="text-caption text-neutral-500">
                 One card per course: a course&apos;s language versions (levels named &ldquo;Hindi&rdquo;,
                 &ldquo;English&rdquo;, &ldquo;Beginner Hindi&rdquo;…) show as one card with language chips, and the
-                Courses page can filter by language. The visitor picks the language on the course page.
+                Courses page can filter by language. The visitor picks the language on the course page. Then switch
+                on &ldquo;One card per course&rdquo; in each Courses section that should merge them — this setting
+                alone changes nothing on the site.
             </p>
 
             {enabled && (

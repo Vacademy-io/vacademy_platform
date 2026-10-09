@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { getProductPage, updateProductPage } from '../-services/product-pages-service';
 import {
     DEFAULT_PRODUCT_PAGE_SETTINGS,
@@ -23,7 +23,6 @@ function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
 
 export const useProductPageEditor = (productPageId: string) => {
     const { getPrimaryColorCode } = useTheme();
-    const queryClient = useQueryClient();
     const [isDirty, setIsDirty] = useState(false);
     const [activeTab, setActiveTab] = useState<'design' | 'courses' | 'settings' | 'coupons' | 'custom-fields' | 'preview'>(
         'design'
@@ -169,15 +168,13 @@ export const useProductPageEditor = (productPageId: string) => {
      * changes the mappings on the server directly. The one-shot seed above never
      * runs again, so without this the editor would keep showing (and on the next
      * Save write back) the rows from before the sync. Only call it with no
-     * unsaved changes: anything else local is assumed to match the server.
+     * unsaved changes: anything else local is assumed to match the server. The
+     * sync itself refreshes the ['productPage', id] cache entry (every place it
+     * runs from), so this only resets the rows.
      */
-    const reseedMappings = useCallback(
-        (fresh: ProductPageResponse) => {
-            setMappingRows(mappingsToRows(fresh.mappings));
-            queryClient.setQueryData(['productPage', productPageId], fresh);
-        },
-        [productPageId, queryClient]
-    );
+    const reseedMappings = useCallback((fresh: ProductPageResponse) => {
+        setMappingRows(mappingsToRows(fresh.mappings));
+    }, []);
 
     const saveMutation = useMutation({
         mutationFn: () =>

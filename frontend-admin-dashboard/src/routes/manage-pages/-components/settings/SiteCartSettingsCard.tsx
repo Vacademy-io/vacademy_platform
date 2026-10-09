@@ -118,7 +118,14 @@ export const SiteCartSettingsCard = ({ value, onChange }: SiteCartSettingsCardPr
 
                     {store && (
                         <>
-                            <CatalogueSyncPanel productPageId={store.id} instituteId={instituteId} compact />
+                            <CatalogueSyncPanel
+                                // A fresh panel per store page: another page's summary never lingers.
+                                key={store.id}
+                                productPageId={store.id}
+                                instituteId={instituteId}
+                                isStorePage
+                                compact
+                            />
                             <a
                                 href={`/manage-pages/product-pages/editor/${encodeURIComponent(store.id)}`}
                                 target="_blank"

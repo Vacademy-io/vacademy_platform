@@ -64,6 +64,7 @@
         "noRecordedResponses": "इस प्रयास में कोई रिकॉर्ड की गई प्रतिक्रिया नहीं है — सभी प्रश्न छोड़े गए के रूप में दिखाए गए हैं।",
         "backToLatest": "नवीनतम पर वापस जाएं",
         "questionNumber": "प्रश्न {{number}}",
+        "questionMarks": "अंक: {{earned}} / {{max}}",
         "passageLabel": "गद्यांश:",
         "showLess": "कम दिखाएं",
         "showMore": "अधिक दिखाएं",

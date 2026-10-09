@@ -368,6 +368,8 @@ export interface SelectedPackageSession {
      * bulk run; sent as `admin_discount` on the AssignmentItem. Absent / NONE = no discount.
      */
     adminDiscount?: AdminDiscountRequest;
+    /** Server rejection of the discount (e.g. invalid coupon); blocks Preview while set. */
+    adminDiscountError?: string | null;
 
     /**
      * True when `package_session.is_org_associated` — enrolling into it requires choosing the

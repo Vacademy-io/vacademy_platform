@@ -3,6 +3,8 @@
     "minutesAbbrev": "min",
     "marksPerQuestion": "★ Points/Q",
     "negativeMarking": "− Négatif",
+    "partialMarking": "½ Points partiels",
+    "partialMarkingHint": "Questions à réponses multiples : choisir seulement une partie des bonnes réponses (sans mauvaise) rapporte cette part des points",
     "passPercentage": "🎯 % de réussite",
     "attempts": "Tentatives",
     "savingEllipsis": "Enregistrement…",

@@ -456,6 +456,7 @@ export function CreateInvoiceDialog({
     // Admin-granted discount (new invoices only — the update endpoint doesn't take one).
     const [adminDiscount, setAdminDiscount] = useState<AdminDiscountRequest>(EMPTY_ADMIN_DISCOUNT);
     const [discountPreview, setDiscountPreview] = useState<AdminDiscountPreview | null>(null);
+    const [discountServerError, setDiscountServerError] = useState<string | null>(null);
 
     const { data: invoiceSettings, isLoading: isSettingsLoading } = useQuery({
         queryKey: ['invoice-settings'],
@@ -671,7 +672,9 @@ export function CreateInvoiceDialog({
         const ok = await form.trigger();
         if (!ok) return;
         if (showDiscount) {
-            const discountErr = getAdminDiscountValidationError(adminDiscount, subtotal);
+            const discountErr =
+                getAdminDiscountValidationError(adminDiscount, subtotal) ||
+                (adminDiscount.mode !== 'NONE' ? discountServerError : null);
             if (discountErr) {
                 toast.error(discountErr);
                 return;
@@ -884,6 +887,7 @@ export function CreateInvoiceDialog({
                                 currency={currency}
                                 instituteId={instituteId}
                                 onPreview={setDiscountPreview}
+                                onServerErrorChange={setDiscountServerError}
                                 hideCycles
                                 label={t('manageStudentsCreateInvoiceDialog:discount.label', {
                                     defaultValue: 'Discount (optional)',

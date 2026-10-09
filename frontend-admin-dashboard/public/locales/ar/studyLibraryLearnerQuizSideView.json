@@ -66,6 +66,7 @@
     "verdict": {
         "correct": "صحيح",
         "wrong": "خطأ",
+        "partial": "جزئي",
         "skipped": "تم تخطيه",
         "needsMarking": "يحتاج تصحيحًا",
         "notAnswered": "بدون إجابة"

@@ -8,6 +8,7 @@ export interface QuizSettings {
     marksPerQuestion: number;
     negativeMarkingEnabled: boolean;
     negativeMarking: number;
+    partialMarking: boolean;
     passPercentageEnabled: boolean;
     passPercentage: number;
     reAttemptCountEnabled: boolean;
@@ -96,6 +97,22 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                         inputPlaceholder="0.25"
                     />
                 )}
+            </div>
+
+            <div className="h-4 w-px bg-neutral-300" />
+
+            {/* Partial Marking — multiple-correct questions earn a share per correct option */}
+            <div className="flex items-center gap-2" title={t('partialMarkingHint')}>
+                <input
+                    type="checkbox"
+                    id="qs-partial-marking"
+                    className="accent-primary-500"
+                    checked={settings.partialMarking}
+                    onChange={(e) => update({ partialMarking: e.target.checked })}
+                />
+                <label htmlFor="qs-partial-marking" className="font-medium text-neutral-700 select-none cursor-pointer">
+                    {t('partialMarking')}
+                </label>
             </div>
 
             <div className="h-4 w-px bg-neutral-300" />

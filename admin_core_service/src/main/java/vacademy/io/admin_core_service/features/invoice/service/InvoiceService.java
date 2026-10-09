@@ -6427,6 +6427,7 @@ public class InvoiceService {
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())
                 .discountAmount(invoice.getDiscountAmount())
+                .discountGrantedByUserId(invoice.getDiscountGrantedByUserId())
                 .taxAmount(invoice.getTaxAmount())
                 .totalAmount(invoice.getTotalAmount())
                 .currency(invoice.getCurrency())

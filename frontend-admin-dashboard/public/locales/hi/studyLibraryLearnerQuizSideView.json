@@ -42,6 +42,7 @@
     "verdict": {
         "correct": "सही",
         "wrong": "गलत",
+        "partial": "आंशिक",
         "skipped": "छोड़ा गया",
         "needsMarking": "मूल्यांकन आवश्यक",
         "notAnswered": "अनुत्तरित"

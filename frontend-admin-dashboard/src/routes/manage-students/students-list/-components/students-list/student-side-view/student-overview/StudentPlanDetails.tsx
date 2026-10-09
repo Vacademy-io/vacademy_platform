@@ -261,7 +261,10 @@ const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string
             <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-1.5">
                     <span className="font-mono text-xs font-semibold text-success-700">
-                        {applied.code || t('coupon.defaultLabel')}
+                        {applied.code ||
+                            (isAdminDiscount
+                                ? t('coupon.adminDiscountLabel', { defaultValue: 'Discount' })
+                                : t('coupon.defaultLabel'))}
                     </span>
                     {applied.point != null && (
                         <span className="text-xs text-success-600">{discountLabel}</span>

@@ -141,6 +141,12 @@ public class UserAccountLedgerService {
         // accrual too is what makes this pair replay-safe.
         save(userId, instituteId, "DEBIT_ACCRUAL", amount, currency,
                 dueDate, sourceType, sourceId, null, paymentLogId, remarks);
+        // The payment may already have been credited through another path (e.g. the
+        // plan-payment credit) — never book the same money twice.
+        if (paymentLogId != null
+                && repository.existsByReferenceIdAndEventType(paymentLogId, "CREDIT_PAYMENT")) {
+            return;
+        }
         save(userId, instituteId, "CREDIT_PAYMENT", amount, currency,
                 null, sourceType, sourceId, null, paymentLogId, remarks);
     }

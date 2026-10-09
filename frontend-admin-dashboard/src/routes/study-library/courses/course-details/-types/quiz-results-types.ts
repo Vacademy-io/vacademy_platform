@@ -242,8 +242,11 @@ export interface LearnerQuizDetailResponse {
     quizzes: LearnerQuizDetailRow[];
 }
 
-/** Per-question verdict on one attempt. NOT_ANSWERED = no response row at all. */
-export type AnswerVerdict = 'CORRECT' | 'WRONG' | 'SKIPPED' | 'UNGRADED' | 'NOT_ANSWERED';
+/**
+ * Per-question verdict on one attempt. NOT_ANSWERED = no response row at all.
+ * PARTIAL = not fully correct but earned a share of the marks (partial-marking quiz).
+ */
+export type AnswerVerdict = 'CORRECT' | 'PARTIAL' | 'WRONG' | 'SKIPPED' | 'UNGRADED' | 'NOT_ANSWERED';
 
 export interface LearnerAnswerOption {
     optionId: string;

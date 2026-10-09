@@ -1135,12 +1135,13 @@ def estimate_translation(
 # Website copy differs from UI strings and course content: short headings and
 # buttons sit next to whole HTML blocks with links, prices and dates. Besides
 # mask_protected's spans (placeholders, data-code, LaTeX — its patterns are
-# reused read-only, its code is untouched) every HTML tag (attributes
-# byte-exact), raw-text element (style/script/pre/code, whole), URL, email,
-# entity and digit run is masked as a __PH_n__ token. A translation is
-# accepted only when every token comes back exactly once, the markup is
-# intact (inline spans may move — Hindi word order — block structure may not)
-# and the numbers are unchanged (no Devanagari digits). Anything else is
+# reused read-only, its code is untouched) every single-brace text-pattern
+# placeholder ({stream}, {title}), HTML tag (attributes byte-exact), raw-text
+# element (style/script/pre/code, whole), URL, email, entity and digit run is
+# masked as a __PH_n__ token. A translation is accepted only when every token
+# comes back exactly once, the markup is intact (inline spans may move — Hindi
+# word order — block structure may not), the numbers are unchanged (no
+# Devanagari digits) and the {placeholders} are the same. Anything else is
 # reported as failed, never "fixed".
 
 WEBSITE_TM_DOMAIN = "WEBSITE"
@@ -1153,6 +1154,10 @@ WEBSITE_BATCH_ITEMS = 25             # texts per batched call
 WEBSITE_LLM_CONCURRENCY = 3          # LLM calls in flight per request
 
 _WEBSITE_TOKEN_RE = re.compile(r"__PH_\d+__")
+# A text pattern's placeholder ("Explore {stream}", "Categories in {stream}"):
+# the site fills it per item at render time, by its ASCII name, so the name
+# must come back exactly as typed — '{धारा}' would show literally.
+_WEBSITE_TEXT_PLACEHOLDER_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
 def _scoped(pattern: "re.Pattern[str]") -> str:
@@ -1168,17 +1173,19 @@ def _scoped(pattern: "re.Pattern[str]") -> str:
 # ONE left-to-right pass where the leftmost span wins, so no masked span ever
 # holds a token: a placeholder inside a tag or link (`<img src="{{course.image}}">`,
 # `https://x.org/{{id}}`) stays inside that tag's/link's token byte-exact, and
-# digits inside a placeholder or LaTeX (`{{step2}}`, `$$x^2$$`) stay inside
-# theirs. (Masking one kind after another nests tokens, and the reply can then
-# never carry every token exactly once.) Where two spans start at the same
+# digits inside a placeholder or LaTeX (`{{step2}}`, `{step2}`, `$$x^2$$`) stay
+# inside theirs. (Masking one kind after another nests tokens, and the reply can
+# then never carry every token exactly once.) Where two spans start at the same
 # place, the order below decides: a literal token already in the source,
-# mask_protected's spans, comments, raw-text elements whose content is never
+# mask_protected's spans (so `{{name}}` stays one placeholder), text-pattern
+# placeholders (`{stream}`), comments, raw-text elements whose content is never
 # prose (style, script, pre, code — masked whole, so CSS/JS is neither sent
 # nor translated), tags, links, emails, entities, digit runs.
 _WEBSITE_MASK_RE = re.compile(
     "|".join(
         [r"__PH_\d+__"]
         + [_scoped(p) for p in _PROTECTED_PATTERNS]
+        + [_scoped(_WEBSITE_TEXT_PLACEHOLDER_RE)]
         + [r"(?s:<!--.*?-->)"]
         + [rf"(?is:<{tag}\b[^>]*>.*?</{tag}\s*>)" for tag in ("style", "script", "pre", "code")]
         + [
@@ -1205,11 +1212,11 @@ _INLINE_TAGS = {
 
 
 def mask_website_text(value: str) -> Tuple[str, Dict[str, str]]:
-    """mask_protected's spans plus the website spans (comments, style/script/
-    pre/code elements, tags, URLs, emails, entities, digit runs), each as a
-    __PH_n__ token, in one pass — every token stands for source text, none for
-    another token. Returns (masked, token → original); undo with
-    restore_website_tokens."""
+    """mask_protected's spans plus the website spans ({word} text-pattern
+    placeholders, comments, style/script/pre/code elements, tags, URLs, emails,
+    entities, digit runs), each as a __PH_n__ token, in one pass — every token
+    stands for source text, none for another token. Returns (masked, token →
+    original); undo with restore_website_tokens."""
     mapping: Dict[str, str] = {}
 
     def _sub(match: "re.Match[str]") -> str:
@@ -1251,13 +1258,18 @@ def _same_markup(source: str, translated: str) -> bool:
 
 def website_translation_problem(source: str, translated: str) -> Optional[str]:
     """None when `translated` is safe to show in place of `source`; otherwise why not.
-    Checks the restored text: markup and numbers. (Token checks happen before restore.)"""
+    Checks the restored text: markup, numbers and {word} placeholders. (Token checks
+    happen before restore; these also screen remembered translations.)"""
     if not isinstance(translated, str) or not translated.strip():
         return "the translation is empty"
     if not _same_markup(source, translated):
         return "the HTML markup changed"
     if sorted(_ANY_DIGITS_RE.findall(source)) != sorted(_ANY_DIGITS_RE.findall(translated)):
         return "the numbers changed"
+    if sorted(_WEBSITE_TEXT_PLACEHOLDER_RE.findall(source)) != sorted(
+        _WEBSITE_TEXT_PLACEHOLDER_RE.findall(translated)
+    ):
+        return "the {placeholders} changed"
     return None
 
 

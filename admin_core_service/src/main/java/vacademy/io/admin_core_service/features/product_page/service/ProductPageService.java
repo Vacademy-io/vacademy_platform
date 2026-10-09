@@ -548,9 +548,13 @@ public class ProductPageService {
         return resp;
     }
 
-    /** Page fields and its mappings, into a response object the caller supplies. */
-    void fillAdminResponse(ProductPageResponse resp, ProductPage page,
-                           List<ProductPageInviteMapping> activeMappings) {
+    /**
+     * Page fields and its mappings, into a response object the caller
+     * supplies. Returns the mappings' locked plans by id, read for the
+     * mappings' prices.
+     */
+    Map<String, PaymentPlan> fillAdminResponse(ProductPageResponse resp, ProductPage page,
+                                               List<ProductPageInviteMapping> activeMappings) {
         resp.setId(page.getId());
         resp.setName(page.getName());
         resp.setCode(page.getCode());
@@ -564,6 +568,7 @@ public class ProductPageService {
         resp.setMappings(activeMappings.stream()
                 .map(m -> toMappingResponse(m, plans))
                 .collect(Collectors.toList()));
+        return plans;
     }
 
     private ProductPageResponse buildAdminResponseWithCustomFields(ProductPage page) {
@@ -582,17 +587,21 @@ public class ProductPageService {
         return resp;
     }
 
-    /** {@link #fillAdminResponse} plus the checkout form, vendor, currency and GTM container. */
+    /**
+     * {@link #fillAdminResponse} plus the checkout form, vendor, currency
+     * (both from {@link #gatewayMapping}) and GTM container.
+     */
     public void fillAdminResponseWithCustomFields(ProductPageResponse resp, ProductPage page,
                                                   List<ProductPageInviteMapping> activeMappings) {
-        fillAdminResponse(resp, page, activeMappings);
+        Map<String, PaymentPlan> plans = fillAdminResponse(resp, page, activeMappings);
 
         resp.setAggregatedCustomFields(aggregateCustomFields(page.getInstituteId(), activeMappings));
 
-        if (!activeMappings.isEmpty()) {
-            EnrollInvite firstInvite = activeMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
-            resp.setVendor(firstInvite.getVendor());
-            resp.setCurrency(firstInvite.getCurrency());
+        ProductPageInviteMapping gatewayMapping = gatewayMapping(activeMappings, plans);
+        if (gatewayMapping != null) {
+            EnrollInvite gatewayInvite = gatewayMapping.getPsInvitePaymentOption().getEnrollInvite();
+            resp.setVendor(gatewayInvite.getVendor());
+            resp.setCurrency(gatewayInvite.getCurrency());
         }
 
         // Populate GTM container ID from institute settings
@@ -610,6 +619,34 @@ public class ProductPageService {
         } catch (Exception e) {
             log.debug("GTM setting not found for institute {}: {}", page.getInstituteId(), e.getMessage());
         }
+    }
+
+    /**
+     * The mapping whose invite gives the page its gateway and currency: the
+     * first one, in display order, whose locked plan costs something, else
+     * the first one. A free course is charged nothing; its currency is often
+     * only a default label (free plans are created in INR) and its gateway a
+     * fallback set before the institute configured one, so it heads the
+     * page's prices and payment widget only when nothing on the page is
+     * priced. Checkout charges a cart the same way: through its first priced
+     * course's gateway (ProductPageEnrollmentService.gatewayInvite), in its
+     * priced courses' currency (checkoutCurrency). A mapping whose plan is
+     * gone counts as free. Null for a page with no mappings.
+     *
+     * Visible for testing.
+     */
+    static ProductPageInviteMapping gatewayMapping(List<ProductPageInviteMapping> activeMappings,
+                                                   Map<String, PaymentPlan> plans) {
+        if (activeMappings.isEmpty()) {
+            return null;
+        }
+        for (ProductPageInviteMapping mapping : activeMappings) {
+            PaymentPlan plan = mapping.getPaymentPlanId() != null ? plans.get(mapping.getPaymentPlanId()) : null;
+            if (plan != null && plan.getActualPrice() > 0) {
+                return mapping;
+            }
+        }
+        return activeMappings.get(0);
     }
 
     /**

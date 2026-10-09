@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -375,8 +376,108 @@ class ProductPageByCodeResponseTest {
 
         assertEquals(List.of("m-3", "m-2", "m-1"),
                 now.getMappings().stream().map(ProductPageInviteMappingResponse::getId).toList());
-        // The vendor and currency follow the first mapping in that order.
+        // The vendor and currency follow the first priced mapping in that order
+        // (m-3's plan is gone and m-2 is free, so m-1's invite).
         assertEquals("RAZORPAY", now.getVendor());
+    }
+
+    /* ── vendor and currency: the first priced course's ──────────────── */
+
+    /** Adds a course to the page on its own invite (vendor, currency) and plan (price, in that currency). */
+    private void course(String id, int order, String vendor, String currency, double price) {
+        EnrollInvite invite = invite("inv-" + id, vendor, currency);
+        mappings.add(mapping("m-" + id, order, bridge("psli-" + id, invite,
+                session("ps-" + id, pkg("pkg-" + id, "Course " + id), null, null), option("po-" + id, "ONE_TIME")),
+                "plan-" + id, false));
+        plan("plan-" + id, "plan-" + id, price, price, null);
+        plans.get("plan-" + id).setCurrency(currency);
+    }
+
+    /** The response as JSON with vendor and currency left out, to show nothing else differs. */
+    private String withoutVendorAndCurrency(ProductPageResponse response) throws Exception {
+        response.setVendor(null);
+        response.setCurrency(null);
+        return json.writeValueAsString(response);
+    }
+
+    @Test
+    @DisplayName("a page whose first course is free takes its gateway and currency from the first priced course")
+    void freeFirstCourseDoesNotSetTheGatewayOrCurrency() throws Exception {
+        mappings.clear();
+        // A free orientation labelled INR on a stale STRIPE invite heads the page;
+        // the paid courses are AUD on Eway, then USD on Cashfree.
+        course("free", 0, "STRIPE", "INR", 0);
+        course("be", 1, "EWAY", "AUD", 499);
+        course("cb", 2, "CASHFREE", "USD", 299);
+        // A course whose plan is gone is not priced either.
+        mappings.add(0, mapping("m-gone", 0, bridge("psli-gone", invite("inv-gone", "PHONEPE", "EUR"),
+                session("ps-gone", pkg("pkg-gone", "Gone"), null, null), option("po-gone", "ONE_TIME")),
+                "plan-gone", false));
+
+        ProductPageResponse now = service.getProductPageByCode(CODE, INSTITUTE);
+
+        assertEquals("EWAY", now.getVendor());
+        assertEquals("AUD", now.getCurrency());
+        // The courses themselves are listed exactly as before, free one included.
+        assertEquals(List.of("m-gone", "m-free", "m-be", "m-cb"),
+                now.getMappings().stream().map(ProductPageInviteMappingResponse::getId).toList());
+        ProductPageResponse before = legacy.getProductPageByCode(CODE, INSTITUTE);
+        assertEquals("PHONEPE", before.getVendor());
+        assertEquals(withoutVendorAndCurrency(before), withoutVendorAndCurrency(now));
+        // Read from the plans the course list already loads: still one plan query.
+        verify(readRepository, times(1)).findPlansWithOptionByIdIn(any());
+    }
+
+    @Test
+    @DisplayName("a page whose first course is priced answers exactly as before, whatever follows it")
+    void pricedFirstCourseUnchanged() throws Exception {
+        mappings.clear();
+        course("a", 0, "RAZORPAY", "INR", 499);
+        course("free", 1, "STRIPE", "GBP", 0);
+        course("b", 2, "CASHFREE", "USD", 299);
+
+        ProductPageResponse now = service.getProductPageByCode(CODE, INSTITUTE);
+
+        assertEquals(json.writeValueAsString(legacy.getProductPageByCode(CODE, INSTITUTE)),
+                json.writeValueAsString(now));
+        assertEquals("RAZORPAY", now.getVendor());
+        assertEquals("INR", now.getCurrency());
+    }
+
+    @Test
+    @DisplayName("a page with no priced course keeps the first course's gateway and currency, as before")
+    void noPricedCourseKeepsTheFirstCourse() throws Exception {
+        mappings.clear();
+        course("x", 0, "STRIPE", "INR", 0);
+        course("y", 1, "RAZORPAY", "USD", 0);
+
+        ProductPageResponse now = service.getProductPageByCode(CODE, INSTITUTE);
+
+        assertEquals(json.writeValueAsString(legacy.getProductPageByCode(CODE, INSTITUTE)),
+                json.writeValueAsString(now));
+        assertEquals("STRIPE", now.getVendor());
+        assertEquals("INR", now.getCurrency());
+    }
+
+    @Test
+    @DisplayName("the rule itself: the first mapping whose plan costs something, else the first; none for no mappings")
+    void gatewayMappingRule() {
+        mappings.clear();
+        course("free", 0, "STRIPE", "INR", 0);
+        course("paid", 1, "EWAY", "AUD", 10);
+        course("later", 2, "CASHFREE", "USD", 20);
+        ProductPageInviteMapping noPlanId = mapping("m-noplan", 3, bridge("psli-noplan", invite("inv-noplan", "X", "Y"),
+                session("ps-noplan", pkg("pkg-noplan", "No plan"), null, null), option("po-noplan", "ONE_TIME")),
+                null, false);
+        ProductPageInviteMapping free = mappings.get(0);
+        ProductPageInviteMapping paid = mappings.get(1);
+        ProductPageInviteMapping later = mappings.get(2);
+
+        assertSame(paid, ProductPageService.gatewayMapping(List.of(free, paid, later), plans));
+        assertSame(later, ProductPageService.gatewayMapping(List.of(noPlanId, free, later), plans));
+        assertSame(free, ProductPageService.gatewayMapping(List.of(free, noPlanId), plans));
+        assertSame(noPlanId, ProductPageService.gatewayMapping(List.of(noPlanId, free), Map.of()));
+        assertNull(ProductPageService.gatewayMapping(List.of(), plans));
     }
 
     @Test

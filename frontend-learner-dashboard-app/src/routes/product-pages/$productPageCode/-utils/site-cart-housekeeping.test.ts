@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
     clearPurchasedFromSiteCart,
+    isPaidCpoPayment,
     isPaidEnrollment,
     notePendingSiteCartPurchase,
     purchasedPackageSessionIds,
@@ -47,6 +48,20 @@ describe('what clears the site cart', () => {
         expect(isPaidEnrollment({ status: 'INITIATED' })).toBe(false);
         expect(isPaidEnrollment({ status: 'PAYMENT_PENDING' })).toBe(false);
         expect(isPaidEnrollment(null)).toBe(false);
+    });
+
+    it('only a PAID installment payment counts as bought (CPO)', () => {
+        expect(isPaidCpoPayment({ response_data: { paymentStatus: 'PAID' }, order_id: 'log-1' })).toBe(true);
+        // The server's idempotent short-circuit sets both; status alone also counts.
+        expect(isPaidCpoPayment({ status: 'paid' })).toBe(true);
+        // A redirect gateway's hand-off (payment page in response_data) is not paid.
+        expect(
+            isPaidCpoPayment({ response_data: { paymentStatus: 'PAYMENT_PENDING', paymentUrl: 'https://pay' }, order_id: 'log-2' })
+        ).toBe(false);
+        expect(isPaidCpoPayment({ response_data: { status: 'ACTIVE' }, order_id: 'log-3' })).toBe(false);
+        expect(isPaidCpoPayment({ response_data: { paymentStatus: 'PAYMENT_PENDING' }, status: 'PAID' })).toBe(false);
+        expect(isPaidCpoPayment(undefined)).toBe(false);
+        expect(isPaidCpoPayment('PAID')).toBe(false);
     });
 
     it("uses the server's enrolled sessions, falling back to the selection", () => {

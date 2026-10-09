@@ -31,15 +31,16 @@ import { CourseThumbnail } from "../site-cart/CourseThumbnail";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { isMeaningfulLevel } from "../site-cart/site-cart-items";
-import { useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
+import { useFallbackCartReopen, useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
 import {
   buildPathSteps,
-  missingFromCart,
   pathCartItems,
+  pathCheckoutTotals,
   pathCourseIds,
   pathSelection,
   pathTotals,
   pathsInScope,
+  planPathCart,
   resolvePathScope,
   type PathEntry,
   type PathMapping,
@@ -214,22 +215,33 @@ const PathDetail: React.FC<PathDetailProps> = ({
     [data?.mappings, groupVersions, languages, preferred],
   );
 
-  // The visitor's language pick per course (courseId → language code).
+  // The visitor's language pick per step (step key → language code). Keyed by
+  // step, not course: two steps can be levels of the same course.
   const [choices, setChoices] = useState<Record<string, string>>({});
   const chosen = useMemo(() => pathSelection(steps, choices, languages), [steps, choices, languages]);
   const items = useMemo(
     () => pathCartItems(chosen, { languages, productPageCode: code, pathTitle: data?.name || undefined }),
     [chosen, languages, code, data?.name],
   );
-  const totals = useMemo(() => pathTotals(items), [items]);
 
   const siteCartSettings = globalSettings?.siteCart;
   const siteCartOn = isSiteCartEnabled(siteCartSettings);
   const cart = useSiteCart(instituteId, siteCartOn);
   const notify = useSiteCartNotifier();
-  const missing = useMemo(() => missingFromCart(items, cart.has), [items, cart.has]);
-  const allInCart = siteCartOn && cart.hydrated && items.length > 0 && missing.length === 0;
-  const someInCart = siteCartOn && cart.hydrated && missing.length > 0 && missing.length < items.length;
+  // The cart holds one version per course, so the path is measured (and
+  // added) one version per course — one add always settles the button.
+  const plan = useMemo(() => planPathCart(items, cart.has), [items, cart.has]);
+  const allInCart = siteCartOn && cart.hydrated && plan.allInCart;
+  const someInCart = siteCartOn && cart.hydrated && plan.someInCart;
+
+  // The total for what the button does: the cart's courses with a site cart;
+  // otherwise the product page's own price for the path (basket pricing and
+  // offers included), as its checkout will charge it.
+  const totals = useMemo(
+    () =>
+      siteCartOn ? pathTotals(plan.targets) : pathCheckoutTotals(pathTotals(items), chosen, data?.settings_json),
+    [siteCartOn, plan.targets, items, chosen, data?.settings_json],
+  );
 
   const [adding, setAdding] = useState(false);
   // Used only when the page has no header cart button to open instead.
@@ -238,18 +250,20 @@ const PathDetail: React.FC<PathDetailProps> = ({
   const openCart = useCallback(() => {
     if (!openSiteCartDrawer()) setFallbackOpen(true);
   }, []);
+  const openFallback = useCallback(() => setFallbackOpen(true), []);
+  useFallbackCartReopen(siteCartOn, openFallback);
 
   const addWholePath = async () => {
-    if (!missing.length) {
+    if (!plan.missing.length) {
       openCart();
       return;
     }
     setAdding(true);
     try {
       const previous = cart.items;
-      const result = await cart.add(missing);
+      const result = await cart.add(plan.missing);
       // The drawer is the confirmation; toasts only when a full cart turned items away.
-      notify(result, { previous, quiet: true });
+      notify(result, { previous, quiet: true, onViewCart: openCart });
       if (result?.accepted.length) openCart();
     } finally {
       setAdding(false);
@@ -267,7 +281,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
     totals.total === null
       ? null
       : totals.total === 0
-        ? t("productPageOffer.free")
+        ? t("productPageOffer.free", "Free")
         : formatPriceAmount(totals.total, totals.currency);
 
   if (isLoading) {
@@ -322,7 +336,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
     const variant = chosen[index] ?? step.primary;
     const courseTitle = siteT(variant.package_name) || terms.course;
     const variantLanguage = languageOfLevel(variant.level_name, languages);
-    const activeCode = choices[step.courseId] ?? variantLanguage?.code ?? null;
+    const activeCode = choices[step.key] ?? variantLanguage?.code ?? null;
     const meta = [
       !variantLanguage && isMeaningfulLevel(variant.level_name) ? siteT(variant.level_name) : null,
       isMeaningfulLevel(variant.session_name) ? siteT(variant.session_name) : null,
@@ -351,7 +365,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
     const last = index === steps.length - 1;
 
     return (
-      <li key={step.courseId} className="flex gap-3 sm:gap-4">
+      <li key={step.key} className="flex gap-3 sm:gap-4">
         <div className="flex flex-col items-center" aria-hidden="true">
           {showStepNumbers ? (
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-500 text-sm font-bold text-white sm:size-9">
@@ -365,7 +379,9 @@ const PathDetail: React.FC<PathDetailProps> = ({
         <div
           className={cn(
             "catalogue-card mb-4 flex min-w-0 flex-1 flex-col gap-3 p-4 sm:flex-row sm:items-center",
-            inCart && "catalogue-card-selected",
+            // The same ring as a chosen catalogue card (catalogue-card-selected
+            // only styles the elevated card).
+            inCart && "border-primary-500 ring-2 ring-primary-500/35",
           )}
         >
           <CourseThumbnail image={variant.course_preview_image_media_id} className="aspect-[16/9] w-full sm:w-36" />
@@ -396,7 +412,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
                       type="button"
                       aria-pressed={selected}
                       title={siteT(language.label)}
-                      onClick={() => setChoices((c) => ({ ...c, [step.courseId]: language.code }))}
+                      onClick={() => setChoices((c) => ({ ...c, [step.key]: language.code }))}
                       className={cn(
                         "inline-flex min-w-9 items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition-colors",
                         selected
@@ -472,7 +488,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
         )}
         {someInCart
           ? t("learningPath.addRemaining", {
-              count: missing.length,
+              count: plan.missing.length,
               defaultValue: "Add the remaining {{count}} to cart",
             })
           : addAllLabel || t("learningPath.addAll", "Add whole path to cart")}
@@ -538,6 +554,17 @@ const PathDetail: React.FC<PathDetailProps> = ({
             </>
           )}
           <p className="text-xs text-catalogue-text-muted">{countLabel}</p>
+          {siteCartOn && plan.collapsed && (
+            // Two steps of one course (its levels, or ungrouped language
+            // versions): say why fewer go into the cart than the path lists.
+            <p className="mt-1 max-w-md text-xs text-catalogue-text-muted">
+              {t("learningPath.oneVersionPerCourse", {
+                count: plan.targets.length,
+                course: terms.course.toLocaleLowerCase(),
+                defaultValue: "Your cart holds one version of each {{course}}, so {{count}} of these go into it.",
+              })}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">{cta}</div>
       </div>

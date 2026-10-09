@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   ArrowRight,
   ShoppingCartSimple,
@@ -18,11 +19,21 @@ import type { CourseLanguageOption } from "../../-utils/course-variants";
 import { useCourseTerms } from "../../-utils/catalogue-naming";
 import { useSiteT } from "../../-utils/catalogue-locale";
 import { CourseThumbnail } from "./CourseThumbnail";
-import { readCatalogueTheme } from "./catalogue-theme-snapshot";
+import {
+  CLOSED_DRAWER_THEME,
+  nextDrawerTheme,
+  readCatalogueTheme,
+  type DrawerThemeState,
+} from "./catalogue-theme-snapshot";
+import { fetchPaymentOutcome } from "./payment-status";
+import { reconcilePendingPurchases } from "./pending-purchases";
 import { SITE_CART_MAX_ITEMS, versionLabel } from "./site-cart-items";
 import { unavailableSessionIds, type PrecheckIssue } from "./site-cart-precheck";
 import { useSiteCart } from "./use-site-cart";
 import { useSiteCartCheckout } from "./use-site-cart-checkout";
+
+/** One toast however many times a settled payment is reported (drawer open + checkout). */
+const PAID_REMOVED_TOAST_ID = "site-cart-paid-removed";
 
 export interface SiteCartDrawerProps {
   open: boolean;
@@ -57,15 +68,53 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const hidePrices = shouldHidePaidPurchaseUI();
   const { items, hydrated, remove, removeMany } = useSiteCart(instituteId, true);
+
+  // A redirect payment noted earlier (see pending-purchases) may have settled
+  // since the page loaded: ask again when the drawer opens and just before
+  // checkout, so a course already paid for leaves the cart instead of being
+  // bought twice. No request unless such a payment is noted.
+  const announcePaid = useCallback(
+    (count: number) =>
+      toast.success(
+        t("siteCart.paidRemoved", {
+          count,
+          course: (count === 1 ? terms.course : terms.courses).toLocaleLowerCase(),
+          defaultValue: "Removed {{count}} {{course}} you've already paid for.",
+        }),
+        { id: PAID_REMOVED_TOAST_ID },
+      ),
+    [t, terms.course, terms.courses],
+  );
+  const announcePaidRef = useRef(announcePaid);
+  useEffect(() => {
+    announcePaidRef.current = announcePaid;
+  }, [announcePaid]);
+  const settlePaid = useCallback(async (): Promise<string[]> => {
+    const removed = await reconcilePendingPurchases(instituteId, fetchPaymentOutcome, { force: true });
+    if (removed.length) announcePaidRef.current(removed.length);
+    return removed;
+  }, [instituteId]);
+  useEffect(() => {
+    if (open) void settlePaid();
+  }, [open, settlePaid]);
+
   const { state, runCheckout, goToCheckout, reset } = useSiteCartCheckout({
     instituteId,
     tagName,
     settings,
     onNavigate: () => onOpenChange(false),
+    beforeCheckout: settlePaid,
   });
 
-  // Read when the drawer opens: the wrapper's palette can change with the page.
-  const theme = useMemo(() => (open ? readCatalogueTheme(themeAnchor) : null), [open, themeAnchor]);
+  // The site's palette, read when the drawer opens and kept while it animates
+  // closed (see nextDrawerTheme) — the closing sheet never flashes to the
+  // app's default colours.
+  const [themeState, setThemeState] = useState<DrawerThemeState<HTMLElement>>(() =>
+    nextDrawerTheme<HTMLElement>(CLOSED_DRAWER_THEME, open, themeAnchor, readCatalogueTheme),
+  );
+  const nextTheme = nextDrawerTheme(themeState, open, themeAnchor, readCatalogueTheme);
+  if (nextTheme !== themeState) setThemeState(nextTheme);
+  const theme = nextTheme.theme;
   const totals = useMemo(() => cartTotals(items), [items]);
 
   // A changed cart (or a reopened drawer) invalidates the last availability check.
@@ -288,7 +337,7 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
               )}
               <span className="text-lg font-bold text-catalogue-text-primary">
                 {totals.total === 0
-                  ? t("productPageOffer.free")
+                  ? t("productPageOffer.free", "Free")
                   : formatPriceAmount(totals.total, totals.currency)}
               </span>
             </span>

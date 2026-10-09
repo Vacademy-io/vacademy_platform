@@ -44,8 +44,15 @@ import type { GlobalSettings } from "../../-types/course-catalogue-types";
 import { useSiteT } from "../../-utils/catalogue-locale";
 import { courseLanguagesOf } from "../../-utils/course-variants";
 import { isSiteCartEnabled } from "../../-utils/site-cart";
+import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
+import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { cartItemFromMapping } from "../site-cart/site-cart-items";
-import { useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
+import {
+  useFallbackCartReopen,
+  useHasSiteCartOpener,
+  useSiteCart,
+  useSiteCartNotifier,
+} from "../site-cart/use-site-cart";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -389,6 +396,16 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     () => courseLanguagesOf(globalSettings?.courseLanguages),
     [globalSettings?.courseLanguages],
   );
+  // A page with no header cart button (header switched off, or the site
+  // chrome hidden) would leave the visitor no way to the cart this section
+  // fills: the section then offers "View cart" and its own drawer.
+  const hasHeaderCart = useHasSiteCartOpener();
+  const [fallbackCartOpen, setFallbackCartOpen] = useState(false);
+  const openSiteCart = useCallback(() => {
+    if (!openSiteCartDrawer()) setFallbackCartOpen(true);
+  }, []);
+  const openFallbackCart = useCallback(() => setFallbackCartOpen(true), []);
+  useFallbackCartReopen(siteCartOn, openFallbackCart);
 
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
@@ -522,7 +539,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     const result = await siteCart.add([
       cartItemFromMapping(m, { languages: cartLanguages, source: { kind: "catalog" } }),
     ]);
-    notifySiteCart(result, { previous });
+    notifySiteCart(result, { previous, onViewCart: openSiteCart });
   };
 
   // A fresh Course Finder answer means a fresh basket — keeping Class 2 picks
@@ -803,14 +820,37 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       </span>
     ) : null;
 
+  // Site-cart mode on a page without a header cart button: the way to the
+  // cart (and its checkout) sits beside the count. Absent everywhere else.
+  const siteCartCount = siteCartOn && siteCart.hydrated ? siteCart.items.length : 0;
+  const viewCartButton =
+    siteCartOn && !hasHeaderCart && siteCartCount > 0 ? (
+      <button
+        type="button"
+        onClick={openSiteCart}
+        aria-haspopup="dialog"
+        className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
+      >
+        <ShoppingCartSimple className="size-3.5" weight="bold" aria-hidden="true" />
+        {t("siteCart.viewCartCount", { count: siteCartCount, defaultValue: "View cart ({{count}})" })}
+      </button>
+    ) : null;
+  const cartStatus =
+    selectedBadge || viewCartButton ? (
+      <>
+        {selectedBadge}
+        {viewCartButton}
+      </>
+    ) : null;
+
   const header =
-    title || subtitle || seeAll || selectedBadge ? (
+    title || subtitle || seeAll || cartStatus ? (
       isLeft ? (
         <div className="catalogue-section-header flex items-end justify-between gap-4 text-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {title && <h2 className={titleClass}>{title}</h2>}
-              {selectedBadge}
+              {cartStatus}
             </div>
             {subtitle && (
               <p className={`${subtitleClass} catalogue-measure-start`}>{subtitle}</p>
@@ -822,9 +862,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         <div className="catalogue-section-header text-center">
           {title && <h2 className={titleClass}>{title}</h2>}
           {subtitle && <p className={`${subtitleClass} catalogue-measure`}>{subtitle}</p>}
-          {(seeAll || selectedBadge) && (
+          {(seeAll || cartStatus) && (
             <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-              {selectedBadge}
+              {cartStatus}
               {seeAll}
             </div>
           )}
@@ -1483,6 +1523,20 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       </div>
 
       {checkoutBar}
+
+      {/* The section's own cart drawer, only on a page without a header cart
+          button (kept mounted while open so it can animate closed). */}
+      {siteCartOn && instituteId && globalSettings?.siteCart && (!hasHeaderCart || fallbackCartOpen) && (
+        <SiteCartDrawer
+          open={fallbackCartOpen}
+          onOpenChange={setFallbackCartOpen}
+          instituteId={instituteId}
+          tagName={tagName}
+          settings={globalSettings.siteCart}
+          languages={cartLanguages}
+          themeAnchor={portalHost}
+        />
+      )}
     </section>
   );
 };

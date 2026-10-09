@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -64,6 +64,7 @@ vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promi
 
 const { LearningPathComponent } = await import("./LearningPathComponent");
 const { SiteCartButton } = await import("../site-cart/SiteCartButton");
+const { useSiteCartStore } = await import("../../-stores/site-cart-store");
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 const INSTITUTE = "inst-1";
@@ -94,9 +95,9 @@ const page = {
   ],
 };
 
-const render = (props: Record<string, unknown>) => {
+const render = (props: Record<string, unknown>, pageData: Record<string, unknown> = page) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(["PRODUCT_PAGE_BY_CODE", CODE, INSTITUTE], page);
+  client.setQueryData(["PRODUCT_PAGE_BY_CODE", CODE, INSTITUTE], pageData);
   return renderToStaticMarkup(
     React.createElement(
       QueryClientProvider,
@@ -156,6 +157,67 @@ describe("learningPath (single)", () => {
   it("renders nothing for visitors until configured, and a hint in the builder preview", () => {
     expect(render({ productPageCode: "" })).toBe("");
     expect(render({ productPageCode: "", isPreviewMode: true })).toContain("Pick the product page");
+  });
+
+  it("without a site cart, totals the path the way its product page charges it (basket price)", () => {
+    const priced = {
+      ...page,
+      settings_json: JSON.stringify({ basketPricing: { enabled: true, ladder: { prices: [399, 649], perExtra: 200 } } }),
+    };
+    const lines = text(render({ productPageCode: CODE, globalSettings: grouped }, priced));
+    // Two courses (C1 in English, C2): 500 + 300 = 800 list, 649 at checkout.
+    expect(lines.some((l) => l.includes("649"))).toBe(true);
+    expect(lines.some((l) => l.includes("800"))).toBe(true);
+  });
+});
+
+describe("learningPath and the site cart", () => {
+  // Server rendering reads zustand's server snapshot — the store's INITIAL
+  // state — so the visitor's cart is seeded there (and restored after).
+  const initial = useSiteCartStore.getInitialState();
+  const pristine = { ...initial };
+  const seedCart = (ids: string[]) =>
+    Object.assign(initial, {
+      instituteId: INSTITUTE,
+      hydrated: true,
+      items: ids.map((id) => ({ packageSessionId: id, courseId: id.split("-")[0]!, title: id })),
+    });
+  afterEach(() => {
+    Object.assign(initial, pristine);
+  });
+
+  const siteCart = { siteCart: { enabled: true, storeProductPageCode: "STORE" } };
+  const ONE_PER_COURSE = "Your cart holds one version of each course, so 2 of these go into it.";
+
+  it("explains that two versions of one course go into the cart as one", () => {
+    seedCart([]);
+    const lines = text(render({ productPageCode: CODE, addAllLabel: "", globalSettings: siteCart }));
+    expect(lines).toContain("3 courses");
+    expect(lines).toContain(ONE_PER_COURSE);
+    expect(lines).toContain("Add whole path to cart");
+  });
+
+  it("settles once the cart holds one version of each course (the button never flips back)", () => {
+    // What one "Add whole path to cart" leaves in the cart for this path.
+    seedCart(["c1-en", "c2-hi"]);
+    const html = render({ productPageCode: CODE, globalSettings: siteCart });
+    expect(html).toContain("Whole path is in your cart");
+    expect(html).not.toContain("Add the remaining");
+  });
+
+  it("keeps the version already in the cart and adds only the rest", () => {
+    seedCart(["c1-hi"]);
+    const html = render({ productPageCode: CODE, globalSettings: siteCart });
+    expect(html).toContain("Add the remaining 1 to cart");
+    // The step in the cart wears the selected ring.
+    expect(html).toContain("ring-primary-500/35");
+  });
+
+  it("says nothing about versions when every step is a different course", () => {
+    seedCart([]);
+    expect(render({ productPageCode: CODE, globalSettings: { ...grouped, ...siteCart } })).not.toContain(
+      "one version of each",
+    );
   });
 });
 

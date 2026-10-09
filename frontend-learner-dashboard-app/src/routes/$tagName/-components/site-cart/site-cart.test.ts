@@ -1,14 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SiteCartItem } from "../../-utils/site-cart";
 import {
   SITE_CART_MAX_ITEMS,
   capCartAdd,
   cartItemFromMapping,
   isMeaningfulLevel,
+  isStoreCheckoutPath,
   versionLabel,
 } from "./site-cart-items";
 import { precheckSiteCart, unavailableSessionIds } from "./site-cart-precheck";
-import { readCatalogueTheme } from "./catalogue-theme-snapshot";
+import { CLOSED_DRAWER_THEME, nextDrawerTheme, readCatalogueTheme } from "./catalogue-theme-snapshot";
 
 const item = (courseId: string, packageSessionId: string, extra: Partial<SiteCartItem> = {}): SiteCartItem => ({
   courseId,
@@ -90,6 +91,18 @@ describe("cartItemFromMapping", () => {
     expect(built.courseId).toBe("ps-9");
     expect(built.languageCode).toBeUndefined();
     expect(built.price).toBeUndefined();
+  });
+});
+
+describe("isStoreCheckoutPath", () => {
+  it("recognises the store checkout (so a second checkout from it replaces the entry)", () => {
+    expect(isStoreCheckoutPath("/product-pages/STORE", "STORE")).toBe(true);
+    expect(isStoreCheckoutPath("/product-pages/STORE/", " STORE ")).toBe(true);
+    expect(isStoreCheckoutPath("/product-pages/PATH1", "STORE")).toBe(false);
+    expect(isStoreCheckoutPath("/site/courses", "STORE")).toBe(false);
+    expect(isStoreCheckoutPath("/product-pages/%E0%A4", "STORE")).toBe(false);
+    expect(isStoreCheckoutPath(undefined, "STORE")).toBe(false);
+    expect(isStoreCheckoutPath("/product-pages/", "")).toBe(false);
   });
 });
 
@@ -194,5 +207,44 @@ describe("readCatalogueTheme", () => {
   it("returns null outside a catalogue", () => {
     expect(readCatalogueTheme({ closest: () => null })).toBeNull();
     expect(readCatalogueTheme(null)).toBeNull();
+  });
+});
+
+describe("nextDrawerTheme", () => {
+  const ocean = { attrs: { "data-catalogue-theme": "ocean" }, vars: {}, dark: true };
+  const forest = { attrs: { "data-catalogue-theme": "forest" }, vars: {}, dark: false };
+
+  it("reads the theme when the drawer opens and KEEPS it while it closes", () => {
+    let palette = ocean;
+    const read = vi.fn(() => palette);
+    const anchor = { id: "header-button" };
+
+    const closed = nextDrawerTheme(CLOSED_DRAWER_THEME, false, anchor, read);
+    expect(closed).toBe(CLOSED_DRAWER_THEME);
+    expect(read).not.toHaveBeenCalled();
+
+    const opened = nextDrawerTheme(closed, true, anchor, read);
+    expect(opened.theme).toBe(ocean);
+    // Re-rendering while open does not read again.
+    expect(nextDrawerTheme(opened, true, anchor, read)).toBe(opened);
+    expect(read).toHaveBeenCalledTimes(1);
+
+    // Closing (the sheet's exit animation) still wears the palette.
+    const closing = nextDrawerTheme(opened, false, anchor, read);
+    expect(closing.theme).toBe(ocean);
+    expect(closing.open).toBe(false);
+    expect(nextDrawerTheme(closing, false, anchor, read)).toBe(closing);
+
+    // A new visit reads afresh: the page's palette may have changed.
+    palette = forest;
+    expect(nextDrawerTheme(closing, true, anchor, read).theme).toBe(forest);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-reads when the anchor changes while open", () => {
+    const read = vi.fn(() => ocean);
+    const opened = nextDrawerTheme(CLOSED_DRAWER_THEME, true, { id: "a" }, read);
+    nextDrawerTheme(opened, true, { id: "b" }, read);
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

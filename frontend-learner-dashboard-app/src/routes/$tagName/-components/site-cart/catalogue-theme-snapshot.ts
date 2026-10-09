@@ -35,6 +35,37 @@ interface ElementLike {
   closest(selector: string): unknown;
 }
 
+/** What a portalled drawer wears, and when it was read. */
+export interface DrawerThemeState<A = unknown> {
+  open: boolean;
+  anchor: A | null | undefined;
+  theme: CatalogueThemeSnapshot | null;
+}
+
+/** Before the drawer has ever opened (usable as the state of any anchor type). */
+export const CLOSED_DRAWER_THEME: DrawerThemeState<never> = { open: false, anchor: undefined, theme: null };
+
+/**
+ * The drawer's theme for this render: read when it opens (or its anchor
+ * changes while open — the page's palette can change between visits) and KEPT
+ * while it is closed, so the sheet's closing animation still wears the site's
+ * palette instead of flashing to the app's default colours. Returns `prev`
+ * itself when nothing changes, so a caller can store it in state and only
+ * update on a real change.
+ */
+export const nextDrawerTheme = <A>(
+  prev: DrawerThemeState<A>,
+  open: boolean,
+  anchor: A | null | undefined,
+  read: (anchor: A | null | undefined) => CatalogueThemeSnapshot | null,
+): DrawerThemeState<A> => {
+  if (open) {
+    if (prev.open && prev.anchor === anchor) return prev;
+    return { open: true, anchor, theme: read(anchor) };
+  }
+  return prev.open ? { ...prev, open: false } : prev;
+};
+
 export const readCatalogueTheme = (el: ElementLike | null | undefined): CatalogueThemeSnapshot | null => {
   const host = (el?.closest?.("[data-catalogue-theme]") ?? null) as ThemeHostLike | null;
   if (!host) return null;

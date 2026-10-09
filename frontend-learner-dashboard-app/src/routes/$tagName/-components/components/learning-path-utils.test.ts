@@ -5,17 +5,23 @@ vi.mock("@/constants/urls", () => ({ BASE_URL: "" }));
 
 import { DEFAULT_COURSE_LANGUAGES as LANGS } from "../../-utils/course-variants";
 import type { PublicFolderNode } from "../../-services/folder-library-service";
+import type { SiteCartItem } from "../../-utils/site-cart";
+import { capCartAdd } from "../site-cart/site-cart-items";
 import {
   buildPathSteps,
   chosenVariant,
   collectPathEntries,
   findFolderBySlug,
+  levelWithoutLanguage,
   missingFromCart,
+  onePerCourse,
   pathCartItems,
+  pathCheckoutTotals,
   pathCourseIds,
   pathSelection,
   pathTotals,
   pathsInScope,
+  planPathCart,
   resolvePathScope,
   type PathMapping,
 } from "./learning-path-utils";
@@ -80,7 +86,9 @@ describe("path selection, cart items and total", () => {
   });
 
   it("totals the chosen versions and builds path-sourced cart items", () => {
-    const chosen = pathSelection(steps, { c1: "hi" }, LANGS);
+    // Picks are keyed by the step's key (its first version), not by the course.
+    expect(steps[0]!.key).toBe("c1-en");
+    const chosen = pathSelection(steps, { [steps[0]!.key]: "hi" }, LANGS);
     expect(chosen.map((v) => v.package_session_id)).toEqual(["c1-hi", "c2-hi", "c4-en"]);
     const items = pathCartItems(chosen, { languages: LANGS, productPageCode: "PATH1", pathTitle: "Shiksha basics" });
     expect(items[0]).toMatchObject({
@@ -105,6 +113,152 @@ describe("path selection, cart items and total", () => {
     const items = pathCartItems(pathSelection(steps, {}, LANGS), { languages: LANGS, productPageCode: "P" });
     const inCart = new Set(["c1-en"]);
     expect(missingFromCart(items, (id) => inCart.has(id)).map((i) => i.packageSessionId)).toEqual(["c2-hi", "c4-en"]);
+  });
+});
+
+describe("buildPathSteps: only language versions fold", () => {
+  const codes = (steps: ReturnType<typeof buildPathSteps>) => steps.map((s) => s.variants.map((v) => v.package_session_id));
+
+  it("strips a level's language words, whatever the script or punctuation", () => {
+    const en = LANGS[0]!;
+    const hi = LANGS[1]!;
+    expect(levelWithoutLanguage("Hindi", hi)).toBe("");
+    expect(levelWithoutLanguage("Beginner Hindi", hi)).toBe("beginner");
+    expect(levelWithoutLanguage("Beginner (English)", en)).toBe("beginner");
+    expect(levelWithoutLanguage("हिन्दी - Batch 2", hi)).toBe("batch 2");
+    // Whole words only: "Engineering" keeps its letters.
+    expect(levelWithoutLanguage("Engineering English", en)).toBe("engineering");
+  });
+
+  it("keeps levels that are not language versions as their own steps (nothing vanishes)", () => {
+    const steps = buildPathSteps(
+      [row("p", "p-l1", "Level 1"), row("p", "p-l2", "Level 2"), row("q", "q1", "Hindi")],
+      { groupVersions: true, languages: LANGS },
+    );
+    expect(codes(steps)).toEqual([["p-l1"], ["p-l2"], ["q1"]]);
+    expect(steps.map((s) => s.languages.map((l) => l.code))).toEqual([[], [], ["hi"]]);
+    expect(pathCourseIds(pathSelection(steps, {}, LANGS))).toBe("p-l1,p-l2,q1");
+  });
+
+  it("folds each level's language versions, one step per level", () => {
+    const steps = buildPathSteps(
+      [
+        row("p", "beg-hi", "Beginner Hindi", 300),
+        row("p", "beg-en", "Beginner English", 300),
+        row("p", "adv-hi", "Advanced Hindi", 500),
+        row("p", "adv-en", "Advanced English", 500),
+      ],
+      { groupVersions: true, languages: LANGS },
+    );
+    expect(codes(steps)).toEqual([
+      ["beg-hi", "beg-en"],
+      ["adv-hi", "adv-en"],
+    ]);
+    expect(steps.map((s) => s.languages.map((l) => l.code))).toEqual([
+      ["en", "hi"],
+      ["en", "hi"],
+    ]);
+    // Both steps are the same course for the cart, but never share a key.
+    expect(steps.map((s) => s.courseId)).toEqual(["p", "p"]);
+    expect(new Set(steps.map((s) => s.key)).size).toBe(2);
+    // A language pick applies to its own step only.
+    const chosen = pathSelection(steps, { [steps[1]!.key]: "en" }, LANGS);
+    expect(chosen.map((v) => v.package_session_id)).toEqual(["beg-hi", "adv-en"]);
+  });
+
+  it("never folds two rows in the same language, nor a level without one", () => {
+    const steps = buildPathSteps(
+      [row("p", "hi-1", "Hindi"), row("p", "hi-2", "Hindi"), row("p", "en-1", "English"), row("p", "wb", "Workbook")],
+      { groupVersions: true, languages: LANGS },
+    );
+    expect(codes(steps)).toEqual([["hi-1", "en-1"], ["hi-2"], ["wb"]]);
+  });
+
+  it("gives every step a unique key, also when versions are not grouped", () => {
+    const steps = buildPathSteps(mappings, { groupVersions: false, languages: LANGS });
+    expect(steps.map((s) => s.courseId)).toEqual(["c1", "c1", "c2", "c4"]);
+    expect(steps.map((s) => s.key)).toEqual(["c1-en", "c1-hi", "c2-hi", "c4-en"]);
+  });
+});
+
+describe("a path against the site cart (one version per course)", () => {
+  // Same course twice on the path: ungrouped versions, or two levels.
+  const ungrouped = buildPathSteps(
+    [row("p", "p-beg", "Beginner"), row("p", "p-adv", "Advanced"), row("q", "q1", "Hindi")],
+    { groupVersions: false, languages: LANGS },
+  );
+  const items = pathCartItems(pathSelection(ungrouped, {}, LANGS), { languages: LANGS, productPageCode: "PATH" });
+  const holds = (cart: SiteCartItem[]) => (id: string) => cart.some((i) => i.packageSessionId === id);
+
+  it("aims for one version per course, keeping the one already in the cart", () => {
+    expect(onePerCourse(items, () => false).map((i) => i.packageSessionId)).toEqual(["p-beg", "q1"]);
+    expect(onePerCourse(items, (id) => id === "p-adv").map((i) => i.packageSessionId)).toEqual(["p-adv", "q1"]);
+  });
+
+  it("settles after ONE add: the whole path is in the cart, and stays so", () => {
+    let cart: SiteCartItem[] = [];
+    const before = planPathCart(items, holds(cart));
+    expect(before.missing.map((i) => i.packageSessionId)).toEqual(["p-beg", "q1"]);
+    expect(before.collapsed).toBe(true);
+    expect(before.allInCart).toBe(false);
+
+    cart = capCartAdd(cart, before.missing).next;
+    const after = planPathCart(items, holds(cart));
+    expect(after.allInCart).toBe(true);
+    expect(after.someInCart).toBe(false);
+    expect(after.missing).toEqual([]);
+    expect(pathTotals(after.targets).count).toBe(cart.length);
+  });
+
+  it("adds only what is missing when the cart already holds the other version", () => {
+    let cart: SiteCartItem[] = [{ packageSessionId: "p-adv", courseId: "p", title: "Course p" }];
+    const plan = planPathCart(items, holds(cart));
+    expect(plan.someInCart).toBe(true);
+    expect(plan.missing.map((i) => i.packageSessionId)).toEqual(["q1"]);
+    cart = capCartAdd(cart, plan.missing).next;
+    expect(planPathCart(items, holds(cart)).allInCart).toBe(true);
+    expect(cart.map((i) => i.packageSessionId)).toEqual(["p-adv", "q1"]);
+  });
+
+  it("is not collapsed when every step is a different course", () => {
+    const grouped = buildPathSteps(mappings, { groupVersions: true, languages: LANGS });
+    const plan = planPathCart(pathCartItems(pathSelection(grouped, {}, LANGS), { languages: LANGS, productPageCode: "P" }), () => false);
+    expect(plan.collapsed).toBe(false);
+    expect(plan.targets).toHaveLength(3);
+  });
+});
+
+describe("pathCheckoutTotals: the product page's own pricing", () => {
+  const variants = [row("a", "a1", "English", 400), row("b", "b1", "English", 400), row("c", "c1", "English", 400)];
+  const plain = pathTotals(pathCartItems(variants, { languages: LANGS, productPageCode: "P" }));
+
+  it("keeps the plain sum when the page prices per course", () => {
+    expect(pathCheckoutTotals(plain, variants, null)).toBe(plain);
+    expect(pathCheckoutTotals(plain, variants, JSON.stringify({ allowCourseDeselection: true }))).toBe(plain);
+  });
+
+  it("charges the basket price a page sets ('any 3 for ₹799'), the sum struck through", () => {
+    const settings = JSON.stringify({ basketPricing: { enabled: true, ladder: { prices: [399, 649, 799], perExtra: 150 } } });
+    expect(pathCheckoutTotals(plain, variants, settings)).toMatchObject({ total: 799, elevatedTotal: 2400, currency: "INR" });
+  });
+
+  it("takes the page's best offer off", () => {
+    const settings = JSON.stringify({
+      offers: {
+        enabled: true,
+        rules: [
+          { id: "o1", label: "₹100 off", minAmount: 1000, discountType: "FIXED", discountValue: 100 },
+          { id: "o2", label: "10% off", minCourses: 3, discountType: "PERCENTAGE", discountValue: 10 },
+        ],
+      },
+    });
+    expect(pathCheckoutTotals(plain, variants, settings)).toMatchObject({ total: 1080, elevatedTotal: 2400 });
+  });
+
+  it("gives no figure across currencies, and survives a broken configuration", () => {
+    const mixed = { ...plain, total: null, elevatedTotal: null, currency: null };
+    expect(pathCheckoutTotals(mixed, variants, JSON.stringify({ offers: { enabled: true, rules: [] } }))).toBe(mixed);
+    expect(pathCheckoutTotals(plain, variants, "{not json")).toBe(plain);
   });
 });
 

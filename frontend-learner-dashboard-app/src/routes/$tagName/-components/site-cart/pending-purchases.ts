@@ -187,38 +187,67 @@ export const settlePendingPurchase = async (
   }
 };
 
-/** Settled once per institute per page load — the check costs a request per note. */
+/** Reconciled on page load once per institute — the check costs a request per note. */
 const reconciled = new Set<string>();
+/** A run in progress per institute: overlapping calls share it instead of asking twice. */
+const inFlight = new Map<string, Promise<string[]>>();
 
-/**
- * On a visit to a site with a site cart: asks the gateway status of this
- * institute's notes (newest first, a few at most) and settles the ones that
- * finished. Expired notes are dropped without a request.
- */
-export const reconcilePendingPurchases = async (
-  instituteId: string | null | undefined,
+const runReconcile = async (
+  instituteId: string,
   checkStatus: (paymentLogId: string) => Promise<PaymentOutcome>,
-  opts: { now?: number; maxChecks?: number } = {},
-): Promise<void> => {
+  now: number,
+  maxChecks: number,
+): Promise<string[]> => {
+  const removed: string[] = [];
   try {
-    if (!instituteId || reconciled.has(instituteId)) return;
-    reconciled.add(instituteId);
-    const now = opts.now ?? Date.now();
     const all = await readList();
     const live = prunePendingPurchases(all, now);
     if (live.length !== all.length) await writeList(live);
     const mine = live
       .filter((e) => e.instituteId === instituteId)
       .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, opts.maxChecks ?? 3);
+      .slice(0, maxChecks);
+    // No note for this institute: no request at all.
     for (const entry of mine) {
       const outcome = await checkStatus(entry.paymentLogId).catch(() => "pending" as const);
-      if (outcome !== "pending") await settlePendingPurchase(entry.paymentLogId, outcome);
+      if (outcome !== "pending") removed.push(...(await settlePendingPurchase(entry.paymentLogId, outcome)));
     }
   } catch {
     // Never surface housekeeping failures.
   }
+  return removed;
+};
+
+/**
+ * Asks the gateway status of this institute's notes (newest first, a few at
+ * most) and settles the ones that finished; expired notes are dropped without
+ * a request. Returns the package sessions that left the cart (paid).
+ *
+ * On a visit (the header's cart button mounting) it runs once per institute
+ * per page load. `force` runs it again regardless — when the cart drawer opens
+ * and just before checkout — so a payment that was still pending at page load
+ * cannot stay in the cart and be bought a second time. Still capped at
+ * `maxChecks` requests, and none without a note.
+ */
+export const reconcilePendingPurchases = async (
+  instituteId: string | null | undefined,
+  checkStatus: (paymentLogId: string) => Promise<PaymentOutcome>,
+  opts: { now?: number; maxChecks?: number; force?: boolean } = {},
+): Promise<string[]> => {
+  if (!instituteId) return [];
+  const running = inFlight.get(instituteId);
+  if (running) return running;
+  if (!opts.force && reconciled.has(instituteId)) return [];
+  reconciled.add(instituteId);
+  const run = runReconcile(instituteId, checkStatus, opts.now ?? Date.now(), opts.maxChecks ?? 3).finally(() => {
+    inFlight.delete(instituteId);
+  });
+  inFlight.set(instituteId, run);
+  return run;
 };
 
 /** Test hook: forget which institutes were reconciled this page load. */
-export const __resetPendingReconcileForTests = () => reconciled.clear();
+export const __resetPendingReconcileForTests = () => {
+  reconciled.clear();
+  inFlight.clear();
+};

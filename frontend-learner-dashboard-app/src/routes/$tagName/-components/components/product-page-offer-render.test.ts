@@ -15,7 +15,11 @@ vi.mock("@/constants/urls", () => ({
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, opts?: string | Record<string, unknown>) =>
-      typeof opts === "string" ? opts : typeof opts?.defaultValue === "string" ? opts.defaultValue : key,
+      typeof opts === "string"
+        ? opts
+        : typeof opts?.defaultValue === "string"
+          ? opts.defaultValue.replace(/\{\{(\w+)\}\}/g, (_, k: string) => String(opts[k] ?? ""))
+          : key,
     i18n: { language: "en" },
   }),
 }));
@@ -35,6 +39,7 @@ vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promi
 
 const { ProductPageOfferComponent } = await import("./ProductPageOfferComponent");
 const { useSiteCartStore } = await import("../../-stores/site-cart-store");
+const { registerSiteCartOpener } = await import("../site-cart/site-cart-events");
 
 const INSTITUTE = "inst-1";
 const CODE = "OFFER";
@@ -108,5 +113,25 @@ describe("productPageOffer and the site cart", () => {
   it("lists courses in display order", () => {
     const html = render({});
     expect(html.indexOf("Course A")).toBeLessThan(html.indexOf("Course B"));
+  });
+
+  const siteCart = { siteCart: { enabled: true, storeProductPageCode: "STORE" } };
+
+  it("offers its own way to the cart on a page without a header cart button", () => {
+    const html = render({ globalSettings: siteCart });
+    expect(html).toContain("View cart (1)");
+  });
+
+  it("leaves the cart to the header when the page has a header cart button", () => {
+    const unregister = registerSiteCartOpener(() => {});
+    try {
+      expect(render({ globalSettings: siteCart })).not.toContain("View cart (");
+    } finally {
+      unregister();
+    }
+  });
+
+  it("never shows the site cart's way in on a site without one", () => {
+    expect(render({})).not.toContain("View cart (");
   });
 });

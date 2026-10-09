@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
 import { isDifferentProductPage } from "../-utils/page-switch";
+import { cartBackTarget } from "../-utils/cart-back";
 import {
   injectGtm,
   pushProductPageView,
@@ -17,6 +18,7 @@ import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
 import { CatalogueChrome } from "@/routes/$tagName/-components/CatalogueChrome";
 import { requestCourseFinder } from "@/routes/$tagName/-utils/reopen-course-finder";
+import { requestSiteCartReopen } from "@/routes/$tagName/-components/site-cart/site-cart-events";
 import type {
   ProductPageSettings,
   PageJson,
@@ -36,6 +38,8 @@ interface ProductPageShellProps {
   levels?: string;
   /** Site language (?lang=) the visitor arrived in; kept on the way back out. */
   lang?: string;
+  /** Sent here by the site cart's Checkout (?source=siteCart): Back returns to that page. */
+  fromSiteCart?: boolean;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -70,6 +74,7 @@ export const ProductPageShell = ({
   tagName,
   levels,
   lang,
+  fromSiteCart = false,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
@@ -77,6 +82,8 @@ export const ProductPageShell = ({
   const gtmFired = useRef(false);
   const initialized = useRef(false);
   const navigate = useNavigate();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
 
   /**
    * Where "Back" from the cart leads.
@@ -121,10 +128,29 @@ export const ProductPageShell = ({
     // Any visitor who arrived from a catalogue carries its slug. If they have
     // not since browsed THIS page's catalogue step, that slug is where Back
     // belongs — the catalogue restores their basket from sessionStorage.
-    if (tagName && !sawOwnCatalog.current) {
-      // Going back to choose is exactly when the Course Finder earns its keep,
-      // but its once-ever seen flag would suppress it. Ask for it explicitly.
-      requestCourseFinder(tagName);
+    // The site cart's store checkout is the exception: the visitor opened the
+    // cart on some page of the site, so Back returns there (see cart-back).
+    const target = cartBackTarget({
+      fromSiteCart,
+      sawOwnCatalog: sawOwnCatalog.current,
+      canGoBack,
+      tagName,
+    });
+    if (target === "history") {
+      // The cart drawer they checked out from opens again on that page.
+      requestSiteCartReopen();
+      router.history.back();
+      return;
+    }
+    if ((target === "siteHome" || target === "siteFinder") && tagName) {
+      if (target === "siteFinder") {
+        // Going back to choose is exactly when the Course Finder earns its
+        // keep, but its once-ever seen flag would suppress it. Ask for it
+        // explicitly.
+        requestCourseFinder(tagName);
+      } else {
+        requestSiteCartReopen();
+      }
       // The params form, not a template path: real catalogue tags contain
       // spaces, parentheses and even leading slashes ("Home Page", "Arabian
       // International Stem Hub (AISH)", "/cement-factory"), which the router

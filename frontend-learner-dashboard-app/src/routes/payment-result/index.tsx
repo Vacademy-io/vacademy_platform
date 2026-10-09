@@ -149,11 +149,18 @@ function PaymentResultPage() {
   // noted what it was buying (see site-cart/pending-purchases). Once the
   // gateway settles, paid courses leave the cart; a failed payment only drops
   // the note so the courses stay ready to retry. A no-op without such a note.
+  // Only the SERVER's status settles a note: the ?status= hint in the return
+  // URL can say failed/cancelled while the payment is still in flight, and
+  // dropping the note on it would leave a later PAID nothing to clear.
+  const serverSaysFailed =
+    paymentStatusValue === "FAILED" ||
+    paymentStatusValue === "CANCELLED" ||
+    paymentStatusValue === "USER_DROPPED";
   useEffect(() => {
     if (!orderId || isInvoicePayment) return;
     if (isPaid) void settlePendingPurchase(orderId, "paid");
-    else if (isFailed) void settlePendingPurchase(orderId, "failed");
-  }, [orderId, isInvoicePayment, isPaid, isFailed]);
+    else if (serverSaysFailed) void settlePendingPurchase(orderId, "failed");
+  }, [orderId, isInvoicePayment, isPaid, serverSaysFailed]);
 
   // Invoice payments: just show the success screen, no enrollment redirect.
   // The invoice page is public; the learner may not have a dashboard session.

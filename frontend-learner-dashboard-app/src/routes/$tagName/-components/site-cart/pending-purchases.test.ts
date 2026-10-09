@@ -162,7 +162,7 @@ describe("pending purchases (storage)", () => {
       asked.push(id);
       return id === "paid-1" ? ("paid" as const) : ("pending" as const);
     };
-    await reconcilePendingPurchases("inst", check, { now: NOW });
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW })).toEqual(["a"]);
     expect(asked).toEqual(["paid-1", "waiting"]);
     expect(cartIds("inst")).toEqual(["b"]);
     expect(parsePendingPurchases(storage.getItem(PENDING_PURCHASES_KEY)).map((e) => e.paymentLogId)).toEqual([
@@ -170,8 +170,53 @@ describe("pending purchases (storage)", () => {
       "other-institute",
     ]);
 
-    await reconcilePendingPurchases("inst", check, { now: NOW });
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW })).toEqual([]);
     expect(asked).toHaveLength(2);
+  });
+
+  it("re-checks a payment still pending at page load when forced (drawer open, checkout)", async () => {
+    seedCart("inst", ["a", "b"]);
+    storage.setItem(PENDING_PURCHASES_KEY, JSON.stringify([entry("late", { packageSessionIds: ["a"] })]));
+    let webhookLanded = false;
+    const asked: string[] = [];
+    const check = async (id: string) => {
+      asked.push(id);
+      return webhookLanded ? ("paid" as const) : ("pending" as const);
+    };
+
+    // Page load: still pending, the course stays.
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW })).toEqual([]);
+    expect(cartIds("inst")).toEqual(["a", "b"]);
+    // The once-per-load guard holds for unforced calls…
+    webhookLanded = true;
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW })).toEqual([]);
+    expect(asked).toEqual(["late"]);
+    // …but opening the drawer / checking out asks again, and the paid course leaves.
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW, force: true })).toEqual(["a"]);
+    expect(cartIds("inst")).toEqual(["b"]);
+    // Settled: nothing left to ask about.
+    expect(await reconcilePendingPurchases("inst", check, { now: NOW, force: true })).toEqual([]);
+    expect(asked).toEqual(["late", "late"]);
+  });
+
+  it("shares one run between overlapping calls, and asks nothing without a note", async () => {
+    seedCart("inst", ["a"]);
+    storage.setItem(PENDING_PURCHASES_KEY, JSON.stringify([entry("p1")]));
+    let calls = 0;
+    const check = async () => {
+      calls += 1;
+      return "paid" as const;
+    };
+    const [first, second] = await Promise.all([
+      reconcilePendingPurchases("inst", check, { now: NOW, force: true }),
+      reconcilePendingPurchases("inst", check, { now: NOW, force: true }),
+    ]);
+    expect(calls).toBe(1);
+    expect(first).toEqual(["a"]);
+    expect(second).toEqual(["a"]);
+
+    await reconcilePendingPurchases("other", check, { now: NOW, force: true });
+    expect(calls).toBe(1);
   });
 
   it("never throws when the status check fails", async () => {
@@ -181,7 +226,7 @@ describe("pending purchases (storage)", () => {
       reconcilePendingPurchases("inst", async () => {
         throw new Error("offline");
       }, { now: NOW }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
     expect(cartIds("inst")).toEqual(["a"]);
   });
 });

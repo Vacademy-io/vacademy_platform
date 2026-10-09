@@ -13,6 +13,28 @@ import { upsertCartItems, type SiteCartItem, type SiteCartSource } from "../../-
 /** One order through the store checkout holds at most this many courses. */
 export const SITE_CART_MAX_ITEMS = 40;
 
+/** `?source=` on the store checkout when the site cart sent the visitor there. */
+export const SITE_CART_CHECKOUT_SOURCE = "siteCart";
+
+/**
+ * Is this location the store checkout itself? Checking out again from there
+ * (its header has the cart too) replaces the history entry, so the
+ * checkout's Back still returns to the page the cart was first opened on and
+ * never to a stale basket.
+ */
+export const isStoreCheckoutPath = (pathname: string | null | undefined, storeCode: string): boolean => {
+  const code = storeCode.trim();
+  if (!code) return false;
+  const path = (pathname || "").replace(/\/+$/, "");
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // A malformed escape: compare it as it is.
+  }
+  return decoded === `/product-pages/${code}`;
+};
+
 export interface CapResult {
   /** The cart after the accepted items were added. */
   next: SiteCartItem[];

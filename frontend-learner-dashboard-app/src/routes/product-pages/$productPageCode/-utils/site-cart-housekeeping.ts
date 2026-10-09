@@ -16,6 +16,20 @@ import type { ProductPageEnrollResponse } from '../-types/product-page-types';
 export const isPaidEnrollment = (result: Pick<ProductPageEnrollResponse, 'status'> | null | undefined): boolean =>
     String(result?.status ?? '').toUpperCase() === 'PAID';
 
+/**
+ * Whether a CPO installment payment (the cpo-pay-installments response, a
+ * PaymentResponseDTO) is confirmed paid: the gateway's
+ * `response_data.paymentStatus` — what the enrol-by-invite flow reads — or,
+ * without one, the top-level `status` the server's short-circuits set.
+ * PAYMENT_PENDING, a redirect gateway's hand-off or an unknown shape is not.
+ */
+export const isPaidCpoPayment = (result: unknown): boolean => {
+    if (!result || typeof result !== 'object') return false;
+    const r = result as { status?: unknown; response_data?: { paymentStatus?: unknown } | null };
+    const status = r.response_data?.paymentStatus ?? r.status;
+    return typeof status === 'string' && status.toUpperCase() === 'PAID';
+};
+
 /** What an enrolment bought: the server's list, else the package sessions that were selected. */
 export const purchasedPackageSessionIds = (
     result: Pick<ProductPageEnrollResponse, 'enrolled_package_session_ids'> | null | undefined,

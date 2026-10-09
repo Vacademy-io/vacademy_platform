@@ -5,17 +5,22 @@
  * order, are the path's numbered steps. A course offered in several language
  * versions (levels "Hindi" / "English") is ONE step with a language choice,
  * when the site groups versions (globalSettings.courseLanguages.enabled).
+ * Levels that differ by more than their language ("Level 1" / "Level 2",
+ * "Beginner Hindi" / "Advanced Hindi") stay separate steps: a path never hides
+ * one of its courses.
  * The list mode reads the paths from the folder library: the product pages
  * under the stream folder named by ?stream=, a chosen folder, or all of them.
  */
 import {
-  groupCourseVariants,
+  languageOfLevel,
   variantForLanguage,
   type CourseGroup,
   type CourseLanguageOption,
 } from "../../-utils/course-variants";
 import { cartTotals, type CartTotals, type SiteCartItem } from "../../-utils/site-cart";
 import { folderSlug, pathTo, type PublicFolderNode } from "../../-services/folder-library-service";
+import { parseBasketPricing, quoteBasket } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
+import { bestOffer, parseOffers } from "@/routes/product-pages/$productPageCode/-utils/offers";
 import { cartItemFromMapping, type CartMappingLike } from "../site-cart/site-cart-items";
 
 /** The part of a by-code mapping a path step reads. */
@@ -26,20 +31,59 @@ export interface PathMapping extends CartMappingLike {
 }
 
 export interface PathStep<T extends PathMapping = PathMapping> {
-  /** package_id (or the package session for an ungrouped row). */
+  /**
+   * Unique within the path (the package session of the step's first version):
+   * what the list and the visitor's language picks are keyed by. Two steps
+   * can share a courseId; they never share a key.
+   */
+  key: string;
+  /** package_id (or the package session for a mapping without one) — the site cart holds one version per courseId. */
   courseId: string;
-  /** The course's versions on this page, in display order. */
+  /** The course's versions in this step, in display order (one per language). */
   variants: T[];
-  /** Languages the course is offered in, in the site's order. */
+  /** Languages the step is offered in, in the site's order. */
   languages: CourseLanguageOption[];
-  /** The version shown first: the visitor's language when the course has it. */
+  /** The version shown first: the visitor's language when the step has it. */
   primary: T;
 }
 
+const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A level name without its language words — what two language versions of the
+ * same level share: "Beginner Hindi" and "Beginner (English)" are both
+ * "beginner"; plain "Hindi" / "English" are both "". Uses the same tokens as
+ * languageOfLevel (whole words for ASCII, anywhere for other scripts).
+ */
+export const levelWithoutLanguage = (
+  levelName: string | null | undefined,
+  language: CourseLanguageOption,
+): string => {
+  let name = ` ${(levelName || "").toLowerCase()} `;
+  const tokens = [...(language.match || []), language.label, language.code]
+    .filter(Boolean)
+    .map((t) => t.toLowerCase().trim())
+    .filter(Boolean)
+    // Longest first, so a longer token is not left half-removed by a shorter one.
+    .sort((a, b) => b.length - a.length);
+  for (const token of tokens) {
+    name = isAscii(token)
+      ? name.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}(?=[^a-z0-9]|$)`, "g"), "$1 ")
+      : name.split(token).join(" ");
+  }
+  return name.replace(/[\s\-_.,:;|/\\()[\]{}·•–—]+/g, " ").trim();
+};
+
 /**
  * The path's steps: ACTIVE mappings in the order given (display order — the
- * product-page query sorts them), each package session once, one step per
- * course when versions are grouped and one per mapping otherwise.
+ * product-page query sorts them), each package session once.
+ *
+ * With grouped versions, rows of one package fold into one step only when they
+ * differ by language alone (same level apart from its language words, a
+ * different language each). Every other row — a level with no language, a
+ * second level of the same package, a second row in a language the step
+ * already has — is a step of its own. Without grouping every row is a step.
  */
 export const buildPathSteps = <T extends PathMapping>(
   mappings: T[] | null | undefined,
@@ -54,14 +98,53 @@ export const buildPathSteps = <T extends PathMapping>(
     seen.add(m.package_session_id);
     return true;
   });
-  return groupCourseVariants(rows, {
-    enabled: opts.groupVersions,
-    languages: opts.languages,
-    preferredLanguage: opts.preferredLanguage,
-  }).map((g) => ({ courseId: g.courseId, variants: g.variants, languages: g.languages, primary: g.primary }));
+
+  const languageCode = (row: T) => languageOfLevel(row.level_name, opts.languages)?.code ?? null;
+  const steps: PathStep<T>[] = [];
+  const foldable = new Map<string, PathStep<T>>();
+  const newStep = (row: T): PathStep<T> => {
+    const packageId = typeof row.package_id === "string" ? row.package_id.trim() : "";
+    const step: PathStep<T> = {
+      key: row.package_session_id,
+      courseId: packageId || row.package_session_id,
+      variants: [row],
+      languages: [],
+      primary: row,
+    };
+    steps.push(step);
+    return step;
+  };
+
+  for (const row of rows) {
+    const language = opts.groupVersions && row.package_id ? languageOfLevel(row.level_name, opts.languages) : null;
+    if (!language) {
+      newStep(row);
+      continue;
+    }
+    const foldKey = `${row.package_id}\u0000${levelWithoutLanguage(row.level_name, language)}`;
+    const step = foldable.get(foldKey);
+    if (!step) {
+      foldable.set(foldKey, newStep(row));
+    } else if (step.variants.some((v) => languageCode(v) === language.code)) {
+      // Two rows in the same language are two courses, not two versions.
+      newStep(row);
+    } else {
+      step.variants.push(row);
+    }
+  }
+
+  for (const step of steps) {
+    const present = new Set(step.variants.map(languageCode).filter((code): code is string => !!code));
+    step.languages = opts.languages.filter((l) => present.has(l.code));
+    if (opts.preferredLanguage) {
+      const preferred = step.variants.find((v) => languageCode(v) === opts.preferredLanguage);
+      if (preferred) step.primary = preferred;
+    }
+  }
+  return steps;
 };
 
-/** The version chosen for a step: the visitor's language pick when the course has it, else its first version. */
+/** The version chosen for a step: the visitor's language pick when the step has it, else its first version. */
 export const chosenVariant = <T extends PathMapping>(
   step: PathStep<T>,
   languageCode: string | null | undefined,
@@ -74,12 +157,12 @@ export const chosenVariant = <T extends PathMapping>(
   return step.primary;
 };
 
-/** One version per step, honouring the visitor's per-course language picks. */
+/** One version per step, honouring the visitor's language picks (keyed by step key). */
 export const pathSelection = <T extends PathMapping>(
   steps: PathStep<T>[],
   choices: Record<string, string | undefined>,
   languages: CourseLanguageOption[],
-): T[] => steps.map((s) => chosenVariant(s, choices[s.courseId], languages));
+): T[] => steps.map((s) => chosenVariant(s, choices[s.key], languages));
 
 /** The chosen versions as site-cart items (titles stay raw — translated only when shown). */
 export const pathCartItems = (
@@ -100,6 +183,44 @@ export const pathCartItems = (
 /** The path's price: the chosen versions summed (null when currencies differ). */
 export const pathTotals = (items: SiteCartItem[]): CartTotals => cartTotals(items);
 
+/**
+ * What "Enrol in this path" charges before a coupon, priced the way the
+ * product page's checkout prices the same courses (product-page-store
+ * finalPrice): a basket price configured on the page ("any 3 for ₹799")
+ * replaces the sum of the courses, then the page's best offer comes off.
+ * `plain` (cartTotals of the same courses) is returned untouched when neither
+ * applies or the currencies differ. The struck-through figure becomes what the
+ * courses list at, when that is more than the total.
+ */
+export const pathCheckoutTotals = (
+  plain: CartTotals,
+  variants: Array<Pick<PathMapping, "level_name" | "package_name" | "payment_plan">>,
+  settingsJson: string | null | undefined,
+): CartTotals => {
+  if (plain.total === null || !variants.length || !settingsJson) return plain;
+  let base = plain.total;
+  let listTotal = plain.elevatedTotal ?? plain.total;
+  try {
+    const quote = quoteBasket(
+      parseBasketPricing(settingsJson),
+      variants.map((m) => ({
+        levelName: m.level_name,
+        packageName: m.package_name,
+        price: m.payment_plan?.actual_price ?? 0,
+      })),
+    );
+    if (quote) {
+      base = quote.total;
+      listTotal = Math.max(listTotal, quote.itemTotal);
+    }
+  } catch {
+    // An unreadable basket configuration: the courses' own prices stand.
+  }
+  const total = Math.max(0, base - (bestOffer(parseOffers(settingsJson), base, variants.length)?.amount ?? 0));
+  if (total === plain.total) return plain;
+  return { ...plain, total, elevatedTotal: listTotal > total ? listTotal : null };
+};
+
 /** ?courseIds= for the path's product-page checkout (package session ids). */
 export const pathCourseIds = (variants: Array<{ package_session_id: string }>): string =>
   [...new Set(variants.map((v) => v.package_session_id).filter(Boolean))].join(",");
@@ -107,6 +228,60 @@ export const pathCourseIds = (variants: Array<{ package_session_id: string }>): 
 /** The chosen versions not yet in the site cart. */
 export const missingFromCart = (items: SiteCartItem[], inCart: (packageSessionId: string) => boolean): SiteCartItem[] =>
   items.filter((i) => !inCart(i.packageSessionId));
+
+/**
+ * The versions the site cart can take from a path: one per course, because the
+ * cart holds one (a second version of a course replaces the first). A course
+ * the path lists more than once — two of its levels, or ungrouped language
+ * versions — keeps the version already in the cart, else its first step's.
+ * Path order is kept.
+ */
+export const onePerCourse = (
+  items: SiteCartItem[],
+  inCart: (packageSessionId: string) => boolean,
+): SiteCartItem[] => {
+  const byCourse = new Map<string, SiteCartItem>();
+  for (const item of items) {
+    const held = byCourse.get(item.courseId);
+    if (!held || (!inCart(held.packageSessionId) && inCart(item.packageSessionId))) {
+      byCourse.set(item.courseId, item);
+    }
+  }
+  const kept = new Set(byCourse.values());
+  return items.filter((i) => kept.has(i));
+};
+
+export interface PathCartPlan {
+  /** What "Add whole path to cart" aims for: one version per course. */
+  targets: SiteCartItem[];
+  /** Targets not in the cart yet — what the next add puts in. */
+  missing: SiteCartItem[];
+  /** Every target is in the cart. */
+  allInCart: boolean;
+  /** Some targets are in the cart, some are not. */
+  someInCart: boolean;
+  /** The path lists more versions than the cart can hold (one per course). */
+  collapsed: boolean;
+}
+
+/**
+ * The path against the site cart. Built on onePerCourse, so one add always
+ * settles it: after adding `missing`, every target is in the cart.
+ */
+export const planPathCart = (
+  items: SiteCartItem[],
+  inCart: (packageSessionId: string) => boolean,
+): PathCartPlan => {
+  const targets = onePerCourse(items, inCart);
+  const missing = missingFromCart(targets, inCart);
+  return {
+    targets,
+    missing,
+    allInCart: targets.length > 0 && missing.length === 0,
+    someInCart: missing.length > 0 && missing.length < targets.length,
+    collapsed: targets.length < items.length,
+  };
+};
 
 // ─── list mode (folder library) ─────────────────────────────────────────────
 

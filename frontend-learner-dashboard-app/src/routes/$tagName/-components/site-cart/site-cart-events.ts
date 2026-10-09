@@ -16,9 +16,35 @@ type Opener = () => void;
 
 const openers: Opener[] = [];
 let listening = false;
+const watchers = new Set<() => void>();
 
 const handleOpenRequest = () => {
   openers[openers.length - 1]?.();
+};
+
+const notifyWatchers = () => {
+  for (const watcher of [...watchers]) watcher();
+};
+
+// ─── reopen after the store checkout's Back ─────────────────────────────────
+// The store checkout is another route, so the drawer that sent the visitor
+// there is gone. Its Back asks for the drawer again; the next cart button (or
+// a section's own drawer) to mount takes the request. Kept in memory and
+// short-lived: a request nobody takes in time is dropped, never replayed later.
+
+export const SITE_CART_REOPEN_WINDOW_MS = 10_000;
+let reopenRequestedAt = 0;
+
+/** Asks the next cart UI to mount on this page load to open the drawer. */
+export const requestSiteCartReopen = (now: number = Date.now()): void => {
+  reopenRequestedAt = now;
+};
+
+/** Takes a pending reopen request (at most once): true when one was made in the last few seconds. */
+export const takeSiteCartReopenRequest = (now: number = Date.now()): boolean => {
+  const fresh = reopenRequestedAt > 0 && now - reopenRequestedAt >= 0 && now - reopenRequestedAt <= SITE_CART_REOPEN_WINDOW_MS;
+  reopenRequestedAt = 0;
+  return fresh;
 };
 
 /** A cart button registers how to open its drawer; returns the unregister function. */
@@ -28,6 +54,12 @@ export const registerSiteCartOpener = (open: Opener): (() => void) => {
     window.addEventListener(SITE_CART_OPEN_EVENT, handleOpenRequest);
     listening = true;
   }
+  notifyWatchers();
+  if (takeSiteCartReopenRequest()) {
+    // After the current commit, so the last of several buttons mounting
+    // together is the one that opens (as for any other open request).
+    queueMicrotask(handleOpenRequest);
+  }
   return () => {
     const index = openers.lastIndexOf(open);
     if (index >= 0) openers.splice(index, 1);
@@ -35,11 +67,23 @@ export const registerSiteCartOpener = (open: Opener): (() => void) => {
       window.removeEventListener(SITE_CART_OPEN_EVENT, handleOpenRequest);
       listening = false;
     }
+    notifyWatchers();
   };
 };
 
 /** True when some cart button on the page can open the drawer. */
 export const hasSiteCartOpener = (): boolean => openers.length > 0;
+
+/**
+ * Subscribes to cart buttons mounting and unmounting (for
+ * useSyncExternalStore with hasSiteCartOpener). Returns the unsubscribe.
+ */
+export const subscribeSiteCartOpeners = (watcher: () => void): (() => void) => {
+  watchers.add(watcher);
+  return () => {
+    watchers.delete(watcher);
+  };
+};
 
 /**
  * Opens the header's cart drawer. Returns false when no cart button is

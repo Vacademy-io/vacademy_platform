@@ -16,7 +16,11 @@ import { ArrowLeft, SpinnerGap, ShieldCheck } from '@phosphor-icons/react';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 import type { FieldValue } from '../-types/product-page-types';
 import { resolveLearnerIdentity } from '../-utils/learner-identity';
-import { clearPurchasedFromSiteCart, notePendingSiteCartPurchase } from '../-utils/site-cart-housekeeping';
+import {
+    clearPurchasedFromSiteCart,
+    isPaidCpoPayment,
+    notePendingSiteCartPurchase,
+} from '../-utils/site-cart-housekeeping';
 
 interface CpoInstallmentsCheckoutStepProps {
     pageData: ProductPageData;
@@ -250,7 +254,19 @@ export const CpoInstallmentsCheckoutStep = ({
                     });
                     window.location.href = result.payment_url;
                 } else {
-                    void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
+                    // Only a confirmed payment clears the site cart. Anything
+                    // else (a gateway still settling, or one whose payment page
+                    // this step does not open) is noted against its payment
+                    // log, so the course leaves the cart once it is paid.
+                    if (isPaidCpoPayment(result)) {
+                        void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
+                    } else {
+                        await notePendingSiteCartPurchase({
+                            paymentLogId: result?.order_id,
+                            instituteIds: [pageData.institute_id],
+                            packageSessionIds: cpoSessionIds,
+                        });
+                    }
                     onSuccess();
                 }
             });

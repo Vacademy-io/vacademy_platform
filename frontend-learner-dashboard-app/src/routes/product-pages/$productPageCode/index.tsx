@@ -9,6 +9,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { Warning } from "@phosphor-icons/react";
 import { resolveDomainRouting, getCurrentDomainInfo } from '@/services/domain-routing';
 import type { PaymentVendor } from '@/components/common/enroll-by-invite/-utils/payment-vendor-helper';
+import { SITE_CART_CHECKOUT_SOURCE } from '@/routes/$tagName/-components/site-cart/site-cart-items';
 
 const productPageSearchSchema = z.object({
     instituteId: z.string().optional(),
@@ -26,6 +27,11 @@ const productPageSearchSchema = z.object({
     // Declared so it survives this route's own search handling and goes back
     // out with the visitor (see backFromCart in ProductPageShell).
     lang: z.string().optional(),
+    // "siteCart" when the site cart's Checkout sent the visitor here: Back
+    // from the cart then returns to the page the cart was opened on. Any other
+    // value is ignored — and never fails validation (an unrelated ?source= on
+    // an existing link must not break the page).
+    source: z.string().optional().catch(undefined),
     utm_source: z.string().optional(),
     utm_medium: z.string().optional(),
     utm_campaign: z.string().optional(),
@@ -159,6 +165,7 @@ function ProductPageLoader({
                 tagName={search.tagName}
                 levels={search.levels}
                 lang={search.lang}
+                fromSiteCart={search.source === SITE_CART_CHECKOUT_SOURCE}
                 utmParams={{
                     utm_source: search.utm_source,
                     utm_medium: search.utm_medium,

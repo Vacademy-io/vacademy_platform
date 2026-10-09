@@ -140,6 +140,7 @@ class ProductPageCatalogueSyncServiceTest {
         PaymentPlan plan = new PaymentPlan();
         plan.setId("plan-" + session);
         plan.setStatus("ACTIVE");
+        plan.setActualPrice(4999);
         plan.setCurrency("INR");
         plans.put(plan.getId(), plan);
         active.add(m);
@@ -152,6 +153,11 @@ class ProductPageCatalogueSyncServiceTest {
     }
 
     private void catalogueRow(String session, String optionType) {
+        catalogueRow(session, Map.of("PaymentOptionType", optionType));
+    }
+
+    /** A catalogue row with some columns replaced (keys as the getters name them, without "get"). */
+    private void catalogueRow(String session, Map<String, Object> overrides) {
         Map<String, Object> values = new HashMap<>();
         values.put("PackageSessionId", session);
         values.put("PackageName", "Course " + session);
@@ -163,9 +169,11 @@ class ProductPageCatalogueSyncServiceTest {
         values.put("InviteVendor", "RAZORPAY");
         values.put("InviteCurrency", "INR");
         values.put("PaymentOptionId", "po-" + session);
-        values.put("PaymentOptionType", optionType);
+        values.put("PaymentOptionType", "ONE_TIME");
         values.put("PaymentPlanId", "plan-" + session);
+        values.put("ActualPrice", 4999.0);
         values.put("PlanCurrency", "INR");
+        values.putAll(overrides);
         catalogue.add((ProductPageCatalogueSessionRow) Proxy.newProxyInstance(
                 getClass().getClassLoader(), new Class<?>[]{ProductPageCatalogueSessionRow.class},
                 (proxy, method, args) -> values.get(method.getName().substring(3))));
@@ -329,6 +337,61 @@ class ProductPageCatalogueSyncServiceTest {
     }
 
     @Test
+    @DisplayName("a course offered only through a non-default link is skipped, and nothing is written for it")
+    void nonDefaultLinkIsSkipped() {
+        mapping("m1", 0, "a");
+        catalogueRow("a");
+        catalogueRow("promo", Map.of("InviteTag", "PROMO"));
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        verify(mappingRepository, never()).saveAll(any());
+        assertEquals(0, res.getAdded());
+        assertEquals(1, res.getSkipped().size());
+        assertEquals("promo", res.getSkipped().get(0).getPackageSessionId());
+        assertEquals("non_default_invite", res.getSkipped().get(0).getReason());
+    }
+
+    @Test
+    @DisplayName("courses on another gateway or in another currency than the page are skipped with their reasons")
+    void gatewayAndCurrencyMismatchesAreSkipped() throws Exception {
+        mapping("m1", 0, "a");
+        catalogueRow("a");
+        catalogueRow("b");
+        catalogueRow("stripe", Map.of("InviteVendor", "STRIPE"));
+        catalogueRow("usd", Map.of("InviteCurrency", "USD", "PlanCurrency", "USD"));
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        List<ProductPageInviteMapping> saved = saved();
+        assertEquals(1, saved.size());
+        assertEquals("psli-b", saved.get(0).getPsInvitePaymentOption().getId());
+        assertEquals(List.of("b"), res.getAddedPackageSessionIds());
+        com.fasterxml.jackson.databind.JsonNode skipped = new com.fasterxml.jackson.databind.ObjectMapper()
+                .valueToTree(res).get("skipped");
+        assertEquals(2, skipped.size());
+        assertEquals("stripe", skipped.get(0).get("package_session_id").asText());
+        assertEquals("vendor_mismatch", skipped.get(0).get("reason").asText());
+        assertEquals("usd", skipped.get(1).get("package_session_id").asText());
+        assertEquals("currency_mismatch", skipped.get(1).get("reason").asText());
+    }
+
+    @Test
+    @DisplayName("an empty page whose first catalogue course is free and labelled INR still gets the paid AUD courses")
+    void freeFirstCourseDoesNotSetTheCurrency() {
+        // The institute's seeded free plan is INR; its paid courses are AUD on Eway.
+        catalogueRow("a-intro", Map.of("ActualPrice", 0.0, "InviteVendor", "EWAY"));
+        catalogueRow("b-physics", Map.of("InviteVendor", "EWAY", "InviteCurrency", "AUD", "PlanCurrency", "AUD"));
+        catalogueRow("c-chemistry", Map.of("InviteVendor", "EWAY", "InviteCurrency", "AUD", "PlanCurrency", "AUD"));
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        assertEquals(List.of("a-intro", "b-physics", "c-chemistry"), res.getAddedPackageSessionIds());
+        assertTrue(res.getSkipped().isEmpty());
+        assertEquals(3, saved().size());
+    }
+
+    @Test
     @DisplayName("the catalogue is read with the statuses the public v2 search uses")
     void readsTheV2CatalogueScope() {
         service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
@@ -363,7 +426,10 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals(start, dated.inviteStartDate());
         assertEquals(end, dated.inviteEndDate());
         assertTrue(row.planFound());
-        assertFalse(ProductPageCatalogueSyncService.toRow(m, Map.of()).planFound());
+        assertEquals(4999.0, row.planPrice());
+        CatalogueSyncPlanner.Row noPlan = ProductPageCatalogueSyncService.toRow(m, Map.of());
+        assertFalse(noPlan.planFound());
+        assertNull(noPlan.planPrice());
     }
 
     @Test
@@ -379,6 +445,7 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals("DEFAULT", pick.inviteTag());
         assertEquals("ONE_TIME", pick.paymentOptionType());
         assertEquals("plan-a", pick.paymentPlanId());
+        assertEquals(4999.0, pick.planPrice());
         assertEquals("INR", pick.planCurrency());
         assertEquals("RAZORPAY", pick.inviteVendor());
         assertEquals("Hindi", pick.levelName());

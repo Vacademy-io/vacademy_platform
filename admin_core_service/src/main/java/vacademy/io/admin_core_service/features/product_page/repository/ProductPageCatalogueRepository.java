@@ -16,25 +16,36 @@ import java.util.List;
 public interface ProductPageCatalogueRepository extends org.springframework.data.repository.Repository<ProductPage, String> {
 
     /**
-     * One row per catalogue package session, with the SAME bridge row and plan
-     * the public v2 search (PackageRepository.getOpenCatalogPackageDetailV2 and
-     * getCatalogPackageDetailV2) shows on the Courses page, so a store page
-     * built from these rows charges what the Courses page says.
+     * One row per catalogue package session, with the bridge row and plan a
+     * store page should sell it on: its open DEFAULT invite's, the link the
+     * course itself is sold through.
      *
-     * The rules are copied from the v2 query, not shared with it:
+     * The catalogue scope and the tie-breaks are copied from the public v2
+     * search (PackageRepository.getOpenCatalogPackageDetailV2 and
+     * getCatalogPackageDetailV2), not shared with it:
      * <ul>
      *   <li>catalogue scope: packages published to the catalogue and linked to
      *       the institute, package ACTIVE, package session ACTIVE or HIDDEN,
      *       level ACTIVE (the v2 call passes exactly these);</li>
      *   <li>per session, among its ACTIVE bridge rows joined to an ACTIVE
-     *       payment option and that option's ACTIVE plans: the most recently
-     *       updated bridge row first, then the cheapest plan. v2 leaves exact
-     *       ties to the database; here the ids break them so a sync is
+     *       payment option and that option's ACTIVE plans: first a bridge row
+     *       of an open DEFAULT invite (tag DEFAULT; status ACTIVE or unset;
+     *       today inside its start and end dates, both inclusive - the rule of
+     *       EnrollInviteAvailabilityUtil, on the database clock), then one of
+     *       any other DEFAULT invite (closed: inactive, not started, expired),
+     *       then the rest; within each, the most recently updated bridge row,
+     *       then the cheapest plan. v2 has no such steps: it shows the newest
+     *       bridge row whatever its invite, so a newer scholarship or promo
+     *       link sets the Courses page price but never the store's. v2 leaves
+     *       exact ties to the database; here the ids break them so a sync is
      *       repeatable;</li>
-     *   <li>the DEFAULT tag is NOT part of the choice (in v2 it only decides
-     *       whether enroll_invite_id is reported), so the bridge row may belong
-     *       to another invite. Its invite is joined here regardless of tag, so
-     *       the sync can check that it is really open.</li>
+     *   <li>when no open DEFAULT invite exists a row is returned anyway, with
+     *       its invite joined regardless of tag or status, so the sync can say
+     *       why the course is skipped (CatalogueSyncPlanner): a closed DEFAULT
+     *       link wins over a newer promo one, so the reason is that the
+     *       default link is closed, and "no default link" is only reported for
+     *       a course that has none. Whether the course is skipped does not
+     *       depend on which of the two comes back.</li>
      * </ul>
      * Rows come back in a stable catalogue order (course, level, session), the
      * order new mappings are appended in.
@@ -77,12 +88,23 @@ public interface ProductPageCatalogueRepository extends org.springframework.data
                     pp.currency AS plan_currency,
                     ROW_NUMBER() OVER (
                         PARTITION BY ps.id
-                        ORDER BY psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST,
+                        ORDER BY CASE
+                                     WHEN UPPER(TRIM(pei.tag)) = 'DEFAULT'
+                                         AND (pei.status IS NULL OR pei.status = :activeStatus
+                                             OR LENGTH(TRIM(pei.status)) = 0)
+                                         AND (pei.start_date IS NULL OR pei.start_date <= CURRENT_DATE)
+                                         AND (pei.end_date IS NULL OR pei.end_date >= CURRENT_DATE)
+                                     THEN 0
+                                     WHEN UPPER(TRIM(pei.tag)) = 'DEFAULT' THEN 1
+                                     ELSE 2
+                                 END ASC,
+                                 psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST,
                                  psli.id ASC, pp.id ASC
                     ) AS row_num
                 FROM package_session ps
                 LEFT JOIN package_session_learner_invitation_to_payment_option psli
                     ON ps.id = psli.package_session_id AND psli.status = :activeStatus
+                LEFT JOIN enroll_invite pei ON pei.id = psli.enroll_invite_id
                 LEFT JOIN payment_option po
                     ON po.id = psli.payment_option_id AND po.status = :activeStatus
                 LEFT JOIN payment_plan pp

@@ -4,9 +4,10 @@ import java.util.Date;
 
 /**
  * One package session the public catalogue sells, with the bridge row
- * (invite + session + payment option) and payment plan the public v2 search
- * prices it with. Read by the catalogue sync; see
- * ProductPageCatalogueRepository for how the row is chosen.
+ * (invite + session + payment option) and payment plan a store page should
+ * sell it on: its open DEFAULT invite's when it has one. Read by the
+ * catalogue sync; see ProductPageCatalogueRepository for how the row is
+ * chosen.
  *
  * Every column after the session's own may be null: no ACTIVE bridge row, an
  * inactive payment option, or no ACTIVE plan leave their part empty, exactly

@@ -52,7 +52,15 @@ export interface HeroEditorialProps {
     checklist?: string[];
     buttons?: HeroEditorialButton[];
   };
-  right?: { image?: string; alt?: string };
+  right?: {
+    image?: string;
+    alt?: string;
+    /**
+     * The image's width / height ("1660/1460" or 1.14). Reserves its box
+     * before the image loads, so the page does not shift (CLS).
+     */
+    aspectRatio?: number | string;
+  };
 }
 
 // Exact Figma values (node 73:357). Arbitrary values live only on these lines.
@@ -71,6 +79,21 @@ const C = {
 export const resolveMediaWidth = (raw: unknown): number => {
   const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
   return Number.isFinite(n) && n >= 200 && n <= 800 ? Math.round(n) : 500;
+};
+
+/** An authored aspect ratio ("1660/1460", "1660 / 1460", 1.14) as a CSS value; null when absent or out of range. */
+export const resolveAspectRatio = (raw: unknown): string | null => {
+  let w: number;
+  let h = 1;
+  if (typeof raw === "number") w = raw;
+  else if (typeof raw === "string" && raw.trim()) {
+    const parts = raw.split("/").map((p) => Number(p.trim()));
+    if (parts.length > 2 || parts.some((n) => !Number.isFinite(n))) return null;
+    [w, h = 1] = parts;
+  } else return null;
+  if (!(w > 0) || !(h > 0)) return null;
+  const ratio = w / h;
+  return ratio >= 0.2 && ratio <= 5 ? `${w} / ${h}` : null;
 };
 
 /** An http(s) URL or site path as is; anything else is a media id resolved to a public URL. */
@@ -133,6 +156,7 @@ export const HeroEditorial: React.FC<HeroEditorialProps> = ({
 }) => {
   const siteNavigate = useSiteNavigate();
   const image = useResolvedImage(right?.image);
+  const ratio = right?.image ? resolveAspectRatio(right.aspectRatio) : null;
 
   const onButton = (button: HeroEditorialButton) => runHeroButtonAction(button, siteNavigate);
 
@@ -208,7 +232,24 @@ export const HeroEditorial: React.FC<HeroEditorialProps> = ({
             </div>
           )}
         </div>
-        {image && <img src={image} alt={right?.alt || ""} className={C.media} />}
+        {ratio ? (
+          // The box is there before the image (no layout shift while it loads).
+          <div className={C.media} style={{ aspectRatio: ratio }} data-hero-media="">
+            {image && (
+              <img
+                src={image}
+                alt={right?.alt || ""}
+                className="block h-full w-full object-contain"
+                fetchPriority="high"
+                decoding="async"
+              />
+            )}
+          </div>
+        ) : (
+          image && (
+            <img src={image} alt={right?.alt || ""} className={C.media} fetchPriority="high" decoding="async" />
+          )
+        )}
       </div>
     </section>
   );

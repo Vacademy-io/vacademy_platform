@@ -138,6 +138,29 @@ const resolvePromo = (raw: unknown): ResolvedSidebarPromo | null => {
   };
 };
 
+/** WCAG contrast of a #rgb / #rrggbb / #rrggbbaa colour (alpha blended onto white) against white. */
+export const contrastOnWhite = (hex: string): number => {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.replace(/./g, (c) => c + c);
+  const alpha = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+  const channel = (i: number) => {
+    const c = (parseInt(h.slice(i, i + 2), 16) * alpha + 255 * (1 - alpha)) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  return 1.05 / (lum + 0.05);
+};
+
+/**
+ * An authored checkbox border: a hex colour that still shows on the white box
+ * (WCAG 1.4.11, 3:1 for a control's boundary); a fainter one is dropped so
+ * the default (or the group's main checkbox colour) draws it.
+ */
+const checkboxBorderColor = (raw: unknown): string | null => {
+  const color = safeAccentColor(raw);
+  return color && contrastOnWhite(color) >= 3 ? color : null;
+};
+
 /** The editorial sidebar's config, or null (the original sidebar) unless variant === 'editorial'. */
 export const resolveFilterSidebar = (raw: unknown): ResolvedFilterSidebar | null => {
   if (!isObject(raw) || raw.variant !== "editorial") return null;
@@ -155,8 +178,8 @@ export const resolveFilterSidebar = (raw: unknown): ResolvedFilterSidebar | null
     showLessLabel: text(raw.showLessLabel),
     order,
     dividerColor: safeAccentColor(raw.dividerColor),
-    checkboxColor: safeAccentColor(raw.checkboxColor),
-    checkboxSoftColor: safeAccentColor(raw.checkboxSoftColor),
+    checkboxColor: checkboxBorderColor(raw.checkboxColor),
+    checkboxSoftColor: checkboxBorderColor(raw.checkboxSoftColor),
     promo: resolvePromo(raw.promo),
   };
 };

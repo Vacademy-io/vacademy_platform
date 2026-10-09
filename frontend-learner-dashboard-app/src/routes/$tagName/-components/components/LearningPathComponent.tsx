@@ -766,7 +766,9 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
     ) : null;
 
   if (entries.length === 0) {
-    if (emptyText) {
+    // Featured layout split over two sections: only the one hosting the
+    // featured part says it, so the note shows once.
+    if (emptyText && hostsOpenPath) {
       return (
         <Section shell={shell}>
           <NoteCard>{emptyText}</NoteCard>

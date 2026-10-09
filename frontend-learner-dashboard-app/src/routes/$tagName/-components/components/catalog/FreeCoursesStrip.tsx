@@ -81,7 +81,8 @@ export const FreeCoursesStrip: React.FC<FreeCoursesStripProps> = ({
         {cards.map((card, index) =>
           ctx.renderCourseCard(card, index, {
             keyPrefix: "free-",
-            ctaLabel: `${freeCtaLabelFor(section, card, formatKeysOf(card)) || defaultCta} →`,
+            // No trailing arrow: the editorial card draws its own "→" after the label.
+            ctaLabel: freeCtaLabelFor(section, card, formatKeysOf(card)) || defaultCta,
             imageBadge: badge,
           }),
         )}

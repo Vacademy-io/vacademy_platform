@@ -43,7 +43,7 @@ export type StreamTabsProps = React.ComponentProps<typeof StreamTabs>;
 export interface CourseCardRenderOptions {
   /** Prefixed to the React key (a second list of the same cards, e.g. "free-"). */
   keyPrefix?: string;
-  /** Visible CTA text override ("Start free →"). Editorial card only. */
+  /** Visible CTA text override ("Start free"; the card adds its own arrow). Editorial card only. */
   ctaLabel?: string;
   /** Extra pill on the image ("Free"). Editorial card only. */
   imageBadge?: string;

@@ -190,13 +190,19 @@ const FEATURED_PROPS = {
 
 const render = (
   props: Record<string, unknown>,
-  opts: { search?: string; i18n?: Record<string, unknown>; libraryLoading?: boolean; pagesLoading?: string[] } = {},
+  opts: {
+    search?: string;
+    i18n?: Record<string, unknown>;
+    libraryLoading?: boolean;
+    pagesLoading?: string[];
+    tree?: unknown;
+  } = {},
 ) => {
   routerState.searchStr = opts.search || "";
   try {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     // A query with no cached data is still loading on the first (server) render.
-    if (!opts.libraryLoading) client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], TREE);
+    if (!opts.libraryLoading) client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], opts.tree ?? TREE);
     for (const [code, data] of Object.entries(PAGES)) {
       if (!opts.pagesLoading?.includes(code)) client.setQueryData(["PRODUCT_PAGE_BY_CODE", code, INSTITUTE], data);
     }
@@ -375,6 +381,18 @@ describe("learningPath list layout 'featured'", () => {
     const host = render({ ...FEATURED_PROPS, showGrid: false }, { search: "?path=92ogt2" });
     expect(host).toContain("Enrol in this path");
     expect(text(host)).toContain("All learning paths");
+  });
+
+  it("split over two sections with no paths yet: the empty note shows once (in the featured section)", () => {
+    const empty = { tree: { ...TREE, roots: [] } };
+    const note = "New learning paths will appear here.";
+    const top = render({ ...FEATURED_PROPS, showGrid: false, emptyText: note }, empty);
+    const grid = render({ ...FEATURED_PROPS, showGoals: false, showFeatured: false, emptyText: note }, empty);
+    expect(top).toContain(note);
+    expect(grid).toBe("");
+    // Not split: the list still shows its own note.
+    expect(render({ ...FEATURED_PROPS, emptyText: note }, empty)).toContain(note);
+    expect(render({ mode: "list", emptyText: note, libraryId: LIBRARY }, empty)).toContain(note);
   });
 
   it("applies authored colours as section vars only when set", () => {

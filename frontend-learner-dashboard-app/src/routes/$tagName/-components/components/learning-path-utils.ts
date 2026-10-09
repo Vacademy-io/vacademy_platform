@@ -571,11 +571,15 @@ export const variantPrice = (row: PathMapping): number | null => {
 
 export type PathPill = "allFree" | "firstFree" | null;
 
-/** "All steps free" when every priced step is free, "Step 1 is free" when the first is; else none. */
-export const pathPill = (prices: Array<number | null>): PathPill => {
+/**
+ * "All steps free" when every priced step is free, "Step 1 is free" when the
+ * first is; else none. `firstShownIsSoon`: the row numbered 1 is a
+ * coming-soon step, so no real step is "Step 1".
+ */
+export const pathPill = (prices: Array<number | null>, firstShownIsSoon = false): PathPill => {
   if (!prices.length) return null;
   if (prices.every((p) => p === 0)) return "allFree";
-  return prices[0] === 0 ? "firstFree" : null;
+  return prices[0] === 0 && !firstShownIsSoon ? "firstFree" : null;
 };
 
 export type PathTotalNote = "allFree" | "available" | "all";

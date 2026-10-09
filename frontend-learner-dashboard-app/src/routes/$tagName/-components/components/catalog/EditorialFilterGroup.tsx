@@ -143,7 +143,7 @@ export const EditorialFilterGroup: React.FC<EditorialFilterGroupProps> = ({
           "peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400 peer-focus-visible:ring-offset-2",
           checked
             ? "border-palette-primary bg-palette-primary"
-            : cn(boxColor ? BOX_AUTHORED : "border-palette-border-strong", !disabled && "group-hover:border-palette-primary"),
+            : cn(boxColor ? BOX_AUTHORED : "border-palette-muted2", !disabled && "group-hover:border-palette-primary"),
         )}
       >
         {checked &&

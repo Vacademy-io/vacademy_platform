@@ -426,6 +426,43 @@ describe("spotlight", () => {
     expect(h.navigate).toEqual([{ to: "/product-pages/$productPageCode", params: { productPageCode: "forbvy" } }]);
   });
 
+  it("arrow keys move slides only from the carousel controls (never from a slide's own link)", async () => {
+    const two = {
+      ...SPOTLIGHT,
+      slides: [SLIDE, { id: "two", title: "Garbha Vigyan", cta: { label: "View path", action: "product-page", productPageCode: "forbvy" } }],
+    };
+    const host = await mount({ columnSections: [two] });
+    const panel = block(host, "ks-flagship")!;
+    const counter = () => [...panel.querySelectorAll("p")].find((p) => /^\d \/ \d$/.test(p.textContent || ""))!.textContent;
+    const press = async (el: Element) => {
+      await act(async () => {
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      });
+      await act(tick);
+    };
+    const cta = [...panel.querySelectorAll('[aria-roledescription="slide"]')][0].querySelector("button, a")!;
+    await press(cta);
+    expect(counter()).toBe("1 / 2");
+    await press(panel.querySelector('[aria-label="Next slide"]')!);
+    expect(counter()).toBe("2 / 2");
+    // No autoplay authored: no pause control.
+    expect(panel.querySelector("[data-carousel-autoplay]")).toBeNull();
+  });
+
+  it("autoplay: a pause / play control", async () => {
+    const two = {
+      ...SPOTLIGHT,
+      autoplayMs: 5000,
+      slides: [SLIDE, { id: "two", title: "Garbha Vigyan" }],
+    };
+    const host = await mount({ columnSections: [two] });
+    const panel = block(host, "ks-flagship")!;
+    const toggle = panel.querySelector("[data-carousel-autoplay]");
+    expect(toggle?.getAttribute("aria-label")).toBe("Pause slides");
+    await click(toggle);
+    expect(toggle?.getAttribute("aria-label")).toBe("Play slides");
+  });
+
   it("'unfiltered-or-own-stream': on a stream tab only that stream's slides", async () => {
     const host = await mount({
       columnSections: [

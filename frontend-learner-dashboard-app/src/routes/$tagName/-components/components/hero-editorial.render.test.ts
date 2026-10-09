@@ -22,7 +22,7 @@ vi.mock("@/components/common/layout-container/sidebar/utils", () => ({
 vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promise.resolve("") }));
 
 const { HeroSectionComponent } = await import("./HeroSectionComponent");
-const { resolveMediaWidth } = await import("./HeroEditorial");
+const { resolveMediaWidth, resolveAspectRatio } = await import("./HeroEditorial");
 
 const EDITORIAL = {
   variant: "editorial",
@@ -135,6 +135,18 @@ describe("heroSection variant 'editorial'", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("reserves the media box from an authored aspect ratio (no layout shift); the LCP image loads first", () => {
+    expect(resolveAspectRatio("1660/1460")).toBe("1660 / 1460");
+    expect(resolveAspectRatio(" 4 / 3 ")).toBe("4 / 3");
+    expect(resolveAspectRatio(1.5)).toBe("1.5 / 1");
+    for (const bad of [undefined, "", "abc", "1/0", 0, -1, "1/2/3", 100]) expect(resolveAspectRatio(bad)).toBeNull();
+    const out = html({ ...EDITORIAL, right: { ...EDITORIAL.right, aspectRatio: "1660/1460" } });
+    expect(out).toMatch(/<div class="[^"]*max-w-\[var\(--hero-media-w\)\][^"]*" style="aspect-ratio:1660 \/ 1460" data-hero-media=""><img /);
+    expect(out).toContain('fetchPriority="high"');
+    // Without one: the image alone, as before.
+    expect(html(EDITORIAL)).not.toContain("data-hero-media");
   });
 
   it("clamps the media width", () => {

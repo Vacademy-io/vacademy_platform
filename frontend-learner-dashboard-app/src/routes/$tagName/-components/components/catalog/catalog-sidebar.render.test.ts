@@ -183,7 +183,7 @@ const SIDEBAR = {
     order: ["price", "language", "format", "category", "for"],
     dividerColor: "#EFE6CC", // design-lint-ignore: test fixture colour
     checkboxColor: "#A08A5C", // design-lint-ignore: test fixture colour
-    checkboxSoftColor: "#CFC0A0", // design-lint-ignore: test fixture colour
+    checkboxSoftColor: "#958664", // design-lint-ignore: test fixture colour (lighter, still 3:1 on white)
     promo: {
       enabled: true,
       screenImage: "https://cdn.example.com/screen.png",
@@ -324,7 +324,7 @@ describe("editorial filter sidebar", () => {
     const host = await mount({ ...BASE, ...SIDEBAR });
     const forGroup = group(host, "for");
     expect([...forGroup.querySelectorAll("label")].map((l) => l.textContent)).toEqual(["Parents", "Students"]);
-    expect(forGroup.getAttribute("style")).toContain("--fs-box: #CFC0A0"); // design-lint-ignore: test fixture colour
+    expect(forGroup.getAttribute("style")).toContain("--fs-box: #958664"); // design-lint-ignore: test fixture colour
     expect([...forGroup.querySelectorAll("button")].map((b) => b.textContent)).toContain("+ Show more");
     await click(forGroup.querySelector("h3 button")!);
     const folded = group(host, "for");

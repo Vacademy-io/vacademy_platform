@@ -80,7 +80,10 @@ export const LoadMorePagination: React.FC<LoadMorePaginationProps> = ({
           {label}
         </button>
       )}
-      <p ref={countRef} tabIndex={-1} className="text-xs leading-4 text-palette-muted focus:outline-none" aria-live="polite">
+      {/* Not a live region: it changes on every search keystroke and filter
+          change (the results header already announces those, debounced);
+          after Load more, focus lands on the first new card instead. */}
+      <p ref={countRef} tabIndex={-1} className="text-xs leading-4 text-palette-muted focus:outline-none">
         {countText}
       </p>
     </div>

@@ -292,13 +292,16 @@ const KS = {
   ],
 };
 
-const mount = async (props: Record<string, unknown> = {}) => {
+const mount = async (
+  props: Record<string, unknown> = {},
+  ranks: Map<string, number> = new Map([["vp-en", 1], ["rishi", 2]]),
+) => {
   const host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   qc.setQueryData(["FOLDER_LIBRARY_PUBLIC", "inst-1", LIBRARY], TREE);
-  qc.setQueryData(popularityQueryKey("inst-1"), new Map([["vp-en", 1], ["rishi", 2]]));
+  qc.setQueryData(popularityQueryKey("inst-1"), ranks);
   await act(async () => {
     root!.render(
       e(
@@ -375,8 +378,10 @@ describe("all Courses-grid features together (Knowledge Streams)", () => {
     expect(before(firstCard, more)).toBe(true);
     expect(before(more, soon)).toBe(true);
 
-    // The free strip uses the editorial card too.
+    // The free strip uses the editorial card too, with ONE arrow after its CTA (the card draws it).
     expect(free!.querySelectorAll("[data-editorial-card]").length).toBe(3);
+    const ctas = [...free!.querySelectorAll("[data-card-cta]")].map((b) => b.textContent);
+    expect(ctas).toEqual(["Start free→", "Start free→", "Start free→"]);
     // Coming soon lists the authored categories (not hidden by the sidebar's hideComingSoon).
     expect(soon!.textContent).toContain("Chhanda shastra");
     expect(soon!.textContent).toContain("Sanskrit Language teaching");
@@ -411,6 +416,24 @@ describe("all Courses-grid features together (Knowledge Streams)", () => {
     expect(card("Rishi Intelligence")?.textContent).toContain("E-Learning");
     expect(card("गीतायन")?.textContent).toContain("E-book");
     expect(card("Martand")?.textContent).toContain("Animation");
+  });
+
+  it("a version group earns the badges of every version (Bestsellers keeps the merged card)", async () => {
+    // Only the HI version of Vedic Parenting is ranked; the card is keyed by the EN id.
+    const host = await mount(
+      {
+        quickFilters: [...KS.quickFilters, { id: "qf-bestseller", label: "Bestsellers", kind: "bestseller" }],
+        render: { ...KS.render, pagination: { mode: "loadMore", pageSize: 30 } },
+      },
+      new Map([["vp-hi", 1]]),
+    );
+    const group = host.querySelector('[role="group"][aria-label="Quick filters:"]')!;
+    const chip = [...group.querySelectorAll("button")].find((b) => b.textContent?.includes("Bestsellers"))!;
+    await act(async () => chip.click());
+    await act(tick);
+    const grid = [...host.querySelectorAll("[data-editorial-card]")].filter((c) => !c.closest("[data-column-section]"));
+    expect(grid.map((c) => c.querySelector("h3")?.textContent ?? "")).toHaveLength(1);
+    expect(grid[0].querySelector("h3")?.textContent).toMatch(/Parenting|पेरेंटिंग/);
   });
 
   it("Load more pages the grid without touching the column sections", async () => {

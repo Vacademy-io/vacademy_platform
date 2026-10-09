@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allCategories,
   categoriesInScope,
+  contrastOnWhite,
   fillCount,
   orderGroupIds,
   resolveCategoryFilterExtension,
@@ -72,6 +73,19 @@ describe("resolveFilterSidebar", () => {
     expect(s.order).toEqual(["price", "language"]);
     expect(s.dividerColor).toBe("#EFE6CC"); // design-lint-ignore: test fixture colour
     expect(s.checkboxColor).toBeNull();
+  });
+
+  it("drops a checkbox colour too faint to see on the white box (< 3:1)", () => {
+    const s = resolveFilterSidebar({
+      variant: "editorial",
+      checkboxColor: "#A08A5C", // design-lint-ignore: test fixture colour (3.34:1)
+      checkboxSoftColor: "#CFC0A0", // design-lint-ignore: test fixture colour (1.79:1)
+    })!;
+    expect(s.checkboxColor).toBe("#A08A5C"); // design-lint-ignore: test fixture colour
+    expect(s.checkboxSoftColor).toBeNull();
+    expect(contrastOnWhite("#fff")).toBeCloseTo(1); // design-lint-ignore: test fixture colour
+    expect(contrastOnWhite("#000000")).toBeCloseTo(21); // design-lint-ignore: test fixture colour
+    expect(contrastOnWhite("#00000000")).toBeCloseTo(1); // design-lint-ignore: test fixture colour
   });
 
   it("resolves the promo only when enabled, with safe links and images", () => {

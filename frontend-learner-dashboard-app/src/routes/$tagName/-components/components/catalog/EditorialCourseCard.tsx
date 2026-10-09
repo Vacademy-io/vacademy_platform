@@ -18,7 +18,8 @@ import type { EditorialCardView } from "./catalog-card-view";
  * three Figma colours the palette has no name for can be set per section
  * (render.card.colors) and are applied inline.
  *
- * The whole card opens the course (mouse); the CTA is the keyboard target.
+ * The whole card opens the course (mouse); the CTA is the keyboard target
+ * (plus "View details" when a coming-soon CTA opens the notify form).
  * The article is named by its title, and the CTA ("View course") is described
  * by it, so a list of identical CTAs still says which course each opens.
  */
@@ -234,6 +235,22 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
             </span>
           </button>
         </div>
+        {/* A notify-me CTA opens the form, so keep a keyboard path to the
+            details page the card click leads to (as the legacy card does). */}
+        {view.comingSoon?.audienceId && onCta && (
+          <button
+            type="button"
+            data-card-details=""
+            aria-describedby={titleId}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+            className="-my-1 self-start rounded-sm py-1 text-xs leading-4 text-palette-muted underline underline-offset-[3px] hover:text-palette-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2" // design-lint-ignore: Figma 3px underline offset
+          >
+            {t("comingSoon.viewDetails", "View details")}
+          </button>
+        )}
       </div>
     </article>
   );

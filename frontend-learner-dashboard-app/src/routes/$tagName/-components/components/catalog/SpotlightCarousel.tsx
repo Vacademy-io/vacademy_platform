@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { ArrowRight, CaretLeft, CaretRight, Pause, Play } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CatalogueLink } from "../../CatalogueLink";
 import { openComingSoonForm } from "../../../-utils/coming-soon";
@@ -77,8 +77,14 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
   const { t } = ctx;
   const count = slides.length;
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
+  // Autoplay stops while the pointer is over the panel, while focus is inside
+  // it, and after the visitor presses pause (WCAG 2.2.2).
+  const [hovered, setHovered] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const paused = hovered || focusWithin || stopped;
   const touchX = useRef<number | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
   const slideKey = slides.map((s) => s.id).join("|");
   // A different slide set (stream tab) starts at its first slide.
   useEffect(() => setIndex(0), [slideKey]);
@@ -97,6 +103,9 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (count < 2) return;
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    // Only from the carousel controls: an arrow on a slide's own link would
+    // make the slide holding focus inert and drop focus to <body>.
+    if (!controlsRef.current?.contains(e.target as Node)) return;
     const forward = (e.key === "ArrowRight") !== rtl;
     e.preventDefault();
     go(current + (forward ? 1 : -1));
@@ -124,10 +133,12 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
       aria-roledescription={count > 1 ? t("catalogSections.carouselRole", "carousel") : undefined}
       data-column-section={section.id}
       onKeyDown={onKeyDown}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+      }}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -163,7 +174,7 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
       </div>
 
       {count > 1 && (
-        <div className="flex items-center justify-between gap-4">
+        <div ref={controlsRef} className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {slides.map((slide, i) => (
               <button
@@ -174,13 +185,33 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
                 aria-current={i === current ? "true" : undefined}
                 className={cn(
                   "relative h-2.5 rounded-full transition-all duration-300 after:absolute after:-inset-2 after:content-[''] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400",
-                  i === current ? "w-7 bg-palette-primary" : "w-2.5 bg-palette-border-strong",
+                  i === current ? "w-7 bg-palette-primary" : "w-2.5 bg-palette-muted2", // muted2: >= 3:1 on the panel
                 )}
                 style={i === current ? undefined : colorStyle("backgroundColor", section.colors.dotColor)}
               />
             ))}
           </div>
           <div className="flex items-center gap-2">
+            {section.autoplayMs ? (
+              <button
+                type="button"
+                onClick={() => setStopped((v) => !v)}
+                aria-label={
+                  stopped
+                    ? t("catalogSections.playSlides", "Play slides")
+                    : t("catalogSections.pauseSlides", "Pause slides")
+                }
+                data-carousel-autoplay=""
+                className="flex size-7 items-center justify-center rounded-full border border-palette-border-strong bg-catalogue-bg-elevated text-palette-text transition-colors hover:bg-palette-cream focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                style={colorStyle("borderColor", section.colors.ringColor)}
+              >
+                {stopped ? (
+                  <Play size={12} weight="fill" aria-hidden="true" />
+                ) : (
+                  <Pause size={12} weight="fill" aria-hidden="true" />
+                )}
+              </button>
+            ) : null}
             <p className="m-0 text-xs font-bold text-palette-muted" aria-hidden="true">
               {t("catalogSections.slideOf", { n: current + 1, total: count, defaultValue: "{{n}} / {{total}}" })}
             </p>

@@ -1257,6 +1257,24 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     [courses, discovery.active],
   );
 
+  // ── Cards, filters, sort ────────────────────────────────────────────────
+  // One card per row (the original grid) or, with groupLanguageVersions, one
+  // per course opening the visitor's language: a single language filter
+  // wins, else the site language.
+  const preferredLanguage = discovery.grouping
+    ? (discoveryState.languages.length === 1 ? discoveryState.languages[0] : null) ??
+      preferredCourseLanguage(siteLocale, discovery.languages)
+    : null;
+  const allCards = useMemo(
+    () =>
+      buildCatalogCards(datedCourses, {
+        grouping: discovery.grouping,
+        languages: discovery.languages,
+        preferredLanguage,
+        versionGroups: discovery.versionGroups,
+      }),
+    [datedCourses, discovery.grouping, discovery.languages, preferredLanguage, discovery.versionGroups],
+  );
   // ── Badges: enrolment ranks are fetched only when something uses them ──
   const badgeRules = discovery.badges;
   const needsRanks =
@@ -1270,6 +1288,27 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     () => streamList.map((s) => s.tag).filter(Boolean),
     [streamList],
   );
+  // Package id → its card's id, for cards folding several packages only.
+  const versionAlias = useMemo(() => {
+    const alias = new Map<string, string>();
+    for (const card of allCards) {
+      if (!card.courseIds) continue;
+      for (const id of card.courseIds) if (id !== card.courseId) alias.set(id, card.courseId);
+    }
+    return alias;
+  }, [allCards]);
+  // A folded card ranks as its best-ranked version (as the Popular sort does).
+  const badgeRanks = useMemo(() => {
+    if (!versionAlias.size) return ranks;
+    const merged = new Map(ranks);
+    ranks.forEach((rank, id) => {
+      const key = versionAlias.get(id);
+      if (key === undefined) return;
+      const current = merged.get(key);
+      if (current === undefined || rank < current) merged.set(key, rank);
+    });
+    return merged;
+  }, [ranks, versionAlias]);
   const badgeInputs = useMemo(() => {
     if (!wantsBadges) return [];
     // One input per course: its versions share created_at and tags; the
@@ -1297,52 +1336,56 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
       courseTagsOf(c).forEach((tag) => entry.tags.add(tag.toLowerCase()));
       byCourse.set(courseId, entry);
     }
+    // A card folding several packages (courseLanguages.versionGroups) gets ONE
+    // input under its card id — cheapest buyable version, newest date, every
+    // tag — so the filters and pills (keyed by card.courseId) see the badges
+    // of all its versions. Without version groups nothing is folded.
+    if (versionAlias.size) {
+      const folded: typeof byCourse = new Map();
+      for (const e of byCourse.values()) {
+        const key = versionAlias.get(e.courseId) ?? e.courseId;
+        const into = folded.get(key);
+        if (!into) {
+          folded.set(key, { ...e, courseId: key, tags: new Set(e.tags) });
+          continue;
+        }
+        if (e.createdAt && (!into.createdAt || Date.parse(e.createdAt) > Date.parse(into.createdAt))) {
+          into.createdAt = e.createdAt;
+        }
+        if (e.price !== null) into.price = into.price === null ? e.price : Math.min(into.price, e.price);
+        e.tags.forEach((tag) => into.tags.add(tag));
+      }
+      byCourse.clear();
+      folded.forEach((v, k) => byCourse.set(k, v));
+    }
     // A course tagged at the category level still counts for its stream.
     return [...byCourse.values()].map((e) => {
       const tags = new Set(e.tags);
       for (const s of streamList) if (s.tags.some((tag) => e.tags.has(tag))) tags.add(s.tag);
       return { courseId: e.courseId, createdAt: e.createdAt, price: e.price, tags: [...tags] };
     });
-  }, [wantsBadges, datedCourses, streamList]);
+  }, [wantsBadges, datedCourses, streamList, versionAlias]);
   const displayBadges = useMemo(
     () =>
       badgeRules
-        ? computeCourseBadges(badgeInputs, { ranks, streamTags, now: badgeNow, rules: badgeRules })
+        ? computeCourseBadges(badgeInputs, { ranks: badgeRanks, streamTags, now: badgeNow, rules: badgeRules })
         : NO_BADGES,
-    [badgeRules, badgeInputs, ranks, streamTags, badgeNow],
+    [badgeRules, badgeInputs, badgeRanks, streamTags, badgeNow],
   );
   // Filtering by a badge uses every badge a course earned, not the capped display list.
   const earnedBadges = useMemo(
     () =>
       wantsBadges
         ? computeCourseBadges(badgeInputs, {
-            ranks,
+            ranks: badgeRanks,
             streamTags,
             now: badgeNow,
             rules: { ...badgeRules, types: ALL_BADGES, max: ALL_BADGES.length },
           })
         : NO_BADGES,
-    [wantsBadges, badgeRules, badgeInputs, ranks, streamTags, badgeNow],
+    [wantsBadges, badgeRules, badgeInputs, badgeRanks, streamTags, badgeNow],
   );
 
-  // ── Cards, filters, sort ────────────────────────────────────────────────
-  // One card per row (the original grid) or, with groupLanguageVersions, one
-  // per course opening the visitor's language: a single language filter
-  // wins, else the site language.
-  const preferredLanguage = discovery.grouping
-    ? (discoveryState.languages.length === 1 ? discoveryState.languages[0] : null) ??
-      preferredCourseLanguage(siteLocale, discovery.languages)
-    : null;
-  const allCards = useMemo(
-    () =>
-      buildCatalogCards(datedCourses, {
-        grouping: discovery.grouping,
-        languages: discovery.languages,
-        preferredLanguage,
-        versionGroups: discovery.versionGroups,
-      }),
-    [datedCourses, discovery.grouping, discovery.languages, preferredLanguage, discovery.versionGroups],
-  );
   const criteria = useMemo<CatalogCriteria>(
     () => ({
       search: searchTerm,

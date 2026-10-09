@@ -106,6 +106,9 @@ describe("featured learning paths: pure helpers", () => {
     expect(pathPill([0, 51, 0])).toBe("firstFree");
     expect(pathPill([51, 0])).toBeNull();
     expect(pathPill([])).toBeNull();
+    // A coming-soon step shown as step 1: the free real step is step 2.
+    expect(pathPill([0, 51], true)).toBeNull();
+    expect(pathPill([0, 0], true)).toBe("allFree");
   });
 
   it("totals the shown versions and picks the note", () => {

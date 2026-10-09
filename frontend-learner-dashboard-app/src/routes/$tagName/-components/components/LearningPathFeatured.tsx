@@ -434,7 +434,7 @@ export const LearningPathFeatured: React.FC<LearningPathFeaturedProps> = ({
       meta,
       rows,
       summary,
-      pill: pathPill(variants.map(variantPrice)),
+      pill: pathPill(variants.map(variantPrice), items[0]?.kind === "soon"),
       tags: [...new Set([...pathStreamList.flatMap((s) => s.tags), ...allRows.flatMap(mappingTags)])],
       goalTags: Array.isArray(extra?.goalTags) ? extra!.goalTags.filter((g): g is string => typeof g === "string") : [],
       loading: !!result?.isLoading,

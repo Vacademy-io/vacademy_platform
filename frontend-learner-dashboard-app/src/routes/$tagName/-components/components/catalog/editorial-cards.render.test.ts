@@ -248,6 +248,8 @@ describe("editorial cards + heading + load more (opt-in)", () => {
     await click(host.querySelector<HTMLElement>("button[aria-pressed]")!);
     expect(cards()).toHaveLength(9);
     expect(host.textContent).toContain("Showing 9 of 12");
+    // The count is not a live region (it would speak on every keystroke / filter change).
+    expect(host.querySelector("[data-load-more] [aria-live]")).toBeNull();
   });
 
   it("the card and its CTA open the course; a coming-soon CTA opens the notify form", async () => {
@@ -267,6 +269,13 @@ describe("editorial cards + heading + load more (opt-in)", () => {
     expect(events).toHaveLength(1);
     expect((events[0] as { audienceId: string }).audienceId).toBe("aud-1");
     expect(h.navigate).toHaveLength(2);
+    // Keyboard path to the details page: a second focusable control on the notify-me card only.
+    expect(cards()[0].querySelector("[data-card-details]")).toBeNull();
+    const details = soon.querySelector<HTMLButtonElement>("[data-card-details]");
+    expect(details?.tagName).toBe("BUTTON");
+    expect(details?.textContent).toBe("View details");
+    await click(details!);
+    expect(h.navigate).toHaveLength(3);
   });
 
   it("one card per authored EN + HI pair (globalSettings.courseLanguages.versionGroups)", async () => {

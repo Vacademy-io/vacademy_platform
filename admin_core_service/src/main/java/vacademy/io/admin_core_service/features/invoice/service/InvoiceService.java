@@ -368,6 +368,8 @@ public class InvoiceService {
         // on a single receipt. Derived in buildReceiptFigures from the learner fee schedule.
         PLACEHOLDER_META.put("course_name", new PlaceholderMeta("Course Name", "RECEIPT", true, "text"));
         PLACEHOLDER_META.put("course_code", new PlaceholderMeta("Course Code", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_code_bracketed",
+                new PlaceholderMeta("Course Code in brackets (hidden when none)", "RECEIPT", false, "text"));
         PLACEHOLDER_META.put("user_mobile", new PlaceholderMeta("Mobile No.", "RECEIPT", true, "text"));
         PLACEHOLDER_META.put("course_fees", new PlaceholderMeta("Course Fees", "RECEIPT", false, "text"));
         PLACEHOLDER_META.put("total_fees", new PlaceholderMeta("Total Fees", "RECEIPT", false, "text"));
@@ -2613,6 +2615,13 @@ public class InvoiceService {
                 user != null ? user.getMobileNumber() : ""));
         filled = filled.replace("{{course_name}}", ov.apply("course_name", rf.courseName));
         filled = filled.replace("{{course_code}}", ov.apply("course_code", rf.courseCode));
+        // The bracketed form, or nothing at all. A template that writes "( {{course_code}} )"
+        // prints an empty pair of brackets for every course whose plan carries no code, and
+        // most do not. Same shape as {{discount_row}}: the whole fragment or none of it.
+        String courseCode = overrides.containsKey("course_code")
+                ? overrides.get("course_code") : rf.courseCode;
+        filled = filled.replace("{{course_code_bracketed}}",
+                StringUtils.hasText(courseCode) ? "( " + escapeHtml(courseCode) + " )" : "");
 
         // Country & tax registration details (from INVOICE_SETTING.country).
         // These let templates render the operating country, the institute's tax
@@ -6608,7 +6617,7 @@ public class InvoiceService {
     private static final List<String> RECEIPT_PLACEHOLDERS = List.of(
             "{{course_fees}}", "{{total_fees}}", "{{previous_paid}}", "{{total_fees_due}}",
             "{{total_amount_paid}}", "{{next_installment_amount}}", "{{next_installment_date}}",
-            "{{course_name}}", "{{course_code}}");
+            "{{course_name}}", "{{course_code}}", "{{course_code_bracketed}}");
 
     /** Whether a template mentions any placeholder that needs the learner fee schedule. */
     static boolean usesReceiptFields(String template) {

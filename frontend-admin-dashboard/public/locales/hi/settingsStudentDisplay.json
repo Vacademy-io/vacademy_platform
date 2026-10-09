@@ -124,8 +124,27 @@
         "customTabLabelPlaceholder": "जैसे फ्री कोर्स",
         "customTabTags": "इनमें से किसी भी टैग वाले कोर्स दिखाएँ",
         "customTabTagsPlaceholder": "कोर्स टैग चुनें",
-        "customTabIncomplete": "जब तक इस टैब का नाम और कम से कम एक टैग न हो, छात्रों को यह नहीं दिखेगा।",
-        "customTabNoTags": "अभी कोई कोर्स टैग नहीं है। पहले कोर्स पर टैग लगाएँ, फिर यहाँ चुनें।"
+        "customTabIncomplete": "जब तक इस टैब का नाम और दिखाने के लिए कुछ चुना न हो, छात्रों को यह नहीं दिखेगा।",
+        "customTabNoTags": "अभी कोई कोर्स टैग नहीं है। पहले कोर्स पर टैग लगाएँ, फिर यहाँ चुनें।",
+        "customTabType": "दिखाएँ",
+        "customTabCourses": "इस टैब के कोर्स",
+        "customTabCoursesPlaceholder": "कोर्स चुनें",
+        "customTabProductPages": "इस टैब के प्रोडक्ट पेज",
+        "customTabProductPagesPlaceholder": "प्रोडक्ट पेज चुनें",
+        "customTabTypes": {
+            "LIVE_SESSIONS": "लाइव सेशन और वेबिनार",
+            "FREE_COURSES": "फ्री कोर्स",
+            "COURSES": "चुने हुए कोर्स",
+            "PRODUCT_PAGES": "प्रोडक्ट पेज",
+            "TAG": "टैग वाले कोर्स"
+        },
+        "customTabTypeHints": {
+            "LIVE_SESSIONS": "चल रहे और आने वाले सेशन जिनमें छात्र जुड़ सकता है, पब्लिक वेबिनार सहित।",
+            "FREE_COURSES": "कैटलॉग के सभी कोर्स जिनकी कीमत 0 है — अपने आप अपडेट होता है।",
+            "COURSES": "केवल आपके चुने हुए कोर्स। कोर्स कैटलॉग में पब्लिश होना चाहिए।",
+            "PRODUCT_PAGES": "हर प्रोडक्ट पेज का एक कार्ड; टैप करने पर पेज खुलता है।",
+            "TAG": "चुने गए किसी भी टैग वाले कैटलॉग कोर्स।"
+        }
     },
     "liveClasses": {
         "cardTitle": "लाइव क्लासेस",

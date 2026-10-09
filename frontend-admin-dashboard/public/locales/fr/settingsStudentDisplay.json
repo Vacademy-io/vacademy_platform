@@ -124,8 +124,27 @@
         "customTabLabelPlaceholder": "ex. Cours gratuits",
         "customTabTags": "Afficher les cours ayant l'un de ces tags",
         "customTabTagsPlaceholder": "Sélectionner des tags de cours",
-        "customTabIncomplete": "Les apprenants ne verront pas cet onglet tant qu'il n'a pas de nom et au moins un tag.",
-        "customTabNoTags": "Aucun tag de cours pour l'instant. Ajoutez d'abord des tags aux cours, puis choisissez-les ici."
+        "customTabIncomplete": "Les apprenants ne verront pas cet onglet tant qu'il n'a pas de nom et de contenu à afficher.",
+        "customTabNoTags": "Aucun tag de cours pour l'instant. Ajoutez d'abord des tags aux cours, puis choisissez-les ici.",
+        "customTabType": "Affiche",
+        "customTabCourses": "Cours de cet onglet",
+        "customTabCoursesPlaceholder": "Sélectionner des cours",
+        "customTabProductPages": "Pages produit de cet onglet",
+        "customTabProductPagesPlaceholder": "Sélectionner des pages produit",
+        "customTabTypes": {
+            "LIVE_SESSIONS": "Sessions en direct et webinaires",
+            "FREE_COURSES": "Cours gratuits",
+            "COURSES": "Cours sélectionnés",
+            "PRODUCT_PAGES": "Pages produit",
+            "TAG": "Cours par tags"
+        },
+        "customTabTypeHints": {
+            "LIVE_SESSIONS": "Sessions en cours et à venir que l'apprenant peut rejoindre, webinaires publics inclus.",
+            "FREE_COURSES": "Tous les cours du catalogue dont le prix est 0 — mis à jour automatiquement.",
+            "COURSES": "Uniquement les cours choisis. Un cours doit être publié dans le catalogue.",
+            "PRODUCT_PAGES": "Une carte par page produit ; un clic ouvre la page.",
+            "TAG": "Cours du catalogue portant l'un des tags choisis."
+        }
     },
     "liveClasses": {
         "cardTitle": "Cours en direct",

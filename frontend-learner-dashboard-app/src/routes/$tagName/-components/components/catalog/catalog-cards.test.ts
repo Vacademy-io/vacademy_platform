@@ -174,3 +174,28 @@ describe("row helpers", () => {
     expect(isComingSoonRow({ coming_soon: null })).toBe(false);
   });
 });
+
+describe("language from a course tag (levels that are formats, language versions as separate courses)", () => {
+  const ebookHindi = row({ id: "p-hi", packageSessionId: "ps-hi", level: "eBook", level_name: "eBook", comma_separeted_tags: "shiksha, Hindi" });
+  const filmEnglish = row({ id: "p-en", packageSessionId: "ps-en", level: "Short Film", level_name: "Short Film", comma_separeted_tags: "English" });
+  const untagged = row({ id: "p-x", packageSessionId: "ps-x", level: "default", level_name: "default", comma_separeted_tags: "English literature" });
+
+  it("takes the language from a tag that is exactly a language when the level names none", () => {
+    expect(rowLanguage(ebookHindi, LANGS)?.code).toBe("hi");
+    expect(rowLanguage(filmEnglish, LANGS)?.code).toBe("en");
+  });
+
+  it("never reads a language out of a longer tag", () => {
+    expect(rowLanguage(untagged, LANGS)).toBeNull();
+  });
+
+  it("lets the level name win over a tag", () => {
+    const r = row({ id: "p-l", packageSessionId: "ps-l", level: "Hindi", level_name: "Hindi", comma_separeted_tags: "English" });
+    expect(rowLanguage(r, LANGS)?.code).toBe("hi");
+  });
+
+  it("gives grouped cards their language chip from the tag", () => {
+    const cards = buildCatalogCards([ebookHindi, filmEnglish, untagged], { grouping: true, languages: LANGS });
+    expect(cards.map((c) => c.languages.map((l) => l.code))).toEqual([["hi"], ["en"], []]);
+  });
+});

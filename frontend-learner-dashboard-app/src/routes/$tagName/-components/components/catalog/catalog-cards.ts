@@ -12,6 +12,7 @@ import { resolveInviteAvailability } from "@/lib/invite-availability";
 import {
   groupCourseVariants,
   languageOfLevel,
+  languageOfRow,
   type CourseLanguageOption,
 } from "../../../-utils/course-variants";
 import { readComingSoon } from "../../../-utils/coming-soon";
@@ -179,7 +180,7 @@ export const buildCatalogCards = <R extends CatalogRowLike>(
   opts: { grouping: boolean; languages: CourseLanguageOption[]; preferredLanguage?: string | null },
 ): CatalogCard<R>[] => {
   if (!opts.grouping) return rows.map((row) => makeCard(String(row.id || ""), [row], row, []));
-  const withPackage = rows.map((row) => ({ row, package_id: row.package_id || row.id || null, package_session_id: row.package_session_id ?? row.packageSessionId ?? null, level_name: row.level_name ?? row.level }));
+  const withPackage = rows.map((row) => ({ row, package_id: row.package_id || row.id || null, package_session_id: row.package_session_id ?? row.packageSessionId ?? null, level_name: row.level_name ?? row.level, comma_separeted_tags: (row as { comma_separeted_tags?: string | null }).comma_separeted_tags ?? null }));
   return groupCourseVariants(withPackage, {
     enabled: true,
     languages: opts.languages,
@@ -204,7 +205,7 @@ const rowLanguageCache = new WeakMap<CourseLanguageOption[], WeakMap<object, Cou
  * mutated), so repeated filter and count tests are lookups.
  */
 export const rowLanguage = (
-  row: { level_name?: string | null; level?: string },
+  row: { level_name?: string | null; level?: string; comma_separeted_tags?: string | null },
   languages: CourseLanguageOption[],
 ): CourseLanguageOption | null => {
   let byRow = rowLanguageCache.get(languages);
@@ -214,7 +215,7 @@ export const rowLanguage = (
   }
   const known = byRow.get(row);
   if (known !== undefined) return known;
-  const lang = languageOfLevel(row.level_name ?? row.level, languages);
+  const lang = languageOfRow(row, languages);
   byRow.set(row, lang);
   return lang;
 };

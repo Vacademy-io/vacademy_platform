@@ -22,6 +22,7 @@ import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import { isComingSoonRow, rowLanguage, type CatalogCard, type CatalogRowLike } from "./catalog-cards";
 import type { CatalogCategory, CatalogStream } from "./catalog-streams";
 import type { PriceChoice } from "./catalog-url";
+import { cardMatchesCustomOption, customGroupId, type ResolvedCustomOption } from "./catalog-custom-filters";
 
 /* ── engine ─────────────────────────────────────────────────────────── */
 
@@ -198,6 +199,8 @@ export interface CatalogCriteria {
   /** Only applied while the section shows its price-range filter. */
   priceRange: { min?: number; max?: number } | null;
   priceRangeOn: boolean;
+  /** Selected options of the authored groups (customFilters), groups with a selection only. */
+  custom?: { id: string; options: ResolvedCustomOption[] }[];
 }
 
 export const EMPTY_CRITERIA: CatalogCriteria = {
@@ -300,6 +303,12 @@ const rawFacetGroups = <R extends CatalogRowLike>(
       active: rangeActive,
       rowMatches: (r) => !!range && rowInPriceRange(r, range),
     },
+    // Authored groups (FORMAT, FOR…): card-level, OR inside the group.
+    ...(c.custom ?? []).map((g) => ({
+      id: customGroupId(g.id),
+      active: g.options.length > 0,
+      matches: (card: CatalogCard<R>) => g.options.some((o) => cardMatchesCustomOption(card, o)),
+    })),
   ];
 };
 
@@ -358,6 +367,10 @@ export const sessionOptions = <R extends CatalogRowLike>(sessionIds: string[]): 
 export const tagOptions = <R extends CatalogRowLike>(tags: string[]): CardOption<R>[] =>
   tags.map((tag) => ({ value: tag, rowMatches: (r) => rowMatchesExactTags(r as AnyRow, [tag]) }));
 
+/** The options of one authored group, for countFacetOptions(…, customGroupId(id), …). */
+export const customOptions = <R extends CatalogRowLike>(options: ResolvedCustomOption[]): CardOption<R>[] =>
+  options.map((o) => ({ value: o.id, matches: (card) => cardMatchesCustomOption(card, o) }));
+
 export const instructorOptions = <R extends CatalogRowLike>(names: string[]): CardOption<R>[] =>
   names.map((name) => ({ value: name, rowMatches: (r) => r.instructor === name }));
 
@@ -383,7 +396,8 @@ export type ChipGroup =
   | "tags"
   | "instructor"
   | "priceRange"
-  | "search";
+  | "search"
+  | "custom";
 
 export interface AppliedChip {
   key: string;
@@ -402,6 +416,8 @@ export interface ChipLabels {
   instructor: (name: string) => string;
   priceRange: (range: { min?: number; max?: number }) => string;
   search: (term: string) => string;
+  /** Authored group options; default = the option's own label. */
+  custom?: (groupId: string, option: ResolvedCustomOption) => string;
 }
 
 /** One removable chip per applied filter value, in sidebar order. */
@@ -413,6 +429,9 @@ export const buildAppliedChips = (c: CatalogCriteria, labels: ChipLabels): Appli
   c.languages.forEach((code) => push("language", code, labels.language(code)));
   if (c.price) push("price", c.price.kind === "max" ? `max:${c.price.max}` : c.price.kind, labels.price(c.price));
   c.badges.forEach((b) => push("badge", b, labels.badge(b)));
+  (c.custom ?? []).forEach((g) =>
+    g.options.forEach((o) => push("custom", `${g.id}:${o.id}`, labels.custom ? labels.custom(g.id, o) : o.label)),
+  );
   c.levels.forEach((l) => push("level", l, labels.level(l)));
   c.sessions.forEach((s) => push("session", s, labels.session(s)));
   c.tags.forEach((t) => push("tags", t, t));

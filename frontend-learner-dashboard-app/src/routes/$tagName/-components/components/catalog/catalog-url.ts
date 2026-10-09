@@ -18,6 +18,7 @@ import {
   type CourseCatalogSortOption,
 } from "../../../-types/course-catalogue-types";
 import type { CatalogDiscoveryConfig, ResolvedQuickFilter } from "./catalog-config";
+import { customValidation } from "./catalog-custom-filters";
 
 /** Not in the shared URL_PARAMS (yet): ?badge=new,bestseller. */
 export const BADGE_PARAM = "badge";
@@ -34,6 +35,11 @@ export interface DiscoveryState {
   price: PriceChoice | null;
   /** Badge filters (OR). */
   badges: CourseBadge[];
+  /**
+   * Authored option groups (courseCatalog.customFilters): group id -> option
+   * ids (OR inside a group). Present only on a section that has such groups.
+   */
+  custom?: Record<string, string[]>;
 }
 
 export const EMPTY_DISCOVERY_STATE: DiscoveryState = {
@@ -54,6 +60,10 @@ export interface DiscoveryValidation {
   prices: "any" | PriceChoice[];
   /** Badge filters that may be selected. */
   badges: CourseBadge[];
+  /** Custom groups (id -> option ids) that may be selected; absent when the section has none. */
+  custom?: Record<string, string[]>;
+  /** Categories selectable WITHOUT a stream (categoryFilter.scope 'all'); absent otherwise. */
+  rootCategories?: { slug: string }[];
 }
 
 /* ── sort ───────────────────────────────────────────────────────────── */
@@ -133,7 +143,8 @@ export const discoveryLinkScope = (
     | "priceFilter"
     | "categoryFilter"
     | "quickFilters"
-  >,
+  > &
+    Partial<Pick<CatalogDiscoveryConfig, "customFilters">>,
   ctx: {
     streams: DiscoveryValidation["streams"];
     /** The section shows its filter sidebar (showFilters is not false). */
@@ -153,7 +164,15 @@ export const discoveryLinkScope = (
   );
   const categoryControl = chips || (ctx.filtersShown && config.categoryFilter.enabled);
   const priceControl = chips || (ctx.filtersShown && config.priceFilter.enabled);
+  // Feature 'sidebar': custom groups and stream-less categories, only when the section has them.
+  const customFilters = chips || ctx.filtersShown ? config.customFilters ?? [] : [];
+  const rootCategories =
+    categoryControl && config.categoryFilter.scope === "all"
+      ? uniqueBySlug(ctx.streams.flatMap((s) => s.categories))
+      : [];
   return {
+    ...(customFilters.length ? { custom: customValidation(customFilters) } : {}),
+    ...(rootCategories.length ? { rootCategories } : {}),
     streams: categoryControl
       ? ctx.streams
       : ctx.streams.map((s) => ({ slug: s.slug, categories: [] })),
@@ -171,15 +190,26 @@ export const discoveryLinkScope = (
 
 const unique = <T>(list: T[]): T[] => [...new Set(list)];
 
+const uniqueBySlug = <T extends { slug: string }>(list: T[]): T[] => {
+  const seen = new Set<string>();
+  return list.filter((x) => (seen.has(lower(x.slug)) ? false : (seen.add(lower(x.slug)), true)));
+};
+
 const isBadge = (b: string): b is CourseBadge => ALL_BADGES.includes(b as CourseBadge);
 
 /** The discovery values a query string carries — syntax only; sanitizeDiscoveryState decides what applies. */
-export const parseDiscoveryParams = (searchStr: string | null | undefined): DiscoveryState => ({
+export const parseDiscoveryParams = (
+  searchStr: string | null | undefined,
+  customIds: string[] = [],
+): DiscoveryState => ({
   stream: readSearchParam(searchStr, URL_PARAMS.stream),
   categories: readListParam(searchStr, URL_PARAMS.category),
   languages: readListParam(searchStr, URL_PARAMS.language),
   price: parsePriceParam(readSearchParam(searchStr, URL_PARAMS.price)),
   badges: readListParam(searchStr, BADGE_PARAM).map(lower).filter(isBadge),
+  ...(customIds.length
+    ? { custom: Object.fromEntries(customIds.map((id) => [id, readListParam(searchStr, id).map(lower)])) }
+    : {}),
 });
 
 /**
@@ -192,25 +222,37 @@ export const sanitizeDiscoveryState = (s: DiscoveryState, v: DiscoveryValidation
   const stream = wanted ? v.streams.find((x) => lower(x.slug) === wanted) : undefined;
   const codes = new Set(v.languageCodes.map(lower));
   const price = s.price;
+  // Without a stream, categories apply only on a section listing every stream's (scope 'all').
+  const categoryPool = stream ? stream.categories : v.rootCategories ?? [];
   return {
     stream: stream?.slug ?? null,
-    categories: stream
+    categories: categoryPool.length
       ? unique(
           s.categories
-            .map((c) => stream.categories.find((x) => lower(x.slug) === lower(c))?.slug)
+            .map((c) => categoryPool.find((x) => lower(x.slug) === lower(c))?.slug)
             .filter((c): c is string => !!c),
         )
       : [],
     languages: unique(s.languages.map(lower).filter((c) => codes.has(c))),
     price: price && (v.prices === "any" || v.prices.some((p) => samePrice(p, price))) ? price : null,
     badges: unique(s.badges.filter((b) => v.badges.includes(b))),
+    ...(v.custom
+      ? {
+          custom: Object.fromEntries(
+            Object.entries(v.custom).map(([id, allowed]) => [
+              id,
+              unique((s.custom?.[id] ?? []).map(lower).filter((o) => allowed.includes(o))),
+            ]),
+          ),
+        }
+      : {}),
   };
 };
 
 export const readDiscoveryParams = (
   searchStr: string | null | undefined,
   v: DiscoveryValidation,
-): DiscoveryState => sanitizeDiscoveryState(parseDiscoveryParams(searchStr), v);
+): DiscoveryState => sanitizeDiscoveryState(parseDiscoveryParams(searchStr, Object.keys(v.custom ?? {})), v);
 
 /** Stream and category only — what a mega-menu link carries. */
 export const readStreamParams = (
@@ -231,6 +273,7 @@ export const discoveryPatchToParams = (
   if ("languages" in patch) out[URL_PARAMS.language] = patch.languages?.length ? patch.languages : null;
   if ("price" in patch) out[URL_PARAMS.price] = formatPriceParam(patch.price);
   if ("badges" in patch) out[BADGE_PARAM] = patch.badges?.length ? patch.badges : null;
+  for (const [id, list] of Object.entries(patch.custom ?? {})) out[id] = list.length ? list : null;
   return out;
 };
 
@@ -242,4 +285,8 @@ export const searchToParam = (term: string): string | null => {
 
 /** Number of applied discovery filters (the stream is a tab, not a filter). */
 export const countDiscoveryFilters = (s: DiscoveryState): number =>
-  s.categories.length + s.languages.length + (s.price ? 1 : 0) + s.badges.length;
+  s.categories.length +
+  s.languages.length +
+  (s.price ? 1 : 0) +
+  s.badges.length +
+  Object.values(s.custom ?? {}).reduce((n, list) => n + list.length, 0);

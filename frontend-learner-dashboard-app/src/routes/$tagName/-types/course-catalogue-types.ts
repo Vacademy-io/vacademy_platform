@@ -8,7 +8,7 @@ import type { CatalogueThemeSettings, SitePalette } from "../-utils/catalogue-pa
 import type { CourseFormatsSetting } from "../-utils/course-format";
 import type { CatalogHeroConfig } from "./catalog-hero-types";
 import type { CatalogStreamsTabsExtension } from "./catalog-tabs-types";
-import type { CatalogCustomFilterConfig, CatalogFilterSidebarConfig } from "./catalog-sidebar-types";
+import type { CatalogCategoryFilterExtension, CatalogCustomFilterConfig, CatalogFilterSidebarConfig, CatalogPriceFilterExtension } from "./catalog-sidebar-types";
 import type { CatalogColumnSectionConfig } from "./catalog-sections-types";
 import type { CatalogCardsRenderExtension } from "./catalog-cards-types";
 
@@ -480,9 +480,9 @@ export interface CourseCatalogProps {
   /** Filter by course language (globalSettings.courseLanguages must be on). */
   languageFilter?: { enabled?: boolean; label?: string };
   /** Free / Paid / Under an amount. */
-  priceFilter?: { enabled?: boolean; label?: string; showFree?: boolean; maxOptions?: number[] };
+  priceFilter?: { enabled?: boolean; label?: string; showFree?: boolean; maxOptions?: number[] } & CatalogPriceFilterExtension;
   /** Sub-folders of the selected stream (folder-library streams only). */
-  categoryFilter?: { enabled?: boolean; label?: string };
+  categoryFilter?: { enabled?: boolean; label?: string } & CatalogCategoryFilterExtension;
   /** One card per course with EN / हिं chips (globalSettings.courseLanguages must be on). */
   groupLanguageVersions?: boolean;
   /** Bestseller / Popular / New / Free badges on cards. */

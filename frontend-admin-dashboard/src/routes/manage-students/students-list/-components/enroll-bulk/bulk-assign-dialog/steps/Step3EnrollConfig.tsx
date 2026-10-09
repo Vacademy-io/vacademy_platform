@@ -37,6 +37,11 @@ import {
     SystemTerms,
 } from '@/routes/settings/-components/NamingSettings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
+import {
+    AdminDiscountField,
+    EMPTY_ADMIN_DISCOUNT,
+} from '@/components/common/payments/AdminDiscountField';
+import { canGrantAdminDiscounts, isDiscountablePlanType } from '@/services/admin-discounts';
 
 interface Props {
     instituteId: string;
@@ -61,6 +66,14 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
     });
     const isCpo = resolved?.paymentOption?.type === 'CPO';
     const cpoId = resolved?.complexPaymentOptionId ?? null;
+    const canDiscount =
+        isDiscountablePlanType(resolved?.paymentOption?.type) && canGrantAdminDiscounts(instituteId);
+    // Same plan the backend's DefaultInviteResolver enrolls against: an ACTIVE plan,
+    // DEFAULT-tagged first. Used only to price the discount preview.
+    const activePlans = (resolved?.paymentOption?.payment_plans ?? []).filter(
+        (p) => p.status === 'ACTIVE'
+    );
+    const resolvedPlan = activePlans.find((p) => p.tag === 'DEFAULT') ?? activePlans[0] ?? null;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -87,6 +100,8 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                                 // Reset CPO state on invite change — different invite may carry
                                 // a different (or no) CPO mirror.
                                 cpoConfig: undefined,
+                                // A discount priced against the old invite's plan no longer applies.
+                                adminDiscount: undefined,
                             })
                         }
                     />
@@ -130,6 +145,22 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                             {t('courseInviteSection.autoResolvedFromDefault')}
                         </span>
                     )}
+                </div>
+            )}
+
+            {canDiscount && resolvedPlan && (
+                <div className="mt-3 rounded-md border border-neutral-100 bg-neutral-50 p-3">
+                    <AdminDiscountField
+                        value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
+                        onChange={(v) => onUpdate({ adminDiscount: v })}
+                        paymentPlanId={resolvedPlan.id}
+                        isSubscription={resolved?.paymentOption?.type === 'SUBSCRIPTION'}
+                        currency={resolvedPlan.currency || 'INR'}
+                        packageSessionId={ps.packageSessionId}
+                        enrollInviteId={resolved?.invite?.id ?? ps.enrollInviteId ?? undefined}
+                        instituteId={instituteId}
+                        label="Discount (optional, applies to every selected learner)"
+                    />
                 </div>
             )}
 

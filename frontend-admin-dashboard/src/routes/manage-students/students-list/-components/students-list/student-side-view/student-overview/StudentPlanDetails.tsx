@@ -30,6 +30,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { useGetUserBasicDetails } from '@/services/get_user_basic_details';
 
 interface StudentPlanDetailsProps {
     userId: string;
@@ -228,7 +229,21 @@ const EnrollmentStatusBadge = ({
 const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string }) => {
     const { t } = useTranslation('manageStudentsPlanDetails');
     const applied = parseAppliedCoupon(plan);
+    // Admin-granted discount: name the granting admin (best-effort lookup).
+    const grantedById =
+        plan.discount_granted_by_user_id || plan.applied_coupon?.granted_by_user_id || null;
+    const { data: grantedByUsers } = useGetUserBasicDetails(grantedById ? [grantedById] : []);
     if (!applied) return null;
+    const grantedByName = grantedById
+        ? grantedByUsers?.find((u) => u.id === grantedById)?.name
+        : undefined;
+    const isAdminDiscount =
+        !!grantedById || (plan.applied_coupon?.discount_source || '').toUpperCase() === 'ADMIN';
+    const cycles = plan.applied_coupon?.apply_for_cycles;
+    const cyclesLabel =
+        isAdminDiscount && cycles != null
+            ? `${plan.discount_cycles_applied ?? 0}/${cycles} payment${cycles === 1 ? '' : 's'} discounted`
+            : null;
     const isPercentage = (applied.type || '').toUpperCase() === 'PERCENTAGE';
     const discountLabel = isPercentage
         ? applied.maxPoint
@@ -252,6 +267,17 @@ const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string
                         <span className="text-xs text-success-600">{discountLabel}</span>
                     )}
                 </div>
+                {isAdminDiscount && (
+                    <p
+                        className="mt-0.5 text-2xs text-success-700"
+                        title={plan.applied_coupon?.grant_reason || undefined}
+                    >
+                        {grantedByName ? `Discount by ${grantedByName}` : 'Admin discount'}
+                        {plan.discount_granted_at &&
+                            ` · ${formatDate(new Date(plan.discount_granted_at), 'dd MMM yyyy')}`}
+                        {cyclesLabel && ` · ${cyclesLabel}`}
+                    </p>
+                )}
             </div>
         </div>
     );

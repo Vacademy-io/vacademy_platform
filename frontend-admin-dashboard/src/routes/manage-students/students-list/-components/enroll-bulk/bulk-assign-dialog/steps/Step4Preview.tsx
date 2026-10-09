@@ -1,5 +1,6 @@
 import { BulkAssignResponse, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
+import { formatNumber } from '@/lib/formatters';
 import { CheckCircle, XCircle, SkipForward } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
@@ -47,6 +48,9 @@ const buildActionTakenLabels = (t: TFunction): Record<string, string> => ({
     NONE: t('table.emptyValue'),
 });
 
+const fmtAmount = (n: number | null | undefined): string =>
+    n == null ? '' : formatNumber(n, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
 /**
  * The backend reports an invite whose payment option has no plan as
  * "Config resolution failed: No active PaymentPlan found for PaymentOption=<uuid>",
@@ -71,6 +75,8 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
     const statusConfig = buildStatusConfig(t);
     const actionTakenLabels = buildActionTakenLabels(t);
     const emptyValue = t('table.emptyValue');
+    // Price columns only when an admin discount is in play for at least one row.
+    const showPricing = results.some((r) => (r.discount_amount ?? 0) > 0);
 
     return (
         <div className="flex flex-col gap-5 px-6 py-5">
@@ -178,6 +184,19 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                             <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">
                                 {t('table.headers.status')}
                             </th>
+                            {showPricing && (
+                                <>
+                                    <th className="px-4 py-2 text-end text-xs font-semibold text-neutral-500">
+                                        {t('table.headers.gross', { defaultValue: 'Price' })}
+                                    </th>
+                                    <th className="px-4 py-2 text-end text-xs font-semibold text-neutral-500">
+                                        {t('table.headers.discount', { defaultValue: 'Discount' })}
+                                    </th>
+                                    <th className="px-4 py-2 text-end text-xs font-semibold text-neutral-500">
+                                        {t('table.headers.net', { defaultValue: 'Net' })}
+                                    </th>
+                                </>
+                            )}
                             <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">
                                 {t('table.headers.note')}
                             </th>
@@ -219,6 +238,25 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                             {config.label}
                                         </span>
                                     </td>
+                                    {showPricing && (
+                                        <>
+                                            <td className="px-4 py-3 text-end tabular-nums text-neutral-500">
+                                                {r.gross_amount != null
+                                                    ? fmtAmount(r.gross_amount)
+                                                    : emptyValue}
+                                            </td>
+                                            <td className="px-4 py-3 text-end tabular-nums text-success-700">
+                                                {(r.discount_amount ?? 0) > 0
+                                                    ? `−${fmtAmount(r.discount_amount)}`
+                                                    : emptyValue}
+                                            </td>
+                                            <td className="px-4 py-3 text-end font-medium tabular-nums text-neutral-800">
+                                                {r.net_amount != null
+                                                    ? fmtAmount(r.net_amount)
+                                                    : emptyValue}
+                                            </td>
+                                        </>
+                                    )}
                                     <td className="px-4 py-3 text-xs text-neutral-400">
                                         {r.payment_option_type === 'CPO' ? (
                                             <div className="flex flex-col gap-0.5">

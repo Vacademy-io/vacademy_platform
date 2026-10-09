@@ -44,6 +44,7 @@ import {
 import { useCanDeletePayments } from '@/routes/manage-payments/-hooks/useCanDeletePayments';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
 import { CreateInvoiceDialog } from './create-invoice-dialog';
+import { useGetUserBasicDetails } from '@/services/get_user_basic_details';
 import { ProfileSectionCard, ProfileEmpty, ProfileMiniBar } from '../profile-ui';
 import { useUserCpoUserPlans } from '../../../../-services/cpoSideViewService';
 import type { CpoUserPlanSummary } from '../../../../-types/cpo-side-view-types';
@@ -330,6 +331,13 @@ const InvoicesList = ({
     const [deleteTarget, setDeleteTarget] = useState<PermanentDeleteTarget | null>(null);
     const totalPages = Math.ceil(invoices.length / INVOICES_PER_PAGE);
     const paged = invoices.slice(page * INVOICES_PER_PAGE, (page + 1) * INVOICES_PER_PAGE);
+    // Names of the admins who granted a discount on the visible invoices (one batched lookup).
+    const grantedByIds = Array.from(
+        new Set(paged.map((inv) => inv.discount_granted_by_user_id).filter((id): id is string => !!id))
+    );
+    const { data: grantedByUsers } = useGetUserBasicDetails(grantedByIds);
+    const grantedByName = (id?: string | null) =>
+        id ? grantedByUsers?.find((u) => u.id === id)?.name : undefined;
 
     // Voids a mistaken PENDING_PAYMENT invoice. Mirrors the Reject action in
     // manage-suborg-teams/sub-org-analytics-panel — same endpoint, same terminal semantics.
@@ -453,12 +461,18 @@ const InvoicesList = ({
                                                             li.item_type?.includes('REFERRAL')
                                                     );
                                                     const label = couponItem?.description || t('invoicesList.discountFallback');
+                                                    // Admin-granted: say who gave it.
+                                                    const byAdmin = inv.discount_granted_by_user_id
+                                                        ? grantedByName(inv.discount_granted_by_user_id)
+                                                            ? `Discount by ${grantedByName(inv.discount_granted_by_user_id)}`
+                                                            : 'Admin discount'
+                                                        : null;
                                                     return (
                                                         <span
                                                             className="inline-flex shrink-0 items-center rounded border border-success-200 bg-success-50 px-1.5 py-0.5 text-caption font-medium text-success-700"
-                                                            title={`${label}: ${formatCurrency(inv.discount_amount, inv.currency)} off`}
+                                                            title={`${label}: ${formatCurrency(inv.discount_amount, inv.currency)} off${byAdmin ? ` (${byAdmin})` : ''}`}
                                                         >
-                                                            {label} −
+                                                            {byAdmin ?? label} −
                                                             {formatCurrency(inv.discount_amount, inv.currency)}
                                                         </span>
                                                     );

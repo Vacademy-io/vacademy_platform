@@ -48,6 +48,17 @@ import {
     type InvoiceDTO,
     type InvoicePlaceholderValue,
 } from '@/services/invoice-service';
+import {
+    AdminDiscountField,
+    EMPTY_ADMIN_DISCOUNT,
+} from '@/components/common/payments/AdminDiscountField';
+import {
+    canGrantAdminDiscounts,
+    getAdminDiscountValidationError,
+    toAdminDiscountPayload,
+    type AdminDiscountPreview,
+    type AdminDiscountRequest,
+} from '@/services/admin-discounts';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -418,6 +429,8 @@ export function CreateInvoiceDialog({
 }: CreateInvoiceDialogProps) {
     const { t } = useTranslation('manageStudentsCreateInvoiceDialog');
     const isEditing = !!editInvoice;
+    // Discounts are for new invoices only (the update endpoint doesn't take one), by admins.
+    const showDiscount = !isEditing && canGrantAdminDiscounts(instituteId);
     const [successResult, setSuccessResult] = useState<AdminInvoicePaymentLinkResponse | null>(null);
     const [step, setStep] = useState<'items' | 'review'>('items');
 
@@ -439,6 +452,10 @@ export function CreateInvoiceDialog({
     // rate (e.g. clearing "18" to type "12.5") without the display snapping to "0" on every
     // keystroke. null = untouched (use the institute default); "" = cleared but not yet retyped.
     const [taxRatePercentText, setTaxRatePercentText] = useState<string | null>(null);
+
+    // Admin-granted discount (new invoices only — the update endpoint doesn't take one).
+    const [adminDiscount, setAdminDiscount] = useState<AdminDiscountRequest>(EMPTY_ADMIN_DISCOUNT);
+    const [discountPreview, setDiscountPreview] = useState<AdminDiscountPreview | null>(null);
 
     const { data: invoiceSettings, isLoading: isSettingsLoading } = useQuery({
         queryKey: ['invoice-settings'],
@@ -473,6 +490,8 @@ export function CreateInvoiceDialog({
         if (!open) return;
         setTaxEnabledOverride(null);
         setTaxRatePercentText(null);
+        setAdminDiscount(EMPTY_ADMIN_DISCOUNT);
+        setDiscountPreview(null);
         // Edit takes precedence over duplicate; both seed from an existing invoice's items,
         // but only edit carries the original's due date forward.
         const seedFrom = editInvoice || duplicateFrom;
@@ -524,15 +543,22 @@ export function CreateInvoiceDialog({
     const subtotal = watchedLineItems.reduce((sum, item) => {
         return sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
     }, 0);
+    // The backend applies the admin discount as a DISCOUNT line on the pre-tax subtotal,
+    // so tax is computed on the discounted amount.
+    const discountAmount =
+        showDiscount && adminDiscount.mode !== 'NONE' && discountPreview
+            ? Math.min(subtotal, discountPreview.discount_amount || 0)
+            : 0;
+    const taxableSubtotal = subtotal - discountAmount;
     let taxAmount = 0;
-    let total = subtotal;
+    let total = taxableSubtotal;
     if (taxEnabled && taxRate > 0) {
         if (taxIncluded) {
-            const netSubtotal = subtotal / (1 + taxRate / 100);
-            taxAmount = subtotal - netSubtotal;
+            const netSubtotal = taxableSubtotal / (1 + taxRate / 100);
+            taxAmount = taxableSubtotal - netSubtotal;
         } else {
-            taxAmount = subtotal * (taxRate / 100);
-            total = subtotal + taxAmount;
+            taxAmount = taxableSubtotal * (taxRate / 100);
+            total = taxableSubtotal + taxAmount;
         }
     }
 
@@ -547,6 +573,8 @@ export function CreateInvoiceDialog({
         setPreviewError(null);
         setTaxEnabledOverride(null);
         setTaxRatePercentText(null);
+        setAdminDiscount(EMPTY_ADMIN_DISCOUNT);
+        setDiscountPreview(null);
         onOpenChange(false);
     };
 
@@ -588,6 +616,10 @@ export function CreateInvoiceDialog({
             // institute's INVOICE_SETTING default applies, same as before this feature.
             tax_enabled: taxEnabledOverride ?? undefined,
             tax_rate_percent: taxRatePercentText !== null ? Number(taxRatePercentText) || 0 : undefined,
+            // New invoices only; omitted for "No discount". Cycles don't apply to an invoice.
+            admin_discount: !showDiscount
+                ? undefined
+                : toAdminDiscountPayload(adminDiscount, { includeCycles: false }),
         };
     };
 
@@ -638,6 +670,13 @@ export function CreateInvoiceDialog({
     const handleNext = async () => {
         const ok = await form.trigger();
         if (!ok) return;
+        if (showDiscount) {
+            const discountErr = getAdminDiscountValidationError(adminDiscount, subtotal);
+            if (discountErr) {
+                toast.error(discountErr);
+                return;
+            }
+        }
         const isSeed = resolvedValues === null;
         // Re-entry (Back → Next): setStep('review') re-triggers the debounce effect, which would
         // fire a second identical preview. Suppress that one — the direct runPreview(false) below
@@ -835,6 +874,24 @@ export function CreateInvoiceDialog({
                         </MyButton>
                     </div>
 
+                    {/* ── Admin discount (new invoices only) ── */}
+                    {showDiscount && (
+                        <div className="rounded-lg border border-neutral-200 px-4 py-3">
+                            <AdminDiscountField
+                                value={adminDiscount}
+                                onChange={setAdminDiscount}
+                                grossAmount={subtotal}
+                                currency={currency}
+                                instituteId={instituteId}
+                                onPreview={setDiscountPreview}
+                                hideCycles
+                                label={t('manageStudentsCreateInvoiceDialog:discount.label', {
+                                    defaultValue: 'Discount (optional)',
+                                })}
+                            />
+                        </div>
+                    )}
+
                     {/* ── Summary ── */}
                     <div className="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3">
                         <div className="space-y-2 text-body">
@@ -842,6 +899,16 @@ export function CreateInvoiceDialog({
                                 <span>{t('manageStudentsCreateInvoiceDialog:summary.subtotal')}</span>
                                 <span className="tabular-nums">{fmt(subtotal, currency)}</span>
                             </div>
+                            {discountAmount > 0 && (
+                                <div className="flex justify-between text-success-700">
+                                    <span>
+                                        {t('manageStudentsCreateInvoiceDialog:summary.discount', {
+                                            defaultValue: 'Discount',
+                                        })}
+                                    </span>
+                                    <span className="tabular-nums">−{fmt(discountAmount, currency)}</span>
+                                </div>
+                            )}
 
                             {/* Tax: defaults to the institute's Invoice Settings, but editable
                                 (or removable) per invoice. */}

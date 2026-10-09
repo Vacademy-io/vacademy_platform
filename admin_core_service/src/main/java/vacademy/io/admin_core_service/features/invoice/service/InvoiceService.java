@@ -86,6 +86,10 @@ public class InvoiceService {
     private InvoiceLineItemRepository invoiceLineItemRepository;
 
     @Autowired
+    @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService adminDiscountService;
+
+    @Autowired
     private InvoiceBillingProfileService invoiceBillingProfileService;
 
     @Autowired
@@ -218,6 +222,10 @@ public class InvoiceService {
     private String buildDiscountDescription(PaymentLogLineItem item) {
         String source = item.getSource();
         String type = item.getType();
+        // Admin-granted discount: the grant reason is an internal note, never printed.
+        if ("ADMIN_DISCOUNT".equals(type)) {
+            return "Discount";
+        }
         boolean looksLikeCoupon = (type != null && type.toUpperCase().contains("COUPON"))
                 || (source != null && source.toLowerCase().contains("coupon"));
         if (looksLikeCoupon && item.getSourceId() != null) {
@@ -4543,16 +4551,78 @@ public class InvoiceService {
     // Admin-created invoice: create, pay, and mark paid
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** The admin discount applied to an admin invoice: its rule, amount and audit trail. */
+    private record AdminInvoiceDiscount(
+            vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount rule,
+            BigDecimal amount,
+            Map<String, Object> audit) {
+    }
+
+    /**
+     * Turns {@code request.adminDiscount} into a negative DISCOUNT line appended to the
+     * request's line items, computed on the pre-discount subtotal. Everything downstream
+     * (subtotal, tax, total, stored line items, PDF, preview) then reads the discounted
+     * figures with no special casing. Returns null when no discount was asked for.
+     */
+    private AdminInvoiceDiscount applyAdminInvoiceDiscount(AdminCreateInvoiceRequestDTO request,
+                                                           String adminUserId, boolean persist) {
+        var req = request.getAdminDiscount();
+        if (!vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService
+                .isRequested(req)) {
+            return null;
+        }
+        BigDecimal gross = request.getLineItems().stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var rule = adminDiscountService.resolveForInvoice(
+                req, request.getInstituteId(), gross.doubleValue(), adminUserId, persist);
+        double off = Math.min(
+                vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil
+                        .computeDiscount(rule, gross.doubleValue()),
+                gross.doubleValue());
+        BigDecimal amount = BigDecimal.valueOf(off).setScale(2, java.math.RoundingMode.HALF_UP);
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        String label = rule.getCouponCode() != null && StringUtils.hasText(rule.getCouponCode().getCode())
+                ? "Coupon " + rule.getCouponCode().getCode()
+                : "Discount";
+        AdminInvoiceLineItemRequestDTO discountLine = new AdminInvoiceLineItemRequestDTO();
+        discountLine.setDescription(label);
+        discountLine.setQuantity(1);
+        discountLine.setUnitPrice(amount.negate());
+        discountLine.setItemType("DISCOUNT");
+        List<AdminInvoiceLineItemRequestDTO> items = new ArrayList<>(request.getLineItems());
+        items.add(discountLine);
+        request.setLineItems(items);
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put("applied_coupon_discount_id", rule.getId());
+        audit.put("mode", req.getMode());
+        audit.put("discount_type", rule.getDiscountType());
+        audit.put("discount_value", rule.getDiscountPoint());
+        audit.put("discount_amount", amount);
+        audit.put("reason", req.getReason());
+        audit.put("granted_by_user_id", adminUserId);
+        return new AdminInvoiceDiscount(rule, amount, audit);
+    }
+
     /**
      * Admin creates one invoice per userId in the request (bulk or single).
      * No UserPlan or PackageSession required — line items are free-form.
      */
     @Transactional
-    public List<AdminInvoicePaymentLinkResponseDTO> createAdminInvoices(AdminCreateInvoiceRequestDTO request) {
+    public List<AdminInvoicePaymentLinkResponseDTO> createAdminInvoices(AdminCreateInvoiceRequestDTO request,
+                                                                        String adminUserId) {
         List<AdminInvoicePaymentLinkResponseDTO> results = new ArrayList<>();
 
         Institute institute = instituteRepository.findById(request.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
+
+        // Admin discount becomes a negative DISCOUNT line, so the subtotal, tax, total,
+        // stored line items and PDF below all see the discounted figures.
+        AdminInvoiceDiscount adminInvoiceDiscount = applyAdminInvoiceDiscount(request, adminUserId, true);
 
         // Read institute invoice settings once for all users in this bulk request
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
@@ -4653,7 +4723,12 @@ public class InvoiceService {
             invoice.setInvoiceDate(invoiceDate);
             invoice.setDueDate(request.getDueDate());
             invoice.setSubtotal(subtotal);
-            invoice.setDiscountAmount(BigDecimal.ZERO);
+            invoice.setDiscountAmount(adminInvoiceDiscount != null ? adminInvoiceDiscount.amount() : BigDecimal.ZERO);
+            if (adminInvoiceDiscount != null) {
+                invoice.setDiscountGrantedByUserId(adminUserId);
+                // One coupon redemption per billed learner.
+                adminDiscountService.consumeCouponUse(adminInvoiceDiscount.rule());
+            }
             invoice.setTaxAmount(taxAmount);
             invoice.setTotalAmount(totalAmount);
             invoice.setCurrency(request.getCurrency());
@@ -4668,6 +4743,9 @@ public class InvoiceService {
                 Map<String, Object> dataJson = new HashMap<>();
                 if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
                 if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
+                if (adminInvoiceDiscount != null) {
+                    dataJson.put("admin_discount", adminInvoiceDiscount.audit());
+                }
                 if (proformaMode) {
                     // Read back by finalizeProformaOnPayment: the flag says "still a proforma",
                     // the doc type says which real series to draw from once it is paid.
@@ -5900,6 +5978,9 @@ public class InvoiceService {
     public AdminInvoicePreviewResponseDTO previewAdminInvoice(AdminCreateInvoiceRequestDTO request) {
         Institute institute = instituteRepository.findById(request.getInstituteId())
                 .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
+
+        // Same discount line create would add — computed, never persisted or redeemed.
+        applyAdminInvoiceDiscount(request, null, false);
 
         // Billed user = first id in the request (the dialog is single-user). Missing user
         // still previews with blank party fields the admin can fill via overrides.

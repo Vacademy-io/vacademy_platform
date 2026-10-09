@@ -109,8 +109,19 @@ export interface UserPlan {
         discount_type?: string | null;
         discount_point?: number | null;
         max_discount_point?: number | null;
+        /** 'ADMIN' for an admin-granted discount. */
         discount_source?: string | null;
+        granted_by_user_id?: string | null;
+        /** Internal note from the granting admin — never shown to the learner. */
+        grant_reason?: string | null;
+        /** SUBSCRIPTION: null = every cycle, N = first N charges. */
+        apply_for_cycles?: number | null;
     } | null;
+    /** Set when an admin granted the discount on this plan. */
+    discount_granted_by_user_id?: string | null;
+    discount_granted_at?: string | null;
+    /** How many billing cycles have been charged at the discounted price so far. */
+    discount_cycles_applied?: number | null;
     enroll_invite_id: string;
     payment_option_id: string;
     payment_option_json: string;

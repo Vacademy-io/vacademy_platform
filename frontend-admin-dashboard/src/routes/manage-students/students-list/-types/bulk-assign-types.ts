@@ -1,6 +1,7 @@
 // ==================== REQUEST TYPES ====================
 
 import type { DiscountSpec } from './cpo-side-view-types';
+import type { AdminDiscountRequest } from '@/services/admin-discounts';
 
 /**
  * Per-installment override carried inside `cpo_config.installment_overrides`.
@@ -74,6 +75,12 @@ export interface AssignmentItem {
      * with no sub-org and fires LEARNER_BATCH_ENROLLMENT instead of SUB_ORG_MEMBER_ENROLLMENT.
      */
     skip_sub_org?: boolean;
+
+    /**
+     * Admin-granted discount on the plan this assignment enrolls into (ONE_TIME /
+     * SUBSCRIPTION only — a CPO plan with a discount fails the item).
+     */
+    admin_discount?: AdminDiscountRequest | null;
 }
 
 export interface AssignOptions {
@@ -173,6 +180,10 @@ export interface AssignResultItem {
     cpo_installment_count?: number | null;
     cpo_initial_payment_amount?: number | null;
     cpo_initial_payment_mode?: 'OFFLINE' | 'SKIP' | null;
+    /** Plan price before / discount / after the admin discount (also on dry_run). */
+    gross_amount?: number | null;
+    discount_amount?: number | null;
+    net_amount?: number | null;
 }
 
 export interface BulkAssignResponse {
@@ -219,6 +230,7 @@ export interface PaymentPlan {
     validity_in_days: number | null;
     status: string;
     tag: string | null;
+    currency?: string | null;
 }
 
 export interface PaymentOption {
@@ -350,6 +362,12 @@ export interface SelectedPackageSession {
      * AssignmentItem. Applies to every learner selected in the bulk run.
      */
     cpoConfig?: CpoEnrollmentConfig;
+
+    /**
+     * Admin-granted discount for this course (Step 3). Applies to every learner in the
+     * bulk run; sent as `admin_discount` on the AssignmentItem. Absent / NONE = no discount.
+     */
+    adminDiscount?: AdminDiscountRequest;
 
     /**
      * True when `package_session.is_org_associated` — enrolling into it requires choosing the

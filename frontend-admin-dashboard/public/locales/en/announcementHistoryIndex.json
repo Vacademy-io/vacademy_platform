@@ -40,8 +40,11 @@
         "actions": "Actions",
         "loading": "Loading…",
         "empty": "No announcements",
-        "recipientsPrefix": "Recipients:",
-        "recipientsMore": "+{{count}}"
+        "recipientsPrefix": "To:",
+        "recipientsMore": "+{{count}} more",
+        "channels": "Sent via",
+        "loadFailed": "Could not load announcements.",
+        "noMatch": "No announcements match this search on this page."
     },
     "actions": {
         "view": "View",
@@ -49,7 +52,8 @@
         "approve": "Approve",
         "reject": "Reject",
         "deliverNow": "Deliver now",
-        "delete": "Delete"
+        "delete": "Delete",
+        "more": "More actions"
     },
     "toasts": {
         "statsLoadFailed": "Failed to load stats",
@@ -67,7 +71,18 @@
         "content": "Content",
         "modes": "Modes",
         "mediums": "Mediums",
-        "recipients": "Recipients"
+        "recipients": "Recipients",
+        "close": "Close",
+        "viewStats": "View delivery stats",
+        "createdLine": "By {{name}} · {{when}}",
+        "system": "System",
+        "createdBy": "Created by",
+        "createdAt": "Created at",
+        "schedule": "Schedule",
+        "noContent": "No message content.",
+        "recipientsCount_one": "Recipients ({{count}})",
+        "recipientsCount_other": "Recipients ({{count}})",
+        "noRecipients": "No recipients."
     },
     "statsDialog": {
         "title": "Delivery Stats",
@@ -101,13 +116,26 @@
             "loading": "Loading recipients...",
             "empty": "No recipients found for this announcement.",
             "table": {
-                "name": "Name",
+                "name": "Recipient",
                 "mode": "Mode",
                 "status": "Status",
                 "seenAt": "Seen at",
-                "dismissedAt": "Dismissed at"
+                "dismissedAt": "Dismissed at",
+                "deliveredAt": "Delivered at"
             },
-            "pagePagination": "Page {{page}} of {{totalPages}}"
+            "pagePagination": "Page {{page}} of {{totalPages}}",
+            "titleCount_one": "Recipients ({{count}})",
+            "titleCount_other": "Recipients ({{count}})"
+        },
+        "nav": {
+            "recipients": "Recipients",
+            "overview": "Delivery overview",
+            "email": "Email"
+        },
+        "rates": {
+            "delivery": "Delivery rate",
+            "read": "Read rate",
+            "dismiss": "Dismiss rate"
         }
     },
     "rejectDialog": {
@@ -121,6 +149,55 @@
         "immediate": "Immediate",
         "oneTime": "One-time",
         "recurring": "Recurring",
-        "cron": "CRON: {{expr}}"
+        "cron": "CRON: {{expr}}",
+        "nextRun": "Next: {{when}}"
+    },
+    "subheading": "Every announcement and system alert sent from this institute, with who received it.",
+    "createAnnouncement": "Create Announcement",
+    "retry": "Retry",
+    "recipients": {
+        "unknownUser": "Unknown user",
+        "unknownBatch": "Batch"
+    },
+    "recipientTypes": {
+        "USER": "User",
+        "ROLE": "Role",
+        "PACKAGE_SESSION": "Batch",
+        "PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES": "Batch roles",
+        "TAG": "Tag",
+        "CUSTOM_FIELD_FILTER": "Custom field filter",
+        "AUDIENCE": "Audience"
+    },
+    "roles": {
+        "ADMIN": "Admin",
+        "TEACHER": "Teacher",
+        "STUDENT": "Student",
+        "SYSTEM": "System"
+    },
+    "modes": {
+        "SYSTEM_ALERT": "System alert",
+        "DASHBOARD_PIN": "Dashboard pin",
+        "DM": "Direct message",
+        "STREAM": "Stream",
+        "RESOURCES": "Resources",
+        "COMMUNITY": "Community",
+        "TASKS": "Tasks",
+        "APP_OVERLAY": "App overlay"
+    },
+    "mediums": {
+        "WHATSAPP": "WhatsApp",
+        "PUSH_NOTIFICATION": "Push notification",
+        "EMAIL": "Email"
+    },
+    "messageStatus": {
+        "PENDING": "Pending",
+        "SENT": "Sent",
+        "DELIVERED": "Delivered",
+        "FAILED": "Failed",
+        "READ": "Read"
+    },
+    "deleteDialog": {
+        "title": "Delete announcement?",
+        "description": "\"{{title}}\" will be removed from history. This cannot be undone."
     }
 }

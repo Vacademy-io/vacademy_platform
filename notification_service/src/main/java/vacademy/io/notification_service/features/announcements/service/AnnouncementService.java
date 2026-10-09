@@ -147,7 +147,7 @@ public class AnnouncementService {
     @Transactional(readOnly = true)
     public Page<AnnouncementResponse> getAnnouncementsByInstitute(String instituteId, Pageable pageable) {
         return announcementRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable)
-                .map(this::mapToAnnouncementResponse);
+                .map(this::mapToListResponse);
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +155,7 @@ public class AnnouncementService {
                                                                           AnnouncementStatus status, 
                                                                           Pageable pageable) {
         return announcementRepository.findByInstituteIdAndStatusOrderByCreatedAtDesc(instituteId, status, pageable)
-                .map(this::mapToAnnouncementResponse);
+                .map(this::mapToListResponse);
     }
 
     @Transactional(readOnly = true)
@@ -589,6 +589,17 @@ public class AnnouncementService {
     }
 
     private AnnouncementResponse mapToAnnouncementResponse(Announcement announcement) {
+        return mapToAnnouncementResponse(announcement, true);
+    }
+
+    // List rows skip stats: the email part reads notification_log by source_id, which has no index,
+    // so every row cost a full scan of that table. The history page loads stats per row on demand
+    // from /{id}/stats instead.
+    private AnnouncementResponse mapToListResponse(Announcement announcement) {
+        return mapToAnnouncementResponse(announcement, false);
+    }
+
+    private AnnouncementResponse mapToAnnouncementResponse(Announcement announcement, boolean includeStats) {
         // Map entity to response DTO with all related data
         AnnouncementResponse response = new AnnouncementResponse();
         response.setId(announcement.getId());
@@ -693,7 +704,9 @@ public class AnnouncementService {
                 });
         
         // Map stats
-        response.setStats(computeAnnouncementStats(announcement.getId()));
+        if (includeStats) {
+            response.setStats(computeAnnouncementStats(announcement.getId()));
+        }
         
         return response;
     }

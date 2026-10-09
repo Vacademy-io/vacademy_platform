@@ -17,8 +17,8 @@ class ReceiptAmountInWordsTest {
     }
 
     @Test
-    @DisplayName("the amount on the sample I2CAN receipt reads as the client prints it")
-    void sampleReceipt() {
+    @DisplayName("a round thousand reads the way a receipt prints it")
+    void roundThousand() {
         assertEquals("FIVE THOUSAND only", words("5000"));
     }
 
@@ -60,12 +60,12 @@ class ReceiptAmountInWordsTest {
     @Test
     @DisplayName("the course code is the prefix of a plan name, and nothing when there is no code")
     void courseCode() {
-        assertEquals("PGDAM",
-                InvoiceService.deriveCourseCode("PGDAM - Post Graduate Diploma in Aesthetic Medicine (Offline)"));
-        assertEquals("B&WSSC", InvoiceService.deriveCourseCode("B&WSSC - Beauty and Wellness"));
+        assertEquals("PGDXX",
+                InvoiceService.deriveCourseCode("PGDXX - Post Graduate Diploma in Example Studies (Offline)"));
+        assertEquals("A&B", InvoiceService.deriveCourseCode("A&B - Alpha and Beta"));
         // a plain course name carries no code, and a guess on a receipt is worse than a blank
-        assertEquals("", InvoiceService.deriveCourseCode("Post Graduate Diploma in Aesthetic Medicine Pune Offline"));
-        assertEquals("", InvoiceService.deriveCourseCode("Nutrition - In Skin"));
+        assertEquals("", InvoiceService.deriveCourseCode("Post Graduate Diploma in Example Studies"));
+        assertEquals("", InvoiceService.deriveCourseCode("Beginners - Evening Batch"));
         assertEquals("", InvoiceService.deriveCourseCode(null));
         assertEquals("", InvoiceService.deriveCourseCode(""));
     }

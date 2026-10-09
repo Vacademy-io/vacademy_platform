@@ -8,6 +8,8 @@ import {
     type StudentDashboardWidgetConfig,
     type StudentDashboardWidgetId,
     type StudentAllCoursesCustomTab,
+    type StudentAllCoursesCustomTabProductPage,
+    type StudentAllCoursesCustomTabType,
 } from '@/types/student-display-settings';
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from '@/constants/display-settings/student-defaults';
 
@@ -49,6 +51,19 @@ function mergeArrayById<T extends { id: string }>(
     return Array.from(byId.values());
 }
 
+const CUSTOM_COURSE_TAB_TYPES: ReadonlyArray<StudentAllCoursesCustomTabType> = [
+    'TAG',
+    'COURSES',
+    'FREE_COURSES',
+    'LIVE_SESSIONS',
+    'PRODUCT_PAGES',
+];
+
+const stringList = (value: unknown): string[] =>
+    Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === 'string' && v.length > 0)
+        : [];
+
 /** Drops custom Courses-page tabs without an id and fills missing fields. */
 function normalizeCustomCourseTabs(
     incoming: Array<Partial<StudentAllCoursesCustomTab>> | undefined
@@ -59,8 +74,22 @@ function normalizeCustomCourseTabs(
         .map((t) => ({
             id: t.id as string,
             label: typeof t.label === 'string' ? t.label : '',
-            tags: Array.isArray(t.tags)
-                ? t.tags.filter((tag): tag is string => typeof tag === 'string')
+            // Tabs saved before types existed are tag tabs.
+            type: CUSTOM_COURSE_TAB_TYPES.includes(t.type as StudentAllCoursesCustomTabType)
+                ? (t.type as StudentAllCoursesCustomTabType)
+                : 'TAG',
+            tags: stringList(t.tags),
+            courseIds: stringList(t.courseIds),
+            productPages: Array.isArray(t.productPages)
+                ? t.productPages
+                      .filter(
+                          (p): p is StudentAllCoursesCustomTabProductPage =>
+                              typeof p?.code === 'string' && p.code.length > 0
+                      )
+                      .map((p) => ({
+                          code: p.code,
+                          name: typeof p.name === 'string' ? p.name : p.code,
+                      }))
                 : [],
             order: typeof t.order === 'number' ? t.order : 0,
             visible: t.visible ?? true,

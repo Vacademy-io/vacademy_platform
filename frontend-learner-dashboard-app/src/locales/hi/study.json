@@ -3,7 +3,9 @@
         "tab": {
             "all": "सभी {{courses}}",
             "inProgress": "जारी",
-            "completed": "पूर्ण"
+            "completed": "पूर्ण",
+            "scrollStart": "टैब पीछे स्क्रॉल करें",
+            "scrollEnd": "टैब आगे स्क्रॉल करें"
         },
         "toast": {
             "loadError": "{{courses}} लोड करते समय कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
@@ -31,6 +33,11 @@
         },
         "card": {
             "untitledPackage": "बिना शीर्षक का पैकेज"
+        },
+        "customTab": {
+            "open": "खोलें",
+            "coursesCount": "{{count}} कोर्स",
+            "productPagesEmpty": "यहाँ अभी दिखाने को कुछ नहीं है"
         }
     },
     "filters": {

@@ -1,7 +1,7 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute } from "@tanstack/react-router";
 import { Helmet } from "react-helmet";
-import { useEffect, useState, useLayoutEffect, useCallback, useMemo } from "react";
+import { useEffect, useState, useLayoutEffect, useCallback, useMemo, type ReactNode } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useLiveSessions } from "./-hooks/useLiveSessions";
 import { usePastSessions } from "./-hooks/usePastSessions";
@@ -84,6 +84,18 @@ export const Route = createFileRoute("/study-library/live-class/")({
 });
 
 function RouteComponent() {
+  return <LiveClassView />;
+}
+
+const EmbeddedShell = ({ children }: { children: ReactNode }) => <>{children}</>;
+
+/**
+ * The learner's live/upcoming session list. `embedded` drops the page chrome
+ * (layout, nav heading, document title) so another screen can host it — the
+ * Courses page's "Live sessions" custom tab does.
+ */
+export function LiveClassView({ embedded = false }: { embedded?: boolean }) {
+  const Shell = embedded ? EmbeddedShell : LayoutContainer;
   const { t } = useTranslation("study");
   const liveSessionTerm = getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession);
   const liveSessionsTerm = getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession);
@@ -209,8 +221,9 @@ function RouteComponent() {
 
 
   useLayoutEffect(() => {
+    if (embedded) return;
     setNavHeading(getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession));
-  }, [setNavHeading]);
+  }, [setNavHeading, embedded]);
   const hasNextPage = (sessions?.totalReturned ?? 0) === 10;
 
   const formatDateTime = (date: string, time: string, timezone?: string) => {
@@ -1315,7 +1328,7 @@ function RouteComponent() {
 
   if (isLoading) {
     return (
-      <LayoutContainer>
+      <Shell>
         <div className="flex items-center justify-center min-h-52">
           <div className="flex flex-col items-center gap-stack">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -1324,31 +1337,33 @@ function RouteComponent() {
             </div>
           </div>
         </div>
-      </LayoutContainer>
+      </Shell>
     );
   }
 
   if (error) {
     return (
-      <LayoutContainer>
+      <Shell>
         <div className="p-4 border border-red-200 dark:border-red-900 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300">
           <div className="flex items-center gap-2">
             <span className="font-medium">{t("liveClass.state.errorLoadingPrefix")}</span>
             <span>{(error as Error).message}</span>
           </div>
         </div>
-      </LayoutContainer>
+      </Shell>
     );
   }
 
   const liveSessions = selectedView === "list" ? derivedLiveSessions : [];
   const upcomingSessions = selectedView === "list" ? derivedUpcomingSessions : [];
   return (
-    <LayoutContainer>
-      <Helmet>
-        <title>{document?.title || t("liveClass.meta.pageTitle", { liveClasses: liveSessionsTerm })}</title>
-        <meta name="description" content={t("liveClass.meta.pageDescription", { liveClasses: liveSessionsTerm.toLowerCase() })} />
-      </Helmet>
+    <Shell>
+      {!embedded && (
+        <Helmet>
+          <title>{document?.title || t("liveClass.meta.pageTitle", { liveClasses: liveSessionsTerm })}</title>
+          <meta name="description" content={t("liveClass.meta.pageDescription", { liveClasses: liveSessionsTerm.toLowerCase() })} />
+        </Helmet>
+      )}
 
       <div className="space-y-6">
         {/* View Toggle */}
@@ -1645,6 +1660,6 @@ function RouteComponent() {
         {/* Day Details Modal */}
         {renderDayModal()}
       </div >
-    </LayoutContainer >
+    </Shell>
   );
 }

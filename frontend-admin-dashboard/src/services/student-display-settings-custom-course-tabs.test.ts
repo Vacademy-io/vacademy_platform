@@ -25,7 +25,13 @@ describe('fetchStudentDisplaySettingsForEdit', () => {
                     allCourses: {
                         tabs: [{ id: 'AllCourses', order: 1, visible: true }],
                         customTabs: [
-                            { id: 'custom-1', label: 'Free', tags: ['free'], order: 2, visible: true },
+                            {
+                                id: 'custom-1',
+                                label: 'Free',
+                                tags: ['free'],
+                                order: 2,
+                                visible: true,
+                            },
                             { label: 'no id', tags: ['x'], order: 3, visible: true },
                         ],
                         defaultTab: 'AllCourses',
@@ -38,7 +44,17 @@ describe('fetchStudentDisplaySettingsForEdit', () => {
         const s = await fetchStudentDisplaySettingsForEdit();
 
         expect(s.allCourses.customTabs).toEqual([
-            { id: 'custom-1', label: 'Free', tags: ['free'], order: 2, visible: true },
+            {
+                id: 'custom-1',
+                label: 'Free',
+                // saved before tab types existed → a tag tab
+                type: 'TAG',
+                tags: ['free'],
+                courseIds: [],
+                productPages: [],
+                order: 2,
+                visible: true,
+            },
         ]);
         expect(s.allCourses.tabs.map((t) => t.id).sort()).toEqual([
             'AllCourses',
@@ -46,6 +62,60 @@ describe('fetchStudentDisplaySettingsForEdit', () => {
             'InProgress',
         ]);
         expect(s.allCourses.defaultTab).toBe('AllCourses');
+    });
+
+    it('keeps typed tabs and drops junk inside them', async () => {
+        get.mockResolvedValue({
+            data: {
+                data: {
+                    allCourses: {
+                        tabs: [],
+                        customTabs: [
+                            {
+                                id: 'c1',
+                                label: 'Live',
+                                type: 'LIVE_SESSIONS',
+                                order: 4,
+                                visible: true,
+                            },
+                            {
+                                id: 'c2',
+                                label: 'Picked',
+                                type: 'COURSES',
+                                courseIds: ['p1', '', 7],
+                                order: 5,
+                            },
+                            {
+                                id: 'c3',
+                                label: 'Pages',
+                                type: 'PRODUCT_PAGES',
+                                productPages: [
+                                    { code: 'bundle', name: 'Bundle' },
+                                    { name: 'no code' },
+                                    { code: 'x' },
+                                ],
+                                order: 6,
+                            },
+                            { id: 'c4', label: 'Weird', type: 'NOPE', tags: ['a'], order: 7 },
+                        ],
+                        defaultTab: 'InProgress',
+                    },
+                },
+            },
+        });
+        const tabs = (await fetchStudentDisplaySettingsForEdit()).allCourses.customTabs ?? [];
+        expect(tabs.map((t) => t.type)).toEqual([
+            'LIVE_SESSIONS',
+            'COURSES',
+            'PRODUCT_PAGES',
+            'TAG',
+        ]);
+        expect(tabs[1]!.courseIds).toEqual(['p1']);
+        expect(tabs[2]!.productPages).toEqual([
+            { code: 'bundle', name: 'Bundle' },
+            { code: 'x', name: 'x' },
+        ]);
+        expect(tabs[0]!.visible).toBe(true);
     });
 
     it('gives an empty list for blobs saved before custom tabs existed', async () => {

@@ -3,7 +3,9 @@
         "tab": {
             "all": "كل {{courses}}",
             "inProgress": "قيد التقدم",
-            "completed": "مكتمل"
+            "completed": "مكتمل",
+            "scrollStart": "مرّر التبويبات للخلف",
+            "scrollEnd": "مرّر التبويبات للأمام"
         },
         "toast": {
             "loadError": "حدث خطأ أثناء تحميل {{courses}}. يرجى المحاولة مرة أخرى.",
@@ -31,6 +33,11 @@
         },
         "card": {
             "untitledPackage": "حزمة بدون عنوان"
+        },
+        "customTab": {
+            "open": "فتح",
+            "coursesCount": "{{count}} دورات",
+            "productPagesEmpty": "لا يوجد شيء لعرضه هنا بعد"
         }
     },
     "filters": {

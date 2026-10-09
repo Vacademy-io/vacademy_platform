@@ -124,8 +124,27 @@
         "customTabLabelPlaceholder": "مثال: دورات مجانية",
         "customTabTags": "عرض الدورات التي تحمل أيًا من هذه الوسوم",
         "customTabTagsPlaceholder": "اختر وسوم الدورات",
-        "customTabIncomplete": "لن يرى المتعلمون هذا التبويب حتى يكون له اسم ووسم واحد على الأقل.",
-        "customTabNoTags": "لا توجد وسوم للدورات بعد. أضف وسومًا إلى الدورات أولًا ثم اخترها هنا."
+        "customTabIncomplete": "لن يرى المتعلمون هذا التبويب حتى يكون له اسم ومحتوى للعرض.",
+        "customTabNoTags": "لا توجد وسوم للدورات بعد. أضف وسومًا إلى الدورات أولًا ثم اخترها هنا.",
+        "customTabType": "يعرض",
+        "customTabCourses": "الدورات في هذا التبويب",
+        "customTabCoursesPlaceholder": "اختر الدورات",
+        "customTabProductPages": "صفحات المنتجات في هذا التبويب",
+        "customTabProductPagesPlaceholder": "اختر صفحات المنتجات",
+        "customTabTypes": {
+            "LIVE_SESSIONS": "الجلسات المباشرة والندوات",
+            "FREE_COURSES": "الدورات المجانية",
+            "COURSES": "دورات مختارة",
+            "PRODUCT_PAGES": "صفحات المنتجات",
+            "TAG": "دورات بوسوم"
+        },
+        "customTabTypeHints": {
+            "LIVE_SESSIONS": "الجلسات الجارية والقادمة التي يمكن للمتعلم الانضمام إليها، بما فيها الندوات العامة.",
+            "FREE_COURSES": "كل دورات الكتالوج التي سعرها 0 — تتحدث تلقائيًا.",
+            "COURSES": "الدورات التي تختارها فقط. يجب أن تكون الدورة منشورة في الكتالوج.",
+            "PRODUCT_PAGES": "بطاقة لكل صفحة منتج؛ النقر عليها يفتح الصفحة.",
+            "TAG": "دورات الكتالوج التي تحمل أيًا من الوسوم المختارة."
+        }
     },
     "liveClasses": {
         "cardTitle": "الحصص المباشرة",

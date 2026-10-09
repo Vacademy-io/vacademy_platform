@@ -43,6 +43,8 @@ import {
     type StudentCourseDetailsTabId,
     type StudentAllCoursesTabId,
     type StudentAllCoursesSettings,
+    type StudentAllCoursesCustomTab,
+    type StudentAllCoursesCustomTabType,
     type OutlineMode,
     type StudentDefaultProvider,
     type UsernameStrategy,
@@ -61,6 +63,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useQuery } from '@tanstack/react-query';
+import { getInstituteId } from '@/constants/helper';
+import { getAllProductPages } from '@/routes/manage-pages/product-pages/-services/product-pages-service';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
@@ -153,6 +158,54 @@ export default function StudentDisplaySettings(): JSX.Element {
         value: tag,
     }));
 
+    // Course picker: every course the institute has a batch of, once each.
+    const courseOptions = Array.from(
+        new Map(
+            (instituteDetails?.batches_for_sessions ?? [])
+                .filter((b) => b?.package_dto?.id)
+                .map((b) => [
+                    b.package_dto.id,
+                    { label: b.package_dto.package_name || b.package_dto.id, value: b.package_dto.id },
+                ])
+        ).values()
+    ).sort((a, b) => a.label.localeCompare(b.label));
+
+    const needsProductPages = (settings?.allCourses.customTabs ?? []).some(
+        (tab) => tab.type === 'PRODUCT_PAGES'
+    );
+    const productPagesQuery = useQuery({
+        queryKey: ['student-display-custom-tab-product-pages', getInstituteId()],
+        queryFn: () => getAllProductPages(getInstituteId() ?? ''),
+        enabled: needsProductPages && !!getInstituteId(),
+        staleTime: 5 * 60 * 1000,
+    });
+    const productPageOptions = (productPagesQuery.data ?? [])
+        .filter((page) => page.status === 'ACTIVE')
+        .map((page) => ({ label: page.name || page.code, value: page.code }));
+
+    const CUSTOM_TAB_TYPES: StudentAllCoursesCustomTabType[] = [
+        'LIVE_SESSIONS',
+        'FREE_COURSES',
+        'COURSES',
+        'PRODUCT_PAGES',
+        'TAG',
+    ];
+
+    /** Mirrors the learner app: a tab it would hide is flagged here. */
+    const isCustomTabIncomplete = (tab: StudentAllCoursesCustomTab) => {
+        if (!tab.label.trim()) return true;
+        switch (tab.type ?? 'TAG') {
+            case 'TAG':
+                return tab.tags.length === 0;
+            case 'COURSES':
+                return (tab.courseIds ?? []).length === 0;
+            case 'PRODUCT_PAGES':
+                return (tab.productPages ?? []).length === 0;
+            default:
+                return false;
+        }
+    };
+
     // Built-in and custom Courses-page tabs share one `order` sequence, so
     // they are listed and reordered together even though they are stored apart.
     const sortedCourseTabs = (allCourses: StudentAllCoursesSettings) =>
@@ -203,7 +256,16 @@ export default function StudentDisplaySettings(): JSX.Element {
             ...all,
             customTabs: [
                 ...(all.customTabs ?? []),
-                { id: `custom-${Date.now()}`, label: '', tags: [], order: maxOrder + 1, visible: true },
+                {
+                    id: `custom-${Date.now()}`,
+                    label: '',
+                    type: 'LIVE_SESSIONS',
+                    tags: [],
+                    courseIds: [],
+                    productPages: [],
+                    order: maxOrder + 1,
+                    visible: true,
+                },
             ],
         });
     };
@@ -1408,22 +1470,97 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                 {tCommonRemove}
                                             </Button>
                                         </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Label className="text-xs">{t('allCourses.customTabType')}</Label>
+                                            <Select
+                                                value={tab.type ?? 'TAG'}
+                                                onValueChange={(v) =>
+                                                    updateCustomCourseTab(tab.id, { type: v as StudentAllCoursesCustomTabType })
+                                                }
+                                            >
+                                                <SelectTrigger className="h-8 w-64 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {CUSTOM_TAB_TYPES.map((type) => (
+                                                        <SelectItem key={type} value={type}>
+                                                            {t(`allCourses.customTabTypes.${type}`)}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                         <div className="flex flex-col gap-1">
-                                            <Label className="text-xs">{t('allCourses.customTabTags')}</Label>
-                                            <MultiSelect
-                                                // Keep saved tags pickable even if no course carries them any more.
-                                                options={[
-                                                    ...courseTagOptions,
-                                                    ...tab.tags
-                                                        .filter((tag) => !courseTagOptions.some((o) => o.value === tag))
-                                                        .map((tag) => ({ label: tag, value: tag })),
-                                                ]}
-                                                selected={tab.tags}
-                                                onChange={(tags) => updateCustomCourseTab(tab.id, { tags })}
-                                                placeholder={t('allCourses.customTabTagsPlaceholder')}
-                                                className="max-w-md"
-                                            />
-                                            {(!tab.label.trim() || tab.tags.length === 0) && (
+                                            {(tab.type ?? 'TAG') === 'TAG' && (
+                                                <>
+                                                    <Label className="text-xs">{t('allCourses.customTabTags')}</Label>
+                                                    <MultiSelect
+                                                        // Keep saved tags pickable even if no course carries them any more.
+                                                        options={[
+                                                            ...courseTagOptions,
+                                                            ...tab.tags
+                                                                .filter((tag) => !courseTagOptions.some((o) => o.value === tag))
+                                                                .map((tag) => ({ label: tag, value: tag })),
+                                                        ]}
+                                                        selected={tab.tags}
+                                                        onChange={(tags) => updateCustomCourseTab(tab.id, { tags })}
+                                                        placeholder={t('allCourses.customTabTagsPlaceholder')}
+                                                        className="max-w-md"
+                                                    />
+                                                </>
+                                            )}
+                                            {tab.type === 'COURSES' && (
+                                                <>
+                                                    <Label className="text-xs">{t('allCourses.customTabCourses')}</Label>
+                                                    <MultiSelect
+                                                        options={[
+                                                            ...courseOptions,
+                                                            ...(tab.courseIds ?? [])
+                                                                .filter((id) => !courseOptions.some((o) => o.value === id))
+                                                                .map((id) => ({ label: id, value: id })),
+                                                        ]}
+                                                        selected={tab.courseIds ?? []}
+                                                        onChange={(courseIds) => updateCustomCourseTab(tab.id, { courseIds })}
+                                                        placeholder={t('allCourses.customTabCoursesPlaceholder')}
+                                                        className="max-w-md"
+                                                    />
+                                                </>
+                                            )}
+                                            {tab.type === 'PRODUCT_PAGES' && (
+                                                <>
+                                                    <Label className="text-xs">{t('allCourses.customTabProductPages')}</Label>
+                                                    <MultiSelect
+                                                        options={[
+                                                            ...productPageOptions,
+                                                            ...(tab.productPages ?? [])
+                                                                .filter((p) => !productPageOptions.some((o) => o.value === p.code))
+                                                                .map((p) => ({ label: p.name, value: p.code })),
+                                                        ]}
+                                                        selected={(tab.productPages ?? []).map((p) => p.code)}
+                                                        onChange={(codes) =>
+                                                            updateCustomCourseTab(tab.id, {
+                                                                productPages: codes.map((code) => ({
+                                                                    code,
+                                                                    name:
+                                                                        productPageOptions.find((o) => o.value === code)?.label ??
+                                                                        (tab.productPages ?? []).find((p) => p.code === code)?.name ??
+                                                                        code,
+                                                                })),
+                                                            })
+                                                        }
+                                                        placeholder={
+                                                            productPagesQuery.isLoading
+                                                                ? t('loading')
+                                                                : t('allCourses.customTabProductPagesPlaceholder')
+                                                        }
+                                                        className="max-w-md"
+                                                    />
+                                                </>
+                                            )}
+                                            <p className="text-xs text-muted-foreground">
+                                                {t(`allCourses.customTabTypeHints.${tab.type ?? 'TAG'}`)}
+                                            </p>
+                                            {isCustomTabIncomplete(tab) && (
                                                 <p className="text-xs text-warning-600">{t('allCourses.customTabIncomplete')}</p>
                                             )}
                                         </div>
@@ -1443,7 +1580,8 @@ export default function StudentDisplaySettings(): JSX.Element {
                         <Button type="button" size="sm" variant="outline" onClick={addCustomCourseTab}>
                             {t('allCourses.addCustomTab')}
                         </Button>
-                        {courseTagOptions.length === 0 && (
+                        {courseTagOptions.length === 0 &&
+                            (settings.allCourses.customTabs ?? []).some((tab) => (tab.type ?? 'TAG') === 'TAG') && (
                             <p className="text-xs text-muted-foreground">{t('allCourses.customTabNoTags')}</p>
                         )}
                     </div>

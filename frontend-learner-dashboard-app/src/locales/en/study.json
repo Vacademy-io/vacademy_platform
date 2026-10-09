@@ -3,7 +3,9 @@
         "tab": {
             "all": "All {{courses}}",
             "inProgress": "In Progress",
-            "completed": "Completed"
+            "completed": "Completed",
+            "scrollStart": "Scroll tabs back",
+            "scrollEnd": "Scroll tabs forward"
         },
         "toast": {
             "loadError": "Something went wrong while loading {{courses}}. Please try again.",
@@ -31,6 +33,11 @@
         },
         "card": {
             "untitledPackage": "Untitled Package"
+        },
+        "customTab": {
+            "open": "Open",
+            "coursesCount": "{{count}} courses",
+            "productPagesEmpty": "Nothing to show here yet"
         }
     },
     "filters": {

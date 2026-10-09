@@ -302,6 +302,10 @@ module.exports = {
           sand: "hsl(var(--palette-sand, var(--catalogue-bg-muted)) / <alpha-value>)",
           border: "hsl(var(--palette-border, var(--catalogue-border)) / <alpha-value>)",
           "border-strong": "hsl(var(--palette-border-strong, var(--catalogue-border-strong)) / <alpha-value>)",
+          // Feature "chrome": eyebrow and copy on dark bands, outlined buttons.
+          "accent-on-dark": "hsl(var(--palette-accent-on-dark, var(--primary-200)) / <alpha-value>)",
+          "body-on-dark": "hsl(var(--palette-body-on-dark, var(--catalogue-bg-muted)) / <alpha-value>)",
+          outline: "hsl(var(--palette-outline, var(--catalogue-border-strong)) / <alpha-value>)",
         },
         // WhatsApp brand (contact CTA).
         whatsapp: "#25D366",

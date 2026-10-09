@@ -11,6 +11,7 @@ import type { CatalogStreamsTabsExtension } from "./catalog-tabs-types";
 import type { CatalogCustomFilterConfig, CatalogFilterSidebarConfig } from "./catalog-sidebar-types";
 import type { CatalogColumnSectionConfig } from "./catalog-sections-types";
 import type { CatalogCardsRenderExtension } from "./catalog-cards-types";
+import type { FooterBrandProps, HeaderChromeProps } from "./site-chrome-types";
 
 /**
  * A single tier in a quantity-based additional charge (e.g. shipping).
@@ -218,7 +219,7 @@ export interface GlobalSettings {
         activeStyle?: HeaderActiveStyle;
         showSearch?: boolean;
         showLanguageSwitcher?: boolean;
-      };
+      } & HeaderChromeProps;
     };
     footer?: {
       id: string;
@@ -241,7 +242,7 @@ export interface GlobalSettings {
           }>;
         }>;
         bottomNote: string;
-      };
+      } & Omit<FooterBrandProps, "leftSection">;
     };
   };
 }

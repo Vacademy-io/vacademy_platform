@@ -51,6 +51,7 @@ import {
   Check,
 } from "@phosphor-icons/react";
 import { HeaderComponent } from "./components/HeaderComponent";
+import { headerOffsetClass } from "./header/header-chrome";
 import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
@@ -60,6 +61,9 @@ import { BlogComponent } from "./components/BlogComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
 import { submitWebsiteLead, isSpamSubmission } from "../-utils/website-lead";
 import { emitLeadCaptured } from "../-utils/catalogue-tracking";
+import { useNewsletterSignup } from "./components/newsletter/use-newsletter-signup";
+import { CtaBand } from "./components/promo/CtaBand";
+import { StepsCards } from "./components/promo/StepsCards";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -259,6 +263,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             catalogueData={catalogueData}
             tagName={tagName}
             baseProps={baseProps}
+            // The brand footer's newsletter needs it; the original footer ignores it.
+            instituteId={instituteId}
+            globalSettings={globalSettings}
           />
         );
       case "heroSection":
@@ -297,7 +304,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "documentViewer":
         return <DocumentViewerComponent key={id} {...props} />;
       case "ctaBanner":
-        return <CtaBannerRenderer key={id} {...props} />;
+        // variant "band" (opt-in): eyebrow, two styled buttons, phone mockup.
+        return props?.variant === "band" ? <CtaBand key={id} {...props} /> : <CtaBannerRenderer key={id} {...props} />;
       case "pricingTable":
         return <PricingTableRenderer key={id} {...props} />;
       case "contactForm":
@@ -387,7 +395,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "newsletterSignup":
         return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
       case "stepsProcess":
-        return <StepsProcessRenderer key={id} {...props} />;
+        // variant "cards" (opt-in): one row of numbered cards.
+        return props?.variant === "cards" ? <StepsCards key={id} {...props} /> : <StepsProcessRenderer key={id} {...props} />;
 
       case "productCourseGrid":
         // In the catalogue context, render as a standard course catalog grid
@@ -540,6 +549,10 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   const hasHeader = page.id !== 'header' && page.components.some(
     (component) => component.type === 'header' && component.enabled !== false
   );
+  // A compact header bar (barSize "compact") is 64px at every width.
+  const pageHeaderProps = hasHeader
+    ? (page.components.find((component) => component.type === 'header' && component.enabled !== false) as any)?.props
+    : undefined;
 
   /** One top-level section inside its style / preview wrapper. */
   const renderTopLevel = (component: Page["components"][number]) => {
@@ -609,7 +622,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
   return (
     <div
-      className={`page w-full ${hasHeader ? 'pt-16 md:pt-20' : ''}`}
+      className={`page w-full ${hasHeader ? headerOffsetClass(pageHeaderProps) : ''}`}
       data-page-id={page.id}
     >
       {page.components.map((component) => withVisibleWhen(component, renderTopLevel(component)))}
@@ -2060,37 +2073,11 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
   const { t } = useTranslation("coursePlayerA");
   // HISTORY: previously set the success flag with no network call — every
   // subscription was silently discarded. Now submits through the catalogue-lead
-  // pipeline; audienceId (optional) routes to a chosen campaign.
-  const [email, setEmail] = React.useState('');
-  const [submitted, setSubmitted] = React.useState(false);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const [honeypot, setHoneypot] = React.useState('');
-  const mountedAt = React.useRef(Date.now());
+  // pipeline; audienceId (optional) routes to a chosen campaign. The submit
+  // logic is shared with the brand footer's newsletter (same sourceId here).
+  const { email, setEmail, honeypot, setHoneypot, submitted, submitting, error, handleSubmit } =
+    useNewsletterSignup({ instituteId, audienceId, tagName, sourceSuffix: 'newsletter' });
   const txt = sectionText(backgroundColor);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setError('');
-    if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
-    if (!instituteId) { setError(t("jsonRenderer.formNotConnected")); return; }
-    setSubmitting(true);
-    try {
-      await submitWebsiteLead({
-        instituteId,
-        audienceId,
-        email,
-        sourceType: 'NEWSLETTER',
-        sourceId: `${tagName || 'catalogue'}:newsletter`,
-      });
-      setSubmitted(true);
-    } catch {
-      setError(t("jsonRenderer.somethingWentWrongRetry"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg-subtle">

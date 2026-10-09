@@ -36,6 +36,10 @@ export const PALETTE_KEYS = [
   "sand",
   "border",
   "borderStrong",
+  // Feature "chrome": copy and lines on dark bands, outlined buttons.
+  "accentOnDark",
+  "bodyOnDark",
+  "outline",
 ] as const;
 
 export type PaletteKey = (typeof PALETTE_KEYS)[number];
@@ -75,6 +79,9 @@ export const PALETTE_FALLBACK_TOKEN: Record<PaletteKey, string> = {
   sand: "--catalogue-bg-muted",
   border: "--catalogue-border",
   borderStrong: "--catalogue-border-strong",
+  accentOnDark: "--primary-200",
+  bodyOnDark: "--catalogue-bg-muted",
+  outline: "--catalogue-border-strong",
 };
 
 /** Shared catalogue tokens re-pointed by `applyToTokens` (light mode only). */

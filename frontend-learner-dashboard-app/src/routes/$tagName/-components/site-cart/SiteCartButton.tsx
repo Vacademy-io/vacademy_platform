@@ -28,11 +28,18 @@ export interface SiteCartButtonProps {
   /** globalSettings.courseLanguages languages, for the drawer's version chips. */
   languages?: CourseLanguageOption[];
   className?: string;
+  /**
+   * Hide the icon while the cart is empty (header cartDisplay "whenNotEmpty").
+   * The drawer and its opener stay mounted, so "Add to cart" / "Buy now"
+   * elsewhere still open it, and the icon appears with the first item.
+   * Absent = always shown, as before.
+   */
+  hideWhenEmpty?: boolean;
 }
 
 const SiteCartButtonInner: React.FC<
   Required<Pick<SiteCartButtonProps, "instituteId">> & SiteCartButtonProps & { settings: SiteCartSettings }
-> = ({ instituteId, tagName, settings, languages, className }) => {
+> = ({ instituteId, tagName, settings, languages, className, hideWhenEmpty }) => {
   const { t } = useTranslation("coursePlayerB");
   const { items, hydrated } = useSiteCart(instituteId, true);
   const lastAddedAt = useSiteCartStore((s) => (s.instituteId === instituteId ? s.lastAddedAt : 0));
@@ -86,6 +93,7 @@ const SiteCartButtonInner: React.FC<
         className={cn(
           "relative rounded-catalogue-sm p-2 text-catalogue-text-secondary transition-colors duration-200 hover:bg-catalogue-interactive-hover hover:text-catalogue-text-primary",
           className,
+          hideWhenEmpty && count === 0 && "hidden",
         )}
       >
         <ShoppingCartSimple className="size-5" aria-hidden="true" />

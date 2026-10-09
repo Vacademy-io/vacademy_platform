@@ -41,6 +41,17 @@ import {
   desktopNavItemClasses,
   mobileAuthVariant,
 } from "../header/header-variants";
+import type { HeaderChromeProps } from "../../-types/site-chrome-types";
+import {
+  EDITORIAL_AUTH_CLASSES,
+  EDITORIAL_NAV,
+  EDITORIAL_RIGHT_GROUP,
+  HEADER_COMPACT_LOGO,
+  HEADER_CONTAINED_INNER,
+  HEADER_CONTAINED_OUTER,
+  editorialNavItemClasses,
+  resolveHeaderChrome,
+} from "../header/header-chrome";
 
 /** A nav item that opens the streams mega menu; one without a library stays a plain link. */
 const isMegaMenuItem = (item: HeaderNavItem | null | undefined): boolean =>
@@ -75,7 +86,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   showSearch?: boolean;
   /** हिन्दी | EN switch, when the site has more than one language. */
   showLanguageSwitcher?: boolean;
-}> = ({
+} & HeaderChromeProps> = ({
   navigation = [],
   authLinks = [],
   useAuthModal = false,
@@ -89,6 +100,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
   activeStyle,
   showSearch,
   showLanguageSwitcher,
+  barSize,
+  contentWidth,
+  navStyle,
+  logoOnly,
+  languageSwitcherStyle,
+  cartDisplay,
+  megaMenuStyle,
 }) => {
     const { t } = useTranslation("coursePlayerB");
     const siteT = useSiteT();
@@ -187,6 +205,17 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const showSwitcher = showLanguageSwitcher === true && siteLocale.enabled && siteLocale.locales.length > 1;
     const showSiteCart = isSiteCartEnabled(resolvedGlobalSettings?.siteCart);
     const hasHeaderExtras = showSearchButton || showSwitcher || showSiteCart;
+    // Opt-in looks of the design (site-chrome-types.ts); all off when absent.
+    const chrome = resolveHeaderChrome({
+      barSize,
+      contentWidth,
+      navStyle,
+      logoOnly,
+      languageSwitcherStyle,
+      cartDisplay,
+      megaMenuStyle,
+    });
+    const switcherVariant = chrome.segmentedSwitcher ? "segmented" : undefined;
     // The phone menu's nav item look (same strings as its plain items below).
     const mobileItemClass = (active: boolean) =>
       `block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${active
@@ -225,7 +254,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     // original inline top.
     const menuTop: { className: string; style: React.CSSProperties | undefined } =
       hasHeaderExtras && !isIOS
-        ? { className: ' top-14 md:top-20', style: undefined }
+        ? { className: chrome.compact ? ' top-14 md:top-16' : ' top-14 md:top-20', style: undefined }
         : { className: '', style: { top: isIOS ? 'calc(56px + 32px)' : '56px' } }; // design-lint-ignore: original menu offset (iOS status-bar inset)
 
     // Shared by the desktop bar, the mobile bar and the mobile menu so a
@@ -553,19 +582,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
         <span className="text-sm font-medium text-catalogue-text-secondary">
           {t("header.language.label", "Site language")}
         </span>
-        <HeaderLanguageSwitcher authoredLocales={resolvedGlobalSettings?.i18n?.locales} />
+        <HeaderLanguageSwitcher authoredLocales={resolvedGlobalSettings?.i18n?.locales} variant={switcherVariant} />
       </div>
     );
 
     // Consistent header height using design tokens
-    const headerHeight = 'h-16 md:h-20';
+    const headerHeight = chrome.compact ? 'h-16' : 'h-16 md:h-20';
     const headerTopOffset = isIOS ? 'pt-8' : '';
 
     return (
       <header
         // Only fall back to the theme token when the author picked nothing —
         // an inline colour must beat the class, so the class is omitted when set.
-        className={`fixed top-0 start-0 end-0 z-catalogue-fixed border-b border-catalogue-border-subtle w-full ${backgroundColor ? '' : 'bg-catalogue-bg'} ${headerTopOffset}`}
+        className={`fixed top-0 start-0 end-0 z-catalogue-fixed border-b ${chrome.editorialNav ? 'border-palette-border' : 'border-catalogue-border-subtle'} w-full ${backgroundColor ? '' : 'bg-catalogue-bg'} ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)',
@@ -575,8 +604,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
       >
         {/* Container with consistent responsive padding */}
         <LogoutSidebar />
-        <div className={`w-full px-4 sm:px-6 lg:px-8 xl:px-12 ${isAndroid || isIOS ? 'mt-6' : ''}`}>
-          <div className={`flex items-center justify-between ${headerHeight}`}>
+        <div className={`${chrome.contained ? HEADER_CONTAINED_OUTER : 'w-full px-4 sm:px-6 lg:px-8 xl:px-12'} ${isAndroid || isIOS ? 'mt-6' : ''}`}>
+          <div className={`flex items-center justify-between ${headerHeight}${chrome.contained ? ` ${HEADER_CONTAINED_INNER}` : ''}`}>
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {isCourseCatalogeTypeEnabled && (
@@ -621,13 +650,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     src={jsonLogoUrl}
                     alt={t("header.logoAlt")}
                     onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                    className={`${chrome.compact ? HEADER_COMPACT_LOGO : 'max-h-12 md:max-h-16'} w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                       }${hasHeaderExtras ? ' min-w-0' : ''}`}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}
                   />
-                  {jsonTitleShown && (
+                  {jsonTitleShown && !chrome.logoOnly && (
                     <span className="text-base md:text-lg font-semibold text-catalogue-text-primary truncate max-w-48 md:max-w-none">
                       {jsonTitleShown}
                     </span>
@@ -649,16 +678,18 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     />
                   )}
                   {/* Title: use JSON title if set, else institute name */}
+                  {!chrome.logoOnly && (
                   <span className="text-base md:text-lg font-semibold text-catalogue-text-primary truncate max-w-48 md:max-w-none">
                     {jsonTitleShown || domainRouting.instituteName || ""}
                   </span>
+                  )}
                 </>
               )}
             </div>
 
             {/* Desktop Navigation */}
             {visibleNavigation.length > 0 && (
-              <nav className={`${bp.desktopFlex} items-center gap-1`}>
+              <nav className={`${bp.desktopFlex} ${chrome.editorialNav ? EDITORIAL_NAV : 'items-center gap-1'}`}>
                 {navEntries.map(({ item, base }, index) => {
                   if (isMegaMenuItem(base)) {
                     // Its panel is positioned against the fixed <header>, so
@@ -674,6 +705,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         instituteId={resolvedInstituteId}
                         tagName={effectiveTagName}
                         activeStyle={activeStyle}
+                        navStyle={chrome.editorialNav ? "editorial" : undefined}
+                        panelStyle={chrome.editorialMega ? "editorial" : undefined}
                         routeActive={!!(base.route || '').trim() && isActiveRoute(base.route)}
                         plainLink={{
                           onClick: () => handleNavigation(base.route, base.label, megaSameTab),
@@ -688,7 +721,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <button
                       key={index}
                       onClick={() => handleNavigation(base.route, base.label, openInSameTab)}
-                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(isActive, activeStyle)}`}
+                      className={chrome.editorialNav ? editorialNavItemClasses(isActive) : `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(isActive, activeStyle)}`}
                     >
                       {item.label}
                     </button>
@@ -698,7 +731,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             )}
 
             {/* Right side actions */}
-            <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+            <div className={chrome.editorialNav ? EDITORIAL_RIGHT_GROUP : "flex items-center gap-2 md:gap-3 flex-shrink-0"}>
               {/* Mobile menu button - Right side when courseCatalogeType is disabled.
                   Gated on nav items OR auth links, matching what the menu below
                   actually renders: a header configured with only Login /
@@ -781,12 +814,14 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   megaConfigs={megaEntries.map(({ base }) => base.megaMenu ?? {})}
                   streamsLabel={megaEntries[0]?.item.label}
                   className="flex-shrink-0"
+                  variant={chrome.editorialNav ? "editorial" : undefined}
                 />
               )}
               {showSwitcher && (
                 <HeaderLanguageSwitcher
                   authoredLocales={resolvedGlobalSettings?.i18n?.locales}
                   className={switcherInMenu ? 'hidden sm:inline-flex' : undefined}
+                  variant={switcherVariant}
                 />
               )}
               {showSiteCart && (
@@ -799,6 +834,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       ? courseLanguagesOf(resolvedGlobalSettings.courseLanguages)
                       : undefined
                   }
+                  hideWhenEmpty={chrome.cartWhenNotEmpty || undefined}
                 />
               )}
 
@@ -816,7 +852,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   hamburger menu (see the toggle above), not in the bar: the
                   sticky MobileActionBar already carries Login / Get Started, so
                   repeating them in the header just doubled the same two CTAs. */}
-              <div className={`${bp.desktopFlex} items-center gap-2`}>
+              <div className={`${bp.desktopFlex} items-center ${chrome.editorialNav ? 'gap-4' : 'gap-2'}`}>
                 {isAuthenticated ? (
                   <div className="flex items-center gap-3 shrink-0">
                     <SystemAlertsBar />
@@ -836,7 +872,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       key={index}
                       onClick={() => handleAuthLinkClick(link, base)}
                       // No style set = the original rule: first filled, the rest outlined.
-                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${DESKTOP_AUTH_CLASSES[desktopAuthVariant(base.style ?? link.style, index)]}`}
+                      className={
+                        chrome.editorialNav
+                          ? EDITORIAL_AUTH_CLASSES[desktopAuthVariant(base.style ?? link.style, index)]
+                          : `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${DESKTOP_AUTH_CLASSES[desktopAuthVariant(base.style ?? link.style, index)]}`
+                      }
                     >
                       {link.label}
                     </button>

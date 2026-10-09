@@ -17,6 +17,8 @@ import {
 import { openNotifyForm, useHeaderLinkNavigation, useMegaMenuTexts, useMegaMenuTree } from "./header-hooks";
 import { desktopNavItemClasses } from "./header-variants";
 import { AvailabilityDot, AvailabilityLegend, ComingSoonTag, MegaItemIcon } from "./MegaMenuParts";
+import { EDITORIAL_OPEN_UNDERLINE, editorialNavItemClasses } from "./header-chrome";
+import * as ED from "./mega-menu-editorial";
 
 /**
  * Desktop header nav item that opens the "Knowledge Streams" mega menu: a
@@ -49,6 +51,10 @@ export interface MegaMenuNavItemProps {
   routeActive?: boolean;
   /** What a plain nav item would do and show — used once the library is gone (404). */
   plainLink?: { onClick: () => void; active: boolean };
+  /** Header navStyle "editorial": text trigger, bold gold + accent underline while open. Absent = original. */
+  navStyle?: "editorial";
+  /** Header megaMenuStyle "editorial": the design's panel (mega-menu-editorial.ts). Absent = original. */
+  panelStyle?: "editorial";
 }
 
 const LG_TILE_COLUMNS = [
@@ -69,6 +75,8 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   activeStyle,
   routeActive = false,
   plainLink,
+  navStyle,
+  panelStyle,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
@@ -85,6 +93,9 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const tileRefs = useRef<Array<HTMLElement | null>>([]);
   const pointerTypeRef = useRef<string | null>(null);
+
+  const edNav = navStyle === "editorial";
+  const ed = panelStyle === "editorial";
 
   const reactId = useId();
   const triggerId = `mega-trigger-${reactId}`;
@@ -236,12 +247,20 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   const footnote = (config.footnote || "").trim();
 
   const tileClass = (isSelected: boolean) =>
-    cn(
+    ed ? ED.editorialTileClass(isSelected) : cn(
       "flex h-full w-full flex-col items-center gap-2 rounded-catalogue-xl border-2 px-3 py-4 text-center transition-colors duration-200",
       isSelected ? "border-primary-500 bg-primary-50" : "border-transparent hover:bg-catalogue-interactive-hover",
     );
 
-  const tileContent = (stream: MegaMenuStream) => (
+  const tileContent = (stream: MegaMenuStream, isSelected = false) =>
+    ed ? (
+      <>
+        <MegaItemIcon item={stream} className={ED.EDITORIAL_TILE_ICON} initialClassName="text-4xl" />
+        <span className={ED.editorialTileName(isSelected)}>{siteT(stream.title)}</span>
+        {stream.subtitle && <span className={ED.editorialTileSub(isSelected)}>{siteT(stream.subtitle)}</span>}
+        {stream.comingSoon && <ComingSoonTag />}
+      </>
+    ) : (
     <>
       <MegaItemIcon item={stream} className="size-16" initialClassName="text-xl" />
       <span className="text-sm font-bold text-catalogue-text-primary">{siteT(stream.title)}</span>
@@ -281,24 +300,38 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
           target={link.external ? "_blank" : undefined}
           rel={link.external ? "noopener noreferrer" : undefined}
         >
-          {tileContent(stream)}
+          {tileContent(stream, isSelected)}
         </a>
       );
     }
     return (
       <button {...shared} type="button">
-        {tileContent(stream)}
+        {tileContent(stream, isSelected)}
       </button>
     );
   };
 
   const rowClass = (interactive: boolean) =>
-    cn(
+    ed ? ED.editorialRowClass(interactive) : cn(
       "group flex w-full items-center gap-3 rounded-catalogue-lg px-3 py-2.5 text-start transition-colors duration-200",
       interactive && "hover:bg-catalogue-bg-elevated focus-visible:bg-catalogue-bg-elevated",
     );
 
-  const rowContent = (cat: MegaMenuCategory) => (
+  const rowContent = (cat: MegaMenuCategory) =>
+    ed ? (
+      <>
+        <MegaItemIcon item={cat} className={ED.EDITORIAL_ROW_ICON} initialClassName="text-sm" />
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className={ED.editorialRowTitle(cat.comingSoon)}>{siteT(cat.title)}</span>
+            {cat.subtitle && <span className={ED.editorialRowSubtitle(cat.comingSoon)}>{siteT(cat.subtitle)}</span>}
+            {cat.comingSoon && <ComingSoonTag />}
+          </span>
+          {cat.description && <span className={ED.EDITORIAL_ROW_TEXT}>{siteT(cat.description)}</span>}
+        </span>
+        {cat.action.kind !== "none" && <ArrowRight aria-hidden="true" weight="bold" className={ED.EDITORIAL_ROW_ARROW} />}
+      </>
+    ) : (
     <>
       <MegaItemIcon item={cat} className="size-9" initialClassName="text-sm" />
       <span className="min-w-0 flex-1">
@@ -368,7 +401,7 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
           target={link.external ? "_blank" : undefined}
           rel={link.external ? "noopener noreferrer" : undefined}
           onClick={(e) => follow(link, e)}
-          className="catalogue-btn catalogue-btn-primary mt-1"
+          className={ed ? ED.EDITORIAL_DETAIL_CTA : "catalogue-btn catalogue-btn-primary mt-1"}
         >
           {texts.ctaLabel(stream)}
           <ArrowRight aria-hidden="true" className="size-4 rtl:rotate-180" />
@@ -381,7 +414,7 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
         <button
           type="button"
           onClick={() => notify(audienceId, siteT(stream.title))}
-          className="catalogue-btn catalogue-btn-primary mt-1"
+          className={ed ? ED.EDITORIAL_DETAIL_CTA : "catalogue-btn catalogue-btn-primary mt-1"}
         >
           {t("header.megaMenu.notifyMe", "Notify me")}
         </button>
@@ -420,6 +453,52 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
     }
     if (!model.streams.length || !selected) {
       return <p className="mt-5 text-sm text-catalogue-text-muted">{t("header.megaMenu.empty", "Nothing to show here yet.")}</p>;
+    }
+    if (ed) {
+      return (
+        <>
+          <ul onKeyDown={onTilesKeyDown} className={cn(ED.EDITORIAL_TILES, LG_TILE_COLUMNS[Math.min(model.streams.length, 6) - 1])}>
+            {model.streams.map((stream, index) => (
+              <li key={stream.id}>{renderTile(stream, index)}</li>
+            ))}
+          </ul>
+
+          <div className={ED.EDITORIAL_DETAIL}>
+            <div className={ED.EDITORIAL_DETAIL_LEFT}>
+              <p className={ED.EDITORIAL_DETAIL_TITLE}>
+                <MegaItemIcon item={selected} className={ED.EDITORIAL_DETAIL_ICON} initialClassName="text-xl" />
+                <span>{siteT(selected.title)}</span>
+                {selected.subtitle && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{siteT(selected.subtitle)}</span>
+                  </>
+                )}
+              </p>
+              {selected.tagline && <p className={ED.EDITORIAL_DETAIL_TAGLINE}>{siteT(selected.tagline)}</p>}
+              {selected.description && <p className={ED.EDITORIAL_DETAIL_TEXT}>{siteT(selected.description)}</p>}
+              {renderCta(selected)}
+            </div>
+
+            <div className={ED.EDITORIAL_DETAIL_RIGHT}>
+              <p id={headingId} className={ED.EDITORIAL_CATEGORIES_HEADING}>
+                {texts.categoriesHeading(selected)}
+              </p>
+              {selected.categories.length ? (
+                <ul aria-labelledby={headingId} className={ED.EDITORIAL_CATEGORY_LIST}>
+                  {selected.categories.map((cat) => (
+                    <li key={cat.id}>{renderCategory(cat)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-palette-muted">
+                  {t("header.megaMenu.noCategories", "Categories are on their way.")}
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      );
     }
     return (
       <>
@@ -477,6 +556,50 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
     );
   };
 
+  // The panel's rows: eyebrow + help link, the body, the footnote.
+  const panelContent = () => (
+    <>
+      {(eyebrow || helpLink) && (
+        <div className={ed ? ED.EDITORIAL_TOP_ROW : "flex flex-wrap items-center justify-between gap-3"}>
+          {eyebrow ? (
+            ed ? (
+              <p className={ED.EDITORIAL_EYEBROW}>
+                <span aria-hidden="true" className={ED.EDITORIAL_EYEBROW_RULE} />
+                {eyebrow}
+              </p>
+            ) : (
+            // catalogue-eyebrow draws the leading rule itself.
+            <p className="catalogue-eyebrow text-catalogue-text-muted">{eyebrow}</p>
+            )
+          ) : (
+            <span />
+          )}
+          {helpLink &&
+            (() => {
+              const link = resolve(helpLink);
+              return (
+                <a
+                  href={link.href}
+                  target={link.external ? "_blank" : undefined}
+                  rel={link.external ? "noopener noreferrer" : undefined}
+                  onClick={(e) => follow(link, e)}
+                  className={ed ? ED.EDITORIAL_HELP_LINK : "catalogue-link inline-flex items-center gap-1 text-sm font-medium"}
+                >
+                  {helpLabel}
+                  <ArrowRight aria-hidden="true" className="size-4 rtl:rotate-180" />
+                </a>
+              );
+            })()}
+        </div>
+      )}
+      {renderBody()}
+      {/* Only under real tiles, never beside a loading, error or empty state. */}
+      {footnote && status === "ready" && model.streams.length > 0 && (
+        <p className={ed ? ED.EDITORIAL_FOOTNOTE : "mt-3 text-caption text-catalogue-text-muted"}>{footnote}</p>
+      )}
+    </>
+  );
+
   return (
     <>
       <button
@@ -490,13 +613,25 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
         onFocus={arm}
         onBlur={onBlurWithin}
         className={
-          libraryGone
+          edNav
+            ? libraryGone
+              ? editorialNavItemClasses(!!plainLink?.active)
+              : `${editorialNavItemClasses(open)} gap-1.5`
+            : libraryGone
             ? // The plain nav item's own classes.
               `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(!!plainLink?.active, activeStyle)}`
             : `inline-flex items-center gap-1 px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(open || routeActive, activeStyle)}`
         }
       >
-        {label}
+        {edNav ? (
+          // The open underline spans the label only, on the header's bottom edge.
+          <span className="relative inline-flex h-full items-center">
+            {label}
+            {open && !libraryGone && <span aria-hidden="true" className={EDITORIAL_OPEN_UNDERLINE} />}
+          </span>
+        ) : (
+          label
+        )}
         {!libraryGone && (
           <CaretDown
             aria-hidden="true"
@@ -505,6 +640,7 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
           />
         )}
       </button>
+      {open && !libraryGone && ed && <div aria-hidden="true" className={ED.EDITORIAL_DIM} />}
       {open && !libraryGone && (
         <div
           ref={panelRef}
@@ -512,41 +648,15 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
           role="region"
           aria-labelledby={triggerId}
           onBlur={onBlurWithin}
-          className="absolute start-0 end-0 top-full z-catalogue-dropdown max-h-screen-80 overflow-y-auto overscroll-contain rounded-b-catalogue-2xl border-b border-catalogue-border bg-catalogue-bg-elevated shadow-xl animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none"
+          className={ed ? ED.EDITORIAL_PANEL : "absolute start-0 end-0 top-full z-catalogue-dropdown max-h-screen-80 overflow-y-auto overscroll-contain rounded-b-catalogue-2xl border-b border-catalogue-border bg-catalogue-bg-elevated shadow-xl animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none"}
         >
-          <div className="mx-auto w-full max-w-7xl px-6 py-6 lg:px-8">
-            {(eyebrow || helpLink) && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                {eyebrow ? (
-                  // catalogue-eyebrow draws the leading rule itself.
-                  <p className="catalogue-eyebrow text-catalogue-text-muted">{eyebrow}</p>
-                ) : (
-                  <span />
-                )}
-                {helpLink &&
-                  (() => {
-                    const link = resolve(helpLink);
-                    return (
-                      <a
-                        href={link.href}
-                        target={link.external ? "_blank" : undefined}
-                        rel={link.external ? "noopener noreferrer" : undefined}
-                        onClick={(e) => follow(link, e)}
-                        className="catalogue-link inline-flex items-center gap-1 text-sm font-medium"
-                      >
-                        {helpLabel}
-                        <ArrowRight aria-hidden="true" className="size-4 rtl:rotate-180" />
-                      </a>
-                    );
-                  })()}
-              </div>
-            )}
-            {renderBody()}
-            {/* Only under real tiles, never beside a loading, error or empty state. */}
-            {footnote && status === "ready" && model.streams.length > 0 && (
-              <p className="mt-3 text-caption text-catalogue-text-muted">{footnote}</p>
-            )}
-          </div>
+          {ed ? (
+            <div className={ED.EDITORIAL_PANEL_OUTER}>
+              <div className={ED.EDITORIAL_PANEL_INNER}>{panelContent()}</div>
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-7xl px-6 py-6 lg:px-8">{panelContent()}</div>
+          )}
         </div>
       )}
     </>

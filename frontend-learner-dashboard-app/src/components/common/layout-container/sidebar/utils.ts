@@ -201,6 +201,19 @@ export const siteTermsCatalogReady = (scope: SiteTermScope): boolean => {
 };
 
 /**
+ * i18next reads a catalog once: when that read fails it marks the catalog
+ * failed, and every later load of it — reloadResources() included — skips
+ * it for the rest of the session. Forgets the mark, so the next load reads
+ * the catalog again. The mark lives on the loader the app's instance shares
+ * with its clones; a read still on its way is left alone.
+ */
+const forgetFailedRead = (i18n: I18nInstance, locale: string, ns: string): void => {
+  const state: Record<string, number> | undefined = i18n.services?.backendConnector?.state;
+  const name = `${locale}|${ns}`;
+  if (state && state[name] < 0) delete state[name];
+};
+
+/**
  * Loads the site language's terms catalog through the scope's clone (the
  * clone shares the app's store, so it is fetched once) and tells consumers to
  * re-read, as ensureTermsCatalog does for the app. Resolves true once the
@@ -213,16 +226,25 @@ export const ensureSiteTermsCatalog = async (
 ): Promise<boolean> => {
   const locale = normalizeLocale(scope.locale);
   if (locale === getContentSourceLocale()) return false;
-  if (!scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE)) {
+  const loaded = () => scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE);
+  if (!loaded()) {
+    // Named language, not loadNamespaces(): until a new clone's own
+    // catalogs are in, its `language` is still the one it was cloned from.
+    const load = () => scope.i18n.reloadResources([locale], [TERMS_NAMESPACE]);
     try {
-      // Named language, not loadNamespaces(): until a new clone's own
-      // catalogs are in, its `language` is still the one it was cloned from.
-      await scope.i18n.reloadResources([locale], [TERMS_NAMESPACE]);
+      // The clone asks for the catalog as it starts, so this usually waits
+      // for that read.
+      await load();
+      if (!loaded()) {
+        // That read failed (or an earlier one did): read it once more.
+        forgetFailedRead(scope.i18n, locale, TERMS_NAMESPACE);
+        await load();
+      }
     } catch {
       // Missing/failed catalog is non-fatal — resolution stays at step (d).
       return false;
     }
-    if (!scope.i18n.hasResourceBundle(locale, TERMS_NAMESPACE)) return false;
+    if (!loaded()) return false;
     // The catalog lands after the first paint; tell consumers to re-read.
     notifyNamingSettingsUpdated();
   }

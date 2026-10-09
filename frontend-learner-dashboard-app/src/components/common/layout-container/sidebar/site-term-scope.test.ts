@@ -38,6 +38,8 @@ const reads: string[] = [];
 /** Reads held back until the test releases them ("lng/ns" → pending callbacks). */
 const held = new Map<string, Array<() => void>>();
 const holding = new Set<string>();
+/** Reads that fail the first time they are made ("lng/ns"). */
+const failOnce = new Set<string>();
 
 /** The app's lazy backend, asynchronous like the real one; unknown catalogs fail. */
 const backend: BackendModule = {
@@ -48,8 +50,8 @@ const backend: BackendModule = {
     reads.push(name);
     const answer = () => {
       const data = CATALOGS[lng]?.[ns];
-      if (data) callback(null, data as never);
-      else callback(new Error(`no catalog ${name}`), false);
+      if (failOnce.delete(name) || !data) callback(new Error(`no catalog ${name}`), false);
+      else callback(null, data as never);
     };
     if (holding.has(name)) held.set(name, [...(held.get(name) ?? []), answer]);
     else setTimeout(answer, 1);
@@ -112,6 +114,7 @@ afterEach(() => {
   clearSiteTermScope(token);
   holding.clear();
   held.clear();
+  failOnce.clear();
 });
 
 describe("a हिन्दी page on an English app", () => {
@@ -265,6 +268,51 @@ describe("ensureSiteTermsCatalog", () => {
     expect(await ensureSiteTermsCatalog(scope)).toBe(false);
     expect(getTerminology("Course", "Course")).toBe("Programme");
     expect(getTerminologyPlural("Course", "Course")).toBe("Programmes");
+  });
+
+  it("reads the catalog again when the clone's own read of it failed", async () => {
+    const app = await makeApp("en");
+    failOnce.add("hi/terms");
+    const site = siteI18nInstance(app, "hi");
+    await settle();
+    // The read the clone made as it started failed, and i18next skips a
+    // catalog whose read failed on every later load, reloads included.
+    expect(reads.filter((read) => read === "hi/terms")).toHaveLength(1);
+    expect(site.hasResourceBundle("hi", "terms")).toBe(false);
+    const scope = { locale: "hi", i18n: site };
+
+    expect(await ensureSiteTermsCatalog(scope)).toBe(true);
+    expect(reads.filter((read) => read === "hi/terms")).toHaveLength(2);
+    scoped(scope);
+    expect(getTerminology("Course", "Course")).toBe("कोर्स");
+  });
+
+  it("reads it once more when the read it waited for fails", async () => {
+    const app = await makeApp("en");
+    failOnce.add("hi/terms");
+    holding.add("hi/terms");
+    // The clone asks for the catalog as it starts; that read is still out
+    // when the provider asks for the catalog.
+    const site = siteI18nInstance(app, "hi");
+    const loaded = ensureSiteTermsCatalog({ locale: "hi", i18n: site });
+    release("hi/terms");
+
+    expect(await loaded).toBe(true);
+    // The read it waited for, then one more — never a duplicate of a read
+    // still on its way.
+    expect(reads.filter((read) => read === "hi/terms")).toHaveLength(2);
+    expect(site.hasResourceBundle("hi", "terms")).toBe(true);
+  });
+
+  it("waits for a read still on its way instead of starting another", async () => {
+    const app = await makeApp("en");
+    holding.add("hi/terms");
+    const site = siteI18nInstance(app, "hi");
+    const loaded = ensureSiteTermsCatalog({ locale: "hi", i18n: site });
+    release("hi/terms");
+
+    expect(await loaded).toBe(true);
+    expect(reads.filter((read) => read === "hi/terms")).toHaveLength(1);
   });
 });
 

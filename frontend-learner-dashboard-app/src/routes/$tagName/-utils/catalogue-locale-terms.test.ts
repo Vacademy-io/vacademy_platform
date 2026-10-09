@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import i18next, { type BackendModule } from "i18next";
+import i18next, { type BackendModule, type i18n as I18nInstance } from "i18next";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import {
   Outlet,
@@ -191,14 +191,15 @@ const settle = () =>
 
 const mounted: Array<() => Promise<void>> = [];
 
-const mount = async (url: string, settings: CatalogueI18nSettings | undefined) => {
+/** Mounts the page at `url` under the app's i18next instance (`app`, the global one by default). */
+const mount = async (url: string, settings: CatalogueI18nSettings | undefined, app: I18nInstance = i18next) => {
   current.settings = settings;
   const router = makeRouter(url);
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(h(I18nextProvider, { i18n: i18next }, h(RouterProvider, { router })));
+    root.render(h(I18nextProvider, { i18n: app }, h(RouterProvider, { router })));
   });
   await settle();
   let gone = false;
@@ -229,19 +230,35 @@ const courseNow = () => getTerminology("Course", "Course");
 const naming = (entries: LocalizedNamingSettings[]) =>
   localStorage.setItem(NAMING_SETTINGS_KEY, JSON.stringify(entries));
 
+/**
+ * The app's own options (src/i18n.ts): English, catalogs loaded on demand. A
+ * new object per instance — i18next keeps, and grows, the arrays it is given.
+ */
+const appOptions = () => ({
+  lng: "en",
+  fallbackLng: "en",
+  supportedLngs: [...SUPPORTED_LOCALES],
+  nonExplicitSupportedLngs: true,
+  load: "languageOnly" as const,
+  ns: ["common", "coursePlayerB"],
+  defaultNS: "common",
+  interpolation: { escapeValue: false },
+  react: { useSuspense: false, bindI18n: "languageChanged namingTermsChanged" },
+});
+
+/**
+ * A new app instance: nothing read yet, and no site clone made from it — the
+ * global one has been read from by every earlier test, and the clones made
+ * from it are kept for the session.
+ */
+const freshApp = async (): Promise<I18nInstance> => {
+  const app = i18next.createInstance();
+  await app.use(backend).init(appOptions());
+  return app;
+};
+
 beforeAll(async () => {
-  // The app's own instance (src/i18n.ts): English, catalogs loaded on demand.
-  await i18next.use(backend).init({
-    lng: "en",
-    fallbackLng: "en",
-    supportedLngs: [...SUPPORTED_LOCALES],
-    nonExplicitSupportedLngs: true,
-    load: "languageOnly",
-    ns: ["common", "coursePlayerB"],
-    defaultNS: "common",
-    interpolation: { escapeValue: false },
-    react: { useSuspense: false, bindI18n: "languageChanged namingTermsChanged" },
-  });
+  await i18next.use(backend).init(appOptions());
 });
 
 beforeEach(async () => {
@@ -297,10 +314,14 @@ describe("a हिन्दी page", () => {
   });
 
   it("fetches the terms catalog again when it failed to arrive with the chrome", async () => {
+    // The page's clone makes the first read of hi/terms, and that read fails.
+    const app = await freshApp();
     failOnce.add("hi/terms");
-    const page = await mount("/site/home?lang=hi", HINDI_SITE);
+    const page = await mount("/site/home?lang=hi", HINDI_SITE, app);
     await settle();
 
+    expect(failOnce.has("hi/terms")).toBe(false);
+    expect(app.hasResourceBundle("hi", "terms")).toBe(true);
     expect(page.text()).toBe("कोर्स देखें");
   });
 

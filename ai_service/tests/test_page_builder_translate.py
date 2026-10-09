@@ -2,12 +2,13 @@
 
 The builder keeps each other language as a dictionary keyed by the EXACT base
 text, so these pin: results keyed by the exact source; HTML tags (attributes
-included), links, digits and {{placeholders}} never reach the model and come
-back byte-exact — also when one sits inside another (`<img src="{{course.image}}">`,
-`https://x.org/{{id}}`, `{{step2}}`); style/script/pre/code elements are masked
-whole; a reply that drops/invents a token, changes the block markup or the
-numbers (Devanagari digits) is reported as failed — inline spans may move
-(Hindi word order); long HTML gets a call of its own; at most three calls run
+included), links, digits, {{placeholders}} and text-pattern {placeholders}
+("Explore {stream}") never reach the model and come back byte-exact — also when
+one sits inside another (`<img src="{{course.image}}">`, `https://x.org/{{id}}`,
+`{{step2}}`); style/script/pre/code elements are masked whole; a reply (or a
+remembered translation) that drops/invents a token or a {placeholder}, changes
+the block markup or the numbers (Devanagari digits) is reported as failed —
+inline spans may move (Hindi word order); long HTML gets a call of its own; at most three calls run
 at once; translation memory first (and re-checked), skippable; only website
 editors (admin/owner) may spend credits here; credits pre-flighted on the
 texts the model translates, ONE charge per request on the summed usage,
@@ -310,6 +311,124 @@ def test_style_script_pre_and_code_are_masked_whole(monkeypatch):
     assert data["translations"] == {source: "हिं " + source}
     for hidden in ("color:red", "Roboto", "go()", "npm"):
         assert hidden not in h.prompts
+
+
+# ── text-pattern placeholders ({stream}, {title}) ────────────────────────────
+#
+# The header mega menu's "Button label" and "Categories heading" are text
+# patterns the site fills per stream by the placeholder's ASCII name, so the
+# Hindi pattern must carry each placeholder back exactly as typed: '{धारा} देखें'
+# would show literally, a dropped one gives every stream the same heading.
+
+CTA = "Explore {stream}"
+HEADING = "Categories in {stream}"
+BOTH = "{title} · {stream}"
+BROWSE = "Browse {title}"
+PATTERNS = [
+    CTA,
+    BOTH,
+    '<a href="/streams/{stream}">Explore {stream}</a>',  # the tag keeps its own copy
+    "Step {step2} of 3",                                  # digits stay inside the placeholder
+    "Hi {{name}}, explore {stream} at https://x.org/{id}",
+]
+
+
+def test_text_pattern_placeholders_are_masked_and_restored():
+    masked, mapping = ts.mask_website_text(CTA)
+    assert masked == "Explore __PH_0__" and mapping == {"__PH_0__": "{stream}"}
+    assert ts.restore_website_tokens("__PH_0__ देखें", mapping) == "{stream} देखें"
+    masked, mapping = ts.mask_website_text(BOTH)
+    assert masked == "__PH_0__ · __PH_1__"
+    assert mapping == {"__PH_0__": "{title}", "__PH_1__": "{stream}"}
+    assert list(ts.mask_website_text("Step {step2} of 3")[1].values()) == ["{step2}", "3"]
+
+
+@pytest.mark.parametrize("source", PATTERNS)
+def test_text_pattern_masking_never_nests_tokens(source):
+    masked, mapping = ts.mask_website_text(source)
+    assert not any(TOKEN.search(original) for original in mapping.values())
+    assert TOKEN.findall(masked) == list(mapping)
+    assert "{" not in masked and "}" not in masked
+    assert ts.restore_website_tokens(masked, mapping) == source
+
+
+def test_double_brace_placeholders_still_mask_whole():
+    """{{…}} wins over {…} at the same start: one token, restored byte-exact."""
+    assert ts.mask_website_text("Hello {{name}}") == ("Hello __PH_0__", {"__PH_0__": "{{name}}"})
+    masked, mapping = ts.mask_website_text("{{course.title}} in {stream}")
+    assert masked == "__PH_0__ in __PH_1__"
+    assert mapping == {"__PH_0__": "{{course.title}}", "__PH_1__": "{stream}"}
+    assert ts.website_translation_problem("Hello {{name}}", "नमस्ते {{name}}") is None
+    assert ts.website_translation_problem("Read {{course.title}} now", "{{course.title}} अभी पढ़ें") is None
+
+
+@pytest.mark.parametrize(
+    "source, translated",
+    [
+        (CTA, "{धारा} देखें"),            # renamed in the target script
+        (CTA, "{Stream} देखें"),          # renamed in case only
+        (CTA, "देखें"),                   # dropped
+        (CTA, "{stream} {stream} देखें"),  # repeated
+        (CTA, "{stream} देखें {title}"),   # invented
+        (BOTH, "{title} · {title}"),
+        ("Hello {{name}}", "नमस्ते"),      # a remembered translation that lost a {{name}}
+    ],
+)
+def test_a_changed_placeholder_is_a_problem(source, translated):
+    assert ts.website_translation_problem(source, translated) == "the {placeholders} changed"
+
+
+def test_placeholders_may_move_with_word_order():
+    assert ts.website_translation_problem(CTA, "{stream} देखें") is None
+    assert ts.website_translation_problem(BOTH, "{stream} · {title}") is None
+    assert ts.website_translation_problem("Plain text", "सादा पाठ") is None
+
+
+def test_text_patterns_translate_without_the_model_seeing_placeholders(monkeypatch):
+    h = Harness(monkeypatch)
+    strings = [CTA, HEADING, BOTH]
+    data = h.post(strings=strings).json()
+    assert data["failed"] == []
+    assert data["translations"] == {s: "हिं " + s for s in strings}
+    assert "{stream}" not in h.prompts and "{title}" not in h.prompts
+
+
+def _placeholder_mangling_reply(label: str, prompt: str) -> Dict[str, Any]:
+    out = {}
+    for alias, masked in _batch_payload(prompt).items():
+        tokens = TOKEN.findall(masked)
+        if masked.startswith("Explore"):
+            out[alias] = "{धारा} देखें"                   # placeholder rewritten: its token is gone
+        elif masked.startswith("Categories"):
+            out[alias] = "श्रेणियाँ"                      # placeholder dropped
+        elif masked.startswith("Browse"):
+            out[alias] = f"{tokens[0]} देखें {{stream}}"  # token kept, a placeholder invented
+        else:
+            out[alias] = f"{tokens[1]} में {tokens[0]}"   # placeholders moved: fine
+    return out
+
+
+def test_mangled_placeholders_are_reported_not_used(monkeypatch):
+    h = Harness(monkeypatch, reply=_placeholder_mangling_reply)
+    data = h.post(strings=[CTA, HEADING, BROWSE, BOTH]).json()
+    reasons = {f["source"]: f["reason"] for f in data["failed"]}
+    assert set(reasons) == {CTA, HEADING, BROWSE}
+    assert "dropped or repeated" in reasons[CTA] and "dropped or repeated" in reasons[HEADING]
+    assert reasons[BROWSE] == "the {placeholders} changed"
+    assert data["translations"] == {BOTH: "{stream} में {title}"}
+    assert [w["source_text_value"] for w in h.tm_writes] == [BOTH]
+
+
+def test_a_remembered_translation_with_a_changed_placeholder_is_redone(monkeypatch):
+    memory = {CTA: "{धारा} देखें", HEADING: "{stream} में श्रेणियाँ"}
+    h = Harness(monkeypatch, memory=memory)
+    data = h.post(strings=[CTA, HEADING]).json()
+    assert data["tm_hits"] == 1
+    assert data["translations"] == {CTA: "हिं " + CTA, HEADING: "{stream} में श्रेणियाँ"}
+    # Only the redone text is pre-flighted, sent and charged.
+    assert h.preflights[0]["tool_params"] == {"transcript_chars": len(CTA)}
+    assert "Categories" not in h.prompts
+    assert h.billed[0]["tool_params"] == {"transcript_chars": len(CTA)}
 
 
 # ── who may spend credits ────────────────────────────────────────────────────

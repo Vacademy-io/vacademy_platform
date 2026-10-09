@@ -65,7 +65,7 @@ export const ComingSoonCategoryRow: React.FC<ComingSoonCategoryRowProps> = ({ se
                   size={13}
                   weight="fill"
                   aria-hidden="true"
-                  className="text-palette-accent"
+                  className="text-palette-gold"
                   style={section.iconColor ? { color: section.iconColor } : undefined}
                 />
                 {notifyLabel}

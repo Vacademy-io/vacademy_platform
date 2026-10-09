@@ -113,6 +113,9 @@ const safeColor = (v: unknown): string | undefined => {
   return HEX.test(s) ? s : undefined;
 };
 
+/** An authored id / code: no whitespace and no markup characters. */
+const ID_LIKE = /^[^\s<>"'{}]+$/;
+
 const PLACEMENTS: ColumnSectionPlacement[] = ["before-grid", "after-grid"];
 const SHOW_WHEN: ColumnSectionShowWhen[] = ["unfiltered", "always", "unfiltered-or-own-stream"];
 const CTA_ACTIONS: SpotlightCtaConfig["action"][] = ["course", "product-page", "navigate", "open-form"];
@@ -155,6 +158,11 @@ const resolveCta = (raw: unknown): SpotlightCtaConfig | null => {
   ] as const) {
     const value = str(raw[key]);
     if (value) cta[key] = value;
+  }
+  // An unfilled placeholder ("<package id>") or a pasted sentence is not an
+  // id: treat it as absent rather than send visitors to a broken page.
+  for (const key of ["courseId", "enrollInviteId", "packageSessionId", "productPageCode"] as const) {
+    if (cta[key] && !ID_LIKE.test(cta[key]!)) delete cta[key];
   }
   // An action without its target does nothing: drop the button.
   if (action === "course" && !cta.courseId) return null;
@@ -366,17 +374,87 @@ export const spotlightRow = <R extends CatalogRowLike>(cta: SpotlightCtaConfig |
   );
 };
 
-/** {price} of a spotlight: the live price of its course when the catalogue has it (> 0), else the authored price, else null. */
+/** A live amount (catalogue row or enroll-invite plan). 0 = free. */
+export interface LiveAmount {
+  amount: number;
+  currency: string | null;
+}
+
+/** The live amount of a catalogue row: its price, 0 when the catalogue counts it free, else null. */
+export const rowAmount = (row: CatalogRowLike | null): LiveAmount | null => {
+  if (!row) return null;
+  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency : null;
+  const price = typeof row.price === "number" ? row.price : Number(row.price);
+  if (Number.isFinite(price) && price > 0) return { amount: price, currency };
+  if (rowMatchesPrice(row, { kind: "free" })) return { amount: 0, currency };
+  return null;
+};
+
+/** The parts of an open enroll-invite (open/learner/enroll-invite) the spotlight reads. */
+export interface SpotlightInviteLike {
+  currency?: string | null;
+  package_session_to_payment_options?: Array<{
+    package_session_id?: string | null;
+    status?: string | null;
+    payment_option?: {
+      type?: string | null;
+      payment_plans?: Array<{ actual_price?: number | null; currency?: string | null }> | null;
+    } | null;
+  }> | null;
+}
+
+/**
+ * The live amount an invite charges for a package session: the cheapest plan
+ * of that session's entry (entry [0] when the session is not named or not
+ * listed, as the course page does); a FREE payment option is 0. null = the
+ * invite names no price.
+ */
+export const inviteAmount = (
+  invite: SpotlightInviteLike | null | undefined,
+  packageSessionId: string | null | undefined,
+): LiveAmount | null => {
+  const entries = Array.isArray(invite?.package_session_to_payment_options)
+    ? invite!.package_session_to_payment_options!.filter(Boolean)
+    : [];
+  if (!entries.length) return null;
+  const forSession = packageSessionId ? entries.filter((e) => e.package_session_id === packageSessionId) : [];
+  const isActive = (status: unknown) => !status || String(status).toUpperCase() === "ACTIVE";
+  const entry = forSession.find((e) => isActive(e.status)) ?? forSession[0] ?? entries[0];
+  const option = entry?.payment_option;
+  const inviteCurrency = typeof invite?.currency === "string" && invite.currency.trim() ? invite.currency : null;
+  if (String(option?.type ?? "").toUpperCase() === "FREE") return { amount: 0, currency: inviteCurrency };
+  const plans = (Array.isArray(option?.payment_plans) ? option!.payment_plans! : []).filter(
+    (p) => p && typeof p.actual_price === "number" && Number.isFinite(p.actual_price) && p.actual_price >= 0,
+  );
+  if (!plans.length) return null;
+  const cheapest = plans.reduce((a, b) => ((b.actual_price as number) < (a.actual_price as number) ? b : a));
+  return {
+    amount: cheapest.actual_price as number,
+    currency: (typeof cheapest.currency === "string" && cheapest.currency.trim() ? cheapest.currency : null) ?? inviteCurrency,
+  };
+};
+
+export interface SpotlightPriceText {
+  /** What {price} becomes: the formatted amount, the free label, the authored price, or null (no price). */
+  value: string | null;
+  /** The live price is 0: the CTA drops its "for {price}", steps say the free label. */
+  free: boolean;
+}
+
+/**
+ * {price} of a spotlight: the live amount (catalogue row, else the CTA's
+ * invite) when known — formatted, or the free label at 0 — else the authored
+ * price, else null.
+ */
 export const spotlightPrice = (
   cta: SpotlightCtaConfig | null,
-  row: CatalogRowLike | null,
+  live: LiveAmount | null,
   locale: string,
-): string | null => {
-  if (row) {
-    const price = typeof row.price === "number" ? row.price : Number(row.price);
-    if (Number.isFinite(price) && price > 0) return formatAmountLabel(price, row.currency, locale);
-  }
-  return cta?.price || null;
+  freeLabel: string,
+): SpotlightPriceText => {
+  if (live && live.amount > 0) return { value: formatAmountLabel(live.amount, live.currency, locale), free: false };
+  if (live && live.amount === 0) return { value: freeLabel, free: true };
+  return { value: cta?.price || null, free: false };
 };
 
 /**

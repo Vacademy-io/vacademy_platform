@@ -5,9 +5,11 @@ import {
   fillCount,
   fillPrice,
   freeCtaLabelFor,
+  inviteAmount,
   isUnfilteredView,
   pickFreeCards,
   resolveColumnSections,
+  rowAmount,
   sectionShown,
   spotlightEyebrowParts,
   spotlightPrice,
@@ -103,6 +105,28 @@ describe("resolveColumnSections", () => {
     expect(spot.slides[0].cta).toEqual({ label: "Enrol for {price}", action: "course", courseId: "p1" });
     // 'navigate' without a route has nowhere to go: no button.
     expect(spot.slides[1].cta).toBeNull();
+  });
+
+  it("an unfilled placeholder id is no id: the course button is dropped, other ids are kept", () => {
+    const [spot] = resolveColumnSections([
+      {
+        id: "s",
+        kind: "spotlight",
+        slides: [
+          { title: "A", cta: { label: "Enrol", action: "course", courseId: "<Rajaswala package id>", enrollInviteId: "inv-1" } },
+          { title: "B", cta: { label: "Enrol", action: "course", courseId: "8610911c-382c-41a9-9e33-2e4e0882282f", productPageCode: "forbvy" } },
+          { title: "C", cta: { label: "View", action: "product-page", productPageCode: "for bvy" } },
+        ],
+      },
+    ]) as ResolvedSpotlightSection[];
+    expect(spot.slides[0].cta).toBeNull();
+    expect(spot.slides[1].cta).toEqual({
+      label: "Enrol",
+      action: "course",
+      courseId: "8610911c-382c-41a9-9e33-2e4e0882282f",
+      productPageCode: "forbvy",
+    });
+    expect(spot.slides[2].cta).toBeNull();
   });
 
   it("'unfiltered-or-own-stream' only applies to a spotlight", () => {
@@ -215,12 +239,38 @@ describe("spotlight helpers", () => {
     expect(spotlightRow(null, rows)).toBeNull();
   });
 
-  it("live price beats the authored one; a free or missing course falls back", () => {
+  it("live price beats the authored one; a free course says Free; no live price falls back", () => {
     const cta = { label: "Enrol for {price}", action: "course" as const, courseId: "p1", price: "₹251" };
-    expect(spotlightPrice(cta, rows[0], "en")).toBe("₹1,001");
-    expect(spotlightPrice(cta, rows[1], "en")).toBe("₹251");
-    expect(spotlightPrice(cta, null, "en")).toBe("₹251");
-    expect(spotlightPrice({ ...cta, price: undefined }, null, "en")).toBeNull();
+    expect(spotlightPrice(cta, rowAmount(rows[0]), "en", "Free")).toEqual({ value: "₹1,001", free: false });
+    expect(spotlightPrice(cta, rowAmount(rows[1]), "en", "Free")).toEqual({ value: "Free", free: true });
+    expect(spotlightPrice(cta, null, "en", "Free")).toEqual({ value: "₹251", free: false });
+    expect(spotlightPrice({ ...cta, price: undefined }, null, "en", "Free")).toEqual({ value: null, free: false });
+    expect(rowAmount(null)).toBeNull();
+  });
+
+  it("the invite's live plan: the session's entry, its cheapest plan; FREE is 0; nothing → null", () => {
+    // bv/rajaswala_invite.json, trimmed.
+    const invite = {
+      currency: "INR",
+      package_session_to_payment_options: [
+        { package_session_id: "ps-other", status: "ACTIVE", payment_option: { type: "ONE_TIME", payment_plans: [{ actual_price: 99 }] } },
+        {
+          package_session_id: "18bba28f",
+          status: "ACTIVE",
+          payment_option: { type: "ONE_TIME", payment_plans: [{ actual_price: 1001.0, currency: "INR" }, { actual_price: 1500 }] },
+        },
+      ],
+    };
+    expect(inviteAmount(invite, "18bba28f")).toEqual({ amount: 1001, currency: "INR" });
+    // Session not listed / not named: entry [0], as the course page does.
+    expect(inviteAmount(invite, "missing")).toEqual({ amount: 99, currency: "INR" });
+    expect(inviteAmount(invite, undefined)).toEqual({ amount: 99, currency: "INR" });
+    expect(
+      inviteAmount({ package_session_to_payment_options: [{ payment_option: { type: "FREE", payment_plans: [] } }] }, null),
+    ).toEqual({ amount: 0, currency: null });
+    expect(inviteAmount({ package_session_to_payment_options: [{ payment_option: { payment_plans: [] } }] }, null)).toBeNull();
+    expect(inviteAmount(null, "x")).toBeNull();
+    expect(inviteAmount({}, "x")).toBeNull();
   });
 
   it("fills {price}, or drops it with its 'for'", () => {

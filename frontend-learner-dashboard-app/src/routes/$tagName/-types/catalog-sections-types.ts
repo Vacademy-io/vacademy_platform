@@ -63,15 +63,26 @@ export interface FreeCoursesSectionConfig extends ColumnSectionBase {
 
 /** What the spotlight button does. */
 export interface SpotlightCtaConfig {
-  /** "Enrol for {price}" — {price} = the live price of the course when it is in the catalogue, else `price`. */
+  /**
+   * "Enrol for {price}" — {price} = the live price: the course's catalogue
+   * row, else (a course not published to the catalogue) the plan of
+   * `enrollInviteId` for `packageSessionId`. A live price of 0 drops
+   * "for {price}". Without a live price, `price`; without that, no price.
+   */
   label: string;
-  /** Authored price text used when the course is not in the catalogue ("₹251"). */
+  /** Authored price text, used only when no live price can be read ("₹1,001"). */
   price?: string;
   /** 'course' opens the course like a card; 'product-page' a product page; 'navigate' a site route; 'open-form' an audience form. */
   action: "course" | "product-page" | "navigate" | "open-form";
+  /** 'course': the package (course) id. A placeholder such as "<id>" is ignored (no button). */
   courseId?: string;
   enrollInviteId?: string;
   packageSessionId?: string;
+  /**
+   * 'product-page': the page to open. With 'course': a product page that
+   * sells the course — a course not published to the catalogue opens through
+   * it (its details page only shows such a course for a product page that sells it).
+   */
   productPageCode?: string;
   route?: string;
   audienceId?: string;
@@ -136,7 +147,7 @@ export interface SpotlightSectionConfig extends ColumnSectionBase {
 }
 
 export interface ComingSoonColors {
-  /** The bell icon (Figma uses the 🔔 emoji; default: palette gold). */
+  /** The bell icon (Figma uses the gold 🔔 emoji; default: palette gold). */
   iconColor?: string;
 }
 

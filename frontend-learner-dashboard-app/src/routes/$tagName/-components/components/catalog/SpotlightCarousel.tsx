@@ -1,13 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { CatalogueLink } from "../../CatalogueLink";
 import { openComingSoonForm } from "../../../-utils/coming-soon";
+import { resolveCoursePageRoute } from "../../../-utils/course-page-routing";
+import { getOpenEnrollInvite } from "../../../-services/course-levels-service";
+import { RouteMatcher } from "../../../-services/route-matcher";
 import type { CatalogCourseRow } from "../CourseCatalogComponent";
 import { COLUMN_SECTION_TITLE } from "./ColumnSectionHeader";
 import {
   fillPrice,
+  inviteAmount,
+  rowAmount,
   spotlightEyebrowParts,
   spotlightPrice,
   spotlightRow,
@@ -41,6 +47,10 @@ const STEP_COLUMNS: Record<number, string> = {
   4: "sm:grid-cols-2 xl:grid-cols-4",
 };
 const SWIPE_PX = 40;
+/** Room for a focus ring (ring 2 + offset 2) inside the clipping track wrapper. */
+const TRACK_CLIP = "-m-1 overflow-hidden p-1";
+/** Slides sit this far apart, so a neighbour never shows inside that room. */
+const SLIDE_GAP_PX = 8;
 
 /** Inline colour only when the site authored one (hex validated by the resolver). */
 const colorStyle = (prop: "backgroundColor" | "borderColor" | "color", value: string | null | undefined) =>
@@ -121,10 +131,18 @@ export const SpotlightCarousel: React.FC<SpotlightCarouselProps> = ({ section, s
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      <div className="overflow-hidden">
+      {/* One slide: nothing moves, nothing clips (focus rings stay whole). */}
+      <div className={count > 1 ? TRACK_CLIP : undefined}>
         <div
           className="flex items-start transition-transform duration-300 ease-out motion-reduce:transition-none"
-          style={count > 1 ? { transform: `translateX(${(rtl ? 1 : -1) * current * 100}%)` } : undefined}
+          style={
+            count > 1
+              ? {
+                  gap: SLIDE_GAP_PX,
+                  transform: `translateX(calc(${(rtl ? 1 : -1) * current} * (100% + ${SLIDE_GAP_PX}px)))`,
+                }
+              : undefined
+          }
           aria-live={count > 1 && !section.autoplayMs ? "polite" : undefined}
         >
           {slides.map((slide, i) => (
@@ -195,21 +213,34 @@ const SpotlightSlide: React.FC<{
   section: ResolvedSpotlightSection;
   ctx: CatalogSlotContext;
 }> = ({ slide, section, ctx }) => {
-  const { siteT } = ctx;
+  const { siteT, t } = ctx;
   const navigate = useNavigate();
   const stream = slide.streamSlug
     ? ctx.streamList.find((s) => s.slug.toLowerCase() === slide.streamSlug.toLowerCase()) ?? null
     : null;
   const eyebrow = spotlightEyebrowParts(slide, stream, siteT).join("  ·  ");
   const row = spotlightRow(slide.cta, ctx.courses);
-  const price = spotlightPrice(slide.cta, row, ctx.siteLocale);
+  // A course outside the catalogue rows (not published to it): the live price
+  // is its invite's plan — never the authored mock price while that can be read.
+  const inviteId = !row && slide.cta?.enrollInviteId ? slide.cta.enrollInviteId : "";
+  const inviteQuery = useQuery({
+    queryKey: ["catalog-spotlight-invite", ctx.instituteId, inviteId],
+    queryFn: () => getOpenEnrollInvite(ctx.instituteId, inviteId),
+    enabled: !!inviteId && !!ctx.instituteId,
+    staleTime: 5 * 60_000,
+  });
+  const invitePending = !!inviteId && !!ctx.instituteId && inviteQuery.isPending;
+  const live = row ? rowAmount(row) : inviteId ? inviteAmount(inviteQuery.data, slide.cta?.packageSessionId) : null;
+  const priced = spotlightPrice(slide.cta, live, ctx.siteLocale, t("catalogSections.freeBadge", "Free"));
+  // Until the invite answers there is no price to show (rather than a wrong one).
+  const price = invitePending ? null : priced.value;
   // The translated title can already be the Devanagari one: say it once.
   const native =
     slide.titleNative && slide.titleNative.trim() !== slide.title.trim() ? slide.titleNative : "";
   const accent = section.colors.accentColor ?? stream?.accentColor ?? null;
 
   const cta = slide.cta;
-  const ctaText = cta ? fillPrice(cta.label, price) : "";
+  const ctaText = cta ? fillPrice(cta.label, priced.free ? null : price) : "";
   const ctaInner = (
     <>
       {ctaText}
@@ -246,6 +277,24 @@ const SpotlightSlide: React.FC<{
         onClick={() => {
           if (cta.action === "open-form") {
             openComingSoonForm({ enabled: true, audienceId: cta.audienceId }, cta.formTitle || slide.title);
+            return;
+          }
+          if (!row && cta.courseId && cta.productPageCode) {
+            // Not in the catalogue: its details page opens only for a product
+            // page that sells it, so the page goes along (as a product page's
+            // own "View course" does).
+            const route = resolveCoursePageRoute(ctx.globalSettings, {
+              courseId: cta.courseId,
+              packageSessionId: cta.packageSessionId,
+            });
+            void navigate({
+              to: `${RouteMatcher.basePath(ctx.tagName)}/${route ?? cta.courseId}`,
+              search: {
+                enrollInviteId: cta.enrollInviteId,
+                packageSessionId: cta.packageSessionId,
+                productPageCode: cta.productPageCode,
+              },
+            } as unknown as Parameters<typeof navigate>[0]);
             return;
           }
           ctx.handleCourseClick(

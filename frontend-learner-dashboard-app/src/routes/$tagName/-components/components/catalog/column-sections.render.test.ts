@@ -33,6 +33,9 @@ const h = vi.hoisted(() => {
       row(7, { coming_soon: { enabled: true } }),
     ] as Record<string, unknown>[],
     navigate: [] as unknown[],
+    /** Open enroll-invites by id ("error" = the request fails). */
+    invites: {} as Record<string, unknown>,
+    inviteGets: [] as string[],
     searchStr: "",
   };
 });
@@ -71,7 +74,12 @@ vi.mock("@/components/common/layout-container/sidebar/utils", () => ({
 }));
 vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: async () => "" }));
 vi.mock("@/utils/ios-iap-compliance", () => ({ shouldHidePaidPurchaseUI: () => false }));
-vi.mock("@/constants/urls", () => ({ BASE_URL: "", urlCourseDetails: "/courses-search" }));
+vi.mock("@/constants/urls", () => ({
+  BASE_URL: "",
+  urlCourseDetails: "/courses-search",
+  ENROLLMENT_INVITE_URL: "/open/learner/enroll-invite",
+  GET_PRODUCT_PAGE_BY_CODE: (code: string) => `/product-page/${code}`,
+}));
 vi.mock("../../../-services/route-matcher", () => ({
   RouteMatcher: { basePath: () => "", pagePath: (_tag: string, route: string) => `/${route.replace(/^\//, "")}` },
 }));
@@ -79,7 +87,16 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("axios", () => {
   const api: Record<string, unknown> = {
     post: async () => ({ data: { content: h.rows, totalElements: h.rows.length } }),
-    get: async () => ({ data: {} }),
+    get: async (url: string) => {
+      const invite = /\/open\/learner\/enroll-invite\/[^/]+\/(.+)$/.exec(url)?.[1];
+      if (invite) {
+        h.inviteGets.push(invite);
+        const data = h.invites[invite];
+        if (data === "error") throw new Error("offline");
+        return { data: data ?? {} };
+      }
+      return { data: {} };
+    },
   };
   api.create = () => api;
   return { default: api };
@@ -213,6 +230,7 @@ const button = (host: HTMLElement, text: string) =>
 
 beforeEach(() => {
   h.navigate = [];
+  h.inviteGets = [];
   h.searchStr = "";
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -306,13 +324,81 @@ describe("spotlight", () => {
     ]);
   });
 
-  it("the authored price when the course is not in the catalogue; hidden on a filtered view", async () => {
+  it("a course outside the catalogue: the live price of its invite, never the authored mock; opens through its product page", async () => {
+    // bv/rajaswala_invite.json: invite b6d3bd0d sells session 18bba28f at ₹1,001.
+    h.invites["inv-rajaswala"] = {
+      currency: "INR",
+      package_session_to_payment_options: [
+        {
+          package_session_id: "ps-rajaswala",
+          status: "ACTIVE",
+          payment_option: { type: "ONE_TIME", payment_plans: [{ actual_price: 1001.0, currency: "INR" }] },
+        },
+      ],
+    };
+    const cta = {
+      ...SLIDE.cta,
+      courseId: "pkg-rajaswala",
+      enrollInviteId: "inv-rajaswala",
+      packageSessionId: "ps-rajaswala",
+      productPageCode: "forbvy",
+    };
+    const host = await mount({ columnSections: [{ ...SPOTLIGHT, slides: [{ ...SLIDE, cta }] }] });
+    const panel = block(host, "ks-flagship")!;
+    expect(h.inviteGets).toEqual(["inv-rajaswala"]);
+    expect(button(host, "Enrol for ₹251")).toBeUndefined();
+    const enrol = button(host, "Enrol for ₹1,001");
+    expect(enrol).toBeTruthy();
+    expect([...panel.querySelectorAll("li")][1].textContent).toBe("2E-Learning course₹1,001");
+    await click(enrol);
+    expect(h.navigate).toEqual([
+      {
+        to: "/pkg-rajaswala",
+        search: { enrollInviteId: "inv-rajaswala", packageSessionId: "ps-rajaswala", productPageCode: "forbvy" },
+      },
+    ]);
+  });
+
+  it("the authored price only when the invite cannot be read; hidden on a filtered view", async () => {
+    h.invites["inv-down"] = "error";
     const host = await mount({
-      columnSections: [{ ...SPOTLIGHT, slides: [{ ...SLIDE, cta: { ...SLIDE.cta, courseId: "elsewhere" } }] }],
+      columnSections: [{ ...SPOTLIGHT, slides: [{ ...SLIDE, cta: { ...SLIDE.cta, courseId: "elsewhere", enrollInviteId: "inv-down" } }] }],
     });
     expect(button(host, "Enrol for ₹251")).toBeTruthy();
+    // No product page: the course opens like a card.
+    await click(button(host, "Enrol for ₹251"));
+    expect(h.navigate).toEqual([
+      expect.objectContaining({ to: "/elsewhere", search: expect.objectContaining({ enrollInviteId: "inv-down" }) }),
+    ]);
     await click(button(host, "Free"));
     expect(block(host, "ks-flagship")).toBeNull();
+  });
+
+  it("a free spotlight course: the CTA drops its price, {price} steps say Free; a course in the catalogue fetches no invite", async () => {
+    const host = await mount({
+      columnSections: [{ ...SPOTLIGHT, slides: [{ ...SLIDE, cta: { ...SLIDE.cta, courseId: "c1", enrollInviteId: "inv-1" } }] }],
+    });
+    const panel = block(host, "ks-flagship")!;
+    expect(button(host, "Enrol")).toBeTruthy();
+    expect(panel.textContent).not.toContain("₹251");
+    expect([...panel.querySelectorAll("li")][1].textContent).toBe("2E-Learning courseFree");
+    expect(h.inviteGets).toEqual([]);
+  });
+
+  it("one slide: no clipping wrapper (focus rings stay whole); several: the track clips with room for the ring", async () => {
+    const one = await mount({ columnSections: [SPOTLIGHT] });
+    expect(block(one, "ks-flagship")!.querySelector(".overflow-hidden")).toBeNull();
+    act(() => root?.unmount());
+    document.body.innerHTML = "";
+    const two = await mount({
+      columnSections: [{ ...SPOTLIGHT, slides: [SLIDE, { id: "two", title: "Garbha Vigyan" }] }],
+    });
+    const clip = block(two, "ks-flagship")!.querySelector(".overflow-hidden")!;
+    expect(clip.className).toBe("-m-1 overflow-hidden p-1");
+    const track = clip.firstElementChild as HTMLElement;
+    expect(track.style.transform).toBe("translateX(calc(0 * (100% + 8px)))");
+    await click(block(two, "ks-flagship")!.querySelector('[aria-label="Next slide"]'));
+    expect(track.style.transform).toBe("translateX(calc(-1 * (100% + 8px)))");
   });
 
   it("two slides: dots, counter and wrapping arrows", async () => {
@@ -383,6 +469,15 @@ describe("coming soon row", () => {
       { audienceId: "aud-notify", title: "Get notified when Chhanda shastra launches" },
     ]);
     expect(cards[0].querySelector("button")!.textContent).toBe("Notify me");
+    // The bell: palette gold unless the site names a colour.
+    expect(cards[0].querySelector("button svg")!.getAttribute("class")).toContain("text-palette-gold");
+    expect((cards[0].querySelector("button svg") as SVGElement).style.color).toBe("");
+  });
+
+  it("an authored bell colour", async () => {
+    const host = await mount({ columnSections: [{ ...SOON, colors: { iconColor: "#C99621" } }] }); // design-lint-ignore: Figma bell colour
+    const bell = block(host, "ks-soon")!.querySelector("li button svg") as SVGElement;
+    expect(bell.style.color).toBe("rgb(201, 150, 33)");
   });
 
   it("scope 'active-stream' follows the tab; categorySlugs order and filter", async () => {

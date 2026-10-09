@@ -13,11 +13,13 @@
  */
 import {
   languageOfLevel,
+  languageOfTags,
   variantForLanguage,
   type CourseGroup,
   type CourseLanguageOption,
 } from "../../-utils/course-variants";
 import { cartTotals, type CartTotals, type SiteCartItem } from "../../-utils/site-cart";
+import { getCurrencySymbol } from "@/utils/currency";
 import { folderSlug, pathTo, type PublicFolderNode } from "../../-services/folder-library-service";
 import { parseBasketPricing, quoteBasket } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
 import { bestOffer, parseOffers } from "@/routes/product-pages/$productPageCode/-utils/offers";
@@ -29,6 +31,8 @@ export interface PathMapping extends CartMappingLike {
   status?: string | null;
   session_name?: string | null;
   display_order?: number | null;
+  /** The course's tags, comma-separated (by-code mappings carry them). */
+  tags?: string | null;
 }
 
 export interface PathStep<T extends PathMapping = PathMapping> {
@@ -383,4 +387,255 @@ export const pathsInScope = (roots: PublicFolderNode[], scope: PathScope): PathE
   if (scope.kind === "all") return collectPathEntries(roots);
   if (scope.kind === "missing" || scope.folder.coming_soon) return [];
   return collectPathEntries(scope.folder.children, scope.folder);
+};
+
+// ─── featured list layout (listLayout: "featured") ──────────────────────────
+//
+// Pure helpers for LearningPathFeatured: goal chips, the featured path, the
+// per-path step rows ("format · price"), pills and totals. Read only by the
+// opt-in featured layout; the cards list and the single path never call them.
+
+/** A mapping's course tags as a list, lower-case (product-page mappings carry a comma string). */
+export const mappingTags = (row: { tags?: unknown }): string[] => {
+  const out: string[] = [];
+  const add = (v: unknown) => {
+    if (typeof v === "string") {
+      v.split(",").forEach((t) => {
+        const tag = t.trim().toLowerCase();
+        if (tag) out.push(tag);
+      });
+    } else if (Array.isArray(v)) v.forEach(add);
+  };
+  add(row.tags);
+  return out;
+};
+
+/** The language a path step's version is in: its level name, else a tag that IS a language. */
+export const pathRowLanguage = (
+  row: { level_name?: string | null; tags?: unknown },
+  languages: CourseLanguageOption[],
+): CourseLanguageOption | null =>
+  languageOfLevel(row.level_name, languages) ?? languageOfTags(mappingTags(row).join(","), languages);
+
+/**
+ * Folds the 1-based step positions in each group into one step (the first
+ * position keeps its place): two packages that are the same course in two
+ * languages ("गुरुकुल शिक्षा" / "True Gurukul Shiksha"). The folded step's
+ * primary is the version in the visitor's language when it has one.
+ * Out-of-range and repeated positions are ignored; a group of fewer than two
+ * valid positions changes nothing.
+ */
+export const mergePathSteps = <T extends PathMapping>(
+  steps: PathStep<T>[],
+  groups: unknown,
+  languages: CourseLanguageOption[],
+  preferredLanguage?: string | null,
+): PathStep<T>[] => {
+  if (!Array.isArray(groups) || !groups.length) return steps;
+  const used = new Set<number>();
+  const into = new Map<number, number[]>();
+  for (const group of groups) {
+    if (!Array.isArray(group)) continue;
+    const positions = [
+      ...new Set(
+        group
+          .map((p) => (typeof p === "number" && Number.isInteger(p) ? p - 1 : -1))
+          .filter((i) => i >= 0 && i < steps.length && !used.has(i)),
+      ),
+    ];
+    if (positions.length < 2) continue;
+    positions.sort((a, b) => a - b);
+    positions.forEach((i) => used.add(i));
+    into.set(positions[0]!, positions.slice(1));
+  }
+  if (!into.size) return steps;
+  const absorbed = new Set([...into.values()].flat());
+  const out: PathStep<T>[] = [];
+  steps.forEach((step, i) => {
+    if (absorbed.has(i)) return;
+    const others = into.get(i);
+    if (!others) {
+      out.push(step);
+      return;
+    }
+    const variants = [step, ...others.map((j) => steps[j]!)].flatMap((s) => s.variants);
+    const present = new Set(
+      variants.map((v) => pathRowLanguage(v, languages)?.code).filter((c): c is string => !!c),
+    );
+    const preferred = preferredLanguage
+      ? variants.find((v) => pathRowLanguage(v, languages)?.code === preferredLanguage)
+      : undefined;
+    out.push({
+      ...step,
+      variants,
+      languages: languages.filter((l) => present.has(l.code)),
+      primary: preferred ?? step.primary,
+    });
+  });
+  return out;
+};
+
+/** The step a visitor sees: its primary, or the version in the visitor's language (by level or tag). */
+export const displayVariant = <T extends PathMapping>(
+  step: PathStep<T>,
+  languages: CourseLanguageOption[],
+  preferredLanguage?: string | null,
+): T => {
+  if (preferredLanguage && pathRowLanguage(step.primary, languages)?.code !== preferredLanguage) {
+    const hit = step.variants.find((v) => pathRowLanguage(v, languages)?.code === preferredLanguage);
+    if (hit) return hit;
+  }
+  return step.primary;
+};
+
+/**
+ * The streams a path draws on: the streams (top-level folders) whose tags any
+ * of its versions carry, in first-seen step order. With none (or before the
+ * steps load), the stream the path sits under.
+ */
+export const pathStreams = <S extends { id: string; tags: string[] }>(
+  rows: Array<{ tags?: unknown }>,
+  streams: S[],
+  fallback: S | null,
+): S[] => {
+  const out: S[] = [];
+  for (const row of rows) {
+    const tags = mappingTags(row);
+    for (const stream of streams) {
+      if (!out.includes(stream) && stream.tags.some((t) => tags.includes(t))) out.push(stream);
+    }
+  }
+  if (!out.length && fallback) out.push(fallback);
+  return out;
+};
+
+/** The languages a path's versions are in: most versions first, ties in the site's order. */
+export const pathLanguages = (
+  rows: Array<{ level_name?: string | null; tags?: unknown }>,
+  languages: CourseLanguageOption[],
+): CourseLanguageOption[] => {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const lang = pathRowLanguage(row, languages);
+    if (lang) counts.set(lang.code, (counts.get(lang.code) ?? 0) + 1);
+  }
+  return languages
+    .map((l, i) => ({ l, i, n: counts.get(l.code) ?? 0 }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .map((x) => x.l);
+};
+
+/** A path step that has not launched: authored, never priced or counted in totals. */
+export interface ComingSoonStep {
+  title: string;
+  /** 1-based place in the path; at the end when absent or out of range. */
+  position?: number;
+  /** The audience form "notify me" opens; the row is inert without one. */
+  audienceId?: string;
+}
+
+export type FeaturedStepItem<T> =
+  | { kind: "step"; step: PathStep<T & PathMapping>; index: number }
+  | { kind: "soon"; title: string; audienceId: string | null; index: number };
+
+/** Real steps with the coming-soon steps inserted at their positions; `index` is the shown number - 1. */
+export const withComingSoonSteps = <T extends PathMapping>(
+  steps: PathStep<T>[],
+  comingSoon: unknown,
+): FeaturedStepItem<T>[] => {
+  const items: FeaturedStepItem<T>[] = steps.map((step) => ({ kind: "step", step, index: 0 }));
+  const soon = (Array.isArray(comingSoon) ? comingSoon : [])
+    .filter((s): s is ComingSoonStep => !!s && typeof s === "object" && typeof (s as ComingSoonStep).title === "string")
+    .filter((s) => s.title.trim());
+  for (const s of soon) {
+    const at =
+      typeof s.position === "number" && Number.isInteger(s.position) && s.position >= 1 && s.position <= items.length
+        ? s.position - 1
+        : items.length;
+    items.splice(at, 0, {
+      kind: "soon",
+      title: s.title.trim(),
+      audienceId: typeof s.audienceId === "string" && s.audienceId.trim() ? s.audienceId.trim() : null,
+      index: 0,
+    });
+  }
+  return items.map((item, index) => ({ ...item, index }));
+};
+
+/** The price a version sells at (0 = free; null when the page has no plan). */
+export const variantPrice = (row: PathMapping): number | null => {
+  const price = row.payment_plan?.actual_price;
+  return typeof price === "number" && Number.isFinite(price) ? Math.max(0, price) : null;
+};
+
+export type PathPill = "allFree" | "firstFree" | null;
+
+/** "All steps free" when every priced step is free, "Step 1 is free" when the first is; else none. */
+export const pathPill = (prices: Array<number | null>): PathPill => {
+  if (!prices.length) return null;
+  if (prices.every((p) => p === 0)) return "allFree";
+  return prices[0] === 0 ? "firstFree" : null;
+};
+
+export type PathTotalNote = "allFree" | "available" | "all";
+
+export interface PathTotalSummary {
+  /** Sum of the shown versions' prices; null when a price is missing or currencies differ. */
+  total: number | null;
+  currency: string | null;
+  note: PathTotalNote;
+  /** Real steps (coming-soon steps excluded). */
+  count: number;
+  /** Indexes (into the real steps) of the free ones. */
+  freeSteps: number[];
+}
+
+export const pathTotalSummary = (variants: PathMapping[], comingSoonCount: number): PathTotalSummary => {
+  const prices = variants.map(variantPrice);
+  const currencies = new Set(variants.map((v) => (v.payment_plan?.currency || "").toUpperCase()).filter(Boolean));
+  const known = prices.every((p): p is number => p !== null) && currencies.size <= 1;
+  const total = known && prices.length ? (prices as number[]).reduce((a, b) => a + b, 0) : null;
+  const freeSteps = prices.flatMap((p, i) => (p === 0 ? [i] : []));
+  const note: PathTotalNote =
+    total === 0 && comingSoonCount === 0 ? "allFree" : comingSoonCount > 0 ? "available" : "all";
+  return { total, currency: currencies.size === 1 ? [...currencies][0]! : null, note, count: variants.length, freeSteps };
+};
+
+/** A goal chip: paths match by their streams' / versions' tags, or by an authored goal tag on the path. */
+export interface PathGoal {
+  key: string;
+  label: string;
+  /** Stream / category tags (folder slugs) this goal stands for. */
+  tags?: string[];
+}
+
+export const goalMatchesPath = (
+  goal: Pick<PathGoal, "key" | "tags">,
+  path: { tags: string[]; goalTags?: string[] },
+): boolean => {
+  const key = (goal.key || "").trim().toLowerCase();
+  if (key && (path.goalTags || []).some((t) => t.trim().toLowerCase() === key)) return true;
+  const wanted = (goal.tags || []).map((t) => (typeof t === "string" ? t.trim().toLowerCase() : "")).filter(Boolean);
+  return wanted.some((t) => path.tags.includes(t));
+};
+
+/** The featured path: the authored code when the list has it, else the first path. */
+export const pickFeaturedEntry = <E extends { code: string }>(entries: E[], code: string | null | undefined): E | null => {
+  const wanted = (code || "").trim();
+  return (wanted && entries.find((e) => e.code === wanted)) || entries[0] || null;
+};
+
+/**
+ * A path price as the design writes it: "₹251", "₹1,503" (grouped, no ".00"
+ * for whole amounts; Indian grouping for rupees).
+ */
+export const formatPathPrice = (amount: number, currency?: string | null): string => {
+  const code = (currency || "INR").toUpperCase();
+  const whole = Number.isInteger(amount);
+  const digits = amount.toLocaleString(code === "INR" ? "en-IN" : "en-US", {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  });
+  return `${getCurrencySymbol(code)}${digits}`;
 };

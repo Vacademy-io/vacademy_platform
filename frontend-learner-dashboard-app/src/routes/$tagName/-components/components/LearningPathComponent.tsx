@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -49,6 +49,11 @@ import {
   type PathMapping,
   type PathStep,
 } from "./learning-path-utils";
+import {
+  LearningPathFeatured,
+  LearningPathFeaturedSkeleton,
+  type LearningPathFeaturedOptions,
+} from "./LearningPathFeatured";
 
 /**
  * Learning path — a product page shown as numbered steps (single), or the
@@ -67,7 +72,7 @@ import {
  * band: unconfigured / failed / empty states render nothing for visitors
  * (unless the admin wrote an empty text) and a hint in the builder preview.
  */
-export interface LearningPathProps {
+export interface LearningPathProps extends LearningPathFeaturedOptions {
   mode?: "single" | "list";
   productPageCode?: string;
   /** The chosen product page's name, kept for the builder (fallback heading). */
@@ -634,6 +639,7 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
   tagName,
   globalSettings,
   isPreviewMode = false,
+  ...featuredOptions
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
@@ -669,6 +675,16 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
     shell.scrollToTop();
   };
 
+  // Featured layout (opt-in): the parts may be split over two sections, and
+  // only the one showing the featured part hosts an opened path. It brings
+  // itself into view when a path opens from the other section.
+  const featuredLayout = featuredOptions.listLayout === "featured";
+  const hostsOpenPath = !featuredLayout || featuredOptions.showFeatured !== false;
+  const { scrollToTop } = shell;
+  useEffect(() => {
+    if (featuredLayout && hostsOpenPath && openCode) scrollToTop();
+  }, [featuredLayout, hostsOpenPath, openCode, scrollToTop]);
+
   const hint = (message: string) =>
     isPreviewMode ? (
       <Section shell={shell}>
@@ -680,6 +696,7 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
     return hint(t("learningPath.preview.pickLibrary", "Pick a folder library to list learning paths from."));
   }
   if (isLoading) {
+    if (featuredLayout) return <LearningPathFeaturedSkeleton sectionRef={shell.sectionRef} />;
     return (
       <Section shell={shell}>
         <div aria-busy="true" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -701,6 +718,7 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
   }
 
   if (openCode) {
+    if (!hostsOpenPath) return null;
     if (!openEntry) {
       return (
         <Section shell={shell}>
@@ -764,6 +782,24 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
     return siteT(nodeTitle(parent));
   };
   const viewLabel = viewPathLabel || t("learningPath.viewPath", "View path");
+
+  if (featuredLayout) {
+    return (
+      <LearningPathFeatured
+        {...featuredOptions}
+        entries={entries}
+        roots={roots}
+        instituteId={instituteId}
+        tagName={tagName}
+        globalSettings={globalSettings}
+        title={title}
+        viewPathLabel={viewPathLabel}
+        backgroundColor={shell.backgroundColor}
+        sectionRef={shell.sectionRef}
+        onOpenPath={openPath}
+      />
+    );
+  }
 
   return (
     <Section shell={shell}>

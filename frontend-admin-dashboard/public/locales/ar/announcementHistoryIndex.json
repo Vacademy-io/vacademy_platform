@@ -44,8 +44,11 @@
         "actions": "الإجراءات",
         "loading": "جارٍ التحميل…",
         "empty": "لا توجد إعلانات",
-        "recipientsPrefix": "المستلمون:",
-        "recipientsMore": "+{{count}}"
+        "recipientsPrefix": "إلى:",
+        "recipientsMore": "+{{count}} آخرين",
+        "channels": "أُرسل عبر",
+        "loadFailed": "تعذر تحميل الإعلانات.",
+        "noMatch": "لا توجد إعلانات في هذه الصفحة تطابق البحث."
     },
     "actions": {
         "view": "عرض",
@@ -53,7 +56,8 @@
         "approve": "موافقة",
         "reject": "رفض",
         "deliverNow": "إرسال الآن",
-        "delete": "حذف"
+        "delete": "حذف",
+        "more": "إجراءات أخرى"
     },
     "toasts": {
         "statsLoadFailed": "فشل تحميل الإحصاءات",
@@ -71,7 +75,22 @@
         "content": "المحتوى",
         "modes": "الأنماط",
         "mediums": "الوسائط",
-        "recipients": "المستلمون"
+        "recipients": "المستلمون",
+        "close": "إغلاق",
+        "viewStats": "عرض إحصاءات التسليم",
+        "createdLine": "بواسطة {{name}} · {{when}}",
+        "system": "النظام",
+        "createdBy": "أنشأه",
+        "createdAt": "تاريخ الإنشاء",
+        "schedule": "الجدولة",
+        "noContent": "لا يوجد محتوى.",
+        "recipientsCount_zero": "المستلمون ({{count}})",
+        "recipientsCount_one": "المستلمون ({{count}})",
+        "recipientsCount_two": "المستلمون ({{count}})",
+        "recipientsCount_few": "المستلمون ({{count}})",
+        "recipientsCount_many": "المستلمون ({{count}})",
+        "recipientsCount_other": "المستلمون ({{count}})",
+        "noRecipients": "لا يوجد مستلمون."
     },
     "statsDialog": {
         "title": "إحصاءات التسليم",
@@ -105,13 +124,30 @@
             "loading": "جارٍ تحميل المستلمين...",
             "empty": "لم يتم العثور على مستلمين لهذا الإعلان.",
             "table": {
-                "name": "الاسم",
+                "name": "المستلم",
                 "mode": "النمط",
                 "status": "الحالة",
                 "seenAt": "وقت المشاهدة",
-                "dismissedAt": "وقت التجاهل"
+                "dismissedAt": "وقت التجاهل",
+                "deliveredAt": "وقت التسليم"
             },
-            "pagePagination": "صفحة {{page}} من {{totalPages}}"
+            "pagePagination": "صفحة {{page}} من {{totalPages}}",
+            "titleCount_zero": "المستلمون ({{count}})",
+            "titleCount_one": "المستلمون ({{count}})",
+            "titleCount_two": "المستلمون ({{count}})",
+            "titleCount_few": "المستلمون ({{count}})",
+            "titleCount_many": "المستلمون ({{count}})",
+            "titleCount_other": "المستلمون ({{count}})"
+        },
+        "nav": {
+            "recipients": "المستلمون",
+            "overview": "نظرة عامة على التسليم",
+            "email": "البريد الإلكتروني"
+        },
+        "rates": {
+            "delivery": "معدل التسليم",
+            "read": "معدل القراءة",
+            "dismiss": "معدل الإغلاق"
         }
     },
     "rejectDialog": {
@@ -125,6 +161,55 @@
         "immediate": "فوري",
         "oneTime": "مرة واحدة",
         "recurring": "متكرر",
-        "cron": "CRON: {{expr}}"
+        "cron": "CRON: {{expr}}",
+        "nextRun": "التالي: {{when}}"
+    },
+    "subheading": "كل الإعلانات وتنبيهات النظام المرسلة من هذه المؤسسة، ومن استلمها.",
+    "createAnnouncement": "إنشاء إعلان",
+    "retry": "إعادة المحاولة",
+    "recipients": {
+        "unknownUser": "مستخدم غير معروف",
+        "unknownBatch": "دفعة"
+    },
+    "recipientTypes": {
+        "USER": "مستخدم",
+        "ROLE": "دور",
+        "PACKAGE_SESSION": "دفعة",
+        "PACKAGE_SESSION_COMMA_SEPARATED_ORG_ROLES": "أدوار الدفعة",
+        "TAG": "وسم",
+        "CUSTOM_FIELD_FILTER": "فلتر حقل مخصص",
+        "AUDIENCE": "جمهور"
+    },
+    "roles": {
+        "ADMIN": "مسؤول",
+        "TEACHER": "معلم",
+        "STUDENT": "طالب",
+        "SYSTEM": "النظام"
+    },
+    "modes": {
+        "SYSTEM_ALERT": "تنبيه النظام",
+        "DASHBOARD_PIN": "تثبيت في اللوحة",
+        "DM": "رسالة مباشرة",
+        "STREAM": "بث",
+        "RESOURCES": "موارد",
+        "COMMUNITY": "مجتمع",
+        "TASKS": "مهام",
+        "APP_OVERLAY": "نافذة التطبيق"
+    },
+    "mediums": {
+        "WHATSAPP": "WhatsApp",
+        "PUSH_NOTIFICATION": "إشعار فوري",
+        "EMAIL": "البريد الإلكتروني"
+    },
+    "messageStatus": {
+        "PENDING": "قيد الانتظار",
+        "SENT": "مُرسل",
+        "DELIVERED": "تم التسليم",
+        "FAILED": "فشل",
+        "READ": "مقروء"
+    },
+    "deleteDialog": {
+        "title": "حذف الإعلان؟",
+        "description": "سيُحذف \"{{title}}\" من السجل. لا يمكن التراجع."
     }
 }

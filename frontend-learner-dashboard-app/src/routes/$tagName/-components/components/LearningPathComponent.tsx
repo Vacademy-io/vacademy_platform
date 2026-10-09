@@ -31,7 +31,9 @@ import { CourseThumbnail } from "../site-cart/CourseThumbnail";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { isMeaningfulLevel } from "../site-cart/site-cart-items";
+import { storeCartRoute } from "../site-cart/store-sale";
 import { useFallbackCartReopen, useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
+import { useStoreSale } from "../site-cart/use-store-sale";
 import {
   buildPathSteps,
   pathCartItems,
@@ -53,8 +55,9 @@ import {
  *
  * single: the product page's courses in display order, a course's language
  *   versions folded into one step with a language choice, the path's total,
- *   and "Add whole path to cart" (site cart) or "Enrol in this path" (the
- *   product page's own checkout with every course selected).
+ *   and "Add whole path to cart" (site cart, when its store page sells every
+ *   chosen course) or "Enrol in this path" (the product page's own checkout
+ *   with every course selected).
  * list: the product pages under the stream folder named by ?stream=, a chosen
  *   folder, or the whole library; "View path" sets ?path=<code> (pushed, so
  *   Back returns to the list) and the section shows that path.
@@ -228,19 +231,25 @@ const PathDetail: React.FC<PathDetailProps> = ({
   const siteCartOn = isSiteCartEnabled(siteCartSettings);
   const cart = useSiteCart(instituteId, siteCartOn);
   const notify = useSiteCartNotifier();
+  // The site cart checks out through its store page: the path goes into it
+  // only when the store sells every course the visitor chose. Otherwise
+  // "Enrol in this path" keeps the path's own checkout, as on a site without
+  // a site cart; while the store page loads, neither is offered.
+  const storeSale = useStoreSale(instituteId, siteCartSettings, siteCartOn);
+  const route = siteCartOn ? storeCartRoute(storeSale, items.map((i) => i.packageSessionId)) : "page";
+  const toCart = route === "cart";
   // The cart holds one version per course, so the path is measured (and
   // added) one version per course — one add always settles the button.
   const plan = useMemo(() => planPathCart(items, cart.has), [items, cart.has]);
-  const allInCart = siteCartOn && cart.hydrated && plan.allInCart;
-  const someInCart = siteCartOn && cart.hydrated && plan.someInCart;
+  const allInCart = toCart && cart.hydrated && plan.allInCart;
+  const someInCart = toCart && cart.hydrated && plan.someInCart;
 
-  // The total for what the button does: the cart's courses with a site cart;
-  // otherwise the product page's own price for the path (basket pricing and
-  // offers included), as its checkout will charge it.
+  // The total for what the button does: the cart's courses when the path
+  // goes to the site cart; otherwise the product page's own price for the
+  // path (basket pricing and offers included), as its checkout will charge it.
   const totals = useMemo(
-    () =>
-      siteCartOn ? pathTotals(plan.targets) : pathCheckoutTotals(pathTotals(items), chosen, data?.settings_json),
-    [siteCartOn, plan.targets, items, chosen, data?.settings_json],
+    () => (toCart ? pathTotals(plan.targets) : pathCheckoutTotals(pathTotals(items), chosen, data?.settings_json)),
+    [toCart, plan.targets, items, chosen, data?.settings_json],
   );
 
   const [adding, setAdding] = useState(false);
@@ -277,8 +286,10 @@ const PathDetail: React.FC<PathDetailProps> = ({
     course: (steps.length === 1 ? terms.course : terms.courses).toLocaleLowerCase(),
     defaultValue: "{{count}} {{course}}",
   });
+  // Which total applies is known once the store page has loaded.
+  const totalPending = route === "pending";
   const totalText =
-    totals.total === null
+    totalPending || totals.total === null
       ? null
       : totals.total === 0
         ? t("productPageOffer.free", "Free")
@@ -462,7 +473,17 @@ const PathDetail: React.FC<PathDetailProps> = ({
     );
   };
 
-  const cta = siteCartOn ? (
+  const cta = route === "pending" ? (
+    <button
+      type="button"
+      disabled
+      aria-busy="true"
+      className="catalogue-btn catalogue-btn-primary disabled:opacity-60"
+    >
+      <SpinnerGap className="size-4 animate-spin" aria-hidden="true" />
+      {t("siteCart.checking", "Checking availability…")}
+    </button>
+  ) : toCart ? (
     allInCart ? (
       <>
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-success-600">
@@ -537,7 +558,9 @@ const PathDetail: React.FC<PathDetailProps> = ({
               <p className="text-3xs font-medium uppercase tracking-wide text-catalogue-text-muted">
                 {t("learningPath.pathTotal", "Path total")}
               </p>
-              {totalText === null ? (
+              {totalPending ? (
+                <span aria-hidden="true" className="catalogue-skeleton-shimmer mt-1 block h-6 w-24 rounded-catalogue-xs" />
+              ) : totalText === null ? (
                 <p className="text-sm text-catalogue-text-muted">
                   {t("learningPath.totalAtCheckout", "Total shown at checkout")}
                 </p>
@@ -554,7 +577,7 @@ const PathDetail: React.FC<PathDetailProps> = ({
             </>
           )}
           <p className="text-xs text-catalogue-text-muted">{countLabel}</p>
-          {siteCartOn && plan.collapsed && (
+          {toCart && plan.collapsed && (
             // Two steps of one course (its levels, or ungrouped language
             // versions): say why fewer go into the cart than the path lists.
             <p className="mt-1 max-w-md text-xs text-catalogue-text-muted">

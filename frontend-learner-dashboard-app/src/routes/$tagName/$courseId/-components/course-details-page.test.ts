@@ -201,6 +201,20 @@ const bundleInvite = (id: string, prices: Record<string, number>) => ({
   })),
 });
 
+/** The store product page's mappings: it sells each of these versions of course `c` once. */
+const storeSells = (c: string, ...versions: string[]) =>
+  versions.map((v) => ({
+    package_id: c,
+    package_session_id: `${c}-${v}`,
+    enroll_invite_id: `store-inv-${v}`,
+    status: "ACTIVE",
+    payment_plan: { actual_price: 999, currency: "INR" },
+  }));
+
+/** GETs of the site's store page (code STORE). */
+const storePageReads = () =>
+  net.get.mock.calls.filter(([u]: unknown[]) => String(u).includes("by-code?code=STORE"));
+
 const lastUrlParams = () =>
   new URLSearchParams(((router.replace.mock.calls.at(-1)?.[0] as string) ?? "").split("?")[1] ?? "");
 
@@ -220,7 +234,8 @@ const renderPage = async (props: Record<string, unknown>) => {
   document.body.appendChild(host);
   root = createRoot(host);
   // The app's query client (the site cart drawer's checkout reads the store page through it).
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // No delay before the store page's one retry (useStoreSale), so a failing read settles here.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   act(() =>
     root!.render(
       React.createElement(
@@ -493,7 +508,7 @@ describe("CourseDetailsPage — language versions: links, syllabus, levels", () 
 describe("CourseDetailsPage — site cart", () => {
   it("refuses a 41st course and opens the cart instead of checking out", async () => {
     const c = "c-full";
-    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, storeSells(c, "en"));
     catalogue.data = settings({ siteCart: { enabled: true, storeProductPageCode: "STORE" } });
     const full = Array.from({ length: 40 }, (_, i) => ({ packageSessionId: `x-${i}`, courseId: `xc-${i}`, title: `X${i}` }));
     useSiteCartStore.setState({ instituteId: "inst", items: full, hydrated: true });
@@ -512,7 +527,11 @@ describe("CourseDetailsPage — site cart", () => {
 
   it("still swaps this course's version in a full cart", async () => {
     const c = "c-swap";
-    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) });
+    routeNetwork(
+      c,
+      { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) },
+      storeSells(c, "en", "hi"),
+    );
     catalogue.data = settings({ courseLanguages: { enabled: true }, siteCart: { enabled: true, storeProductPageCode: "STORE" } });
     const full = [
       { packageSessionId: `${c}-en`, courseId: c, title: "Yoga" },
@@ -531,10 +550,14 @@ describe("CourseDetailsPage — site cart", () => {
 
   it("adds the version to the site cart, then offers In cart and Buy now", async () => {
     const c = "c-cart";
-    routeNetwork(c, {
-      [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
-      [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
-    });
+    routeNetwork(
+      c,
+      {
+        [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
+        [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
+      },
+      storeSells(c, "en", "hi"),
+    );
     catalogue.data = settings({ siteCart: { enabled: true, storeProductPageCode: "STORE" } });
     const opened = headerCart();
 
@@ -634,7 +657,7 @@ describe("CourseDetailsPage — site cart and a link's own invite", () => {
 
   it("keeps a plain link (the version's own invite) in the site cart", async () => {
     const c = "c-own";
-    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, storeSells(c, "en"));
     catalogue.data = settings(siteCart);
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
     expect(buttonByText("Add to cart").length).toBeGreaterThan(0);
@@ -674,11 +697,15 @@ describe("CourseDetailsPage — site cart and a link's own invite", () => {
 
   it("offers the cart for a version the promo does not sell, and the promo again on the way back", async () => {
     const c = "c-promo-en";
-    routeNetwork(c, {
-      PROMO: invite("PROMO", `${c}-en`, 700), // sells English only
-      [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
-      [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
-    });
+    routeNetwork(
+      c,
+      {
+        PROMO: invite("PROMO", `${c}-en`, 700), // sells English only
+        [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
+        [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
+      },
+      storeSells(c, "en", "hi"),
+    );
     catalogue.data = settings({ courseLanguages: { enabled: true }, ...siteCart });
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "PROMO" });
     expect(buttonByText("Add to cart")).toHaveLength(0);
@@ -712,6 +739,162 @@ describe("CourseDetailsPage — site cart and a link's own invite", () => {
     expect(children.dialog).toMatchObject({
       courseData: expect.objectContaining({ enrollInviteId: "PROMO", price: 700 }),
     });
+  });
+});
+
+describe("CourseDetailsPage — site cart and what the store page sells", () => {
+  const siteCart = { siteCart: { enabled: true, storeProductPageCode: "STORE" } };
+  const pendingButtons = () =>
+    Array.from(host!.querySelectorAll<HTMLButtonElement>('button[aria-label="Checking availability…"]'));
+  /** Answers GETs of the store page with `answer`, every other GET as routeNetwork set it up. */
+  const storePageAnswers = (answer: (url: string) => Promise<unknown>) => {
+    const route = net.get.getMockImplementation()!;
+    net.get.mockImplementation((url: string) => (url.includes("by-code") ? answer(url) : route(url)));
+  };
+
+  it("enrols in a free course the store does not sell for free, as without a site cart", async () => {
+    const c = "c-orient";
+    // The store sells other courses only (its sync skipped this one).
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 0) }, storeSells("c-other", "en"));
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    expect(buttonByText("Buy now")).toHaveLength(0);
+    const enrol = buttonByText("courseDetails.enrollForFree");
+    expect(enrol.length).toBeGreaterThan(0);
+    act(() => enrol[0].click());
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en`, price: 0 }),
+    });
+    // An HTML page's data-vacademy="enrol" goes the same way.
+    act(() => (children.dialog!.onOpenChange as (open: boolean) => void)(false));
+    act(() => {
+      window.dispatchEvent(new Event("openCourseEnrollment"));
+    });
+    expect(children.dialog).toMatchObject({ open: true });
+    expect(useSiteCartStore.getState().items).toHaveLength(0);
+    expect(storePageReads()).toHaveLength(1);
+  });
+
+  it("keeps the enrol flow for a version the store does not sell, and the cart for one it does", async () => {
+    const c = "c-half";
+    routeNetwork(
+      c,
+      { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) },
+      storeSells(c, "en"), // not the Hindi version
+    );
+    catalogue.data = settings({ courseLanguages: { enabled: true }, ...siteCart });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(buttonByText("Add to cart").length).toBeGreaterThan(0);
+
+    act(() => radios()[1].click()); // Hindi
+    await settle();
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    expect(pendingButtons()).toHaveLength(0); // the store is known: nothing to wait for
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ packageSessionId: `${c}-hi`, enrollInviteId: `${c}-inv-hi`, price: 449 }),
+    });
+    expect(useSiteCartStore.getState().items).toHaveLength(0);
+
+    act(() => radios()[0].click()); // back to English: the cart again
+    await settle();
+    act(() => buttonByText("Add to cart")[0].click());
+    expect(useSiteCartStore.getState().items).toEqual([expect.objectContaining({ packageSessionId: `${c}-en` })]);
+    expect(storePageReads()).toHaveLength(1);
+  });
+
+  it("sends a version the store lists twice to its own enrol flow, never the cart", async () => {
+    const c = "c-twice";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, [
+      ...storeSells(c, "en"),
+      ...storeSells(c, "en"),
+    ]);
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` }),
+    });
+  });
+
+  it("offers neither action until the store page is known, then the cart", async () => {
+    const c = "c-wait-store";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    let releaseStore: (value: unknown) => void = () => {};
+    storePageAnswers(() => new Promise((resolve) => (releaseStore = resolve)));
+    catalogue.data = settings(siteCart);
+    const opened = headerCart();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    // Both overview cards and the mobile bar wait, with nothing to press.
+    const waiting = pendingButtons();
+    expect(waiting).toHaveLength(3);
+    expect(waiting.every((b) => b.disabled && b.getAttribute("aria-busy") === "true")).toBe(true);
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    expect(buttonByText("courseDetails.enrollNow")).toHaveLength(0);
+    // An HTML page's data-vacademy="enrol" waits too.
+    act(() => {
+      window.dispatchEvent(new Event("openCourseEnrollment"));
+    });
+    expect(children.dialog).toMatchObject({ open: false });
+    expect(opened).toEqual([]);
+    expect(useSiteCartStore.getState().items).toHaveLength(0);
+
+    releaseStore({ data: { mappings: storeSells(c, "en") } });
+    await settle();
+    expect(pendingButtons()).toHaveLength(0);
+    act(() => buttonByText("Buy now")[0].click());
+    expect(opened).toEqual([{ intent: "checkout", packageSessionId: `${c}-en`, source: "course" }]);
+  });
+
+  it("falls back to the enrol flow when the store page cannot be read", async () => {
+    const c = "c-store-down";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    storePageAnswers(async () => {
+      throw new Error("store page down");
+    });
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    expect(storePageReads().length).toBeGreaterThan(0);
+    expect(pendingButtons()).toHaveLength(0);
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ enrollInviteId: `${c}-inv-en`, price: 999 }),
+    });
+  });
+
+  it("reads no store page on a site without a site cart, nor on a product page visit", async () => {
+    const c = "c-no-store";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999), [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449) });
+    catalogue.data = settings({ courseLanguages: { enabled: true } });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(net.get.mock.calls.some(([u]: unknown[]) => String(u).includes("by-code"))).toBe(false);
+    expect(pendingButtons()).toHaveLength(0);
+    const enrol = buttonByText("courseDetails.enrollNow");
+    expect(enrol.length).toBeGreaterThan(0);
+    expect(enrol.every((b) => !b.disabled)).toBe(true);
+    unmountPage();
+
+    // A product page visit keeps that page's own checkout: its page is read, never the store.
+    const p = "c-pp-visit";
+    routeNetwork(p, { "pp-en": invite("pp-en", `${p}-en`, 600) }, [
+      { package_id: p, package_session_id: `${p}-en`, enroll_invite_id: "pp-en", level_name: "English", status: "ACTIVE", display_order: 1, payment_plan: { actual_price: 600, currency: "INR" } },
+    ]);
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: p, packageSessionId: `${p}-en`, enrollInviteId: "pp-en", productPageCode: "PATH" });
+    expect(storePageReads()).toHaveLength(0);
+    expect(pendingButtons()).toHaveLength(0);
+    expect(buttonByText("courseDetails.enrollNow").length).toBeGreaterThan(0);
   });
 });
 

@@ -76,6 +76,8 @@ import {
   useFallbackCartReopen,
   useHasSiteCartOpener,
 } from "../../-components/site-cart/use-site-cart";
+import { storeCartRoute, type StoreCartRoute } from "../../-components/site-cart/store-sale";
+import { useStoreSale } from "../../-components/site-cart/use-store-sale";
 import {
   invitePaymentEntryFor,
   primeOpenEnrollInvite,
@@ -96,7 +98,7 @@ import {
   type SiteCartOpenDetail,
 } from "../-utils/course-version-selection";
 import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
-import { CourseCartActions } from "./CourseCartActions";
+import { CourseCartActions, CourseCartPending } from "./CourseCartActions";
 import {
   BookOpen,
   CaretDown,
@@ -127,6 +129,11 @@ const displayLevelName = (raw?: string | null): string => {
   if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return "";
   return trimmed;
 };
+
+// What storeCartRoute asks of a section's own checkout, for this page: its
+// enrol flow (the version's invite) sells the version once, as it is. So a
+// version goes to the site cart exactly when the store sells it as it is.
+const enrolFlowSellsVersion = () => true;
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
@@ -1357,6 +1364,14 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   useEffect(() => {
     if (siteCartActive && instituteId) void hydrateSiteCart(instituteId);
   }, [siteCartActive, instituteId, hydrateSiteCart]);
+  // The cart checks out through the store page, so only a version the store
+  // sells goes in (see siteCartMode). Reads nothing, and requests nothing, on
+  // a site without a site cart or on a product page visit.
+  const storeSale = useStoreSale(
+    instituteId,
+    catalogueData?.globalSettings?.siteCart,
+    siteCartActive,
+  );
 
   const handleVersionSelect = (nextPackageSessionId: string) => {
     // null: unknown version, or nothing to enrol it through. The updates name
@@ -1594,10 +1609,25 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     selectedInviteId: selectedVersionInviteId,
     urlEnrollInviteId: enrollInviteId,
   });
-  // Site cart: "Add to cart" + "Buy now" replace the enrol button. A Coming
+  // Site cart: "Add to cart" + "Buy now" replace the enrol button for a
+  // version the store page sells as it is — the cart checks out there (the
+  // rule offers and learning paths follow, see storeCartRoute). Any other
+  // version keeps the enrol flow the site has without a site cart (the invite
+  // dialog, "Enroll for free" for a free one), and so does every version
+  // while the store page will not load. Until the version on screen and the
+  // store are both known, neither is offered (storeCheckPending). A Coming
   // Soon course still collects interest and a closed invite still explains
   // itself, through the original button.
-  const siteCartMode = siteCartActive && !linkInviteVisit && !comingSoon && !isEnrollmentClosed;
+  const storeRoute: StoreCartRoute =
+    !siteCartActive || comingSoon
+      ? "page"
+      : courseVersions.status === "loading"
+        ? "pending"
+        : linkInviteVisit || isEnrollmentClosed || !cartPackageSessionId
+          ? "page"
+          : storeCartRoute(storeSale, [cartPackageSessionId], enrolFlowSellsVersion);
+  const siteCartMode = storeRoute === "cart";
+  const storeCheckPending = storeRoute === "pending";
   const siteCartItem =
     siteCartMode && cartPackageSessionId
       ? buildCourseCartItem({
@@ -1615,11 +1645,10 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           enrollInviteId: courseData.enrollInviteId,
         })
       : null;
-  const showCartActions =
-    siteCartMode && (!!siteCartItem || courseVersions.status === "loading");
-  // The line must carry the settled version, invite and price.
-  const cartActionsReady =
-    siteCartReady && !!siteCartItem && courseVersions.status !== "loading";
+  // The versions have settled by now (they are pending until then), so the
+  // line carries the settled version, invite and price.
+  const showCartActions = siteCartMode && !!siteCartItem;
+  const cartActionsReady = siteCartReady && showCartActions;
   const otherVersionLabel = otherVersionInCart
     ? (configuredLanguages.find((l) => l.code === otherVersionInCart.languageCode) ??
         languageOfLevel(otherVersionInCart.levelName, configuredLanguages))?.label ??
@@ -1700,9 +1729,10 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       return;
     }
 
-    // The version on screen is not settled yet (the buttons are disabled; an
-    // HTML page's data-vacademy="enrol" lands here too).
-    if (enrolPending) return;
+    // The version on screen is not settled yet, or (site cart) whether the
+    // store sells it is not known yet — the buttons wait; an HTML page's
+    // data-vacademy="enrol" lands here too.
+    if (enrolPending || storeCheckPending) return;
 
     // Invite expired / not-yet-started / deactivated → show the admin message.
     if (isEnrollmentClosed) {
@@ -2033,6 +2063,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                           onViewCart={() => openSiteCart("view")}
                           note={cartNote}
                         />
+                      ) : storeCheckPending ? (
+                        <CourseCartPending />
                       ) : (
                         <>
                           <button
@@ -2196,6 +2228,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                           onViewCart={() => openSiteCart("view")}
                           note={cartNote}
                         />
+                      ) : storeCheckPending ? (
+                        <CourseCartPending />
                       ) : (
                         <>
                           <button
@@ -2479,6 +2513,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                 onBuyNow={handleBuyNow}
                 onViewCart={() => openSiteCart("view")}
               />
+            ) : storeCheckPending ? (
+              <CourseCartPending />
             ) : (
               <div className="flex flex-col gap-1">
                 <button

@@ -696,7 +696,18 @@ const LearningPathList: React.FC<LearningPathProps & { shell: Shell; instituteId
     return hint(t("learningPath.preview.pickLibrary", "Pick a folder library to list learning paths from."));
   }
   if (isLoading) {
-    if (featuredLayout) return <LearningPathFeaturedSkeleton sectionRef={shell.sectionRef} />;
+    if (featuredLayout) {
+      if (openCode && !hostsOpenPath) return null;
+      return (
+        <LearningPathFeaturedSkeleton
+          showGoals={featuredOptions.showGoals}
+          showFeatured={featuredOptions.showFeatured}
+          showGrid={featuredOptions.showGrid}
+          backgroundColor={shell.backgroundColor}
+          sectionRef={shell.sectionRef}
+        />
+      );
+    }
     return (
       <Section shell={shell}>
         <div aria-busy="true" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

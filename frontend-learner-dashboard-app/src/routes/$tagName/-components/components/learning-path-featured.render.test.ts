@@ -58,6 +58,8 @@ vi.mock("@/services/upload_file", () => ({ getPublicUrlWithoutLogin: () => Promi
 
 const { LearningPathComponent } = await import("./LearningPathComponent");
 const { CatalogueLocaleProvider } = await import("../../-utils/catalogue-locale");
+const { localizeComponentProps } = await import("../../-utils/catalogue-site-language");
+const { LearningPathFeaturedSkeleton } = await import("./LearningPathFeatured");
 
 // ─── fixtures (shaped like the knowledge-streams library) ───────────────────
 const INSTITUTE = "inst-1";
@@ -186,12 +188,18 @@ const FEATURED_PROPS = {
   outlineColor: "#a08a5c", // design-lint-ignore: test fixture colour
 };
 
-const render = (props: Record<string, unknown>, opts: { search?: string; i18n?: Record<string, unknown> } = {}) => {
+const render = (
+  props: Record<string, unknown>,
+  opts: { search?: string; i18n?: Record<string, unknown>; libraryLoading?: boolean; pagesLoading?: string[] } = {},
+) => {
   routerState.searchStr = opts.search || "";
   try {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], TREE);
-    for (const [code, data] of Object.entries(PAGES)) client.setQueryData(["PRODUCT_PAGE_BY_CODE", code, INSTITUTE], data);
+    // A query with no cached data is still loading on the first (server) render.
+    if (!opts.libraryLoading) client.setQueryData(["FOLDER_LIBRARY_PUBLIC", INSTITUTE, LIBRARY], TREE);
+    for (const [code, data] of Object.entries(PAGES)) {
+      if (!opts.pagesLoading?.includes(code)) client.setQueryData(["PRODUCT_PAGE_BY_CODE", code, INSTITUTE], data);
+    }
     const section = React.createElement(LearningPathComponent, {
       instituteId: INSTITUTE,
       tagName: "site",
@@ -314,8 +322,34 @@ describe("learningPath list layout 'featured'", () => {
       'href="/site/gita?enrollInviteId=inv-gita&amp;packageSessionId=ps-gita&amp;productPageCode=u5rgwb&amp;level=Short+Film&amp;price=0"',
     );
     expect(text(card)).toContain("Total of all three steps, bought individually. Gita film is free.");
-    // The first step's circle is filled.
+    // The free step's circle is filled (here step 1), the others outlined.
     expect(card).toMatch(/class="[^"]*bg-palette-olive text-white"[^>]*>1</);
+    expect(card.match(/bg-palette-olive text-white/g)).toHaveLength(1);
+  });
+
+  it("fills only free steps in the stepper (a paid step 1 stays outlined)", () => {
+    const card = featuredOf(render(FEATURED_PROPS));
+    expect(card).not.toContain("bg-palette-olive text-white");
+    const temples = featuredOf(render({ ...FEATURED_PROPS, featured: { code: "92ogt2" } }));
+    // India of temples: every step free, so every circle is filled.
+    expect(temples.match(/bg-palette-olive text-white/g)).toHaveLength(3);
+  });
+
+  it("makes a coming-soon step with a form a 'Notify me' button in the featured stepper too", () => {
+    const card = featuredOf(render({ ...FEATURED_PROPS, featured: { code: "ks61g1" } }));
+    expect(card).toMatch(
+      /<button type="button" aria-label="Notify me when Sanskrit Language teaching launches" class="[^"]*">Sanskrit Language teaching<\/button>/,
+    );
+    // Without a form it stays plain text.
+    const plain = featuredOf(
+      render({
+        ...FEATURED_PROPS,
+        featured: { code: "ks61g1" },
+        pathExtras: [{ code: "ks61g1", comingSoon: [{ title: "Sanskrit Language teaching" }] }],
+      }),
+    );
+    expect(plain).toContain("Sanskrit Language teaching");
+    expect(plain).not.toContain("Notify me when");
   });
 
   it("filters by the goal in ?goal= (the featured card hides when the goal excludes it)", () => {
@@ -367,6 +401,78 @@ describe("learningPath list layout 'featured'", () => {
     expect(card).toContain("शिक्षा  ·  2 steps  ·  अंग्रेज़ी &amp; हिन्दी");
     // Format labels go through the dictionary too (the props localizer skips the "animation" key).
     expect(text(cardOf(html, "India of temples"))).toContain("एनिमेशन · Free");
+  });
+
+  it("loading: draws only the parts the section shows, on its own band colour", () => {
+    const top = render({ ...FEATURED_PROPS, showGrid: false, backgroundColor: "#FFFFFF" }, { libraryLoading: true }); // design-lint-ignore: test fixture colour
+    expect(top).toContain('aria-busy="true"');
+    expect(top).toContain("style=\"background-color:#FFFFFF\""); // design-lint-ignore: test fixture colour
+    expect(top).toContain("rounded-full");
+    expect(top).toContain("h-72");
+    expect(top).not.toContain("catalogue-skeleton-shimmer h-[190px]"); // design-lint-ignore: Figma card image height
+
+    const grid = render({ ...FEATURED_PROPS, showGoals: false, showFeatured: false }, { libraryLoading: true });
+    expect(grid).toContain('aria-busy="true"');
+    expect(grid).not.toContain("h-72");
+    expect(grid).not.toContain("h-10 w-32 rounded-full");
+    expect(grid.match(/catalogue-skeleton-shimmer h-\[190px\]/g)).toHaveLength(2); // design-lint-ignore: Figma card image height
+    expect(grid).toContain("lg:grid-cols-2");
+    expect(grid).not.toContain("style=");
+
+    // A grid-only section stays empty while an opened path loads in the featured one.
+    expect(render({ ...FEATURED_PROPS, showGoals: false, showFeatured: false }, { libraryLoading: true, search: "?path=92ogt2" })).toBe("");
+    expect(renderToStaticMarkup(React.createElement(LearningPathFeaturedSkeleton, { showGoals: false, showFeatured: false, showGrid: false }))).toBe("");
+  });
+
+  it("keeps every authored chip and the ?goal= pick while product pages load", () => {
+    const html = render(FEATURED_PROPS, { search: "?goal=health", pagesLoading: ["forbvy"] });
+    // "Learn a craft" matches no path, but tags are not all known yet.
+    expect(text(html)).toContain("Learn a craft");
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Care for my health</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>All paths · 4</);
+    // Once loaded, unmatched goals drop out again.
+    expect(text(render(FEATURED_PROPS, { search: "?goal=health" }))).not.toContain("Learn a craft");
+  });
+
+  it("shows every authored string from the site dictionary in Hindi (props localizer + siteT)", () => {
+    const hi = {
+      "What do you want to achieve?": "आप क्या पाना चाहते हैं?",
+      "All paths": "सभी पथ",
+      "Raise my child": "अपने बच्चे का पालन-पोषण",
+      "Care for my health": "अपने स्वास्थ्य की देखभाल",
+      "Discover India of temples": "मंदिरों के भारत को जानें",
+      "Most popular path": "सबसे लोकप्रिय पथ",
+      "Sanskrit Language teaching": "संस्कृत भाषा शिक्षण",
+      "E-book": "ई-पुस्तक",
+      "Animation": "एनिमेशन",
+      "Articles - essays": "लेख - निबंध",
+      "More learning paths": "और अध्ययन पथ",
+      "New paths are added as courses launch": "पाठ्यक्रम शुरू होने के साथ नए पथ जुड़ते हैं",
+      Rajaswala: "रजस्वला",
+    };
+    const i18n = {
+      enabled: true,
+      defaultLocale: "en",
+      locales: [
+        { code: "en", label: "EN" },
+        { code: "hi", label: "हिन्दी" },
+      ],
+      strings: { hi },
+    };
+    const props = { ...FEATURED_PROPS, moreTitle: "More learning paths" };
+    const lines = text(render(localizeComponentProps(props, hi), { search: "?lang=hi", i18n }));
+    for (const english of Object.keys(hi)) expect(lines.join("\n")).not.toContain(english);
+    expect(lines).toContain("आप क्या पाना चाहते हैं?");
+    expect(lines).toContain("सभी पथ · 4");
+    expect(lines).toContain("अपने बच्चे का पालन-पोषण");
+    expect(lines).toContain("सबसे लोकप्रिय पथ");
+    expect(lines).toContain("रजस्वला");
+    expect(lines).toContain("संस्कृत भाषा शिक्षण");
+    expect(lines).toContain("ई-पुस्तक · ₹121");
+    expect(lines).toContain("एनिमेशन · Free");
+    expect(lines).toContain("लेख - निबंध · Free");
+    expect(lines).toContain("और अध्ययन पथ");
+    expect(lines).toContain("पाठ्यक्रम शुरू होने के साथ नए पथ जुड़ते हैं");
   });
 
   it("leaves a list without listLayout on the path cards", () => {

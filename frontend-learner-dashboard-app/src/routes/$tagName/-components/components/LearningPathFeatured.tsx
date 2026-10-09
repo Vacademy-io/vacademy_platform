@@ -151,6 +151,7 @@ const C = {
   gridNote: "text-[13px] leading-[18px] text-palette-muted", // design-lint-ignore: Figma 13/18
   card: "flex h-full flex-col overflow-hidden rounded-[20px] border border-palette-border bg-catalogue-bg-elevated shadow-[0_4px_16px_0_rgba(26,20,5,0.06)]", // design-lint-ignore: Figma card radius + shadow
   cardImage: "relative h-[190px] w-full shrink-0 bg-palette-sand", // design-lint-ignore: Figma 190px image
+  cardImageSkeleton: "catalogue-skeleton-shimmer h-[190px] w-full shrink-0", // design-lint-ignore: Figma 190px image
   cardBody: "flex flex-1 flex-col gap-3 px-5 pb-6 pt-[22px] md:px-7", // design-lint-ignore: Figma 22px top padding
   cardTitle: "text-[22px] font-bold leading-[29px] text-palette-text", // design-lint-ignore: Figma 22/29
   cardDesc: "text-[15px] leading-6 text-palette-body", // design-lint-ignore: Figma 15/24
@@ -246,20 +247,53 @@ const RowsSkeleton: React.FC<{ count?: number }> = ({ count = 3 }) => (
   </div>
 );
 
-export const LearningPathFeaturedSkeleton: React.FC<{ sectionRef?: (node: HTMLElement | null) => void }> = ({
-  sectionRef,
-}) => (
-  <section ref={sectionRef} className="w-full bg-catalogue-bg">
-    <div aria-busy="true" className="catalogue-shell space-y-6 py-8">
-      <div className="flex flex-wrap gap-2.5">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="catalogue-skeleton-shimmer h-10 w-32 rounded-full" />
-        ))}
+/**
+ * While the library loads: placeholders for the parts this section shows only
+ * (a grid-only section does not flash chips and a featured block), on the
+ * section's own band colour.
+ */
+export const LearningPathFeaturedSkeleton: React.FC<
+  Pick<LearningPathFeaturedOptions, "showGoals" | "showFeatured" | "showGrid"> & {
+    backgroundColor?: string;
+    sectionRef?: (node: HTMLElement | null) => void;
+  }
+> = ({ showGoals = true, showFeatured = true, showGrid = true, backgroundColor, sectionRef }) => {
+  if (!showGoals && !showFeatured && !showGrid) return null;
+  return (
+    <section
+      ref={sectionRef}
+      data-path-layout="featured"
+      className="w-full bg-catalogue-bg"
+      // Admin-authored band colour (free-form), as on the loaded section.
+      style={backgroundColor ? { backgroundColor } : undefined}
+    >
+      <div aria-busy="true" className="catalogue-shell space-y-6 py-8">
+        {showGoals && (
+          <div className="flex flex-wrap gap-2.5">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="catalogue-skeleton-shimmer h-10 w-32 rounded-full" />
+            ))}
+          </div>
+        )}
+        {showFeatured && <div className="catalogue-skeleton-shimmer h-72 w-full rounded-catalogue-lg" />}
+        {showGrid && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {[0, 1].map((i) => (
+              <div key={i} className={C.card}>
+                <div className={C.cardImageSkeleton} />
+                <div className="space-y-3 p-5 md:px-7">
+                  <div className="catalogue-skeleton-shimmer h-6 w-3/4 rounded-catalogue-xs" />
+                  <div className="catalogue-skeleton-shimmer h-4 w-full rounded-catalogue-xs" />
+                  <RowsSkeleton />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="catalogue-skeleton-shimmer h-72 w-full rounded-catalogue-lg" />
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 export const LearningPathFeatured: React.FC<LearningPathFeaturedProps> = ({
   entries,
@@ -421,7 +455,10 @@ export const LearningPathFeatured: React.FC<LearningPathFeaturedProps> = ({
   const goalList = (Array.isArray(goals) ? goals : []).filter(
     (g): g is PathGoal => !!g && typeof g.key === "string" && !!g.key.trim() && typeof g.label === "string" && !!g.label.trim(),
   );
-  const shownGoals = goalList.filter((g) => views.some((v) => goalMatchesPath(g, v)));
+  // A path's tags are known once its product page loads: until every page has,
+  // keep all authored chips (and the ?goal= pick) so the row does not jump.
+  const pagesLoading = views.some((v) => v.loading);
+  const shownGoals = pagesLoading ? goalList : goalList.filter((g) => views.some((v) => goalMatchesPath(g, v)));
   const activeGoal = wanted ? shownGoals.find((g) => g.key.trim().toLowerCase() === wanted) ?? null : null;
   const matching = activeGoal ? views.filter((v) => goalMatchesPath(activeGoal, v)) : views;
 
@@ -535,7 +572,8 @@ export const LearningPathFeatured: React.FC<LearningPathFeaturedProps> = ({
                         aria-hidden="true"
                         className={cn(
                           C.stepCircle,
-                          i === 0 ? "border-palette-olive bg-palette-olive text-white" : C.stepCircleIdle,
+                          // Figma 73:472: the free step is the filled one.
+                          row.free ? "border-palette-olive bg-palette-olive text-white" : C.stepCircleIdle,
                         )}
                       >
                         {row.number}
@@ -553,7 +591,18 @@ export const LearningPathFeatured: React.FC<LearningPathFeaturedProps> = ({
                       <span className="sr-only">
                         {t("learningPath.stepLabel", { number: row.number, defaultValue: "Step {{number}}" })}
                       </span>
-                      <span className={cn(C.stepLabel, row.soon && "text-palette-muted2")}>{row.label}</span>
+                      {row.soon && row.audienceId ? (
+                        <button
+                          type="button"
+                          onClick={() => notify(row)}
+                          aria-label={t("learningPaths.notifyAria", { title: row.label, defaultValue: "Notify me when {{title}} launches" })}
+                          className={cn(C.stepLabel, "text-start text-palette-muted2 hover:underline")}
+                        >
+                          {row.label}
+                        </button>
+                      ) : (
+                        <span className={cn(C.stepLabel, row.soon && "text-palette-muted2")}>{row.label}</span>
+                      )}
                       {row.price && (
                         <span className={cn("shrink-0 text-xs", row.free ? cn("font-bold", C.free) : "text-palette-muted")}>
                           {row.price}

@@ -73,6 +73,11 @@ public class ProductPageService {
 
     @Autowired
     private InstituteSettingService instituteSettingService;
+
+    // Lost its @Autowired in a 2026-05-29 merge, which left it null: every coupon
+    // check (/open/v1/product-page/validate-coupon and any enroll carrying a
+    // coupon) threw a NullPointerException.
+    @Autowired
     private CouponValidationService couponValidationService;
 
     @Autowired

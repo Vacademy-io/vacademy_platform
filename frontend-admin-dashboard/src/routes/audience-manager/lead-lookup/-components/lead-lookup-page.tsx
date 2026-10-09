@@ -37,6 +37,7 @@ import { getInstituteId } from '@/constants/helper';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { LeadEmptyState } from '@/components/shared/leads';
 import {
+    guessLookupMode,
     lookupLead,
     lookupParamsFor,
     isTermCompleteFor,
@@ -119,14 +120,16 @@ export function LeadLookupPage() {
                 {/* The phone box carries its own country picker: a number stored with
                     a dial code and one typed without it are the same person, and the
                     institute's own preferred countries decide the default. onKeyDown
-                    sits on the wrapper because the widget takes no key handler. */}
+                    sits on the wrapper because the widget takes no key handler — and
+                    skips the country picker's own search box, where Enter means "pick
+                    this country", not "run the search". */}
                 <div
                     className="min-w-56 flex-1"
                     onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
-                            submit();
-                        }
+                        if (e.key !== 'Enter') return;
+                        if ((e.target as HTMLElement).closest('.country-list')) return;
+                        e.preventDefault();
+                        submit();
                     }}
                 >
                     {mode === 'phone' ? (
@@ -143,6 +146,23 @@ export function LeadLookupPage() {
                             inputType={mode === 'email' ? 'email' : 'text'}
                             input={term}
                             onChangeFunction={(e) => setTerm(e.target.value)}
+                            onPaste={(e) => {
+                                // Pasting an address while the picker says Full name is
+                                // a near-miss worth absorbing: switch to the mode the
+                                // pasted value obviously belongs to.
+                                const pasted = e.clipboardData.getData('text');
+                                const guessed = guessLookupMode(pasted);
+                                if (
+                                    guessed &&
+                                    guessed !== mode &&
+                                    modes.some((m) => m.value === guessed)
+                                ) {
+                                    e.preventDefault();
+                                    setMode(guessed);
+                                    setTerm(pasted.trim());
+                                    setResult(null);
+                                }
+                            }}
                             inputPlaceholder={copy.placeholder}
                             label={copy.label}
                             className="w-full"

@@ -37,12 +37,21 @@ const SiteCartButtonInner: React.FC<
   const { items, hydrated } = useSiteCart(instituteId, true);
   const lastAddedAt = useSiteCartStore((s) => (s.instituteId === instituteId ? s.lastAddedAt : 0));
   const [open, setOpen] = useState(false);
+  // Bumped by a "Buy now" open request: the drawer goes straight on to checkout once.
+  const [checkoutRequest, setCheckoutRequest] = useState(0);
   const [bump, setBump] = useState(false);
   // State, not a ref: the drawer reads the theme wrapper through this node.
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 
   // The drawer opens from anywhere: a learning path, a course card.
-  useEffect(() => registerSiteCartOpener(() => setOpen(true)), []);
+  useEffect(
+    () =>
+      registerSiteCartOpener((request) => {
+        setOpen(true);
+        if (request?.intent === "checkout") setCheckoutRequest((n) => n + 1);
+      }),
+    [],
+  );
 
   // A payment that left for a redirect gateway may have settled since: drop
   // what it bought from the cart (no request unless such a payment is noted).
@@ -100,6 +109,7 @@ const SiteCartButtonInner: React.FC<
         settings={settings}
         languages={languages}
         themeAnchor={anchor}
+        checkoutRequest={checkoutRequest}
       />
     </>
   );

@@ -112,3 +112,17 @@ describe("reopen after the store checkout's Back", () => {
     expect(takeSiteCartReopenRequest(now + 60)).toBe(false);
   });
 });
+
+describe("open requests carry their intent", () => {
+  it("passes a checkout request through to the opener ('Buy now')", () => {
+    if (typeof window === "undefined") return; // node env: the event bus needs a window
+    const seen: (string | undefined)[] = [];
+    const unregister = registerSiteCartOpener((request) => seen.push(request?.intent));
+    expect(openSiteCartDrawer({ intent: "checkout" })).toBe(true);
+    expect(openSiteCartDrawer()).toBe(true);
+    window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail: { intent: "checkout", packageSessionId: "x", source: "course" } }));
+    unregister();
+    expect(seen).toEqual(["checkout", undefined, "checkout"]);
+  });
+});
+

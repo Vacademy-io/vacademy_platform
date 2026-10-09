@@ -12,14 +12,21 @@
 
 export const SITE_CART_OPEN_EVENT = "siteCartOpen";
 
-type Opener = () => void;
+/** What an open request asks for: just show the cart, or go on to checkout ("Buy now"). */
+export interface SiteCartOpenRequest {
+  intent?: "view" | "checkout";
+}
+
+type Opener = (request?: SiteCartOpenRequest) => void;
 
 const openers: Opener[] = [];
 let listening = false;
 const watchers = new Set<() => void>();
 
-const handleOpenRequest = () => {
-  openers[openers.length - 1]?.();
+// Called by the window event, and directly (no event) for a reopen request.
+const handleOpenRequest = (event?: Event) => {
+  const detail = (event as CustomEvent<SiteCartOpenRequest | undefined> | undefined)?.detail;
+  openers[openers.length - 1]?.(detail && typeof detail === "object" ? detail : undefined);
 };
 
 const notifyWatchers = () => {
@@ -89,8 +96,8 @@ export const subscribeSiteCartOpeners = (watcher: () => void): (() => void) => {
  * Opens the header's cart drawer. Returns false when no cart button is
  * mounted (a page without the site header), so the caller can show its own.
  */
-export const openSiteCartDrawer = (): boolean => {
+export const openSiteCartDrawer = (request?: SiteCartOpenRequest): boolean => {
   if (!openers.length || typeof window === "undefined") return false;
-  window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT));
+  window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail: request }));
   return true;
 };

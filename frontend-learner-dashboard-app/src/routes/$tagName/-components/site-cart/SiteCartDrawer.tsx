@@ -46,6 +46,12 @@ export interface SiteCartDrawerProps {
   languages?: CourseLanguageOption[];
   /** Any element inside the catalogue's theme wrapper — the drawer wears that theme. */
   themeAnchor?: HTMLElement | null;
+  /**
+   * Bumped by a "Buy now" open request: once the drawer is open with the
+   * course in it, run the same checkout as its button (store pre-check, then
+   * the store checkout) — problems still show here, nothing is skipped.
+   */
+  checkoutRequest?: number;
 }
 
 /**
@@ -61,6 +67,7 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
   settings,
   languages,
   themeAnchor,
+  checkoutRequest = 0,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const terms = useCourseTerms();
@@ -122,6 +129,16 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
   useEffect(() => {
     reset();
   }, [itemsKey, open, reset]);
+
+  // "Buy now": checkout once per request, after the reset above and only when
+  // the cart has loaded with something to buy.
+  const handledCheckoutRequest = useRef(checkoutRequest);
+  useEffect(() => {
+    if (!open || !hydrated || !items.length) return;
+    if (checkoutRequest === handledCheckoutRequest.current) return;
+    handledCheckoutRequest.current = checkoutRequest;
+    void runCheckout(items);
+  }, [open, hydrated, items, checkoutRequest, runCheckout]);
 
   // Stable row keys; a duplicated version (only possible in a hand-edited
   // store) gets a suffix instead of colliding.

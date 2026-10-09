@@ -13,7 +13,7 @@
  */
 import { preferencesGet, preferencesRemove, preferencesSet } from "@/utils/preferences-storage";
 import { siteCartStorageKey } from "../../-utils/site-cart";
-import { removePurchasedFromSiteCart } from "../../-stores/site-cart-store";
+import { removePurchasedFromSiteCart, useSiteCartStore } from "../../-stores/site-cart-store";
 
 export const PENDING_PURCHASES_KEY = "site-cart-pending";
 /** A gateway that has not settled within this long is not going to. */
@@ -176,6 +176,10 @@ export const settlePendingPurchase = async (
     if (!entry) return [];
     await writeList(rest);
     if (outcome !== "paid") return [];
+    // A cart still loading for this institute would read its stored list
+    // back over the removal — let it finish first.
+    const state = useSiteCartStore.getState();
+    if (state.instituteId === entry.instituteId && !state.hydrated) await state.hydrate(entry.instituteId);
     await removePurchasedFromSiteCart(entry.instituteId, entry.packageSessionIds);
     return entry.packageSessionIds;
   } catch {

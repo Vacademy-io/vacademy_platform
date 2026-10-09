@@ -129,6 +129,15 @@ describe("pending purchases (storage)", () => {
     expect(storage.getItem(PENDING_PURCHASES_KEY)).toBeNull();
   });
 
+  it("waits for a cart that is still loading before removing a paid purchase", async () => {
+    seedCart("inst", ["a", "b"]);
+    await stashPendingPurchase({ paymentLogId: "p1", instituteIds: ["inst"], packageSessionIds: ["a"], now: NOW });
+    useSiteCartStore.setState({ instituteId: "inst", items: [], hydrated: false });
+    await settlePendingPurchase("p1", "paid");
+    expect(useSiteCartStore.getState().items.map((i) => i.packageSessionId)).toEqual(["b"]);
+    expect(cartIds("inst")).toEqual(["b"]);
+  });
+
   it("removes from the live store when the cart is mounted for that institute", async () => {
     seedCart("inst", ["a", "b"]);
     await useSiteCartStore.getState().hydrate("inst");

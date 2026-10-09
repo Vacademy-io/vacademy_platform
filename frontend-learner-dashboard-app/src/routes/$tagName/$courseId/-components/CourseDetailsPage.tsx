@@ -746,6 +746,18 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const [showUnavailableDialog, setShowUnavailableDialog] = useState(false);
   // "Notify me" form for a Coming Soon course.
   const [showNotifyForm, setShowNotifyForm] = useState(false);
+  // Any other campaign form a section asks for (header 'openForm' buttons, a
+  // coming-soon stream or category in the mega menu) — the same
+  // openAudienceForm contract the other page shells listen for.
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
+  useEffect(() => {
+    const handleOpenAudienceForm = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.audienceId) setAudienceForm({ audienceId: String(detail.audienceId), title: detail.title });
+    };
+    window.addEventListener("openAudienceForm", handleOpenAudienceForm);
+    return () => window.removeEventListener("openAudienceForm", handleOpenAudienceForm);
+  }, []);
 
   // Catalogue data (header, footer, details page, settings) is fetched by the
   // CourseDetailsPage shell at the bottom of this file.
@@ -2181,6 +2193,16 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           onClose={() => setShowNotifyForm(false)}
           audienceId={comingSoon.audienceId}
           title={t("comingSoon.notifyTitle", { title: siteT(courseData.title) })}
+          instituteId={instituteId}
+        />
+      )}
+
+      {audienceForm && (
+        <AudienceFormModal
+          isOpen={!!audienceForm}
+          onClose={() => setAudienceForm(null)}
+          audienceId={audienceForm.audienceId}
+          title={audienceForm.title}
           instituteId={instituteId}
         />
       )}

@@ -26,7 +26,7 @@ import {
   type ResolvedCourseFormats,
 } from "../../../-utils/course-format";
 import { languageOfRow, type CourseLanguageOption } from "../../../-utils/course-variants";
-import type { CatalogCard, CatalogRowLike } from "./catalog-cards";
+import { isBuyableNowRow, type CardPriceView, type CatalogCard, type CatalogRowLike } from "./catalog-cards";
 import type { CatalogStream } from "./catalog-streams";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -203,12 +203,41 @@ export const priceStateOf = (
   return { kind: "amount", amount, currency: row.currency };
 };
 
-/** Raw description: the authored one for any of the card's packages, else the course's (placeholder dropped). */
+/**
+ * Which version a MERGED card prices by (its Free pill and CTA follow it), so
+ * the card never contradicts the grid's price sorts and filters
+ * (ctx.priceViews: the cheapest version that matches the filters and can be
+ * bought now, which the price sorts order by):
+ *  - a price sort is active → that version (the card shows the price it sorts at);
+ *  - else the DISPLAYED version (primary) when it matches the filters and can
+ *    be bought now — the decision "price of the displayed version" (Figma
+ *    shows the EN price and names "Hindi ₹201" in the copy);
+ *  - else the matched version (a Free filter shows "Free", not the EN ₹551).
+ * Null (single-version card, or nothing on offer) = price the primary as before.
+ */
+export const editorialPriceRow = <R extends CatalogRowLike>(
+  card: Pick<CatalogCard<R>, "primary">,
+  view: CardPriceView<R> | null | undefined,
+  matchingRows: readonly R[],
+  priceSort: boolean,
+): R | null => {
+  if (!view) return null;
+  if (priceSort) return view.row;
+  if (matchingRows.includes(card.primary) && isBuyableNowRow(card.primary)) return card.primary;
+  return view.row;
+};
+
+/**
+ * Raw description: the authored one for any of the card's packages, else the
+ * course's. The row mapping writes the "no description" placeholder in the
+ * language active at FETCH time, so every loaded language's placeholder is
+ * dropped (a Hindi/English switch does not refetch).
+ */
 export const descriptionOf = (
   rows: Array<Pick<CatalogRowLike, "id" | "package_id" | "description">>,
   primary: Pick<CatalogRowLike, "id" | "package_id" | "description">,
   descriptions: Record<string, string>,
-  placeholder: string,
+  placeholder: string | readonly string[],
 ): { text: string; authored: boolean } => {
   const idOf = (r: Pick<CatalogRowLike, "id" | "package_id">) => String(r.package_id || r.id || "");
   const own = descriptions[idOf(primary)];
@@ -218,7 +247,40 @@ export const descriptionOf = (
     if (d) return { text: d, authored: true };
   }
   const live = (primary.description || "").trim();
-  return { text: live && live !== placeholder ? live : "", authored: false };
+  const placeholders: readonly string[] = typeof placeholder === "string" ? [placeholder] : placeholder;
+  return { text: live && !placeholders.includes(live) ? live : "", authored: false };
+};
+
+/** The minimal i18next surface descriptionPlaceholders reads (all optional: mocks and SSR lack them). */
+interface PlaceholderI18n {
+  languages?: readonly string[];
+  store?: { data?: Record<string, unknown> };
+  getFixedT?: (lng: string, ns: string) => (key: string) => unknown;
+}
+
+const NO_DESCRIPTION_KEY = "courseCatalog.noDescriptionAvailable";
+
+/**
+ * The "no description" placeholder in the current language AND every loaded
+ * one (the row mapping wrote it in whichever language was active at fetch).
+ */
+export const descriptionPlaceholders = (
+  current: string,
+  i18n: PlaceholderI18n | null | undefined,
+): string[] => {
+  const out = new Set<string>([current, NO_DESCRIPTION_KEY]);
+  try {
+    const langs = new Set<string>([...(i18n?.languages ?? []), ...Object.keys(i18n?.store?.data ?? {})]);
+    if (typeof i18n?.getFixedT === "function") {
+      for (const lng of langs) {
+        const value = i18n.getFixedT(lng, "coursePlayerB")(NO_DESCRIPTION_KEY);
+        if (typeof value === "string" && value.trim()) out.add(value.trim());
+      }
+    }
+  } catch {
+    // Best effort: the current language's placeholder is still dropped.
+  }
+  return [...out].filter(Boolean);
 };
 
 /** The title of another-language version (first row in a different language with a different title). */
@@ -288,8 +350,8 @@ export interface EditorialCardDeps {
   formatAmount: (amount: number, currency?: string) => string;
   /** Launch date label of a coming-soon course, or null. */
   formatLaunch: (date?: string) => string | null;
-  /** The "no description" placeholder the row mapping writes. */
-  descriptionPlaceholder: string;
+  /** The "no description" placeholder(s) the row mapping writes (see descriptionPlaceholders). */
+  descriptionPlaceholder: string | readonly string[];
 }
 
 const isRealImage = (value: unknown): value is string =>
@@ -299,16 +361,24 @@ const isRealImage = (value: unknown): value is string =>
   value !== "null" &&
   value !== "undefined";
 
-/** A catalogue card → what the editorial card shows. `opts` = renderCourseCard's options (sections' free strip). */
+/**
+ * A catalogue card → what the editorial card shows. `opts` = renderCourseCard's
+ * options (sections' free strip) plus `priceRow`: the version whose price the
+ * grid sorts and filters by (a merged card's CardPriceView row). The price,
+ * the Free pill and the CTA kind come from it — still no "from" — while the
+ * title, image, stream and description stay the displayed (primary) version's.
+ */
 export const buildEditorialCardView = <R extends CatalogRowLike & { thumbnail?: string }>(
   card: Pick<CatalogCard<R>, "rows" | "primary" | "languages" | "tagSet">,
   deps: EditorialCardDeps,
-  opts?: { ctaLabel?: string; imageBadge?: string },
+  opts?: { ctaLabel?: string; imageBadge?: string; priceRow?: R | null },
 ): EditorialCardView => {
   const { design, siteT, t } = deps;
   const course = card.primary;
   const comingSoon = readComingSoon(course.coming_soon);
-  const priceState = priceStateOf(course, { paymentEnabled: deps.paymentEnabled });
+  const priceState = comingSoon
+    ? priceStateOf(course, { paymentEnabled: deps.paymentEnabled })
+    : priceStateOf(opts?.priceRow ?? course, { paymentEnabled: deps.paymentEnabled });
   const free = priceState.kind === "free";
   const freeText = design.freeLabel ? siteT(design.freeLabel) : t("catalogCards.free", "Free");
 

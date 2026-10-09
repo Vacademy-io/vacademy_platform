@@ -7,9 +7,24 @@ import { cn } from "@/lib/utils";
  * render.pagination.mode "loadMore". Texts arrive in the visitor's language.
  *
  * A click reveals the next batch in place (no scroll jump) and moves focus
- * to the first newly revealed card's CTA, so keyboard users continue there.
- * The button disappears once every card is shown; the count line stays.
+ * to the first newly revealed card's CTA (the editorial card), else the first
+ * focusable element of that card (the original card), else the count line —
+ * so focus never falls back to <body> when the button disappears. The button
+ * disappears once every card is shown; the count line stays.
  */
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Where focus goes after a batch: the new card's CTA, else its first focusable element. */
+export const loadMoreFocusTarget = (grid: HTMLElement | null | undefined, from: number): HTMLElement | null => {
+  if (!grid) return null;
+  const cta = grid.querySelector<HTMLElement>(`[data-card-index="${from}"] [data-card-cta]`);
+  if (cta) return cta;
+  const card = grid.children.item(from);
+  if (!(card instanceof HTMLElement)) return null;
+  return card.matches(FOCUSABLE) ? card : card.querySelector<HTMLElement>(FOCUSABLE);
+};
 
 // Figma: 182 x 53 secondary button, 15/23 text, 8 px radius.
 const BUTTON_CLASS =
@@ -23,9 +38,8 @@ export interface LoadMorePaginationProps {
   label: string;
   /** "Showing 9 of 24" (visitor language). */
   countText: string;
-  /** The grid the cards render in (focus target lookup + aria-controls). */
+  /** The grid the cards render in (focus target lookup). */
   gridRef?: React.RefObject<HTMLElement | null>;
-  gridId?: string;
   /** Section-authored border colour (hex); default the palette muted2 ink at 80%. */
   borderColor?: string;
 }
@@ -37,17 +51,17 @@ export const LoadMorePagination: React.FC<LoadMorePaginationProps> = ({
   label,
   countText,
   gridRef,
-  gridId,
   borderColor,
 }) => {
   const focusFrom = useRef<number | null>(null);
+  const countRef = useRef<HTMLParagraphElement | null>(null);
 
   useEffect(() => {
     const from = focusFrom.current;
     if (from === null || shown <= from) return;
     focusFrom.current = null;
-    const cta = gridRef?.current?.querySelector<HTMLElement>(`[data-card-index="${from}"] [data-card-cta]`);
-    cta?.focus({ preventScroll: true });
+    const target = loadMoreFocusTarget(gridRef?.current, from) ?? countRef.current;
+    target?.focus({ preventScroll: true });
   }, [shown, gridRef]);
 
   if (total <= 0) return null;
@@ -56,7 +70,6 @@ export const LoadMorePagination: React.FC<LoadMorePaginationProps> = ({
       {shown < total && (
         <button
           type="button"
-          aria-controls={gridId}
           onClick={() => {
             focusFrom.current = shown;
             onLoadMore();
@@ -67,7 +80,7 @@ export const LoadMorePagination: React.FC<LoadMorePaginationProps> = ({
           {label}
         </button>
       )}
-      <p className="text-xs leading-4 text-palette-muted" aria-live="polite">
+      <p ref={countRef} tabIndex={-1} className="text-xs leading-4 text-palette-muted focus:outline-none" aria-live="polite">
         {countText}
       </p>
     </div>

@@ -249,6 +249,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
         return list;
     }, [courses, source, tag, courseIds]);
     const shown = useMemo(() => selected.slice(0, Math.max(1, limit)), [selected, limit]);
+    const selectedIds = useMemo(() => selected.map((c) => c.id), [selected]);
 
     // A curated strip is often ONE or TWO courses. Left-aligning those in a
     // 3- or 4-up grid leaves the row visibly half-empty, so narrow the track
@@ -302,7 +303,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
 
                 {editorial ? (
                     <EditorialShowcaseGrid
-                        courses={selected}
+                        courses={courses}
+                        selectedIds={selectedIds}
                         limit={limit}
                         loading={loading}
                         card={card}

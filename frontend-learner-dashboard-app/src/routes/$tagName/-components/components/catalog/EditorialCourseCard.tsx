@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BookOpen } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,8 @@ import type { EditorialCardView } from "./catalog-card-view";
  * (render.card.colors) and are applied inline.
  *
  * The whole card opens the course (mouse); the CTA is the keyboard target.
+ * The article is named by its title, and the CTA ("View course") is described
+ * by it, so a list of identical CTAs still says which course each opens.
  */
 
 // Exact Figma values (264 x 369 card, 18 px radius, 150 px image band).
@@ -105,6 +107,7 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
   const { t } = useTranslation("coursePlayerB");
   const languageNames = view.languages.map((l) => l.label).join(", ");
   const showStream = !!view.stream && (!!view.stream.label || !!view.stream.imageUrl);
+  const titleId = useId();
 
   return (
     <article
@@ -112,6 +115,7 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
       onClick={onOpen}
       data-editorial-card=""
       data-card-index={index}
+      aria-labelledby={titleId}
     >
       {/* ── Image band: Free pill (start), format pill or coming-soon ribbon (end) ── */}
       <div className={IMAGE_BAND_CLASS}>
@@ -148,21 +152,24 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
           </div>
         )}
 
-        <h3 className={TITLE_CLASS}>{view.title}</h3>
+        <h3 id={titleId} className={TITLE_CLASS}>
+          {view.title}
+        </h3>
 
         {view.description && <p className={DESCRIPTION_CLASS}>{view.description}</p>}
 
         {(view.languages.length > 0 || view.otherTitle) && (
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Screen readers get one real sentence (not a label on a display:contents
+                wrapper, which some engines drop); the chips are its visual form. */}
             {view.languages.length > 0 && (
-              <span
-                className="contents"
-                role="note"
-                aria-label={t("courseCatalog.availableIn", {
-                  languages: languageNames,
-                  defaultValue: "Available in {{languages}}",
-                })}
-              >
+              <>
+                <span className="sr-only">
+                  {t("courseCatalog.availableIn", {
+                    languages: languageNames,
+                    defaultValue: "Available in {{languages}}",
+                  })}
+                </span>
                 {view.languages.map((l) => (
                   <span
                     key={l.code}
@@ -172,7 +179,7 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
                     {l.label}
                   </span>
                 ))}
-              </span>
+              </>
             )}
             {view.otherTitle && <span className={OTHER_TITLE_CLASS}>{view.otherTitle}</span>}
           </div>
@@ -211,6 +218,7 @@ export const EditorialCourseCard: React.FC<EditorialCourseCardProps> = ({
           <button
             type="button"
             data-card-cta=""
+            aria-describedby={titleId}
             onClick={(e) => {
               e.stopPropagation();
               (onCta ?? onOpen)();

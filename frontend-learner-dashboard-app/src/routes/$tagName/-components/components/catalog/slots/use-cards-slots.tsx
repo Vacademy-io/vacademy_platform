@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatLaunchDate, openComingSoonForm } from "../../../../-utils/coming-soon";
 import { useCourseFormats } from "../../../../-utils/course-format";
 import {
   buildEditorialCardView,
+  descriptionPlaceholders,
+  editorialPriceRow,
   fillTemplate,
   resolveCardDesign,
   resolveGridHeading,
   resolveLoadMore,
   type EditorialCardDeps,
 } from "../catalog-card-view";
+import { rowsMatchingGroups } from "../catalog-filters";
 import { formatAmountLabel } from "../catalog-format";
 import { SORT_URL_TOKENS } from "../catalog-url";
 import { CatalogGridHeading } from "../CatalogGridHeading";
@@ -33,6 +37,9 @@ import { NO_SLOTS, type CatalogSlotContext, type CardsSlotOutputs } from "./cata
 /** Figma grid: 3 x 264 px columns, 20 px column gap, 16 px row gap. */
 export const EDITORIAL_GRID_CLASS = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4 mb-6";
 
+/** The sorts that order merged cards by their price view (catalog-sort priceOf). */
+const PRICE_SORTS: ReadonlySet<string> = new Set(["Price: Low to High", "Price: High to Low"]);
+
 const SORTED_BY_DEFAULTS: Record<string, string> = {
   popular: "Sorted by most popular",
   newest: "Sorted by newest",
@@ -53,6 +60,8 @@ export const useCardsSlots = (ctx: CatalogSlotContext): CardsSlotOutputs => {
   // Load-more batches, back to one whenever the result set changes.
   const [more, setMore] = useState({ key: ctx.filterKey, batches: 1 });
   const batches = more.key === ctx.filterKey ? more.batches : 1;
+  // Only for the "no description" placeholder of every loaded language (no refetch on a language switch).
+  const { i18n } = useTranslation("coursePlayerB");
 
   if (!design && !loadMore && !heading) return NO_SLOTS;
 
@@ -76,11 +85,18 @@ export const useCardsSlots = (ctx: CatalogSlotContext): CardsSlotOutputs => {
       t: tt,
       formatAmount: (amount, currency) => formatAmountLabel(amount, currency, ctx.siteLocale),
       formatLaunch: (date) => formatLaunchDate(date, ctx.siteLocale) ?? null,
-      descriptionPlaceholder: tt("courseCatalog.noDescriptionAvailable"),
+      descriptionPlaceholder: descriptionPlaceholders(tt("courseCatalog.noDescriptionAvailable"), i18n),
     };
     out.renderCard = (card, index, opts) => {
       const course = card.primary;
-      const view = buildEditorialCardView(card, deps, opts);
+      // A merged card prices (Free pill, CTA) consistently with the grid's price
+      // sorts and filters (ctx.priceViews) — see editorialPriceRow. Single-version
+      // cards have no entry and price their own (primary) row.
+      const priceView = ctx.priceViews.get(card);
+      const priceRow = priceView
+        ? editorialPriceRow(card, priceView, rowsMatchingGroups(card, ctx.facetGroups), PRICE_SORTS.has(ctx.effectiveSort))
+        : null;
+      const view = buildEditorialCardView(card, deps, { ...opts, priceRow });
       // The legacy card's React key, so a list keeps its identity across styles.
       const cardKey = ctx.discovery.grouping
         ? `course-${card.courseId}`

@@ -5,6 +5,8 @@ import {
   buildEditorialCardView,
   ctaKindOf,
   descriptionOf,
+  descriptionPlaceholders,
+  editorialPriceRow,
   fillTemplate,
   otherLanguageTitleOf,
   priceStateOf,
@@ -14,7 +16,7 @@ import {
   streamOfCard,
   type EditorialCardDeps,
 } from "./catalog-card-view";
-import { buildCatalogCards, type CatalogRowLike } from "./catalog-cards";
+import { buildCatalogCards, cardPriceView, type CatalogRowLike } from "./catalog-cards";
 import type { CatalogStream } from "./catalog-streams";
 
 const row = (over: Partial<CatalogRowLike> & Record<string, unknown>): CatalogRowLike & Record<string, unknown> => ({
@@ -153,6 +155,24 @@ describe("per-card helpers", () => {
     const empty = row({ description: "No description available" });
     expect(descriptionOf([empty], empty, {}, "No description available").text).toBe("");
   });
+
+  it("description: the placeholder of ANY loaded language is dropped (fetched in EN, shown after switching to HI)", () => {
+    const PLACEHOLDER: Record<string, string> = { en: "No description available", hi: "कोई विवरण उपलब्ध नहीं है" };
+    const i18n = {
+      languages: ["hi", "en"],
+      store: { data: { en: {}, hi: {} } },
+      getFixedT: (lng: string) => (key: string) => (key === "courseCatalog.noDescriptionAvailable" ? PLACEHOLDER[lng] : key),
+    };
+    const placeholders = descriptionPlaceholders(PLACEHOLDER.hi, i18n);
+    expect(placeholders).toEqual(expect.arrayContaining([PLACEHOLDER.en, PLACEHOLDER.hi]));
+    const fetchedInEn = row({ description: "No description available" });
+    expect(descriptionOf([fetchedInEn], fetchedInEn, {}, placeholders).text).toBe("");
+    // A real description survives; a bare mock i18n (no getFixedT) still drops the current one.
+    const real = row({ description: "From HTML" });
+    expect(descriptionOf([real], real, {}, placeholders).text).toBe("From HTML");
+    expect(descriptionPlaceholders("X", { languages: ["en"] })).toContain("X");
+    expect(descriptionPlaceholders("X", null)).toContain("X");
+  });
 });
 
 describe("buildEditorialCardView", () => {
@@ -175,6 +195,40 @@ describe("buildEditorialCardView", () => {
     expect(view.price).toEqual({ text: "₹251", tone: "price" });
     expect(view.ctaLabel).toBe("View course");
     expect(view.otherTitle).toBeNull();
+  });
+
+  it("a merged card prices by the version the sorts/filters used (priceRow), not the primary — no 'from'", () => {
+    const paidEn = row({ id: "en2", package_id: "en2", title: "Garbh Sanskar", comma_separeted_tags: "English", price: 551 });
+    const freeHi = row({ id: "hi2", package_id: "hi2", title: "गर्भ संस्कार", comma_separeted_tags: "Hindi", price: 0 });
+    const [card] = buildCatalogCards([paidEn, freeHi], { grouping: true, languages: LANGS, preferredLanguage: "en", versionGroups: [["en2", "hi2"]] });
+    // Free filter: only the HI row matches.
+    const freeOnly = cardPriceView(card, [freeHi]);
+    const view = buildEditorialCardView(card, deps(), { priceRow: freeOnly?.row });
+    expect(view.title).toBe("Garbh Sanskar");
+    expect(view.price).toEqual({ text: "Free", tone: "free" });
+    expect(view.freePill).toBe("Free");
+    expect(view.ctaLabel).toBe("Start free");
+    // Without priceRow (no merged view): the primary's own price, as before.
+    expect(buildEditorialCardView(card, deps()).price).toEqual({ text: "₹551", tone: "price" });
+    // EN ₹551 + HI ₹201, price sort: the card shows the ₹201 it sorts at, never "from".
+    const hi201 = { ...freeHi, price: 201 };
+    const [card2] = buildCatalogCards([paidEn, hi201], { grouping: true, languages: LANGS, preferredLanguage: "en", versionGroups: [["en2", "hi2"]] });
+    const both = cardPriceView(card2, card2.rows);
+    const view2 = buildEditorialCardView(card2, deps(), { priceRow: both?.row });
+    expect(view2.price).toEqual({ text: "₹201", tone: "price" });
+    expect(view2.ctaLabel).toBe("View course");
+  });
+
+  it("editorialPriceRow: price sort → the sorted-at version; else the displayed version when it matches; else the matched one", () => {
+    const en = row({ id: "en3", package_id: "en3", comma_separeted_tags: "English", price: 551 });
+    const hi = row({ id: "hi3", package_id: "hi3", comma_separeted_tags: "Hindi", price: 201 });
+    const [card] = buildCatalogCards([en, hi], { grouping: true, languages: LANGS, preferredLanguage: "en", versionGroups: [["en3", "hi3"]] });
+    const all = cardPriceView(card, card.rows);
+    expect(editorialPriceRow(card, all, card.rows, true)).toBe(card.rows.find((r) => r.id === "hi3"));
+    expect(editorialPriceRow(card, all, card.rows, false)).toBe(card.primary);
+    const onlyHi = card.rows.filter((r) => r.id === "hi3");
+    expect(editorialPriceRow(card, cardPriceView(card, onlyHi), onlyHi, false)?.id).toBe("hi3");
+    expect(editorialPriceRow(card, null, card.rows, true)).toBeNull();
   });
 
   it("the Hindi visitor gets the Hindi version, its price, and the other title when asked", () => {

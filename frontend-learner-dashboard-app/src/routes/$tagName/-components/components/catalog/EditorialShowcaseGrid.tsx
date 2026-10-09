@@ -5,8 +5,13 @@ import { useCatalogueLocale, useSiteT } from "../../../-utils/catalogue-locale";
 import { formatLaunchDate, openComingSoonForm, readComingSoon } from "../../../-utils/coming-soon";
 import { useCourseFormats } from "../../../-utils/course-format";
 import { preferredCourseLanguage } from "../../../-utils/course-variants";
-import { buildEditorialCardView, resolveCardDesign, type EditorialCardDeps } from "./catalog-card-view";
-import { buildCatalogCards, type CatalogRowLike } from "./catalog-cards";
+import {
+  buildEditorialCardView,
+  editorialPriceRow,
+  resolveCardDesign,
+  type EditorialCardDeps,
+} from "./catalog-card-view";
+import { buildCatalogCards, cardPriceView, type CatalogRowLike } from "./catalog-cards";
 import { normaliseLanguages, resolveCatalogDiscovery, resolveVersionGroups } from "./catalog-config";
 import { formatAmountLabel } from "./catalog-format";
 import { useCatalogStreams } from "./use-catalog-discovery";
@@ -19,9 +24,14 @@ import { EditorialCardSkeleton, EditorialCourseCard } from "./EditorialCourseCar
  * showcase, so a default showcase runs none of these hooks.
  *
  * Language versions fold into one card exactly as in the catalogue (same
- * buildCatalogCards) when globalSettings.courseLanguages is on; the limit
- * applies after folding. Streams come from `streamsLibraryId` (the folder
- * library the catalogue uses), formats from globalSettings.courseFormats.
+ * buildCatalogCards) when globalSettings.courseLanguages is on. Folding runs
+ * over EVERY fetched course, so a strip that picks only the EN package still
+ * shows its HI version's chip; a card is kept when any of its versions was
+ * selected, in selection order, and the limit applies after that. The price
+ * (Free pill, CTA) speaks for the selected versions, as the catalogue's
+ * merged cards speak for the versions matching its filters. Streams come
+ * from `streamsLibraryId` (the folder library the catalogue uses), formats
+ * from globalSettings.courseFormats.
  */
 
 /** A showcase course as CourseShowcaseComponent maps it (raw fields kept for the card). */
@@ -46,8 +56,10 @@ interface ShowcaseRow extends CatalogRowLike {
 export const SHOWCASE_EDITORIAL_GRID_CLASS = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4";
 
 export interface EditorialShowcaseGridProps {
-  /** Every course the showcase's source selected, in order (before the limit). */
+  /** Every course the showcase fetched (language versions fold across all of them). */
   courses: EditorialShowcaseCourse[];
+  /** Ids the showcase's source selected, in order (before the limit). */
+  selectedIds: readonly string[];
   limit: number;
   loading: boolean;
   card?: CatalogEditorialCardConfig;
@@ -60,6 +72,7 @@ export interface EditorialShowcaseGridProps {
 
 export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
   courses,
+  selectedIds,
   limit,
   loading,
   card,
@@ -108,8 +121,23 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
       thumbnail: c.thumbnailId,
       course: c,
     }));
-    return buildCatalogCards(rows, { grouping, languages, preferredLanguage, versionGroups }).slice(0, Math.max(1, limit));
-  }, [courses, grouping, languages, preferredLanguage, versionGroups, limit]);
+    const order = new Map<string, number>();
+    selectedIds.forEach((id, i) => {
+      if (!order.has(id)) order.set(id, i);
+    });
+    const rankOf = (rs: ShowcaseRow[]) =>
+      Math.min(...rs.map((r) => order.get(r.id) ?? Number.POSITIVE_INFINITY));
+    return buildCatalogCards(rows, { grouping, languages, preferredLanguage, versionGroups })
+      .map((c) => ({ card: c, rank: rankOf(c.rows) }))
+      .filter((x) => Number.isFinite(x.rank))
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, Math.max(1, limit))
+      .map(({ card: c }) => {
+        // The selected versions set the price (a free strip shows "Free" though another version is paid).
+        const picked = c.rows.filter((r) => order.has(r.id));
+        return { card: c, priceRow: editorialPriceRow(c, cardPriceView(c, picked), picked, false) };
+      });
+  }, [courses, selectedIds, grouping, languages, preferredLanguage, versionGroups, limit]);
 
   if (!design) return null;
 
@@ -141,8 +169,8 @@ export const EditorialShowcaseGrid: React.FC<EditorialShowcaseGridProps> = ({
 
   return (
     <div className={SHOWCASE_EDITORIAL_GRID_CLASS}>
-      {cards.map((c, index) => {
-        const view = buildEditorialCardView(c, deps);
+      {cards.map(({ card: c, priceRow }, index) => {
+        const view = buildEditorialCardView(c, deps, { priceRow });
         const course = c.primary.course;
         const comingSoon = readComingSoon(c.primary.coming_soon);
         return (

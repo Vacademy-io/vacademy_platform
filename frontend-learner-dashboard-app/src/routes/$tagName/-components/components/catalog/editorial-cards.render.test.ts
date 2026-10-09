@@ -286,6 +286,51 @@ describe("editorial cards + heading + load more (opt-in)", () => {
     expect(host.textContent).toContain("Showing 2 of 2");
   });
 
+  it("a merged EN-paid / HI-free card under the Free filter shows Free and Start free", async () => {
+    h.rows = [
+      h.row(1, { package_name: "Garbh Sanskar", level_name: "Foundation", min_plan_actual_price: 551, comma_separeted_tags: "swasthya,English" }),
+      h.row(2, { package_name: "गर्भ संस्कार", level_name: "Foundation", min_plan_actual_price: 0, comma_separeted_tags: "swasthya,Hindi" }),
+      h.row(5, { level_name: "Foundation", min_plan_actual_price: 300 }),
+    ];
+    await mount(EDITORIAL, { ...GLOBAL, courseLanguages: { enabled: true, versionGroups: [["c1", "c2"]] } });
+    await click(host.querySelector<HTMLElement>("button[aria-pressed]")!);
+    expect(cards()).toHaveLength(1);
+    const merged = cards()[0];
+    expect(merged.querySelector("h3")?.textContent).toBe("Garbh Sanskar");
+    expect(merged.textContent).not.toContain("₹551");
+    expect([...merged.querySelectorAll("span")].filter((s) => s.textContent === "Free")).toHaveLength(2);
+    expect(merged.querySelector("[data-card-cta]")?.textContent).toBe("Start free→");
+  });
+
+  it("price sort: a merged EN ₹551 / HI ₹201 card shows the ₹201 it sorts at (no 'from')", async () => {
+    h.rows = [
+      h.row(1, { package_name: "Garbh Sanskar", level_name: "Foundation", min_plan_actual_price: 551, comma_separeted_tags: "swasthya,English" }),
+      h.row(2, { package_name: "गर्भ संस्कार", level_name: "Foundation", min_plan_actual_price: 201, comma_separeted_tags: "swasthya,Hindi" }),
+      h.row(5, { level_name: "Foundation", min_plan_actual_price: 300 }),
+    ];
+    await mount(
+      { ...EDITORIAL, defaultSort: "Price: Low to High" },
+      { ...GLOBAL, courseLanguages: { enabled: true, versionGroups: [["c1", "c2"]] } },
+    );
+    expect(cards().map((c) => c.querySelector("h3")?.textContent)).toEqual(["Garbh Sanskar", "Course 5"]);
+    expect(cards()[0].textContent).toContain("₹201");
+    expect(cards()[0].textContent).not.toContain("₹551");
+    expect(cards()[0].textContent).not.toMatch(/from/i);
+    expect(cards()[1].textContent).toContain("₹300");
+  });
+
+  it("accessibility: the article is named by its title, the CTA is described by it, languages are one sentence", async () => {
+    await mount(EDITORIAL);
+    const first = cards()[0];
+    const titleId = first.querySelector("h3")?.id;
+    expect(titleId).toBeTruthy();
+    expect(first.getAttribute("aria-labelledby")).toBe(titleId);
+    expect(first.querySelector("[data-card-cta]")?.getAttribute("aria-describedby")).toBe(titleId);
+    expect(first.querySelector(".sr-only")?.textContent).toBe("Available in English");
+    expect(first.querySelector(".contents")).toBeNull();
+    expect(first.querySelector("[role='note']")).toBeNull();
+  });
+
   it("Hindi UI strings come from the hi locale file", async () => {
     h.dict = JSON.parse(readFileSync(resolve(process.cwd(), "src/locales/hi/coursePlayerB.json"), "utf8"));
     // No authored title: the translated default.
@@ -325,6 +370,19 @@ describe("editorial cards + heading + load more (opt-in)", () => {
     expect(cards()).toHaveLength(0);
     expect(host.querySelectorAll(".catalogue-btn-primary").length).toBe(5);
     expect(host.textContent).toContain("Showing 5 of 24");
+  });
+
+  it("load more with the ORIGINAL card: focus moves into the first new card, never to <body>", async () => {
+    h.rows = Array.from({ length: 7 }, (_, i) => h.row(i + 1));
+    await mount({ render: { layout: "grid", cardFields: [], pagination: { mode: "loadMore", pageSize: 5 } } });
+    await click(byText("button", "Load more courses"));
+    // The button is gone (7 of 7) — focus is inside the 6th card, not on <body>.
+    expect(byText("button", "Load more courses")).toBeUndefined();
+    const grid = host.querySelector<HTMLElement>("div.grid.mb-6")!;
+    expect(grid.children).toHaveLength(7);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(grid.children[5].contains(document.activeElement)).toBe(true);
+    expect(host.querySelector("button[aria-controls]")).toBeNull();
   });
 });
 

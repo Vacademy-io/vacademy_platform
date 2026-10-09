@@ -179,4 +179,45 @@ describe("courseShowcase", () => {
       expect.objectContaining({ to: "/c3", search: expect.objectContaining({ enrollInviteId: "inv-3" }) }),
     ]);
   });
+
+  it("cardStyle editorial, picked: one id of a version pair still shows both languages; order + limit follow the selection", async () => {
+    h.rows = [
+      h.row(1, { id: "en1", package_name: "Martand | Short Film" }),
+      h.row(2, { id: "hi1", package_name: "मार्तण्ड", level_name: "Short Film", comma_separeted_tags: "free,swasthya,Hindi" }),
+      h.row(4, { id: "c4" }),
+      h.row(6, { id: "c6" }),
+      h.row(8, { id: "c8" }),
+    ];
+    await mount({
+      title: "New here? Start free",
+      source: "picked",
+      courseIds: ["c6", "en1", "c4"],
+      limit: 2,
+      cardStyle: "editorial",
+      streamsLibraryId: LIBRARY,
+      globalSettings: { courseLanguages: { enabled: true, versionGroups: [["en1", "hi1"]] } },
+    });
+    expect(cards().map((c) => c.querySelector("h3")?.textContent)).toEqual(["Course 6", "Martand | Short Film"]);
+    const film = cards()[1];
+    expect(film.textContent).toContain("English");
+    expect(film.textContent).toContain("Hindi");
+  });
+
+  it("cardStyle editorial: a picked free EN version prices Free though its unpicked HI version is paid", async () => {
+    h.rows = [
+      h.row(1, { id: "en1", package_name: "Martand | Short Film", min_plan_actual_price: 0 }),
+      h.row(2, { id: "hi1", package_name: "मार्तण्ड", level_name: "Short Film", min_plan_actual_price: 99, comma_separeted_tags: "free,swasthya,Hindi" }),
+    ];
+    await mount({
+      source: "picked",
+      courseIds: ["en1"],
+      limit: 3,
+      cardStyle: "editorial",
+      globalSettings: { courseLanguages: { enabled: true, versionGroups: [["en1", "hi1"]] } },
+    });
+    expect(cards()).toHaveLength(1);
+    expect(cards()[0].textContent).toContain("Hindi");
+    expect(cards()[0].textContent).not.toContain("₹99");
+    expect([...cards()[0].querySelectorAll("span")].filter((s) => s.textContent === "Free")).toHaveLength(2);
+  });
 });

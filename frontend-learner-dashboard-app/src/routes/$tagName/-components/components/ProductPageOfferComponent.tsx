@@ -40,6 +40,12 @@ import {
   subscribeCourseFinderApplied,
   type CourseFinderSelectionPayload,
 } from "../../-utils/course-finder-bus";
+import type { GlobalSettings } from "../../-types/course-catalogue-types";
+import { useSiteT } from "../../-utils/catalogue-locale";
+import { courseLanguagesOf } from "../../-utils/course-variants";
+import { isSiteCartEnabled } from "../../-utils/site-cart";
+import { cartItemFromMapping } from "../site-cart/site-cart-items";
+import { useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -148,6 +154,13 @@ interface ProductPageOfferProps {
   tagName?: string;
   /** Admin canvas passes this so the section always renders something. */
   isPreviewMode?: boolean;
+  /**
+   * The site's settings, from the renderer. With a site cart
+   * (globalSettings.siteCart) the add-to-cart CTA fills the SITE's cart and
+   * this section shows no basket bar of its own; without one — or without
+   * this prop — the section keeps its own basket exactly as before.
+   */
+  globalSettings?: Partial<GlobalSettings>;
 }
 
 /** Below this a search box is noise rather than help. */
@@ -351,14 +364,31 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   instituteId,
   tagName,
   isPreviewMode = false,
+  globalSettings,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const terms = useCourseTerms();
   const courseTerm = terms.course;
   const coursesTerm = terms.courses;
+  // Course names (live data) in the visitor's language — display only.
+  const siteT = useSiteT();
   const { data, isLoading, isError } = useQuery({
     ...handleGetProductPage(productPageCode || "", instituteId || ""),
   });
+
+  // ─── Site-wide cart ────────────────────────────────────────────────────────
+  // When the site has one, "Add to cart" puts the course in the SITE's cart
+  // (one version per course — adding the Hindi version swaps out the English
+  // one) and the header's cart is the basket, so this section renders no
+  // basket bar and keeps no basket of its own. Otherwise nothing changes.
+  const siteCartOn = enableCart && isSiteCartEnabled(globalSettings?.siteCart) && !!instituteId;
+  const localCartOn = enableCart && !siteCartOn;
+  const siteCart = useSiteCart(instituteId, siteCartOn);
+  const notifySiteCart = useSiteCartNotifier();
+  const cartLanguages = useMemo(
+    () => courseLanguagesOf(globalSettings?.courseLanguages),
+    [globalSettings?.courseLanguages],
+  );
 
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
@@ -456,7 +486,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const cartStorageKey = productPageCode ? `catalogue-offer-cart:${productPageCode}` : null;
 
   const [cart, setCart] = useState<string[]>(() => {
-    if (!enableCart || !cartStorageKey) return [];
+    if (!localCartOn || !cartStorageKey) return [];
     try {
       const parsed = JSON.parse(window.sessionStorage.getItem(cartStorageKey) || "null");
       return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
@@ -467,13 +497,13 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   });
 
   useEffect(() => {
-    if (!enableCart || !cartStorageKey) return;
+    if (!localCartOn || !cartStorageKey) return;
     try {
       window.sessionStorage.setItem(cartStorageKey, JSON.stringify(cart));
     } catch {
       // Nothing to do: the basket lives in state either way.
     }
-  }, [enableCart, cartStorageKey, cart]);
+  }, [localCartOn, cartStorageKey, cart]);
 
   const toggleCart = (packageSessionId: string) =>
     setCart((prev) =>
@@ -481,6 +511,19 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         ? prev.filter((id) => id !== packageSessionId)
         : [...prev, packageSessionId],
     );
+
+  // The same toggle against the site-wide cart.
+  const toggleSiteCart = async (m: ProductPageMapping) => {
+    if (siteCart.has(m.package_session_id)) {
+      siteCart.remove(m.package_session_id);
+      return;
+    }
+    const previous = siteCart.items;
+    const result = await siteCart.add([
+      cartItemFromMapping(m, { languages: cartLanguages, source: { kind: "catalog" } }),
+    ]);
+    notifySiteCart(result, { previous });
+  };
 
   // A fresh Course Finder answer means a fresh basket — keeping Class 2 picks
   // after the visitor switches to Class 5 would check them out for a class
@@ -506,8 +549,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // mapping) would otherwise inflate the count and the total past anything the
   // visitor can see highlighted on screen.
   const selectedMappings = useMemo(
-    () => (enableCart ? mappings.filter((m) => cart.includes(m.package_session_id)) : []),
-    [enableCart, mappings, cart],
+    () => (localCartOn ? mappings.filter((m) => cart.includes(m.package_session_id)) : []),
+    [localCartOn, mappings, cart],
   );
 
   // Prices are hidden wholesale inside Apple's reader-app builds, so the basket
@@ -575,7 +618,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   );
 
 
-  const checkoutBarOpen = enableCart && selectedMappings.length > 0 && !!productPageCode;
+  // No bar in site-cart mode: the header's cart is the basket.
+  const checkoutBarOpen = localCartOn && selectedMappings.length > 0 && !!productPageCode;
 
   // The basket bar is position:fixed, but every block on a catalogue page is
   // wrapped by ComponentStyleWrapper, whose entrance animation puts a
@@ -644,12 +688,13 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
     const q = query.trim().toLowerCase();
     if (!q || !searchEnabled) return out;
+    // The name as shown (translated) matches too; the stored name always does.
     return out.filter((m) =>
-      [m.package_name, m.level_name, m.session_name, ...splitTags(m.tags)]
+      [m.package_name, siteT(m.package_name), m.level_name, m.session_name, ...splitTags(m.tags)]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q))
     );
-  }, [mappings, query, searchEnabled, finderSelection]);
+  }, [mappings, query, searchEnabled, finderSelection, siteT]);
 
   // 0/unset means "no pager" — render everything.
   const perPage = Number(pageSize) > 0 ? Math.floor(Number(pageSize)) : filtered.length || 1;
@@ -746,11 +791,15 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // A running count beside the heading. On a four-across rail the basket bar at
   // the foot of the viewport can otherwise be the ONLY evidence that anything
   // is selected, and it is nowhere near the cards being tapped.
+  // In site-cart mode: how many of THIS section's courses are in the site cart.
+  const selectedCount = siteCartOn
+    ? mappings.filter((m) => siteCart.has(m.package_session_id)).length
+    : selectedMappings.length;
   const selectedBadge =
-    enableCart && selectedMappings.length > 0 ? (
+    enableCart && selectedCount > 0 ? (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-500 ring-1 ring-primary-100">
         <Check className="size-3.5" weight="bold" aria-hidden="true" />
-        {t("productPageOffer.selectedCount", { count: selectedMappings.length })}
+        {t("productPageOffer.selectedCount", { count: selectedCount })}
       </span>
     ) : null;
 
@@ -867,15 +916,19 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   }
 
   const renderCard = (m: ProductPageMapping, i: number) => {
-        const name = m.package_name || courseTerm;
-        const inCart = enableCart && cart.includes(m.package_session_id);
+        const name = siteT(m.package_name) || courseTerm;
+        const inCart = siteCartOn
+          ? siteCart.has(m.package_session_id)
+          : localCartOn && cart.includes(m.package_session_id);
         // Course tags (CBSE / ICSE …) read first — they are what a visitor
         // scans for — then the level/session the batch belongs to.
         const chips = showChips
           ? mergeChips(
               splitTags(m.tags),
               displayChips([m.level_name, m.session_name]),
-            ).slice(0, CARD_CHIP_LIMIT)
+            )
+              .slice(0, CARD_CHIP_LIMIT)
+              .map((chip) => siteT(chip))
           : [];
         const blurb = showDescription ? toPlainText(m.about_the_course_html) : "";
         const validity = showValidity ? formatValidity(m.payment_plan?.validity_in_days) : "";
@@ -1023,7 +1076,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                   {enableCart ? (
                     <button
                       type="button"
-                      onClick={() => toggleCart(m.package_session_id)}
+                      onClick={() =>
+                        siteCartOn ? void toggleSiteCart(m) : toggleCart(m.package_session_id)
+                      }
                       aria-pressed={inCart}
                       aria-label={
                         inCart
@@ -1247,7 +1302,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                       several screens up, and "3 selected" alone is not enough
                       to pay against. */}
                   <p className="truncate text-xs text-catalogue-text-muted">
-                    {selectedMappings.map((m) => m.package_name || courseTerm).join(" · ")}
+                    {selectedMappings.map((m) => siteT(m.package_name) || courseTerm).join(" · ")}
                   </p>
                 </div>
               </div>

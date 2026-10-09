@@ -484,6 +484,26 @@
         "notifyHint": "अपना विवरण छोड़ें, लाइव होते ही हम आपको बताएंगे।",
         "notifyTitle": "{{title}} लॉन्च होने पर सूचना पाएं"
     },
+    "folderBrowser": {
+        "home": "सभी",
+        "back": "वापस",
+        "breadcrumbLabel": "फ़ोल्डर",
+        "searchPlaceholder": "फ़ोल्डर और पाठ्यक्रम खोजें",
+        "searchLabel": "इस खंड में खोजें",
+        "resultCount_one": "{{count}} परिणाम",
+        "resultCount_other": "{{count}} परिणाम",
+        "noResults": "“{{query}}” से कुछ भी मेल नहीं खाता।",
+        "inPath": "{{path}} में",
+        "folderCount_one": "{{count}} फ़ोल्डर",
+        "folderCount_other": "{{count}} फ़ोल्डर",
+        "viewCourses": "{{courses}} देखें",
+        "coursesInside": "इसमें शामिल {{courses}}",
+        "emptyTitle": "यहाँ अभी कुछ नहीं है",
+        "emptyHint": "जल्द ही फिर देखें।",
+        "loadError": "यह खंड लोड नहीं हो सका। कृपया पेज रीफ़्रेश करें।",
+        "previewPickLibrary": "इस खंड की सेटिंग में एक फ़ोल्डर लाइब्रेरी चुनें।",
+        "previewEmptyLibrary": "इस फ़ोल्डर लाइब्रेरी में अभी ऐसा कुछ नहीं है जिसे छात्र देख सकें।"
+    },
     "learningPath": {
         "addAll": "पूरा पथ कार्ट में जोड़ें",
         "addRemaining": "बाकी {{count}} कार्ट में जोड़ें",

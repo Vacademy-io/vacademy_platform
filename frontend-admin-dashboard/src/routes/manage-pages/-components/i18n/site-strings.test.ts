@@ -297,3 +297,25 @@ describe('live data texts', () => {
         ).toEqual([{ source: 'A', group: 'Folder' }]);
     });
 });
+
+describe('site-settings texts the learner translates', () => {
+    it('counts WhatsApp, Course Finder, intro and lead-popup labels — never submitted values', () => {
+        const config: any = {
+            pages: [],
+            globalSettings: {
+                whatsapp: { enabled: true, label: 'Chat with us', message: 'Hi, I have a question', phone: '+911234' },
+                courseFinder: { enabled: true, stepLabels: { level: 'Your class' } },
+                leadCollection: {
+                    enabled: true,
+                    fields: [{ label: 'Class', placeholder: 'Pick one', options: [{ label: 'Class 10', value: 'class-10' }] }],
+                },
+                introPage: { enabled: false, imageSlider: { images: [{ caption: 'Hidden intro' }] } },
+            },
+        };
+        const out = collectSiteStrings(config);
+        expect(out).toEqual(expect.arrayContaining(['Chat with us', 'Hi, I have a question', 'Your class', 'Class', 'Pick one', 'Class 10']));
+        expect(out).not.toContain('class-10');
+        expect(out).not.toContain('+911234');
+        expect(out).not.toContain('Hidden intro');
+    });
+});

@@ -4435,7 +4435,10 @@ def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str
     )
     parts.append(
         "## CURRENT SETTINGS (edit these; preserve anything the instruction does not mention)\n"
-        + json.dumps(req.global_settings or {}, ensure_ascii=False)[:12000]
+        # The site-language dictionary (globalSettings.i18n) can be large and is not
+        # chrome: keep it out of this window so it never crowds out header/footer
+        # context. _merge_chrome deep-copies the full settings, so it survives.
+        + json.dumps({k: v for k, v in (req.global_settings or {}).items() if k != "i18n"}, ensure_ascii=False)[:12000]
     )
     if req.history:
         parts.append(

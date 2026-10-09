@@ -77,17 +77,55 @@ const visitComponent = (c: Component | null | undefined, out: string[], seen: Se
 };
 
 /** Distinct translatable texts of the site, in reading order (header, pages, footer). Hidden sections are skipped. */
+/**
+ * Site-settings texts the public site translates at display time (WhatsApp
+ * button, Course Finder step labels, intro screen and lead popup labels).
+ * Only label-like keys are read — never `value`, which is submitted data.
+ */
+const SETTINGS_TEXT_KEYS = new Set(['label', 'caption', 'message', 'placeholder', 'title']);
+const collectSettingsTexts = (node: unknown, out: string[], seen: Set<string>, depth = 0): void => {
+    if (!node || typeof node !== 'object' || depth > 6) return;
+    if (Array.isArray(node)) {
+        for (const item of node) collectSettingsTexts(item, out, seen, depth + 1);
+        return;
+    }
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (typeof v === 'string') {
+            const text = v.trim();
+            if (SETTINGS_TEXT_KEYS.has(k) && text && !seen.has(v)) {
+                seen.add(v);
+                out.push(v);
+            }
+        } else {
+            collectSettingsTexts(v, out, seen, depth + 1);
+        }
+    }
+};
+
 export const collectSiteStrings = (config: SiteConfig): string[] => {
     const out: string[] = [];
     const seen = new Set<string>();
     if (!config) return out;
-    const layout = config.globalSettings?.layout;
+    const gs = config.globalSettings as Record<string, any> | undefined;
+    const layout = gs?.layout;
     visitComponent(layout?.header, out, seen);
     for (const page of config.pages || []) {
         for (const c of page?.components || []) visitComponent(c, out, seen);
         if (page?.seo) collectTranslatableStrings(page.seo, out, seen);
     }
     visitComponent(layout?.footer, out, seen);
+    if (gs?.whatsapp?.enabled !== false) collectSettingsTexts(gs?.whatsapp, out, seen);
+    const stepLabels = gs?.courseFinder?.stepLabels;
+    if (gs?.courseFinder?.enabled && stepLabels) {
+        for (const v of Object.values(stepLabels)) {
+            if (typeof v === 'string' && v.trim() && !seen.has(v)) {
+                seen.add(v);
+                out.push(v);
+            }
+        }
+    }
+    if (gs?.introPage?.enabled) collectSettingsTexts(gs.introPage, out, seen);
+    if (gs?.leadCollection?.enabled) collectSettingsTexts(gs.leadCollection?.fields, out, seen);
     return out;
 };
 

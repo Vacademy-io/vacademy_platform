@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowsClockwise, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -111,6 +111,10 @@ export const CatalogueSyncPanel = ({
     const [error, setError] = useState<string | null>(null);
 
     const blocked = isDirty || !productPageId || !instituteId;
+    // The props as they are now, for a sync start that resumes after the
+    // store-page lookup.
+    const latest = useRef({ blocked, productPageId, instituteId });
+    latest.current = { blocked, productPageId, instituteId };
 
     const startSync = async () => {
         let store = storePage;
@@ -126,6 +130,13 @@ export const CatalogueSyncPanel = ({
             } finally {
                 setChecking(false);
             }
+            // The course rows stay editable during the lookup. A row edited
+            // meanwhile would be lost to the sync's rows, and a page the editor
+            // moved to was not the one looked up, so the dialog waits for the
+            // next click ("Save your changes first" shows meanwhile).
+            const now = latest.current;
+            const moved = now.productPageId !== productPageId || now.instituteId !== instituteId;
+            if (now.blocked || moved) return;
         }
         // Settle the default now, so the dialog's wording and the sync agree
         // even if the sites' settings change while it is open.
@@ -135,6 +146,8 @@ export const CatalogueSyncPanel = ({
 
     const run = async () => {
         setConfirmOpen(false);
+        // Unsaved edits since the dialog opened: saving them later would undo the sync.
+        if (latest.current.blocked) return;
         setRunning(true);
         onRunningChange?.(true);
         setError(null);
@@ -278,7 +291,9 @@ export const CatalogueSyncPanel = ({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={run}>Sync now</AlertDialogAction>
+                        <AlertDialogAction onClick={run} disabled={blocked}>
+                            Sync now
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

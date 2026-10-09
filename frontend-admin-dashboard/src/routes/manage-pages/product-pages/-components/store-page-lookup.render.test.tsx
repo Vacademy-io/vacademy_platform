@@ -111,6 +111,64 @@ describe('Courses tab: store-page lookup', () => {
     });
 });
 
+describe('Courses tab: edits during the store-page lookup', () => {
+    /** The sites request, held open until the test answers it. */
+    const holdSites = () => {
+        let answer: (sites: unknown[]) => void = () => undefined;
+        getCatalogueTags.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+        return (sites: unknown[]) => act(async () => answer(sites));
+    };
+    const withClient = (client: QueryClient, ui: ReactElement) => (
+        <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+    );
+    const panel = (props: { isDirty?: boolean; productPageId?: string } = {}) => (
+        <CatalogueSyncPanel
+            productPageId={props.productPageId ?? 'pp-1'}
+            instituteId="inst-1"
+            productPageCode="store"
+            isDirty={props.isDirty}
+            onSynced={vi.fn()}
+        />
+    );
+
+    it('does not ask when a course row was edited meanwhile, and asks at the next click once saved', async () => {
+        const answerSites = holdSites();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(withClient(client, panel()));
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        await waitFor(() => expect(getCatalogueTags).toHaveBeenCalledTimes(1));
+        // The rows are not locked during the lookup: the admin edits one.
+        rerender(withClient(client, panel({ isDirty: true })));
+        await answerSites([site('main', 'store')]);
+        await flush();
+        // A sync now would replace the edited row with the server's.
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        expect(screen.getByText(/Save your changes first/)).toBeInTheDocument();
+        expect(sync).not.toHaveBeenCalled();
+
+        // Saved: the next click asks, from the sites the lookup cached.
+        rerender(withClient(client, panel()));
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        expect(await screen.findByText(/never were — or that can no longer be sold/)).toBeInTheDocument();
+        expect(getCatalogueTags).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+        await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: true }));
+    });
+
+    it('does not ask about another page the editor moved to meanwhile', async () => {
+        const answerSites = holdSites();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { rerender } = render(withClient(client, panel()));
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        await waitFor(() => expect(getCatalogueTags).toHaveBeenCalledTimes(1));
+        rerender(withClient(client, panel({ productPageId: 'pp-2' })));
+        await answerSites([site('main', 'store')]);
+        await flush();
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        expect(sync).not.toHaveBeenCalled();
+    });
+});
+
 describe('Custom Fields tab: StorePageNotice', () => {
     it('loads the sites itself in a cold tab and warns on a store page', async () => {
         getCatalogueTags.mockResolvedValue([site('main', 'store')]);

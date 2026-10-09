@@ -176,6 +176,19 @@ describe('CatalogueSyncPanel', () => {
         await waitFor(() => expect(sync).toHaveBeenCalledWith('pp-1', 'inst-1', { deactivateMissing: false }));
     });
 
+    it('will not sync from an open dialog once the editor has unsaved changes', () => {
+        const panel = (isDirty: boolean) => (
+            <CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" isStorePage isDirty={isDirty} onSynced={vi.fn()} />
+        );
+        const { rerender } = render(panel(false));
+        fireEvent.click(screen.getByRole('button', { name: /Sync all catalogue courses/ }));
+        rerender(panel(true));
+        const syncNow = screen.getByRole('button', { name: 'Sync now' });
+        expect(syncNow).toBeDisabled();
+        fireEvent.click(syncNow);
+        expect(sync).not.toHaveBeenCalled();
+    });
+
     it('needs no lookup once the admin has ticked or unticked the box', async () => {
         sync.mockResolvedValue({ ...freshPage });
         render(<CatalogueSyncPanel productPageId="pp-1" instituteId="inst-1" productPageCode="store" onSynced={vi.fn()} />);

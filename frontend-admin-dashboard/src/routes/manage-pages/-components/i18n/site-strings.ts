@@ -21,7 +21,10 @@ import type { CatalogueConfig, Component } from '../../-types/editor-types';
 import { effectiveCourseLanguages } from '../settings/course-languages';
 import { LOCALE_LABELS } from '@/i18n/locales';
 
-type SiteConfig = Pick<CatalogueConfig, 'pages' | 'globalSettings' | 'introPage'> | null | undefined;
+type SiteConfig =
+    | Pick<CatalogueConfig, 'pages' | 'globalSettings' | 'introPage'>
+    | null
+    | undefined;
 
 /** What a language is called in the builder: its own name ('English', 'हिन्दी'). */
 export const languageName = (code: string, fallbackLabel?: string): string =>
@@ -65,10 +68,29 @@ const withoutInternalKeys = (value: unknown): unknown => {
     return value;
 };
 
+/**
+ * A contact form's props without its field names: the keys answers are
+ * submitted under. The site shows each field's label only and submits under
+ * the authored name in every language, so a name ('fullName', 'City') is
+ * never read by a visitor. Names stay text elsewhere (team members, plans).
+ */
+const withoutFieldNames = (c: Component): unknown => {
+    const fields = c.props.fields;
+    if (c.type !== 'contactForm' || !Array.isArray(fields)) return c.props;
+    return {
+        ...c.props,
+        fields: fields.map((f: unknown) =>
+            f && typeof f === 'object' && !Array.isArray(f) && 'name' in f
+                ? Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'name'))
+                : f
+        ),
+    };
+};
+
 const visitComponent = (c: Component | null | undefined, out: string[], seen: Set<string>) => {
     if (!c || typeof c !== 'object' || c.enabled === false) return;
     if (!c.props || typeof c.props !== 'object') return;
-    collectTranslatableStrings(withoutInternalKeys(c.props), out, seen);
+    collectTranslatableStrings(withoutInternalKeys(withoutFieldNames(c)), out, seen);
     // Column children sit under the opaque `slots` key: walk them as sections.
     const slots = c.props.slots;
     if (Array.isArray(slots)) {

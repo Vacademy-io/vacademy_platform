@@ -165,25 +165,97 @@ describe('collectSiteStrings', () => {
                 id: 'feed',
                 type: 'announcementFeed',
                 enabled: true,
-                props: { announcements: [{ title: 'Admissions open', tag: 'News', date: '2025-01-15' }] },
+                props: {
+                    announcements: [{ title: 'Admissions open', tag: 'News', date: '2025-01-15' }],
+                },
             } as never,
             {
                 id: 'programs',
                 type: 'detailBlocks',
                 enabled: true,
-                props: { anchorPrefix: 'fees-', blocks: [{ title: 'Weekend Batch', tag: 'Flagship Program' }] },
+                props: {
+                    anchorPrefix: 'fees-',
+                    blocks: [{ title: 'Weekend Batch', tag: 'Flagship Program' }],
+                },
             } as never,
             {
                 id: 'showcase',
                 type: 'courseShowcase',
                 enabled: true,
-                props: { title: 'Picked for you', source: 'tag', tag: 'Featured', badges: { types: ['Popular'] } },
+                props: {
+                    title: 'Picked for you',
+                    source: 'tag',
+                    tag: 'Featured',
+                    badges: { types: ['Popular'] },
+                },
             } as never
         );
         const strings = collectSiteStrings(config);
-        for (const shown of ['Admissions open', 'News', 'Weekend Batch', 'Flagship Program', 'Picked for you'])
+        for (const shown of [
+            'Admissions open',
+            'News',
+            'Weekend Batch',
+            'Flagship Program',
+            'Picked for you',
+        ])
             expect(strings).toContain(shown);
-        for (const data of ['Featured', 'Popular', 'fees-', '2025-01-15']) expect(strings).not.toContain(data);
+        for (const data of ['Featured', 'Popular', 'fees-', '2025-01-15'])
+            expect(strings).not.toContain(data);
+    });
+
+    it("leaves out a contact form's field names (the keys answers are submitted under) and counts its labels", () => {
+        const config = site({
+            enabled: true,
+            locales: [
+                { code: 'en', label: 'EN' },
+                { code: 'hi', label: 'हिन्दी' },
+            ],
+            strings: { hi: {} },
+        });
+        config.pages[0]!.components = [
+            {
+                id: 'form',
+                type: 'contactForm',
+                enabled: true,
+                props: {
+                    heading: 'Ask us',
+                    fields: [
+                        { name: 'fullName', label: 'Your name', type: 'text', required: true },
+                        { name: 'City', label: 'Your city', type: 'text' },
+                        { name: 'email', label: 'Email', type: 'email' },
+                    ],
+                    submitLabel: 'Send',
+                },
+            } as never,
+            {
+                id: 'team',
+                type: 'teamSection',
+                enabled: true,
+                props: { members: [{ name: 'Asha Rao', role: 'Mentor' }] },
+            } as never,
+        ];
+        // What a visitor reads, in order — a team member's name included; the
+        // field names 'fullName' and 'City' are not on it.
+        const shown = [
+            'Smart Academy',
+            'Courses',
+            'Ask us',
+            'Your name',
+            'Your city',
+            'Email',
+            'Send',
+            'Asha Rao',
+            'Mentor',
+            'Home of learning',
+        ];
+        expect(collectSiteStrings(config)).toEqual(shown);
+
+        // Every shown text translated = complete: no field name left "missing".
+        config.globalSettings.i18n!.strings!.hi = Object.fromEntries(
+            shown.map((s) => [s, `हि ${s}`])
+        );
+        const [hi] = siteCoverage(config);
+        expect(hi).toMatchObject({ code: 'hi', percent: 100, missing: [] });
     });
 
     it("counts every published page's title (title band, site search), once and trimmed", () => {
@@ -192,7 +264,13 @@ describe('collectSiteStrings', () => {
             { id: 'about', route: 'about', title: ' About us ', components: [] } as never,
             { id: 'faq', route: 'faq', title: 'faq', components: [] } as never,
             { id: 'courses', route: 'courses', title: 'Courses', components: [] } as never,
-            { id: 'draft', route: 'draft', title: 'Coming soon', published: false, components: [] } as never
+            {
+                id: 'draft',
+                route: 'draft',
+                title: 'Coming soon',
+                published: false,
+                components: [],
+            } as never
         );
         const strings = collectSiteStrings(config);
         expect(strings).toEqual(expect.arrayContaining(['About us', 'faq']));
@@ -421,12 +499,18 @@ describe('site-settings texts the learner translates', () => {
             },
             actions: { buttons: [{ label: 'Sign up', action: 'navigateToSignup' }] },
         };
-        const config: any = { pages: [], globalSettings: {}, introPage: intro };
+        const config = {
+            pages: [],
+            globalSettings: {},
+            introPage: intro,
+        } as unknown as CatalogueConfig;
         expect(collectSiteStrings(config)).toEqual(['Welcome to Gurukul']);
         // Older hand-edited JSON that put it under globalSettings still counts.
-        expect(collectSiteStrings({ pages: [], globalSettings: { introPage: intro } } as any)).toEqual([
-            'Welcome to Gurukul',
-        ]);
+        const legacy = {
+            pages: [],
+            globalSettings: { introPage: intro },
+        } as unknown as CatalogueConfig;
+        expect(collectSiteStrings(legacy)).toEqual(['Welcome to Gurukul']);
         const i18n = {
             enabled: true,
             locales: [
@@ -435,7 +519,15 @@ describe('site-settings texts the learner translates', () => {
             ],
             strings: { hi: {} },
         };
-        const [hi] = siteCoverage({ ...config, globalSettings: { i18n } });
-        expect(hi).toMatchObject({ code: 'hi', total: 1, translated: 0, missing: ['Welcome to Gurukul'] });
+        const [hi] = siteCoverage({
+            ...config,
+            globalSettings: { ...config.globalSettings, i18n },
+        });
+        expect(hi).toMatchObject({
+            code: 'hi',
+            total: 1,
+            translated: 0,
+            missing: ['Welcome to Gurukul'],
+        });
     });
 });

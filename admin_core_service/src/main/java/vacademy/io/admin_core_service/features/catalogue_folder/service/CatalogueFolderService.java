@@ -72,7 +72,7 @@ public class CatalogueFolderService {
     private static final int MAX_DESCRIPTION_CHARS = 2000;
     private static final int MAX_URL_CHARS = 2048;
     private static final int MAX_VIEW_CHARS = 4000;
-    /* Knowledge-stream field limits (V558). */
+    /* Knowledge-stream field limits (V560). */
     private static final int MAX_SLUG_CHARS = 120;
     private static final int MAX_COURSE_TAG_CHARS = 191;
     private static final int MAX_SUBTITLE_CHARS = 255;

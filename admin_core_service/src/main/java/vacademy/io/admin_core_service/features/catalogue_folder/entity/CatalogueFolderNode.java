@@ -69,7 +69,7 @@ public class CatalogueFolderNode {
     private String viewJson;
 
     /*
-     * Knowledge-stream fields (V558). All optional; see the migration for what
+     * Knowledge-stream fields (V560). All optional; see the migration for what
      * each one drives on the public site.
      */
 

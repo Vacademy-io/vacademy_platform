@@ -26,7 +26,6 @@ import { useSubmissionsBulkActionsDialogStoreOngoing } from './bulk-actions-zust
 import { IncreaseAssessmentTimeDialog } from './assessment-menu-options-ongoing-bulk/increase-assessment-time-component';
 import { CloseSubmissionDialog } from './assessment-menu-options-ongoing-bulk/close-submission-component';
 import { useSubmissionsBulkActionsDialogStorePending } from './bulk-actions-zustand-store/useSubmissionsBulkActionsDialogStorePending';
-import { SendReminderDialog } from './assessment-menu-options-pending-bulk/send-reminder-component';
 import { RemoveParticipantsDialog } from './assessment-menu-options-pending-bulk/remove-participants-component';
 
 const headerTextCss = 'px-3 py-2.5';
@@ -105,11 +104,8 @@ export function AssessmentSubmissionsStudentTable<T>({
         closeAllDialogs: closeAllDialogsOngoing,
     } = useSubmissionsBulkActionsDialogStoreOngoing();
 
-    const {
-        sendReminder,
-        removeParticipants,
-        closeAllDialogs: closeAllDialogsPending,
-    } = useSubmissionsBulkActionsDialogStorePending();
+    const { removeParticipants, closeAllDialogs: closeAllDialogsPending } =
+        useSubmissionsBulkActionsDialogStorePending();
 
     if (!data) return null;
     if (!table) return <DashboardLoader />;
@@ -259,14 +255,6 @@ export function AssessmentSubmissionsStudentTable<T>({
                 open={closeSubmission}
                 onOpenChange={(open) => {
                     if (!open) closeAllDialogsOngoing();
-                }}
-            />
-
-            <SendReminderDialog
-                trigger={null}
-                open={sendReminder}
-                onOpenChange={(open) => {
-                    if (!open) closeAllDialogsPending();
                 }}
             />
 

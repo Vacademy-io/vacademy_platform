@@ -14,6 +14,7 @@ import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { CatalogueLocaleProvider, useSiteT } from "../-utils/catalogue-locale";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { useSiteNavigate } from "../-utils/catalogue-route-search";
 import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
@@ -445,6 +446,8 @@ const CourseSubPageContent: React.FC<CourseSubPageProps> = ({
     // Site language (?lang=, remembered per tag) for everything on the page.
     // A single-language site renders exactly as before.
     <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
+    {/* The site's own words (naming) on its sub-pages too, as on its home page. */}
+    <CatalogueNamingProvider naming={catalogueData.globalSettings?.naming}>
     <div
       // pt-20 exists to clear the fixed site header; with the chrome hidden it
       // would just open the page on an 80px blank strip.
@@ -607,6 +610,7 @@ const CourseSubPageContent: React.FC<CourseSubPageProps> = ({
         />
       )}
     </div>
+    </CatalogueNamingProvider>
     </CatalogueLocaleProvider>
   );
 };

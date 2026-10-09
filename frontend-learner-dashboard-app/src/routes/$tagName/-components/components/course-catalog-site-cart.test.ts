@@ -36,12 +36,13 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: unknown) =>
-      typeof opts === "string"
-        ? opts
-        : typeof (opts as { defaultValue?: unknown } | undefined)?.defaultValue === "string"
-          ? (opts as { defaultValue: string }).defaultValue
-          : key,
+    // The English default (else the key), with its {{placeholders}} filled in.
+    t: (key: string, opts?: unknown) => {
+      const values = typeof opts === "object" && opts ? (opts as Record<string, unknown>) : {};
+      const text =
+        typeof opts === "string" ? opts : typeof values.defaultValue === "string" ? values.defaultValue : key;
+      return text.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
+    },
     i18n: { language: "en" },
   }),
 }));
@@ -79,8 +80,13 @@ let root: Root | null = null;
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 const SITE_CART = { siteCart: { enabled: true, storeProductPageCode: "STORE" }, payment: { enabled: true } };
+const COURSES_ABC = h.rows;
+/** A store page that sells these package sessions. */
+const sells = (...ids: string[]) => async () => ({
+  data: { mappings: ids.map((id) => ({ package_session_id: id, status: "ACTIVE" })) },
+});
 
-const mount = async (globalSettings: Record<string, unknown>) => {
+const mount = async (globalSettings: Record<string, unknown>, props: Record<string, unknown> = {}) => {
   const host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -93,6 +99,7 @@ const mount = async (globalSettings: Record<string, unknown>) => {
     instituteId: "inst-1",
     tagName: "site",
     globalSettings,
+    ...props,
   } as unknown as React.ComponentProps<typeof CourseCatalogComponent>);
   await act(async () => {
     root!.render(e(QueryClientProvider, { client }, section));
@@ -120,7 +127,8 @@ const storeReads = () => h.gets.filter((url: string) => url.includes("by-code"))
 
 beforeEach(() => {
   h.gets = [];
-  h.store = async () => ({ data: { mappings: [{ package_session_id: "a-1", status: "ACTIVE" }] } });
+  h.rows = COURSES_ABC;
+  h.store = sells("a-1");
   // The stored cart has loaded (the catalogue hydrates it on a real page).
   useSiteCartStore.setState({ instituteId: "inst-1", items: [], hydrated: true, lastAddedAt: 0 });
 });
@@ -185,6 +193,77 @@ describe("Courses cards on a site with the site cart", () => {
     }
     expect(host.textContent).not.toContain("Add to cart");
     expect(storeReads().length).toBeGreaterThan(0);
+  });
+});
+
+describe("a Courses card with its language versions merged, on a site with the site cart", () => {
+  // One course in two languages at two prices: the card shows EN / हिं and "from ₹499".
+  const ENGLISH_HINDI = [
+    { id: "a", package_name: "Course A", package_session_id: "a-en", level_name: "English", min_plan_actual_price: 999 },
+    { id: "a", package_name: "Course A", package_session_id: "a-hi", level_name: "Hindi", min_plan_actual_price: 499 },
+  ];
+  const mountMerged = () => mount({ ...SITE_CART, courseLanguages: { enabled: true } }, { groupLanguageVersions: true });
+  /** The open chooser's versions (it portals to <body>). */
+  const chooserOptions = () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] li button')];
+  const cartLines = () => useSiteCartStore.getState().items.map((i) => [i.packageSessionId, i.price, i.languageCode]);
+
+  beforeEach(() => {
+    h.rows = ENGLISH_HINDI;
+  });
+
+  it("asks for the version when the store sells only some, shows its price, and names it once it is in", async () => {
+    h.store = sells("a-en");
+    const host = await mountMerged();
+    expect(host.textContent).toContain("from");
+    const [add, view] = cardButtons(host, "Course A");
+    expect([add.text, view.text]).toEqual(["Add to cart", "courseCatalog.viewCourse"]);
+
+    act(() => add.el.click());
+    // Nothing goes in until a version is picked — and only the version the store sells, at its own price, can be.
+    expect(cartLines()).toEqual([]);
+    const options = chooserOptions();
+    expect(options.map((o) => o.textContent)).toEqual([expect.stringMatching(/English.*999/)]);
+    expect(document.body.textContent).not.toMatch(/Hindi.*499/);
+
+    act(() => options[0]!.click());
+    expect(cartLines()).toEqual([["a-en", 999, "en"]]);
+    expect(cardButtons(host, "Course A")[0]!.text).toBe("In cart · EN");
+  });
+
+  it("asks between the versions when the store sells them all, as before", async () => {
+    h.store = sells("a-en", "a-hi");
+    const host = await mountMerged();
+
+    act(() => cardButtons(host, "Course A")[0]!.el.click());
+    expect(cartLines()).toEqual([]);
+    const options = chooserOptions();
+    expect(options.map((o) => o.textContent)).toEqual([
+      expect.stringMatching(/English.*999/),
+      expect.stringMatching(/Hindi.*499/),
+    ]);
+
+    act(() => options[1]!.click());
+    expect(cartLines()).toEqual([["a-hi", 499, "hi"]]);
+    expect(cardButtons(host, "Course A")[0]!.text).toBe("In cart · हिं");
+  });
+
+  it("names the version the store sells against all the card's versions: two levels in one language", async () => {
+    h.rows = [
+      { id: "a", package_name: "Course A", package_session_id: "a-beg", level_name: "Beginner Hindi", min_plan_actual_price: 499 },
+      { id: "a", package_name: "Course A", package_session_id: "a-adv", level_name: "Advanced Hindi", min_plan_actual_price: 999 },
+    ];
+    h.store = sells("a-adv");
+    const host = await mountMerged();
+
+    act(() => cardButtons(host, "Course A")[0]!.el.click());
+    // "Hindi" alone would not say which of the card's two Hindi versions goes in.
+    expect(document.querySelector('[role="dialog"] p')?.textContent).toBe("Choose a version");
+    const options = chooserOptions();
+    expect(options.map((o) => o.textContent)).toEqual([expect.stringMatching(/Advanced.*999/)]);
+
+    act(() => options[0]!.click());
+    expect(cartLines()).toEqual([["a-adv", 999, "hi"]]);
+    expect(cardButtons(host, "Course A")[0]!.text).toBe("In cart · Advanced · हिं");
   });
 });
 

@@ -2426,6 +2426,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               instituteId={instituteId}
                               courseId={card.courseId}
                               versions={cartOffer.versions}
+                              purchasable={cartOffer.purchasable}
                               title={course.title}
                               languages={discovery.languages}
                               translate={siteT}

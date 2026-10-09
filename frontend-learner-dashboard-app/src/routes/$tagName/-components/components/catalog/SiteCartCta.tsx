@@ -53,6 +53,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   instituteId,
   courseId,
   versions,
+  purchasable = versions,
   title,
   languages,
   translate,
@@ -63,6 +64,14 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   courseId: string;
   /** The versions the store sells, purchasable now (cardCartOffer). */
   versions: R[];
+  /**
+   * All the card's purchasable versions, the store's or not (cardCartOffer).
+   * The chooser names versions against them all, as the card's chips do, and
+   * opens even for the one version the store sells when the card has others —
+   * so the visitor sees which version goes in, at what price, and the button
+   * names it once it is in.
+   */
+  purchasable?: R[];
   /** Base-language course title (translated here for display). */
   title: string;
   languages: CourseLanguageOption[];
@@ -82,7 +91,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   const current = cartVersionOf(versions, inCart);
   const displayTitle = translate(title);
   const languageOf = (v: R) => rowLanguage(v, languages);
-  const versionLabel = (v: R) => versionChoiceLabel(v, versions, languages, translate);
+  const versionLabel = (v: R) => versionChoiceLabel(v, purchasable, languages, translate);
 
   const addVersion = (v: R) => {
     add(toSiteCartItem(v, courseId, languages));
@@ -106,8 +115,10 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
     setOpen(false);
   };
 
+  // One version and no other on the card: a plain button. Otherwise a chooser.
+  const single = versions.length === 1 && purchasable.length <= 1;
   // Which version is in the cart, when the course has more than one.
-  const currentVersion = current && versions.length > 1 ? inCartVersionText(current, languages, translate) : "";
+  const currentVersion = current && !single ? inCartVersionText(current, languages, translate) : "";
   const label = current
     ? currentVersion
       ? t("courseCatalog.inCartWithLanguage", {
@@ -123,7 +134,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   );
   const buttonClass = cn("catalogue-btn mt-2 w-full", current ? "catalogue-btn-secondary" : "catalogue-btn-primary");
 
-  if (versions.length === 1) {
+  if (single) {
     const only = versions[0];
     return (
       <button
@@ -172,7 +183,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
           className="rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-elevated p-2 text-catalogue-text-primary shadow-lg"
         >
           <p className="px-2 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-catalogue-text-muted">
-            {choosesLanguageOnly(versions, languages)
+            {choosesLanguageOnly(purchasable, languages)
               ? t("courseCatalog.chooseLanguage", "Choose a language")
               : t("courseCatalog.chooseVersion", "Choose a version")}
           </p>

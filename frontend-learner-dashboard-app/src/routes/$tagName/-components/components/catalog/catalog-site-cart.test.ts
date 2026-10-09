@@ -48,11 +48,23 @@ describe("cardCartOffer", () => {
   const hi = row({ packageSessionId: "ps-hi" });
 
   it("offers the cart only the versions the store sells as they are", () => {
-    expect(cardCartOffer([en, hi], store("ps-en", "ps-hi"))).toEqual({ route: "cart", versions: [en, hi] });
+    expect(cardCartOffer([en, hi], store("ps-en", "ps-hi"))).toEqual({
+      route: "cart",
+      versions: [en, hi],
+      purchasable: [en, hi],
+    });
     // The store sells English only: Hindi keeps the course page's own enrol flow.
-    expect(cardCartOffer([en, hi], store("ps-en"))).toEqual({ route: "cart", versions: [en] });
+    expect(cardCartOffer([en, hi], store("ps-en"))).toMatchObject({ route: "cart", versions: [en] });
     // Listed twice would charge it twice: not the cart's.
-    expect(cardCartOffer([en, hi], store("ps-en", "ps-hi", "ps-hi"))).toEqual({ route: "cart", versions: [en] });
+    expect(cardCartOffer([en, hi], store("ps-en", "ps-hi", "ps-hi"))).toMatchObject({ route: "cart", versions: [en] });
+  });
+
+  it("keeps every purchasable version of the card beside the ones the store sells", () => {
+    // The card's chips and "from" price speak for both versions, so the chooser asks — and names
+    // the version — against both, even when the store sells one.
+    expect(cardCartOffer([en, hi], store("ps-en"))).toEqual({ route: "cart", versions: [en], purchasable: [en, hi] });
+    expect(cardCartOffer([en, hi], store("ps-hi"))).toEqual({ route: "cart", versions: [hi], purchasable: [en, hi] });
+    expect(cardCartOffer([en], store("ps-en"))).toEqual({ route: "cart", versions: [en], purchasable: [en] });
   });
 
   it("keeps the card's own CTA when the store sells none of its versions, or cannot be read", () => {
@@ -73,7 +85,8 @@ describe("cardCartOffer", () => {
 
   it("puts only versions that can be bought now in the cart, whatever the store lists", () => {
     const free = row({ packageSessionId: "ps-free", price: 0 });
-    expect(cardCartOffer([free, en], store("ps-free", "ps-en"))).toEqual({ route: "cart", versions: [en] });
+    // The free version enrols on the course page: the paid one is the card's only cart version.
+    expect(cardCartOffer([free, en], store("ps-free", "ps-en"))).toEqual({ route: "cart", versions: [en], purchasable: [en] });
   });
 });
 

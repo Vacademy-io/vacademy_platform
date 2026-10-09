@@ -26,12 +26,16 @@ export const purchasableVersions = <R extends CatalogRowLike>(rows: R[]): R[] =>
  * What a card's cart CTA offers. The cart checks out through the store page,
  * so a version goes in only when the store sells it as it is — the rule of
  * the course page, offers and learning paths (storeCartRoute). "cart": those
- * versions, for SiteCartCta. "page": none of them (or the store page will not
- * load) — the card keeps its own CTA to the course page, as on a site without
- * a site cart. "pending": the store page is loading; a card with a version to
- * sell offers nothing until it is known.
+ * versions, for SiteCartCta, with all the card's purchasable versions
+ * (`purchasable`, the store's or not) — the card's language chips and "from"
+ * price speak for them all, so SiteCartCta names versions against them and
+ * lets the visitor pick, seeing the language and price, even when the store
+ * sells only one. "page": none of them (or the store page will not load) —
+ * the card keeps its own CTA to the course page, as on a site without a site
+ * cart. "pending": the store page is loading; a card with a version to sell
+ * offers nothing until it is known.
  */
-export type CardCartOffer<R> = { route: "cart"; versions: R[] } | { route: "page" | "pending" };
+export type CardCartOffer<R> = { route: "cart"; versions: R[]; purchasable: R[] } | { route: "page" | "pending" };
 
 // The course page a card leads to enrols through the version's invite, which
 // sells it once — what storeCartRoute asks of a section's own checkout.
@@ -42,7 +46,7 @@ export const cardCartOffer = <R extends CatalogRowLike>(rows: R[], sale: StoreSa
   const routes = candidates.map((v) => storeCartRoute(sale, [packageSessionOf(v)], coursePageSells));
   if (routes.includes("pending")) return { route: "pending" };
   const versions = candidates.filter((_, i) => routes[i] === "cart");
-  return versions.length ? { route: "cart", versions } : { route: "page" };
+  return versions.length ? { route: "cart", versions, purchasable: candidates } : { route: "page" };
 };
 
 /** A cart line for one version. Title and level stay in the base language (translated at display). */

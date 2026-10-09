@@ -63,6 +63,7 @@ import { CoursePagesEditor } from './CoursePagesEditor';
 import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
+import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -2280,6 +2281,7 @@ const COURSE_CATALOG_SORT_OPTIONS = [
     'Rating',
     'Name A-Z',
     'Name Z-A',
+    'Popular',
 ];
 
 // Display-only labels for COURSE_CATALOG_SORT_OPTIONS — the <option> VALUE
@@ -2293,6 +2295,7 @@ const buildCourseCatalogSortLabels = (t: TFunction): Record<string, string> => (
     Rating: t('bookCatalogue.sort.rating'),
     'Name A-Z': t('bookCatalogue.sort.nameAZ'),
     'Name Z-A': t('bookCatalogue.sort.nameZA'),
+    Popular: t('bookCatalogue.sort.popular', { defaultValue: 'Popular (most enrolled)' }),
 });
 
 const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
@@ -2444,6 +2447,10 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                         {t('bookCatalogue.defaultSortHint')}
                     </p>
                 </div>
+            )}
+
+            {component.type === 'courseCatalog' && (
+                <CatalogDiscoveryEditor component={component} pageId={pageId} updateComponent={updateComponent} />
             )}
 
             <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
@@ -5329,6 +5336,8 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
                     </div>
                 ))}
             </div>
+
+            <CatalogDiscoveryEditor component={component} pageId={pageId} updateComponent={updateComponent} />
         </div>
     );
 };

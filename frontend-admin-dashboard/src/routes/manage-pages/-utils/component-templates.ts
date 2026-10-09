@@ -91,6 +91,32 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
                     backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
                 },
             },
+            // Courses-page discovery (CatalogDiscoveryEditor). Only sections
+            // added from now on carry these — saved sections without them keep
+            // the original grid. Stream tabs stay off until a folder library or
+            // tag list is picked; the language filter and one-card-per-course
+            // wait for Site settings → Course languages. Empty quick-filter
+            // labels use the visitor-language wording on the site.
+            streams: { enabled: false, source: 'folderLibrary', libraryId: '', sticky: true, labelMode: 'title' },
+            showFilterCounts: true,
+            showAppliedChips: true,
+            mobileFilterSheet: true,
+            categoryFilter: { enabled: true },
+            languageFilter: { enabled: true },
+            priceFilter: { enabled: true, showFree: true, maxOptions: [500, 1000] },
+            groupLanguageVersions: true,
+            badges: {
+                enabled: true,
+                types: ['bestseller', 'popular', 'new', 'free'],
+                newDays: 60,
+                bestsellerTop: 3,
+                max: 2,
+            },
+            quickFilters: [
+                { id: 'qf-popular', label: '', kind: 'popular' },
+                { id: 'qf-new', label: '', kind: 'new' },
+                { id: 'qf-free', label: '', kind: 'free' },
+            ],
         },
     },
 

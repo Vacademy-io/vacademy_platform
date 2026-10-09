@@ -50,10 +50,28 @@ describe('isLookupTermComplete', () => {
  * actually typed — a first name will send, and correctly find nobody.
  */
 describe('isTermCompleteFor', () => {
-    it('keeps the phone rule: a partial number would match whoever shares the suffix', () => {
-        expect(isTermCompleteFor('phone', '98765')).toBe(false);
-        expect(isTermCompleteFor('phone', '9876543210')).toBe(true);
+    // The box carries the dial code, so the check is country-aware (libphonenumber)
+    // rather than a digit count.
+    it('accepts a whole number, with or without separators', () => {
+        expect(isTermCompleteFor('phone', '919876543210')).toBe(true);
         expect(isTermCompleteFor('phone', '+91 98765-43210')).toBe(true);
+    });
+
+    it('rejects a dial code on its own, or a few digits after it', () => {
+        expect(isTermCompleteFor('phone', '91')).toBe(false);
+        expect(isTermCompleteFor('phone', '98765')).toBe(false);
+        expect(isTermCompleteFor('phone', '9199')).toBe(false);
+    });
+
+    // The widget always prefixes the dial code, so a bare national number no
+    // longer reaches this check from the UI — and on its own it is ambiguous.
+    it('does not accept a bare national number with no dial code', () => {
+        expect(isTermCompleteFor('phone', '9876543210')).toBe(false);
+    });
+
+    it('accepts a number from another country, which the institute may well have', () => {
+        expect(isTermCompleteFor('phone', '971508703934')).toBe(true);
+        expect(isTermCompleteFor('phone', '447841061416')).toBe(true);
     });
 
     it('keeps the email rule: a fragment is not an address', () => {
@@ -64,7 +82,7 @@ describe('isTermCompleteFor', () => {
     // A phone typed while the mode says email is the user's mistake to see, not
     // something to silently re-route — the modes are explicit now.
     it('does not re-interpret a value that suits another mode', () => {
-        expect(isTermCompleteFor('email', '9876543210')).toBe(false);
+        expect(isTermCompleteFor('email', '919876543210')).toBe(false);
         expect(isTermCompleteFor('phone', 'ram@example.com')).toBe(false);
     });
 

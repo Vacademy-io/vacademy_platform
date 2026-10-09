@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
@@ -70,6 +70,12 @@ import {
 } from "../../-utils/course-variants";
 import { isSiteCartEnabled, type SiteCartItem } from "../../-utils/site-cart";
 import { useSiteCartStore } from "../../-stores/site-cart-store";
+import { SiteCartDrawer } from "../../-components/site-cart/SiteCartDrawer";
+import { openSiteCartDrawer } from "../../-components/site-cart/site-cart-events";
+import {
+  useFallbackCartReopen,
+  useHasSiteCartOpener,
+} from "../../-components/site-cart/use-site-cart";
 import {
   invitePaymentEntryFor,
   primeOpenEnrollInvite,
@@ -80,9 +86,9 @@ import {
 import { useCourseVersions } from "../-hooks/use-course-versions";
 import {
   SITE_CART_MAX_ITEMS,
-  SITE_CART_OPEN_EVENT,
   buildCourseCartItem,
   cartCanTake,
+  keepsLinkInviteEnrolment,
   localizeCourseDisplay,
   resolveVersionOffer,
   searchText,
@@ -1216,7 +1222,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const siteT = siteLocale.t;
   const courseLanguageSettings = catalogueData?.globalSettings?.courseLanguages;
   const courseLanguagesEnabled = !!courseLanguageSettings?.enabled;
-  // A product page visit keeps that page's own mapping, price and checkout.
+  // A product page visit keeps that page's own mapping, price and checkout
+  // (and so does a promo link, once the versions show it: see siteCartMode).
   const siteCartActive =
     isSiteCartEnabled(catalogueData?.globalSettings?.siteCart) && !productPageCode;
   const configuredLanguages = useMemo(
@@ -1428,6 +1435,29 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     }
   }, [detailsPrimaryColor]);
 
+  // The site cart drawer belongs to the header's cart button. A page without
+  // one (header switched off or missing) opens a drawer of its own, as the
+  // offer and learning-path sections do, so "Buy now" and "In cart" still
+  // reach the cart. Sites without a site cart never render it.
+  const hasHeaderCart = useHasSiteCartOpener();
+  const [fallbackCartOpen, setFallbackCartOpen] = useState(false);
+  // Bumped by "Buy now": the page's drawer goes on to checkout once.
+  const [fallbackCheckoutRequest, setFallbackCheckoutRequest] = useState(0);
+  // The theme wrapper as the drawer opens, so it wears the site's palette.
+  const [fallbackCartAnchor, setFallbackCartAnchor] = useState<HTMLElement | null>(null);
+  const openFallbackCart = useCallback((checkout: boolean) => {
+    setFallbackCartAnchor(themeRootRef.current);
+    setFallbackCartOpen(true);
+    if (checkout) setFallbackCheckoutRequest((n) => n + 1);
+  }, []);
+  const reopenFallbackCart = useCallback(() => openFallbackCart(false), [openFallbackCart]);
+  // Back from the store checkout reopens it — once the page, and any header
+  // cart button that would take the request instead, is on screen.
+  useFallbackCartReopen(
+    siteCartActive && !isLoading && namingReady && !error && !!courseData,
+    reopenFallbackCart,
+  );
+
   // data-vacademy="enrol" inside an html `details` page (HtmlPageSection)
   // dispatches this; the handler itself is defined after the loading/error
   // returns below, so reach it through a ref that is refreshed every render.
@@ -1554,10 +1584,20 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const enrolButtonClass = (base: string) =>
     enrolPending ? `${base} cursor-wait opacity-70` : base;
 
+  // A link whose invite prices the version on screen (a promo or bundle link,
+  // not the version's own catalogue invite) keeps that invite's own enrol
+  // flow, as a product page visit keeps its page's checkout: the store
+  // checkout would charge the store's plan instead.
+  const linkInviteVisit = keepsLinkInviteEnrolment({
+    status: courseVersions.status,
+    selected: selectedVersion,
+    selectedInviteId: selectedVersionInviteId,
+    urlEnrollInviteId: enrollInviteId,
+  });
   // Site cart: "Add to cart" + "Buy now" replace the enrol button. A Coming
   // Soon course still collects interest and a closed invite still explains
   // itself, through the original button.
-  const siteCartMode = siteCartActive && !comingSoon && !isEnrollmentClosed;
+  const siteCartMode = siteCartActive && !linkInviteVisit && !comingSoon && !isEnrollmentClosed;
   const siteCartItem =
     siteCartMode && cartPackageSessionId
       ? buildCourseCartItem({
@@ -1599,13 +1639,14 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           )
       : null;
 
+  // The header's cart drawer when the page has one, else the page's own.
   const openSiteCart = (intent: SiteCartOpenDetail["intent"]) => {
     const detail: SiteCartOpenDetail = {
       intent,
       packageSessionId: siteCartItem?.packageSessionId,
       source: "course",
     };
-    window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail }));
+    if (!openSiteCartDrawer(detail)) openFallbackCart(intent === "checkout");
   };
   // One store checkout takes at most SITE_CART_MAX_ITEMS courses, and the
   // store does not enforce it, so a new course is refused here when the cart
@@ -1673,6 +1714,13 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     const psId =
       selectedVersion?.packageSessionId || courseData.packageSessionId || packageSessionId;
     if (productPageCode && psId) {
+      // A site with languages opens the checkout inside the site (its header
+      // and dictionary) in the visitor's language, as its other checkout
+      // links do; a single-language site keeps the URL it always had.
+      const siteLang =
+        siteLocale.enabled && siteLocale.locale !== siteLocale.baseLocale
+          ? siteLocale.locale
+          : undefined;
       navigate({
         to: "/product-pages/$productPageCode",
         params: { productPageCode },
@@ -1680,6 +1728,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           ...(instituteId ? { instituteId } : {}),
           courseIds: psId,
           defaultTab: "CART" as const,
+          ...(siteLocale.enabled && tagName ? { tagName } : {}),
+          ...(siteLang ? { lang: siteLang } : {}),
         },
       });
       return;
@@ -2194,6 +2244,23 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             globalSettings={catalogueData.globalSettings}
             instituteId={instituteId}
             tagName={tagName}
+          />
+        )}
+
+      {/* The page's own cart drawer, only on a page without a header cart
+          button (kept mounted while open so it can animate closed). */}
+      {siteCartActive &&
+        catalogueData?.globalSettings?.siteCart &&
+        (!hasHeaderCart || fallbackCartOpen) && (
+          <SiteCartDrawer
+            open={fallbackCartOpen}
+            onOpenChange={setFallbackCartOpen}
+            instituteId={instituteId}
+            tagName={tagName}
+            settings={catalogueData.globalSettings.siteCart}
+            languages={courseLanguagesEnabled ? configuredLanguages : undefined}
+            themeAnchor={fallbackCartAnchor}
+            checkoutRequest={fallbackCheckoutRequest}
           />
         )}
 

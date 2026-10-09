@@ -1,5 +1,6 @@
 import { languageOfLevel, type CourseLanguageOption } from "../../-utils/course-variants";
 import type { SiteCartItem } from "../../-utils/site-cart";
+import type { SiteCartOpenRequest } from "../../-components/site-cart/site-cart-events";
 import {
   invitePaymentEntryFor,
   type CourseLevel,
@@ -13,14 +14,10 @@ import {
  */
 
 /**
- * Window event that opens the site cart drawer (the cart stream's
- * SiteCartButton listens). `detail.intent` is "view" or "checkout".
- * The cart stream exports the same name from site-cart/site-cart-events.ts;
- * this copy goes once the two streams are merged.
+ * What the course page asks of the site cart drawer (openSiteCartDrawer in
+ * site-cart/site-cart-events.ts): `intent` "view" or "checkout" ("Buy now").
  */
-export const SITE_CART_OPEN_EVENT = "siteCartOpen";
-
-export interface SiteCartOpenDetail {
+export interface SiteCartOpenDetail extends SiteCartOpenRequest {
   intent: "view" | "checkout";
   /** The version just added, for a drawer that wants to highlight it. */
   packageSessionId?: string;
@@ -87,6 +84,31 @@ export const effectiveInviteIdFor = (
 ): string | null => {
   if (version.source === "productPage" && version.enrollInviteId) return version.enrollInviteId;
   return grant && grantCovers(grant, version) ? grant.inviteId : version.enrollInviteId;
+};
+
+/**
+ * Whether a site-cart visit keeps its link's own invite enrol flow instead of
+ * the site cart. The cart checks out through the store product page, which
+ * charges the store's plan — so a version on screen that is enrolled through
+ * any invite other than its own catalogue invite (a promo or bundle link, see
+ * InviteGrant) would lose that invite's price there. Such visits enrol through
+ * the invite, as a product page visit does through its page. With no version
+ * to compare against (none listed, or the list failed to load), a link that
+ * carried an invite keeps it too. Undecided (false) while the versions load.
+ */
+export const keepsLinkInviteEnrolment = (input: {
+  status: "off" | "loading" | "ready" | "error";
+  selected: Pick<CourseLevel, "enrollInviteId"> | null;
+  /** The invite the selected version is enrolled through (effectiveInviteIdFor). */
+  selectedInviteId: string | null;
+  /** ?enrollInviteId */
+  urlEnrollInviteId?: string | null;
+}): boolean => {
+  if (input.status !== "ready" && input.status !== "error") return false;
+  if (input.selected) {
+    return !!input.selectedInviteId && input.selectedInviteId !== input.selected.enrollInviteId;
+  }
+  return !!input.urlEnrollInviteId;
 };
 
 /**

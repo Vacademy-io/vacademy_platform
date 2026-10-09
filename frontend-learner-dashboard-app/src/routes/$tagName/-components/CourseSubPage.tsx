@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
-import { useNavigate } from "@tanstack/react-router";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -304,7 +304,18 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     return <DashboardLoader />;
   }
 
+  // Root-mounted host, and "<page>" is one of the learner app's own routes
+  // ("/new/login", "/new/dashboard"): "/<tag>/<page>" stays on the site only
+  // for a site page named like an app route (a Courses page — see
+  // RouteMatcher.pagePath). With no such page here, the visitor goes to the
+  // app's own page, as the canonical "/<tag>/<x>" → "/<x>" redirect always
+  // sent them.
+  const appRouteRedirect = RouteMatcher.isReservedRootPage(tagName, page) ? (
+    <Navigate to={`/${page}` as never} search={true} replace />
+  ) : null;
+
   if (error || !catalogueData) {
+    if (appRouteRedirect) return appRouteRedirect;
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -347,8 +358,10 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const isPreview =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "true";
 
-  // If no matching page found, show not found (in the site's language)
+  // If no matching page found, show not found (in the site's language) —
+  // unless the address is the app's own page (see appRouteRedirect).
   if (!currentPage) {
+    if (appRouteRedirect) return appRouteRedirect;
     console.warn("[CourseSubPage] No page found for route:", page);
     return (
       <CatalogueLocaleProvider settings={catalogueData.globalSettings?.i18n} scope={tagName} persist={!isPreview}>
@@ -391,14 +404,17 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || "medium"}
       style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
-      {/* Same title/description rules as the catalogue home (page SEO →
-          institute branding), in the visitor's language. */}
-      <CatalogueSeoHead
-        page={currentPage}
-        instituteName={domainRouting.instituteName}
-        course={course}
-        courses={courses}
-      />
+      {/* A site with languages: the same title/description rules as the
+          catalogue home (page SEO → institute branding), in the visitor's
+          language. Any other site's sub-pages set no title, as before. */}
+      {catalogueData.globalSettings?.i18n?.enabled && (
+        <CatalogueSeoHead
+          page={currentPage}
+          instituteName={domainRouting.instituteName}
+          course={course}
+          courses={courses}
+        />
+      )}
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent

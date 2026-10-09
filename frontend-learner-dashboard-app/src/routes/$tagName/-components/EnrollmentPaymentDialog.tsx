@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
 import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
 import { CouponInput } from "@/components/common/coupon/CouponInput";
+import { invitePaymentEntryFor } from "../-services/course-levels-service";
 
 interface EnrollmentPaymentDialogProps {
   open: boolean;
@@ -386,15 +387,14 @@ export const EnrollmentPaymentDialog: React.FC<
             fetchStripeKey(vendor);
           }
 
-          // Set the first available payment plan
-          if (
-            data.package_session_to_payment_options &&
-            data.package_session_to_payment_options.length > 0
-          ) {
-            const paymentOption =
-              data.package_session_to_payment_options[0].payment_option;
+          // Plans of the invite entry for THIS package session: one invite can
+          // sell several versions (Hindi + English), and entry [0] may be the
+          // other one. Falls back to [0] when the version is not listed.
+          const paymentEntry = invitePaymentEntryFor(data, courseData.packageSessionId);
+          if (paymentEntry) {
+            const paymentOption = paymentEntry.payment_option;
             const enrollInviteId =
-              data.package_session_to_payment_options[0].enroll_invite_id ||
+              paymentEntry.enroll_invite_id ||
               data.enroll_invite_id ||
               data.id;
 
@@ -452,7 +452,7 @@ export const EnrollmentPaymentDialog: React.FC<
         setIsEmailVerified(false);
       }, 100);
     }
-  }, [open, courseData.enrollInviteId, instituteId]);
+  }, [open, courseData.enrollInviteId, courseData.packageSessionId, instituteId]);
 
   const fetchStripeKey = async (vendor: string = "STRIPE") => {
     try {
@@ -1136,9 +1136,10 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
 
     const init = async () => {
       try {
+        // The invite entry for the version being bought (not blindly [0]).
+        const paymentEntry = invitePaymentEntryFor(enrollmentData, courseData.packageSessionId);
         const finalEnrollInviteId =
-          enrollmentData?.package_session_to_payment_options?.[0]
-            ?.enroll_invite_id ||
+          paymentEntry?.enroll_invite_id ||
           enrollmentData?.enroll_invite_id ||
           enrollmentData?.id ||
           courseData.enrollInviteId;
@@ -1164,13 +1165,10 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
           vendor_id: "CASHFREE",
           learner_package_session_enroll: {
             package_session_ids: [
-              enrollmentData?.package_session_to_payment_options?.[0]
-                ?.package_session_id || courseData.packageSessionId,
+              paymentEntry?.package_session_id || courseData.packageSessionId,
             ],
             plan_id: selectedPaymentPlan.id,
-            payment_option_id:
-              enrollmentData?.package_session_to_payment_options?.[0]
-                ?.payment_option?.id || "",
+            payment_option_id: paymentEntry?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
             coupon_code: appliedCouponCode || null,
@@ -1370,6 +1368,11 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   // Use vendor prop, fallback to enrollmentData vendor, then STRIPE
   const vendor = vendorProp || enrollmentData?.vendor || "STRIPE";
 
+  // The invite entry for the version being bought: one invite can sell
+  // several package sessions (Hindi + English), so entry [0] may be the wrong
+  // one. Every enrol payload below — free, Razorpay, Stripe — uses this entry.
+  const paymentEntry = invitePaymentEntryFor(enrollmentData, courseData.packageSessionId);
+
   console.log("PaymentForm vendor:", vendor, "vendorProp:", vendorProp);
 
   // Directly handle Razorpay completion - called after payment modal closes
@@ -1435,8 +1438,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       console.log("=== Fallback: Calling Register API for enrollment completion ===");
 
       const finalEnrollInviteId =
-        enrollmentData?.package_session_to_payment_options?.[0]
-          ?.enroll_invite_id ||
+        paymentEntry?.enroll_invite_id ||
         enrollmentData?.enroll_invite_id ||
         enrollmentData?.id ||
         courseData.enrollInviteId;
@@ -1464,9 +1466,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         subject_id: "",
         vendor_id: "RAZORPAY",
         learner_package_session_enroll: {
-          package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
+          package_session_ids: [paymentEntry?.package_session_id || courseData.packageSessionId],
           plan_id: selectedPaymentPlan.id,
-          payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
+          payment_option_id: paymentEntry?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
           coupon_code: appliedCouponCode || null,
@@ -1588,8 +1590,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
       try {
         const finalEnrollInviteId =
-          enrollmentData?.package_session_to_payment_options?.[0]
-            ?.enroll_invite_id ||
+          paymentEntry?.enroll_invite_id ||
           enrollmentData?.enroll_invite_id ||
           enrollmentData?.id ||
           courseData.enrollInviteId;
@@ -1622,11 +1623,10 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           subject_id: "",
           vendor_id: "FREE",
           learner_package_session_enroll: {
-            package_session_ids: [courseData.packageSessionId],
+            // The same package session the paid paths enrol in.
+            package_session_ids: [paymentEntry?.package_session_id || courseData.packageSessionId],
             plan_id: "free-plan",
-            payment_option_id:
-              enrollmentData?.package_session_to_payment_options?.[0]
-                ?.payment_option?.id || null,
+            payment_option_id: paymentEntry?.payment_option?.id || null,
             enroll_invite_id: finalEnrollInviteId,
             coupon_code: appliedCouponCode || null,
             payment_initiation_request: {
@@ -1685,8 +1685,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       setIsProcessing(true);
       try {
         const finalEnrollInviteId =
-          enrollmentData?.package_session_to_payment_options?.[0]
-            ?.enroll_invite_id ||
+          paymentEntry?.enroll_invite_id ||
           enrollmentData?.enroll_invite_id ||
           enrollmentData?.id ||
           courseData.enrollInviteId;
@@ -1714,9 +1713,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           subject_id: "",
           vendor_id: "RAZORPAY",
           learner_package_session_enroll: {
-            package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
+            package_session_ids: [paymentEntry?.package_session_id || courseData.packageSessionId],
             plan_id: selectedPaymentPlan.id,
-            payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
+            payment_option_id: paymentEntry?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
             coupon_code: appliedCouponCode || null,
@@ -1847,8 +1846,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
       // Prioritize enroll_invite_id from courseData (passed from course catalog)
       const finalEnrollInviteId =
-        enrollmentData?.package_session_to_payment_options?.[0]
-          ?.enroll_invite_id ||
+        paymentEntry?.enroll_invite_id ||
         enrollmentData?.enroll_invite_id ||
         enrollmentData?.id ||
         courseData.enrollInviteId;
@@ -1874,11 +1872,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         subject_id: "",
         vendor_id: "STRIPE",
         learner_package_session_enroll: {
-          package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
+          package_session_ids: [paymentEntry?.package_session_id || courseData.packageSessionId],
           plan_id: selectedPaymentPlan.id,
-          payment_option_id:
-            enrollmentData?.package_session_to_payment_options?.[0]
-              ?.payment_option?.id || "",
+          payment_option_id: paymentEntry?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
           coupon_code: appliedCouponCode || null,

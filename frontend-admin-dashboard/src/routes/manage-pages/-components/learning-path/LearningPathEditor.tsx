@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FolderOpen, Plus } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -17,6 +18,7 @@ import {
     listFolderLibraries,
     nodeLabel,
 } from '../../-services/folder-library-service';
+import type { LearningPathProps } from '../../-types/editor-types';
 import { ColorPickerField } from '../ColorPickerField';
 
 /**
@@ -29,9 +31,9 @@ import { ColorPickerField } from '../ColorPickerField';
  */
 
 interface LearningPathEditorProps {
-    component: { id: string; props: Record<string, any> };
+    component: { id: string; props: LearningPathProps };
     pageId: string;
-    updateComponent: (pageId: string, componentId: string, patch: { props: Record<string, any> }) => void;
+    updateComponent: (pageId: string, componentId: string, patch: { props: LearningPathProps }) => void;
 }
 
 const Toggle = ({
@@ -66,20 +68,39 @@ const TextField = ({
     placeholder?: string;
     onChange: (v: string) => void;
     hint?: string;
-}) => (
-    <div>
-        <Label className="text-xs">{label}</Label>
-        <Input className="mt-1" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-        {hint && <p className="mt-1 text-caption text-neutral-500">{hint}</p>}
-    </div>
-);
+}) => {
+    const id = useId();
+    return (
+        <div>
+            <Label htmlFor={id} className="text-xs">
+                {label}
+            </Label>
+            <Input
+                id={id}
+                className="mt-1"
+                value={value}
+                placeholder={placeholder}
+                onChange={(e) => onChange(e.target.value)}
+                aria-describedby={hint ? `${id}-hint` : undefined}
+            />
+            {hint && (
+                <p id={`${id}-hint`} className="mt-1 text-caption text-neutral-500">
+                    {hint}
+                </p>
+            )}
+        </div>
+    );
+};
 
 export const LearningPathEditor = ({ component, pageId, updateComponent }: LearningPathEditorProps) => {
     const instituteId = getCurrentInstituteId();
+    const uid = useId();
     const { props } = component;
     const mode: 'single' | 'list' = props.mode === 'list' ? 'list' : 'single';
-    const patch = (next: Record<string, any>) => updateComponent(pageId, component.id, { props: { ...props, ...next } });
-    const set = (key: string, value: any) => patch({ [key]: value });
+    const patch = (next: Partial<LearningPathProps>) =>
+        updateComponent(pageId, component.id, { props: { ...props, ...next } });
+    const set = <K extends keyof LearningPathProps>(key: K, value: LearningPathProps[K]) =>
+        patch({ [key]: value } as Pick<LearningPathProps, K>);
     const openForSection = useFolderLibraryStore((s) => s.openForSection);
 
     const { data: pages, isLoading: pagesLoading } = useQuery({
@@ -110,6 +131,8 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
     const roots = tree && Array.isArray(tree.roots) ? tree.roots : null;
     const folders = roots ? flattenFolders(roots) : [];
     const folderMissing = !!props.folderId && !!roots && !folders.some((f) => f.node.id === props.folderId);
+    // The site does not open a coming-soon folder, so no path from it shows yet.
+    const folderComingSoon = folders.some((f) => f.node.id === props.folderId && f.node.coming_soon);
     const wireLibrary = (id: string, name: string) => patch({ libraryId: id, libraryName: name, folderId: '' });
 
     return (
@@ -146,8 +169,11 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
 
             {mode === 'single' ? (
                 <div className="space-y-2">
-                    <Label className="text-xs">Product page (the path)</Label>
+                    <Label htmlFor={`${uid}-page`} className="text-xs">
+                        Product page (the path)
+                    </Label>
                     <select
+                        id={`${uid}-page`}
                         className="w-full rounded border px-2 py-1.5 text-xs"
                         value={selectedPage ? selectedPage.code : code}
                         onChange={(e) => {
@@ -185,8 +211,11 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
             ) : (
                 <div className="space-y-3">
                     <div className="space-y-2">
-                        <Label className="text-xs">Folder library</Label>
+                        <Label htmlFor={`${uid}-library`} className="text-xs">
+                            Folder library
+                        </Label>
                         <select
+                            id={`${uid}-library`}
                             className="w-full rounded border px-2 py-1.5 text-xs"
                             value={libraryId}
                             onChange={(e) => {
@@ -223,8 +252,11 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
 
                     {libraryId && selectedLibrary && (
                         <div>
-                            <Label className="text-xs">Paths from</Label>
+                            <Label htmlFor={`${uid}-folder`} className="text-xs">
+                                Paths from
+                            </Label>
                             <select
+                                id={`${uid}-folder`}
                                 className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
                                 value={props.folderId || ''}
                                 onChange={(e) => set('folderId', e.target.value)}
@@ -232,13 +264,19 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
                                 <option value="">Every stream</option>
                                 {folders.map(({ node, depth }) => (
                                     <option key={node.id} value={node.id}>
-                                        {`${'— '.repeat(depth + 1)}${nodeLabel(node)}`}
+                                        {`${'— '.repeat(depth + 1)}${nodeLabel(node)}${node.coming_soon ? ' (coming soon)' : ''}`}
                                     </option>
                                 ))}
                             </select>
                             {folderMissing && (
                                 <p className="mt-1 text-caption text-warning-600">
                                     That folder was deleted, so the section shows nothing. Pick another.
+                                </p>
+                            )}
+                            {folderComingSoon && (
+                                <p className="mt-1 text-caption text-warning-600">
+                                    This folder is marked coming soon, so the site shows no paths from it until it
+                                    launches.
                                 </p>
                             )}
                         </div>
@@ -264,8 +302,11 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
             <div className="space-y-3 border-t border-neutral-100 pt-4">
                 <TextField label="Title" value={props.title || ''} onChange={(v) => set('title', v)} />
                 <div>
-                    <Label className="text-xs">Subtitle</Label>
+                    <Label htmlFor={`${uid}-subtitle`} className="text-xs">
+                        Subtitle
+                    </Label>
                     <Textarea
+                        id={`${uid}-subtitle`}
                         className="mt-1"
                         rows={2}
                         value={props.subtitle || ''}

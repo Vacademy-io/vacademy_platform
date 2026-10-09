@@ -98,4 +98,35 @@ describe('collectPathLeaves', () => {
         expect(collectPathLeaves(roots, 'hidden')).toEqual([]);
         expect(collectPathLeaves(roots, 'nope')).toEqual([]);
     });
+
+    // The live section (learner collectPathEntries / pathsInScope) follows the same three rules.
+    const withComingSoon = [
+        node({
+            id: 'ayurveda',
+            title: 'Ayurveda',
+            coming_soon: true,
+            children: [page('soon1'), node({ id: 'herbs', children: [page('soon2')] })],
+        }),
+        node({ id: 'yoga', title: 'Yoga', children: [page('y1')] }),
+    ];
+
+    it('does not open coming-soon folders: what is inside has not launched', () => {
+        expect(collectPathLeaves(withComingSoon).map((l) => l.node.id)).toEqual(['y1']);
+    });
+
+    it('shows nothing when the start folder itself is coming soon', () => {
+        expect(collectPathLeaves(withComingSoon, 'ayurveda')).toEqual([]);
+        expect(collectPathLeaves(withComingSoon, 'yoga').map((l) => l.node.id)).toEqual(['y1']);
+    });
+
+    it('lists a product page placed in two folders once, where it first appears', () => {
+        const twice = [
+            node({ id: 'a', children: [page('first', { product_page_code: 'shared' })] }),
+            node({ id: 'b', children: [page('second', { product_page_code: ' shared ' }), page('other')] }),
+        ];
+        expect(collectPathLeaves(twice).map((l) => [l.node.id, l.stream?.id])).toEqual([
+            ['first', 'a'],
+            ['other', 'b'],
+        ]);
+    });
 });

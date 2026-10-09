@@ -95,7 +95,9 @@ export const FolderNodeEditorDialog = ({
             setError('Choose a product page.');
             return;
         }
-        const advancedProblem = validateAdvancedDraft(advanced, nodeType);
+        // Only fields this save sends are checked: an untouched value stored by
+        // another client never blocks renaming the item.
+        const advancedProblem = validateAdvancedDraft(advanced, nodeType, node);
         if (advancedProblem) {
             setError(advancedProblem);
             return;

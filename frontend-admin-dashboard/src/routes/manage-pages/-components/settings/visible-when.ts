@@ -16,7 +16,10 @@ export const VISIBLE_WHEN_OPS: { value: VisibleWhenOp; label: string }[] = [
     { value: 'notEquals', label: 'is not' },
 ];
 
-/** Address parameters the catalogue sections use — offered as suggestions, any name is allowed. */
+/**
+ * Address parameters the catalogue sections use — offered as suggestions, any
+ * name is allowed. `lang` is deliberately not offered (see paramCaveat).
+ */
 export const VISIBLE_WHEN_PARAMS: { param: string; hint: string }[] = [
     { param: 'stream', hint: 'Courses page stream tab' },
     { param: 'category', hint: 'Category inside a stream' },
@@ -26,8 +29,18 @@ export const VISIBLE_WHEN_PARAMS: { param: string; hint: string }[] = [
     { param: 'sort', hint: 'Sort order' },
     { param: 'q', hint: 'Search text' },
     { param: 'path', hint: 'Open learning path' },
-    { param: 'lang', hint: 'Site language' },
 ];
+
+/**
+ * Why a rule on this parameter will misbehave, or null. The site language is
+ * remembered in the visitor's browser and usually not in the address, so a
+ * rule such as "?lang is hi" hides the section from Hindi visitors who did not
+ * arrive through a ?lang= link.
+ */
+export const paramCaveat = (param: string): string | null =>
+    param.trim() === 'lang'
+        ? 'The site language is remembered in the visitor’s browser and is usually not in the address, so ?lang only reflects a link that carries it. A rule on it hides this section from visitors who picked their language earlier.'
+        : null;
 
 /** "Only on the unfiltered view": the Courses page with no stream tab chosen. */
 export const UNFILTERED_VIEW_PRESET: VisibleWhenRule[] = [{ param: 'stream', op: 'empty' }];

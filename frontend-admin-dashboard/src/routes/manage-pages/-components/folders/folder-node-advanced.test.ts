@@ -84,8 +84,28 @@ describe('link and colour checks', () => {
         expect(isSafeFolderLink('//evil.example')).toBe(false);
         expect(isSafeFolderLink('/\\evil.example')).toBe(false);
         expect(isSafeFolderLink('courses')).toBe(false);
-        expect(isSafeFolderLink('/a b')).toBe(false);
         expect(isSafeFolderLink('https://')).toBe(false);
+    });
+
+    it('follows the server’s link rule exactly (CatalogueFolderService.linkUrlOrNull)', () => {
+        // Accepted there, so accepted here: spaces inside a site route or after the host.
+        expect(isSafeFolderLink('/courses?q=yoga basics')).toBe(true);
+        expect(isSafeFolderLink('https://example.org/a b')).toBe(true);
+        expect(isSafeFolderLink('HTTPS://Example.org?x=1')).toBe(true);
+        expect(isSafeFolderLink('https://example.org#top')).toBe(true);
+        // Refused there, so refused here.
+        expect(isSafeFolderLink('/\tevil.example')).toBe(false);
+        expect(isSafeFolderLink('/courses\n')).toBe(true); // trimmed first, as the server does
+        expect(isSafeFolderLink('/cour\nses')).toBe(false);
+        expect(isSafeFolderLink(`/a${String.fromCharCode(0x7f)}`)).toBe(false);
+        expect(isSafeFolderLink('https:///path')).toBe(false);
+        expect(isSafeFolderLink('https://exa mple.org')).toBe(false);
+        expect(isSafeFolderLink('https://evil\\example.org')).toBe(false);
+        expect(isSafeFolderLink('https://?q=1')).toBe(false);
+        expect(isSafeFolderLink('ftp://example.org')).toBe(false);
+        // Java's idea of whitespace in the host: an ideographic space counts, a no-break space does not.
+        expect(isSafeFolderLink(`https://exa${String.fromCharCode(0x3000)}mple.org`)).toBe(false);
+        expect(isSafeFolderLink(`https://exa${String.fromCharCode(0xa0)}mple.org`)).toBe(true);
     });
 
     it('accepts #rgb, #rrggbb and #rrggbbaa', () => {
@@ -106,6 +126,27 @@ describe('link and colour checks', () => {
         expect(validateAdvancedDraft({ ...ok, courseTag: 'x'.repeat(192) }, 'FOLDER')).toMatch(/course tag/i);
         // Folder-only fields are not offered on product-page items, so they cannot block them.
         expect(validateAdvancedDraft({ ...ok, linkUrl: 'javascript:x', slug: 'Bad' }, 'PRODUCT_PAGE')).toBeNull();
+    });
+
+    it('refuses a course tag with a comma and a link over 2048 characters, as the server does', () => {
+        const ok = draftFromNode(folder());
+        expect(validateAdvancedDraft({ ...ok, courseTag: 'yoga,ayurveda' }, 'FOLDER')).toMatch(/cannot contain commas/);
+        expect(validateAdvancedDraft({ ...ok, courseTag: 'yoga-ayurveda' }, 'FOLDER')).toBeNull();
+        expect(validateAdvancedDraft({ ...ok, linkUrl: `/${'a'.repeat(2048)}` }, 'FOLDER')).toMatch(/too long/);
+        expect(validateAdvancedDraft({ ...ok, linkUrl: `/${'a'.repeat(2047)}` }, 'FOLDER')).toBeNull();
+        expect(validateAdvancedDraft({ ...ok, linkUrl: '/courses\t/x' }, 'FOLDER')).toMatch(/line break or tab/);
+    });
+
+    it('checks only what the save sends: a stored value it would not accept never blocks a rename', () => {
+        // Written by another client or under an older rule: untouched, it is not this save's business.
+        const stored = folder({ link_url: '/courses?q=yoga\tbasics', course_tag: 'a,b', accent_color: 'orange' });
+        expect(validateAdvancedDraft(draftFromNode(stored), 'FOLDER', stored)).toBeNull();
+        // Changing one of them checks that one.
+        expect(
+            validateAdvancedDraft({ ...draftFromNode(stored), linkUrl: 'javascript:x' }, 'FOLDER', stored)
+        ).toMatch(/link must/i);
+        // Clearing a field sends '' — nothing to check.
+        expect(validateAdvancedDraft({ ...draftFromNode(stored), courseTag: '' }, 'FOLDER', stored)).toBeNull();
     });
 });
 

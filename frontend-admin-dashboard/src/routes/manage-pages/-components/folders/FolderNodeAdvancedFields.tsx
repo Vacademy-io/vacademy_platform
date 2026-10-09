@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -43,11 +43,28 @@ interface FolderNodeAdvancedFieldsProps {
     defaultOpen?: boolean;
 }
 
-const Field = ({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) => (
+/** A labelled field: the label points at the control with id `id`; the hint is `${id}-hint`. */
+const Field = ({
+    id,
+    label,
+    hint,
+    children,
+}: {
+    id: string;
+    label: string;
+    hint?: React.ReactNode;
+    children: React.ReactNode;
+}) => (
     <div>
-        <Label className="text-xs">{label}</Label>
+        <Label htmlFor={id} className="text-xs">
+            {label}
+        </Label>
         <div className="mt-1">{children}</div>
-        {hint && <p className="mt-1 text-caption text-neutral-500">{hint}</p>}
+        {hint && (
+            <p id={`${id}-hint`} className="mt-1 text-caption text-neutral-500">
+                {hint}
+            </p>
+        )}
     </div>
 );
 
@@ -64,20 +81,36 @@ export const FolderNodeAdvancedFields = ({
     const offered = advancedFieldsFor(nodeType);
     const isFolder = nodeType === 'FOLDER';
     const instituteId = getCurrentInstituteId();
+    const uid = useId();
+    const fieldId = (name: string) => `${uid}-${name}`;
+    const describedBy = (name: string) => `${fieldId(name)}-hint`;
 
-    const { data: campaignsPage, isLoading: campaignsLoading } = useQuery({
+    const {
+        data: campaignsPage,
+        isLoading: campaignsLoading,
+        isError: campaignsError,
+    } = useQuery({
         ...handleFetchCampaignsList({ institute_id: instituteId || '', status: 'ACTIVE', page: 0, size: 100 }),
         enabled: open && isFolder && draft.comingSoon && !!instituteId,
     });
     const campaigns = (campaignsPage?.content || [])
         .map((c) => ({ id: c.id || c.audience_id || c.campaign_id || '', name: c.campaign_name }))
         .filter((c) => c.id);
-    const campaignMissing = !!(
-        draft.audienceId &&
-        !campaignsLoading &&
-        campaignsPage &&
-        !campaigns.some((c) => c.id === draft.audienceId)
-    );
+    const storedCampaign = draft.audienceId;
+    const storedListed = !!storedCampaign && campaigns.some((c) => c.id === storedCampaign);
+    // Loaded, and the saved campaign is not among the active ones.
+    const campaignMissing = !!storedCampaign && !!campaignsPage && !campaignsLoading && !storedListed;
+    // The saved campaign always has an option (while the list loads, after it
+    // failed, or when it is not listed), so the select never reads "No sign-ups"
+    // for an item that has one — the id is kept and saved either way.
+    const storedOptionLabel =
+        storedCampaign && !storedListed
+            ? campaignsError
+                ? 'The saved campaign (the list did not load)'
+                : campaignMissing
+                  ? 'A campaign not in your active list'
+                  : 'The saved campaign'
+            : null;
 
     const suggestion = suggestFolderSlug(draft.subtitle, title);
     // The live site's rule (learner folderSlug): the key, else one made from the
@@ -122,7 +155,7 @@ export const FolderNodeAdvancedFields = ({
             </button>
 
             {open && (
-                <div className="space-y-4 border-t border-neutral-100 px-3 pb-3 pt-3">
+                <div className="space-y-4 border-t border-neutral-100 p-3">
                     {!isFolder && (
                         <p className="text-caption text-neutral-500">
                             Used where this product page is shown as a card, for example in a list of learning
@@ -131,10 +164,13 @@ export const FolderNodeAdvancedFields = ({
                     )}
 
                     <Field
+                        id={fieldId('subtitle')}
                         label="Subtitle (optional)"
                         hint="A second line under the title — for example the English name under a Hindi title (EDUCATION)."
                     >
                         <Input
+                            id={fieldId('subtitle')}
+                            aria-describedby={describedBy('subtitle')}
                             value={draft.subtitle}
                             maxLength={FOLDER_FIELD_LIMITS.subtitle}
                             onChange={(e) => onChange({ subtitle: e.target.value })}
@@ -144,10 +180,13 @@ export const FolderNodeAdvancedFields = ({
 
                     {offered.has('slug') && (
                         <Field
+                            id={fieldId('slug')}
                             label="Link key (optional)"
                             hint="Used in addresses such as /courses?stream=shiksha. Lowercase letters, numbers and dashes."
                         >
                             <Input
+                                id={fieldId('slug')}
+                                aria-describedby={describedBy('slug')}
                                 value={draft.slug}
                                 maxLength={FOLDER_FIELD_LIMITS.slug}
                                 onChange={(e) => onChange({ slug: sanitizeSlugInput(e.target.value) })}
@@ -183,10 +222,13 @@ export const FolderNodeAdvancedFields = ({
 
                     {offered.has('courseTag') && (
                         <Field
+                            id={fieldId('course-tag')}
                             label="Course tag (optional)"
-                            hint="The course tag this folder stands for: choosing it on the Courses page shows the courses carrying this tag. Leave empty to use the link key."
+                            hint="The course tag this folder stands for: choosing it on the Courses page shows the courses carrying this tag. One tag, no commas. Leave empty to use the link key."
                         >
                             <Input
+                                id={fieldId('course-tag')}
+                                aria-describedby={describedBy('course-tag')}
                                 value={draft.courseTag}
                                 maxLength={FOLDER_FIELD_LIMITS.courseTag}
                                 onChange={(e) => onChange({ courseTag: e.target.value })}
@@ -196,6 +238,7 @@ export const FolderNodeAdvancedFields = ({
                     )}
 
                     <Field
+                        id={fieldId('tagline')}
                         label="Tagline (optional)"
                         hint={
                             isFolder
@@ -204,6 +247,8 @@ export const FolderNodeAdvancedFields = ({
                         }
                     >
                         <Input
+                            id={fieldId('tagline')}
+                            aria-describedby={describedBy('tagline')}
                             value={draft.tagline}
                             maxLength={FOLDER_FIELD_LIMITS.tagline}
                             onChange={(e) => onChange({ tagline: e.target.value })}
@@ -211,8 +256,14 @@ export const FolderNodeAdvancedFields = ({
                         />
                     </Field>
 
-                    <Field label="Button label (optional)" hint="Text of the call-to-action button, e.g. Explore Education.">
+                    <Field
+                        id={fieldId('cta')}
+                        label="Button label (optional)"
+                        hint="Text of the call-to-action button, e.g. Explore Education."
+                    >
                         <Input
+                            id={fieldId('cta')}
+                            aria-describedby={describedBy('cta')}
                             value={draft.ctaLabel}
                             maxLength={FOLDER_FIELD_LIMITS.ctaLabel}
                             onChange={(e) => onChange({ ctaLabel: e.target.value })}
@@ -222,11 +273,15 @@ export const FolderNodeAdvancedFields = ({
 
                     {offered.has('linkUrl') && (
                         <Field
+                            id={fieldId('link')}
                             label="Link (optional)"
                             hint="A page on your site (/courses?stream=shiksha) or a full https:// address. Empty: a stream opens /courses?stream=<its key>, a category /courses?stream=<stream>&category=<its key>."
                         >
                             <Input
+                                id={fieldId('link')}
+                                aria-describedby={describedBy('link')}
                                 value={draft.linkUrl}
+                                maxLength={FOLDER_FIELD_LIMITS.linkUrl}
                                 onChange={(e) => onChange({ linkUrl: e.target.value })}
                                 placeholder={`/courses?stream=${displayKey}`}
                             />
@@ -285,18 +340,20 @@ export const FolderNodeAdvancedFields = ({
                             </div>
                             {draft.comingSoon && (
                                 <div>
-                                    <Label className="text-xs">Collect “notify me” sign-ups in</Label>
+                                    <Label htmlFor={fieldId('campaign')} className="text-xs">
+                                        Collect “notify me” sign-ups in
+                                    </Label>
                                     <select
-                                        className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm"
-                                        value={draft.audienceId}
+                                        id={fieldId('campaign')}
+                                        aria-describedby={describedBy('campaign')}
+                                        className="mt-1 w-full rounded-md border border-neutral-300 bg-white p-2 text-sm"
+                                        value={storedCampaign}
                                         onChange={(e) => onChange({ audienceId: e.target.value })}
                                     >
                                         <option value="">
                                             {campaignsLoading ? 'Loading campaigns…' : 'No sign-ups — just show the mark'}
                                         </option>
-                                        {campaignMissing && (
-                                            <option value={draft.audienceId}>A campaign not in your active list</option>
-                                        )}
+                                        {storedOptionLabel && <option value={storedCampaign}>{storedOptionLabel}</option>}
                                         {campaigns.map((c) => (
                                             <option key={c.id} value={c.id}>
                                                 {c.name}
@@ -304,16 +361,26 @@ export const FolderNodeAdvancedFields = ({
                                         ))}
                                     </select>
                                     <p
+                                        id={describedBy('campaign')}
+                                        role={campaignsError ? 'alert' : undefined}
                                         className={cn(
                                             'mt-1 text-caption',
-                                            draft.audienceId && !campaignMissing ? 'text-neutral-500' : 'text-warning-600'
+                                            campaignsError
+                                                ? 'text-danger-600'
+                                                : storedCampaign && !campaignMissing
+                                                  ? 'text-neutral-500'
+                                                  : 'text-warning-600'
                                         )}
                                     >
-                                        {campaignMissing
-                                            ? 'That campaign is not among your active campaigns (paused or archived?), so sign-ups may go nowhere. Pick another.'
-                                            : draft.audienceId
-                                              ? 'Sign-ups arrive as leads in this Audience Manager campaign.'
-                                              : 'Without a campaign visitors see the mark but cannot ask to be told. Campaigns live in Audience Manager.'}
+                                        {campaignsError
+                                            ? storedCampaign
+                                                ? 'Your campaigns could not be loaded, so the saved one is kept as it is. Close and reopen this dialog to try again.'
+                                                : 'Your campaigns could not be loaded. Close and reopen this dialog to try again.'
+                                            : campaignMissing
+                                              ? 'That campaign is not among your active campaigns (paused or archived?), so sign-ups may go nowhere. Pick another.'
+                                              : storedCampaign
+                                                ? 'Sign-ups arrive as leads in this Audience Manager campaign.'
+                                                : 'Without a campaign visitors see the mark but cannot ask to be told. Campaigns live in Audience Manager.'}
                                     </p>
                                 </div>
                             )}

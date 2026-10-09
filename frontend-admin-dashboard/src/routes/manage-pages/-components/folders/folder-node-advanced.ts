@@ -15,6 +15,7 @@ export const FOLDER_FIELD_LIMITS = {
     subtitle: 255,
     tagline: 255,
     ctaLabel: 120,
+    linkUrl: 2048,
     audienceId: 255,
 } as const;
 
@@ -67,16 +68,49 @@ export const sanitizeSlugInput = (raw: string): string =>
 export const isValidSlug = (slug: string): boolean => SLUG_PATTERN.test(slug);
 
 /**
+ * Tabs, line breaks and other control characters (U+0000–U+001F, U+007F).
+ * Browsers drop tabs and newlines from a URL before reading it, so "/\t/evil"
+ * would leave the site. Checked by char code: a control-character regex is
+ * exactly what no-control-regex exists to flag.
+ */
+const hasControlCharacter = (s: string): boolean => {
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code < 0x20 || code === 0x7f) return true;
+    }
+    return false;
+};
+
+/**
+ * Whitespace as Java's Character.isWhitespace sees it (the server's check on
+ * a link's host), minus the control characters refused before it is used.
+ * No-break spaces (U+00A0, U+2007, U+202F) are not whitespace there.
+ */
+const HOST_WHITESPACE = new Set([
+    0x20, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029,
+    0x205f, 0x3000,
+]);
+
+const hasHostWhitespace = (host: string): boolean => [...host].some((c) => HOST_WHITESPACE.has(c.charCodeAt(0)));
+
+/**
  * A folder link is a page on the site (/courses?stream=x) or a full http(s)
- * address. Protocol-relative (//host), javascript:, data: and anything with
- * whitespace are refused. Empty is fine: it means "the default link".
+ * address — the server's rule (CatalogueFolderService.linkUrlOrNull), so the
+ * dialog never refuses a link the server would keep, nor lets through one it
+ * would refuse: no control characters; a "/" link must not start with "//" or
+ * "/\" (both leave the site) but may hold spaces ("/courses?q=yoga basics");
+ * an http(s) address needs a host without spaces or backslashes. javascript:,
+ * data: and anything else are refused. Empty is fine: it means "the default
+ * link". Length is checked separately (FOLDER_FIELD_LIMITS.linkUrl).
  */
 export const isSafeFolderLink = (raw: string): boolean => {
     const url = raw.trim();
     if (!url) return true;
-    if (/\s/.test(url)) return false;
+    if (hasControlCharacter(url)) return false;
     if (url.startsWith('/')) return !url.startsWith('//') && !url.startsWith('/\\');
-    return /^https?:\/\/[^/\\\s]/i.test(url);
+    const address = /^https?:\/\/([^/?#]*)/i.exec(url);
+    const host = address?.[1] ?? '';
+    return !!host && !host.includes('\\') && !hasHostWhitespace(host);
 };
 
 export const isValidAccentColor = (raw: string | null | undefined): boolean => ACCENT_PATTERN.test((raw || '').trim());
@@ -164,21 +198,46 @@ export const buildAdvancedPatch = (
     return patch as Partial<FolderNodeInput>;
 };
 
-/** First problem that would make the server refuse the Advanced fields; null when they can be saved. */
-export const validateAdvancedDraft = (draft: FolderAdvancedDraft, nodeType: FolderNodeType): string | null => {
-    const offered = advancedFieldsFor(nodeType);
-    const slug = draft.slug.trim();
-    if (offered.has('slug') && slug && !isValidSlug(slug)) {
+/**
+ * First problem that would make the server refuse the Advanced fields; null
+ * when they can be saved. Only what the save actually sends is checked (see
+ * buildAdvancedPatch): a value stored by another client — the API, an
+ * assistant — that this dialog would not accept itself never blocks renaming
+ * the item. `node` is the item being edited (null when creating).
+ */
+export const validateAdvancedDraft = (
+    draft: FolderAdvancedDraft,
+    nodeType: FolderNodeType,
+    node: FolderNode | null = null
+): string | null => {
+    const patch = buildAdvancedPatch(node, draft, nodeType);
+    const sent = (key: keyof FolderNodeInput): string | null => {
+        const value = (patch as Record<string, unknown>)[key];
+        return typeof value === 'string' && value ? value : null;
+    };
+    const slug = sent('slug');
+    if (slug && !isValidSlug(slug)) {
         return 'The link key can use only lowercase letters, numbers and dashes (up to 120).';
     }
-    if (offered.has('courseTag') && draft.courseTag.trim().length > FOLDER_FIELD_LIMITS.courseTag) {
+    const courseTag = sent('course_tag');
+    if (courseTag && courseTag.length > FOLDER_FIELD_LIMITS.courseTag) {
         return `The course tag is too long (max ${FOLDER_FIELD_LIMITS.courseTag} characters).`;
     }
-    if (offered.has('linkUrl') && !isSafeFolderLink(draft.linkUrl)) {
+    if (courseTag && courseTag.includes(',')) {
+        return 'The course tag is a single tag, so it cannot contain commas.';
+    }
+    const link = sent('link_url');
+    if (link && link.length > FOLDER_FIELD_LIMITS.linkUrl) {
+        return `The link is too long (max ${FOLDER_FIELD_LIMITS.linkUrl} characters).`;
+    }
+    if (link && hasControlCharacter(link)) {
+        return 'The link contains a line break or tab. Paste it again on one line.';
+    }
+    if (link && !isSafeFolderLink(link)) {
         return 'The link must be a page on your site (starting with /) or a full address starting with https://.';
     }
-    const accent = draft.accentColor.trim();
-    if (offered.has('accentColor') && accent && !isValidAccentColor(accent)) {
+    const accent = sent('accent_color');
+    if (accent && !isValidAccentColor(accent)) {
         return 'The accent colour must be a hex colour such as #F97316.'; // design-lint-ignore: example in copy, not a style
     }
     return null;

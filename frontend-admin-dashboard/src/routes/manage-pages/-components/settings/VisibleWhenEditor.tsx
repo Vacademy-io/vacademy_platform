@@ -14,6 +14,7 @@ import {
     isUnfilteredPreset,
     normalizeVisibleWhen,
     opNeedsValue,
+    paramCaveat,
     visibleWhenForSave,
     withOp,
     type VisibleWhenOp,
@@ -153,6 +154,9 @@ export const VisibleWhenEditor = ({ rules: stored, onChange, idPrefix }: Visible
                                     placeholder="e.g. shiksha"
                                     className="h-7 text-xs"
                                 />
+                            )}
+                            {paramCaveat(rule.param) && (
+                                <p className="text-caption text-warning-600">{paramCaveat(rule.param)}</p>
                             )}
                         </div>
                     ))}

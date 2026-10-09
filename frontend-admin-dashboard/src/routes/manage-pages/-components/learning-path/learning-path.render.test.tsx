@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LearningPathEditor } from './LearningPathEditor';
 import { LearningPathPreview } from './LearningPathPreview';
 import { getComponentTemplate } from '../../-utils/component-templates';
+import type { LearningPathProps } from '../../-types/editor-types';
 
 /**
  * Learning Path section: the editor stores only codes / ids in props (data is
@@ -25,7 +26,7 @@ vi.mock('@tanstack/react-query', async (orig) => ({
 
 const updateComponent = vi.fn();
 
-const renderEditor = (props: Record<string, unknown>) =>
+const renderEditor = (props: LearningPathProps) =>
     render(<LearningPathEditor component={{ id: 'lp-1', props }} pageId="home" updateComponent={updateComponent} />);
 
 beforeEach(() => {
@@ -35,7 +36,9 @@ beforeEach(() => {
 
 describe('learningPath template', () => {
     it('starts from the spec defaults', () => {
-        const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as any;
+        const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as unknown as Parameters<
+            typeof getComponentTemplate
+        >[1];
         const c = getComponentTemplate('learningPath', t);
         expect(c.type).toBe('learningPath');
         expect(c.props).toMatchObject({
@@ -58,7 +61,10 @@ describe('LearningPathEditor', () => {
             { id: 'pp-2', code: 'vedas', name: 'Vedas', status: 'DRAFT' },
         ];
         renderEditor({ mode: 'single', productPageCode: '', title: 'Paths' });
-        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'yoga-path' } });
+        // Found by its label: the select is tied to it.
+        fireEvent.change(screen.getByRole('combobox', { name: 'Product page (the path)' }), {
+            target: { value: 'yoga-path' },
+        });
         expect(updateComponent).toHaveBeenCalledWith('home', 'lp-1', {
             props: { mode: 'single', productPageCode: 'yoga-path', productPageName: 'Yoga path', title: 'Paths' },
         });
@@ -67,7 +73,7 @@ describe('LearningPathEditor', () => {
     it('lists paths from a library and resets the start folder when the library changes', () => {
         queryData.FOLDER_LIBRARIES = [{ id: 'lib-1', name: 'Streams', node_count: 3 }];
         renderEditor({ mode: 'list', libraryId: '', folderId: 'old' });
-        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'lib-1' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Folder library' }), { target: { value: 'lib-1' } });
         expect(updateComponent).toHaveBeenCalledWith('home', 'lp-1', {
             props: { mode: 'list', libraryId: 'lib-1', libraryName: 'Streams', folderId: '' },
         });
@@ -79,10 +85,36 @@ describe('LearningPathEditor', () => {
         expect(updateComponent).toHaveBeenLastCalledWith('home', 'lp-1', {
             props: { mode: 'list', streamFromUrl: true },
         });
-        fireEvent.change(screen.getByPlaceholderText('View path'), { target: { value: 'Open' } });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Path card button' }), { target: { value: 'Open' } });
         expect(updateComponent).toHaveBeenLastCalledWith('home', 'lp-1', {
             props: { mode: 'list', streamFromUrl: false, viewPathLabel: 'Open' },
         });
+    });
+
+    it('names the start-folder select', () => {
+        queryData.FOLDER_LIBRARIES = [{ id: 'lib-1', name: 'Streams', node_count: 1 }];
+        queryData.FOLDER_LIBRARY_TREE = {
+            library: { id: 'lib-1', name: 'Streams' },
+            roots: [{ id: 's1', node_type: 'FOLDER', title: 'Shiksha', status: 'ACTIVE', display_order: 0, children: [] }],
+        };
+        renderEditor({ mode: 'list', libraryId: 'lib-1' });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Paths from' }), { target: { value: 's1' } });
+        expect(updateComponent).toHaveBeenLastCalledWith('home', 'lp-1', {
+            props: { mode: 'list', libraryId: 'lib-1', folderId: 's1' },
+        });
+    });
+
+    it('warns that a coming-soon start folder shows no paths yet', () => {
+        queryData.FOLDER_LIBRARIES = [{ id: 'lib-1', name: 'Streams', node_count: 1 }];
+        queryData.FOLDER_LIBRARY_TREE = {
+            library: { id: 'lib-1', name: 'Streams' },
+            roots: [
+                { id: 's1', node_type: 'FOLDER', title: 'Ayurveda', status: 'ACTIVE', coming_soon: true, display_order: 0, children: [] },
+            ],
+        };
+        renderEditor({ mode: 'list', libraryId: 'lib-1', folderId: 's1' });
+        expect(screen.getByRole('option', { name: /Ayurveda \(coming soon\)/ })).toBeInTheDocument();
+        expect(screen.getByText(/marked coming soon, so the site shows no paths from it/)).toBeInTheDocument();
     });
 });
 
@@ -152,5 +184,27 @@ describe('LearningPathPreview', () => {
         expect(screen.queryByText('Draft path')).not.toBeInTheDocument();
         expect(screen.getByText('Shiksha')).toBeInTheDocument();
         expect(screen.getByText('See path')).toBeInTheDocument();
+    });
+
+    it('leaves out paths inside a coming-soon folder, as the site does', () => {
+        queryData.FOLDER_LIBRARY_TREE = {
+            library: { id: 'lib-1', name: 'Streams' },
+            roots: [
+                {
+                    id: 's1',
+                    node_type: 'FOLDER',
+                    title: 'Ayurveda',
+                    status: 'ACTIVE',
+                    coming_soon: true,
+                    display_order: 0,
+                    children: [
+                        { id: 'p1', node_type: 'PRODUCT_PAGE', title: 'Herbs 101', product_page_code: 'h', product_page_status: 'ACTIVE', status: 'ACTIVE', display_order: 0, children: [] },
+                    ],
+                },
+            ],
+        };
+        render(<LearningPathPreview props={{ mode: 'list', libraryId: 'lib-1', emptyText: 'Paths are coming.' }} />);
+        expect(screen.queryByText('Herbs 101')).not.toBeInTheDocument();
+        expect(screen.getByText('Paths are coming.')).toBeInTheDocument();
     });
 });

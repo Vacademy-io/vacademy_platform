@@ -190,6 +190,34 @@ export interface SiteCartSettings {
     storeProductPageName?: string;
 }
 
+/**
+ * props of a `learningPath` section (Knowledge Streams spec §8, read by the
+ * learner's LearningPathComponent). Only codes and ids are stored — course
+ * data is always read live. libraryName is the editor's own display copy.
+ */
+export interface LearningPathProps {
+    /** single = one product page as numbered steps; list = path cards from a folder library. Default single. */
+    mode?: 'single' | 'list';
+    productPageCode?: string;
+    productPageName?: string;
+    libraryId?: string;
+    libraryName?: string;
+    folderId?: string;
+    /** List mode: on /courses?stream=… show only that stream's paths. */
+    streamFromUrl?: boolean;
+    /** Address parameter "View path" sets (default 'path'). */
+    pathParam?: string;
+    title?: string;
+    subtitle?: string;
+    showStepNumbers?: boolean;
+    showTotal?: boolean;
+    addAllLabel?: string;
+    enrolLabel?: string;
+    viewPathLabel?: string;
+    emptyText?: string;
+    backgroundColor?: string;
+}
+
 /** Show a section only for certain query strings (mirrors the learner VisibleWhenRule). */
 export interface VisibleWhenRule {
     param: string;

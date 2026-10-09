@@ -22,7 +22,8 @@ export const effectiveCourseLanguages = (settings: CourseLanguageSettings | null
 export const usesDefaultLanguages = (settings: CourseLanguageSettings | null | undefined): boolean =>
     !settings?.languages?.length;
 
-const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
+/** Same answer as the learner's /^[\x00-\x7F]*$/ test, without a control-character regex. */
+const isAscii = (s: string) => [...s].every((c) => c.charCodeAt(0) < 128);
 
 /**
  * The language a level name stands for — the learner's languageOfLevel():

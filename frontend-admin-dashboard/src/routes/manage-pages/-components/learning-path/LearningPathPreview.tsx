@@ -6,6 +6,7 @@ import { PRODUCT_PAGE_OPEN_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { cn } from '@/lib/utils';
 import { folderTreeQueryKey, getFolderTree, nodeLabel } from '../../-services/folder-library-service';
+import type { LearningPathProps } from '../../-types/editor-types';
 import { collectPathLeaves, pathSteps, pathTotal, versionLabels, type PathMapping } from './learning-path-utils';
 
 /**
@@ -17,10 +18,10 @@ import { collectPathLeaves, pathSteps, pathTotal, versionLabels, type PathMappin
  */
 
 interface P {
-    props: Record<string, any>;
+    props: LearningPathProps;
 }
 
-const Shell: React.FC<{ props: Record<string, any>; children: React.ReactNode }> = ({ props, children }) => (
+const Shell: React.FC<{ props: LearningPathProps; children: React.ReactNode }> = ({ props, children }) => (
     <section
         className="catalogue-section"
         style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined} // design-lint-ignore: admin-chosen section colour

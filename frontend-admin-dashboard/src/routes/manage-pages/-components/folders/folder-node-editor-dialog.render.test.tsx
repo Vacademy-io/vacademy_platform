@@ -10,17 +10,19 @@ import type { FolderNode } from '../../-services/folder-library-service';
  * server will, and only what changed is sent.
  */
 
+const CAMPAIGNS_OK = {
+    data: { content: [{ id: 'aud-1', campaign_name: 'Notify me — Ayurveda' }] },
+    isLoading: false,
+    isError: false,
+};
+let campaignsResult: Record<string, unknown> = CAMPAIGNS_OK;
+
 vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst-1' }));
 vi.mock('../ImageUploadField', () => ({ ImageUploadField: () => null }));
 vi.mock('@tanstack/react-query', async (orig) => ({
     ...(await orig<Record<string, unknown>>()),
     useQuery: ({ queryKey }: { queryKey: unknown[] }) =>
-        queryKey[0] === 'campaignsList'
-            ? {
-                  data: { content: [{ id: 'aud-1', campaign_name: 'Notify me — Ayurveda' }] },
-                  isLoading: false,
-              }
-            : { data: [], isLoading: false },
+        queryKey[0] === 'campaignsList' ? campaignsResult : { data: [], isLoading: false, isError: false },
 }));
 
 const existing = (over: Partial<FolderNode> = {}): FolderNode => ({
@@ -56,6 +58,7 @@ const openAdvanced = () => fireEvent.click(screen.getByRole('button', { name: /A
 
 beforeEach(() => {
     vi.clearAllMocks();
+    campaignsResult = CAMPAIGNS_OK;
 });
 
 describe('FolderNodeEditorDialog → Advanced', () => {
@@ -123,10 +126,60 @@ describe('FolderNodeEditorDialog → Advanced', () => {
         const { onSubmit } = setup({ node: existing() });
         openAdvanced();
         fireEvent.click(screen.getByRole('switch', { name: 'Coming soon' }));
-        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aud-1' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Collect “notify me” sign-ups in' }), {
+            target: { value: 'aud-1' },
+        });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
         expect(onSubmit.mock.calls[0]![0]).toMatchObject({ coming_soon: true, audience_id: 'aud-1' });
+    });
+
+    it('keeps showing a saved campaign when the campaign list fails to load', async () => {
+        campaignsResult = { data: undefined, isLoading: false, isError: true };
+        const { onSubmit } = setup({ node: existing({ coming_soon: true, audience_id: 'aud-9' }) });
+        const select = screen.getByRole('combobox', { name: 'Collect “notify me” sign-ups in' });
+        expect(select).toHaveValue('aud-9');
+        expect(screen.getByRole('option', { name: 'The saved campaign (the list did not load)' })).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/could not be loaded, so the saved one is kept/);
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+        // Untouched: the stored campaign stays as it is on the server.
+        expect(onSubmit.mock.calls[0]![0]).not.toHaveProperty('audience_id');
+    });
+
+    it('ties every Advanced label to its field', () => {
+        setup();
+        openAdvanced();
+        for (const label of [
+            'Subtitle (optional)',
+            'Link key (optional)',
+            'Course tag (optional)',
+            'Tagline (optional)',
+            'Button label (optional)',
+            'Link (optional)',
+        ]) {
+            expect(screen.getByLabelText(label)).toBeInstanceOf(HTMLInputElement);
+        }
+        expect(screen.getByLabelText('Link (optional)')).toHaveAttribute('maxLength', '2048');
+    });
+
+    it('refuses a course tag with a comma before saving', async () => {
+        const { onSubmit } = setup({ node: existing() });
+        openAdvanced();
+        fireEvent.change(screen.getByLabelText('Course tag (optional)'), { target: { value: 'yoga, ayurveda' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText(/cannot contain commas/)).toBeInTheDocument();
+        expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('renames an item whose stored link it would not write itself', async () => {
+        // Saved by another client under an older rule; the rename must not trip over it.
+        const { onSubmit } = setup({ node: existing({ link_url: '/courses?q=yoga\tbasics' }) });
+        fireEvent.change(screen.getByPlaceholderText('e.g. Class 10'), { target: { value: 'Shiksha 2' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+        expect(onSubmit.mock.calls[0]![0]).toMatchObject({ title: 'Shiksha 2' });
+        expect(onSubmit.mock.calls[0]![0]).not.toHaveProperty('link_url');
     });
 
     it('opens by itself for an item that already uses it, and clears a field with ""', async () => {

@@ -94,17 +94,24 @@ const visibleChildren = (nodes: FolderNode[] | undefined) => (nodes || []).filte
 
 /**
  * Product pages (paths) under a folder — or the whole library — in tree order,
- * each with the stream it belongs to. `startFolderId` that is missing or
- * hidden yields nothing, like the live section.
+ * each with the stream it belongs to and each product page once. Like the live
+ * section (learner collectPathEntries / pathsInScope): a coming-soon folder is
+ * not opened — what is inside has not launched — and a `startFolderId` that is
+ * missing, hidden or coming soon yields nothing.
  */
 export const collectPathLeaves = (roots: FolderNode[] | null | undefined, startFolderId?: string | null): PathLeaf[] => {
     const out: PathLeaf[] = [];
     if (!Array.isArray(roots)) return out;
+    const seenCodes = new Set<string>();
     const walk = (nodes: FolderNode[], stream: FolderNode | null) => {
         for (const n of visibleChildren(nodes)) {
             if (n.node_type === 'PRODUCT_PAGE') {
-                if (n.product_page_status === 'ACTIVE' && n.product_page_code) out.push({ node: n, stream });
-            } else {
+                const code = (n.product_page_code || '').trim();
+                if (n.product_page_status === 'ACTIVE' && code && !seenCodes.has(code)) {
+                    seenCodes.add(code);
+                    out.push({ node: n, stream });
+                }
+            } else if (!n.coming_soon) {
                 walk(n.children || [], stream ?? n);
             }
         }
@@ -119,7 +126,7 @@ export const collectPathLeaves = (roots: FolderNode[] | null | undefined, startF
             if (n.node_type !== 'FOLDER') continue;
             const nStream = stream ?? n;
             if (n.id === startFolderId) {
-                walk(n.children || [], nStream);
+                if (!n.coming_soon) walk(n.children || [], nStream);
                 return true;
             }
             if (find(n.children || [], nStream)) return true;

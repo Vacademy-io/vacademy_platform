@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
     UNFILTERED_VIEW_PRESET,
+    VISIBLE_WHEN_PARAMS,
     describeVisibleWhen,
     hasRuleWithoutParam,
     isUnfilteredPreset,
     normalizeVisibleWhen,
+    paramCaveat,
     visibleWhenForSave,
     withOp,
 } from './visible-when';
@@ -73,6 +75,15 @@ describe('rule helpers', () => {
         expect(hasRuleWithoutParam([{ op: 'empty' }])).toBe(true);
         expect(hasRuleWithoutParam([null])).toBe(true);
         expect(hasRuleWithoutParam(undefined)).toBe(false);
+    });
+
+    it('does not suggest the site language, and warns when a rule uses it', () => {
+        expect(VISIBLE_WHEN_PARAMS.map((p) => p.param)).not.toContain('lang');
+        expect(VISIBLE_WHEN_PARAMS.map((p) => p.param)).toContain('stream');
+        expect(paramCaveat('lang')).toMatch(/remembered in the visitor’s browser/);
+        expect(paramCaveat(' lang ')).not.toBeNull();
+        expect(paramCaveat('language')).toBeNull();
+        expect(paramCaveat('stream')).toBeNull();
     });
 
     it('describes rules in plain words', () => {

@@ -79,6 +79,14 @@ describe("data that looks like text is never translated", () => {
     expect(out.slots).toBe(props.slots);
   });
 
+  it("keeps icon names exact and treats the mega menu's CTA pattern as copy", () => {
+    const dict = { Rocket: "रॉकेट", "Explore {stream}": "{stream} देखें" };
+    const props = { features: [{ iconName: "Rocket", title: "Rocket" }], megaMenu: { ctaLabelPattern: "Explore {stream}", libraryName: "Rocket" } };
+    const out = localizeDeep(props, dict);
+    expect(out.features[0]).toEqual({ iconName: "Rocket", title: "रॉकेट" });
+    expect(out.megaMenu).toEqual({ ctaLabelPattern: "{stream} देखें", libraryName: "Rocket" });
+  });
+
   it("does not offer data strings for translation", () => {
     const props = { defaultSort: "Price: Low to High", title: "Courses", formFields: [{ name: "email", label: "Email" }] };
     expect(collectTranslatableStrings(props)).toEqual(["Courses", "Email"]);

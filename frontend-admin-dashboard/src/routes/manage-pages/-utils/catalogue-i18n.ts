@@ -66,8 +66,16 @@ const NON_TEXT_KEYS = new Set(
         'aspect', 'easing', 'direction', 'orientation', 'kind', 'param', 'op', 'key', 'ref', 'columns',
         'gap', 'radius', 'platform', 'display', 'tile', 'anchor', 'date', 'compactness', 'audience',
         'provider', 'transition', 'padding', 'margin', 'version', 'category', 'tone', 'speed', 'weight',
+        // Looked up by exact value (FEATURE_ICON_MAP[iconName]) or shown only in the builder.
+        'iconname', 'audiencename', 'gateaudiencename', 'libraryname',
     ].map((k) => k.toLowerCase())
 );
+
+/**
+ * Text keys whose NAME looks like data (a suffix rule would catch them) but
+ * whose value is visitor-facing copy — e.g. the mega menu's 'Explore {stream}'.
+ */
+const TEXT_KEY_EXCEPTIONS = new Set(['ctalabelpattern', 'categoriesheading'].map((k) => k.toLowerCase()));
 
 /**
  * Keys whose whole VALUE is configuration, never shown as text — not even the
@@ -87,6 +95,7 @@ const NON_TEXT_SUFFIX =
 /** Is a string stored under `key` prose (worth translating)? */
 export const isTextKey = (key: string | number | undefined): boolean => {
     if (key === undefined || typeof key === 'number') return true; // array items inherit their parent's verdict
+    if (TEXT_KEY_EXCEPTIONS.has(key.toLowerCase())) return true;
     if (NON_TEXT_KEYS.has(key.toLowerCase())) return false;
     if (OPAQUE_KEYS.has(key.toLowerCase())) return false;
     if (NON_TEXT_SUFFIX.test(key)) return false;

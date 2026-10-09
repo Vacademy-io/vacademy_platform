@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.DeleteResponse;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.LibraryRequest;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.LibraryResponse;
@@ -35,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Folder libraries of an institute's catalogue sites.
@@ -69,6 +71,16 @@ public class CatalogueFolderService {
     private static final int MAX_DESCRIPTION_CHARS = 2000;
     private static final int MAX_URL_CHARS = 2048;
     private static final int MAX_VIEW_CHARS = 4000;
+    /* Knowledge-stream field limits (V558). */
+    private static final int MAX_SLUG_CHARS = 120;
+    private static final int MAX_COURSE_TAG_CHARS = 191;
+    private static final int MAX_SUBTITLE_CHARS = 255;
+    private static final int MAX_TAGLINE_CHARS = 255;
+    private static final int MAX_CTA_LABEL_CHARS = 120;
+    private static final int MAX_AUDIENCE_ID_CHARS = 255;
+    private static final Pattern SLUG = Pattern.compile("[a-z0-9-]{1," + MAX_SLUG_CHARS + "}");
+    private static final Pattern HEX_COLOR =
+            Pattern.compile("#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})");
 
     @Autowired
     private CatalogueFolderLibraryRepository libraryRepository;
@@ -81,6 +93,9 @@ public class CatalogueFolderService {
 
     @Autowired
     private InstituteAccessValidator accessValidator;
+
+    @Autowired
+    private AudienceRepository audienceRepository;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -205,6 +220,7 @@ public class CatalogueFolderService {
         }
         node.setDescription(capOrNull(req.getDescription(), MAX_DESCRIPTION_CHARS, "Description"));
         node.setImageUrl(imageUrlOrNull(req.getImageUrl()));
+        applyStreamFields(node, req, nodes, instituteId);
         if (req.getStatus() != null) node.setStatus(status(req.getStatus()));
         if (req.getView() != null) node.setViewJson(writeView(req.getView()));
         node.setDisplayOrder(nextOrder(nodes, parentId));
@@ -247,6 +263,7 @@ public class CatalogueFolderService {
             }
             node.setProductPageId(requireProductPage(instituteId, req.getProductPageId()).getId());
         }
+        applyStreamFields(node, req, locked.nodes(), instituteId);
         if (req.getStatus() != null) node.setStatus(status(req.getStatus()));
         if (req.getView() != null) node.setViewJson(writeView(req.getView()));
         node.setUpdatedBy(user.getUserId());
@@ -409,7 +426,18 @@ public class CatalogueFolderService {
                     .imageUrl(n.getImageUrl())
                     .displayOrder(n.getDisplayOrder())
                     .status(n.getStatus())
-                    .view(readView(n.getViewJson()));
+                    .view(readView(n.getViewJson()))
+                    .slug(n.getSlug())
+                    .courseTag(n.getCourseTag())
+                    .subtitle(n.getSubtitle())
+                    .tagline(n.getTagline())
+                    .ctaLabel(n.getCtaLabel())
+                    .linkUrl(n.getLinkUrl())
+                    .accentColor(n.getAccentColor())
+                    // Visitors only learn of the flag when it is set, so a library
+                    // that never uses it keeps serving the payload it did before.
+                    .comingSoon(admin ? Boolean.valueOf(n.isComingSoon()) : (n.isComingSoon() ? Boolean.TRUE : null))
+                    .audienceId(n.getAudienceId());
 
             if (TYPE_PRODUCT_PAGE.equals(n.getNodeType())) {
                 ProductPage page = pages.get(n.getProductPageId());
@@ -600,6 +628,119 @@ public class CatalogueFolderService {
             throw new VacademyException("Image must be a web address (https://...)");
         }
         return cap(url, MAX_URL_CHARS, "Image address");
+    }
+
+    /**
+     * The knowledge-stream fields of a create or update. A null field is left
+     * as is (unset on create); an empty string clears it. `libraryNodes` is the
+     * whole tree as read under the library lock, for the slug uniqueness check.
+     */
+    private void applyStreamFields(CatalogueFolderNode node, NodeRequest req,
+                                   List<CatalogueFolderNode> libraryNodes, String instituteId) {
+        if (req.getSlug() != null) node.setSlug(slugOrNull(req.getSlug(), node, libraryNodes));
+        if (req.getCourseTag() != null) node.setCourseTag(courseTagOrNull(req.getCourseTag()));
+        if (req.getSubtitle() != null) {
+            node.setSubtitle(capOrNull(req.getSubtitle(), MAX_SUBTITLE_CHARS, "Subtitle"));
+        }
+        if (req.getTagline() != null) node.setTagline(capOrNull(req.getTagline(), MAX_TAGLINE_CHARS, "Tagline"));
+        if (req.getCtaLabel() != null) {
+            node.setCtaLabel(capOrNull(req.getCtaLabel(), MAX_CTA_LABEL_CHARS, "Button label"));
+        }
+        if (req.getLinkUrl() != null) node.setLinkUrl(linkUrlOrNull(req.getLinkUrl()));
+        if (req.getAccentColor() != null) node.setAccentColor(accentColorOrNull(req.getAccentColor()));
+        if (req.getComingSoon() != null) node.setComingSoon(req.getComingSoon());
+        if (req.getAudienceId() != null) {
+            node.setAudienceId(audienceIdOrNull(req.getAudienceId(), node.getAudienceId(), instituteId));
+        }
+    }
+
+    /** Lower-cased URL key, unique among the library's other nodes. */
+    private static String slugOrNull(String raw, CatalogueFolderNode node, List<CatalogueFolderNode> libraryNodes) {
+        if (blank(raw)) return null;
+        String slug = raw.trim().toLowerCase(Locale.ROOT);
+        if (!SLUG.matcher(slug).matches()) {
+            throw new VacademyException("Slug can use only lowercase letters, numbers and hyphens (max "
+                    + MAX_SLUG_CHARS + " characters)");
+        }
+        for (CatalogueFolderNode other : libraryNodes) {
+            boolean self = other.getId() != null && other.getId().equals(node.getId());
+            if (!self && slug.equals(other.getSlug())) {
+                throw new VacademyException("Another item in this library already uses the slug \"" + slug + "\"");
+            }
+        }
+        return slug;
+    }
+
+    /** Courses carry their tags comma separated, so a tag holding a comma could never match one. */
+    private static String courseTagOrNull(String raw) {
+        if (blank(raw)) return null;
+        String tag = cap(raw.trim(), MAX_COURSE_TAG_CHARS, "Course tag");
+        if (tag.indexOf(',') >= 0) {
+            throw new VacademyException("Course tag is a single tag and cannot contain commas");
+        }
+        return tag;
+    }
+
+    /**
+     * Folder links render as {@code <a href>} on the public site: a site route
+     * ("/courses?stream=shiksha") or an http(s) address, nothing else. Rejects
+     * javascript:/data: and every way of leaving the site from a "/" link:
+     * "//host", "/\host", and tabs or newlines, which browsers strip from a
+     * URL before reading it.
+     */
+    static String linkUrlOrNull(String raw) {
+        if (blank(raw)) return null;
+        String url = cap(raw.trim(), MAX_URL_CHARS, "Link");
+        for (int i = 0; i < url.length(); i++) {
+            char c = url.charAt(i);
+            if (c < 0x20 || c == 0x7f) {
+                throw new VacademyException("Link contains characters that are not allowed");
+            }
+        }
+        String invalid = "Link must be a page of this site (starting with /) or a web address (https://...)";
+        if (url.startsWith("/")) {
+            if (url.startsWith("//") || url.startsWith("/\\")) throw new VacademyException(invalid);
+            return url;
+        }
+        String lower = url.toLowerCase(Locale.ROOT);
+        String rest = lower.startsWith("https://") ? url.substring(8)
+                : lower.startsWith("http://") ? url.substring(7) : null;
+        if (rest == null) throw new VacademyException(invalid);
+        // The host part must be there and readable: "https://", "https:///x"
+        // and "https://exa mple.com" are not addresses a browser can open.
+        int end = rest.length();
+        for (char stop : new char[]{'/', '?', '#'}) {
+            int at = rest.indexOf(stop);
+            if (at >= 0) end = Math.min(end, at);
+        }
+        String host = rest.substring(0, end);
+        if (host.isEmpty() || host.indexOf('\\') >= 0 || host.chars().anyMatch(Character::isWhitespace)) {
+            throw new VacademyException(invalid);
+        }
+        return url;
+    }
+
+    private static String accentColorOrNull(String raw) {
+        if (blank(raw)) return null;
+        String color = raw.trim();
+        if (!HEX_COLOR.matcher(color).matches()) {
+            throw new VacademyException("Accent colour must be a hex colour such as #e85d04");
+        }
+        return color.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * The audience (lead campaign) that collects "notify me" sign-ups. Only a
+     * CHANGED id is checked, as with product pages: re-sending the stored id
+     * must not fail because that audience was deleted since.
+     */
+    private String audienceIdOrNull(String raw, String current, String instituteId) {
+        if (blank(raw)) return null;
+        String id = cap(raw.trim(), MAX_AUDIENCE_ID_CHARS, "Audience");
+        if (!id.equals(current) && audienceRepository.findByIdAndInstituteId(id, instituteId).isEmpty()) {
+            throw new VacademyException("Audience not found");
+        }
+        return id;
     }
 
     private static String status(String raw) {

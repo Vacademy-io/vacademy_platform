@@ -9,7 +9,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.DeleteResponse;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.MoveRequest;
 import vacademy.io.admin_core_service.features.catalogue_folder.dto.FolderLibraryDTOs.NodeRequest;
@@ -34,10 +37,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -57,6 +65,7 @@ class CatalogueFolderServiceTest {
     @Mock private CatalogueFolderNodeRepository nodeRepository;
     @Mock private ProductPageRepository productPageRepository;
     @Mock private InstituteAccessValidator accessValidator;
+    @Mock private AudienceRepository audienceRepository;
     @Mock private CustomUserDetails user;
 
     @InjectMocks private CatalogueFolderService service;
@@ -280,5 +289,232 @@ class CatalogueFolderServiceTest {
         assertEquals("Class 12", created.getTitle());
         assertEquals("list", created.getView().get("layout"));
         assertEquals(2, created.getDisplayOrder());
+    }
+
+    /* ── knowledge-stream fields ───────────────────────────────────────── */
+
+    private static NodeRequest folder(String title) {
+        return new NodeRequest(null, "FOLDER", title, null, null, null, null, null);
+    }
+
+    private static NodeRequest edit() {
+        return new NodeRequest();
+    }
+
+    private NodeResponse onlyRoot(TreeResponse tree, String title) {
+        return tree.getRoots().stream().filter(n -> title.equals(n.getTitle())).findFirst().orElseThrow();
+    }
+
+    @Test
+    @DisplayName("a stream folder saves every knowledge-stream field and the admin tree returns them")
+    void streamFieldsRoundTrip() {
+        when(audienceRepository.findByIdAndInstituteId("aud-1", INSTITUTE))
+                .thenReturn(Optional.of(Audience.builder().id("aud-1").instituteId(INSTITUTE).build()));
+        NodeRequest req = folder("शिक्षा");
+        req.setSlug("  Shiksha ");
+        req.setCourseTag(" education ");
+        req.setSubtitle("EDUCATION");
+        req.setTagline("Learn the Indian way of learning.");
+        req.setCtaLabel("Explore Education");
+        req.setLinkUrl("/courses?stream=shiksha");
+        req.setAccentColor("#E85D04");
+        req.setComingSoon(true);
+        req.setAudienceId("aud-1");
+
+        NodeResponse n = onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, req), "शिक्षा");
+
+        assertEquals("shiksha", n.getSlug());
+        assertEquals("education", n.getCourseTag());
+        assertEquals("EDUCATION", n.getSubtitle());
+        assertEquals("Learn the Indian way of learning.", n.getTagline());
+        assertEquals("Explore Education", n.getCtaLabel());
+        assertEquals("/courses?stream=shiksha", n.getLinkUrl());
+        assertEquals("#e85d04", n.getAccentColor());
+        assertEquals(Boolean.TRUE, n.getComingSoon());
+        assertEquals("aud-1", n.getAudienceId());
+    }
+
+    @Test
+    @DisplayName("on update null leaves a stream field, an empty string clears it")
+    void updateLeavesOrClears() {
+        CatalogueFolderNode stream = node("s", null, "FOLDER", 0);
+        stream.setSlug("shiksha");
+        stream.setSubtitle("EDUCATION");
+        stream.setTagline("Old");
+        stream.setComingSoon(true);
+        NodeRequest req = edit();
+        req.setSubtitle("");
+        req.setTagline("New headline");
+        req.setComingSoon(false);
+
+        service.updateNode(user, INSTITUTE, "s", req);
+
+        CatalogueFolderNode saved = table.get("s");
+        assertEquals("shiksha", saved.getSlug());
+        assertNull(saved.getSubtitle());
+        assertEquals("New headline", saved.getTagline());
+        assertFalse(saved.isComingSoon());
+    }
+
+    @Test
+    @DisplayName("a slug is a lowercase url key")
+    void slugFormat() {
+        for (String bad : new String[]{"shiksha stream", "शिक्षा", "a/b", "x".repeat(121), "under_score"}) {
+            NodeRequest req = folder("A");
+            req.setSlug(bad);
+            assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, req), bad);
+        }
+        NodeRequest ok = folder("A");
+        ok.setSlug("class-10-cbse");
+        assertEquals("class-10-cbse", onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, ok), "A").getSlug());
+    }
+
+    @Test
+    @DisplayName("a slug is unique within the library, but a node may keep its own")
+    void slugIsUniquePerLibrary() {
+        node("a", null, "FOLDER", 0).setSlug("shiksha");
+        node("b", null, "FOLDER", 1);
+
+        NodeRequest clash = folder("C");
+        clash.setSlug("SHIKSHA");
+        VacademyException e = assertThrows(VacademyException.class,
+                () -> service.createNode(user, INSTITUTE, LIBRARY, clash));
+        assertTrue(e.getMessage().contains("shiksha"));
+
+        NodeRequest steal = edit();
+        steal.setSlug("shiksha");
+        assertThrows(VacademyException.class, () -> service.updateNode(user, INSTITUTE, "b", steal));
+        assertNull(table.get("b").getSlug());
+
+        NodeRequest keep = edit();
+        keep.setSlug("shiksha");
+        keep.setTitle("Renamed");
+        service.updateNode(user, INSTITUTE, "a", keep);
+        assertEquals("Renamed", table.get("a").getTitle());
+        assertEquals("shiksha", table.get("a").getSlug());
+    }
+
+    @Test
+    @DisplayName("links are site routes or web addresses, never script or off-site tricks")
+    void linkUrlRules() {
+        for (String good : new String[]{"/courses?stream=shiksha", "/courses?stream={stream}", "https://vacademy.io/x",
+                "HTTP://example.com", "https://example.com?q=a b"}) {
+            NodeRequest req = folder("Good " + good);
+            req.setLinkUrl(good);
+            assertEquals(good, onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, req), "Good " + good)
+                    .getLinkUrl());
+        }
+        for (String bad : new String[]{"javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,x",
+                "//evil.com", "/\\evil.com", "/\t/evil.com", "https://", "https:///x", "ftp://example.com",
+                "courses", "https://exa mple.com", "mailto:a@b.c"}) {
+            NodeRequest req = folder("Bad");
+            req.setLinkUrl(bad);
+            assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, req), bad);
+        }
+    }
+
+    @Test
+    @DisplayName("accent colours are #rgb, #rrggbb or #rrggbbaa")
+    void accentColorRules() {
+        for (String good : new String[]{"#abc", "#A1B2C3", "#a1b2c3d4"}) {
+            NodeRequest req = folder("Good " + good);
+            req.setAccentColor(good);
+            assertEquals(good.toLowerCase(), onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, req),
+                    "Good " + good).getAccentColor());
+        }
+        for (String bad : new String[]{"red", "#abcd", "#ggg", "abc", "#1234567", "rgb(0,0,0)"}) {
+            NodeRequest req = folder("Bad");
+            req.setAccentColor(bad);
+            assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, req), bad);
+        }
+    }
+
+    @Test
+    @DisplayName("text fields are length-capped and a course tag is a single tag")
+    void lengthCapsAndCourseTag() {
+        NodeRequest longSubtitle = folder("A");
+        longSubtitle.setSubtitle("x".repeat(256));
+        assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, longSubtitle));
+
+        NodeRequest longCta = folder("A");
+        longCta.setCtaLabel("x".repeat(121));
+        assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, longCta));
+
+        NodeRequest longTag = folder("A");
+        longTag.setCourseTag("x".repeat(192));
+        assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, longTag));
+
+        NodeRequest twoTags = folder("A");
+        twoTags.setCourseTag("hindi,english");
+        assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, twoTags));
+
+        NodeRequest atCap = folder("A");
+        atCap.setTagline("x".repeat(255));
+        assertEquals(255, onlyRoot(service.createNode(user, INSTITUTE, LIBRARY, atCap), "A").getTagline().length());
+    }
+
+    @Test
+    @DisplayName("a notify-me audience must be one of the institute's, checked only when it changes")
+    void audienceIsValidatedOnChange() {
+        when(audienceRepository.findByIdAndInstituteId(anyString(), anyString())).thenReturn(Optional.empty());
+        NodeRequest foreign = folder("A");
+        foreign.setAudienceId("someone-elses");
+        assertThrows(VacademyException.class, () -> service.createNode(user, INSTITUTE, LIBRARY, foreign));
+
+        // The stored audience was deleted since: re-sending it must not block a rename.
+        node("s", null, "FOLDER", 0).setAudienceId("deleted-audience");
+        NodeRequest rename = edit();
+        rename.setTitle("Renamed");
+        rename.setAudienceId("deleted-audience");
+        service.updateNode(user, INSTITUTE, "s", rename);
+        assertEquals("Renamed", table.get("s").getTitle());
+        verify(audienceRepository, never()).findByIdAndInstituteId(eq("deleted-audience"), anyString());
+
+        NodeRequest clear = edit();
+        clear.setAudienceId("");
+        service.updateNode(user, INSTITUTE, "s", clear);
+        assertNull(table.get("s").getAudienceId());
+    }
+
+    @Test
+    @DisplayName("the public tree carries the stream fields, keeps an empty coming-soon folder, and flags only when set")
+    void publicTreeStreamFields() {
+        CatalogueFolderNode stream = node("s", null, "FOLDER", 0);
+        stream.setSlug("shiksha");
+        stream.setSubtitle("EDUCATION");
+        stream.setAudienceId("aud-1");
+        CatalogueFolderNode soon = node("soon", "s", "FOLDER", 0);
+        soon.setComingSoon(true);
+        node("open", "s", "FOLDER", 1);
+
+        TreeResponse tree = service.publicTree(INSTITUTE, LIBRARY).orElseThrow();
+
+        NodeResponse root = tree.getRoots().get(0);
+        assertEquals("shiksha", root.getSlug());
+        assertEquals("EDUCATION", root.getSubtitle());
+        assertEquals("aud-1", root.getAudienceId());
+        assertNull(root.getComingSoon(), "the public tree omits coming_soon unless it is set");
+        assertEquals(List.of("soon", "open"), ids(root.getChildren()));
+        assertEquals(Boolean.TRUE, root.getChildren().get(0).getComingSoon());
+
+        // The admin tree always states it.
+        TreeResponse admin = service.getTree(user, INSTITUTE, LIBRARY);
+        assertEquals(Boolean.FALSE, admin.getRoots().get(0).getComingSoon());
+    }
+
+    @Test
+    @DisplayName("a library that never sets the stream fields serves the same public JSON as before")
+    void untouchedLibraryPayloadIsUnchanged() throws Exception {
+        node("a", null, "FOLDER", 0).setDescription("Boards");
+        node("leaf", "a", "PRODUCT_PAGE", 0).setProductPageId("p1");
+        page("p1", INSTITUTE, "ACTIVE");
+
+        String json = new ObjectMapper().writeValueAsString(service.publicTree(INSTITUTE, LIBRARY).orElseThrow());
+
+        for (String key : new String[]{"slug", "course_tag", "subtitle", "tagline", "cta_label", "link_url",
+                "accent_color", "coming_soon", "audience_id"}) {
+            assertFalse(json.contains("\"" + key + "\""), key + " must not appear in " + json);
+        }
+        assertTrue(json.contains("\"product_page_code\":\"code-p1\""));
     }
 }

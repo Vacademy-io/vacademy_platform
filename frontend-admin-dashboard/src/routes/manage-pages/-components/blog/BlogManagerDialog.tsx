@@ -24,8 +24,10 @@ export const BlogManagerDialog = () => {
 
     return (
         <Dialog open={isOpen} onOpenChange={(o) => !o && requestClose()}>
+            {/* The base DialogContent is a fixed 400px card; without the width override
+                the editor's 340px meta rail lands on top of the title and body. */}
             <DialogContent
-                className="flex h-[92vh] max-w-[min(96vw,1280px)] flex-col gap-0 overflow-hidden p-0"
+                className="flex h-[92vh] w-[96vw] max-w-screen-xl flex-col gap-0 overflow-hidden p-0"
                 onInteractOutside={(e) => e.preventDefault()}
                 aria-describedby={undefined}
             >

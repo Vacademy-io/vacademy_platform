@@ -178,6 +178,16 @@ export interface LeadLookupConfig {
     enabled: boolean;
     fields: LeadLookupFields;
     /**
+     * Offer "Full name" alongside phone and email as a way to search.
+     *
+     * Off by default. Phone and email are things the caller already has in front
+     * of them; a name is something they can guess, so this is the one mode that
+     * could be used to probe other counsellors' leads. Even on, the backend
+     * matches the WHOLE name exactly - never a prefix - so it cannot be walked
+     * one letter at a time.
+     */
+    searchByName: boolean;
+    /**
      * Which custom field holds the course. Matched by id so a rename doesn't
      * break it. Blank = the course line is simply not shown; there is no sensible
      * guess, and destination_package_session_id is unset at the institutes that
@@ -252,6 +262,7 @@ export const LEAD_SETTINGS_DEFAULTS: LeadSettingsConfig = {
             course: false,
         },
         courseFieldId: '',
+        searchByName: false,
     },
     tatReminder: {
         enabled: false,
@@ -343,6 +354,7 @@ export function normaliseLeadLookup(
         enabled: saved?.enabled === true,
         fields,
         courseFieldId: typeof saved?.courseFieldId === 'string' ? saved.courseFieldId : '',
+        searchByName: saved?.searchByName === true,
     };
 }
 

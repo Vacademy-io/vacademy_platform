@@ -336,6 +336,8 @@ public class InvoiceService {
         PLACEHOLDER_META.put("institute_name", new PlaceholderMeta("Institute Name", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("institute_address", new PlaceholderMeta("Institute Address", "INSTITUTE", true, "textarea"));
         PLACEHOLDER_META.put("institute_contact", new PlaceholderMeta("Institute Contact", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_tagline",
+                new PlaceholderMeta("Institute Tagline", "INSTITUTE", true, "text"));
         PLACEHOLDER_META.put("tax_label", new PlaceholderMeta("Tax Label", "TAX", true, "text"));
         PLACEHOLDER_META.put("tax_rate", new PlaceholderMeta("Tax Rate", "TAX", true, "text"));
         PLACEHOLDER_META.put("country", new PlaceholderMeta("Country", "TAX", true, "text"));
@@ -2483,6 +2485,11 @@ public class InvoiceService {
                 ov.apply("institute_name", institute.getInstituteName()));
         filled = filled.replace("{{institute_address}}",
                 ovMulti.apply("institute_address", institute.getAddress()));
+        // The line an institute prints under its name on letterheads. Held in the institute
+        // description so a receipt reads from settings rather than being baked into a template.
+        filled = filled.replace("{{institute_tagline}}",
+                ov.apply("institute_tagline",
+                        institute.getDescription() != null ? institute.getDescription() : ""));
         filled = filled.replace("{{institute_contact}}",
                 ov.apply("institute_contact", institute.getMobileNumber() != null ? institute.getMobileNumber()
                         : (institute.getEmail() != null ? institute.getEmail() : "")));

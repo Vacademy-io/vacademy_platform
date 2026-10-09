@@ -82,8 +82,14 @@ function RouteComponent() {
   }
 
   // "/new/<x>" on a host where `new` is mounted at the root → "/<x>", search
-  // params included (enrol links carry ?enrollInviteId=…).
-  if (RouteMatcher.isRootMounted(resolvedTagName)) {
+  // params included (enrol links carry ?enrollInviteId=…). Not for a page the
+  // learner app reserves (e.g. "courses"): the root-mounted site addresses it
+  // as "/<tag>/courses" on purpose, and redirecting would land on the app's own
+  // /courses instead of the site's Courses page — the same guard $pageSlug uses.
+  if (
+    RouteMatcher.isRootMounted(resolvedTagName) &&
+    !RouteMatcher.isReservedRootPage(resolvedTagName, resolvedCourseId)
+  ) {
     return <Navigate to={`/${resolvedCourseId}` as never} search={true} replace />;
   }
 

@@ -7,6 +7,7 @@
  * (catalogue JSON) and the streams/categories of the header mega menu.
  */
 
+import { languageOfLevel, type CourseLanguageOption } from "../../-utils/course-variants";
 import type { HeaderLink } from "./header-links";
 import type { MegaMenuModel } from "./mega-menu-model";
 
@@ -21,10 +22,12 @@ export interface SiteSearchItem {
   subtitle?: string;
   /** Extra text a query may match: untranslated names, tags, routes. */
   keywords: string[];
-  /** Where selecting it goes; null = not selectable (coming soon without a form). */
+  /** Where selecting it goes; null = not selectable (coming soon without a form, or no usable link). */
   link: HeaderLink | null;
   /** Coming-soon entries open their "notify me" form instead of a link. */
   notifyAudienceId?: string;
+  /** A stream or category that is not open yet (shows the "coming soon" tag). */
+  comingSoon?: boolean;
 }
 
 export interface RankedSearchItem extends SiteSearchItem {
@@ -165,6 +168,7 @@ export const streamSearchItems = (
       keywords: [stream.title, stream.subtitle, stream.slug].filter(Boolean),
       link: stream.action.kind === "link" ? stream.action.link : null,
       notifyAudienceId: stream.action.kind === "notify" ? stream.action.audienceId : undefined,
+      comingSoon: stream.comingSoon,
     });
     for (const cat of stream.categories) {
       const catTitle = translate(cat.title);
@@ -176,6 +180,7 @@ export const streamSearchItems = (
         keywords: [cat.title, cat.subtitle, cat.slug].filter(Boolean),
         link: cat.action.kind === "link" ? cat.action.link : null,
         notifyAudienceId: cat.action.kind === "notify" ? cat.action.audienceId : undefined,
+        comingSoon: cat.comingSoon,
       });
     }
   }
@@ -219,34 +224,67 @@ export const courseIdOf = (row: CourseSearchRow): string =>
   (row.id || row.package_id || row.packageId || "").trim();
 
 /**
+ * The version of a course a result opens — the one a merged catalogue card
+ * opens: the visitor's course language (read from the level name, e.g.
+ * "Hindi") when the course has it, else its first row. The search sorts rows
+ * newest first, so "first" alone would often be the newest version.
+ */
+export const pickCourseVersion = <T extends Pick<CourseSearchRow, "level_name">>(
+  versions: T[],
+  preferredLanguage: string | null | undefined,
+  languages: CourseLanguageOption[] | null | undefined,
+): T | undefined => {
+  if (preferredLanguage && languages?.length) {
+    const hit = versions.find((v) => languageOfLevel(v.level_name, languages)?.code === preferredLanguage);
+    if (hit) return hit;
+  }
+  return versions[0];
+};
+
+/**
  * Courses, one entry per course: the search returns one row per course
- * version (level / language), and the version is chosen on the course page.
- * `hrefFor` builds the link (course page route, invite and version params) —
- * the caller owns the routing rules.
+ * version (level / language). The entry links to pickCourseVersion's
+ * version; every version's tags and level names stay searchable. `hrefFor`
+ * builds the link (course page route, invite and version params) — the
+ * caller owns the routing rules.
  */
 export const courseSearchItems = (
   rows: CourseSearchRow[] | null | undefined,
-  opts: { translate?: (s: string) => string; hrefFor: (row: CourseSearchRow) => string | null },
+  opts: {
+    translate?: (s: string) => string;
+    hrefFor: (row: CourseSearchRow) => string | null;
+    /** Course language to open (preferredCourseLanguage of the site locale). */
+    preferredLanguage?: string | null;
+    /** The site's course languages (courseLanguagesOf). */
+    languages?: CourseLanguageOption[];
+  },
 ): SiteSearchItem[] => {
   const translate = opts.translate || ((s: string) => s);
-  const seen = new Set<string>();
-  const out: SiteSearchItem[] = [];
+  // Versions per course, courses in the order their first row came.
+  const byCourse = new Map<string, CourseSearchRow[]>();
   for (const row of Array.isArray(rows) ? rows : []) {
     const id = row ? courseIdOf(row) : "";
-    const name = (row?.package_name || "").trim();
-    if (!id || !name || seen.has(id)) continue;
-    seen.add(id);
+    if (!id || !(row.package_name || "").trim()) continue;
+    const versions = byCourse.get(id);
+    if (versions) versions.push(row);
+    else byCourse.set(id, [row]);
+  }
+  const out: SiteSearchItem[] = [];
+  for (const [id, versions] of byCourse) {
+    const row = pickCourseVersion(versions, opts.preferredLanguage, opts.languages) ?? versions[0];
+    const name = (row.package_name || "").trim();
     const href = opts.hrefFor(row);
-    const tags = (row.comma_separeted_tags || "")
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const keywords = new Set<string>([name]);
+    for (const v of versions) {
+      for (const tag of (v.comma_separeted_tags || "").split(",")) if (tag.trim()) keywords.add(tag.trim());
+      if (v.level_name) keywords.add(v.level_name);
+    }
     out.push({
       id: `course:${id}`,
       kind: "course",
       title: translate(name),
       subtitle: row.level_name && row.level_name.toUpperCase() !== "DEFAULT" ? translate(row.level_name) : undefined,
-      keywords: [name, ...tags, row.level_name || ""].filter(Boolean),
+      keywords: [...keywords],
       link: href ? { href, external: false } : null,
     });
   }

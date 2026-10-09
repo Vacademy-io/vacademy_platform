@@ -64,13 +64,32 @@ describe("orderSwitcherLocales", () => {
     { code: "hi", label: "हिन्दी" },
   ];
 
-  it("follows the order the author listed", () => {
-    expect(orderSwitcherLocales(offered, [{ code: "hi" }, { code: "en" }]).map((l) => l.code)).toEqual(["hi", "en"]);
-    expect(orderSwitcherLocales(offered, [{ code: " HI " }]).map((l) => l.code)).toEqual(["hi", "en"]);
+  it("puts the base language last: हिन्दी | EN on an English site, whatever the stored order", () => {
+    // The Languages settings always save the base language first.
+    expect(orderSwitcherLocales(offered, [{ code: "en" }, { code: "hi" }], "en").map((l) => l.label)).toEqual([
+      "हिन्दी",
+      "EN",
+    ]);
+    expect(orderSwitcherLocales(offered, [{ code: "hi" }, { code: "en" }], "en").map((l) => l.code)).toEqual([
+      "hi",
+      "en",
+    ]);
+    expect(orderSwitcherLocales(offered, undefined, " EN ").map((l) => l.code)).toEqual(["hi", "en"]);
+    // A Hindi site offers English first.
+    expect(orderSwitcherLocales(offered, undefined, "hi").map((l) => l.code)).toEqual(["en", "hi"]);
   });
 
-  it("keeps the offered order without an authored list, and ignores unknown codes", () => {
+  it("keeps the stored order among the other languages", () => {
+    const three = [...offered, { code: "mr", label: "मराठी" }];
+    expect(
+      orderSwitcherLocales(three, [{ code: "en" }, { code: "mr" }, { code: "hi" }], "en").map((l) => l.code),
+    ).toEqual(["mr", "hi", "en"]);
+    expect(orderSwitcherLocales(three, [{ code: "en" }], "en").map((l) => l.code)).toEqual(["hi", "mr", "en"]);
+  });
+
+  it("without a base language follows the stored order, then the offered one, ignoring unknown codes", () => {
+    expect(orderSwitcherLocales(offered, [{ code: " HI " }]).map((l) => l.code)).toEqual(["hi", "en"]);
     expect(orderSwitcherLocales(offered, undefined).map((l) => l.code)).toEqual(["en", "hi"]);
-    expect(orderSwitcherLocales(offered, [{ code: "fr" }, {}]).map((l) => l.code)).toEqual(["en", "hi"]);
+    expect(orderSwitcherLocales(offered, [{ code: "fr" }, {}], "fr").map((l) => l.code)).toEqual(["en", "hi"]);
   });
 });

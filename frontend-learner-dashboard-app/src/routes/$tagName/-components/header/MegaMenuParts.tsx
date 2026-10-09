@@ -31,7 +31,7 @@ export const MegaItemIcon: React.FC<{
         className={cn("size-full", item.accentColor ? "object-contain p-1.5" : "object-cover")}
       />
     ) : (
-      <span className={cn("font-semibold text-primary-500", initialClassName)}>
+      <span className={cn("font-semibold text-catalogue-brand-ink", initialClassName)}>
         {Array.from(item.title.trim())[0] || ""}
       </span>
     )}

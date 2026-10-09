@@ -58,10 +58,7 @@ export interface MegaMenuStream extends MegaMenuItem {
 }
 
 export interface MegaMenuModel {
-  libraryName: string;
   streams: MegaMenuStream[];
-  /** True when any stream or category is coming soon. */
-  hasComingSoon: boolean;
 }
 
 const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -99,13 +96,11 @@ export const buildMegaMenuModel = (
   config: HeaderMegaMenuConfig | null | undefined,
 ): MegaMenuModel => {
   const roots = Array.isArray(tree?.roots) ? tree!.roots : [];
-  let hasComingSoon = false;
 
   const streams = roots.filter(isFolder).map((node): MegaMenuStream => {
     const item = baseItem(node);
     const streamComingSoon = node.coming_soon === true;
     const streamAudience = text(node.audience_id);
-    if (streamComingSoon) hasComingSoon = true;
 
     const categories = (Array.isArray(node.children) ? node.children : [])
       .filter(isFolder)
@@ -114,7 +109,6 @@ export const buildMegaMenuModel = (
         // A category of a coming-soon stream cannot be open either; it
         // collects sign-ups for its own form, else for the stream's.
         const comingSoon = streamComingSoon || child.coming_soon === true;
-        if (comingSoon) hasComingSoon = true;
         const audienceId = text(child.audience_id) || (streamComingSoon ? streamAudience : "");
         return {
           ...cat,
@@ -142,8 +136,16 @@ export const buildMegaMenuModel = (
     };
   });
 
-  return { libraryName: text(tree?.library?.name), streams, hasComingSoon };
+  return { streams };
 };
+
+/**
+ * The menu's library no longer exists: the public tree answers 404 for a
+ * deleted or unknown library (any other failure may pass, so it is retried
+ * and offered "Try again"). The header then shows the item as a plain link.
+ */
+export const isMissingLibraryError = (err: unknown): boolean =>
+  (err as { response?: { status?: unknown } } | null | undefined)?.response?.status === 404;
 
 /**
  * The tile selected when the panel opens: the stream named by ?stream= (the

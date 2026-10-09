@@ -6,7 +6,11 @@ import { fetchPublicFolderTree } from "../../-services/folder-library-service";
 import { RouteMatcher } from "../../-services/route-matcher";
 import type { HeaderMegaMenuConfig } from "../../-types/course-catalogue-types";
 import { carrySearchParams, fillTextPattern, toAppHref, type HeaderLink } from "./header-links";
-import { streamTextValues, type MegaMenuStream } from "./mega-menu-model";
+import { isMissingLibraryError, streamTextValues, type MegaMenuStream } from "./mega-menu-model";
+
+/** A deleted / unknown library is a 404 — retrying will not change that. */
+export const retryUnlessMissingLibrary = (count: number, err: unknown): boolean =>
+  !isMissingLibraryError(err) && count < 2;
 
 /**
  * The mega menu's folder library. Same query key and fetcher as the Folder
@@ -24,9 +28,7 @@ export const useMegaMenuTree = (
     queryFn: () => fetchPublicFolderTree(instituteId!, libraryId!),
     enabled: enabled && !!instituteId && !!libraryId,
     staleTime: 5 * 60_000,
-    retry: (count, err: unknown) =>
-      // A deleted / unknown library is a 404 — retrying will not change that.
-      (err as { response?: { status?: number } })?.response?.status !== 404 && count < 2,
+    retry: retryUnlessMissingLibrary,
   });
 
 /** Plain left click — anything else (new tab, new window, download) is left to the browser. */

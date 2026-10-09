@@ -5,6 +5,17 @@
  * new props keeps its exact classes and behaviour, that logic reads the
  * authored values (baseProps), and the mega menu / search / language switch
  * interactions.
+ *
+ * Run (the learner app has no vitest of its own; see the build spec §10):
+ *   node <admin>/node_modules/vitest/vitest.mjs run --config <config> --root $PWD <this file>
+ * with a config aliasing `@` to this app's src and `vitest` to the admin
+ * app's copy (a jsdom file resolves bare imports from its own folder).
+ * Node 22+ ships its own `localStorage` global, which hides jsdom's and is
+ * undefined without --localstorage-file. These tests do not need storage
+ * (the locale provider guards every access, and afterEach clears it only
+ * when present), so they pass either way; to give the provider jsdom's
+ * storage anyway, run with NODE_OPTIONS=--no-experimental-webstorage and
+ * --pool=forks.
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -135,7 +146,9 @@ const render = async (el: React.ReactElement) => {
   container.setAttribute("data-catalogue-theme", "default");
   document.body.appendChild(container);
   root = createRoot(container);
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // retryDelay 0: the header's own retry rule (no retry for a 404) applies,
+  // without real back-off waits.
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   await act(async () => {
     root.render(mount(el));
   });
@@ -172,6 +185,12 @@ const key = async (target: EventTarget, k: string) => {
     target.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
   });
 };
+const focus = async (el: Element) => {
+  await act(async () => {
+    (el as HTMLElement).focus();
+  });
+};
+const notFound = () => Object.assign(new Error("Request failed with status code 404"), { response: { status: 404 } });
 const type = async (input: HTMLInputElement, value: string) => {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
@@ -185,11 +204,18 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  localStorage.clear();
+  // Mock resets first: nothing below may skip them.
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  await act(async () => root.unmount());
+  container.remove();
+  try {
+    // Node 22+: a bare `localStorage` may be Node's own (undefined without
+    // --localstorage-file) instead of jsdom's.
+    globalThis.localStorage?.clear?.();
+  } catch {
+    // No usable storage in this runtime: nothing was stored either.
+  }
 });
 
 const NAV_BASE = "px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200";
@@ -226,6 +252,11 @@ describe("header without the new props", () => {
     expect(container.querySelector("[aria-controls]")).toBeNull();
     const toggle = container.querySelector('[aria-label="header.toggleMenu"]')!;
     expect(toggle.className).not.toContain("order-last");
+    // The original md layout: desktop bar from md, the logo block never shrinks.
+    expect(toggle.className).toMatch(/^md:hidden /);
+    expect(nav.className).toBe("hidden md:flex items-center gap-1");
+    expect(byText("Login")[0].parentElement!.className).toBe("hidden md:flex items-center gap-2");
+    expect(container.querySelector("span.truncate")!.parentElement!.className).toBe("flex items-center gap-3 ");
   });
 
   it("keeps the mobile menu's first-filled, rest-text rule", async () => {
@@ -237,6 +268,9 @@ describe("header without the new props", () => {
     const [, mobileEnquire] = byText("Enquire");
     expect(mobileLogin.className).toContain("bg-primary-500 text-white hover:bg-primary-400");
     expect(mobileEnquire.className).toMatch(/text-primary-500 hover:bg-primary-50$/);
+    const menu = container.querySelector("header div.fixed") as HTMLElement;
+    expect(menu.className).toMatch(/^md:hidden fixed /);
+    expect(menu.style.top).toBe("56px");
   });
 
   it("navigates a plain nav item through the router as before", async () => {
@@ -346,6 +380,67 @@ describe("mega menu (desktop)", () => {
     }
     const cta = Array.from(panel.querySelectorAll("a")).find((a) => a.textContent?.includes("Explore Education"))!;
     expect(cta.getAttribute("href")).toBe("/new/courses?stream=education");
+    // One leading rule: the one catalogue-eyebrow draws.
+    const eyebrow = panel.querySelector(".catalogue-eyebrow")!;
+    expect(eyebrow.children).toHaveLength(0);
+    expect(eyebrow.textContent).toBe("Six streams of knowledge");
+    // Brand ink for open category titles (primary-500 fails AA as text).
+    const vedicTitle = Array.from(panel.querySelectorAll("span")).find((s) => s.textContent === "वैदिक गणित")!;
+    expect(vedicTitle.className).toContain("text-catalogue-brand-ink");
+  });
+
+  it("shows no footnote beside a menu that could not load", async () => {
+    mocks.fetchTree.mockRejectedValue(Object.assign(new Error("Server error"), { response: { status: 500 } }));
+    const trigger = await openMenu();
+    await flush();
+    const panel = document.getElementById(trigger.getAttribute("aria-controls")!)!;
+    expect(panel.textContent).toContain("We couldn't load this menu.");
+    expect(panel.textContent).toContain("Try again");
+    expect(panel.textContent).not.toContain("Coming soon subjects");
+    // The panel's own header stays.
+    expect(panel.textContent).toContain("Find your path");
+    // Other failures may pass: retried twice before showing the error.
+    expect(mocks.fetchTree).toHaveBeenCalledTimes(3);
+  });
+
+  it("becomes a plain link to its route once its library turns out deleted (404)", async () => {
+    mocks.fetchTree.mockRejectedValue(notFound());
+    await render(header({ instituteId: "inst-1", navigation: [{ ...MEGA_ITEM, route: "courses" }] }));
+    const trigger = container.querySelector("nav [aria-controls]") as HTMLButtonElement;
+    // Focus (or pointing at it) arms the fetch; the 404 turns it into the plain item.
+    await focus(trigger);
+    await flush();
+    expect(mocks.fetchTree).toHaveBeenCalledTimes(1);
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false);
+    expect(trigger.hasAttribute("aria-controls")).toBe(false);
+    expect(trigger.querySelector("svg")).toBeNull();
+    expect(trigger.className).toBe(
+      `${NAV_BASE} text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover`,
+    );
+    // Same element, so keyboard focus did not drop.
+    expect(document.activeElement).toBe(trigger);
+    await click(trigger);
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new/courses" });
+    expect(container.querySelector('[role="region"]')).toBeNull();
+    // Not retried: a 404 stays a 404.
+    expect(mocks.fetchTree).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the panel when the 404 lands after a click", async () => {
+    let reject: (e: unknown) => void = () => {};
+    mocks.fetchTree.mockImplementation(() => new Promise((_, r) => (reject = r)));
+    await render(header({ instituteId: "inst-1", navigation: [{ ...MEGA_ITEM, route: "courses" }] }));
+    const trigger = container.querySelector("nav [aria-controls]") as HTMLButtonElement;
+    await click(trigger);
+    await flush();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector('[role="region"] [aria-busy="true"]')).not.toBeNull();
+    await act(async () => reject(notFound()));
+    await flush();
+    expect(container.querySelector('[role="region"]')).toBeNull();
+    expect(trigger.hasAttribute("aria-expanded")).toBe(false);
+    await click(trigger);
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new/courses" });
   });
 
   it("moves between tiles with the arrow keys and updates the detail panel", async () => {
@@ -446,6 +541,27 @@ describe("mega menu (phone menu)", () => {
     // The hamburger menu closed.
     expect(container.querySelector('[aria-controls^="mobile-mega-"]')).toBeNull();
   });
+
+  it("becomes a plain menu item once its library turns out deleted (404)", async () => {
+    mocks.fetchTree.mockRejectedValue(notFound());
+    await render(header({ instituteId: "inst-1", navigation: [{ ...MEGA_ITEM, route: "courses" }] }));
+    await click(container.querySelector('[aria-label="header.toggleMenu"]')!);
+    const accordion = container.querySelector('[aria-controls^="mobile-mega-"]') as HTMLButtonElement;
+    await click(accordion);
+    await flush();
+    expect(accordion.hasAttribute("aria-expanded")).toBe(false);
+    expect(accordion.hasAttribute("aria-controls")).toBe(false);
+    expect(accordion.querySelector("svg")).toBeNull();
+    expect(accordion.className).toBe(
+      "block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover",
+    );
+    expect(accordion.textContent).toBe("Knowledge Streams");
+    await click(accordion);
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/new/courses" });
+    // The hamburger menu closed.
+    expect(container.querySelector("header div.fixed")).toBeNull();
+    expect(mocks.fetchTree).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("site search", () => {
@@ -502,9 +618,101 @@ describe("site search", () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("moves the phone menu toggle to the end when the bar gains controls", async () => {
-    await render(header({ showSearch: true, navigation: [{ label: "About", route: "about" }] }));
-    expect(container.querySelector('[aria-label="header.toggleMenu"]')!.className).toContain("order-last");
+  it("with the bar's controls: toggle at the end, logo may shrink, desktop bar from lg", async () => {
+    await render(
+      header({
+        showSearch: true,
+        navigation: [{ label: "About", route: "about" }],
+        authLinks: [{ label: "Login", route: "login" }],
+      }),
+    );
+    const toggle = container.querySelector('[aria-label="header.toggleMenu"]')!;
+    expect(toggle.className).toMatch(/^lg:hidden /);
+    expect(toggle.className).toContain("order-last lg:order-none");
+    expect(container.querySelector("nav")!.className).toBe("hidden lg:flex items-center gap-1");
+    expect(byText("Login")[0].parentElement!.className).toBe("hidden lg:flex items-center gap-2");
+    // The title truncates instead of pushing the toggle off a phone screen.
+    expect(container.querySelector("span.truncate")!.parentElement!.className).toContain("min-w-0");
+    // Tablets get the phone menu, under their taller (md:h-20) bar.
+    await click(toggle);
+    const menu = container.querySelector("header div.fixed") as HTMLElement;
+    expect(menu.className).toMatch(/^lg:hidden fixed /);
+    expect(menu.className).toContain("top-14 md:top-20");
+    expect(menu.style.top).toBe("");
+  });
+
+  it("ignores Enter and arrows while an IME is composing", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: { content: [{ id: "c1", package_name: "Vedic Maths Masterclass", package_session_id: "ps1" }] },
+    });
+    await render(header({ instituteId: "inst-1", showSearch: true }));
+    await click(container.querySelector('[aria-haspopup="dialog"]')!);
+    await flush();
+    const input = container.querySelector('[role="dialog"] input') as HTMLInputElement;
+    await type(input, "vedic");
+    await flush();
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+    });
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    await key(input, "Enter");
+    expect(mocks.navigate).toHaveBeenCalledWith({ href: "/new/c1?packageSessionId=ps1" });
+  });
+
+  it("tags only coming-soon streams and categories; an unlinked open one gets no tag or arrow", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({ data: { content: [] } });
+    const unsafeCategories = {
+      ...MEGA_ITEM,
+      // An unusable pattern leaves open categories with nothing to open.
+      megaMenu: { ...MEGA_ITEM.megaMenu, categoryLinkPattern: "javascript:{category}" },
+    };
+    await render(header({ instituteId: "inst-1", showSearch: true, navigation: [unsafeCategories] }));
+    await click(container.querySelector('[aria-haspopup="dialog"]')!);
+    await flush();
+    const dialog = container.querySelector('[role="dialog"]')!;
+    const input = dialog.querySelector("input") as HTMLInputElement;
+    await type(input, "sanskrit");
+    await flush();
+    const [soon] = Array.from(dialog.querySelectorAll('[role="option"]'));
+    expect(soon.textContent).toContain("Coming soon");
+    await type(input, "vedic");
+    await flush();
+    const [vedic] = Array.from(dialog.querySelectorAll('[role="option"]'));
+    expect(vedic.textContent).toContain("Vedic Maths");
+    expect(vedic.textContent).not.toContain("Coming soon");
+    expect(vedic.getAttribute("aria-disabled")).toBe("true");
+    // The trailing arrow (the kind icon on the left stays).
+    expect(vedic.querySelector("svg.shrink-0")).toBeNull();
+  });
+
+  it("opens the course version in the visitor's language", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: {
+        content: [
+          // Newest first, as the search sorts: the English version came later.
+          { id: "c1", package_name: "Vedic Maths", package_session_id: "ps-en", level_name: "English" },
+          { id: "c1", package_name: "Vedic Maths", package_session_id: "ps-hi", level_name: "Hindi" },
+        ],
+      },
+    });
+    const i18n = { enabled: true, defaultLocale: "en", locales: [{ code: "en", label: "EN" }, { code: "hi", label: "हिन्दी" }] };
+    mocks.location = { ...mocks.location, searchStr: "?lang=hi" };
+    await render(
+      h(CatalogueLocaleProvider, {
+        settings: i18n,
+        scope: "new",
+        children: header({ instituteId: "inst-1", showSearch: true, globalSettings: { ...CATALOGUE.globalSettings, i18n } }),
+      }),
+    );
+    await click(container.querySelector('[aria-haspopup="dialog"]')!);
+    await flush();
+    const input = container.querySelector('[role="dialog"] input') as HTMLInputElement;
+    await type(input, "vedic");
+    await flush();
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(1);
+    await key(input, "Enter");
+    expect(mocks.navigate).toHaveBeenCalledWith({ href: "/new/c1?packageSessionId=ps-hi&level=Hindi&lang=hi" });
   });
 });
 
@@ -518,14 +726,19 @@ describe("language switch", () => {
     ],
   };
 
-  it("shows the site's languages in the authored order and switches through the provider", async () => {
-    await render(
-      h(CatalogueLocaleProvider, {
-        settings: i18n,
-        scope: "new",
-        children: header({ showLanguageSwitcher: true, globalSettings: { ...CATALOGUE.globalSettings, i18n } }),
+  const withLocales = (settings: typeof i18n, props: Record<string, unknown> = {}) =>
+    h(CatalogueLocaleProvider, {
+      settings,
+      scope: "new",
+      children: header({
+        showLanguageSwitcher: true,
+        globalSettings: { ...CATALOGUE.globalSettings, i18n: settings },
+        ...props,
       }),
-    );
+    });
+
+  it("shows हिन्दी | EN and switches through the provider", async () => {
+    await render(withLocales(i18n));
     const group = container.querySelector('[role="group"]')!;
     const options = buttons(group);
     expect(options.map((b) => [b.textContent, b.getAttribute("aria-pressed")])).toEqual([
@@ -533,6 +746,30 @@ describe("language switch", () => {
       ["EN", "true"],
     ]);
     await click(options[0]);
+    expect(mocks.history.replace).toHaveBeenCalledWith("/new/about?lang=hi");
+  });
+
+  it("puts the base language last even though the Languages settings store it first", async () => {
+    await render(withLocales({ ...i18n, locales: [{ code: "en", label: "EN" }, { code: "hi", label: "हिन्दी" }] }));
+    expect(buttons(container.querySelector('[role="group"]')!).map((b) => b.textContent)).toEqual(["हिन्दी", "EN"]);
+  });
+
+  it("stays in the bar when there is no phone menu to hold it", async () => {
+    await render(withLocales(i18n));
+    expect(container.querySelector('[aria-label="header.toggleMenu"]')).toBeNull();
+    expect(container.querySelector('[role="group"]')!.className).not.toContain("hidden");
+  });
+
+  it("moves into the phone menu below sm when there is one", async () => {
+    await render(withLocales(i18n, { navigation: [{ label: "About", route: "about" }] }));
+    const barSwitch = container.querySelector('[role="group"]')!;
+    expect(barSwitch.className).toContain("hidden sm:inline-flex");
+    await click(container.querySelector('[aria-label="header.toggleMenu"]')!);
+    const menu = container.querySelector("header div.fixed")!;
+    const menuSwitch = menu.querySelector('[role="group"]')!;
+    expect(menuSwitch.parentElement!.className).toContain("sm:hidden");
+    expect(menuSwitch.className).not.toContain("hidden");
+    await click(buttons(menuSwitch).find((b) => b.textContent === "हिन्दी")!);
     expect(mocks.history.replace).toHaveBeenCalledWith("/new/about?lang=hi");
   });
 

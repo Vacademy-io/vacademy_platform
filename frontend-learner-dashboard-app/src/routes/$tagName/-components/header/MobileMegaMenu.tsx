@@ -1,11 +1,16 @@
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, CaretDown } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useSiteT } from "../../-utils/catalogue-locale";
 import type { HeaderMegaMenuConfig } from "../../-types/course-catalogue-types";
 import type { HeaderLink } from "./header-links";
-import { buildMegaMenuModel, type MegaMenuCategory, type MegaMenuStream } from "./mega-menu-model";
+import {
+  buildMegaMenuModel,
+  isMissingLibraryError,
+  type MegaMenuCategory,
+  type MegaMenuStream,
+} from "./mega-menu-model";
 import { openNotifyForm, useHeaderLinkNavigation, useMegaMenuTexts, useMegaMenuTree } from "./header-hooks";
 import { ComingSoonTag, MegaItemIcon } from "./MegaMenuParts";
 
@@ -13,7 +18,8 @@ import { ComingSoonTag, MegaItemIcon } from "./MegaMenuParts";
  * The mega menu inside the phone hamburger menu: the nav item expands into
  * its streams, and a stream expands into its categories plus its CTA (one
  * stream open at a time). Same data, links and coming-soon rules as the
- * desktop panel.
+ * desktop panel. Once its library turns out to be gone (404), the item is a
+ * plain nav item that follows its own route.
  */
 
 export interface MobileMegaMenuProps {
@@ -26,6 +32,8 @@ export interface MobileMegaMenuProps {
   itemClassName: string;
   /** Closes the hamburger menu after a link or form is opened. */
   onDone: () => void;
+  /** What a plain nav item would do and look like — used once the library is gone (404). */
+  plainLink?: { onClick: () => void; className: string };
 }
 
 export const MobileMegaMenu: React.FC<MobileMegaMenuProps> = ({
@@ -36,6 +44,7 @@ export const MobileMegaMenu: React.FC<MobileMegaMenuProps> = ({
   tagName,
   itemClassName,
   onDone,
+  plainLink,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
@@ -46,8 +55,19 @@ export const MobileMegaMenu: React.FC<MobileMegaMenuProps> = ({
   const listId = `mobile-mega-${useId()}`;
 
   const libraryId = (baseConfig.libraryId || "").trim();
-  const query = useMegaMenuTree(instituteId, libraryId, open);
+  // Remembered once found deleted (see MegaMenuNavItem: a refetch would
+  // briefly drop the error).
+  const [goneLibrary, setGoneLibrary] = useState<string | null>(null);
+  const knownGone = !!libraryId && goneLibrary === libraryId;
+  const query = useMegaMenuTree(instituteId, libraryId, open && !knownGone);
   const model = useMemo(() => buildMegaMenuModel(query.data, baseConfig), [query.data, baseConfig]);
+  const libraryGone = knownGone || (!query.data && isMissingLibraryError(query.error));
+  // Collapse when the 404 lands: the item is a plain link from now on.
+  useEffect(() => {
+    if (!libraryGone) return;
+    setOpen(false);
+    setGoneLibrary(libraryId);
+  }, [libraryGone, libraryId]);
 
   const follow = (link: HeaderLink, e: React.MouseEvent) => {
     onLinkClick(link, e);
@@ -70,7 +90,7 @@ export const MobileMegaMenu: React.FC<MobileMegaMenuProps> = ({
       <>
         <MegaItemIcon item={cat} className="size-7" initialClassName="text-xs" />
         <span className="min-w-0 flex-1">
-          <span className={cn("text-sm font-semibold", cat.comingSoon ? "text-catalogue-text-muted" : "text-primary-500")}>
+          <span className={cn("text-sm font-semibold", cat.comingSoon ? "text-catalogue-text-muted" : "text-catalogue-brand-ink")}>
             {siteT(cat.title)}
           </span>
           {cat.subtitle && (
@@ -219,22 +239,25 @@ export const MobileMegaMenu: React.FC<MobileMegaMenuProps> = ({
     );
   };
 
+  // Same element in both modes, so focus stays on it when the 404 lands.
   return (
     <div>
       <button
         type="button"
-        aria-expanded={open}
-        aria-controls={listId}
-        onClick={() => setOpen((v) => !v)}
-        className={cn(itemClassName, "flex items-center justify-between gap-2")}
+        aria-expanded={libraryGone ? undefined : open}
+        aria-controls={libraryGone ? undefined : listId}
+        onClick={libraryGone ? plainLink?.onClick : () => setOpen((v) => !v)}
+        className={libraryGone ? plainLink?.className : cn(itemClassName, "flex items-center justify-between gap-2")}
       >
         <span>{label}</span>
-        <CaretDown
-          aria-hidden="true"
-          className={cn("size-4 shrink-0 transition-transform duration-200", open && "rotate-180")}
-        />
+        {!libraryGone && (
+          <CaretDown
+            aria-hidden="true"
+            className={cn("size-4 shrink-0 transition-transform duration-200", open && "rotate-180")}
+          />
+        )}
       </button>
-      {open && (
+      {open && !libraryGone && (
         <div id={listId} className="mt-1 ps-2">
           {renderStreams()}
         </div>

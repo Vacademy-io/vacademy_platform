@@ -43,13 +43,16 @@ export const desktopNavItemClasses = (active: boolean, activeStyle: unknown): st
 };
 
 /**
- * Switcher order: the order the author listed the languages in
- * (globalSettings.i18n.locales), keeping only languages the site offers;
- * anything not listed follows in the offered order.
+ * Switcher order: the site's other languages first, its base language last —
+ * "हिन्दी | EN" on an English site, as in the design. The Languages settings
+ * always store the base language first and cannot reorder, so the stored
+ * order cannot express this; among the other languages it is kept (only
+ * languages the site offers; anything not listed follows in offered order).
  */
 export const orderSwitcherLocales = (
   offered: CatalogueLocale[],
   authored: Array<Partial<CatalogueLocale>> | null | undefined,
+  baseLocale?: string | null,
 ): CatalogueLocale[] => {
   const byCode = new Map(offered.map((l) => [l.code, l] as const));
   const out: CatalogueLocale[] = [];
@@ -59,5 +62,7 @@ export const orderSwitcherLocales = (
     if (hit && !out.includes(hit)) out.push(hit);
   }
   for (const l of offered) if (!out.includes(l)) out.push(l);
-  return out;
+  const base = (baseLocale || "").trim().toLowerCase();
+  const baseEntry = base ? out.find((l) => l.code === base) : undefined;
+  return baseEntry ? [...out.filter((l) => l !== baseEntry), baseEntry] : out;
 };

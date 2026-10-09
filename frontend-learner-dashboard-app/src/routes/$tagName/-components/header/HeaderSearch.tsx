@@ -7,8 +7,9 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight, BookOpen, FileText, MagnifyingGlass, SquaresFour, X } from "@phosphor-icons/react";
 import { urlCourseDetails } from "@/constants/urls";
 import { cn } from "@/lib/utils";
-import { useSiteT } from "../../-utils/catalogue-locale";
+import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
 import { resolveCoursePageRoute } from "../../-utils/course-page-routing";
+import { courseLanguagesOf, preferredCourseLanguage } from "../../-utils/course-variants";
 import { fetchPublicFolderTree } from "../../-services/folder-library-service";
 import type { CourseCatalogueData, GlobalSettings, HeaderMegaMenuConfig } from "../../-types/course-catalogue-types";
 import { buildMegaMenuModel } from "./mega-menu-model";
@@ -25,7 +26,7 @@ import {
   type SearchGroup,
   type SiteSearchItem,
 } from "./header-search";
-import { openNotifyForm, useHeaderLinkNavigation } from "./header-hooks";
+import { openNotifyForm, retryUnlessMissingLibrary, useHeaderLinkNavigation } from "./header-hooks";
 import { ComingSoonTag } from "./MegaMenuParts";
 
 /**
@@ -98,6 +99,7 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
+  const { locale: siteLocale } = useCatalogueLocale();
   const location = useLocation();
   const { resolve, go } = useHeaderLinkNavigation(tagName);
 
@@ -133,6 +135,7 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
       queryFn: () => fetchPublicFolderTree(instituteId!, (c.libraryId || "").trim()),
       enabled: open && !!instituteId,
       staleTime: 5 * 60_000,
+      retry: retryUnlessMissingLibrary,
     })),
   });
   const treesKey = treeQueries.map((q) => q.dataUpdatedAt).join("|");
@@ -150,21 +153,24 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
     [catalogueData?.pages, siteT, t],
   );
 
-  const courseItems = useMemo(
-    () =>
-      courseSearchItems(coursesQuery.data, {
-        translate: siteT,
-        hrefFor: (row) =>
-          courseSitePath(
-            row,
-            resolveCoursePageRoute(globalSettings, {
-              courseId: courseIdOf(row),
-              packageSessionId: row.package_session_id,
-            }),
-          ),
-      }),
-    [coursesQuery.data, globalSettings, siteT],
-  );
+  const courseItems = useMemo(() => {
+    // One result per course opens the version a merged course card opens:
+    // the visitor's language when the course has it.
+    const languages = courseLanguagesOf(globalSettings?.courseLanguages);
+    return courseSearchItems(coursesQuery.data, {
+      translate: siteT,
+      preferredLanguage: preferredCourseLanguage(siteLocale, languages),
+      languages,
+      hrefFor: (row) =>
+        courseSitePath(
+          row,
+          resolveCoursePageRoute(globalSettings, {
+            courseId: courseIdOf(row),
+            packageSessionId: row.package_session_id,
+          }),
+        ),
+    });
+  }, [coursesQuery.data, globalSettings, siteT, siteLocale]);
 
   const trimmed = query.trim();
   const groups: SearchGroup[] = useMemo(() => {
@@ -236,6 +242,9 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
   };
 
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // An IME (Hindi transliteration…) commits its word with Enter and moves
+    // through its candidates with the arrows: those keys are not ours then.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!flat.length) return;
@@ -381,9 +390,11 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
                                 </span>
                               )}
                             </span>
-                            {item.notifyAudienceId || !item.link ? (
+                            {/* The tag only on what is coming soon; an open item
+                                whose link could not be built gets no arrow. */}
+                            {item.comingSoon ? (
                               <ComingSoonTag />
-                            ) : (
+                            ) : item.link ? (
                               <ArrowRight
                                 aria-hidden="true"
                                 className={cn(
@@ -391,7 +402,7 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
                                   active ? "text-primary-500" : "text-catalogue-text-muted",
                                 )}
                               />
-                            )}
+                            ) : null}
                           </li>
                         );
                       })}

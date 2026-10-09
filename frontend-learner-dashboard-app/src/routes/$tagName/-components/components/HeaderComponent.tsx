@@ -184,8 +184,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const showSwitcher = showLanguageSwitcher === true && siteLocale.enabled && siteLocale.locales.length > 1;
     const showSiteCart = isSiteCartEnabled(resolvedGlobalSettings?.siteCart);
     const hasHeaderExtras = showSearchButton || showSwitcher || showSiteCart;
-    const mobileNavItemClass =
-      'block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover';
+    // The phone menu's nav item look (same strings as its plain items below).
+    const mobileItemClass = (active: boolean) =>
+      `block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${active
+        ? 'text-primary-500 bg-primary-50'
+        : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
+      }`;
+    const mobileNavItemClass = mobileItemClass(false);
 
     // Filter out "Sign Up" auth links when signup is disabled at the institute level.
     const authEntries = authLinks.map((link, index) => ({ link, base: baseAuthLinks[index] ?? link }));
@@ -193,6 +198,32 @@ export const HeaderComponent: React.FC<HeaderProps & {
       ? authEntries
       : authEntries.filter(({ base }) => normalizeRoute(base.route) !== 'signup');
     const visibleAuthLinks = visibleAuthEntries.map(({ link }) => link);
+
+    // With search / language / cart in the bar, the full desktop bar needs more
+    // room than md gives: measured with the client's header (5 nav items, two
+    // buttons) it overflows up to ~1180px and pushes the buttons off-screen.
+    // So with any of them the desktop bar starts at lg and tablets keep the
+    // phone bar and menu. Without them every class here is the original md one.
+    const bp = hasHeaderExtras
+      ? {
+          phoneOnly: 'lg:hidden',
+          desktopFlex: 'hidden lg:flex',
+          // flex-initial, not flex-none: the logo may shrink on desktop too.
+          catalogLogo: 'flex-1 lg:flex-initial justify-center lg:justify-start',
+        }
+      : {
+          phoneOnly: 'md:hidden',
+          desktopFlex: 'hidden md:flex',
+          catalogLogo: 'flex-1 md:flex-none justify-center md:justify-start',
+        };
+    // The phone menu opens under the bar. In the lg layout it also opens on
+    // tablets, where the bar is taller (md:h-20), so its offset follows (as
+    // classes). Otherwise, and on the iOS app (status-bar inset), it keeps its
+    // original inline top.
+    const menuTop: { className: string; style: React.CSSProperties | undefined } =
+      hasHeaderExtras && !isIOS
+        ? { className: ' top-14 md:top-20', style: undefined }
+        : { className: '', style: { top: isIOS ? 'calc(56px + 32px)' : '56px' } }; // design-lint-ignore: original menu offset (iOS status-bar inset)
 
     // Shared by the desktop bar, the mobile bar and the mobile menu so a
     // configured auth link behaves identically wherever it is tapped. `base`
@@ -294,6 +325,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     // Check if courseCatalogeType.enabled is true
     const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
+    // Below sm the language switch moves from the bar into the phone menu
+    // (when there is one) so the bar keeps room for the logo and the toggle.
+    const hasStandardMenu = visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated;
+    const switcherInMenu = showSwitcher && (isCourseCatalogeTypeEnabled || hasStandardMenu);
     const handleInstituteLogoClick = () => {
       if (domainRouting.homeIconClickRoute) {
         window.location.href = domainRouting.homeIconClickRoute;
@@ -497,6 +532,28 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     const { hideSearch, hideCart } = getIconVisibility();
 
+    // A mega item whose library is gone acts like the plain items around it.
+    const mobileMegaPlainLink = (base: HeaderNavItem) => {
+      const sameTab = base.openInSameTab === true || String(base.openInSameTab) === "true";
+      return {
+        onClick: () => {
+          setIsMobileMenuOpen(false);
+          handleNavigation(base.route, base.label, sameTab);
+        },
+        className: mobileItemClass(isActiveRoute(base.route)),
+      };
+    };
+
+    // Phones: the language switch as the menu's first row (from sm it is in the bar).
+    const renderMenuLanguageRow = () => (
+      <div className="flex items-center justify-between gap-3 border-b border-catalogue-border-subtle px-4 pb-3 pt-1 sm:hidden">
+        <span className="text-sm font-medium text-catalogue-text-secondary">
+          {t("header.language.label", "Site language")}
+        </span>
+        <HeaderLanguageSwitcher authoredLocales={resolvedGlobalSettings?.i18n?.locales} />
+      </div>
+    );
+
     // Consistent header height using design tokens
     const headerHeight = 'h-16 md:h-20';
     const headerTopOffset = isIOS ? 'pt-8' : '';
@@ -531,7 +588,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     sessionStorage.setItem('searchBarOpen', 'false');
                   }
                 }}
-                className="md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
+                className={`${bp.phoneOnly} p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200`}
                 aria-label={t("header.toggleMenu")}
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
@@ -551,8 +608,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
               </button>
             )}
 
-            {/* Logo and Brand */}
-            <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
+            {/* Logo and Brand. With the bar's extras it may shrink (min-w-0),
+                so the title truncates instead of pushing the controls off-screen. */}
+            <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? bp.catalogLogo : ''}${hasHeaderExtras ? ' min-w-0' : ''}`}>
               {/* JSON logo (from page builder) */}
               {jsonLogoUrl ? (
                 <>
@@ -561,7 +619,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     alt={t("header.logoAlt")}
                     onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
                     className={`max-h-12 md:max-h-16 w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                      }`}
+                      }${hasHeaderExtras ? ' min-w-0' : ''}`}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}
@@ -597,11 +655,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
             {/* Desktop Navigation */}
             {visibleNavigation.length > 0 && (
-              <nav className="hidden md:flex items-center gap-1">
+              <nav className={`${bp.desktopFlex} items-center gap-1`}>
                 {navEntries.map(({ item, base }, index) => {
                   if (isMegaMenuItem(base)) {
                     // Its panel is positioned against the fixed <header>, so
                     // no ancestor between here and the header may be positioned.
+                    // A deleted library makes it the plain item below (plainLink).
+                    const megaSameTab = base.openInSameTab === true || String(base.openInSameTab) === "true";
                     return (
                       <MegaMenuNavItem
                         key={index}
@@ -612,6 +672,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         tagName={effectiveTagName}
                         activeStyle={activeStyle}
                         routeActive={!!(base.route || '').trim() && isActiveRoute(base.route)}
+                        plainLink={{
+                          onClick: () => handleNavigation(base.route, base.label, megaSameTab),
+                          active: isActiveRoute(base.route),
+                        }}
                       />
                     );
                   }
@@ -651,7 +715,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   }}
                   // With search / language / cart in the bar, the menu toggle
                   // moves to the far end on phones, where visitors look for it.
-                  className={`md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200${hasHeaderExtras ? ' order-last md:order-none' : ''}`}
+                  className={`${bp.phoneOnly} p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200${hasHeaderExtras ? ' order-last lg:order-none' : ''}`}
                   aria-label={t("header.toggleMenu")}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -717,7 +781,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 />
               )}
               {showSwitcher && (
-                <HeaderLanguageSwitcher authoredLocales={resolvedGlobalSettings?.i18n?.locales} />
+                <HeaderLanguageSwitcher
+                  authoredLocales={resolvedGlobalSettings?.i18n?.locales}
+                  className={switcherInMenu ? 'hidden sm:inline-flex' : undefined}
+                />
               )}
               {showSiteCart && (
                 <SiteCartButton
@@ -731,7 +798,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {isCourseCatalogeTypeEnabled && !isAuthenticated && (
                 <button
                   onClick={() => navigate({ to: '/login' })}
-                  className="md:hidden px-3 py-1.5 rounded-catalogue-sm text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
+                  className={`${bp.phoneOnly} px-3 py-1.5 rounded-catalogue-sm text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200`}
                 >
                   {t("header.login")}
                 </button>
@@ -741,7 +808,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   hamburger menu (see the toggle above), not in the bar: the
                   sticky MobileActionBar already carries Login / Get Started, so
                   repeating them in the header just doubled the same two CTAs. */}
-              <div className="hidden md:flex items-center gap-2">
+              <div className={`${bp.desktopFlex} items-center gap-2`}>
                 {isAuthenticated ? (
                   <div className="flex items-center gap-3 shrink-0">
                     <SystemAlertsBar />
@@ -775,15 +842,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden  fixed start-0 end-0 z-catalogue-dropdown bg-catalogue-bg-elevated border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`${bp.phoneOnly}  fixed start-0 end-0 z-catalogue-dropdown bg-catalogue-bg-elevated border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
-                }${megaEntries.length ? ' max-h-screen-85 overflow-y-auto overscroll-contain' : ''}`}
-              style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
+                }${megaEntries.length ? ' max-h-screen-85 overflow-y-auto overscroll-contain' : ''}${menuTop.className}`}
+              style={menuTop.style}
             >
               <div className={`transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
                 }`}>
                 <div className="px-4 py-4 space-y-3">
+                  {switcherInMenu && renderMenuLanguageRow()}
                   {/* Navigation Links */}
                   {visibleNavigation.length > 0 && (
                     <div className="space-y-1 pb-3 border-b border-catalogue-border-subtle">
@@ -799,6 +867,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               tagName={effectiveTagName}
                               itemClassName={mobileNavItemClass}
                               onDone={() => setIsMobileMenuOpen(false)}
+                              plainLink={mobileMegaPlainLink(base)}
                             />
                           );
                         }
@@ -965,10 +1034,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
               <div
                 ref={setMobileMenuRef}
-                className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}${megaEntries.length ? ' max-h-screen-85 overflow-y-auto overscroll-contain' : ''}`}
-                style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
+                className={`${bp.phoneOnly} fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}${megaEntries.length ? ' max-h-screen-85 overflow-y-auto overscroll-contain' : ''}${menuTop.className}`}
+                style={menuTop.style}
               >
                 <div className="px-4 py-3 space-y-1">
+                  {switcherInMenu && renderMenuLanguageRow()}
                   {/* Navigation Links */}
                   {navEntries.map(({ item, base }, index) => {
                     if (isMegaMenuItem(base)) {
@@ -982,6 +1052,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           tagName={effectiveTagName}
                           itemClassName={mobileNavItemClass}
                           onDone={() => setIsMobileMenuOpen(false)}
+                          plainLink={mobileMegaPlainLink(base)}
                         />
                       );
                     }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PublicFolderNode, PublicFolderTree } from "../../-services/folder-library-service";
-import { buildMegaMenuModel, initialStreamIndex, streamTextValues } from "./mega-menu-model";
+import { buildMegaMenuModel, initialStreamIndex, isMissingLibraryError, streamTextValues } from "./mega-menu-model";
 
 // The folder service module reads the API base URL from `window` at import.
 vi.mock("@/constants/urls", () => ({ BASE_URL: "https://api.test" }));
@@ -43,7 +43,6 @@ describe("buildMegaMenuModel — tiles and categories", () => {
 
   it("turns top-level folders into streams and their child folders into categories", () => {
     const model = buildMegaMenuModel(tree([education, page("loose-page"), folder("arts", { title: "Kala" })]), {});
-    expect(model.libraryName).toBe("Streams");
     expect(model.streams.map((s) => s.id)).toEqual(["edu", "arts"]);
     const [edu] = model.streams;
     expect(edu).toMatchObject({
@@ -106,7 +105,7 @@ describe("buildMegaMenuModel — tiles and categories", () => {
   });
 
   it("gives an empty model for a missing or malformed tree", () => {
-    expect(buildMegaMenuModel(undefined, {})).toEqual({ libraryName: "", streams: [], hasComingSoon: false });
+    expect(buildMegaMenuModel(undefined, {})).toEqual({ streams: [] });
     expect(buildMegaMenuModel({ library: { id: "l", name: "L" }, roots: null as never }, {}).streams).toEqual([]);
   });
 
@@ -123,7 +122,6 @@ describe("buildMegaMenuModel — coming soon", () => {
       folder("soon-no-form", { title: "Later", coming_soon: true }),
     ]);
     const model = buildMegaMenuModel(tree([s]), {});
-    expect(model.hasComingSoon).toBe(true);
     const [soon, later] = model.streams[0].categories;
     expect(soon).toMatchObject({ comingSoon: true, action: { kind: "notify", audienceId: "aud-1" } });
     expect(later).toMatchObject({ comingSoon: true, action: { kind: "none" } });
@@ -147,8 +145,21 @@ describe("buildMegaMenuModel — coming soon", () => {
     expect(buildMegaMenuModel(tree([s]), {}).streams[0].categories[0].action).toEqual({ kind: "none" });
   });
 
-  it("reports no coming-soon items when there are none", () => {
-    expect(buildMegaMenuModel(tree([folder("s", { title: "S" }, [folder("a")])]), {}).hasComingSoon).toBe(false);
+  it("keeps an open stream's open categories linked", () => {
+    const [stream] = buildMegaMenuModel(tree([folder("s", { title: "S" }, [folder("a")])]), {}).streams;
+    expect(stream.comingSoon).toBe(false);
+    expect(stream.categories.map((c) => [c.comingSoon, c.action.kind])).toEqual([[false, "link"]]);
+  });
+});
+
+describe("isMissingLibraryError", () => {
+  it("is true only for the public tree's 404 (deleted or unknown library)", () => {
+    expect(isMissingLibraryError({ response: { status: 404 } })).toBe(true);
+    expect(isMissingLibraryError({ response: { status: 500 } })).toBe(false);
+    expect(isMissingLibraryError({ response: { status: "404" } })).toBe(false);
+    expect(isMissingLibraryError(new Error("Network Error"))).toBe(false);
+    expect(isMissingLibraryError(null)).toBe(false);
+    expect(isMissingLibraryError(undefined)).toBe(false);
   });
 });
 

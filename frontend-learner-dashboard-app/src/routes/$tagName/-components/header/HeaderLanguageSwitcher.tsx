@@ -10,16 +10,17 @@ import { orderSwitcherLocales } from "./header-variants";
  * site with more than one language (globalSettings.i18n.enabled); switching
  * goes through the catalogue locale provider, which remembers the choice and
  * reflects it in ?lang= (never the logged-in app's own language setting).
+ * The other languages come first and the site's base language last.
  */
 export const HeaderLanguageSwitcher: React.FC<{
-  /** globalSettings.i18n.locales as authored — sets the order of the options. */
+  /** globalSettings.i18n.locales as authored — the order among the other languages. */
   authoredLocales?: Array<Partial<CatalogueLocale>> | null;
   className?: string;
 }> = ({ authoredLocales, className }) => {
   const { t } = useTranslation("coursePlayerB");
-  const { enabled, locales, locale, setLocale } = useCatalogueLocale();
+  const { enabled, locales, locale, baseLocale, setLocale } = useCatalogueLocale();
   if (!enabled || locales.length < 2) return null;
-  const options = orderSwitcherLocales(locales, authoredLocales);
+  const options = orderSwitcherLocales(locales, authoredLocales, baseLocale);
 
   return (
     <div

@@ -10,6 +10,7 @@ import { routeHeaderLink, type HeaderLink } from "./header-links";
 import {
   buildMegaMenuModel,
   initialStreamIndex,
+  isMissingLibraryError,
   type MegaMenuCategory,
   type MegaMenuStream,
 } from "./mega-menu-model";
@@ -28,6 +29,10 @@ import { AvailabilityDot, AvailabilityLegend, ComingSoonTag, MegaItemIcon } from
  * focusing a tile selects its stream; arrow keys move between tiles (one tab
  * stop for the row), Tab continues into the selected stream's detail panel.
  * On touch, the first tap on a tile selects it and the second follows it.
+ *
+ * When the library is gone (the public tree answers 404 — it was deleted),
+ * the item turns into a plain nav button that follows its own route; it is
+ * the same element, so keyboard focus stays on it.
  */
 
 export interface MegaMenuNavItemProps {
@@ -42,6 +47,8 @@ export interface MegaMenuNavItemProps {
   activeStyle?: unknown;
   /** The item's own route is the current page. */
   routeActive?: boolean;
+  /** What a plain nav item would do and show — used once the library is gone (404). */
+  plainLink?: { onClick: () => void; active: boolean };
 }
 
 const LG_TILE_COLUMNS = [
@@ -61,6 +68,7 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   tagName,
   activeStyle,
   routeActive = false,
+  plainLink,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const siteT = useSiteT();
@@ -84,10 +92,17 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   const headingId = `mega-categories-${reactId}`;
 
   const libraryId = (baseConfig.libraryId || "").trim();
-  const query = useMegaMenuTree(instituteId, libraryId, armed);
+  // The library this item already found deleted. Remembered so the query
+  // stops: a refetch of a query without data briefly drops its error, which
+  // would bring the caret back for a moment.
+  const [goneLibrary, setGoneLibrary] = useState<string | null>(null);
+  const knownGone = !!libraryId && goneLibrary === libraryId;
+  const query = useMegaMenuTree(instituteId, libraryId, armed && !knownGone);
   const model = useMemo(() => buildMegaMenuModel(query.data, baseConfig), [query.data, baseConfig]);
   const status: "loading" | "error" | "ready" =
     !instituteId || !libraryId ? "loading" : query.data ? "ready" : query.isError ? "error" : "loading";
+  // A deleted library: there is no menu to show, so the item is a plain link from now on.
+  const libraryGone = knownGone || (!query.data && isMissingLibraryError(query.error));
 
   const streamParam = readSearchParam(location.searchStr, URL_PARAMS.stream);
   const pickedIndex = selectedId ? model.streams.findIndex((s) => s.id === selectedId) : -1;
@@ -106,6 +121,14 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, location.searchStr]);
+
+  // The 404 can land while the panel shows its skeleton (a tap opens and
+  // fetches at once): close it, the button below is a plain link now.
+  useEffect(() => {
+    if (!libraryGone) return;
+    setOpen(false);
+    setGoneLibrary(libraryId);
+  }, [libraryGone, libraryId]);
 
   // Esc closes; focus goes back to the button when it was inside the menu.
   useEffect(() => {
@@ -281,7 +304,7 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           {config.showLegend && <AvailabilityDot comingSoon={cat.comingSoon} />}
-          <span className={cn("text-sm font-semibold", cat.comingSoon ? "text-catalogue-text-muted" : "text-primary-500")}>
+          <span className={cn("text-sm font-semibold", cat.comingSoon ? "text-catalogue-text-muted" : "text-catalogue-brand-ink")}>
             {siteT(cat.title)}
           </span>
           {cat.subtitle && (
@@ -460,22 +483,29 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
         ref={triggerRef}
         id={triggerId}
         type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={toggle}
+        aria-expanded={libraryGone ? undefined : open}
+        aria-controls={libraryGone ? undefined : panelId}
+        onClick={libraryGone ? plainLink?.onClick : toggle}
         onPointerEnter={arm}
         onFocus={arm}
         onBlur={onBlurWithin}
-        className={`inline-flex items-center gap-1 px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(open || routeActive, activeStyle)}`}
+        className={
+          libraryGone
+            ? // The plain nav item's own classes.
+              `px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(!!plainLink?.active, activeStyle)}`
+            : `inline-flex items-center gap-1 px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${desktopNavItemClasses(open || routeActive, activeStyle)}`
+        }
       >
         {label}
-        <CaretDown
-          aria-hidden="true"
-          weight="bold"
-          className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")}
-        />
+        {!libraryGone && (
+          <CaretDown
+            aria-hidden="true"
+            weight="bold"
+            className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")}
+          />
+        )}
       </button>
-      {open && (
+      {open && !libraryGone && (
         <div
           ref={panelRef}
           id={panelId}
@@ -488,10 +518,8 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
             {(eyebrow || helpLink) && (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {eyebrow ? (
-                  <p className="catalogue-eyebrow text-catalogue-text-muted">
-                    <span aria-hidden="true" className="h-px w-8 bg-current" />
-                    {eyebrow}
-                  </p>
+                  // catalogue-eyebrow draws the leading rule itself.
+                  <p className="catalogue-eyebrow text-catalogue-text-muted">{eyebrow}</p>
                 ) : (
                   <span />
                 )}
@@ -514,7 +542,10 @@ export const MegaMenuNavItem: React.FC<MegaMenuNavItemProps> = ({
               </div>
             )}
             {renderBody()}
-            {footnote && <p className="mt-3 text-caption text-catalogue-text-muted">{footnote}</p>}
+            {/* Only under real tiles, never beside a loading, error or empty state. */}
+            {footnote && status === "ready" && model.streams.length > 0 && (
+              <p className="mt-3 text-caption text-catalogue-text-muted">{footnote}</p>
+            )}
           </div>
         </div>
       )}

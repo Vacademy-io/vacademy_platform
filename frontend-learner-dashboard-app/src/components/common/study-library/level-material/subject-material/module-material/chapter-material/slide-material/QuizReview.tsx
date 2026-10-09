@@ -199,9 +199,6 @@ const isAnswerMatch = (
 
 // Up to two decimals, no trailing zeros: 1, 0.5, 0.33.
 const formatMarks = (value: number): string => String(Math.round(value * 100) / 100);
-// "+1", "+0.5", "0", "-0.25" so a learner can add the badges up to the score card.
-const formatSignedMarks = (value: number): string =>
-  value > 0 ? `+${formatMarks(value)}` : value < 0 ? `-${formatMarks(-value)}` : "0";
 
 export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, partialMarking = false, marksPerQuestion = 1, defaultNegativeMarking = 0, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
   const { t } = useTranslation("libraryCommonA");
@@ -830,7 +827,12 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-xs text-gray-500 font-medium">{t("quizReview.questionNumber", { number: idx + 1 })}</span>
                 <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${marksBadgeClass}`}>
-                  {t("quizReview.questionMarks", { earned: formatSignedMarks(questionMarks.earned), max: formatMarks(questionMarks.max) })}
+                  {t("quizReview.questionMarks", {
+                    // No sign; a negative mark shows as 0 because the score card adds each
+                    // question as max(0, marks), so the badges still add up to its total.
+                    earned: formatMarks(Math.max(0, questionMarks.earned)),
+                    max: formatMarks(questionMarks.max),
+                  })}
                 </span>
               </div>
               {passage && (

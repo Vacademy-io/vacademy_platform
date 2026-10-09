@@ -244,5 +244,9 @@
         "goToMyCourses": "{{courses}} पर जाएँ",
         "redirecting": "आपको अगले पेज पर ले जा रहे हैं…",
         "redirectNow": "अभी जारी रखें"
+    },
+    "planTiles": {
+        "coursesIncluded": "{{count}} {{courses}} शामिल",
+        "oneCourse": "1 {{course}}"
     }
 }

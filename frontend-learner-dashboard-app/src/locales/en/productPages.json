@@ -244,5 +244,9 @@
         "goToMyCourses": "Go to My {{courses}}",
         "redirecting": "Taking you to the next page…",
         "redirectNow": "Continue now"
+    },
+    "planTiles": {
+        "coursesIncluded": "{{count}} {{courses}} included",
+        "oneCourse": "1 {{course}}"
     }
 }

@@ -1,4 +1,6 @@
 import { useEditorStore } from '../-stores/editor-store';
+import { useLocalizedEditing } from '../-hooks/use-localized-editing';
+import { LanguagesSettingsCard } from './i18n/LanguagesSettingsCard';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
 import { buildComponentTemplates } from '../-utils/component-templates';
 import { Input } from '@/components/ui/input';
@@ -80,34 +82,58 @@ import type { ComponentStyle } from '../-types/editor-types';
 // only the label shown in the UI is translated, so nothing persisted changes.
 const optionLabel = (t: TFunction, key: string): string => t(`options.${key}`, { defaultValue: key });
 
+// Read at edit time, and only while editing another language.
+const latestStoreConfig = () => useEditorStore.getState().config;
+
 export const PropertyPanel = () => {
     const { t } = useTranslation('managePagesPropertyPanel');
     const {
-        config,
+        config: storeConfig,
+        editingLocale,
+        commitLocalizedEdit,
         selectedComponentId,
         selectedPageId,
         selectedGlobalSettings,
         selectedGlobalLayout,
-        updateComponent,
-        updateGlobalSettings,
+        updateComponent: storeUpdateComponent,
+        updateGlobalSettings: storeUpdateGlobalSettings,
         deleteComponent,
         duplicateComponent,
         reorderComponents,
-        updatePageSeo,
+        updatePageSeo: storeUpdatePageSeo,
         updatePageBackgroundColor,
         setPageHideSiteChrome,
         copyComponent,
         pasteComponent,
         clipboard,
     } = useEditorStore();
+    // Editing another site language: editors render the localized view and
+    // their text edits become translations. In the base language these are
+    // the store's own config and functions, untouched.
+    const localized = useLocalizedEditing({
+        config: storeConfig,
+        editingLocale,
+        commitLocalizedEdit,
+        updateComponent: storeUpdateComponent,
+        updateGlobalSettings: storeUpdateGlobalSettings,
+        updatePageSeo: storeUpdatePageSeo,
+        getLatestConfig: latestStoreConfig,
+    });
+    const { config, updateComponent, updateGlobalSettings, updatePageSeo } = localized;
     // Declared before the early returns below — hooks cannot live behind a branch.
     const [variantsOpen, setVariantsOpen] = useState(false);
 
     if (!config) return null;
 
-    // Global Settings Editor
+    // Global Settings Editor — site settings are shared by every language, so
+    // it always edits the base config.
     if (selectedGlobalSettings) {
-        return <GlobalSettingsEditor config={config} updateGlobalSettings={updateGlobalSettings} />;
+        return (
+            <GlobalSettingsEditor
+                config={localized.baseConfig}
+                updateGlobalSettings={storeUpdateGlobalSettings}
+            />
+        );
     }
 
     // Global Header / Footer Editor
@@ -159,8 +185,11 @@ export const PropertyPanel = () => {
 
         if (!component) return <div className="p-4">{t('componentNotFound')}</div>;
 
-        // Compute position within page for reorder
-        const pageComponents = config.pages.find((p) => p.id === pageId)?.components ?? [];
+        // Compute position within page for reorder. Read from the base config:
+        // reorder writes this list back, and in another language `config` is
+        // the localized view (same ids and order).
+        const basePages = (localized.baseConfig ?? config).pages;
+        const pageComponents = basePages.find((p) => p.id === pageId)?.components ?? [];
         const componentIndex = pageComponents.findIndex((c) => c.id === component!.id);
         // componentIndex === -1 means the selected component lives inside a slot (nested)
         const isNested = componentIndex === -1;
@@ -206,7 +235,14 @@ export const PropertyPanel = () => {
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-primary-500"
                                 onClick={() => setVariantsOpen(true)}
-                                title={t('actions.tryAnotherVersion')}
+                                // A whole-section swap rewrites every text at once:
+                                // only offered while editing the base language.
+                                disabled={!!localized.locale}
+                                title={
+                                    localized.locale
+                                        ? 'Switch to the base language to try other versions'
+                                        : t('actions.tryAnotherVersion')
+                                }
                             >
                                 <Sparkle className="size-3.5" />
                             </Button>
@@ -1299,6 +1335,13 @@ const GlobalSettingsEditor = ({
                     </div>
                 )}
             </div>
+
+            {/* Site languages (हिन्दी / EN) */}
+            <LanguagesSettingsCard
+                config={config}
+                i18n={gs.i18n}
+                onChange={(next) => updateField('i18n', next)}
+            />
 
             {/* Payment Settings */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">

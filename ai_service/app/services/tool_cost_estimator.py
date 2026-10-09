@@ -303,6 +303,17 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # AI Page Builder site languages — translate a batch of site texts
+    # (POST /page-builder/v1/translate). Priced like translate_strings: per 100
+    # characters actually sent to the model (translation-memory hits are free),
+    # charged once per request; the estimate floors at one whole credit.
+    "page_translate": {
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.01"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
     # ---- Content translation (i18n Phase 1, V384) --------------------------
     # Ops-tunable placeholders — MUST agree with the V384 ai_tool_pricing seeds.
     # TM (translation_memory) hits are free; only LLM-translated items bill.

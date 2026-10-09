@@ -1,3 +1,5 @@
+import type { CatalogueI18nSettings } from '../-utils/catalogue-i18n';
+
 export type CatalogueThemePreset =
     | 'default'
     | 'ocean'
@@ -112,6 +114,12 @@ export interface GlobalSettings {
         provider: 'razorpay' | 'stripe' | 'paypal' | 'PHONEPE';
         fields: string[];
     };
+    /**
+     * Site content languages. The pages stay written in the base language;
+     * every other language is a dictionary in `strings[locale]` keyed by the
+     * exact base text (see -utils/catalogue-i18n.ts). Absent = one language.
+     */
+    i18n?: CatalogueI18nSettings;
     layout?: {
         header?: any;
         footer?: any;

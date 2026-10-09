@@ -9,6 +9,7 @@ import {
     AI_PAGE_BUILDER_IMAGE,
     AI_PAGE_BUILDER_SITE,
     AI_PAGE_BUILDER_INTAKE,
+    AI_PAGE_BUILDER_TRANSLATE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -479,6 +480,40 @@ export const editSiteChrome = async (payload: SiteChromePayload): Promise<SiteCh
         AI_PAGE_BUILDER_SITE_CHROME(),
         payload,
         { timeout: 180000 }
+    );
+    return response.data;
+};
+
+/* ─── Site languages: translate site texts ─────────────────────────────── */
+
+export interface TranslateSiteStringsPayload {
+    /** Exact base-language texts (they are the dictionary keys). At most 200 per call. */
+    strings: string[];
+    target_locale: string;
+    source_locale?: string;
+    /** Ignore the translation memory ("translate again with AI"). */
+    skip_memory?: boolean;
+    preferred_model?: string;
+}
+
+export interface TranslateSiteStringsResponse {
+    /** Keyed by the exact source text sent. */
+    translations: Record<string, string>;
+    /** Texts that could not be translated safely (markup, links or numbers changed). */
+    failed: Array<{ source: string; reason: string }>;
+    tm_hits: number;
+    run_id: string;
+    model: string;
+    warnings: string[];
+}
+
+export const translateSiteStrings = async (
+    payload: TranslateSiteStringsPayload
+): Promise<TranslateSiteStringsResponse> => {
+    const response = await authenticatedAxiosInstance.post<TranslateSiteStringsResponse>(
+        AI_PAGE_BUILDER_TRANSLATE(),
+        payload,
+        { timeout: 180000 } // a batch is several small LLM calls in parallel
     );
     return response.data;
 };

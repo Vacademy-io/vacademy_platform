@@ -42,6 +42,9 @@ import {
 } from '@dnd-kit/core';
 import { getComponentTemplate } from '../-utils/component-templates';
 import { Textarea } from '@/components/ui/textarea';
+import { activeEditingLocale, useLocalizedPanelKey } from '../-hooks/use-localized-editing';
+import { EditingLanguageToggle } from './i18n/EditingLanguageToggle';
+import { LocalizedEditingBar } from './i18n/LocalizedEditingBar';
 
 export const CatalogueEditorPage = () => {
     const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
@@ -65,7 +68,15 @@ export const CatalogueEditorPage = () => {
         selectedGlobalLayout,
         addComponent,
         addToSlot,
+        editingLocale,
+        setEditingLocale,
     } = useEditorStore();
+    // The site language being edited (null = base). UI state only: never saved,
+    // never in undo history, and a stale choice falls back to the base language.
+    const activeLocale = activeEditingLocale(config?.globalSettings?.i18n, editingLocale);
+    // Rebuilds the property panel on a language flip and after a refused edit
+    // (editors with a local draft must not keep showing unsaved text).
+    const propertyPanelKey = useLocalizedPanelKey(activeLocale);
     const { toast } = useToast();
     const openBlog = useBlogManagerStore((s) => s.open);
     const openFolders = useFolderLibraryStore((s) => s.open);
@@ -311,6 +322,15 @@ export const CatalogueEditorPage = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [undo, redo, canUndo, canRedo, config, canWrite, saveMutation, jsonError]);
 
+    // Another language: the language was removed (undo, settings) → back to base;
+    // the AI panels edit the base language, so they are not offered meanwhile.
+    useEffect(() => {
+        if (editingLocale && !activeLocale) setEditingLocale(null);
+    }, [editingLocale, activeLocale, setEditingLocale]);
+    useEffect(() => {
+        if (activeLocale && rightTab === 'ai') setRightTab('properties');
+    }, [activeLocale, rightTab]);
+
     // When a component is added, switch layers tab so user can see it
     // (handled by selectComponent in store — no extra work needed)
 
@@ -349,6 +369,13 @@ export const CatalogueEditorPage = () => {
                             JSON
                         </Button>
                     </div>
+                    {activeTab === 'visual' && (
+                        <EditingLanguageToggle
+                            i18n={config.globalSettings?.i18n}
+                            editingLocale={editingLocale}
+                            onChange={setEditingLocale}
+                        />
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -586,11 +613,17 @@ export const CatalogueEditorPage = () => {
                                 </button>
                                 <button
                                     onClick={() => setRightTab('ai')}
+                                    disabled={!!activeLocale}
+                                    title={
+                                        activeLocale
+                                            ? 'AI edits the base language — switch Editing back to use it'
+                                            : undefined
+                                    }
                                     className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
                                         rightTab === 'ai'
                                             ? 'border-b-2 border-primary-500 text-primary-500'
                                             : 'text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    }${activeLocale ? ' cursor-not-allowed opacity-40' : ''}`}
                                 >
                                     <Sparkle className="size-3.5" weight="duotone" />
                                     AI
@@ -616,7 +649,17 @@ export const CatalogueEditorPage = () => {
                                 </div>
                             ) : rightTab === 'properties' ? (
                                 <div className="flex-1 overflow-auto">
-                                    <PropertyPanel />
+                                    {activeLocale && (
+                                        <LocalizedEditingBar
+                                            i18n={config.globalSettings?.i18n}
+                                            locale={activeLocale}
+                                            globalSettingsSelected={selectedGlobalSettings}
+                                        />
+                                    )}
+                                    {/* Remount on a language flip and after a refused edit:
+                                        editors keep local state (rich-text, list drafts)
+                                        that must match the stored text. */}
+                                    <PropertyPanel key={propertyPanelKey} />
                                 </div>
                             ) : selectedGlobalSettings || selectedGlobalLayout ? (
                                 // Global Settings selected → AI edits the shared site

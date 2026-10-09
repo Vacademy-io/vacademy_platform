@@ -1,0 +1,631 @@
+import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+    ArrowCounterClockwise,
+    CircleNotch,
+    MagnifyingGlass,
+    Sparkle,
+    WarningCircle,
+} from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import { MyDialog } from '@/components/design-system/dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
+import { StatusChip } from '@/components/design-system/status-chips';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useEditorStore } from '../../-stores/editor-store';
+import { translateSiteStrings } from '../../-services/ai-page-service';
+import { baseLocaleOf, localesOf, type TranslationDictionary } from '../../-utils/catalogue-i18n';
+import { languageName } from '../../-hooks/use-localized-editing';
+import {
+    batchForTranslation,
+    collectSiteStrings,
+    isKeptAsBase,
+    keepAsBase,
+    mergeAiTranslations,
+    setTranslation,
+} from './site-strings';
+import {
+    dedupeLiveTexts,
+    fetchCourseTexts,
+    fetchFolderTexts,
+    fetchProductPageTexts,
+    type LiveTextGroup,
+} from './translation-sources';
+
+type Tab = 'site' | 'live';
+
+interface Row {
+    source: string;
+    group?: LiveTextGroup;
+}
+
+interface AiRun {
+    running: boolean;
+    done: number;
+    total: number;
+    translated: number;
+    failed: Array<{ source: string; reason: string }>;
+    unchanged: string[];
+    tooLong: string[];
+    error?: string;
+}
+
+const PAGE_SIZE = 50;
+
+/** Writes one language's dictionary from the LATEST store state (an AI batch may land while the admin edits). */
+const writeDictionary = (
+    locale: string,
+    update: (dict: TranslationDictionary | undefined) => TranslationDictionary
+) => {
+    const state = useEditorStore.getState();
+    const config = state.config;
+    if (!config) return;
+    const i18n = config.globalSettings.i18n || {};
+    const strings = i18n.strings || {};
+    state.updateGlobalSettings({
+        i18n: { ...i18n, strings: { ...strings, [locale]: update(strings[locale]) } },
+    });
+};
+
+const errorDetail = (err: unknown): string => {
+    const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+    return typeof detail === 'string'
+        ? detail
+        : 'The AI translation did not go through. Please try again.';
+};
+
+/**
+ * Every text of the site for one language: the page texts (sections, page SEO,
+ * header and footer) and the live data the site shows (course names and
+ * descriptions, levels, folders, product pages). Edit inline, filter what is
+ * missing, translate the missing ones with AI, or mark brand names as staying
+ * the same as the base language.
+ */
+export const TranslationsPanel = ({
+    open,
+    onOpenChange,
+    initialLocale,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    initialLocale: string;
+}) => {
+    const config = useEditorStore((s) => s.config);
+    const instituteId = getCurrentInstituteId();
+    const i18n = config?.globalSettings?.i18n;
+    const base = baseLocaleOf(i18n);
+    const baseName = languageName(base);
+    const targets = localesOf(i18n).slice(1);
+    const [locale, setLocale] = useState(
+        targets.some((l) => l.code === initialLocale)
+            ? initialLocale
+            : targets[0]?.code || initialLocale
+    );
+    const [tab, setTab] = useState<Tab>('site');
+    const [missingOnly, setMissingOnly] = useState(true);
+    const [search, setSearch] = useState('');
+    const [visible, setVisible] = useState(PAGE_SIZE);
+    const [run, setRun] = useState<AiRun | null>(null);
+    const cancelRef = useRef(false);
+
+    const dict = i18n?.strings?.[locale];
+    const siteStrings = useMemo(() => collectSiteStrings(config), [config]);
+
+    const liveEnabled = open && tab === 'live' && !!instituteId;
+    const courses = useQuery({
+        queryKey: ['siteTranslations', 'courses', instituteId],
+        queryFn: () => fetchCourseTexts(instituteId!),
+        enabled: liveEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+    const folders = useQuery({
+        queryKey: ['siteTranslations', 'folders', instituteId],
+        queryFn: () => fetchFolderTexts(instituteId!),
+        enabled: liveEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+    const productPages = useQuery({
+        queryKey: ['siteTranslations', 'productPages', instituteId],
+        queryFn: () => fetchProductPageTexts(instituteId!),
+        enabled: liveEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const siteRows: Row[] = useMemo(() => siteStrings.map((source) => ({ source })), [siteStrings]);
+    const liveRows: Row[] = useMemo(() => {
+        const inSite = new Set(siteStrings);
+        return dedupeLiveTexts([
+            ...(courses.data || []),
+            ...(folders.data || []),
+            ...(productPages.data || []),
+        ]).filter((t) => !inSite.has(t.source));
+    }, [siteStrings, courses.data, folders.data, productPages.data]);
+    const liveLoading = courses.isLoading || folders.isLoading || productPages.isLoading;
+    const liveErrors = [courses, folders, productPages].filter((q) => q.isError);
+
+    const rows = tab === 'site' ? siteRows : liveRows;
+    const isMissing = (source: string) => !dict || !dict[source];
+    const missingCount = rows.filter((r) => isMissing(r.source)).length;
+    const query = search.trim().toLowerCase();
+    const shown = rows.filter(
+        (r) =>
+            (!missingOnly || isMissing(r.source)) &&
+            (!query ||
+                r.source.toLowerCase().includes(query) ||
+                (dict?.[r.source] || '').toLowerCase().includes(query))
+    );
+
+    const translateMissing = async () => {
+        const missing = rows.filter((r) => isMissing(r.source)).map((r) => r.source);
+        if (missing.length === 0 || run?.running) return;
+        const { batches, tooLong } = batchForTranslation(missing);
+        const target = locale;
+        cancelRef.current = false;
+        const progress: AiRun = {
+            running: true,
+            done: 0,
+            total: missing.length - tooLong.length,
+            translated: 0,
+            failed: [],
+            unchanged: [],
+            tooLong,
+        };
+        setRun({ ...progress });
+        for (const batch of batches) {
+            if (cancelRef.current) break;
+            try {
+                const res = await translateSiteStrings({
+                    strings: batch,
+                    target_locale: target,
+                    source_locale: base,
+                });
+                let unchanged: string[] = [];
+                let added = 0;
+                writeDictionary(target, (d) => {
+                    // Only fill what is still missing: a translation the admin
+                    // typed while this batch was running wins.
+                    const stillMissing = Object.fromEntries(
+                        Object.entries(res.translations || {}).filter(([source]) => !d?.[source])
+                    );
+                    const merged = mergeAiTranslations(d, stillMissing);
+                    unchanged = merged.unchanged;
+                    added = Object.entries(stillMissing).filter(
+                        ([source, value]) => value.trim() !== '' && value !== source
+                    ).length;
+                    return merged.dict;
+                });
+                progress.translated += added;
+                progress.unchanged.push(...unchanged);
+                progress.failed.push(...(res.failed || []));
+            } catch (err) {
+                // Stop at the first failure (no credits, network): retrying blindly would burn credits.
+                progress.error = errorDetail(err);
+                break;
+            } finally {
+                progress.done += batch.length;
+                setRun({
+                    ...progress,
+                    failed: [...progress.failed],
+                    unchanged: [...progress.unchanged],
+                });
+            }
+        }
+        setRun({
+            ...progress,
+            running: false,
+            failed: [...progress.failed],
+            unchanged: [...progress.unchanged],
+        });
+    };
+
+    const keepUnchanged = () => {
+        if (!run?.unchanged.length) return;
+        writeDictionary(locale, (d) => keepAsBase(d, run.unchanged));
+        setRun({ ...run, unchanged: [] });
+    };
+
+    const footer = (
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            {run?.running ? (
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    onClick={() => (cancelRef.current = true)}
+                >
+                    Stop after this batch
+                </MyButton>
+            ) : null}
+            <MyButton
+                buttonType="primary"
+                scale="medium"
+                className="gap-1"
+                disable={!!run?.running || missingCount === 0 || targets.length === 0}
+                onClick={translateMissing}
+            >
+                {run?.running ? (
+                    <CircleNotch className="size-4 animate-spin" />
+                ) : (
+                    <Sparkle className="size-4" />
+                )}
+                {run?.running
+                    ? `Translating ${run.done} of ${run.total}…`
+                    : `Translate ${missingCount} missing with AI`}
+            </MyButton>
+        </div>
+    );
+
+    return (
+        <MyDialog
+            heading="Translations"
+            open={open}
+            onOpenChange={(o) => {
+                if (!o) cancelRef.current = true;
+                onOpenChange(o);
+            }}
+            dialogWidth="max-w-4xl"
+            footer={footer}
+            footerLeft={
+                <p className="text-caption text-gray-500">
+                    AI translation uses credits (about one per batch of 40 texts). Texts the AI
+                    cannot translate safely are left for you.
+                </p>
+            }
+        >
+            {targets.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                    Add a language under Global Settings → Languages first.
+                </p>
+            ) : (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-end gap-3">
+                        {targets.length > 1 && (
+                            <div className="space-y-1">
+                                <Label className="text-xs">Language</Label>
+                                <MyDropdown
+                                    currentValue={languageName(locale)}
+                                    dropdownList={targets.map((l) => ({
+                                        label: languageName(l.code, l.label),
+                                        value: l.code,
+                                    }))}
+                                    handleChange={(v) => {
+                                        setLocale(v);
+                                        setRun(null);
+                                    }}
+                                />
+                            </div>
+                        )}
+                        <Tabs
+                            value={tab}
+                            onValueChange={(v) => {
+                                setTab(v as Tab);
+                                setVisible(PAGE_SIZE);
+                                setRun(null);
+                            }}
+                        >
+                            <TabsList>
+                                <TabsTrigger value="site">Page texts</TabsTrigger>
+                                <TabsTrigger value="live">Courses, folders &amp; pages</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                id="translations-missing-only"
+                                checked={missingOnly}
+                                onCheckedChange={setMissingOnly}
+                            />
+                            <Label htmlFor="translations-missing-only" className="text-sm">
+                                Missing only
+                            </Label>
+                        </div>
+                        <div className="relative min-w-48 flex-1">
+                            <MagnifyingGlass className="pointer-events-none absolute start-2 top-2.5 size-4 text-gray-400" />
+                            <Input
+                                className="ps-8"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search texts"
+                                aria-label="Search texts"
+                            />
+                        </div>
+                    </div>
+
+                    <p className="text-sm text-gray-600">
+                        {languageName(locale)}: {rows.length - missingCount} of {rows.length}{' '}
+                        translated
+                        {missingCount > 0 ? ` · ${missingCount} missing` : ''}
+                    </p>
+
+                    {run && !run.running && (
+                        <RunSummary
+                            run={run}
+                            baseName={baseName}
+                            onKeepUnchanged={keepUnchanged}
+                            onDismiss={() => setRun(null)}
+                        />
+                    )}
+
+                    {tab === 'live' && liveLoading ? (
+                        <p className="flex items-center gap-2 text-sm text-gray-500">
+                            <CircleNotch className="size-4 animate-spin" /> Loading courses, folders
+                            and product pages…
+                        </p>
+                    ) : (
+                        <>
+                            {tab === 'live' && liveErrors.length > 0 && (
+                                <div className="flex items-center justify-between gap-2 rounded-md border border-warning-200 bg-warning-50 p-2 text-sm text-warning-700">
+                                    <span>Some live data could not be loaded.</span>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => liveErrors.forEach((q) => void q.refetch())}
+                                    >
+                                        Retry
+                                    </MyButton>
+                                </div>
+                            )}
+                            {shown.length === 0 ? (
+                                <p className="rounded-md border border-dashed border-neutral-200 p-6 text-center text-sm text-gray-500">
+                                    {rows.length === 0
+                                        ? tab === 'site'
+                                            ? 'No page texts yet.'
+                                            : 'No courses, folders or product pages found.'
+                                        : missingOnly && !query
+                                          ? 'Everything here is translated.'
+                                          : 'No texts match.'}
+                                </p>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {shown.slice(0, visible).map((row) => (
+                                        <TranslationRow
+                                            key={`${locale}:${row.source}`}
+                                            row={row}
+                                            locale={locale}
+                                            baseLocale={base}
+                                            baseName={baseName}
+                                            translation={dict?.[row.source] || ''}
+                                            kept={isKeptAsBase(dict, row.source)}
+                                        />
+                                    ))}
+                                </ul>
+                            )}
+                            {shown.length > visible && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                                >
+                                    Show more ({shown.length - visible} left)
+                                </MyButton>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
+        </MyDialog>
+    );
+};
+
+const RunSummary = ({
+    run,
+    baseName,
+    onKeepUnchanged,
+    onDismiss,
+}: {
+    run: AiRun;
+    baseName: string;
+    onKeepUnchanged: () => void;
+    onDismiss: () => void;
+}) => (
+    <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
+        <div className="flex items-start justify-between gap-2">
+            <p className="text-gray-700">
+                Translated {run.translated} text{run.translated === 1 ? '' : 's'}.
+                {run.failed.length > 0 && ` ${run.failed.length} could not be translated safely.`}
+            </p>
+            <MyButton buttonType="text" scale="small" onClick={onDismiss}>
+                Dismiss
+            </MyButton>
+        </div>
+        {run.error && (
+            <p className="flex items-center gap-1 text-danger-600">
+                <WarningCircle className="size-4 shrink-0" /> {run.error}
+            </p>
+        )}
+        {run.unchanged.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-gray-600">
+                    The AI left {run.unchanged.length} text{run.unchanged.length === 1 ? '' : 's'}{' '}
+                    unchanged (often names or brands).
+                </p>
+                <MyButton buttonType="secondary" scale="small" onClick={onKeepUnchanged}>
+                    Keep them in {baseName}
+                </MyButton>
+            </div>
+        )}
+        {run.tooLong.length > 0 && (
+            <p className="text-gray-600">
+                {run.tooLong.length} very long text{run.tooLong.length === 1 ? ' was' : 's were'}{' '}
+                skipped — translate
+                {run.tooLong.length === 1 ? ' it' : ' them'} by hand.
+            </p>
+        )}
+        {run.failed.length > 0 && (
+            <details>
+                <summary className="cursor-pointer text-gray-600">
+                    Show the texts that failed
+                </summary>
+                <ul className="mt-1 space-y-1">
+                    {run.failed.slice(0, 50).map((f) => (
+                        <li key={f.source} className="text-caption text-gray-500">
+                            <span className="line-clamp-1 font-medium text-gray-700">
+                                {f.source}
+                            </span>{' '}
+                            {f.reason}
+                        </li>
+                    ))}
+                </ul>
+            </details>
+        )}
+    </div>
+);
+
+const TranslationRow = ({
+    row,
+    locale,
+    baseLocale,
+    baseName,
+    translation,
+    kept,
+}: {
+    row: Row;
+    locale: string;
+    baseLocale: string;
+    baseName: string;
+    translation: string;
+    kept: boolean;
+}) => {
+    const [draft, setDraft] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [rowError, setRowError] = useState<string | null>(null);
+    const value = draft ?? translation;
+    const looksLikeHtml = /<[a-z][^>]*>/i.test(row.source);
+
+    const commit = () => {
+        if (draft === null) return;
+        const next = draft;
+        setDraft(null);
+        if (next === translation) return;
+        // Typing the base text itself means "keep it as is".
+        writeDictionary(locale, (d) =>
+            next === row.source ? keepAsBase(d, [row.source]) : setTranslation(d, row.source, next)
+        );
+    };
+
+    const translateAgain = async () => {
+        setBusy(true);
+        setRowError(null);
+        try {
+            const res = await translateSiteStrings({
+                strings: [row.source],
+                target_locale: locale,
+                source_locale: baseLocale,
+                skip_memory: true,
+            });
+            const out = res.translations?.[row.source];
+            if (typeof out === 'string' && out.trim()) {
+                writeDictionary(locale, (d) =>
+                    out === row.source
+                        ? keepAsBase(d, [row.source])
+                        : setTranslation(d, row.source, out)
+                );
+            } else {
+                setRowError(
+                    res.failed?.[0]?.reason || 'The AI could not translate this text safely.'
+                );
+            }
+        } catch (err) {
+            setRowError(errorDetail(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <li className="space-y-2 rounded-md border border-neutral-200 bg-white p-3">
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                    {row.group && (
+                        <span className="text-caption font-medium uppercase text-gray-400">
+                            {row.group}
+                        </span>
+                    )}
+                    <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm text-gray-800">
+                        {row.source}
+                    </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                    {kept ? (
+                        <StatusChip
+                            text={`Same as ${baseName}`}
+                            textSize="text-caption"
+                            status="INFO"
+                            showIcon={false}
+                        />
+                    ) : translation ? (
+                        <StatusChip
+                            text="Translated"
+                            textSize="text-caption"
+                            status="SUCCESS"
+                            showIcon={false}
+                        />
+                    ) : (
+                        <StatusChip
+                            text="Missing"
+                            textSize="text-caption"
+                            status="WARNING"
+                            showIcon={false}
+                        />
+                    )}
+                </div>
+            </div>
+            <Textarea
+                rows={looksLikeHtml || row.source.length > 120 ? 4 : 2}
+                value={value}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                placeholder={`${languageName(locale)} translation`}
+                aria-label={`${languageName(locale)} translation`}
+                className="text-sm"
+            />
+            {looksLikeHtml && (
+                <p className="text-caption text-gray-400">
+                    Keep the &lt;tags&gt; exactly as they are; translate only the words.
+                </p>
+            )}
+            {rowError && <p className="text-caption text-danger-600">{rowError}</p>}
+            <div className="flex flex-wrap items-center gap-1">
+                {!kept && (
+                    <MyButton
+                        buttonType="text"
+                        scale="small"
+                        onClick={() => writeDictionary(locale, (d) => keepAsBase(d, [row.source]))}
+                        title="Names and brands that read the same in every language"
+                    >
+                        Same as {baseName}
+                    </MyButton>
+                )}
+                {(translation || kept) && (
+                    <MyButton
+                        buttonType="text"
+                        scale="small"
+                        className="gap-1"
+                        onClick={() =>
+                            writeDictionary(locale, (d) => setTranslation(d, row.source, ''))
+                        }
+                    >
+                        <ArrowCounterClockwise className="size-3" /> Clear
+                    </MyButton>
+                )}
+                <MyButton
+                    buttonType="text"
+                    scale="small"
+                    className="gap-1"
+                    disable={busy}
+                    onClick={translateAgain}
+                >
+                    {busy ? (
+                        <CircleNotch className="size-3 animate-spin" />
+                    ) : (
+                        <Sparkle className="size-3" />
+                    )}
+                    {translation && !kept ? 'Translate again with AI' : 'Translate with AI'}
+                </MyButton>
+            </div>
+        </li>
+    );
+};

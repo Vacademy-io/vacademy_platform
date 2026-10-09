@@ -1,4 +1,5 @@
-import { createFileRoute, retainSearchParams } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
+import { retainSiteLanguage } from '@/routes/$tagName/-utils/catalogue-route-search';
 import { z } from 'zod';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -71,9 +72,10 @@ function ProductPageErrorScreen({ error }: { error: unknown }) {
 export const Route = createFileRoute('/product-pages/$productPageCode/')({
     validateSearch: productPageSearchSchema,
     // A link into a product page from a page read in Hindi (?lang=hi) keeps
-    // the language even when the link itself does not carry it. Only acts when
-    // the current URL has ?lang=, i.e. on sites with site languages.
-    search: { middlewares: [retainSearchParams(['lang'])] },
+    // the language even when the link itself does not carry it — only while a
+    // site with languages is on screen, so a stray ?lang= on a single-language
+    // site is never carried (the same middleware the catalogue routes use).
+    search: { middlewares: [retainSiteLanguage] },
     component: RouteComponent,
     errorComponent: ({ error }) => <ProductPageErrorScreen error={error} />,
     pendingComponent: Spinner,

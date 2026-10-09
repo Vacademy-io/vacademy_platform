@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useTranslation } from "react-i18next";
 import { CaretLeft, CaretRight, Clock, ChalkboardTeacher, Star } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -453,7 +453,7 @@ const HeroSectionPlaceholder: React.FC<{
   textAlign,
   backgroundColor,
 }) => {
-  const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
 
   const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
@@ -471,7 +471,7 @@ const HeroSectionPlaceholder: React.FC<{
           return;
         }
       }
-      navigate({ to: target });
+      void siteNavigate(target);
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {
@@ -793,7 +793,7 @@ const HeroSectionWithState: React.FC<{
   statChips,
   trust,
 }) => {
-  const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
   const [resolvedBgUrl, setResolvedBgUrl] = useState<string | null>(heroBackgroundImage || null);
   const [bgLoadFailed, setBgLoadFailed] = useState(false);
@@ -867,7 +867,7 @@ const HeroSectionWithState: React.FC<{
           return;
         }
       }
-      navigate({ to: target });
+      void siteNavigate(target);
     } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
       // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
       window.dispatchEvent(new CustomEvent('openAudienceForm', {

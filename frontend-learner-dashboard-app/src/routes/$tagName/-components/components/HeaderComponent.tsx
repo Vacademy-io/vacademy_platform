@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useTranslation } from "react-i18next";
 import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -94,6 +95,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const siteLocale = useCatalogueLocale();
     const [togle, settogle] = useState(false);
     const navigate = useNavigate();
+    const siteNavigate = useSiteNavigate();
     const location = useLocation();
     const domainRouting = useDomainRouting();
     const { getItemCountByMode, items, syncCart } = useCartStore();
@@ -425,7 +427,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         if (matchedPage) {
           // Get the proper navigation route for this page
           const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
-          navigate({ to: navigationRoute });
+          void siteNavigate(navigationRoute);
           return;
         }
       }
@@ -449,7 +451,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
       }
 
       // Navigate to the route as-is (for custom internal routes)
-      navigate({ to: route });
+      void siteNavigate(route);
     };
 
 
@@ -1126,7 +1128,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 });
                                 window.dispatchEvent(event);
                               } else {
-                                navigate({ to: base.route });
+                                void siteNavigate(base.route);
                               }
                             }}
                             // No style set = the original rule here: first filled, the rest plain text.

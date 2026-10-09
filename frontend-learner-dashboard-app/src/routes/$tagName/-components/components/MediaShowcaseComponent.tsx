@@ -1,5 +1,5 @@
 import React, { useState, useEffect ,useMemo} from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -279,7 +279,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
   const domainRouting = useDomainRouting();
   const { roundedEdges = true } = styles;
 
@@ -434,7 +434,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     switch (button.action) {
       case "navigate":
         if (button.target) {
-          navigate({ to: button.target });
+          void siteNavigate(button.target);
         }
         break;
       case "openLeadCollection":

@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useSiteNavigate } from "../../-utils/catalogue-route-search";
 import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { RouteMatcher } from "../../-services/route-matcher";
@@ -28,6 +29,7 @@ export const FooterComponent: React.FC<FooterProps & {
   tagName = "home"
 }) => {
   const navigate = useNavigate();
+  const siteNavigate = useSiteNavigate();
   
   // Helper function to handle footer link navigation
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
@@ -44,7 +46,7 @@ export const FooterComponent: React.FC<FooterProps & {
       const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
       if (matchedPage) {
         const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
-        navigate({ to: navigationRoute });
+        void siteNavigate(navigationRoute);
         return;
       }
     }
@@ -55,7 +57,7 @@ export const FooterComponent: React.FC<FooterProps & {
       return;
     }
 
-    navigate({ to: route });
+    void siteNavigate(route);
   };
 
   const handleSocialLinkNavigation = (url: string, openInSameTab: boolean = false) => {

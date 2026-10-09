@@ -12,12 +12,14 @@ import {
     CREATE_PRODUCT_PAGE_CUSTOM_FIELD,
     REORDER_PRODUCT_PAGE_CUSTOM_FIELDS,
     UPDATE_PRODUCT_PAGE_CUSTOM_FIELD,
+    SYNC_PRODUCT_PAGE_CATALOGUE,
 } from '@/constants/urls';
 import type {
     ProductPageResponse,
     ProductPageRequest,
     ProductPageCouponRequest,
 } from '../-types/product-page-types';
+import type { CatalogueSyncResponse } from '../-utils/catalogue-sync';
 
 export const getAllProductPages = async (
     instituteId: string
@@ -143,6 +145,26 @@ export const updateProductPageCustomField = async (
         UPDATE_PRODUCT_PAGE_CUSTOM_FIELD(productPageId, customFieldId),
         update,
         { params: { instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * Adds one mapping per catalogue-published course version that the page does
+ * not sell yet (server side, saved at once — nothing waits for Save). By
+ * default it also switches off mappings whose course left the catalogue;
+ * pass `deactivateMissing: false` to keep them.
+ */
+export const syncProductPageCatalogue = async (
+    productPageId: string,
+    instituteId: string,
+    opts: { deactivateMissing?: boolean } = {}
+): Promise<CatalogueSyncResponse> => {
+    const response = await authenticatedAxiosInstance.post<CatalogueSyncResponse>(
+        SYNC_PRODUCT_PAGE_CATALOGUE(productPageId, instituteId),
+        null,
+        // The server default is true; only the opt-out travels.
+        opts.deactivateMissing === false ? { params: { deactivateMissing: false } } : undefined
     );
     return response.data;
 };

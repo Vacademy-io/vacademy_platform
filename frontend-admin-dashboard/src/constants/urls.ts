@@ -1623,6 +1623,9 @@ export const REORDER_PRODUCT_PAGE_CUSTOM_FIELDS = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/order`;
 export const UPDATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+// Adds every catalogue course version not yet on the page (site cart store page / learning paths).
+export const SYNC_PRODUCT_PAGE_CATALOGUE = (productPageId: string, instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${encodeURIComponent(productPageId)}/sync-catalogue?instituteId=${encodeURIComponent(instituteId)}`;
 
 // Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
 // are admin-gated via JWT + clientId header (auto-injected by axiosInstance);

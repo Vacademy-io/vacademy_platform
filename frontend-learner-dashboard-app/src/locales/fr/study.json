@@ -3,7 +3,9 @@
         "tab": {
             "all": "Tous les {{courses}}",
             "inProgress": "En cours",
-            "completed": "Terminés"
+            "completed": "Terminés",
+            "scrollStart": "Faire défiler les onglets en arrière",
+            "scrollEnd": "Faire défiler les onglets en avant"
         },
         "toast": {
             "loadError": "Une erreur s'est produite lors du chargement des {{courses}}. Veuillez réessayer.",
@@ -31,6 +33,11 @@
         },
         "card": {
             "untitledPackage": "Pack sans titre"
+        },
+        "customTab": {
+            "open": "Ouvrir",
+            "coursesCount": "{{count}} cours",
+            "productPagesEmpty": "Rien à afficher ici pour l'instant"
         }
     },
     "filters": {

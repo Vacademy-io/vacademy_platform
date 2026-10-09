@@ -16,6 +16,9 @@ import { ProductPagePreview } from './ProductPagePreview';
 import { MyButton } from '@/components/design-system/button';
 import { PageDesignEditor } from './PageDesignEditor';
 import { ProductPageCustomFieldsManager } from './ProductPageCustomFieldsManager';
+import { CatalogueSyncPanel } from './CatalogueSyncPanel';
+import { StorePageNotice } from './StorePageNotice';
+import { distinctInviteCount } from '../-utils/store-page';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -61,6 +64,8 @@ export const ProductPageEditor = () => {
         addRowWithData,
         updateRow,
         removeRow,
+        moveRow,
+        reseedMappings,
         save,
         isSaving,
         saveError,
@@ -265,6 +270,14 @@ export const ProductPageEditor = () => {
                                     — you can change it per session.
                                 </p>
                             </div>
+                            <div className="mb-4">
+                                <CatalogueSyncPanel
+                                    productPageId={productPageId}
+                                    instituteId={instituteId}
+                                    isDirty={isDirty}
+                                    onSynced={reseedMappings}
+                                />
+                            </div>
                             <CourseSessionSelector
                                 mappingRows={mappingRows}
                                 suggestions={pageJson?.suggestions ?? {}}
@@ -274,6 +287,7 @@ export const ProductPageEditor = () => {
                                 onAdd={addRowWithData}
                                 onUpdate={updateRow}
                                 onRemove={removeRow}
+                                onMove={moveRow}
                             />
                         </div>
                     )}
@@ -296,6 +310,11 @@ export const ProductPageEditor = () => {
 
                     {activeTab === 'custom-fields' && (
                         <div className="mx-auto max-w-2xl">
+                            <StorePageNotice
+                                productPageCode={page?.code}
+                                instituteId={instituteId}
+                                inviteCount={distinctInviteCount(mappingRows)}
+                            />
                             <ProductPageCustomFieldsManager
                                 productPageId={productPageId}
                                 instituteId={instituteId}

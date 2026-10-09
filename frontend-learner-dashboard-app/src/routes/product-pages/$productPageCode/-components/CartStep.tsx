@@ -78,6 +78,12 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     const [couponInput, setCouponInput] = useState(couponCode);
     const [couponError, setCouponError] = useState('');
     const [couponSuccess, setCouponSuccess] = useState(!!couponCode && discountAmount > 0);
+    // The coupon can also be dropped from outside this step: the page's prices
+    // were fetched again and the basket no longer costs what it was worked out
+    // for (see syncPageData). It then reads as a cart change, not as applied.
+    const couponDropped = couponSuccess && !couponCode;
+    const couponApplied = couponSuccess && !couponDropped;
+    const couponNotice = couponError || (couponDropped ? t('cartStep.couponChanged') : '');
 
     const selectedMappings = pageData.mappings.filter((m) =>
         selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
@@ -244,7 +250,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                             <span className="text-caption font-semibold text-gray-700">{t('cartStep.couponCard.title')}</span>
                         </div>
                         <div className="px-4 py-4">
-                            {couponSuccess ? (
+                            {couponApplied ? (
                                 <div className="flex items-center justify-between gap-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2">
                                     <div className="flex min-w-0 items-center gap-2">
                                         <CheckCircle className="size-4 shrink-0 text-success-600" aria-hidden="true" />
@@ -285,7 +291,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                     </button>
                                 </div>
                             )}
-                            {couponError && <p className="mt-2 text-caption text-danger-600">{couponError}</p>}
+                            {couponNotice && <p className="mt-2 text-caption text-danger-600">{couponNotice}</p>}
                         </div>
                     </div>
                 )}

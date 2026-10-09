@@ -11,6 +11,14 @@ interface ProductPageStore {
     // Server data
     pageData: ProductPageData | null;
     setPageData: (data: ProductPageData) => void;
+    /**
+     * The page arrived again after the checkout started — the refetch after a
+     * 409 "price changed", or a background refresh. Every total is priced from
+     * this copy, so it takes the new one; a selection the page no longer sells
+     * is dropped, and so is a coupon whose discount was worked out for a basket
+     * that no longer costs the same (the learner can apply it again).
+     */
+    syncPageData: (data: ProductPageData) => void;
 
     // Navigation
     step: ProductPageStep;
@@ -48,6 +56,13 @@ interface ProductPageStore {
     setCpoSelection: (sfpIds: string[], total: number) => void;
     setCpoCustomAmount: (amount: number | undefined) => void;
 
+    /**
+     * A different basket on the same page: the coupon and the CPO plan and
+     * instalment pick were worked out for the previous one, so they go. The
+     * learner's details stay.
+     */
+    clearBasketState: () => void;
+
     // UTM params (forwarded from URL)
     utmParams: Record<string, string>;
     setUtmParams: (params: Record<string, string>) => void;
@@ -66,28 +81,67 @@ interface ProductPageStore {
     reset: () => void;
 }
 
-const initialState = {
-    pageData: null,
-    step: 'CATALOG' as ProductPageStep,
-    selectedPsOptionIds: [],
+const noCoupon = {
     couponCode: '',
     couponId: '',
     appliedCouponDiscountId: '',
     discountAmount: 0,
-    registrationData: {},
-    userId: null,
-    abandonedCartIds: [],
-    utmParams: {},
+};
+
+const noCpoState = {
     cpoUserPlanId: null,
     cpoSelectedSfpIds: [],
     cpoSelectedTotal: 0,
     cpoCustomAmount: undefined,
 };
 
+const initialState = {
+    pageData: null,
+    step: 'CATALOG' as ProductPageStep,
+    selectedPsOptionIds: [],
+    ...noCoupon,
+    registrationData: {},
+    userId: null,
+    abandonedCartIds: [],
+    utmParams: {},
+    ...noCpoState,
+};
+
+/**
+ * What the basket costs before any coupon — the figure a coupon is worked out
+ * against. Same order the server applies them: a configured basket price
+ * REPLACES the sum of item prices, then the best offer comes off.
+ */
+const priceBeforeCoupon = (state: ProductPageStore): number => {
+    const quote = state.basketQuote();
+    const base = quote ? quote.total : state.totalPrice();
+    return Math.max(0, base - (state.appliedOffer()?.amount ?? 0));
+};
+
 export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     ...initialState,
 
     setPageData: (data) => set({ pageData: data }),
+
+    syncPageData: (data) => {
+        const before = get();
+        if (before.pageData === data) return;
+        const onSale = new Set(
+            data.mappings
+                .filter((m) => m.status === 'ACTIVE')
+                .map((m) => m.ps_invite_payment_option_id)
+        );
+        const kept = before.selectedPsOptionIds.filter((id) => onSale.has(id));
+        const selectionChanged = kept.length !== before.selectedPsOptionIds.length;
+        const priceBefore = priceBeforeCoupon(before);
+
+        set(selectionChanged ? { pageData: data, selectedPsOptionIds: kept } : { pageData: data });
+
+        const hadCoupon = !!before.couponCode || !!before.couponId || before.discountAmount > 0;
+        if (hadCoupon && (selectionChanged || priceBeforeCoupon(get()) !== priceBefore)) {
+            set(noCoupon);
+        }
+    },
 
     setStep: (step) => set({ step }),
 
@@ -114,8 +168,7 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     applyCoupon: (couponId, appliedCouponDiscountId, discount) =>
         set({ couponId, appliedCouponDiscountId, discountAmount: discount }),
 
-    clearCoupon: () =>
-        set({ couponId: '', appliedCouponDiscountId: '', discountAmount: 0, couponCode: '' }),
+    clearCoupon: () => set(noCoupon),
 
     setRegistrationData: (data) => set({ registrationData: data }),
 
@@ -126,6 +179,8 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     setCpoSelection: (sfpIds, total) => set({ cpoSelectedSfpIds: sfpIds, cpoSelectedTotal: total }),
 
     setCpoCustomAmount: (amount) => set({ cpoCustomAmount: amount }),
+
+    clearBasketState: () => set({ ...noCoupon, ...noCpoState }),
 
     setUtmParams: (params) => set({ utmParams: params }),
 
@@ -164,16 +219,9 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
         return bestOffer(parseOffers(pageData.settings_json), base, selectedPsOptionIds.length);
     },
 
-    finalPrice: () => {
-        const { discountAmount } = get();
-        // Same order the server applies them: a configured basket price REPLACES
-        // the sum of item prices, then the best offer, then the coupon — so a
-        // coupon discounts what the visitor would actually have paid.
-        const quote = get().basketQuote();
-        const base = quote ? quote.total : get().totalPrice();
-        const afterOffer = Math.max(0, base - (get().appliedOffer()?.amount ?? 0));
-        return Math.max(0, afterOffer - discountAmount);
-    },
+    // The coupon comes off last, so it discounts what the visitor would
+    // actually have paid (see priceBeforeCoupon).
+    finalPrice: () => Math.max(0, priceBeforeCoupon(get()) - get().discountAmount),
 
     reset: () => set(initialState),
 }));

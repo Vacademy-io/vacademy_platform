@@ -96,7 +96,9 @@ export const CatalogueSyncPanel = ({
     // catalogue JSON, so it happens only when a sync starts. Until then the
     // panel goes by what the sites list already cached (null = not known).
     const lookUp = isStorePage === undefined;
-    const storeSites = useStoreSites(instituteId, lookUp ? productPageCode : null, { fetch: false });
+    const storeSites = useStoreSites(instituteId, lookUp ? productPageCode : null, {
+        fetch: false,
+    });
     const storePage = isStorePage ?? !!storeSites?.length;
     // The admin's own tick wins; until then the default follows the kind of
     // page (which may only be known once a sync has started).
@@ -116,7 +118,8 @@ export const CatalogueSyncPanel = ({
         if (deactivateChoice === null && lookUp && (productPageCode || '').trim()) {
             setChecking(true);
             try {
-                store = (await fetchStoreSites(queryClient, instituteId, productPageCode)).length > 0;
+                const sites = await fetchStoreSites(queryClient, instituteId, productPageCode);
+                store = sites.length > 0;
             } catch {
                 // The sites did not load: keep what the cache said (unticked
                 // when nothing was cached, so the sync then only adds).
@@ -196,7 +199,9 @@ export const CatalogueSyncPanel = ({
                     disable={blocked || running || checking}
                     onClick={startSync}
                 >
-                    <ArrowsClockwise className={cn('size-3.5', (running || checking) && 'animate-spin')} />
+                    <ArrowsClockwise
+                        className={cn('size-3.5', (running || checking) && 'animate-spin')}
+                    />
                     {running ? 'Syncing…' : 'Sync all catalogue courses'}
                 </MyButton>
             </div>

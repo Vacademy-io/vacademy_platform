@@ -33,7 +33,10 @@ export const useStoreSites = (
     // findStoreSites parses every site's whole catalogue JSON: redo it only
     // when the sites or the code change, not on every parent re-render.
     return useMemo(
-        () => (hasCode && catalogues === undefined ? null : findStoreSites(catalogues, productPageCode)),
+        () =>
+            hasCode && catalogues === undefined
+                ? null
+                : findStoreSites(catalogues, productPageCode),
         [hasCode, catalogues, productPageCode]
     );
 };

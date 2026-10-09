@@ -118,8 +118,9 @@ describe('Custom Fields tab: StorePageNotice', () => {
         const note = await screen.findByRole('note');
         expect(getCatalogueTags).toHaveBeenCalledTimes(1);
         expect(note).toHaveTextContent('This is the store page of the site “main”');
-        expect(note).toHaveTextContent('(12 invites)');
-        expect(note).toHaveTextContent('your courses’ own invite links');
+        expect(note).toHaveTextContent(
+            'Custom fields are saved on every enroll invite this page sells (12 invites). On a store page those are your courses’ own invite links, so adding'
+        );
         // It no longer claims the page sells the whole catalogue (the sync skips some courses).
         expect(note).not.toHaveTextContent(/whole catalogue/);
     });

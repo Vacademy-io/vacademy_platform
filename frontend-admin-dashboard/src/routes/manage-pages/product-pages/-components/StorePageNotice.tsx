@@ -34,10 +34,13 @@ export const StorePageNotice = ({ productPageCode, instituteId, inviteCount }: S
                 </p>
                 <p>
                     Custom fields are saved on every enroll invite this page sells
-                    {inviteCount > 0 ? ` (${inviteCount} invite${inviteCount === 1 ? '' : 's'})` : ''}. On a store
-                    page those are your courses’ own invite links, so adding, editing or reordering a field here also
-                    changes the enrolment form of those courses everywhere — their invite links and catalogue
-                    enrolment included. Keep the store form short (name, email, phone).
+                    {inviteCount > 0
+                        ? ` (${inviteCount} invite${inviteCount === 1 ? '' : 's'})`
+                        : ''}
+                    . On a store page those are your courses’ own invite links, so adding, editing
+                    or reordering a field here also changes the enrolment form of those courses
+                    everywhere — their invite links and catalogue enrolment included. Keep the store
+                    form short (name, email, phone).
                 </p>
             </div>
         </div>

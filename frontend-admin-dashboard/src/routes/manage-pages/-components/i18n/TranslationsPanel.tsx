@@ -224,7 +224,9 @@ export const TranslationsPanel = ({
                         // Only fill what is still missing: a translation the admin
                         // typed while this batch was running wins.
                         const stillMissing = Object.fromEntries(
-                            Object.entries(res.translations || {}).filter(([source]) => !d?.[source])
+                            Object.entries(res.translations || {}).filter(
+                                ([source]) => !d?.[source]
+                            )
                         );
                         const merged = mergeAiTranslations(d, stillMissing);
                         unchanged = merged.unchanged;

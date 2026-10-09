@@ -842,6 +842,20 @@ public class BulkAssignmentService {
                         vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                         vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
 
+                // Book the payment on the learner's account ledger as a charge raised and
+                // settled at once. Without it the plan (created ACTIVE, so never accrued) left
+                // the ledger empty and the side-view Account Summary fell back to the invoice
+                // list, showing the whole price as due with Total Paid 0. Same treatment as the
+                // CPO branch and subscription renewals; replay-safe per payment log.
+                if (amount != null && amount > 0) {
+                    userAccountLedgerService.recordSettledCharge(
+                            userId, instituteId,
+                            java.math.BigDecimal.valueOf(amount), currency,
+                            java.time.Instant.ofEpochMilli(paymentDate.getTime()).atZone(java.time.ZoneId.systemDefault()).toLocalDate(),
+                            "USER_PLAN", userPlan.getId(), paymentLogId,
+                            "Payment recorded at bulk enrollment");
+                }
+
                 // Generate invoice only when the institute opted in via
                 // INVOICE_SETTING.generateInvoiceOnManualEnroll AND the payment is not FREE.
                 // FREE paths (rent/membership, school enrollment) never generate an invoice.

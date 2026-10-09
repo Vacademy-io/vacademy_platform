@@ -40,6 +40,12 @@ export interface AdminDiscountFieldProps {
     instituteId?: string | null;
     /** Fires with the latest successful preview, or null when there is none / it failed. */
     onPreview?: (preview: AdminDiscountPreview | null) => void;
+    /**
+     * Fires with the server's rejection (e.g. an invalid or expired coupon), or null once
+     * the discount is valid / cleared. Lets the parent block Next/Preview — the field's
+     * own checks only cover completeness.
+     */
+    onServerErrorChange?: (error: string | null) => void;
     /** Hide the billing-cycles control even for subscriptions (invoices). */
     hideCycles?: boolean;
     /** Offer the "Coupon code" mode. Default true. */
@@ -81,6 +87,7 @@ export const AdminDiscountField = ({
     learnerEmail,
     instituteId,
     onPreview,
+    onServerErrorChange,
     hideCycles = false,
     allowCoupon = true,
     disablePreview = false,
@@ -123,6 +130,11 @@ export const AdminDiscountField = ({
     const [previewLoading, setPreviewLoading] = useState(false);
     const onPreviewRef = useRef(onPreview);
     onPreviewRef.current = onPreview;
+    const onServerErrorRef = useRef(onServerErrorChange);
+    onServerErrorRef.current = onServerErrorChange;
+    useEffect(() => {
+        onServerErrorRef.current?.(previewError);
+    }, [previewError]);
     const requestSeq = useRef(0);
 
     const update = (patch: Partial<AdminDiscountRequest>) => onChange({ ...value, ...patch });

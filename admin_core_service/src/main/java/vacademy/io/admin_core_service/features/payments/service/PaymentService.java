@@ -168,7 +168,7 @@ public class PaymentService {
                         item.setSourceId(discount.getId());
                         // Stored as negative — calculateDiscountAmount's "< 0" branch is the
                         // canonical convention for this column.
-                        item.setAmount(-(int) Math.round(amount));
+                        item.setAmount(-(Math.round(amount * 100.0) / 100.0));
                         paymentLogLineItemRepository.save(item);
                         log.info("Recorded {} line item {} for paymentLog={} discount={} amount={}",
                                         item.getType(), item.getId(), paymentLogId, discount.getId(), amount);

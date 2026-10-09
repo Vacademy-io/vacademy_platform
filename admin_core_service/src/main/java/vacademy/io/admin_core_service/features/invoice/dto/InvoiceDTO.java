@@ -28,6 +28,8 @@ public class InvoiceDTO {
     private LocalDateTime dueDate;
     private BigDecimal subtotal;
     private BigDecimal discountAmount;
+    /** Admin who applied a discount on an admin-created invoice; null otherwise. Admin API only. */
+    private String discountGrantedByUserId;
     private BigDecimal taxAmount;
     private BigDecimal totalAmount;
     private String currency;

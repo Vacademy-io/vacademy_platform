@@ -629,10 +629,14 @@ class CatalogueSyncPlannerTest {
                 CatalogueSyncPlanner.pageTerms(rows, picks.subList(1, 3)));
     }
 
-    /* ── free courses: charged nothing, so their currency decides nothing ── */
+    /* ── free courses: charged nothing, so their gateway and currency decide nothing ── */
+
+    private static List<Integer> addedOrders(CatalogueSyncPlanner.Plan plan) {
+        return plan.adds().stream().map(CatalogueSyncPlanner.Add::displayOrder).toList();
+    }
 
     @Test
-    @DisplayName("an empty page whose first catalogue course is free and labelled INR still adds the paid AUD courses")
+    @DisplayName("an empty page whose first catalogue course is free and labelled INR still adds the paid AUD courses, paid ones first")
     void freeFirstCourseDoesNotSetAnEmptyPagesCurrency() {
         // Free plans are created in INR by the server, so a free course's label says nothing.
         List<CatalogueSyncPlanner.Pick> picks = List.of(
@@ -642,14 +646,38 @@ class CatalogueSyncPlannerTest {
 
         CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(List.of(), picks, true);
 
-        assertEquals(List.of("a-intro", "physics", "chemistry"), addedSessions(plan));
+        // The paid courses are numbered first, so the page's first row (whose
+        // currency by-code shows) is an AUD course, not the free INR one.
+        assertEquals(List.of("physics", "chemistry", "a-intro"), addedSessions(plan));
+        assertEquals(List.of(0, 1, 2), addedOrders(plan));
         assertTrue(plan.skipped().isEmpty(), plan.skipped().toString());
         assertEquals(new CatalogueSyncPlanner.Terms("EWAY", "AUD"), CatalogueSyncPlanner.pageTerms(List.of(), picks));
         assertTrue(plan.warnings().isEmpty(), plan.warnings().toString());
     }
 
     @Test
-    @DisplayName("free courses join a priced page whatever their currency labels; their gateway is still checked")
+    @DisplayName("an empty page whose first catalogue course is free on a stale gateway still adds every paid course on the real one")
+    void freeFirstCourseOnAStaleGatewayDoesNotSetTheGateway() {
+        // A free course whose default invite fell back to STRIPE before Razorpay
+        // was set up sorts first; the paid courses are on RAZORPAY.
+        List<CatalogueSyncPlanner.Pick> picks = List.of(
+                sold("ps-intro", "STRIPE", "INR", 0),
+                sold("ps-bio", "RAZORPAY", "INR", 999),
+                sold("ps-chem", "RAZORPAY", "INR", 1999));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(List.of(), picks, true);
+
+        assertEquals(List.of("ps-bio", "ps-chem", "ps-intro"), addedSessions(plan));
+        assertEquals(List.of(0, 1, 2), addedOrders(plan));
+        assertTrue(plan.skipped().isEmpty(), plan.skipped().toString());
+        assertEquals(new CatalogueSyncPlanner.Terms("RAZORPAY", "INR"),
+                CatalogueSyncPlanner.pageTerms(List.of(), picks));
+        // The free course is never charged, so as far as checkout goes the page is on one gateway.
+        assertTrue(plan.warnings().isEmpty(), plan.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("free courses join a priced page whatever their gateway or currency labels")
     void freeCoursesJoinAPricedPage() {
         List<CatalogueSyncPlanner.Row> rows = List.of(rowSold("m1", 0, "a", "EWAY", "AUD", 499));
         List<CatalogueSyncPlanner.Pick> picks = List.of(sold("a", "EWAY", "AUD", 499),
@@ -657,28 +685,28 @@ class CatalogueSyncPlannerTest {
                 // Invite and plan disagree, but nothing is charged in either.
                 with(sold("freesplit", "EWAY", "INR", 0), "planCurrency", "GBP"),
                 with(sold("noprice", "EWAY", "INR", 0), "price", null),
-                // The first course in a cart picks the gateway, free or not.
+                // Checkout takes the gateway from the cart's first priced course, never from a free one.
                 sold("freestripe", "STRIPE", "INR", 0),
                 sold("paidinr", "EWAY", "INR", 999),
                 sold("paidaud", "EWAY", "AUD", 399));
 
         CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
 
-        assertEquals(List.of("freeinr", "freesplit", "noprice", "paidaud"), addedSessions(plan));
-        assertEquals(List.of(
-                "freestripe:" + CatalogueSyncPlanner.VENDOR_MISMATCH,
-                "paidinr:" + CatalogueSyncPlanner.CURRENCY_MISMATCH), skippedReasons(plan));
+        assertEquals(List.of("paidaud", "freeinr", "freesplit", "noprice", "freestripe"), addedSessions(plan));
+        assertEquals(List.of(1, 2, 3, 4, 5), addedOrders(plan));
+        assertEquals(List.of("paidinr:" + CatalogueSyncPlanner.CURRENCY_MISMATCH), skippedReasons(plan));
         assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("currency")), plan.warnings().toString());
+        assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("payment gateway")), plan.warnings().toString());
     }
 
     @Test
-    @DisplayName("a free row first on the page sets its gateway but not its currency, and is not warned about")
-    void freeRowDoesNotSetThePageCurrency() {
+    @DisplayName("a free row first on the page sets neither its gateway nor its currency, and is not warned about")
+    void freeRowDoesNotSetThePageTerms() {
         List<CatalogueSyncPlanner.Row> rows = List.of(
-                rowWith(rowSold("m1", 0, "a", "EWAY", "INR", 0), "planCurrency", "GBP"),
+                rowWith(rowSold("m1", 0, "a", "STRIPE", "INR", 0), "planCurrency", "GBP"),
                 rowSold("m2", 1, "b", "EWAY", "AUD", 499));
         List<CatalogueSyncPlanner.Pick> picks = List.of(
-                with(sold("a", "EWAY", "INR", 0), "planCurrency", "GBP"),
+                with(sold("a", "STRIPE", "INR", 0), "planCurrency", "GBP"),
                 sold("b", "EWAY", "AUD", 499),
                 sold("paidaud", "EWAY", "AUD", 399),
                 sold("paidinr", "EWAY", "INR", 399),
@@ -694,7 +722,101 @@ class CatalogueSyncPlannerTest {
                 CatalogueSyncPlanner.pageTerms(rows, picks.subList(2, 5)));
         // Checkout charges the free row nothing, so the page is not mixed, and its labels are not a price.
         assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("currency")), plan.warnings().toString());
+        assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("payment gateway")), plan.warnings().toString());
+        // The row itself stays exactly as it is.
         assertTrue(plan.deactivations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("a free course is never skipped for its gateway or currency; a priced one still is")
+    void termsReasonIgnoresFreeCourses() {
+        CatalogueSyncPlanner.Terms page = new CatalogueSyncPlanner.Terms("RAZORPAY", "INR");
+
+        assertNull(CatalogueSyncPlanner.termsReason(sold("free", "STRIPE", "USD", 0), page));
+        assertNull(CatalogueSyncPlanner.termsReason(with(sold("free", "STRIPE", "USD", 0), "planCurrency", "GBP"),
+                page));
+        assertNull(CatalogueSyncPlanner.termsReason(with(sold("noplan", "STRIPE", "USD", 0), "price", null), page));
+        assertNull(CatalogueSyncPlanner.termsReason(sold("free", "STRIPE", "USD", 0),
+                new CatalogueSyncPlanner.Terms(null, null)));
+        assertEquals(CatalogueSyncPlanner.VENDOR_MISMATCH,
+                CatalogueSyncPlanner.termsReason(sold("paid", "STRIPE", "INR", 1), page));
+        assertEquals(CatalogueSyncPlanner.CURRENCY_MISMATCH,
+                CatalogueSyncPlanner.termsReason(sold("paid", "RAZORPAY", "USD", 1), page));
+        assertNull(CatalogueSyncPlanner.termsReason(sold("paid", "razorpay", "inr", 1), page));
+    }
+
+    @Test
+    @DisplayName("courses added after a page's rows are numbered paid ones first, each in catalogue order")
+    void paidAdditionsAreNumberedFirst() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(row("m1", 0, "a"), row("m2", 3, "b"));
+        List<CatalogueSyncPlanner.Pick> picks = List.of(pick("a"), pick("b"),
+                with(pick("free1"), "price", 0.0),
+                pick("paid1"),
+                with(pick("free2"), "price", null),
+                pick("paid2"));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(List.of("paid1", "paid2", "free1", "free2"), addedSessions(plan));
+        assertEquals(List.of(4, 5, 6, 7), addedOrders(plan));
+        assertTrue(plan.deactivations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("the first priced row decides the gateway even when its invite names none (the institute default)")
+    void pricedRowOnTheInstituteDefaultDecides() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(
+                rowSold("m1", 0, "a", "STRIPE", "INR", 0),
+                rowWith(row("m2", 1, "b"), "vendor", " "));
+        List<CatalogueSyncPlanner.Pick> picks = List.of(
+                sold("a", "STRIPE", "INR", 0),
+                with(pick("b"), "vendor", " "),
+                with(pick("onstripe"), "vendor", "STRIPE"),
+                with(pick("ondefault"), "vendor", null),
+                with(with(pick("freestripe"), "vendor", "STRIPE"), "price", 0.0));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(new CatalogueSyncPlanner.Terms(null, "INR"),
+                CatalogueSyncPlanner.pageTerms(rows, picks.subList(2, 5)));
+        assertEquals(List.of("ondefault", "freestripe"), addedSessions(plan));
+        assertEquals(List.of("onstripe:" + CatalogueSyncPlanner.VENDOR_MISMATCH), skippedReasons(plan));
+    }
+
+    @Test
+    @DisplayName("a page where nothing is priced (basket pricing) takes every free course, and warns when they mix gateways")
+    void pageWithNothingPricedWarnsOnMixedGateways() {
+        // FLAT basket pricing: every course is 0 and the basket sets the money,
+        // so a cart is charged through its first course's gateway.
+        List<CatalogueSyncPlanner.Row> rows = List.of(rowSold("m1", 0, "a", "RAZORPAY", "INR", 0));
+        List<CatalogueSyncPlanner.Pick> picks = List.of(sold("a", "RAZORPAY", "INR", 0),
+                sold("b", "RAZORPAY", "INR", 0),
+                sold("c", "STRIPE", "USD", 0));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(new CatalogueSyncPlanner.Terms(null, null),
+                CatalogueSyncPlanner.pageTerms(rows, picks.subList(1, 3)));
+        assertEquals(List.of("b", "c"), addedSessions(plan));
+        assertTrue(plan.skipped().isEmpty(), plan.skipped().toString());
+        assertTrue(warns(plan, "more than one payment gateway (RAZORPAY, STRIPE). Checkout charges the whole cart "
+                + "through the gateway of the first course in it."), plan.warnings().toString());
+        assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("currency")), plan.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("paid courses on different gateways are warned about with the rule checkout follows")
+    void mixedPaidGatewaysNameTheCheckoutRule() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(rowSold("m1", 0, "a", "STRIPE", "INR", 0),
+                row("m2", 1, "b"),
+                rowWith(row("m3", 2, "c"), "vendor", "CASHFREE"));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows,
+                List.of(sold("a", "STRIPE", "INR", 0), pick("b"), pick("c")), true);
+
+        // The free STRIPE row is not a gateway any cart is charged through.
+        assertTrue(warns(plan, "more than one payment gateway (CASHFREE, RAZORPAY). Checkout charges the whole cart "
+                + "through the gateway of the first paid course in it."), plan.warnings().toString());
     }
 
     @Test

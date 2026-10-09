@@ -377,7 +377,7 @@ class ProductPageCatalogueSyncServiceTest {
     }
 
     @Test
-    @DisplayName("an empty page whose first catalogue course is free and labelled INR still gets the paid AUD courses")
+    @DisplayName("an empty page whose first catalogue course is free and labelled INR still gets the paid AUD courses, first")
     void freeFirstCourseDoesNotSetTheCurrency() {
         // The institute's seeded free plan is INR; its paid courses are AUD on Eway.
         catalogueRow("a-intro", Map.of("ActualPrice", 0.0, "InviteVendor", "EWAY"));
@@ -386,9 +386,29 @@ class ProductPageCatalogueSyncServiceTest {
 
         ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
 
-        assertEquals(List.of("a-intro", "b-physics", "c-chemistry"), res.getAddedPackageSessionIds());
+        assertEquals(List.of("b-physics", "c-chemistry", "a-intro"), res.getAddedPackageSessionIds());
         assertTrue(res.getSkipped().isEmpty());
-        assertEquals(3, saved().size());
+        // The free course is written last, so the page's first row is a paid AUD one.
+        List<ProductPageInviteMapping> saved = saved();
+        assertEquals(List.of("psli-b-physics", "psli-c-chemistry", "psli-a-intro"),
+                saved.stream().map(m -> m.getPsInvitePaymentOption().getId()).toList());
+        assertEquals(List.of(0, 1, 2), saved.stream().map(ProductPageInviteMapping::getDisplayOrder).toList());
+    }
+
+    @Test
+    @DisplayName("an empty page whose first catalogue course is free on a stale gateway still gets every paid course")
+    void freeFirstCourseDoesNotSetTheGateway() {
+        // The free course's default invite fell back to STRIPE before Razorpay was set up.
+        catalogueRow("a-intro", Map.of("ActualPrice", 0.0, "InviteVendor", "STRIPE"));
+        catalogueRow("b-biology", Map.of("ActualPrice", 999.0));
+        catalogueRow("c-chemistry", Map.of("ActualPrice", 1999.0));
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        assertEquals(List.of("b-biology", "c-chemistry", "a-intro"), res.getAddedPackageSessionIds());
+        assertTrue(res.getSkipped().isEmpty());
+        assertTrue(res.getWarnings().isEmpty(), res.getWarnings().toString());
+        assertEquals(List.of(0, 1, 2), saved().stream().map(ProductPageInviteMapping::getDisplayOrder).toList());
     }
 
     @Test

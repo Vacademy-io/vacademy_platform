@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { settlePendingPurchase } from "@/routes/$tagName/-components/site-cart/pending-purchases";
 
 const paymentResultSearchSchema = z.object({
   orderId: z.string().optional(),
@@ -143,6 +144,16 @@ function PaymentResultPage() {
     queryStatus === "failed" ||
     queryStatus === "cancelled";
   const isPending = !isPaid && !isFailed && (!!orderId || isLoading);
+
+  // Site-wide cart: a product-page checkout that left for a redirect gateway
+  // noted what it was buying (see site-cart/pending-purchases). Once the
+  // gateway settles, paid courses leave the cart; a failed payment only drops
+  // the note so the courses stay ready to retry. A no-op without such a note.
+  useEffect(() => {
+    if (!orderId || isInvoicePayment) return;
+    if (isPaid) void settlePendingPurchase(orderId, "paid");
+    else if (isFailed) void settlePendingPurchase(orderId, "failed");
+  }, [orderId, isInvoicePayment, isPaid, isFailed]);
 
   // Invoice payments: just show the success screen, no enrollment redirect.
   // The invoice page is public; the learner may not have a dashboard session.

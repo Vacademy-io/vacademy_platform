@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, retainSearchParams } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,10 @@ const productPageSearchSchema = z.object({
     // chose "Class 6" does not land back on every level. Unlike courseIds this
     // only narrows what is VISIBLE — it selects nothing into the cart.
     levels: z.string().optional(),
+    // The site language (?lang=hi) the visitor was reading the catalogue in.
+    // Declared so it survives this route's own search handling and goes back
+    // out with the visitor (see backFromCart in ProductPageShell).
+    lang: z.string().optional(),
     utm_source: z.string().optional(),
     utm_medium: z.string().optional(),
     utm_campaign: z.string().optional(),
@@ -60,6 +64,10 @@ function ProductPageErrorScreen({ error }: { error: unknown }) {
 
 export const Route = createFileRoute('/product-pages/$productPageCode/')({
     validateSearch: productPageSearchSchema,
+    // A link into a product page from a page read in Hindi (?lang=hi) keeps
+    // the language even when the link itself does not carry it. Only acts when
+    // the current URL has ?lang=, i.e. on sites with site languages.
+    search: { middlewares: [retainSearchParams(['lang'])] },
     component: RouteComponent,
     errorComponent: ({ error }) => <ProductPageErrorScreen error={error} />,
     pendingComponent: Spinner,
@@ -132,9 +140,17 @@ function ProductPageLoader({
     const { data } = useSuspenseQuery(handleGetProductPage(productPageCode, instituteId));
     const vendor = ((data?.vendor || 'FREE').toUpperCase()) as PaymentVendor;
 
+    // The shell initialises its steps and selection once per mount, and the
+    // router keeps this route mounted when only the code or the query changes
+    // (the site cart's checkout can open another page, or this page with a
+    // different basket, from its header). Keying on what that initialisation
+    // reads makes such a navigation start fresh; a first visit is unaffected.
+    const shellKey = [productPageCode, search.courseIds ?? '', search.defaultTab ?? ''].join('|');
+
     return (
         <PaymentGatewayWrapper vendor={vendor} instituteId={instituteId}>
             <ProductPageShell
+                key={shellKey}
                 productPageCode={productPageCode}
                 instituteId={instituteId}
                 pageData={data}
@@ -142,6 +158,7 @@ function ProductPageLoader({
                 defaultTab={search.defaultTab}
                 tagName={search.tagName}
                 levels={search.levels}
+                lang={search.lang}
                 utmParams={{
                     utm_source: search.utm_source,
                     utm_medium: search.utm_medium,

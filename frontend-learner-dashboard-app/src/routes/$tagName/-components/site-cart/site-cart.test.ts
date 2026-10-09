@@ -1,0 +1,198 @@
+import { describe, expect, it } from "vitest";
+import type { SiteCartItem } from "../../-utils/site-cart";
+import {
+  SITE_CART_MAX_ITEMS,
+  capCartAdd,
+  cartItemFromMapping,
+  isMeaningfulLevel,
+  versionLabel,
+} from "./site-cart-items";
+import { precheckSiteCart, unavailableSessionIds } from "./site-cart-precheck";
+import { readCatalogueTheme } from "./catalogue-theme-snapshot";
+
+const item = (courseId: string, packageSessionId: string, extra: Partial<SiteCartItem> = {}): SiteCartItem => ({
+  courseId,
+  packageSessionId,
+  title: courseId,
+  ...extra,
+});
+
+const mapping = (packageSessionId: string, extra: Record<string, unknown> = {}) => ({
+  package_session_id: packageSessionId,
+  status: "ACTIVE",
+  payment_plan: { actual_price: 100, currency: "INR" },
+  ...extra,
+});
+
+describe("capCartAdd", () => {
+  it("adds new courses and skips versions already in the cart", () => {
+    const result = capCartAdd([item("c1", "c1-en")], [item("c1", "c1-en"), item("c2", "c2-hi")]);
+    expect(result.next.map((i) => i.packageSessionId)).toEqual(["c1-en", "c2-hi"]);
+    expect(result.accepted.map((i) => i.packageSessionId)).toEqual(["c2-hi"]);
+    expect(result.alreadyIn.map((i) => i.packageSessionId)).toEqual(["c1-en"]);
+    expect(result.rejected).toEqual([]);
+  });
+
+  it("swaps a course to another language version without growing the cart", () => {
+    const result = capCartAdd([item("c1", "c1-en")], [item("c1", "c1-hi")]);
+    expect(result.next.map((i) => i.packageSessionId)).toEqual(["c1-hi"]);
+    expect(result.accepted).toHaveLength(1);
+  });
+
+  it("never grows past the cap, keeping the first items of a long path", () => {
+    const current = [item("a", "a1"), item("b", "b1")];
+    const result = capCartAdd(current, [item("c", "c1"), item("d", "d1"), item("a", "a2")], 3);
+    expect(result.next.map((i) => i.packageSessionId)).toEqual(["b1", "c1", "a2"]);
+    expect(result.accepted.map((i) => i.packageSessionId)).toEqual(["c1", "a2"]);
+    expect(result.rejected.map((i) => i.packageSessionId)).toEqual(["d1"]);
+  });
+
+  it("caps at 40 by default", () => {
+    const full = Array.from({ length: SITE_CART_MAX_ITEMS }, (_, n) => item(`c${n}`, `s${n}`));
+    const result = capCartAdd(full, [item("new", "new-1")]);
+    expect(result.next).toHaveLength(40);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.next).toBe(full);
+  });
+});
+
+describe("cartItemFromMapping", () => {
+  it("builds an item from a by-code mapping, reading the language from the level", () => {
+    const built = cartItemFromMapping(
+      {
+        package_session_id: "ps-1",
+        package_id: "pkg-1",
+        package_name: " Vedic Maths ",
+        level_name: "Beginner Hindi",
+        enroll_invite_id: "inv",
+        course_preview_image_media_id: "media-1",
+        payment_plan: { actual_price: 499, elevated_price: 999, currency: "INR" },
+      },
+      { source: { kind: "catalog" } },
+    );
+    expect(built).toEqual({
+      packageSessionId: "ps-1",
+      courseId: "pkg-1",
+      title: "Vedic Maths",
+      levelName: "Beginner Hindi",
+      languageCode: "hi",
+      price: 499,
+      elevatedPrice: 999,
+      currency: "INR",
+      image: "media-1",
+      enrollInviteId: "inv",
+      source: { kind: "catalog" },
+    });
+  });
+
+  it("keeps a mapping without a package id as its own course", () => {
+    const built = cartItemFromMapping({ package_session_id: "ps-9", level_name: "default", payment_plan: null });
+    expect(built.courseId).toBe("ps-9");
+    expect(built.languageCode).toBeUndefined();
+    expect(built.price).toBeUndefined();
+  });
+});
+
+describe("versionLabel", () => {
+  it("prefers the language chip, then a meaningful level", () => {
+    expect(versionLabel({ languageCode: "hi" })).toEqual({ chip: "हिं", label: "Hindi" });
+    expect(versionLabel({ levelName: "Batch 2" })).toEqual({ chip: "Batch 2", label: "Batch 2" });
+    expect(versionLabel({ levelName: "DEFAULT" })).toBeNull();
+    expect(isMeaningfulLevel(" none ")).toBe(false);
+  });
+});
+
+describe("precheckSiteCart", () => {
+  it("passes a cart the store can sell exactly once per item", () => {
+    const result = precheckSiteCart([item("c1", "a"), item("c2", "b")], [mapping("a"), mapping("b")]);
+    expect(result.ok).toBe(true);
+    expect(result.ready.map((i) => i.packageSessionId)).toEqual(["a", "b"]);
+    expect(result.flagged).toEqual([]);
+  });
+
+  it("flags versions the store has no ACTIVE mapping for, never dropping them silently", () => {
+    const result = precheckSiteCart(
+      [item("c1", "a"), item("c2", "b"), item("c3", "c")],
+      [mapping("a"), mapping("b", { status: "DELETED" })],
+    );
+    expect(result.ok).toBe(false);
+    expect(result.ready.map((i) => i.packageSessionId)).toEqual(["a"]);
+    expect(result.flagged.map((f) => [f.item.packageSessionId, f.issue])).toEqual([
+      ["b", "notInStore"],
+      ["c", "notInStore"],
+    ]);
+    expect(unavailableSessionIds(result)).toEqual(["b", "c"]);
+  });
+
+  it("flags a version the store lists twice (it would be charged twice)", () => {
+    const result = precheckSiteCart([item("c1", "a")], [mapping("a"), mapping("a"), mapping("a", { status: "INACTIVE" })]);
+    expect(result.flagged).toEqual([{ item: expect.objectContaining({ packageSessionId: "a" }), issue: "listedTwice" }]);
+    expect(result.ready).toEqual([]);
+    expect(unavailableSessionIds(result)).toEqual(["a"]);
+  });
+
+  it("flags a second copy of a course in the cart and keeps the first", () => {
+    const first = item("c1", "a");
+    const sameCourse = item("c1", "b");
+    const sameVersion = item("c2", "c");
+    const result = precheckSiteCart(
+      [first, sameCourse, sameVersion, { ...sameVersion }],
+      [mapping("a"), mapping("b"), mapping("c")],
+    );
+    expect(result.ready).toEqual([first, sameVersion]);
+    expect(result.flagged.map((f) => f.issue)).toEqual(["duplicateInCart", "duplicateInCart"]);
+    // Duplicates are left to the visitor: removing by id could take both copies.
+    expect(unavailableSessionIds(result)).toEqual([]);
+  });
+
+  it("notes store prices that differ from what the cart showed", () => {
+    const result = precheckSiteCart(
+      [item("c1", "a", { price: 100 }), item("c2", "b", { price: 50 })],
+      [mapping("a"), mapping("b", { payment_plan: { actual_price: 80, currency: "INR" } })],
+    );
+    expect(result.ok).toBe(true);
+    expect(result.priceChanges).toEqual([
+      { item: expect.objectContaining({ packageSessionId: "b" }), storePrice: 80, currency: "INR" },
+    ]);
+  });
+
+  it("refuses more than one order's worth of items", () => {
+    const items = Array.from({ length: 3 }, (_, n) => item(`c${n}`, `s${n}`));
+    const result = precheckSiteCart(items, items.map((i) => mapping(i.packageSessionId)), { max: 2 });
+    expect(result.overLimit).toBe(true);
+    expect(result.ok).toBe(false);
+  });
+
+  it("treats a store page with no mappings as selling nothing", () => {
+    const result = precheckSiteCart([item("c1", "a")], undefined);
+    expect(result.ready).toEqual([]);
+    expect(result.flagged[0]?.issue).toBe("notInStore");
+  });
+});
+
+describe("readCatalogueTheme", () => {
+  const host = {
+    getAttribute: (name: string) =>
+      ({ "data-catalogue-theme": "ocean", "data-catalogue-radius": "pill" } as Record<string, string>)[name] ?? null,
+    classList: { contains: (token: string) => token === "dark" },
+    style: {
+      length: 2,
+      item: (i: number) => ["--primary-500", "color"][i]!,
+      getPropertyValue: (name: string) => (name === "--primary-500" ? " 210 80% 50% " : "red"),
+    },
+  };
+
+  it("copies the wrapper's theme attributes and inline custom properties", () => {
+    const snapshot = readCatalogueTheme({ closest: () => host });
+    expect(snapshot).toEqual({
+      attrs: { "data-catalogue-theme": "ocean", "data-catalogue-radius": "pill" },
+      vars: { "--primary-500": "210 80% 50%" },
+      dark: true,
+    });
+  });
+
+  it("returns null outside a catalogue", () => {
+    expect(readCatalogueTheme({ closest: () => null })).toBeNull();
+    expect(readCatalogueTheme(null)).toBeNull();
+  });
+});

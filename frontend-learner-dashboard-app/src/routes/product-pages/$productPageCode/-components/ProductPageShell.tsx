@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
+import { isDifferentProductPage } from "../-utils/page-switch";
 import {
   injectGtm,
   pushProductPageView,
@@ -33,6 +34,8 @@ interface ProductPageShellProps {
   tagName?: string;
   /** Comma-separated level names the browse step is restricted to. */
   levels?: string;
+  /** Site language (?lang=) the visitor arrived in; kept on the way back out. */
+  lang?: string;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -66,6 +69,7 @@ export const ProductPageShell = ({
   defaultTab,
   tagName,
   levels,
+  lang,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
@@ -125,7 +129,8 @@ export const ProductPageShell = ({
       // spaces, parentheses and even leading slashes ("Home Page", "Arabian
       // International Stem Hub (AISH)", "/cement-factory"), which the router
       // encodes here and a hand-built `/${tagName}` would not.
-      navigate({ to: "/$tagName", params: { tagName } });
+      // The site language the visitor was reading in goes back with them.
+      navigate({ to: "/$tagName", params: { tagName }, ...(lang ? { search: { lang } } : {}) });
       return;
     }
     setStep("CATALOG");
@@ -138,6 +143,15 @@ export const ProductPageShell = ({
   useLayoutEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+
+    // The store is module-level, so it outlives this page. Arriving at a
+    // DIFFERENT product page (e.g. the site cart's store checkout after
+    // another page's checkout) starts from a clean store: a coupon, discount,
+    // learner or CPO plan from that page must never ride into this one. The
+    // same page keeps its state, exactly as before.
+    if (isDifferentProductPage(useProductPageStore.getState().pageData, pageData)) {
+      useProductPageStore.getState().reset();
+    }
 
     setPageData(pageData);
 

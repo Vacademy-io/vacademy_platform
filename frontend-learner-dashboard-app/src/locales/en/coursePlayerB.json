@@ -303,7 +303,36 @@
         "next": "Next",
         "showingRange": "Showing {{from}}–{{to}} of {{total}} {{courses}}",
         "paginationAriaLabel": "Pagination",
-        "loadingImage": "Loading..."
+        "loadingImage": "Loading...",
+        "addToCart": "Add to cart",
+        "allCourses": "All courses",
+        "appliedFilters": "Applied filters",
+        "availableIn": "Available in {{languages}}",
+        "badgeBestseller": "Bestseller",
+        "badgeFree": "Free",
+        "badgeNew": "New",
+        "badgePopular": "Popular",
+        "categories": "Categories",
+        "chooseLanguage": "Choose a language",
+        "closeFilters": "Close filters",
+        "filtersWithCount": "Filters ({{count}})",
+        "inCart": "In cart",
+        "inCartWithLanguage": "In cart · {{language}}",
+        "language": "Language",
+        "price": "Price",
+        "priceAny": "Any price",
+        "priceFree": "Free",
+        "priceFrom": "from",
+        "pricePaid": "Paid",
+        "priceUnder": "Under {{amount}}",
+        "quickBestsellers": "Bestsellers",
+        "quickFiltersAriaLabel": "Quick filters",
+        "quickPopular": "Popular",
+        "removeFilter": "Remove filter: {{label}}",
+        "removeFromCart": "Remove from cart",
+        "showResultsCount": "Show results ({{count}})",
+        "streamSoon": "Soon",
+        "streamsAriaLabel": "Streams"
     },
     "buyRentSection": {
         "chooseOption": "Select the option that best fits your needs",
@@ -337,7 +366,37 @@
         "customerServices": "Customer Services",
         "joinCommunity": "Join our community",
         "logoAlt": "Logo",
-        "instituteLogoAlt": "Institute Logo"
+        "instituteLogoAlt": "Institute Logo",
+        "language": {
+            "label": "Site language"
+        },
+        "megaMenu": {
+            "categoriesIn": "Categories in {{stream}}",
+            "comingSoon": "Coming soon",
+            "empty": "Nothing to show here yet.",
+            "error": "We couldn't load this menu.",
+            "explore": "Explore {{stream}}",
+            "legendAvailable": "available",
+            "legendComingSoon": "coming soon",
+            "loading": "Loading…",
+            "noCategories": "Categories are on their way.",
+            "notifyMe": "Notify me",
+            "retry": "Try again"
+        },
+        "searchDialog": {
+            "close": "Close search",
+            "courses": "Courses",
+            "coursesError": "Courses could not be searched right now.",
+            "hint": "Type to search courses, streams and pages.",
+            "home": "Home",
+            "loadingCourses": "Searching courses…",
+            "noResults": "No results for “{{query}}”",
+            "pages": "Pages",
+            "placeholder": "Search courses, streams and pages",
+            "results": "Search results",
+            "streams": "Streams",
+            "title": "Search this site"
+        }
     },
     "courseDetailsRoute": {
         "domainResolutionErrorTitle": "Domain Resolution Error",
@@ -377,6 +436,21 @@
             "fullName": "Full Name",
             "email": "Email",
             "phone": "Phone Number"
+        },
+        "languagePicker": {
+            "label": "Language",
+            "unavailable": "Not open for enrolment yet"
+        },
+        "priceLoading": "Loading price",
+        "siteCart": {
+            "addToCart": "Add to cart",
+            "added": "Added to your cart",
+            "buyNow": "Buy now",
+            "inCart": "In cart",
+            "inCartViewCart": "In cart, view cart",
+            "notAdded": "Could not add this to your cart.",
+            "replacesOther": "Adding this replaces the version already in your cart.",
+            "replacesVersion": "Your cart has the {{version}} version. Adding this one replaces it."
         }
     },
     "blog": {
@@ -429,5 +503,73 @@
         "loadError": "This section could not load. Please refresh the page.",
         "previewPickLibrary": "Pick a folder library for this section in its properties.",
         "previewEmptyLibrary": "This folder library has nothing students can see yet."
+    },
+    "learningPath": {
+        "addAll": "Add whole path to cart",
+        "addRemaining": "Add the remaining {{count}} to cart",
+        "allPaths": "All learning paths",
+        "courseCount": "{{count}} {{course}}",
+        "emptyCourses": "This learning path has no {{courses}} yet.",
+        "enrol": "Enrol in this path",
+        "inCart": "Whole path is in your cart",
+        "languageFor": "Language for {{title}}",
+        "listAria": "Learning paths",
+        "listLoadError": "The learning paths could not load. Please refresh the page.",
+        "loadError": "This learning path could not load.",
+        "notFound": "This learning path is no longer available.",
+        "oneVersionPerCourse": "Your cart holds one version of each {{course}}, so {{count}} of these go into it.",
+        "pathTotal": "Path total",
+        "preview": {
+            "emptyLibrary": "No product pages here yet — add some under this folder in Manage Pages → Folders.",
+            "pickLibrary": "Pick a folder library to list learning paths from.",
+            "pickPage": "Pick the product page this learning path follows in its properties.",
+            "streamHint": "On a stream tab (?stream=…) visitors see that stream's paths here."
+        },
+        "retry": "Try again",
+        "stepLabel": "Step {{number}}",
+        "stepsAria": "Steps in {{title}}",
+        "totalAtCheckout": "Total shown at checkout",
+        "viewCourse": "View {{course}}",
+        "viewPath": "View path"
+    },
+    "siteCart": {
+        "added": "{{title}} added to your cart",
+        "addedMany": "{{count}} {{courses}} added to your cart",
+        "checking": "Checking availability…",
+        "checkout": "Checkout",
+        "checkoutAvailable": "Check out {{count}} available",
+        "close": "Close cart",
+        "continue": "Continue browsing",
+        "empty": {
+            "body": "Add {{courses}} here to buy them together in one payment.",
+            "title": "Your cart is empty"
+        },
+        "full": "Your cart is full — up to {{max}} {{courses}} per order.",
+        "inCart": "In cart",
+        "issue": {
+            "duplicateInCart": "Already in your cart above — remove one.",
+            "listedTwice": "Listed twice at checkout — please contact the institute before buying it.",
+            "notInStore": "Not available for online checkout."
+        },
+        "issuesSummary": "Some {{courses}} can't be checked out right now — see the notes above.",
+        "itemCount": "{{count}} {{course}}",
+        "loading": "Loading your cart…",
+        "noneAvailable": "None of these {{courses}} can be checked out online yet.",
+        "open": "Open cart",
+        "openWithCount": "Open cart, {{count}} in cart",
+        "overLimit": "One order holds up to {{max}} {{courses}}. Remove some to check out.",
+        "paidRemoved": "Removed {{count}} {{course}} you've already paid for.",
+        "partiallyAdded": "Only {{count}} could be added — a cart holds up to {{max}} {{courses}}.",
+        "priceChanged": "Some prices have changed — checkout shows the current price.",
+        "remove": "Remove {{title}}",
+        "removeUnavailable": "Remove unavailable",
+        "retry": "Try again",
+        "storeError": "Checkout is unavailable right now. Please try again.",
+        "switchedVersion": "{{title}} updated in your cart",
+        "title": "Your cart",
+        "total": "Total",
+        "totalAtCheckout": "Shown at checkout",
+        "viewCart": "View cart",
+        "viewCartCount": "View cart ({{count}})"
     }
 }

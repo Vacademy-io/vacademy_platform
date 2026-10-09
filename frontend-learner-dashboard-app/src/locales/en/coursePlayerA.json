@@ -223,7 +223,8 @@
       "loadFailed": "The document could not be displayed here.",
       "openInNewTab": "Open in a new tab",
       "noDocument": "No document configured yet"
-    }
+    },
+    "hiddenForUrl": "Hidden for this URL"
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "Chat with us on WhatsApp"

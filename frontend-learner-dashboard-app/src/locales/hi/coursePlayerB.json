@@ -303,7 +303,36 @@
         "next": "अगला",
         "showingRange": "{{total}} {{courses}} में से {{from}}–{{to}} दिखाए जा रहे हैं",
         "paginationAriaLabel": "पेजिनेशन",
-        "loadingImage": "लोड हो रहा है..."
+        "loadingImage": "लोड हो रहा है...",
+        "addToCart": "कार्ट में जोड़ें",
+        "allCourses": "सभी पाठ्यक्रम",
+        "appliedFilters": "लागू फ़िल्टर",
+        "availableIn": "{{languages}} में उपलब्ध",
+        "badgeBestseller": "बेस्टसेलर",
+        "badgeFree": "मुफ़्त",
+        "badgeNew": "नया",
+        "badgePopular": "लोकप्रिय",
+        "categories": "श्रेणियाँ",
+        "chooseLanguage": "भाषा चुनें",
+        "closeFilters": "फ़िल्टर बंद करें",
+        "filtersWithCount": "फ़िल्टर ({{count}})",
+        "inCart": "कार्ट में है",
+        "inCartWithLanguage": "कार्ट में · {{language}}",
+        "language": "भाषा",
+        "price": "कीमत",
+        "priceAny": "कोई भी कीमत",
+        "priceFree": "मुफ़्त",
+        "priceFrom": "शुरुआती कीमत",
+        "pricePaid": "सशुल्क",
+        "priceUnder": "{{amount}} से कम",
+        "quickBestsellers": "बेस्टसेलर",
+        "quickFiltersAriaLabel": "त्वरित फ़िल्टर",
+        "quickPopular": "लोकप्रिय",
+        "removeFilter": "फ़िल्टर हटाएँ: {{label}}",
+        "removeFromCart": "कार्ट से हटाएँ",
+        "showResultsCount": "परिणाम देखें ({{count}})",
+        "streamSoon": "जल्द",
+        "streamsAriaLabel": "धाराएँ"
     },
     "buyRentSection": {
         "chooseOption": "अपनी ज़रूरत के हिसाब से सबसे उपयुक्त विकल्प चुनें",
@@ -337,7 +366,37 @@
         "customerServices": "ग्राहक सेवाएं",
         "joinCommunity": "हमारे समुदाय से जुड़ें",
         "logoAlt": "लोगो",
-        "instituteLogoAlt": "इंस्टिट्यूट लोगो"
+        "instituteLogoAlt": "इंस्टिट्यूट लोगो",
+        "language": {
+            "label": "साइट की भाषा"
+        },
+        "megaMenu": {
+            "categoriesIn": "{{stream}} की श्रेणियाँ",
+            "comingSoon": "जल्द आ रहा है",
+            "empty": "यहाँ अभी दिखाने के लिए कुछ नहीं है।",
+            "error": "यह मेनू लोड नहीं हो सका।",
+            "explore": "{{stream}} देखें",
+            "legendAvailable": "उपलब्ध",
+            "legendComingSoon": "जल्द आ रहा है",
+            "loading": "लोड हो रहा है…",
+            "noCategories": "श्रेणियाँ जल्द जोड़ी जाएँगी।",
+            "notifyMe": "मुझे सूचित करें",
+            "retry": "फिर से कोशिश करें"
+        },
+        "searchDialog": {
+            "close": "खोज बंद करें",
+            "courses": "पाठ्यक्रम",
+            "coursesError": "अभी पाठ्यक्रम नहीं खोजे जा सके।",
+            "hint": "पाठ्यक्रम, धाराएँ और पेज खोजने के लिए टाइप करें।",
+            "home": "होम",
+            "loadingCourses": "पाठ्यक्रम खोजे जा रहे हैं…",
+            "noResults": "“{{query}}” के लिए कोई परिणाम नहीं",
+            "pages": "पेज",
+            "placeholder": "पाठ्यक्रम, धाराएँ और पेज खोजें",
+            "results": "खोज परिणाम",
+            "streams": "धाराएँ",
+            "title": "इस साइट में खोजें"
+        }
     },
     "courseDetailsRoute": {
         "domainResolutionErrorTitle": "डोमेन समाधान त्रुटि",
@@ -377,6 +436,21 @@
             "fullName": "पूरा नाम",
             "email": "ईमेल",
             "phone": "फ़ोन नंबर"
+        },
+        "languagePicker": {
+            "label": "भाषा",
+            "unavailable": "अभी नामांकन के लिए उपलब्ध नहीं"
+        },
+        "priceLoading": "कीमत लोड हो रही है",
+        "siteCart": {
+            "addToCart": "कार्ट में जोड़ें",
+            "added": "आपकी कार्ट में जोड़ दिया गया",
+            "buyNow": "अभी खरीदें",
+            "inCart": "कार्ट में है",
+            "inCartViewCart": "कार्ट में है, कार्ट देखें",
+            "notAdded": "इसे आपकी कार्ट में नहीं जोड़ा जा सका।",
+            "replacesOther": "इसे जोड़ने पर आपकी कार्ट में पहले से मौजूद संस्करण बदल जाएगा।",
+            "replacesVersion": "आपकी कार्ट में {{version}} संस्करण है। इसे जोड़ने पर वह बदल जाएगा।"
         }
     },
     "blog": {
@@ -409,5 +483,73 @@
         "launchingOnHint": "{{date}} को लॉन्च हो रहा है। अपना विवरण छोड़ें, लाइव होते ही हम आपको बताएंगे।",
         "notifyHint": "अपना विवरण छोड़ें, लाइव होते ही हम आपको बताएंगे।",
         "notifyTitle": "{{title}} लॉन्च होने पर सूचना पाएं"
+    },
+    "learningPath": {
+        "addAll": "पूरा पथ कार्ट में जोड़ें",
+        "addRemaining": "बाकी {{count}} कार्ट में जोड़ें",
+        "allPaths": "सभी अध्ययन पथ",
+        "courseCount": "{{count}} {{course}}",
+        "emptyCourses": "इस अध्ययन पथ में अभी कोई {{courses}} नहीं है।",
+        "enrol": "इस पथ में नामांकन करें",
+        "inCart": "पूरा पथ आपकी कार्ट में है",
+        "languageFor": "{{title}} के लिए भाषा",
+        "listAria": "अध्ययन पथ",
+        "listLoadError": "अध्ययन पथ लोड नहीं हो सके। कृपया पेज रीफ़्रेश करें।",
+        "loadError": "यह अध्ययन पथ लोड नहीं हो सका।",
+        "notFound": "यह अध्ययन पथ अब उपलब्ध नहीं है।",
+        "oneVersionPerCourse": "आपकी कार्ट में हर {{course}} का एक ही संस्करण रहता है, इसलिए इनमें से {{count}} जोड़े जाएँगे।",
+        "pathTotal": "पथ का कुल मूल्य",
+        "preview": {
+            "emptyLibrary": "यहाँ अभी कोई प्रोडक्ट पेज नहीं है — Manage Pages → Folders में इस फ़ोल्डर के अंदर जोड़ें।",
+            "pickLibrary": "अध्ययन पथ दिखाने के लिए एक फ़ोल्डर लाइब्रेरी चुनें।",
+            "pickPage": "इसकी सेटिंग में वह प्रोडक्ट पेज चुनें जिसके क्रम में यह अध्ययन पथ चलता है।",
+            "streamHint": "किसी धारा टैब (?stream=…) पर विज़िटर यहाँ उसी धारा के पथ देखते हैं।"
+        },
+        "retry": "फिर से कोशिश करें",
+        "stepLabel": "चरण {{number}}",
+        "stepsAria": "{{title}} के चरण",
+        "totalAtCheckout": "कुल राशि चेकआउट पर दिखेगी",
+        "viewCourse": "{{course}} देखें",
+        "viewPath": "पथ देखें"
+    },
+    "siteCart": {
+        "added": "{{title}} आपकी कार्ट में जोड़ा गया",
+        "addedMany": "{{count}} {{courses}} आपकी कार्ट में जोड़े गए",
+        "checking": "उपलब्धता जाँची जा रही है…",
+        "checkout": "चेकआउट",
+        "checkoutAvailable": "उपलब्ध {{count}} का चेकआउट करें",
+        "close": "कार्ट बंद करें",
+        "continue": "ब्राउज़ करना जारी रखें",
+        "empty": {
+            "body": "{{courses}} यहाँ जोड़ें और एक ही भुगतान में साथ खरीदें।",
+            "title": "आपकी कार्ट खाली है"
+        },
+        "full": "आपकी कार्ट भर गई है — एक ऑर्डर में अधिकतम {{max}} {{courses}}।",
+        "inCart": "कार्ट में है",
+        "issue": {
+            "duplicateInCart": "यह ऊपर पहले से आपकी कार्ट में है — एक हटाएँ।",
+            "listedTwice": "चेकआउट में दो बार सूचीबद्ध है — खरीदने से पहले संस्थान से संपर्क करें।",
+            "notInStore": "ऑनलाइन चेकआउट के लिए उपलब्ध नहीं है।"
+        },
+        "issuesSummary": "कुछ {{courses}} का अभी चेकआउट नहीं हो सकता — ऊपर दिए नोट देखें।",
+        "itemCount": "{{count}} {{course}}",
+        "loading": "आपकी कार्ट लोड हो रही है…",
+        "noneAvailable": "इनमें से किसी भी {{courses}} का अभी ऑनलाइन चेकआउट नहीं हो सकता।",
+        "open": "कार्ट खोलें",
+        "openWithCount": "कार्ट खोलें, कार्ट में {{count}}",
+        "overLimit": "एक ऑर्डर में अधिकतम {{max}} {{courses}} हो सकते हैं। चेकआउट के लिए कुछ हटाएँ।",
+        "paidRemoved": "जिन {{count}} {{course}} का आप भुगतान कर चुके हैं, वे हटा दिए गए।",
+        "partiallyAdded": "केवल {{count}} जोड़े जा सके — एक कार्ट में अधिकतम {{max}} {{courses}} हो सकते हैं।",
+        "priceChanged": "कुछ कीमतें बदल गई हैं — चेकआउट पर वर्तमान कीमत दिखेगी।",
+        "remove": "{{title}} हटाएँ",
+        "removeUnavailable": "अनुपलब्ध हटाएँ",
+        "retry": "फिर से कोशिश करें",
+        "storeError": "चेकआउट अभी उपलब्ध नहीं है। कृपया फिर से कोशिश करें।",
+        "switchedVersion": "आपकी कार्ट में {{title}} अपडेट किया गया",
+        "title": "आपकी कार्ट",
+        "total": "कुल",
+        "totalAtCheckout": "चेकआउट पर दिखेगा",
+        "viewCart": "कार्ट देखें",
+        "viewCartCount": "कार्ट देखें ({{count}})"
     }
 }

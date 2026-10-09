@@ -359,7 +359,8 @@
       "priceHighToLow": "Price: High to Low",
       "rating": "Rating",
       "nameAZ": "Name A-Z",
-      "nameZA": "Name Z-A"
+      "nameZA": "Name Z-A",
+      "popular": "Popular (most enrolled)"
     },
     "heading": "Catalogue Settings",
     "title": "Title",
@@ -414,7 +415,8 @@
     "popupTitlePlaceholder": "Popup title (defaults to the label)",
     "hideLink": "Hide this link",
     "showLink": "Show this link",
-    "hiddenBadge": "Hidden"
+    "hiddenBadge": "Hidden",
+    "megaMenuBadge": "Mega menu"
   },
   "footer": {
     "column2": "Column 2",

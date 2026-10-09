@@ -264,5 +264,13 @@
     "folderBrowser": {
         "title": "Browse our courses",
         "subtitle": "Pick your class and subject to see the courses."
+    },
+    "learningPath": {
+        "addAllLabel": "Add whole path to cart",
+        "emptyText": "Learning paths are coming soon.",
+        "enrolLabel": "Enrol in this path",
+        "subtitle": "Courses in the order we recommend taking them.",
+        "title": "Learning paths",
+        "viewPathLabel": "View path"
     }
 }

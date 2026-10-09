@@ -8,7 +8,9 @@
         "free": "Free",
         "preselected": "Pre-selected",
         "noMatchingPaymentOption": "No matching payment option found for this invite and session.",
-        "noActiveInvite": "No active invite found for this session. Create an invite first."
+        "noActiveInvite": "No active invite found for this session. Create an invite first.",
+        "moveDown": "Move down",
+        "moveUp": "Move up"
     },
     "tabs": {
         "courses": "Courses",

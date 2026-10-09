@@ -25,7 +25,8 @@
         "basketSavedWithPercent": "saved {{amount}} · {{percent}}%",
         "basketNextTierAmount": "Add {{count}} more {{course}} to get {{amount}} off.",
         "basketNextTierAmountMore": "Add {{count}} more {{course}} to get {{amount}} more off.",
-        "basketNextTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off."
+        "basketNextTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off.",
+        "priceChangedReload": "The price of a course in your cart has changed. Please review your cart and try again."
     },
     "errors": {
         "pageNotAvailable": {

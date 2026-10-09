@@ -223,7 +223,8 @@
       "loadFailed": "दस्तावेज़ यहाँ नहीं दिखाया जा सका।",
       "openInNewTab": "नए टैब में खोलें",
       "noDocument": "अभी तक कोई दस्तावेज़ सेट नहीं किया गया"
-    }
+    },
+    "hiddenForUrl": "इस URL के लिए छिपा हुआ"
   },
   "whatsAppFloatingButton": {
     "chatWithUs": "WhatsApp पर हमसे चैट करें"

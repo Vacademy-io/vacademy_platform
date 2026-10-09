@@ -58,35 +58,61 @@ const DEFAULT_LOCALES: CatalogueLocale[] = [
 /** Keys whose string values are never prose: ids, links, colours, enums… */
 const NON_TEXT_KEYS = new Set(
     [
-        'id', 'type', 'variant', 'layout', 'align', 'alignment', 'style', 'size', 'scale', 'position',
-        'icon', 'font', 'route', 'url', 'href', 'link', 'target', 'src', 'image', 'logo', 'avatar',
-        'video', 'poster', 'email', 'phone', 'whatsapp', 'color', 'action', 'code', 'slug', 'tag',
-        'tags', 'currency', 'css', 'html_css', 'prompt', 'animation', 'motion', 'preset', 'shape',
-        'pattern', 'theme', 'mode', 'sort', 'field', 'source', 'status', 'format', 'locale', 'lang',
-        'width', 'height', 'fit', 'ratio', 'aspect', 'easing', 'direction', 'orientation', 'kind',
-        'param', 'op', 'key', 'ref', 'columns', 'gap', 'radius', 'showcondition', 'visiblewhen',
+        'id', 'type', 'variant', 'layout', 'align', 'alignment', 'size', 'scale', 'position', 'icon',
+        'font', 'route', 'url', 'href', 'link', 'target', 'src', 'image', 'logo', 'avatar', 'video',
+        'poster', 'email', 'phone', 'whatsapp', 'color', 'action', 'code', 'slug', 'tag', 'tags',
+        'currency', 'css', 'html_css', 'prompt', 'preset', 'shape', 'pattern', 'mode', 'sort', 'field',
+        'fields', 'source', 'status', 'format', 'locale', 'lang', 'width', 'height', 'fit', 'ratio',
+        'aspect', 'easing', 'direction', 'orientation', 'kind', 'param', 'op', 'key', 'ref', 'columns',
+        'gap', 'radius', 'platform', 'display', 'tile', 'anchor', 'date', 'compactness', 'audience',
+        'provider', 'transition', 'padding', 'margin', 'version', 'category', 'tone', 'speed', 'weight',
     ].map((k) => k.toLowerCase())
 );
 
-/** camelCase / snake_case endings that mark a non-text key (backgroundColor, productPageCode, image_url…). */
+/**
+ * Keys whose whole VALUE is configuration, never shown as text — not even the
+ * strings nested inside it (a style object, a visibility rule whose 'true'
+ * must not become 'सत्य', nested slot sections that are localized on their own).
+ */
+const OPAQUE_KEYS = new Set(
+    ['style', 'styles', 'showcondition', 'visiblewhen', 'animation', 'motion', 'slots', 'slot', 'render', 'theme', 'decorations', 'decoration'].map((k) =>
+        k.toLowerCase()
+    )
+);
+
+/** camelCase / snake_case endings that mark a non-text key (backgroundColor, productPageCode, image_url, defaultSort…). */
 const NON_TEXT_SUFFIX =
-    /(Id|Ids|Url|URL|Uri|Href|Route|Routes|Color|Colour|Code|Src|Slug|Key|Css|Class|ClassName|Image|Images|Logo|Icon|Font|Mode|Type|Style|Layout|Align|Position|Width|Height|Size|Variant|Target|Action|Email|Phone|Date|Time|Pattern|Preset|Shape|Animation|Ratio|Fit|Format|Currency|Locale|Lang|Tag|Tags|Param|Path)$|_(id|ids|url|uri|href|route|color|colour|code|src|slug|key|css|class|image|logo|icon|font|mode|type|style|layout|align|date|time|currency|locale|lang|tag|tags|path)$/;
+    /(Id|Ids|Url|URL|Uri|Href|Route|Routes|Color|Colour|Code|Src|Slug|Key|Css|Class|ClassName|Image|Images|Logo|Icon|Font|Mode|Type|Style|Layout|Align|Position|Width|Widths|Height|Size|Variant|Target|Action|Email|Phone|Date|Time|Pattern|Preset|Shape|Animation|Ratio|Fit|Format|Currency|Locale|Lang|Tag|Tags|Param|Path|Sort|Tone|Speed|Scale|Radius|Effect|Fr|Fields|Value|Weight|Family|Platform|Category|Anchor|Display|Padding|Margin|Gap|Columns)$|_(id|ids|url|uri|href|route|color|colour|code|src|slug|key|css|class|image|logo|icon|font|mode|type|style|layout|align|date|time|currency|locale|lang|tag|tags|path|sort|value|fields|category)$/;
 
 /** Is a string stored under `key` prose (worth translating)? */
 export const isTextKey = (key: string | number | undefined): boolean => {
     if (key === undefined || typeof key === 'number') return true; // array items inherit their parent's verdict
     if (NON_TEXT_KEYS.has(key.toLowerCase())) return false;
+    if (OPAQUE_KEYS.has(key.toLowerCase())) return false;
     if (NON_TEXT_SUFFIX.test(key)) return false;
     return true;
 };
 
-/** Values that are never prose even under a text key: links, colours, pure numbers/prices. */
-const looksLikeData = (s: string): boolean => {
+/** A value under `key` that must be left exactly as is, nested strings included. */
+const isOpaqueKey = (key: string | number | undefined): boolean =>
+    typeof key === 'string' && OPAQUE_KEYS.has(key.toLowerCase());
+
+/**
+ * Values that are never prose even under a text key: links, colours, pure
+ * numbers/prices, and lowercase code tokens ('email', 'package_name', 'true',
+ * 'grid') — the shape enum values and form field names take, while real copy
+ * starts with a capital, has spaces or is not Latin.
+ */
+export const looksLikeData = (s: string): boolean => {
     const t = s.trim();
     if (!t) return true;
     if (/^(https?:|mailto:|tel:|data:|\/\/|\/|#[0-9a-f]{3,8}$|rgba?\(|hsla?\(|var\()/i.test(t)) return true;
+    if (/^[a-z0-9]+([-_.][a-z0-9]+)*$/.test(t)) return true;
     return /^[\d\s.,:;%+\-–—/×x*₹$€£¥()]+$/.test(t);
 };
+
+/** Should this string, stored under `key`, ever be translated? */
+const isTranslatable = (s: string, key: string | number | undefined): boolean => isTextKey(key) && !looksLikeData(s);
 
 /* ── settings helpers ───────────────────────────────────────────────── */
 
@@ -164,8 +190,9 @@ export const translateText = (text: string, dict: TranslationDictionary | undefi
  */
 export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefined, key?: string | number): T => {
     if (!dict) return value;
+    if (isOpaqueKey(key)) return value;
     if (typeof value === 'string') {
-        if (!isTextKey(key)) return value;
+        if (!isTranslatable(value, key)) return value;
         return translateText(value, dict) as unknown as T;
     }
     if (Array.isArray(value)) {
@@ -192,8 +219,9 @@ export const localizeDeep = <T>(value: T, dict: TranslationDictionary | undefine
 
 /** Every distinct translatable string under `value`, in first-seen order (for AI translation and coverage). */
 export const collectTranslatableStrings = (value: unknown, out: string[] = [], seen = new Set<string>(), key?: string | number): string[] => {
+    if (isOpaqueKey(key)) return out;
     if (typeof value === 'string') {
-        if (isTextKey(key) && !looksLikeData(value) && !seen.has(value)) {
+        if (isTranslatable(value, key) && !seen.has(value)) {
             seen.add(value);
             out.push(value);
         }
@@ -246,8 +274,9 @@ export const applyLocalizedEdit = <T>(base: T, localized: T, edited: T): Localiz
 
     const rebuild = (b: unknown, before: unknown, after: unknown, key?: string | number): unknown => {
         if (after === before) return b === undefined ? after : b;
+        if (isOpaqueKey(key)) return after;
         if (typeof after === 'string') {
-            if (isTextKey(key) && typeof before === 'string' && typeof b === 'string' && b.trim() !== '') {
+            if (typeof before === 'string' && typeof b === 'string' && isTranslatable(b, key)) {
                 translations[b] = after === b ? '' : after;
                 return b;
             }

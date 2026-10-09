@@ -30,6 +30,70 @@ describe("isTextKey", () => {
   });
 });
 
+describe("data that looks like text is never translated", () => {
+  // Real catalogue props whose string VALUES are logic, not copy.
+  const DICT = {
+    Newest: "नवीनतम",
+    Buy: "खरीदें",
+    Facebook: "फेसबुक",
+    "Price: Low to High": "कीमत: कम से ज़्यादा",
+    Email: "ईमेल",
+    true: "सत्य",
+  };
+
+  it("leaves enum-like and mapping props alone", () => {
+    const props = {
+      defaultSort: "Newest",
+      levelFilterValue: "Buy",
+      render: { cardFields: ["package_name", "price"], layout: "grid" },
+      fields: { title: "package_name", price: "price" },
+      socials: [{ platform: "facebook", label: "Facebook" }],
+      badgeTone: "success",
+      marqueeSpeed: "slow",
+      headerScale: "md",
+      borderRadius: "lg",
+      columnFr: ["1fr", "2fr"],
+      category: "Exam tips",
+    };
+    const out = localizeDeep(props, DICT);
+    expect(out.defaultSort).toBe("Newest");
+    expect(out.levelFilterValue).toBe("Buy");
+    expect(out.render).toBe(props.render);
+    expect(out.fields).toEqual({ title: "package_name", price: "price" });
+    expect(out.socials).toEqual([{ platform: "facebook", label: "फेसबुक" }]);
+    expect(out.badgeTone).toBe("success");
+    expect(out.category).toBe("Exam tips");
+  });
+
+  it("keeps form field names and visibility rules intact while translating labels", () => {
+    const props = {
+      formFields: [{ name: "email", label: "Email", type: "email" }],
+      showCondition: { field: "courseCatalogeType.enabled", value: "true" },
+      style: { padding: "lg", note: "Newest" },
+      slots: [[{ id: "x", props: { title: "Newest" } }]],
+    };
+    const out = localizeDeep(props, DICT);
+    expect(out.formFields).toEqual([{ name: "email", label: "ईमेल", type: "email" }]);
+    expect(out.showCondition).toBe(props.showCondition);
+    expect(out.style).toBe(props.style);
+    expect(out.slots).toBe(props.slots);
+  });
+
+  it("does not offer data strings for translation", () => {
+    const props = { defaultSort: "Price: Low to High", title: "Courses", formFields: [{ name: "email", label: "Email" }] };
+    expect(collectTranslatableStrings(props)).toEqual(["Courses", "Email"]);
+  });
+
+  it("routes edits of data strings to the base, even in a non-base language", () => {
+    const base = { defaultSort: "Newest", heading: "Newest" };
+    const localized = localizeDeep(base, DICT);
+    expect(localized).toEqual({ defaultSort: "Newest", heading: "नवीनतम" });
+    const res = applyLocalizedEdit(base, localized, { ...localized, defaultSort: "Price: Low to High" });
+    expect(res.base.defaultSort).toBe("Price: Low to High");
+    expect(res.translations).toEqual({});
+  });
+});
+
 describe("resolveSiteLocale", () => {
   const settings = { enabled: true, defaultLocale: "en", locales: [{ code: "en", label: "EN" }, { code: "hi", label: "हिन्दी" }] };
 

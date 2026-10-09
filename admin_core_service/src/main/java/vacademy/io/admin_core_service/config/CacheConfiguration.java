@@ -198,6 +198,15 @@ public class CacheConfiguration {
                                 "lmsConnectionHealth",
                                 caffeineCache1mBuilder().build());
 
+                // catalogPopularityRanks: public catalogue popularity ranks per instituteId
+                // (CatalogPopularityService, behind the unauthenticated /open/packages/v1/popularity).
+                // 10m: enrolment ranks move slowly, and this caps the institute-scoped enrolment
+                // aggregate at one run per institute per pod per 10 minutes. MUST be registered or
+                // @Cacheable throws in the proxy.
+                CaffeineCache catalogPopularityRanks = new CaffeineCache(
+                                "catalogPopularityRanks",
+                                caffeineCache10mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -236,7 +245,8 @@ public class CacheConfiguration {
                                 learnerPackageSlidesStructure,
                                 guardianChildren,
                                 parentPortalSettings,
-                                lmsConnectionHealth));
+                                lmsConnectionHealth,
+                                catalogPopularityRanks));
 
                 return cacheManager;
         }
@@ -288,6 +298,17 @@ public class CacheConfiguration {
                 return Caffeine.newBuilder()
                                 .maximumSize(500)
                                 .expireAfterWrite(5, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * 10-minute TTL cache builder (for slow-moving aggregates). The size bound also caps
+         * memory when a public endpoint is called with many distinct (or made-up) keys.
+         */
+        private Caffeine<Object, Object> caffeineCache10mBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(1000)
+                                .expireAfterWrite(10, TimeUnit.MINUTES)
                                 .recordStats();
         }
 

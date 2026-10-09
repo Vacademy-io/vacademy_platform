@@ -4577,3 +4577,168 @@ async def edit_site_chrome(
         model=model_used,
         warnings=warnings,
     )
+
+
+# ─── Site languages: translate site texts ─────────────────────────────────────
+#
+# A site's other languages are dictionaries keyed by the EXACT base-language
+# text (globalSettings.i18n.strings[locale]); the builder's Translations panel
+# sends the missing texts here in batches and merges what comes back. The work
+# (translation memory, masking, chunked parallel calls, safety checks) lives in
+# translation_service.translate_website_strings; this route authenticates,
+# pre-flights credits and charges ONCE per request on the summed usage.
+#
+# Auth is the pinned principal (membership of the clientId institute is
+# checked), stricter than get_current_user, which trusts clientId verbatim.
+from ..core.security import get_pinned_principal  # noqa: E402
+from ..schemas.auth import PinnedPrincipal  # noqa: E402
+
+_TRANSLATE_TOOL_KEY = "page_translate"
+
+
+class SiteTranslateRequest(BaseModel):
+    # Exact source texts — they come back as the keys of `translations`.
+    strings: List[str] = Field(default_factory=list)
+    target_locale: str
+    source_locale: str = "en"
+    # "Translate again with AI": ignore the translation memory.
+    skip_memory: bool = False
+    preferred_model: Optional[str] = None
+
+
+class SiteTranslateFailure(BaseModel):
+    source: str
+    reason: str
+
+
+class SiteTranslateResponse(BaseModel):
+    translations: Dict[str, str]
+    failed: List[SiteTranslateFailure] = Field(default_factory=list)
+    tm_hits: int = 0
+    run_id: str
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+@router.post("/v1/translate", response_model=SiteTranslateResponse)
+async def translate_site_strings(
+    body: SiteTranslateRequest,
+    db: Session = Depends(db_dependency),
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+) -> SiteTranslateResponse:
+    # Imported here so loading the page builder stays light (the service pulls
+    # in the translation-job models).
+    from ..services import translation_service as ts
+
+    institute_id = getattr(principal, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(principal, "user_id", None)
+
+    source = (body.source_locale or "en").strip().lower()
+    target = (body.target_locale or "").strip().lower()
+    if source not in ts.LOCALE_NAMES or target not in ts.LOCALE_NAMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language. Supported: {', '.join(sorted(ts.LOCALE_NAMES))}.",
+        )
+    if source == target:
+        raise HTTPException(status_code=400, detail="The target language is the site's base language.")
+
+    # Exact texts, each once, in the order sent. Blank texts need no translation.
+    seen: set = set()
+    texts: List[str] = []
+    for value in body.strings or []:
+        if not isinstance(value, str) or not value.strip() or value in seen:
+            continue
+        seen.add(value)
+        texts.append(value)
+    run_id = uuid.uuid4().hex
+    if not texts:
+        return SiteTranslateResponse(translations={}, run_id=run_id, model="", warnings=["Nothing to translate."])
+    if len(texts) > ts.WEBSITE_MAX_STRINGS:
+        raise HTTPException(
+            status_code=400, detail=f"Send at most {ts.WEBSITE_MAX_STRINGS} texts per request."
+        )
+    too_long = [s for s in texts if len(s) > ts.WEBSITE_MAX_STRING_CHARS]
+    texts = [s for s in texts if len(s) <= ts.WEBSITE_MAX_STRING_CHARS]
+    total_chars = sum(len(s) for s in texts)
+    if total_chars > ts.WEBSITE_MAX_TOTAL_CHARS:
+        raise HTTPException(
+            status_code=400, detail="Too much text for one request — send the texts in smaller batches."
+        )
+
+    warnings: List[str] = []
+    failures: List[Dict[str, str]] = [
+        {"source": s, "reason": "too long to translate automatically — translate it by hand"} for s in too_long
+    ]
+    if not texts:
+        return SiteTranslateResponse(
+            translations={}, failed=failures, run_id=run_id, model="", warnings=warnings
+        )
+
+    estimate = preflight_tool_credits(
+        db,
+        tool_key=_TRANSLATE_TOOL_KEY,
+        tool_params={"transcript_chars": total_chars},
+        institute_id=institute_id,
+    )
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: translating these texts needs ~{estimate['estimated_credits']} "
+                f"credits but the balance is {estimate.get('current_balance')}."
+            ),
+        )
+
+    try:
+        result = await ts.translate_website_strings(
+            strings=texts,
+            source_locale=source,
+            target_locale=target,
+            institute_id=institute_id,
+            use_memory=not body.skip_memory,
+            preferred_model=body.preferred_model,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[translate] failed: %s", e)
+        raise HTTPException(status_code=502, detail="Could not translate right now. You were not charged.")
+
+    if result["llm_calls"] and not result["completed_calls"] and not result["translations"]:
+        raise HTTPException(
+            status_code=502, detail="The AI could not translate right now. You were not charged."
+        )
+
+    if result["completed_calls"]:
+        usage = result.get("usage") or {}
+        try:
+            record_tool_billing(
+                tool_key=_TRANSLATE_TOOL_KEY,
+                tool_params={"transcript_chars": int(result.get("llm_chars") or 0)},
+                request_type=RequestType.TRANSLATION,
+                model=result.get("model_used") or "",
+                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                completion_tokens=int(usage.get("completion_tokens") or 0),
+                institute_id=institute_id,
+                user_id=actor_user_id,
+                user_role=None,
+                idempotency_key=f"{_TRANSLATE_TOOL_KEY}:{run_id}",
+                usage_markup=_USAGE_MARKUP,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[translate] billing skipped: %s", e)
+
+    failures.extend(result.get("failed") or [])
+    if failures:
+        warnings.append(
+            f"{len(failures)} text(s) could not be translated safely and were left untranslated."
+        )
+    return SiteTranslateResponse(
+        translations=result.get("translations") or {},
+        failed=[SiteTranslateFailure(**f) for f in failures],
+        tm_hits=int(result.get("tm_hits") or 0),
+        run_id=run_id,
+        model=result.get("model_used") or ("translation-memory" if result.get("tm_hits") else ""),
+        warnings=warnings,
+    )

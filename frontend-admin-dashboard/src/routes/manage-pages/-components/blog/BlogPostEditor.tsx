@@ -309,7 +309,8 @@ export const BlogPostEditor = ({ postId, onBack, onCreated, onDirtyChange }: Blo
     return (
         <div className="flex min-h-full flex-col bg-neutral-50">
             {/* Top bar */}
-            <div className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3 lg:px-6">
+            {/* pr-14 keeps the actions clear of the dialog's close button. */}
+            <div className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white py-3 pl-4 pr-14 lg:pl-6">
                 <button
                     type="button"
                     onClick={() => {
@@ -381,23 +382,71 @@ export const BlogPostEditor = ({ postId, onBack, onCreated, onDirtyChange }: Blo
                     </div>
 
                     <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
-                        <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-                            <span className="text-xs font-medium text-neutral-600">Body</span>
-                            <div className="flex rounded-md border border-neutral-200 p-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => switchMode('visual')}
-                                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${mode === 'visual' ? 'bg-neutral-800 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}
-                                >
-                                    <TextAa className="size-3.5" /> Visual
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => switchMode('html')}
-                                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${mode === 'html' ? 'bg-neutral-800 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}
-                                >
-                                    <Code className="size-3.5" /> HTML
-                                </button>
+                        <div className="space-y-3 border-b border-neutral-200 px-4 py-3">
+                            <div>
+                                <h3 className="text-sm font-semibold text-neutral-800">
+                                    Article content
+                                </h3>
+                                <p className="text-xs text-neutral-500">
+                                    Choose how to write the article. Both save the same content, so
+                                    you can switch any time.
+                                </p>
+                            </div>
+                            <div
+                                role="radiogroup"
+                                aria-label="Content editor"
+                                className="grid gap-2 sm:grid-cols-2"
+                            >
+                                {(
+                                    [
+                                        {
+                                            key: 'visual',
+                                            icon: TextAa,
+                                            title: 'Write it here',
+                                            hint: 'Headings, text, images, links and lists, like a document.',
+                                        },
+                                        {
+                                            key: 'html',
+                                            icon: Code,
+                                            title: 'Custom HTML',
+                                            hint: 'Paste or code your own HTML: an AI draft, an old site, a YouTube embed.',
+                                        },
+                                    ] as const
+                                ).map(({ key, icon: Icon, title, hint }) => {
+                                    const active = mode === key;
+                                    return (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={active}
+                                            onClick={() => switchMode(key)}
+                                            className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                                                active
+                                                    ? 'border-primary-500 bg-primary-50'
+                                                    : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`flex size-8 shrink-0 items-center justify-center rounded-md ${
+                                                    active
+                                                        ? 'bg-primary-500 text-white'
+                                                        : 'bg-neutral-100 text-neutral-600'
+                                                }`}
+                                            >
+                                                <Icon className="size-4" />
+                                            </span>
+                                            <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-neutral-800">
+                                                    {title}
+                                                </span>
+                                                <span className="block text-xs text-neutral-500">
+                                                    {hint}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                         {mode === 'visual' ? (

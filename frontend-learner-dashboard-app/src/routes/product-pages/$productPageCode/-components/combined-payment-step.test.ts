@@ -137,7 +137,11 @@ const flush = () =>
         await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-const mount = async (vendor: string, selection: string[]) => {
+const mount = async (
+    vendor: string,
+    selection: string[],
+    state: Partial<ReturnType<typeof useProductPageStore.getState>> = {}
+) => {
     useProductPageStore.setState({
         pageData: pageFor(vendor),
         selectedPsOptionIds: selection,
@@ -145,6 +149,7 @@ const mount = async (vendor: string, selection: string[]) => {
             email: { id: 'f1', key: 'email', name: 'Email', value: 'a@b.c', is_mandatory: true, type: 'EMAIL' },
             phone: { id: 'f2', key: 'mobile_number', name: 'Phone', value: '+919999999999', is_mandatory: true, type: 'PHONE' },
         },
+        ...state,
     });
     onSuccess = vi.fn();
     container = document.createElement('div');
@@ -313,6 +318,52 @@ describe('a Razorpay order on a page drawn for another gateway', () => {
         expect(mocks.opened).toEqual([]);
         expect(text()).toContain('common.priceChangedReload');
         expect(mocks.invalidate).toHaveBeenCalledWith({ queryKey: ['PRODUCT_PAGE_BY_CODE', 'STORE', 'inst-1'] });
+    });
+
+    it('drops a coupon that made the basket look free, so the next attempt is priced without it', async () => {
+        // The coupon no longer takes off what it did when it was applied. A
+        // refetch of the page cannot correct that: the page comes back the
+        // same, and every retry would ask for another unpaid order.
+        mocks.enroll
+            .mockResolvedValueOnce(RAZORPAY_ORDER)
+            .mockResolvedValueOnce(answer({ status: 'PAYMENT_PENDING', order_id: 'order_2', razorpay_key_id: 'rzp_key' }));
+        await mount('RAZORPAY', ['opt-a'], {
+            couponCode: 'FREE100',
+            couponId: 'coupon-1',
+            appliedCouponDiscountId: 'applied-1',
+            discountAmount: 1000,
+        });
+
+        expect(mocks.enroll).toHaveBeenCalledTimes(1);
+        expect(mocks.enroll.mock.calls[0][0]).toMatchObject({
+            couponCode: 'FREE100',
+            paymentInitiationRequest: { vendor: 'FREE', amount: 0 },
+        });
+        expect(onSuccess).not.toHaveBeenCalled();
+        expect(mocks.opened).toEqual([]);
+        expect(useProductPageStore.getState()).toMatchObject({
+            couponCode: '',
+            couponId: '',
+            appliedCouponDiscountId: '',
+            discountAmount: 0,
+        });
+        expect(text()).toContain('cartStep.couponChanged');
+        expect(text()).not.toContain('common.priceChangedReload');
+        // The page is still refetched, in case its prices moved as well.
+        expect(mocks.invalidate).toHaveBeenCalledWith({ queryKey: ['PRODUCT_PAGE_BY_CODE', 'STORE', 'inst-1'] });
+
+        // The step now asks for the real price, and paying it opens Razorpay.
+        await pay();
+
+        expect(mocks.enroll).toHaveBeenCalledTimes(2);
+        expect(mocks.enroll.mock.calls[1][0].couponCode).toBeUndefined();
+        expect(mocks.enroll.mock.calls[1][0].paymentInitiationRequest).toEqual({
+            vendor: 'RAZORPAY',
+            amount: 1000,
+            currency: 'INR',
+            razorpay_request: {},
+        });
+        expect(mocks.opened).toEqual([expect.objectContaining({ razorpayOrderId: 'order_2', amount: 100000 })]);
     });
 });
 

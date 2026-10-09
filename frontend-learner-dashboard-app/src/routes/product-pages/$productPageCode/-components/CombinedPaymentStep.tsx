@@ -53,8 +53,8 @@ export const CombinedPaymentStep = ({
     const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
     const courseTermFor = (count: number) => (count === 1 ? course : coursePlural).toLocaleLowerCase();
     const {
-        selectedPsOptionIds, registrationData, userId, couponCode,
-        finalPrice, utmParams,
+        selectedPsOptionIds, registrationData, userId, couponCode, discountAmount,
+        clearCoupon, finalPrice, utmParams,
     } = useProductPageStore();
 
     const razorpayRef = useRef<RazorpayCheckoutFormRef | null>(null);
@@ -196,6 +196,19 @@ export const CombinedPaymentStep = ({
             // the page's prices are out of date. Show the current ones before
             // anyone is asked to pay them.
             if (amount <= 0) {
+                // With a coupon in play the coupon may be what went out of date,
+                // and refetching the page never corrects a coupon — every retry
+                // would ask for another unpaid order. So it goes: the step shows
+                // the price without it, and the learner can apply it again for
+                // what it takes off now.
+                if (discountAmount > 0) {
+                    clearCoupon();
+                    showCheckoutError({
+                        message: t('cartStep.couponChanged', 'Cart changed — please re-apply your coupon.'),
+                        priceChanged: true,
+                    });
+                    return;
+                }
                 showCheckoutError({ message: priceChangedMessage, priceChanged: true });
                 return;
             }

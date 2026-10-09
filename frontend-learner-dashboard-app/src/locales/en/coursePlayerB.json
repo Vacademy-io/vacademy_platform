@@ -1,5 +1,16 @@
 {
     "catalogHero": {
+        "searchPlaceholder": "Search {{courses}}, topics or teachers",
+        "searchButton": "Search",
+        "popularLabel": "Popular:",
+        "statCourses": "{{courses}}",
+        "statStreams": "streams",
+        "statCategories": "categories",
+        "showingCount_one": "Showing {{count}} {{course}}",
+        "showingCount_other": "Showing {{count}} {{courses}}",
+        "allStreams": "All streams",
+        "sortPrefix": "Sort:",
+        "sortAriaLabel": "Sort by",
         "_owner": "Feature 'hero' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogTabs": {

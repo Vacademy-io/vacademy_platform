@@ -4,7 +4,10 @@ import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { applyCataloguePrimaryColor } from "../-utils/catalogue-theme";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
-import { withArabicFallback } from "@/utils/branding";
+import { CatalogueLocaleProvider } from "../-utils/catalogue-locale";
+import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
+import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
+import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 
 /**
  * Wraps a non-catalogue page in the catalogue's own chrome: theme preset,
@@ -59,22 +62,38 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
     applyCataloguePrimaryColor(themeRootRef.current, globalSettings?.theme?.primaryColor);
   }, [globalSettings?.theme?.primaryColor]);
 
+  // A site offering हिन्दी / मराठी also gets a Devanagari face (loaded with
+  // the faces its config uses); every other site is left exactly as before.
+  const devanagari = siteUsesDevanagari(globalSettings?.i18n);
+  useEffect(() => {
+    if (devanagari && catalogueData) {
+      ensureFontsLoaded([...collectConfigFontFamilies(catalogueData), DEVANAGARI_FALLBACK_FAMILY]);
+    }
+  }, [devanagari, catalogueData]);
+
   // Fonts are part of "the theme" the admin picked; mirrors the catalogue page.
   useEffect(() => {
     const fonts = globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) return;
-    const family = withArabicFallback(fonts.family);
+    const family = devanagari
+      ? withDevanagariFallback(withArabicFallback(fonts.family))
+      : withArabicFallback(fonts.family);
     document.body.style.fontFamily = family;
     document.documentElement.style.setProperty("--app-font-family", family);
-  }, [globalSettings?.fonts?.enabled, globalSettings?.fonts?.family]);
+  }, [globalSettings?.fonts?.enabled, globalSettings?.fonts?.family, devanagari]);
 
   // Nothing to dress the page with — render it exactly as before, but still
   // supply the catalogue's words if we have them.
+  // Both paths sit inside the site-language provider (settings undefined →
+  // the base language, i.e. exactly as before), so the product page follows
+  // the catalogue's ?lang= once the catalogue has loaded.
   if (!tagName || !catalogueData) {
     return (
+      <CatalogueLocaleProvider settings={globalSettings?.i18n} scope={tagName || ""}>
       <CatalogueNamingProvider naming={globalSettings?.naming}>
         {children}
       </CatalogueNamingProvider>
+      </CatalogueLocaleProvider>
     );
   }
 
@@ -94,6 +113,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
   );
 
   return (
+    <CatalogueLocaleProvider settings={globalSettings?.i18n} scope={tagName}>
     <CatalogueNamingProvider naming={globalSettings?.naming}>
     <div
       ref={themeRootRef}
@@ -117,6 +137,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
       {showFooter && footer && footer.enabled !== false && renderBlock("footer", footer)}
     </div>
     </CatalogueNamingProvider>
+    </CatalogueLocaleProvider>
   );
 };
 

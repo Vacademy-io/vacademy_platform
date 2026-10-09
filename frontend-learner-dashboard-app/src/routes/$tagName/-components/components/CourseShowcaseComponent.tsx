@@ -16,6 +16,7 @@ import {
     readComingSoon,
 } from "../../-utils/coming-soon";
 import { ComingSoonRibbon } from "./ComingSoonRibbon";
+import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
 
 /**
  * A CURATED strip of courses — "new", "on sale", one tag, or a hand-picked
@@ -135,6 +136,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
 }) => {
     const { t, i18n } = useTranslation("coursePlayerB");
     const navigate = useNavigate();
+    // Course names are live data: translated where shown, never in the
+    // filters (tag, picked ids) or the navigation below.
+    const siteT = useSiteT();
+    const siteLocale = useCatalogueLocale();
     const [courses, setCourses] = useState<ShowcaseCourse[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -245,6 +250,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                 enrollInviteId: c.enrollInviteId,
                 packageSessionId: c.packageSessionId,
                 level: c.level,
+                // The course page opens in the language the visitor is reading.
+                ...(siteLocale.enabled && siteLocale.locale !== siteLocale.baseLocale
+                    ? { lang: siteLocale.locale }
+                    : {}),
             },
         });
 
@@ -281,6 +290,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                       <ComingSoonShowcaseCard
                                           key={c.id}
                                           course={c}
+                                          title={siteT(c.title)}
                                           info={c.comingSoon}
                                           locale={i18n.language}
                                           onOpen={() => openCourse(c)}
@@ -298,7 +308,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                   className="group flex flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated text-start shadow-sm transition-transform duration-300 ease-out hover:-translate-y-1"
                               >
                                   <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-muted">
-                                      <ShowcaseImage fileId={c.thumbnailId} alt={c.title} />
+                                      <ShowcaseImage fileId={c.thumbnailId} alt={siteT(c.title)} />
                                       <div className="absolute start-3 top-3">
                                           <OfferBadge actual={c.price} elevated={c.elevatedPrice} />
                                       </div>
@@ -319,7 +329,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                                   </div>
                                   <div className="flex flex-1 flex-col gap-2 p-5">
                                       <h3 className="text-base font-semibold text-catalogue-text-primary">
-                                          {c.title}
+                                          {siteT(c.title)}
                                       </h3>
                                       {c.description && (
                                           <p className="line-clamp-2 text-sm text-catalogue-text-muted">
@@ -354,10 +364,12 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
  */
 const ComingSoonShowcaseCard: React.FC<{
     course: ShowcaseCourse;
+    /** The course name as shown (in the visitor's language). */
+    title: string;
     info: ComingSoonInfo;
     locale?: string;
     onOpen: () => void;
-}> = ({ course, info, locale, onOpen }) => {
+}> = ({ course, title, info, locale, onOpen }) => {
     const { t } = useTranslation("coursePlayerB");
     const launchLabel = formatLaunchDate(info.launchDate, locale);
     return (
@@ -366,13 +378,13 @@ const ComingSoonShowcaseCard: React.FC<{
             className="group flex cursor-pointer flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg-elevated text-start shadow-sm transition-transform duration-300 ease-out hover:-translate-y-1"
         >
             <div className="relative aspect-video w-full overflow-hidden bg-catalogue-bg-muted">
-                <ShowcaseImage fileId={course.thumbnailId} alt={course.title} />
+                <ShowcaseImage fileId={course.thumbnailId} alt={title} />
                 <div className="absolute end-3 top-3">
                     <ComingSoonRibbon info={info} />
                 </div>
             </div>
             <div className="flex flex-1 flex-col gap-2 p-5">
-                <h3 className="text-base font-semibold text-catalogue-text-primary">{course.title}</h3>
+                <h3 className="text-base font-semibold text-catalogue-text-primary">{title}</h3>
                 {course.description && (
                     <p className="line-clamp-2 text-sm text-catalogue-text-muted">{course.description}</p>
                 )}
@@ -386,7 +398,7 @@ const ComingSoonShowcaseCard: React.FC<{
                         type="button"
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (!openComingSoonForm(info, t("comingSoon.notifyTitle", { title: course.title }))) {
+                            if (!openComingSoonForm(info, t("comingSoon.notifyTitle", { title }))) {
                                 onOpen();
                             }
                         }}

@@ -2,6 +2,8 @@ import React from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { RouteMatcher } from '../-services/route-matcher';
 import { useCatalogueTag } from './CatalogueTagContext';
+import { useCatalogueLocale } from '../-utils/catalogue-locale';
+import { withLocaleParam } from '../-utils/catalogue-site-language';
 
 interface CatalogueLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     /** The route value — can be a page slug ("about-us"), "homepage", full URL, or #anchor */
@@ -21,6 +23,11 @@ export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, targ
     const params = useParams({ strict: false }) as { tagName?: string };
     // Context first: on a root-mounted host the param is a page route, not the tag.
     const tagName = useCatalogueTag(params.tagName || '');
+    // A visitor reading the site in a non-base language keeps it on every
+    // internal link — in the href too, so crawlers and new tabs reach the
+    // translated page. null on single-language sites (links unchanged).
+    const siteLocale = useCatalogueLocale();
+    const carryLocale = siteLocale.enabled && siteLocale.locale !== siteLocale.baseLocale ? siteLocale.locale : null;
 
     if (!to || to === '#') {
         return <span className={className} style={style} {...rest}>{children}</span>;
@@ -66,12 +73,17 @@ export const CatalogueLink: React.FC<CatalogueLinkProps> = ({ to, children, targ
         ? routePart.replace(new RegExp(`^/?${escapedTag}(?=/|$)`, 'i'), '')
         : routePart;
     const fullPath = RouteMatcher.pagePath(tagName, strippedRoute);
-    const fullHref = fullPath + hashPart;
+    const linkPath = withLocaleParam(fullPath, carryLocale);
+    const fullHref = linkPath + hashPart;
 
     const handleClick = (e: React.MouseEvent) => {
         if (e.metaKey || e.ctrlKey || target === '_blank') return;
         e.preventDefault();
-        navigate({ to: fullPath }).then(() => {
+        // A link with its own query string ("/courses?stream=x") goes through
+        // `href`: with `to`, the router reads the query as part of the path and
+        // a search param it keeps (?lang=) would follow a second "?".
+        const go = linkPath.includes('?') ? navigate({ href: linkPath }) : navigate({ to: fullPath });
+        go.then(() => {
             if (hashPart) {
                 // Wait for page render, then scroll to anchor
                 requestAnimationFrame(() => {

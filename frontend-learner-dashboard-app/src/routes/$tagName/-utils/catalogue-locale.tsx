@@ -1,4 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useRouter } from "@tanstack/react-router";
+import { I18nextProvider, useTranslation } from "react-i18next";
+import type { i18n as I18nInstance } from "i18next";
 import {
   LOCALE_PARAM,
   baseLocaleOf,
@@ -11,6 +14,8 @@ import {
   type TranslationDictionary,
 } from "./catalogue-i18n";
 import { useCatalogueSearchParams } from "./catalogue-url-state";
+import { forwardedEvents, siteI18nInstance } from "./catalogue-i18n-instance";
+import { repairRetainedLocaleParam } from "./catalogue-site-language";
 
 /**
  * The visitor's site language, for every catalogue section (see
@@ -76,15 +81,23 @@ export const CatalogueLocaleProvider: React.FC<{
   settings: CatalogueI18nSettings | undefined | null;
   /** Remembers the choice per site (tag name or institute id). */
   scope: string;
+  /**
+   * Read and remember the visitor's choice in localStorage (default). Off for
+   * the builder preview, which shows exactly the language its URL asks for —
+   * an admin who once browsed the site in Hindi must not get a Hindi preview
+   * while editing English, nor leave their editing language behind as their
+   * visitor preference.
+   */
+  persist?: boolean;
   children: React.ReactNode;
-}> = ({ settings, scope, children }) => {
+}> = ({ settings, scope, persist = true, children }) => {
   const { get, update } = useCatalogueSearchParams();
   const urlLocale = get(LOCALE_PARAM);
-  const [stored, setStored] = useState<string | null>(() => readStored(scope));
+  const [stored, setStored] = useState<string | null>(() => (persist ? readStored(scope) : null));
 
   useEffect(() => {
-    setStored(readStored(scope));
-  }, [scope]);
+    setStored(persist ? readStored(scope) : null);
+  }, [scope, persist]);
 
   const enabled = !!settings?.enabled;
   const baseLocale = baseLocaleOf(settings);
@@ -93,11 +106,23 @@ export const CatalogueLocaleProvider: React.FC<{
 
   // An explicit ?lang= is also the visitor's choice from now on.
   useEffect(() => {
-    if (enabled && urlLocale && urlLocale.toLowerCase() === locale && stored !== locale) {
+    if (persist && enabled && urlLocale && urlLocale.toLowerCase() === locale && stored !== locale) {
       writeStored(scope, locale);
       setStored(locale);
     }
-  }, [enabled, urlLocale, locale, stored, scope]);
+  }, [persist, enabled, urlLocale, locale, stored, scope]);
+
+  // Catalogue routes keep ?lang= on navigation (catalogue-route-search). A
+  // navigation whose `to` carried its own query string gets it after a second
+  // "?" — repaired here, whoever navigated, so the page reads its parameters
+  // correctly. Never matches a URL without that exact shape.
+  const location = useLocation();
+  const router = useRouter();
+  useEffect(() => {
+    const repaired = repairRetainedLocaleParam(location.searchStr);
+    if (repaired === null) return;
+    router.history.replace(`${location.pathname}${repaired}${location.hash ? `#${location.hash}` : ""}`);
+  }, [location.searchStr, location.pathname, location.hash, router]);
 
   // Screen readers and the browser's own translate prompt read <html lang>.
   useEffect(() => {
@@ -109,19 +134,36 @@ export const CatalogueLocaleProvider: React.FC<{
     };
   }, [enabled, locale]);
 
+  // setLocale stays the same function for the life of the provider: the URL
+  // helper (`update`) changes with every URL change, and if setLocale followed
+  // it the context value would too — re-rendering every section on each
+  // filter tweak. The latest settings/update are read from a ref instead, so
+  // the value changes only when the language (or the settings) do.
+  const latest = useRef({ settings, update, persist });
+  latest.current = { settings, update, persist };
+
   const setLocale = useCallback(
     (code: string) => {
-      const next = resolveSiteLocale({ settings, urlLocale: code });
-      writeStored(scope, next);
-      setStored(next);
+      const { settings: current, update: applyToUrl, persist: remember } = latest.current;
+      const next = resolveSiteLocale({ settings: current, urlLocale: code });
+      if (remember) {
+        writeStored(scope, next);
+        setStored(next);
+      }
       // The base language needs no parameter; any other language is put in the
       // URL so a shared link opens in the language the sharer was reading.
-      update({ [LOCALE_PARAM]: next === baseLocale ? null : next });
+      applyToUrl({ [LOCALE_PARAM]: next === baseLocaleOf(current) ? null : next });
     },
-    [settings, scope, update, baseLocale],
+    [scope],
   );
 
-  const t = useCallback((text: string | null | undefined) => translateText(text ?? "", dict), [dict]);
+  // Live data is untyped JSON: a non-string value (a number in a label) is
+  // shown as it is rather than crashing the dictionary lookup.
+  const t = useCallback(
+    (text: string | null | undefined) =>
+      typeof text === "string" ? translateText(text, dict) : text == null ? "" : String(text),
+    [dict],
+  );
 
   const value = useMemo<CatalogueLocaleValue>(
     () => ({
@@ -136,7 +178,33 @@ export const CatalogueLocaleProvider: React.FC<{
     [locale, baseLocale, enabled, settings, dict, setLocale, t],
   );
 
-  return <CatalogueLocaleContext.Provider value={value}>{children}</CatalogueLocaleContext.Provider>;
+  // react-i18next chrome follows the site language through a cloned instance.
+  // Single-language sites get the app's own instance — the one every
+  // useTranslation() below reads anyway — so nothing changes for them, and
+  // the element tree is the same either way (turning languages on in the
+  // builder preview does not remount the page).
+  const { i18n: contextI18n } = useTranslation();
+  const baseI18n =
+    contextI18n && typeof (contextI18n as Partial<I18nInstance>).cloneInstance === "function"
+      ? contextI18n
+      : undefined;
+  const chromeI18n = useMemo(
+    () => (enabled && baseI18n ? siteI18nInstance(baseI18n, locale) : baseI18n),
+    [enabled, baseI18n, locale],
+  );
+
+  useEffect(() => {
+    if (!baseI18n || !chromeI18n || chromeI18n === baseI18n) return;
+    const handlers = forwardedEvents(baseI18n).map((event) => {
+      const forward = (...args: unknown[]) => chromeI18n.emit(event, ...args);
+      baseI18n.on(event, forward);
+      return { event, forward };
+    });
+    return () => handlers.forEach(({ event, forward }) => baseI18n.off(event, forward));
+  }, [baseI18n, chromeI18n]);
+
+  const tree = <CatalogueLocaleContext.Provider value={value}>{children}</CatalogueLocaleContext.Provider>;
+  return chromeI18n ? <I18nextProvider i18n={chromeI18n}>{tree}</I18nextProvider> : tree;
 };
 
 export const useCatalogueLocale = (): CatalogueLocaleValue => useContext(CatalogueLocaleContext);

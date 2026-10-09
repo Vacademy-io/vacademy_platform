@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { RouteMatcher } from "../-services/route-matcher";
 import { useTranslation } from "react-i18next";
-import { withArabicFallback } from "@/utils/branding";
+import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
@@ -13,6 +13,9 @@ import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { useResourceTrackingContext } from "../-utils/resource-unlock";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { CatalogueLocaleProvider } from "../-utils/catalogue-locale";
+import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
+import { CatalogueSeoHead } from "./CatalogueSeoHead";
 import { useInstituteNamingSettings } from "../-utils/institute-naming-seed";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
 import {
@@ -32,7 +35,6 @@ import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
@@ -212,15 +214,23 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   };
 
   useEffect(() => {
+    // A site offering हिन्दी / मराठी also gets a Devanagari face after the
+    // brand font (loaded with the others); every other site's stack is
+    // exactly as before.
+    const devanagari = siteUsesDevanagari(catalogueData?.globalSettings?.i18n);
+    const withScripts = (stack: string) =>
+      devanagari ? withDevanagariFallback(withArabicFallback(stack)) : withArabicFallback(stack);
+
     // Load EVERY font face the config references (global family + every
     // per-component style.typography.fontFamily incl. responsive overrides)
     // in one merged Google-Fonts request. Previously only the global family
     // loaded, so per-component font picks silently fell back to system fonts.
-    ensureFontsLoaded(collectConfigFontFamilies(catalogueData));
+    const families = collectConfigFontFamilies(catalogueData);
+    ensureFontsLoaded(devanagari ? [...families, DEVANAGARI_FALLBACK_FAMILY] : families);
 
     const fonts = catalogueData?.globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily = withArabicFallback(
+      document.body.style.fontFamily = withScripts(
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
       );
       document.documentElement.style.removeProperty("--catalogue-heading-font");
@@ -229,7 +239,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     // Apply the global font exactly as specified in JSON, plus the Arabic
     // fallback the stack would otherwise drop (Latin order is preserved).
-    const fontFamily = withArabicFallback(fonts.family.trim());
+    const fontFamily = withScripts(fonts.family.trim());
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
 
@@ -536,21 +546,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     );
   }
 
-  // Keep the tenant's branded tab title (set by TabBranding/use-domain-routing);
-  // only fall back to a sensible default if none was applied. og:* uses the
-  // richer institute name for link previews without overriding the tab title.
-  const brandedTitle =
-    (typeof document !== "undefined" && document.title) || "";
-  const defaultCatalogueTitle = t("courseCataloguePage.defaultTitle", { course });
-  const seoTitle = brandedTitle || domainRouting.instituteName || defaultCatalogueTitle;
-  const ogTitle = domainRouting.instituteName || defaultCatalogueTitle;
-  const seoDescription = domainRouting.instituteName
-    ? t("courseCataloguePage.seoDescriptionWithInstitute", {
-        courses,
-        institute: domainRouting.instituteName,
-      })
-    : t("courseCataloguePage.seoDescription", { courses });
-
   /** Which page this URL resolves to. Shared by the chrome check and the
    *  render so the two can never disagree about what is on screen. */
   const matchesActivePage = (page: { id?: string; route?: string }) =>
@@ -563,11 +558,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
   /** An imported HTML page normally pastes in its own nav and footer, so the
    *  site's chrome would render a second set. Opt-out lives on the page. */
-  const hidesSiteChrome = !!(
-    catalogueData.pages.find(matchesActivePage) as { hideSiteChrome?: boolean } | undefined
-  )?.hideSiteChrome;
+  const activePage = catalogueData.pages.find(matchesActivePage);
+  const hidesSiteChrome = !!(activePage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
 
   return (
+    // Site language (?lang=, remembered per tag): authored props, live data
+    // and react-i18next chrome below all follow it. A single-language site
+    // renders exactly as before.
+    <CatalogueLocaleProvider
+      settings={catalogueData.globalSettings?.i18n}
+      scope={tagName}
+      persist={!isPreviewMode}
+    >
     <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
     <div
       ref={wrapperRef}
@@ -581,13 +583,14 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
       style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
-      <Helmet>
-        <title>{seoTitle}</title>
-        <meta name="description" content={seoDescription} />
-        <meta property="og:title" content={ogTitle} />
-        <meta property="og:description" content={seoDescription} />
-        <meta property="og:type" content="website" />
-      </Helmet>
+      {/* Title/description from stable inputs (page SEO, institute branding)
+          in the visitor's language — never read back from document.title. */}
+      <CatalogueSeoHead
+        page={activePage}
+        instituteName={domainRouting.instituteName}
+        course={course}
+        courses={courses}
+      />
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent
@@ -606,9 +609,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <>
           {/* Keyboard users land on the header nav; this lets them jump the
               whole global chrome straight to the page content. */}
-          <a href="#catalogue-main" className="catalogue-skip-link">
-            {t("courseCataloguePage.skipToMainContent")}
-          </a>
+          <SkipToMainLink />
           {/* Header from JSON globalSettings.
               Suppressed when the active page asks for it: an imported HTML
               page usually pastes in its own nav and footer, so rendering the
@@ -729,7 +730,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
           onLogin={handleIntroLogin}
           onLegacyGetStarted={() => setShowLeadCollection(true)}
-          onNavigate={(route) => navigate({ to: RouteMatcher.pagePath(tagName, route) })}
+          onNavigate={(route) => {
+            // A route with its own query string must go through `href`, or a
+            // kept ?lang= would land after a second "?" (see CatalogueLink).
+            const target = RouteMatcher.pagePath(tagName, route);
+            void (target.includes("?") ? navigate({ href: target }) : navigate({ to: target }));
+          }}
           nativePad={isAndroid || isIOS}
         />
       )}
@@ -740,6 +746,19 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       )}
     </div>
     </CatalogueNamingProvider>
+    </CatalogueLocaleProvider>
+  );
+};
+
+/** Keyboard users land on the header nav; this jumps past the global chrome.
+ *  Its own component so the label follows the site language (it renders
+ *  inside CatalogueLocaleProvider, unlike the page shell's own `t`). */
+const SkipToMainLink = () => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
+    <a href="#catalogue-main" className="catalogue-skip-link">
+      {t("courseCataloguePage.skipToMainContent")}
+    </a>
   );
 };
 

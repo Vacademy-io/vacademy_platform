@@ -9,6 +9,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { RouteMatcher } from "./-services/route-matcher";
 import { CatalogueTagContext } from "./-components/CatalogueTagContext";
+import { retainSiteLanguage } from "./-utils/catalogue-route-search";
 import { CourseCataloguePage } from "./-components/CourseCataloguePage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -16,6 +17,8 @@ import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/$tagName/$pageSlug_/$postSlug")({
+  // Keep the visitor's site language (?lang=) across catalogue navigation.
+  search: { middlewares: [retainSiteLanguage] },
   component: RouteComponent,
 });
 

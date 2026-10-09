@@ -2,6 +2,18 @@
 // for social media crawlers (WhatsApp, Facebook, Twitter, etc.)
 // by fetching institute branding from the domain-routing API.
 
+// Site languages (?lang=hi): the same pure helpers the app uses for its own
+// <title>, so crawlers and visitors read one set of rules. Both files are
+// dependency-free (no React, no DOM); a site without languages never reaches
+// any of this.
+import { LOCALE_PARAM, translateText, type CatalogueI18nSettings } from "../src/routes/$tagName/-utils/catalogue-i18n";
+import {
+  hreflangAlternates,
+  localizedPageUrl,
+  seoLocaleContext,
+  withHtmlLang,
+} from "../src/routes/$tagName/-utils/catalogue-seo";
+
 // Search Console's URL-inspection and site-verification fetchers do not call
 // themselves Googlebot; without them here a verification meta tag we inject
 // is never seen and "Test live URL" shows the bare SPA shell.
@@ -156,6 +168,8 @@ interface CatalogueConfig {
   seo: CatalogueSeo;
   /** Social profile URLs from the site footer — feed Organization.sameAs. */
   socials: string[];
+  /** globalSettings.i18n — the site's languages and translations, when it has any. */
+  i18n?: CatalogueI18nSettings;
 }
 
 /**
@@ -182,6 +196,7 @@ async function fetchCatalogue(
       pages?: Array<CataloguePage & { components?: Array<{ type?: string; enabled?: boolean }> }>;
       globalSettings?: {
         seo?: CatalogueSeo;
+        i18n?: CatalogueI18nSettings;
         layout?: {
           footer?: {
             props?: {
@@ -205,7 +220,13 @@ async function fetchCatalogue(
       seo: p.seo,
       hasBlog: (p.components || []).some((c) => c?.type === "blog" && c.enabled !== false),
     }));
-    return { pages, seo: cfg?.globalSettings?.seo || {}, socials };
+    const i18n = cfg?.globalSettings?.i18n;
+    return {
+      pages,
+      seo: cfg?.globalSettings?.seo || {},
+      socials,
+      ...(i18n && typeof i18n === "object" ? { i18n } : {}),
+    };
   } catch {
     return null;
   }
@@ -847,11 +868,21 @@ export const onRequest: PagesFunction = async (context) => {
   const pageSeo = resolved ? pageSeoOf(resolved.page, resolved.post) : null;
   const post = resolved?.post;
 
+  // The request's site language: ?lang= when the site offers it, else its base
+  // language. null for a site without languages — every tag below is then
+  // exactly what it was before languages existed.
+  const seoLocale = resolved
+    ? seoLocaleContext(resolved.catalogue.i18n, url.searchParams.get(LOCALE_PARAM))
+    : null;
+  // Titles and descriptions through the site dictionary (identity when null
+  // or when the string has no translation).
+  const localize = (text: string): string => (seoLocale ? translateText(text, seoLocale.dict) : text);
+
   const title = escapeHtml(
-    pageSeo?.title || branding.tabText || branding.instituteName || ""
+    localize(pageSeo?.title || branding.tabText || branding.instituteName || "")
   );
   const description = escapeHtml(
-    pageSeo?.description || `${branding.instituteName}`
+    localize(pageSeo?.description || `${branding.instituteName}`)
   );
 
   // The big unfurl thumbnail uses the main institute logo; the favicon /
@@ -902,8 +933,20 @@ export const onRequest: PagesFunction = async (context) => {
   // Canonical: the request URL without query/hash (cache-busters and tracking
   // params must not fork the page into several indexed copies). On the day a
   // site moves to its own apex the canonical follows the host automatically.
-  const canonical = `${url.origin}${url.pathname.replace(/\/+$/, "") || "/"}`;
+  // A non-base site language keeps its ?lang=: the Hindi page is its own page,
+  // not a duplicate of the English one.
+  const canonical = seoLocale
+    ? localizedPageUrl(url.origin, url.pathname, seoLocale.locale, seoLocale.baseLocale)
+    : `${url.origin}${url.pathname.replace(/\/+$/, "") || "/"}`;
   const seoTags: string[] = [`<link rel="canonical" href="${escapeHtml(canonical)}" />`];
+  if (seoLocale) {
+    // Every language version of this page, so search engines pair them.
+    for (const alternate of hreflangAlternates(url.origin, url.pathname, seoLocale)) {
+      seoTags.push(
+        `<link rel="alternate" hreflang="${escapeHtml(alternate.hreflang)}" href="${escapeHtml(alternate.href)}" />`
+      );
+    }
+  }
   if (resolved) {
     const siteSeo = resolved.catalogue.seo;
     const keywords = Array.isArray(siteSeo.keywords)
@@ -923,12 +966,12 @@ export const onRequest: PagesFunction = async (context) => {
       branding,
       resolved.catalogue,
       ogImageProxied,
-      pageSeo?.title || branding.instituteName || "",
-      pageSeo?.description || ""
+      localize(pageSeo?.title || branding.instituteName || ""),
+      localize(pageSeo?.description || "")
     );
     seoTags.push(`<script type="application/ld+json">${ld}</script>`);
     if (post) {
-      seoTags.push(`<script type="application/ld+json">${buildBlogPostingData(canonical, siteUrl, post, ogImageProxied, pageSeo?.description || "")}</script>`);
+      seoTags.push(`<script type="application/ld+json">${buildBlogPostingData(canonical, siteUrl, post, ogImageProxied, localize(pageSeo?.description || ""))}</script>`);
     }
   }
 
@@ -978,6 +1021,11 @@ export const onRequest: PagesFunction = async (context) => {
 
   // Strip the manifest link for crawlers — it references default Vacademy icons
   html = html.replace(/<link\s+rel="manifest"[^>]*\/?>/, "");
+
+  // The document's language is the page's language (index.html says "en").
+  if (seoLocale) {
+    html = withHtmlLang(html, seoLocale.locale);
+  }
 
   // Rebuild headers: the body length changed (and reading .text() may have
   // decompressed it), so a stale content-length/content-encoding would

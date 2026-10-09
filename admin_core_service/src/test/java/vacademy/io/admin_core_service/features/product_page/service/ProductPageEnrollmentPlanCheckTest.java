@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.http.HttpStatus;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -204,6 +205,7 @@ class ProductPageEnrollmentPlanCheckTest {
         VacademyException tampered = assertThrows(VacademyException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-cheap", pageMappings));
         assertEquals(ProductPageEnrollmentService.PRICE_CHANGED_MESSAGE, tampered.getMessage());
+        assertEquals(HttpStatus.CONFLICT, tampered.getStatus());
         assertThrows(VacademyException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-unknown", "plan-a", pageMappings));
     }
@@ -235,6 +237,7 @@ class ProductPageEnrollmentPlanCheckTest {
                 () -> service.enrollForProductPage(enrollRequest("psli-a", "plan-cheap")));
 
         assertEquals(ProductPageEnrollmentService.PRICE_CHANGED_MESSAGE, e.getMessage());
+        assertEquals(HttpStatus.CONFLICT, e.getStatus());
         verify(paymentPlanRepository, never()).findById("plan-cheap");
         verifyNoInteractions(authService, paymentService, userPlanService, paymentLogService,
                 oneTimePaymentOptionOperation);

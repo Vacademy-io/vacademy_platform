@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.product_page.service;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -1078,7 +1079,8 @@ public class ProductPageEnrollmentService {
      * A request naming no plan gets the locked one. A page that maps one
      * bridge row more than once, on different plans, accepts each of those
      * plans as it always has. Anything else is refused before any user,
-     * payment or enrollment is created.
+     * payment or enrollment is created. It is refused with 409 Conflict, so
+     * a client can tell "the page changed under you: reload it" from other errors.
      *
      * Visible for testing.
      *
@@ -1104,7 +1106,7 @@ public class ProductPageEnrollmentService {
         if (!locked.contains(requested)) {
             log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
                     requested, psInvitePaymentOptionId, locked);
-            throw new VacademyException(PRICE_CHANGED_MESSAGE);
+            throw new VacademyException(HttpStatus.CONFLICT, PRICE_CHANGED_MESSAGE);
         }
         return requested;
     }

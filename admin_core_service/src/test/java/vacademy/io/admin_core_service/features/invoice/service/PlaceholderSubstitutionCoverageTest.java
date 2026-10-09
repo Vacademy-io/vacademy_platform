@@ -56,4 +56,46 @@ class PlaceholderSubstitutionCoverageTest {
                     key + " must be in the registry or the template editor will not offer it");
         }
     }
+
+    @Test
+    @DisplayName("an editable placeholder also passes the override whitelist, or the edit vanishes")
+    void editablePlaceholdersAreWhitelisted() throws IOException {
+        String src = Files.readString(SERVICE);
+
+        // sanitizeOverrides drops any key outside EDITABLE_OVERRIDE_KEYS, so a placeholder marked
+        // editable but left off that list gives an admin an input box that does nothing.
+        Matcher whitelist = Pattern.compile(
+                "EDITABLE_OVERRIDE_KEYS = Set\\.of\\((.*?)\\);", Pattern.DOTALL).matcher(src);
+        assertTrue(whitelist.find(), "expected to find EDITABLE_OVERRIDE_KEYS");
+        String allowed = whitelist.group(1);
+
+        List<String> editableButDropped = new ArrayList<>();
+        Matcher reg = Pattern.compile(
+                "PLACEHOLDER_META\\.put\\(\"([a-z_0-9]+)\",\\s*\\n?\\s*new PlaceholderMeta\\("
+                        + "\"[^\"]*\",\\s*\"RECEIPT\",\\s*(true|false)").matcher(src);
+        while (reg.find()) {
+            if ("true".equals(reg.group(2)) && !allowed.contains("\"" + reg.group(1) + "\"")) {
+                editableButDropped.add(reg.group(1));
+            }
+        }
+        assertTrue(editableButDropped.isEmpty(),
+                "these receipt placeholders are editable in the UI but are not in "
+                        + "EDITABLE_OVERRIDE_KEYS, so sanitizeOverrides would silently discard the "
+                        + "admin edit: " + editableButDropped);
+    }
+
+    @Test
+    @DisplayName("receipt amounts are read-only, like the other money placeholders")
+    void receiptAmountsAreNotEditable() throws IOException {
+        String src = Files.readString(SERVICE);
+        // A receipt whose figures can be retyped is a receipt that can contradict the ledger.
+        for (String key : List.of("course_fees", "total_fees", "previous_paid", "fees_paid_now",
+                "total_fees_due", "total_amount_paid", "next_installment_amount", "amount_in_words")) {
+            Matcher m = Pattern.compile("PLACEHOLDER_META\\.put\\(\"" + key
+                    + "\",\\s*\\n?\\s*new PlaceholderMeta\\(\"[^\"]*\",\\s*\"RECEIPT\",\\s*(true|false)")
+                    .matcher(src);
+            assertTrue(m.find(), key + " should be registered");
+            assertTrue("false".equals(m.group(1)), key + " must not be admin-editable");
+        }
+    }
 }

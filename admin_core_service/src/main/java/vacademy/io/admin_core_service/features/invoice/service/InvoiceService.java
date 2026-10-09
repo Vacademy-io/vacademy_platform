@@ -304,7 +304,8 @@ public class InvoiceService {
             "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
             "place_of_supply", "institute_name", "institute_address", "institute_contact",
             "tax_label", "tax_rate", "country", "country_code", "tax_registration_number",
-            "hsn_code", "notes");
+            "hsn_code", "notes",
+            "course_name", "course_code", "user_mobile", "institute_tagline");
 
     /**
      * Overrides that only make sense for a single billed user. Stripped for bulk
@@ -358,23 +359,27 @@ public class InvoiceService {
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("notes", new PlaceholderMeta("Notes", "NOTES", true, "textarea"));
         // A fee receipt answers "where does this payment leave me", which an invoice does not:
+        // Money here is NOT editable, for the same reason subtotal and total_amount are not: a
+        // receipt that can be retyped is a receipt that can contradict the ledger. Only the
+        // descriptive fields are editable, and those are whitelisted in EDITABLE_OVERRIDE_KEYS
+        // so that an admin edit actually reaches the PDF instead of being silently dropped.
         // the course price, what was already paid, what is still owed and the next installment.
         // Registered here so the template editor offers them and an admin can override any one
         // on a single receipt. Derived in buildReceiptFigures from the learner fee schedule.
         PLACEHOLDER_META.put("course_name", new PlaceholderMeta("Course Name", "RECEIPT", true, "text"));
         PLACEHOLDER_META.put("course_code", new PlaceholderMeta("Course Code", "RECEIPT", true, "text"));
         PLACEHOLDER_META.put("user_mobile", new PlaceholderMeta("Mobile No.", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("course_fees", new PlaceholderMeta("Course Fees", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("total_fees", new PlaceholderMeta("Total Fees", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("previous_paid", new PlaceholderMeta("Total Previous Paid", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("fees_paid_now", new PlaceholderMeta("Fees Paid Now", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("total_fees_due", new PlaceholderMeta("Total Fees Due", "RECEIPT", true, "text"));
-        PLACEHOLDER_META.put("total_amount_paid", new PlaceholderMeta("Total Amount Paid", "RECEIPT", true, "text"));
+        PLACEHOLDER_META.put("course_fees", new PlaceholderMeta("Course Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees", new PlaceholderMeta("Total Fees", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("previous_paid", new PlaceholderMeta("Total Previous Paid", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("fees_paid_now", new PlaceholderMeta("Fees Paid Now", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_fees_due", new PlaceholderMeta("Total Fees Due", "RECEIPT", false, "text"));
+        PLACEHOLDER_META.put("total_amount_paid", new PlaceholderMeta("Total Amount Paid", "RECEIPT", false, "text"));
         PLACEHOLDER_META.put("next_installment_amount",
-                new PlaceholderMeta("Next Installment Amount", "RECEIPT", true, "text"));
+                new PlaceholderMeta("Next Installment Amount", "RECEIPT", false, "text"));
         PLACEHOLDER_META.put("next_installment_date",
-                new PlaceholderMeta("Next Installment Due On", "RECEIPT", true, "date"));
-        PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", true, "text"));
+                new PlaceholderMeta("Next Installment Due On", "RECEIPT", false, "date"));
+        PLACEHOLDER_META.put("amount_in_words", new PlaceholderMeta("Amount In Words", "RECEIPT", false, "text"));
     }
 
     /**
@@ -6229,6 +6234,30 @@ public class InvoiceService {
             d.put("institute_contact", firstNonBlank(ip.get("institute_contact"),
                     institute.getMobileNumber(), institute.getEmail()));
         }
+
+        if (institute != null) {
+            d.put("institute_tagline", nz(institute.getDescription()));
+        }
+        d.put("user_mobile", user != null ? nz(user.getMobileNumber()) : "");
+
+        // Seed the receipt fields too, so the review step shows what the PDF will actually
+        // print rather than an empty box next to every amount.
+        String recCur = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
+        ReceiptFigures rfd = buildReceiptFigures(invoiceData);
+        d.put("course_name", nz(rfd.courseName));
+        d.put("course_code", nz(rfd.courseCode));
+        d.put("course_fees", rfd.courseFees != null ? recCur + money(rfd.courseFees) : "");
+        d.put("total_fees", rfd.totalFees != null ? recCur + money(rfd.totalFees) : "");
+        d.put("previous_paid", rfd.previousPaid != null ? recCur + money(rfd.previousPaid) : "");
+        d.put("fees_paid_now", invoiceData.getTotalAmount() != null
+                ? recCur + money(invoiceData.getTotalAmount()) : "");
+        d.put("total_fees_due", rfd.totalDue != null ? recCur + money(rfd.totalDue) : "");
+        d.put("total_amount_paid", rfd.totalPaid != null ? recCur + money(rfd.totalPaid) : "");
+        d.put("next_installment_amount", rfd.nextInstallmentAmount != null
+                ? recCur + money(rfd.nextInstallmentAmount) : "");
+        d.put("next_installment_date", rfd.nextInstallmentDate != null
+                ? rfd.nextInstallmentDate.format(DISPLAY_DATE_FORMATTER) : "");
+        d.put("amount_in_words", amountInWords(invoiceData.getTotalAmount()));
 
         // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
         // matches what replaceTemplatePlaceholders renders and what create will persist.

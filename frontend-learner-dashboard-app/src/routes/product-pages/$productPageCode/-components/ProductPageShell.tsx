@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
-import { isDifferentProductPage } from "../-utils/page-switch";
+import { checkoutEntryOf } from "../-utils/page-switch";
 import { cartBackTarget } from "../-utils/cart-back";
 import {
   injectGtm,
@@ -64,6 +64,9 @@ const DEFAULT_PAGE_JSON: PageJson = {
   globalSettings: { primaryColor: "#4F46E5", logoFileId: "" }, // design-lint-ignore: page-builder default color
   components: [],
 };
+
+/** Steps that act on a basket the learner already confirmed in the cart. */
+const PAST_THE_CART: ProductPageStep[] = ["FORM", "PAYMENT", "CPO_INSTALLMENTS"];
 
 export const ProductPageShell = ({
   productPageCode,
@@ -170,13 +173,21 @@ export const ProductPageShell = ({
     if (initialized.current) return;
     initialized.current = true;
 
-    // The store is module-level, so it outlives this page. Arriving at a
-    // DIFFERENT product page (e.g. the site cart's store checkout after
-    // another page's checkout) starts from a clean store: a coupon, discount,
-    // learner or CPO plan from that page must never ride into this one. The
-    // same page keeps its state, exactly as before.
-    if (isDifferentProductPage(useProductPageStore.getState().pageData, pageData)) {
+    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
+    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
+
+    // The store is module-level, so it outlives this page. A DIFFERENT
+    // product page (e.g. the site cart's store checkout after another page's
+    // checkout), or a return after this page's order went through, starts
+    // from a clean store: a coupon, discount, learner or CPO plan from there
+    // must never ride into this checkout. A different basket on this page
+    // drops the coupon and CPO state worked out for the previous one. The
+    // same basket on the same page keeps its state, exactly as before.
+    const entry = checkoutEntryOf(useProductPageStore.getState(), pageData, initialSelection);
+    if (entry === "RESET") {
       useProductPageStore.getState().reset();
+    } else if (entry === "NEW_BASKET") {
+      useProductPageStore.getState().clearBasketState();
     }
 
     setPageData(pageData);
@@ -185,9 +196,6 @@ export const ProductPageShell = ({
       pageData.settings_json,
       DEFAULT_SETTINGS,
     );
-
-    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
-    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
 
     const resolvedStep = defaultTab ?? settings.defaultStep;
     const configuredStep =
@@ -227,6 +235,26 @@ export const ProductPageShell = ({
 
     setStep(startStep);
   }, []);
+
+  // The page can arrive again while it is open: the refetch after a 409
+  // "price changed", or a background refresh. The totals, the Pay button and
+  // the receipt are all priced from the store, so it follows the new copy
+  // (see syncPageData) — before paint, so no frame mixes old and new prices.
+  // A finished order's receipt keeps what was paid. A basket that lost a
+  // course the page no longer sells goes back to the cart to be reviewed,
+  // rather than paying for — or, emptied, "enrolling" in — a basket nobody
+  // confirmed.
+  useLayoutEffect(() => {
+    if (!initialized.current) return;
+    const store = useProductPageStore.getState();
+    if (store.pageData === pageData || store.step === "SUCCESS") return;
+    const selectionBefore = store.selectedPsOptionIds;
+    store.syncPageData(pageData);
+    const synced = useProductPageStore.getState();
+    if (synced.selectedPsOptionIds !== selectionBefore && PAST_THE_CART.includes(synced.step)) {
+      synced.setStep("CART");
+    }
+  }, [pageData]);
 
   // GTM injection — run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps

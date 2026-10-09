@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -22,12 +23,21 @@ import java.util.TreeSet;
  * The rules:
  * <ul>
  *   <li>One mapping per catalogue package session the page does not sell yet,
- *       on the bridge row and plan the Courses page prices it with. Sessions
- *       the page already sells (on any row) are left exactly as they are.</li>
- *   <li>Not added: sessions with no ACTIVE bridge row, a closed invite
- *       (inactive, not started, expired), an inactive payment option, a CPO
- *       payment option (the cart checks out one CPO course at a time), or no
- *       ACTIVE plan.</li>
+ *       on its open DEFAULT invite's bridge row and that row's cheapest ACTIVE
+ *       plan (ProductPageCatalogueRepository chooses the row). Sessions the
+ *       page already sells (on any row) are left exactly as they are.</li>
+ *   <li>Not added: sessions with no ACTIVE bridge row, no open DEFAULT invite
+ *       (a scholarship or promo link must never set the store's price), a
+ *       closed default invite (inactive, not started, expired), an inactive
+ *       payment option, a CPO payment option (the cart checks out one CPO
+ *       course at a time), or no ACTIVE plan.</li>
+ *   <li>Not added either: a course on another payment gateway or in another
+ *       currency than the page (one checkout charges one gateway and one
+ *       currency), or one whose invite and plan name different currencies.
+ *       The page's gateway and currency are its first remaining course's (the
+ *       ones the learner page shows); on an empty page, the first course
+ *       added. Courses already on the page are never changed by this; mixed
+ *       ones are reported in the warnings.</li>
  *   <li>With deactivateMissing: a mapping whose session left the catalogue is
  *       switched off, and so is one sold through an inactive bridge row,
  *       payment option or plan, or a closed invite (inactive, not started,
@@ -51,6 +61,9 @@ final class CatalogueSyncPlanner {
     static final String NO_ACTIVE_PLAN = "no_active_plan";
     static final String PLAN_INACTIVE = "plan_inactive";
     static final String PLAN_MISSING = "plan_missing";
+    static final String NON_DEFAULT_INVITE = "non_default_invite";
+    static final String CURRENCY_MISMATCH = "currency_mismatch";
+    static final String VENDOR_MISMATCH = "vendor_mismatch";
 
     /** How many course names a warning lists before "and N more". */
     static final int NAMES_IN_WARNING = 5;
@@ -61,7 +74,7 @@ final class CatalogueSyncPlanner {
     private CatalogueSyncPlanner() {
     }
 
-    /** A catalogue package session and the bridge row + plan the Courses page prices it with. */
+    /** A catalogue package session and the bridge row + plan the catalogue query chose for it. */
     record Pick(String packageSessionId, String packageName, String levelName,
                 String psliId, String inviteId, String inviteStatus, String inviteTag,
                 Date inviteStartDate, Date inviteEndDate, String inviteVendor, String inviteCurrency,
@@ -138,15 +151,23 @@ final class CatalogueSyncPlanner {
     private static Additions additions(List<Row> rows, List<Deactivation> deactivations, Map<String, Pick> catalogue) {
         Set<String> leaving = new HashSet<>();
         for (Deactivation d : deactivations) leaving.add(d.row().mappingId());
+        List<Row> kept = new ArrayList<>();
         Set<String> mapped = new HashSet<>();
         for (Row row : rows) {
-            if (!leaving.contains(row.mappingId())) mapped.add(row.packageSessionId());
+            if (leaving.contains(row.mappingId())) continue;
+            kept.add(row);
+            mapped.add(row.packageSessionId());
         }
+        List<Pick> candidates = new ArrayList<>();
+        for (Pick pick : catalogue.values()) {
+            if (!mapped.contains(pick.packageSessionId())) candidates.add(pick);
+        }
+        Terms page = pageTerms(kept, candidates);
         List<Pick> adds = new ArrayList<>();
         List<Skip> skipped = new ArrayList<>();
-        for (Pick pick : catalogue.values()) {
-            if (mapped.contains(pick.packageSessionId())) continue;
+        for (Pick pick : candidates) {
             String reason = skipReason(pick);
+            if (reason == null) reason = termsReason(pick, page);
             if (reason == null) {
                 adds.add(pick);
             } else {
@@ -156,10 +177,78 @@ final class CatalogueSyncPlanner {
         return new Additions(adds, skipped);
     }
 
+    /**
+     * The gateway and currency every course added to the page must share.
+     * Null fields: an invite naming no gateway (vendor), or nothing on the
+     * page naming a currency yet (currency, which then constrains nothing).
+     */
+    record Terms(String vendor, String currency) {
+    }
+
+    /**
+     * What the page charges through: the first remaining row's gateway, as
+     * the learner page shows it (by-code reads its first mapping), and the
+     * first currency a remaining row names (invite currency, else plan
+     * currency: the order checkout reads them in). A page with no rows left
+     * takes its gateway from the first course that can be added to it, and a
+     * page whose rows name no currency takes its currency from the first
+     * course on that gateway naming one, so the course that decides always
+     * goes in. Visible for testing.
+     */
+    static Terms pageTerms(List<Row> kept, List<Pick> candidates) {
+        List<Pick> sellable = new ArrayList<>();
+        for (Pick pick : candidates) {
+            if (skipReason(pick) == null && !mixedCurrencies(pick)) sellable.add(pick);
+        }
+        String vendor = !kept.isEmpty() ? code(kept.get(0).inviteVendor())
+                : !sellable.isEmpty() ? code(sellable.get(0).inviteVendor()) : null;
+        String currency = null;
+        for (Row row : kept) {
+            currency = firstCode(row.inviteCurrency(), row.planCurrency());
+            if (currency != null) return new Terms(vendor, currency);
+        }
+        for (Pick pick : sellable) {
+            // A course on another gateway is skipped anyway; it decides nothing.
+            if (!Objects.equals(code(pick.inviteVendor()), vendor)) continue;
+            currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
+            if (currency != null) return new Terms(vendor, currency);
+        }
+        return new Terms(vendor, null);
+    }
+
+    /**
+     * Why a sellable catalogue session still cannot join this page; null when
+     * it can. Checkout charges a whole cart in one currency through one
+     * gateway, so a course on any other would be charged wrongly or fail. A
+     * course whose invite and plan disagree on the currency would be charged
+     * its plan's price in its invite's currency, whatever the page.
+     */
+    static String termsReason(Pick pick, Terms page) {
+        if (mixedCurrencies(pick)) return CURRENCY_MISMATCH;
+        String currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
+        if (currency != null && page.currency() != null && !currency.equals(page.currency())) {
+            return CURRENCY_MISMATCH;
+        }
+        if (!Objects.equals(code(pick.inviteVendor()), page.vendor())) return VENDOR_MISMATCH;
+        return null;
+    }
+
+    private static boolean mixedCurrencies(Pick pick) {
+        String invite = code(pick.inviteCurrency());
+        String plan = code(pick.planCurrency());
+        return invite != null && plan != null && !invite.equals(plan);
+    }
+
     /** Why a catalogue session cannot be sold from a product page; null when it can. */
     static String skipReason(Pick pick) {
         if (pick.psliId() == null) return NO_ACTIVE_INVITE;
         if (pick.inviteId() == null) return INVITE_INACTIVE;
+        // The catalogue query prefers an open DEFAULT invite's row, so any
+        // other invite here means the course has no open default link. Its
+        // own (scholarship, promo, private) link would set the store's price
+        // and enrollment settings for every buyer, so it is never added
+        // silently; a closed DEFAULT link is reported as closed below.
+        if (!DEFAULT_TAG.equalsIgnoreCase(trim(pick.inviteTag()))) return NON_DEFAULT_INVITE;
         String closed = closedInviteReason(pick.inviteStatus(), pick.inviteStartDate(), pick.inviteEndDate());
         if (closed != null) return closed;
         if (pick.paymentOptionId() == null) return PAYMENT_OPTION_INACTIVE;
@@ -211,21 +300,26 @@ final class CatalogueSyncPlanner {
         List<String> out = new ArrayList<>();
 
         Set<String> vendors = new TreeSet<>();
+        // What each course is charged in: its invite's currency, else its plan's.
         Set<String> currencies = new TreeSet<>();
+        List<String> splitCurrency = new ArrayList<>();
         // An invite that names no gateway pays through the institute's default
         // one, which is a gateway of its own as far as the cart is concerned.
         boolean defaultGateway = false;
         for (Row row : kept) {
             defaultGateway |= blank(row.inviteVendor());
             addCode(vendors, row.inviteVendor());
-            addCode(currencies, row.inviteCurrency());
-            addCode(currencies, row.planCurrency());
+            addCode(currencies, firstCode(row.inviteCurrency(), row.planCurrency()));
+            String invite = code(row.inviteCurrency());
+            String plan = code(row.planCurrency());
+            if (invite != null && plan != null && !invite.equals(plan)) {
+                splitCurrency.add(label(row.packageName(), row.levelName()));
+            }
         }
         for (Add add : adds) {
             defaultGateway |= blank(add.pick().inviteVendor());
             addCode(vendors, add.pick().inviteVendor());
-            addCode(currencies, add.pick().inviteCurrency());
-            addCode(currencies, add.pick().planCurrency());
+            addCode(currencies, firstCode(add.pick().inviteCurrency(), add.pick().planCurrency()));
         }
         List<String> gateways = new ArrayList<>(vendors);
         if (defaultGateway && !vendors.isEmpty()) gateways.add(DEFAULT_GATEWAY_LABEL);
@@ -235,7 +329,11 @@ final class CatalogueSyncPlanner {
         }
         if (currencies.size() > 1) {
             out.add("Courses on this page are priced in more than one currency (" + String.join(", ", currencies)
-                    + "). Checkout charges the whole cart in the currency of the first course in it.");
+                    + "). Checkout refuses a cart that mixes them, so visitors have to buy them separately.");
+        }
+        if (!splitCurrency.isEmpty()) {
+            out.add(count(splitCurrency) + " charged in the currency the enrollment link names, not the one the "
+                    + "plan names: " + names(splitCurrency) + ". Check that the price is right.");
         }
 
         Map<String, List<Row>> bySession = new LinkedHashMap<>();
@@ -263,9 +361,9 @@ final class CatalogueSyncPlanner {
                     + names(duplicated) + ". A cart holding one of them selects every copy.");
         }
         if (!drifted.isEmpty()) {
-            out.add(count(drifted) + " sold here through a different enrollment link or plan than the Courses page "
-                    + "uses, so the price may differ: " + names(drifted)
-                    + ". Remove them and sync again to use the Courses page price.");
+            out.add(count(drifted) + " sold here through a different enrollment link or plan than the course's "
+                    + "default one, so the price may differ: " + names(drifted)
+                    + ". Remove them and sync again to sell them through the default link.");
         }
         if (!stale.isEmpty()) {
             out.add(count(stale) + " sold here through an inactive or closed enrollment link, payment option or plan: "
@@ -275,21 +373,13 @@ final class CatalogueSyncPlanner {
             out.add(count(outside) + " on this page but not in the catalogue: " + names(outside) + ".");
         }
 
-        List<String> nonDefault = new ArrayList<>();
         List<String> recurring = new ArrayList<>();
         for (Add add : adds) {
             Pick pick = add.pick();
-            if (!DEFAULT_TAG.equalsIgnoreCase(trim(pick.inviteTag()))) {
-                nonDefault.add(label(pick.packageName(), pick.levelName()));
-            }
             String type = trim(pick.paymentOptionType());
             if ("SUBSCRIPTION".equalsIgnoreCase(type) || "DONATION".equalsIgnoreCase(type)) {
                 recurring.add(label(pick.packageName(), pick.levelName()));
             }
-        }
-        if (!nonDefault.isEmpty()) {
-            out.add(countAdded(nonDefault) + " through an enrollment link that is not the course's default one, "
-                    + "because that is the link the Courses page prices them with: " + names(nonDefault) + ".");
         }
         if (!recurring.isEmpty()) {
             out.add(countAdded(recurring) + " on a subscription or donation payment option, which this page "
@@ -304,7 +394,18 @@ final class CatalogueSyncPlanner {
     }
 
     private static void addCode(Set<String> into, String code) {
-        if (!blank(code)) into.add(trim(code).toUpperCase(Locale.ROOT));
+        String c = code(code);
+        if (c != null) into.add(c);
+    }
+
+    /** A gateway or currency code, compared without case or padding; null when blank. */
+    private static String code(String s) {
+        return blank(s) ? null : s.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String firstCode(String first, String second) {
+        String c = code(first);
+        return c != null ? c : code(second);
     }
 
     private static boolean blank(String s) {

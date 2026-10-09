@@ -33,7 +33,11 @@ public class ProductPageCatalogueSyncResponse extends ProductPageResponse {
      */
     private int deactivated;
 
-    /** Catalogue sessions that could not be added, and why. */
+    /**
+     * Catalogue sessions that could not be added, and why: among them courses
+     * with no open default enrollment link, and courses on another payment
+     * gateway or in another currency than the page.
+     */
     private List<Skipped> skipped = new ArrayList<>();
 
     /** Plain-language problems the admin should know about (mixed gateways or currencies, duplicates, price drift). */
@@ -46,8 +50,9 @@ public class ProductPageCatalogueSyncResponse extends ProductPageResponse {
     private List<Deactivated> deactivatedMappings = new ArrayList<>();
 
     /**
-     * reason: no_active_invite | invite_inactive | invite_not_started | invite_expired
-     * | payment_option_inactive | cpo_not_supported | no_active_plan
+     * reason: no_active_invite | non_default_invite | invite_inactive | invite_not_started
+     * | invite_expired | payment_option_inactive | cpo_not_supported | no_active_plan
+     * | currency_mismatch | vendor_mismatch
      */
     @Data
     @NoArgsConstructor

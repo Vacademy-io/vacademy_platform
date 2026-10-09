@@ -35,8 +35,8 @@ import java.util.Map;
 /**
  * Fills a product page with every course version the institute's catalogue
  * sells, so one "store" page can check out anything the site's Courses page
- * shows - at the price the Courses page shows (same bridge row and plan as
- * the public v2 search).
+ * shows - through each course's own open default enrollment link and its
+ * price, on one payment gateway and in one currency.
  *
  * Unlike PUT /update, which soft-deletes every mapping and re-inserts the
  * list it is sent, the sync only appends what is missing and switches off

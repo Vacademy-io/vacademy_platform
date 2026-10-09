@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from "react";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -52,6 +52,70 @@ import {
   readComingSoon,
 } from "../../-utils/coming-soon";
 import { ComingSoonRibbon } from "./ComingSoonRibbon";
+import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
+import {
+  URL_PARAMS,
+  readSearchParam,
+  useCatalogueSearchParams,
+} from "../../-utils/catalogue-url-state";
+import { ALL_BADGES, computeCourseBadges, type CourseBadge } from "../../-utils/course-badges";
+import { preferredCourseLanguage } from "../../-utils/course-variants";
+import { isSiteCartEnabled } from "../../-utils/site-cart";
+import { useSiteCartStore } from "../../-stores/site-cart-store";
+import { usePopularityRanks } from "../../-services/popularity-service";
+import { badgesNeedRanks, resolveCatalogDiscovery, type ResolvedQuickFilter } from "./catalog/catalog-config";
+import {
+  buildCatalogCards,
+  courseTagsOf,
+  isComingSoonRow,
+  isPureLanguageLevel,
+  type CatalogCard,
+} from "./catalog/catalog-cards";
+import {
+  GROUP_IDS,
+  applyFacetGroups,
+  buildAppliedChips,
+  buildFacetGroups,
+  categoryOptions,
+  countFacetOptions,
+  instructorOptions,
+  languageOptions,
+  levelOptions,
+  presentLanguageCodes,
+  priceOptions,
+  sessionOptions,
+  tagOptions,
+  type AppliedChip,
+  type CatalogCriteria,
+  type CriteriaContext,
+  type FacetOption,
+} from "./catalog/catalog-filters";
+import { formatAmountLabel, formatRangeLabel } from "./catalog/catalog-format";
+import { sortCatalogCards } from "./catalog/catalog-sort";
+import {
+  countDiscoveryFilters,
+  discoveryPatchToParams,
+  formatPriceParam,
+  parsePriceParam,
+  samePrice,
+  searchToParam,
+  sortFromToken,
+  sortToToken,
+  type DiscoveryValidation,
+  type PriceChoice,
+} from "./catalog/catalog-url";
+import { isQuickFilterActive, toggleQuickFilter } from "./catalog/catalog-quick-filters";
+import { findStream } from "./catalog/catalog-streams";
+import { purchasableVersions } from "./catalog/catalog-site-cart";
+import { useCatalogStreams, useDiscoveryState } from "./catalog/use-catalog-discovery";
+import { StreamTabs } from "./catalog/StreamTabs";
+import { DiscoveryFilterGroup } from "./catalog/DiscoveryFilterGroup";
+import { AppliedFilterChips } from "./catalog/AppliedFilterChips";
+import { QuickFilterBar } from "./catalog/QuickFilterBar";
+import { CourseBadgePills, LanguageChips } from "./catalog/CardDiscoveryMeta";
+import { badgeLabel } from "./catalog/catalog-labels";
+import { SiteCartCta } from "./catalog/SiteCartCta";
+import { MobileFilterSheet, MobileFiltersButton } from "./catalog/MobileFilterSheet";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -252,6 +316,10 @@ interface Course {
   rating: number;
   // Allow any additional fields from API response
   currency?: string;
+  /** v2 search fields read by the discovery helpers. */
+  comma_separeted_tags?: string | null;
+  coming_soon?: unknown;
+  createdAt?: string;
   [key: string]: any;
 }
 
@@ -261,6 +329,8 @@ interface FilterSectionProps {
   selectedItems: string[];
   handleChange: (itemId: string) => void;
   disabled?: boolean;
+  /** Live result count per item id (showFilterCounts). Absent = the original list. */
+  counts?: Record<string, number>;
 }
 
 const FilterSection: React.FC<FilterSectionProps> = ({
@@ -269,6 +339,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   selectedItems,
   handleChange,
   disabled,
+  counts,
 }) => {
   const { t } = useTranslation("coursePlayerB");
   const [isExpanded, setIsExpanded] = useState(false);
@@ -291,21 +362,32 @@ const FilterSection: React.FC<FilterSectionProps> = ({
             {t("courseCatalog.filtersUnavailable", { title })}
           </p>
         )}
-        {itemsToDisplay.map((item) => (
-          <label
-            key={item.id}
-            className={`flex items-center text-catalogue-text-secondary hover:text-catalogue-text-primary transition-colors ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
-          >
-            <input
-              type="checkbox"
-              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded-catalogue-xs focus:ring-primary-400 me-2"
-              checked={selectedItems.includes(item.id)}
-              onChange={() => handleChange(item.id)}
-              disabled={disabled}
-            />
-            <span className="text-sm">{item.name}</span>
-          </label>
-        ))}
+        {itemsToDisplay.map((item) => {
+          const count = counts?.[item.id];
+          // With counts on, an option that would empty the grid is disabled
+          // unless already ticked (so it can still be switched off).
+          const empty = count === 0 && !selectedItems.includes(item.id);
+          return (
+            <label
+              key={item.id}
+              className={`flex items-center text-catalogue-text-secondary hover:text-catalogue-text-primary transition-colors ${disabled || empty ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+            >
+              <input
+                type="checkbox"
+                className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded-catalogue-xs focus:ring-primary-400 me-2"
+                checked={selectedItems.includes(item.id)}
+                onChange={() => handleChange(item.id)}
+                disabled={disabled || empty}
+              />
+              <span className="text-sm">{item.name}</span>
+              {count !== undefined && (
+                <span className="ms-auto ps-2 text-xs tabular-nums text-catalogue-text-muted">
+                  {count}
+                </span>
+              )}
+            </label>
+          );
+        })}
       </div>
 
       {canExpand && (
@@ -475,6 +557,33 @@ function getCategoryStyle(key: string) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+const NO_BADGES = new Map<string, CourseBadge[]>();
+
+/** "Popular", "New"… — a quick filter without an authored label uses the visitor-language default. */
+const quickFilterDefaultLabel = (
+  t: ReturnType<typeof useTranslation>["t"],
+  qf: ResolvedQuickFilter,
+  priceLabel: (amount: number) => string,
+  languageLabel: (code: string) => string,
+): string => {
+  switch (qf.kind) {
+    case "popular":
+      return t("courseCatalog.quickPopular", "Popular");
+    case "new":
+      return t("courseCatalog.badgeNew", "New");
+    case "free":
+      return t("courseCatalog.badgeFree", "Free");
+    case "bestseller":
+      return t("courseCatalog.quickBestsellers", "Bestsellers");
+    case "language":
+      return languageLabel(String(qf.value || ""));
+    case "priceMax":
+      return priceLabel(Number(qf.value) || 0);
+    default:
+      return "";
+  }
+};
+
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   title,
   showFilters,
@@ -485,6 +594,17 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   instituteId,
   tagName,
   globalSettings,
+  streams,
+  syncUrl,
+  showFilterCounts,
+  showAppliedChips,
+  quickFilters,
+  languageFilter,
+  priceFilter,
+  categoryFilter,
+  groupLanguageVersions,
+  badges,
+  mobileFilterSheet,
 }) => {
   const { t, i18n } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
@@ -496,10 +616,53 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     getItemCount,
   } = useCartStore();
 
+  // ── Courses-page discovery (stream tabs, filters, badges…) ─────────────
+  // Every feature is opt-in through the section's own props; a section that
+  // carries none resolves to `discovery.active === false` and renders the
+  // original grid (same markup, same requests).
+  const siteT = useSiteT();
+  const { locale: siteLocale } = useCatalogueLocale();
+  const discovery = useMemo(
+    () =>
+      resolveCatalogDiscovery(
+        {
+          streams,
+          syncUrl,
+          showFilterCounts,
+          showAppliedChips,
+          quickFilters,
+          languageFilter,
+          priceFilter,
+          categoryFilter,
+          groupLanguageVersions,
+          badges,
+          mobileFilterSheet,
+        },
+        globalSettings,
+      ),
+    [
+      streams,
+      syncUrl,
+      showFilterCounts,
+      showAppliedChips,
+      quickFilters,
+      languageFilter,
+      priceFilter,
+      categoryFilter,
+      groupLanguageVersions,
+      badges,
+      mobileFilterSheet,
+      globalSettings,
+    ],
+  );
+  const { searchStr, update: updateSearchParams } = useCatalogueSearchParams();
+
   const [courses, setCourses] = useState<Course[]>([]);
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  // With syncUrl the search box starts from ?q= (a shared link reproduces the view).
+  const [searchTerm, setSearchTerm] = useState(() =>
+    discovery.syncUrl ? readSearchParam(searchStr, URL_PARAMS.query) ?? "" : "",
+  );
   // Opening sort comes from the catalogue JSON so each institute picks its own
   // (e.g. "Price: Low to High" leads with free courses, since price 0 sorts
   // first). Sorting runs before pagination, so the choice holds across the
@@ -539,8 +702,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // Mobile filter state
   const [isMobileFilterExpanded, setIsMobileFilterExpanded] = useState(false);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination (the current page is derived further down, once the result set is known)
   const itemsPerPage = 12;
 
   // Derive filter options from loaded courses (before shouldShow* checks).
@@ -551,12 +713,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     () =>
       [...new Set(courses.map((c) => c.level).filter(Boolean))]
         .filter((level) => displayLevelName(level))
+        // With language versions merged into one card, a level that is only
+        // a language ("Hindi") is what the EN / हिं chips already say.
+        .filter(
+          (level) =>
+            !discovery.grouping || !isPureLanguageLevel(level, discovery.languages),
+        )
         .map((level) => ({ id: level, name: displayLevelName(level) }))
         // Sort naturally so the filter list is stable and reads sensibly
         // (Class 6, 7, 8 … 12, then non-numeric levels) regardless of the
         // order courses arrive from the API.
         .sort(compareByNameNatural),
-    [courses],
+    [courses, discovery.grouping, discovery.languages],
   );
   // Same sentinel rule as levels: the placeholder "DEFAULT" session must not
   // surface as a "Default" checkbox next to real streams, and an institute
@@ -927,6 +1095,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
             sessionId: course.session_id,
             sessionName: course.session_name,
+            // Package created time from the v2 search; the Newest / Oldest
+            // sorts and the "New" badge read it (absent from older backends).
+            createdAt: course.created_at,
             // Add all other fields from the API response for dynamic filtering
             ...course,
           };
@@ -941,14 +1112,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           );
         }
         setCourses(transformedCourses);
-        setFilteredCourses(transformedCourses);
       } catch (error) {
         console.error(
           "[CourseCatalogComponent] Error fetching courses:",
           error,
         );
         setCourses([]);
-        setFilteredCourses([]);
       } finally {
         setIsLoading(false);
       }
@@ -957,161 +1126,387 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     fetchCourses();
   }, [instituteId]);
 
-  // Filter and sort courses
+  // ── Stream tabs + filter state (URL-synced or local) ───────────────────
+  const { streams: streamList, isLoading: streamsLoading } = useCatalogStreams(
+    instituteId,
+    discovery.streams,
+  );
+  const languageCodes = useMemo(
+    () => (discovery.courseLanguagesOn ? discovery.languages.map((l) => l.code) : []),
+    [discovery.courseLanguagesOn, discovery.languages],
+  );
+  const validation = useMemo<DiscoveryValidation>(
+    () => ({ streams: streamList, languageCodes }),
+    [streamList, languageCodes],
+  );
+  const { state: discoveryState, setState: setDiscoveryState } = useDiscoveryState({
+    syncUrl: discovery.syncUrl,
+    streamsEnabled: !!discovery.streams,
+    ready: !streamsLoading,
+    validation,
+  });
+  const activeStream = findStream(streamList, discoveryState.stream);
+  const activeCategories = useMemo(
+    () =>
+      activeStream
+        ? activeStream.categories.filter((c) => discoveryState.categories.includes(c.slug))
+        : [],
+    [activeStream, discoveryState.categories],
+  );
+
+  // Sort: the dropdown's own state, or ?sort= when the section syncs its URL.
+  const resolvedDefaultSort = resolveDefaultSort(defaultSort);
+  const urlSort = discovery.syncUrl
+    ? sortFromToken(readSearchParam(searchStr, URL_PARAMS.sort))
+    : null;
+  const effectiveSort: CourseCatalogSortOption = discovery.syncUrl
+    ? urlSort ?? resolvedDefaultSort
+    : sortOption;
+  const changeSort = (next: CourseCatalogSortOption) => {
+    if (discovery.syncUrl) {
+      updateSearchParams({ [URL_PARAMS.sort]: sortToToken(next, resolvedDefaultSort) });
+    } else {
+      setSortOption(next);
+    }
+  };
+  // "Popular" (enrolment rank) is listed only where the section opted into
+  // discovery or pins it as its default — older grids keep their exact menu.
+  const sortOptions =
+    discovery.active || resolvedDefaultSort === "Popular"
+      ? COURSE_CATALOG_SORT_OPTIONS
+      : COURSE_CATALOG_SORT_OPTIONS.filter((option) => option !== "Popular");
+
+  // ?q= follows the search box (debounced, replace history); Back/Forward and
+  // links that change ?q= flow back into the box.
+  const updateParamsRef = useRef(updateSearchParams);
   useEffect(() => {
-    let filtered = [...courses];
+    updateParamsRef.current = updateSearchParams;
+  });
+  const lastWrittenQuery = useRef<string | null>(
+    discovery.syncUrl ? readSearchParam(searchStr, URL_PARAMS.query) : null,
+  );
+  useEffect(() => {
+    if (!discovery.syncUrl) return;
+    const next = searchToParam(searchTerm);
+    if (next === lastWrittenQuery.current) return;
+    const timer = window.setTimeout(() => {
+      lastWrittenQuery.current = next;
+      updateParamsRef.current({ [URL_PARAMS.query]: next });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm, discovery.syncUrl]);
+  const urlQuery = discovery.syncUrl ? readSearchParam(searchStr, URL_PARAMS.query) : null;
+  useEffect(() => {
+    if (!discovery.syncUrl || urlQuery === lastWrittenQuery.current) return;
+    lastWrittenQuery.current = urlQuery;
+    setSearchTerm(urlQuery ?? "");
+  }, [urlQuery, discovery.syncUrl]);
 
-    // Apply search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (course) =>
-          course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          course.description.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
+  // ── Badges: enrolment ranks are fetched only when something uses them ──
+  const badgeRules = discovery.badges;
+  const needsRanks =
+    (!!badgeRules && badgesNeedRanks(badgeRules.types)) ||
+    effectiveSort === "Popular" ||
+    badgesNeedRanks(discoveryState.badges);
+  const { ranks } = usePopularityRanks(instituteId, needsRanks);
+  const wantsBadges = !!badgeRules || discoveryState.badges.length > 0;
+  const badgeNow = useMemo(() => Date.now(), []);
+  const streamTags = useMemo(
+    () => streamList.map((s) => s.tag).filter(Boolean),
+    [streamList],
+  );
+  const badgeInputs = useMemo(() => {
+    if (!wantsBadges) return [];
+    // One input per course: its versions share created_at and tags; the
+    // price is the cheapest version that is on sale (coming soon = none).
+    const byCourse = new Map<
+      string,
+      { courseId: string; createdAt: string | null; price: number | null; tags: Set<string> }
+    >();
+    for (const c of courses) {
+      const courseId = String(c.id || "");
+      if (!courseId) continue;
+      const entry = byCourse.get(courseId) ?? {
+        courseId,
+        createdAt: null,
+        price: null,
+        tags: new Set<string>(),
+      };
+      if (!entry.createdAt && typeof c.createdAt === "string") entry.createdAt = c.createdAt;
+      if (!isComingSoonRow(c)) {
+        const price = Number(c.price) || 0;
+        entry.price = entry.price === null ? price : Math.min(entry.price, price);
+      }
+      courseTagsOf(c).forEach((tag) => entry.tags.add(tag.toLowerCase()));
+      byCourse.set(courseId, entry);
     }
+    // A course tagged at the category level still counts for its stream.
+    return [...byCourse.values()].map((e) => {
+      const tags = new Set(e.tags);
+      for (const s of streamList) if (s.tags.some((tag) => e.tags.has(tag))) tags.add(s.tag);
+      return { courseId: e.courseId, createdAt: e.createdAt, price: e.price, tags: [...tags] };
+    });
+  }, [wantsBadges, courses, streamList]);
+  const displayBadges = useMemo(
+    () =>
+      badgeRules
+        ? computeCourseBadges(badgeInputs, { ranks, streamTags, now: badgeNow, rules: badgeRules })
+        : NO_BADGES,
+    [badgeRules, badgeInputs, ranks, streamTags, badgeNow],
+  );
+  // Filtering by a badge uses every badge a course earned, not the capped display list.
+  const earnedBadges = useMemo(
+    () =>
+      wantsBadges
+        ? computeCourseBadges(badgeInputs, {
+            ranks,
+            streamTags,
+            now: badgeNow,
+            rules: { ...badgeRules, types: ALL_BADGES, max: ALL_BADGES.length },
+          })
+        : NO_BADGES,
+    [wantsBadges, badgeRules, badgeInputs, ranks, streamTags, badgeNow],
+  );
 
-    // Apply level filter
-    if (selectedLevels.length > 0) {
-      filtered = filtered.filter((course) => {
-        // Check if any selected level matches the course's level field
-        const matchesLevel = selectedLevels.includes(course.level);
+  // ── Cards, filters, sort ────────────────────────────────────────────────
+  // One card per row (the original grid) or, with groupLanguageVersions, one
+  // per course opening the visitor's language: a single language filter
+  // wins, else the site language.
+  const preferredLanguage = discovery.grouping
+    ? (discoveryState.languages.length === 1 ? discoveryState.languages[0] : null) ??
+      preferredCourseLanguage(siteLocale, discovery.languages)
+    : null;
+  const allCards = useMemo(
+    () =>
+      buildCatalogCards(courses, {
+        grouping: discovery.grouping,
+        languages: discovery.languages,
+        preferredLanguage,
+      }),
+    [courses, discovery.grouping, discovery.languages, preferredLanguage],
+  );
+  const criteria = useMemo<CatalogCriteria>(
+    () => ({
+      search: searchTerm,
+      stream: activeStream,
+      categories: activeCategories,
+      languages: discoveryState.languages,
+      price: discoveryState.price,
+      badges: discoveryState.badges,
+      levels: selectedLevels,
+      sessions: selectedSessions,
+      tags: selectedTags,
+      instructors: selectedInstructors,
+      priceRange,
+      priceRangeOn: shouldShowPriceFilter,
+    }),
+    [
+      searchTerm,
+      activeStream,
+      activeCategories,
+      discoveryState.languages,
+      discoveryState.price,
+      discoveryState.badges,
+      selectedLevels,
+      selectedSessions,
+      selectedTags,
+      selectedInstructors,
+      priceRange,
+      shouldShowPriceFilter,
+    ],
+  );
+  const criteriaContext = useMemo<CriteriaContext>(
+    () => ({ languages: discovery.languages, earnedBadges, translate: siteT }),
+    [discovery.languages, earnedBadges, siteT],
+  );
+  const facetGroups = useMemo(
+    () => buildFacetGroups<Course>(criteria, criteriaContext),
+    [criteria, criteriaContext],
+  );
+  const titleOf = useCallback(
+    (card: CatalogCard<Course>) => siteT(card.primary.title),
+    [siteT],
+  );
+  const filteredCards = useMemo(
+    () =>
+      sortCatalogCards(applyFacetGroups(allCards, facetGroups), effectiveSort, {
+        ranks,
+        titleOf,
+      }),
+    [allCards, facetGroups, effectiveSort, ranks, titleOf],
+  );
 
-        // For Buy/Rent filters, also check level_name field directly from API
-        // since "Buy" and "Rent" might be stored in level_name
-        const isBuyRentFilter = selectedLevels.some(
-          (level) =>
-            level?.toLowerCase() === "buy" || level?.toLowerCase() === "rent",
-        );
-
-        if (isBuyRentFilter) {
-          // Check multiple possible fields where Buy/Rent might be stored
-          const levelName = (course.level_name || course.level || "")
-            .toString()
-            .trim();
-          const courseType = (course.type || course.package_type || "")
-            .toString()
-            .trim();
-
-          const matchesBuyRent = selectedLevels.some((level) => {
-            const filterValue = level.toString().trim();
-            return (
-              levelName.toLowerCase() === filterValue.toLowerCase() ||
-              courseType.toLowerCase() === filterValue.toLowerCase() ||
-              // Also check if any field in the course object contains Buy/Rent
-              Object.values(course).some(
-                (val) =>
-                  val &&
-                  val.toString().toLowerCase() === filterValue.toLowerCase(),
-              )
-            );
-          });
-
-          if (matchesBuyRent) {
-            return true;
-          }
-        }
-
-        return matchesLevel;
-      });
+  // ── Discovery filter groups (sidebar / bottom sheet) ───────────────────
+  const presentLanguages = useMemo(
+    () =>
+      discovery.languageFilter.enabled
+        ? presentLanguageCodes(courses, discovery.languages)
+        : [],
+    [discovery.languageFilter.enabled, courses, discovery.languages],
+  );
+  const priceChoices = useMemo(() => {
+    if (!discovery.priceFilter.enabled) return [];
+    const list: { value: string; choice: PriceChoice }[] = [];
+    if (discovery.priceFilter.showFree) list.push({ value: "free", choice: { kind: "free" } });
+    list.push({ value: "paid", choice: { kind: "paid" } });
+    for (const max of discovery.priceFilter.maxOptions) {
+      list.push({ value: `max:${max}`, choice: { kind: "max", max } });
     }
-
-    // Apply session filter
-    if (selectedSessions.length > 0) {
-      filtered = filtered.filter(
-        (course) => course.sessionId && selectedSessions.includes(course.sessionId),
-      );
+    // A link may carry an amount the section does not list: show it so it
+    // stays visible and can be cleared.
+    const current = formatPriceParam(discoveryState.price);
+    if (current && discoveryState.price && !list.some((c) => c.value === current)) {
+      list.push({ value: current, choice: discoveryState.price });
     }
+    return list;
+  }, [discovery.priceFilter, discoveryState.price]);
+  const showCategoryFilter =
+    filtersEnabled &&
+    discovery.categoryFilter.enabled &&
+    !!activeStream &&
+    activeStream.categories.length > 0;
+  const showLanguageFilter = filtersEnabled && presentLanguages.length > 0;
+  const showPriceChoiceFilter = filtersEnabled && priceChoices.length > 0;
+  const showFiltersPanel =
+    shouldRenderFiltersPanel ||
+    (filtersEnabled && (showCategoryFilter || showLanguageFilter || showPriceChoiceFilter));
 
-    // Apply tag filter
-    if (selectedTags.length > 0) {
-      filtered = filtered.filter((course) => {
-        const courseTags =
-          course.comma_separeted_tags
-            ?.split(",")
-            .map((tag: string) => tag.trim()) || [];
-        return selectedTags.some((tag) => courseTags.includes(tag));
-      });
-    }
-
-    // Apply instructor filter
-    if (selectedInstructors.length > 0) {
-      filtered = filtered.filter((course) =>
-        selectedInstructors.includes(course.instructor),
-      );
-    }
-
-    // Apply price range filter
-    if (
-      shouldShowPriceFilter &&
-      priceRange &&
-      (priceRange.min !== undefined || priceRange.max !== undefined)
-    ) {
-      filtered = filtered.filter((course) => {
-        const coursePrice =
-          typeof course.price === "number"
-            ? course.price
-            : Number(course.price) || 0;
-        const meetsMin =
-          priceRange.min !== undefined ? coursePrice >= priceRange.min : true;
-        const meetsMax =
-          priceRange.max !== undefined ? coursePrice <= priceRange.max : true;
-        return meetsMin && meetsMax;
-      });
-    }
-
-    // Apply sorting
-    switch (sortOption) {
-      case "Newest":
-        filtered.sort(
-          (a, b) =>
-            new Date(b.createdAt || 0).getTime() -
-            new Date(a.createdAt || 0).getTime(),
-        );
-        break;
-      case "Oldest":
-        filtered.sort(
-          (a, b) =>
-            new Date(a.createdAt || 0).getTime() -
-            new Date(b.createdAt || 0).getTime(),
-        );
-        break;
-      case "Price: Low to High":
-        filtered.sort((a, b) => a.price - b.price);
-        break;
-      case "Price: High to Low":
-        filtered.sort((a, b) => b.price - a.price);
-        break;
-      case "Rating":
-        filtered.sort((a, b) => b.rating - a.rating);
-        break;
-      case "Name A-Z":
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
-        break;
-      case "Name Z-A":
-        filtered.sort((a, b) => b.title.localeCompare(a.title));
-        break;
-    }
-
-    setFilteredCourses(filtered);
-    setCurrentPage(1); // Reset to first page when filters change
+  // Live counts: each option counted against every OTHER active filter.
+  const facetCounts = useMemo(() => {
+    if (!discovery.showFilterCounts) return null;
+    const count = (groupId: string, options: FacetOption<CatalogCard<Course>, Course>[]) =>
+      countFacetOptions(allCards, facetGroups, groupId, options);
+    return {
+      category: activeStream
+        ? count(GROUP_IDS.category, categoryOptions<Course>(activeStream.categories))
+        : {},
+      language: count(GROUP_IDS.language, languageOptions<Course>(presentLanguages, discovery.languages)),
+      price: count(GROUP_IDS.price, priceOptions<Course>(priceChoices)),
+      level: count(GROUP_IDS.level, levelOptions<Course>(levels.map((l) => l.id))),
+      session: count(GROUP_IDS.session, sessionOptions<Course>(sessions.map((s) => s.id))),
+      tags: count(GROUP_IDS.tags, tagOptions<Course>(tags.map((tag) => tag.id))),
+      instructor: count(
+        GROUP_IDS.instructor,
+        instructorOptions<Course>(instructors.map((i) => i.id)),
+      ),
+    };
   }, [
-    courses,
+    discovery.showFilterCounts,
+    discovery.languages,
+    allCards,
+    facetGroups,
+    activeStream,
+    presentLanguages,
+    priceChoices,
+    levels,
+    sessions,
+    tags,
+    instructors,
+  ]);
+
+  // Display labels (live data through the site dictionary; logic stays on raw values).
+  const priceCurrency = useMemo(
+    () => courses.find((c) => typeof c.currency === "string" && c.currency)?.currency,
+    [courses],
+  );
+  const priceUnderLabel = (amount: number) =>
+    t("courseCatalog.priceUnder", {
+      amount: formatAmountLabel(amount, priceCurrency, siteLocale),
+      defaultValue: "Under {{amount}}",
+    });
+  const priceChoiceLabel = (choice: PriceChoice) =>
+    choice.kind === "free"
+      ? t("courseCatalog.priceFree", "Free")
+      : choice.kind === "paid"
+        ? t("courseCatalog.pricePaid", "Paid")
+        : priceUnderLabel(choice.max);
+  const languageName = (code: string) =>
+    siteT(discovery.languages.find((l) => l.code === code)?.label || code.toUpperCase());
+
+  const toggleIn = <T extends string>(list: T[], value: T): T[] =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
+  const selectStream = (slug: string | null) => {
+    if (slug === discoveryState.stream) return;
+    // A tab is navigation (pushes history); its categories belong to it.
+    setDiscoveryState({ stream: slug, categories: [] }, { push: true });
+    // Switched from the stuck tab bar: bring the top of the grid back.
+    const top = scrollRef.current?.getBoundingClientRect().top;
+    if (top !== undefined && top < 0) {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+  const toggleCategory = (slug: string) =>
+    setDiscoveryState({ categories: toggleIn(discoveryState.categories, slug) });
+  const toggleLanguage = (code: string) =>
+    setDiscoveryState({ languages: toggleIn(discoveryState.languages, code) });
+  const selectPrice = (value: string) => {
+    const choice = parsePriceParam(value);
+    setDiscoveryState({
+      price: !choice || samePrice(choice, discoveryState.price) ? null : choice,
+    });
+  };
+
+  // Quick filters: shortcuts onto the very same state.
+  const quickState = {
+    languages: discoveryState.languages,
+    price: discoveryState.price,
+    badges: discoveryState.badges,
+    sort: effectiveSort,
+  };
+  const quickChips = discovery.quickFilters.map((qf) => ({
+    id: qf.id,
+    label: qf.label || quickFilterDefaultLabel(t, qf, priceUnderLabel, languageName),
+    active: isQuickFilterActive(qf, quickState),
+  }));
+  const toggleQuick = (id: string) => {
+    const qf = discovery.quickFilters.find((q) => q.id === id);
+    if (!qf) return;
+    // A quick filter touches either the sort or the filters, never both.
+    const { sort, ...filters } = toggleQuickFilter(qf, quickState, resolvedDefaultSort);
+    if (sort) changeSort(sort);
+    else if (Object.keys(filters).length) setDiscoveryState(filters);
+  };
+
+  // Site-wide cart (globalSettings.siteCart): the card CTA adds to it.
+  const siteCartOn =
+    isSiteCartEnabled(globalSettings?.siteCart) && globalSettings?.payment?.enabled !== false;
+  const hydrateSiteCart = useSiteCartStore((s) => s.hydrate);
+  useEffect(() => {
+    if (siteCartOn && instituteId) void hydrateSiteCart(instituteId);
+  }, [siteCartOn, instituteId, hydrateSiteCart]);
+
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const gridId = useId();
+
+  // Pagination: back to page 1 whenever the result set changes, decided
+  // during render so a stale page never flashes.
+  const filterKey = JSON.stringify([
+    courses.length,
     searchTerm,
     selectedLevels,
     selectedSessions,
     selectedTags,
     selectedInstructors,
-    sortOption,
+    effectiveSort,
     priceRange,
     shouldShowPriceFilter,
+    discoveryState,
+    discovery.grouping,
   ]);
-
-  // Pagination
-  const paginatedCourses = filteredCourses.slice(
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  if (pageState.key !== filterKey) setPageState({ key: filterKey, page: 1 });
+  const currentPage = pageState.key === filterKey ? pageState.page : 1;
+  const setCurrentPage = (next: number | ((prev: number) => number)) =>
+    setPageState({
+      key: filterKey,
+      page: typeof next === "function" ? next(currentPage) : next,
+    });
+  const paginatedCards = filteredCards.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
-  const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredCards.length / itemsPerPage);
 
   // Smooth scroll on page change
   useEffect(() => {
@@ -1147,6 +1542,52 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     setSelectedInstructors([]);
     setSearchTerm("");
     setPriceRange(defaultPriceRange);
+    // Discovery filters too — but not the stream: a tab is navigation, not a filter.
+    if (discovery.syncUrl) {
+      lastWrittenQuery.current = null;
+      updateSearchParams({
+        ...discoveryPatchToParams({ categories: [], languages: [], price: null, badges: [] }),
+        [URL_PARAMS.query]: null,
+      });
+    } else if (countDiscoveryFilters(discoveryState) > 0) {
+      setDiscoveryState({ categories: [], languages: [], price: null, badges: [] });
+    }
+  };
+
+  // Removing one applied-filter chip clears exactly that value.
+  const removeChip = (chip: AppliedChip) => {
+    switch (chip.group) {
+      case "category":
+        toggleCategory(chip.value);
+        break;
+      case "language":
+        toggleLanguage(chip.value);
+        break;
+      case "price":
+        setDiscoveryState({ price: null });
+        break;
+      case "badge":
+        setDiscoveryState({ badges: discoveryState.badges.filter((b) => b !== chip.value) });
+        break;
+      case "level":
+        setSelectedLevels((prev) => prev.filter((v) => v !== chip.value));
+        break;
+      case "session":
+        setSelectedSessions((prev) => prev.filter((v) => v !== chip.value));
+        break;
+      case "tags":
+        setSelectedTags((prev) => prev.filter((v) => v !== chip.value));
+        break;
+      case "instructor":
+        setSelectedInstructors((prev) => prev.filter((v) => v !== chip.value));
+        break;
+      case "priceRange":
+        setPriceRange(defaultPriceRange);
+        break;
+      case "search":
+        setSearchTerm("");
+        break;
+    }
   };
 
   const onApplyFilters = () => {
@@ -1197,10 +1638,203 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     selectedSessions.length +
     selectedTags.length +
     selectedInstructors.length +
-    (shouldShowPriceFilter && isPriceFilterActive ? 1 : 0);
+    (shouldShowPriceFilter && isPriceFilterActive ? 1 : 0) +
+    countDiscoveryFilters(discoveryState);
   const hasActiveFilters = filterBadgeCount > 0;
 
-  if (isLoading) {
+  const appliedChips = discovery.showAppliedChips
+    ? buildAppliedChips(
+        { ...criteria, priceRangeOn: shouldShowPriceFilter && isPriceFilterActive },
+        {
+          category: (slug) =>
+            siteT(activeStream?.categories.find((c) => c.slug === slug)?.title || slug),
+          language: languageName,
+          price: priceChoiceLabel,
+          badge: (badge) => badgeLabel(t, badge),
+          level: (level) => siteT(displayLevelName(level) || level),
+          session: (id) => siteT(sessions.find((s) => s.id === id)?.name || id),
+          instructor: (name) => name,
+          priceRange: (range) => formatRangeLabel(range, priceCurrency, siteLocale),
+          search: (term) => `“${term}”`,
+        },
+      )
+    : [];
+
+  // Sidebar groups — rendered in the desktop sidebar and, with
+  // mobileFilterSheet, in the phone bottom sheet (same groups, same state).
+  const discoveryFilterGroups = (
+    <>
+      {showCategoryFilter && activeStream && (
+        <DiscoveryFilterGroup
+          title={discovery.categoryFilter.label || t("courseCatalog.categories", "Categories")}
+          mode="multi"
+          options={activeStream.categories.map((c) => ({
+            value: c.slug,
+            label: siteT(c.title || c.subtitle || c.slug),
+            count: facetCounts?.category[c.slug],
+            note: c.comingSoon ? t("courseCatalog.streamSoon", "Soon") : undefined,
+          }))}
+          selected={discoveryState.categories}
+          onToggle={toggleCategory}
+        />
+      )}
+      {showLanguageFilter && (
+        <DiscoveryFilterGroup
+          title={discovery.languageFilter.label || t("courseCatalog.language", "Language")}
+          mode="multi"
+          options={presentLanguages.map((code) => ({
+            value: code,
+            label: languageName(code),
+            count: facetCounts?.language[code],
+          }))}
+          selected={discoveryState.languages}
+          onToggle={toggleLanguage}
+        />
+      )}
+      {showPriceChoiceFilter && (
+        <DiscoveryFilterGroup
+          title={discovery.priceFilter.label || t("courseCatalog.price", "Price")}
+          mode="single"
+          anyLabel={t("courseCatalog.priceAny", "Any price")}
+          options={priceChoices.map(({ value, choice }) => ({
+            value,
+            label: priceChoiceLabel(choice),
+            count: facetCounts?.price[value],
+          }))}
+          selected={discoveryState.price ? [formatPriceParam(discoveryState.price) || ""] : []}
+          onToggle={selectPrice}
+          onClear={() => setDiscoveryState({ price: null })}
+        />
+      )}
+    </>
+  );
+
+  // Option names are live data: shown through the site dictionary, matched raw.
+  const shownName = <T extends { id: string; name: string }>(items: T[]) =>
+    items.map((item) => ({ ...item, name: siteT(item.name) }));
+
+  // The original filter groups, shared by the sidebar and the bottom sheet.
+  const legacyFilterGroups = (
+    <>
+      {/* Plural headings, as on the admin All Courses panel
+          ("Categories" / "Streams" for an institute that renamed
+          Level / Session). Resolved from Naming Settings, which
+          institute-naming-seed.ts guarantees are loaded first. */}
+      {shouldShowLevelFilter && (
+        <FilterSection
+          title={getTerminologyPlural(
+            ContentTerms.Level,
+            SystemTerms.Level,
+          )}
+          items={shownName(levels)}
+          selectedItems={selectedLevels}
+          handleChange={(id) =>
+            toggleItem(id, selectedLevels, setSelectedLevels)
+          }
+          disabled={levels.length === 0}
+          counts={facetCounts?.level}
+        />
+      )}
+
+      {shouldShowSessionFilter && (
+        <FilterSection
+          title={getTerminologyPlural(
+            ContentTerms.Session,
+            SystemTerms.Session,
+          )}
+          items={shownName(sessions)}
+          selectedItems={selectedSessions}
+          handleChange={(id) =>
+            toggleItem(id, selectedSessions, setSelectedSessions)
+          }
+          disabled={sessions.length === 0}
+          counts={facetCounts?.session}
+        />
+      )}
+
+      {shouldShowTagsFilter && (
+        <FilterSection
+          title={
+            getTerminologyPlural(
+              ContentTerms.PopularTag,
+              SystemTerms.PopularTag,
+            )
+          }
+          items={shownName(tags)}
+          selectedItems={selectedTags}
+          handleChange={(id) =>
+            toggleItem(id, selectedTags, setSelectedTags)
+          }
+          disabled={tags.length === 0}
+          counts={facetCounts?.tags}
+        />
+      )}
+
+      {shouldShowInstructorFilter && (
+        <FilterSection
+          title={
+            filtersConfig?.find(
+              (filter) =>
+                filter.id === "instructors" ||
+                filter.id === "authors",
+            )?.label ?? t("courseCatalog.authors")
+          }
+          items={instructors}
+          selectedItems={selectedInstructors}
+          handleChange={(id) =>
+            toggleItem(
+              id,
+              selectedInstructors,
+              setSelectedInstructors,
+            )
+          }
+          disabled={instructors.length === 0}
+          counts={facetCounts?.instructor}
+        />
+      )}
+
+      {shouldShowPriceFilter && (
+        <div className="mb-5 space-y-2.5">
+          <h3 className="text-sm font-semibold text-catalogue-text-primary">
+            {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
+          </h3>
+          <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
+            <div className="flex-1 space-y-1">
+              <label className="block text-xs text-catalogue-text-secondary">
+                {t("courseCatalog.min")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={priceRange?.min ?? ""}
+                onChange={(e) =>
+                  handlePriceInputChange("min", e.target.value)
+                }
+                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+            </div>
+            <span className="pb-2 text-catalogue-text-muted">–</span>
+            <div className="flex-1 space-y-1">
+              <label className="block text-xs text-catalogue-text-secondary">
+                {t("courseCatalog.max")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={priceRange?.max ?? ""}
+                onChange={(e) =>
+                  handlePriceInputChange("max", e.target.value)
+                }
+                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (isLoading || streamsLoading) {
     return (
       <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
         <div className="w-full px-4 sm:px-6 lg:px-8 space-y-section">
@@ -1225,6 +1859,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     );
   }
 
+  const stickyTabs = !!discovery.streams?.sticky && streamList.length > 0;
+
   return (
     <div
       ref={scrollRef}
@@ -1243,12 +1879,27 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           )}
         </div>
 
+        {discovery.streams && (
+          <StreamTabs
+            streams={streamList}
+            active={activeStream?.slug ?? null}
+            allLabel={discovery.streams.allLabel}
+            labelMode={discovery.streams.labelMode}
+            sticky={discovery.streams.sticky}
+            onSelect={selectStream}
+            controlsId={gridId}
+          />
+        )}
+
         <div
-          className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
+          className={`flex flex-col ${showFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
         >
-          {shouldRenderFiltersPanel && (
-            <div className="w-full lg:w-64 lg:flex-shrink-0 order-1">
-              <div className="lg:sticky lg:top-20">
+          {showFiltersPanel && (
+            <div
+              className={`${discovery.mobileFilterSheet ? "hidden lg:block " : ""}w-full lg:w-64 lg:flex-shrink-0 order-1`}
+            >
+              {/* Below a sticky tab bar the sidebar sticks lower, clear of it. */}
+              <div className={stickyTabs ? "lg:sticky lg:top-40" : "lg:sticky lg:top-20"}>
                 <div className="catalogue-surface p-4 sm:p-5 rounded-catalogue-lg border border-catalogue-border-subtle shadow-sm">
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
@@ -1322,117 +1973,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       </div>
                     </div>
 
-                    {/* Plural headings, as on the admin All Courses panel
-                        ("Categories" / "Streams" for an institute that renamed
-                        Level / Session). Resolved from Naming Settings, which
-                        institute-naming-seed.ts guarantees are loaded first. */}
-                    {shouldShowLevelFilter && (
-                      <FilterSection
-                        title={getTerminologyPlural(
-                          ContentTerms.Level,
-                          SystemTerms.Level,
-                        )}
-                        items={levels}
-                        selectedItems={selectedLevels}
-                        handleChange={(id) =>
-                          toggleItem(id, selectedLevels, setSelectedLevels)
-                        }
-                        disabled={levels.length === 0}
-                      />
-                    )}
-
-                    {shouldShowSessionFilter && (
-                      <FilterSection
-                        title={getTerminologyPlural(
-                          ContentTerms.Session,
-                          SystemTerms.Session,
-                        )}
-                        items={sessions}
-                        selectedItems={selectedSessions}
-                        handleChange={(id) =>
-                          toggleItem(id, selectedSessions, setSelectedSessions)
-                        }
-                        disabled={sessions.length === 0}
-                      />
-                    )}
-
-                    {shouldShowTagsFilter && (
-                      <FilterSection
-                        title={
-                          getTerminologyPlural(
-                            ContentTerms.PopularTag,
-                            SystemTerms.PopularTag,
-                          )
-                        }
-                        items={tags}
-                        selectedItems={selectedTags}
-                        handleChange={(id) =>
-                          toggleItem(id, selectedTags, setSelectedTags)
-                        }
-                        disabled={tags.length === 0}
-                      />
-                    )}
-
-                    {shouldShowInstructorFilter && (
-                      <FilterSection
-                        title={
-                          filtersConfig?.find(
-                            (filter) =>
-                              filter.id === "instructors" ||
-                              filter.id === "authors",
-                          )?.label ?? t("courseCatalog.authors")
-                        }
-                        items={instructors}
-                        selectedItems={selectedInstructors}
-                        handleChange={(id) =>
-                          toggleItem(
-                            id,
-                            selectedInstructors,
-                            setSelectedInstructors,
-                          )
-                        }
-                        disabled={instructors.length === 0}
-                      />
-                    )}
-
-                    {shouldShowPriceFilter && (
-                      <div className="mb-5 space-y-2.5">
-                        <h3 className="text-sm font-semibold text-catalogue-text-primary">
-                          {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
-                        </h3>
-                        <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
-                          <div className="flex-1 space-y-1">
-                            <label className="block text-xs text-catalogue-text-secondary">
-                              {t("courseCatalog.min")}
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={priceRange?.min ?? ""}
-                              onChange={(e) =>
-                                handlePriceInputChange("min", e.target.value)
-                              }
-                              className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-                            />
-                          </div>
-                          <span className="pb-2 text-catalogue-text-muted">–</span>
-                          <div className="flex-1 space-y-1">
-                            <label className="block text-xs text-catalogue-text-secondary">
-                              {t("courseCatalog.max")}
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={priceRange?.max ?? ""}
-                              onChange={(e) =>
-                                handlePriceInputChange("max", e.target.value)
-                              }
-                              className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    {discoveryFilterGroups}
+                    {legacyFilterGroups}
                   </div>
                 </div>
               </div>
@@ -1442,7 +1984,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           {/* Main Content Area */}
           <div
             className={
-              shouldRenderFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"
+              showFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"
             }
           >
             {/* Search and Sort Bar */}
@@ -1488,15 +2030,15 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       size={20}
                     />
                     <select
-                      value={sortOption}
+                      value={effectiveSort}
                       onChange={(e) =>
-                        setSortOption(
+                        changeSort(
                           e.target.value as CourseCatalogSortOption,
                         )
                       }
                       className="w-full ps-10 pe-4 py-2.5 border border-catalogue-border rounded-catalogue-md bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
                     >
-                      {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
+                      {sortOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1504,26 +2046,53 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     </select>
                   </div>
                 </div>
+
+                {discovery.mobileFilterSheet && showFiltersPanel && (
+                  <MobileFiltersButton
+                    count={filterBadgeCount}
+                    onClick={() => setFilterSheetOpen(true)}
+                  />
+                )}
               </div>
             </div>
 
+            <QuickFilterBar chips={quickChips} onToggle={toggleQuick} />
+            <AppliedFilterChips
+              chips={appliedChips}
+              onRemove={removeChip}
+              onClearAll={clearAllFilters}
+            />
+
             {/* Course Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {paginatedCourses.map((course, index) => {
+            <div
+              id={discovery.streams ? gridId : undefined}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"
+            >
+              {paginatedCards.map((card, index) => {
+                // The card's version on show (the card itself without grouping).
+                const course = card.primary;
+                // With versions merged, a language-only level ("Hindi") is
+                // already said by the language chips.
+                const levelLabel =
+                  discovery.grouping &&
+                  isPureLanguageLevel(course.level, discovery.languages)
+                    ? ""
+                    : displayLevelName(course.level);
                 // Compute category label: first tag > non-General type > level
                 // (level goes through displayLevelName so backend sentinels
                 // like "default" never surface as a category chip)
                 const category =
                   course.tags?.[0] ||
                   (course.type && course.type !== "General" ? course.type : "") ||
-                  displayLevelName(course.level) ||
+                  levelLabel ||
                   "";
                 const categoryStyle = getCategoryStyle(category);
                 const courseTerm = getTerminology(
                   ContentTerms.Course,
                   SystemTerms.Course,
                 );
-                const levelLabel = displayLevelName(course.level);
+                const courseTitle = siteT(course.title);
+                const cartVersions = siteCartOn ? purchasableVersions(card.rows) : [];
                 // Coming Soon: ribbon, launch date in place of the price, no
                 // cart, and the CTA opens the course's notify form. The card
                 // itself still opens the details page.
@@ -1545,8 +2114,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 return (
                   <div
                     key={
-                      course.enrollInviteId ??
-                      `${course.id}-${course.packageSessionId ?? ""}-${index}`
+                      discovery.grouping
+                        ? `course-${card.courseId}`
+                        : course.enrollInviteId ??
+                          `${course.id}-${course.packageSessionId ?? ""}-${index}`
                     }
                     className={cn(
                       "bg-catalogue-bg-elevated flex flex-col cursor-pointer border border-catalogue-border-subtle",
@@ -1572,7 +2143,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           <div className="w-full h-full">
                             <CourseImage
                               previewImageUrl={course.thumbnail}
-                              alt={course.title}
+                              alt={courseTitle}
                               className={cn(
                                 "w-full h-full",
                                 imageFit === "contain"
@@ -1618,6 +2189,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       {comingSoon && !displayImage && (
                         <ComingSoonRibbon info={comingSoon} className="self-start" />
                       )}
+                      {/* Bestseller / Popular / New / Free (badges prop) */}
+                      {badgeRules && (
+                        <CourseBadgePills badges={displayBadges.get(card.courseId)} />
+                      )}
                       {/* Category label */}
                       {category && (
                         <span
@@ -1626,15 +2201,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             categoryStyle.text,
                           )}
                         >
-                          {category}
+                          {siteT(category)}
                         </span>
                       )}
 
                       {/* Title */}
                       {displayTitle && (
                         <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-snug">
-                          {course.title}
+                          {courseTitle}
                         </h3>
+                      )}
+
+                      {/* EN / हिं — the languages this course comes in */}
+                      {discovery.grouping && (
+                        <LanguageChips languages={card.languages} translate={siteT} />
                       )}
 
                       {/* Description — guard against placeholder text */}
@@ -1642,7 +2222,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         course.description &&
                         course.description !== t("courseCatalog.noDescriptionAvailable") && (
                           <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
-                            {course.description}
+                            {siteT(course.description)}
                           </p>
                         )}
 
@@ -1662,7 +2242,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           {displayLevel && levelLabel && (
                             <span className="flex items-center gap-1 truncate">
                               <ChartBarHorizontal size={13} weight="bold" aria-hidden="true" />
-                              {levelLabel}
+                              {siteT(levelLabel)}
                             </span>
                           )}
                         </div>
@@ -1691,6 +2271,31 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                                 </div>
                               );
                             }
+                            // Merged versions at different prices: "from" the cheapest.
+                            if (discovery.grouping && card.priceVaries && card.minPrice !== null) {
+                              return (
+                                <div className="shrink-0">
+                                  {card.minPrice === 0 ? (
+                                    <span className="text-xs font-bold text-success-600">
+                                      {t("courseCatalog.freeLabel")}
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-baseline gap-1">
+                                      <span className="text-xs text-catalogue-text-muted">
+                                        {t("courseCatalog.priceFrom", "from")}
+                                      </span>
+                                      <PriceWithMrp
+                                        actual={card.minPrice}
+                                        currency={course.currency}
+                                        size="sm"
+                                        layout="inline"
+                                        hideBadge
+                                      />
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
                             return (
                               <div className="shrink-0">
                                 {course.price === 0 ? (
@@ -1712,8 +2317,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           })()}
                       </div>
 
-                      {/* Cart controls */}
-                      {shouldShowCartControls && !comingSoon && (
+                      {/* Cart controls (the original catalogue cart; the site-wide cart replaces it) */}
+                      {shouldShowCartControls && !comingSoon && !siteCartOn && (
                         <div
                           className="mt-1"
                           onClick={(e) => e.stopPropagation()}
@@ -1730,29 +2335,55 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         </div>
                       )}
 
-                      {/* Keyboard-focusable CTA — also the accessible action for
-                          the whole-card mouse click above. */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (
-                            comingSoon &&
-                            openComingSoonForm(
-                              comingSoon,
-                              t("comingSoon.notifyTitle", { title: course.title }),
-                            )
-                          ) {
-                            return;
-                          }
-                          handleCourseClick(course);
-                        }}
-                        className="catalogue-btn catalogue-btn-primary mt-2 w-full"
-                      >
-                        {comingSoon
-                          ? comingSoon.buttonText || t("comingSoon.notifyMe")
-                          : t("courseCatalog.viewCourse", { course: courseTerm })}
-                      </button>
+                      {siteCartOn && !comingSoon && cartVersions.length > 0 ? (
+                        <>
+                          {/* Site-wide cart: add this course (choosing its
+                              language when it has several versions). */}
+                          <SiteCartCta
+                            courseId={card.courseId}
+                            versions={cartVersions}
+                            title={course.title}
+                            languages={discovery.languages}
+                            translate={siteT}
+                            themeAnchor={scrollRef}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCourseClick(course);
+                            }}
+                            className="catalogue-btn catalogue-btn-secondary w-full"
+                          >
+                            {t("courseCatalog.viewCourse", { course: courseTerm })}
+                          </button>
+                        </>
+                      ) : (
+                        /* Keyboard-focusable CTA — also the accessible action for
+                           the whole-card mouse click above. */
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (
+                              comingSoon &&
+                              openComingSoonForm(
+                                comingSoon,
+                                t("comingSoon.notifyTitle", { title: courseTitle }),
+                              )
+                            ) {
+                              return;
+                            }
+                            handleCourseClick(course);
+                          }}
+                          className="catalogue-btn catalogue-btn-primary mt-2 w-full"
+                        >
+                          {comingSoon
+                            ? (comingSoon.buttonText && siteT(comingSoon.buttonText)) ||
+                              t("comingSoon.notifyMe")
+                            : t("courseCatalog.viewCourse", { course: courseTerm })}
+                        </button>
+                      )}
                       {/* The primary CTA opens the form, so keep a keyboard
                           path to the details page the card click leads to. */}
                       {comingSoon && (
@@ -1773,8 +2404,34 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               })}
             </div>
 
+            {/* A coming-soon stream: nothing to list yet, collect interest instead */}
+            {filteredCards.length === 0 && activeStream?.comingSoon && (
+              <div className="catalogue-card flex flex-col items-center gap-stack py-12 px-6 text-center">
+                <p className="text-base font-semibold text-catalogue-text-primary">
+                  {t("comingSoon.ribbon")}
+                </p>
+                <p className="max-w-sm text-sm text-catalogue-text-secondary">
+                  {t("comingSoon.notifyHint")}
+                </p>
+                {activeStream.audienceId && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openComingSoonForm(
+                        { enabled: true, audienceId: activeStream.audienceId || undefined },
+                        t("comingSoon.notifyTitle", { title: siteT(activeStream.title) }),
+                      )
+                    }
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-sm mt-1"
+                  >
+                    {t("comingSoon.notifyMe")}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* No Results */}
-            {filteredCourses.length === 0 && (
+            {filteredCards.length === 0 && !activeStream?.comingSoon && (
               <div className="catalogue-card flex flex-col items-center gap-stack py-12 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
                   <MagnifyingGlass size={26} />
@@ -1862,8 +2519,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 <p className="text-sm text-catalogue-text-secondary">
                   {t("courseCatalog.showingRange", {
                     from: (currentPage - 1) * itemsPerPage + 1,
-                    to: Math.min(currentPage * itemsPerPage, filteredCourses.length),
-                    total: filteredCourses.length,
+                    to: Math.min(currentPage * itemsPerPage, filteredCards.length),
+                    total: filteredCards.length,
                     courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
                   })}
                 </p>
@@ -1890,6 +2547,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       </div>} */}
 
       {/* Enrollment dialog removed - all enrollment happens on course details page */}
+
+      {/* Phones: the same filter groups in a bottom sheet (mobileFilterSheet) */}
+      {discovery.mobileFilterSheet && showFiltersPanel && (
+        <MobileFilterSheet
+          open={filterSheetOpen}
+          onOpenChange={setFilterSheetOpen}
+          themeAnchor={scrollRef}
+          resultCount={filteredCards.length}
+          canClear={hasActiveFilters}
+          onClearAll={clearAllFilters}
+        >
+          {discoveryFilterGroups}
+          {legacyFilterGroups}
+        </MobileFilterSheet>
+      )}
     </div>
   );
 };

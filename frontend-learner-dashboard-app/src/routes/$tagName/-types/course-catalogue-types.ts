@@ -3,6 +3,7 @@ import type { CatalogueI18nSettings } from "../-utils/catalogue-i18n";
 import type { CourseLanguageSettings } from "../-utils/course-variants";
 import type { SiteCartSettings } from "../-utils/site-cart";
 import type { VisibleWhenRule } from "../-utils/catalogue-url-state";
+import type { BadgeRules } from "../-utils/course-badges";
 
 /**
  * A single tier in a quantity-based additional charge (e.g. shipping).
@@ -314,7 +315,9 @@ export interface BannerProps {
 
 /** Sort modes offered by the catalogue's sort dropdown. The value stored in the
  *  catalogue JSON is the label itself, so what an admin picks in the page
- *  builder is exactly what a learner sees selected. */
+ *  builder is exactly what a learner sees selected. "Popular" (enrolment rank)
+ *  is only listed in the dropdown of a section that uses the discovery props
+ *  below or pins it as defaultSort, so older grids keep their exact menu. */
 export const COURSE_CATALOG_SORT_OPTIONS = [
   "Newest",
   "Oldest",
@@ -323,6 +326,7 @@ export const COURSE_CATALOG_SORT_OPTIONS = [
   "Rating",
   "Name A-Z",
   "Name Z-A",
+  "Popular",
 ] as const;
 
 export type CourseCatalogSortOption =
@@ -365,6 +369,67 @@ export interface CourseCatalogProps {
       backgroundColor?: string;
     };
   };
+
+  /* ── Courses-page discovery (all optional; absent = the original grid) ──
+   * Used by courseCatalog and productCourseGrid alike. See
+   * -components/components/catalog/catalog-config.ts for how each is read. */
+
+  /** Stream tabs across the top of the grid. */
+  streams?: CatalogStreamsConfig;
+  /** Mirror tabs, filters, sort and search in the URL. Default: on when streams are on. */
+  syncUrl?: boolean;
+  /** Live result counts next to every filter option. */
+  showFilterCounts?: boolean;
+  /** Removable chips for every applied filter, plus "Clear all". */
+  showAppliedChips?: boolean;
+  /** One-tap shortcuts to the same filters / sort. */
+  quickFilters?: CatalogQuickFilter[];
+  /** Filter by course language (globalSettings.courseLanguages must be on). */
+  languageFilter?: { enabled?: boolean; label?: string };
+  /** Free / Paid / Under an amount. */
+  priceFilter?: { enabled?: boolean; label?: string; showFree?: boolean; maxOptions?: number[] };
+  /** Sub-folders of the selected stream (folder-library streams only). */
+  categoryFilter?: { enabled?: boolean; label?: string };
+  /** One card per course with EN / हिं chips (globalSettings.courseLanguages must be on). */
+  groupLanguageVersions?: boolean;
+  /** Bestseller / Popular / New / Free badges on cards. */
+  badges?: BadgeRules;
+  /** Below lg, filters open in a bottom sheet behind a "Filters (n)" button. */
+  mobileFilterSheet?: boolean;
+}
+
+/** One tab when streams come from a hand-written tag list. */
+export interface CatalogStreamItem {
+  /** Tab text. */
+  label: string;
+  /** URL key (?stream=<slug>). */
+  slug: string;
+  /** The course tag the tab filters by. */
+  tag: string;
+}
+
+export interface CatalogStreamsConfig {
+  enabled?: boolean;
+  /** 'folderLibrary': top-level folders are tabs, their sub-folders categories. 'tags': `items`. */
+  source?: "folderLibrary" | "tags";
+  libraryId?: string;
+  items?: CatalogStreamItem[];
+  /** First tab, no stream filter. Default "All courses". */
+  allLabel?: string;
+  /** Stick under the site header while scrolling. Default true. */
+  sticky?: boolean;
+  /** Which folder text the tab shows. Default 'title'. */
+  labelMode?: "title" | "subtitle" | "both";
+}
+
+export type CatalogQuickFilterKind = "popular" | "new" | "free" | "bestseller" | "language" | "priceMax";
+
+export interface CatalogQuickFilter {
+  id: string;
+  label: string;
+  kind: CatalogQuickFilterKind;
+  /** Language code for 'language'; amount for 'priceMax'. */
+  value?: string | number;
 }
 
 export interface CourseDetailsProps {

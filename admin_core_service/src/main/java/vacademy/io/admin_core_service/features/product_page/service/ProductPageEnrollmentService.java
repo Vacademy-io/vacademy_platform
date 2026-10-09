@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.product_page.service;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -43,6 +42,7 @@ import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -234,13 +234,42 @@ public class ProductPageEnrollmentService {
                         .map(ProductPageSelectedMappingDTO::getPsInvitePaymentOptionId)
                         .collect(Collectors.toList()));
 
+        // Override vendor/vendorId/currency from the first EnrollInvite so we always
+        // use the invite's configured payment gateway, ignoring whatever the client
+        // sends. Settled before pricing, which has to know whether this call is
+        // Razorpay Phase 2.
+        PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
+        EnrollInvite firstInvite = null;
+        if (!selectedMappings.isEmpty()) {
+            firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
+            if (firstInvite.getVendor() != null)
+                payReq.setVendor(firstInvite.getVendor());
+            if (firstInvite.getVendorId() != null)
+                payReq.setVendorId(firstInvite.getVendorId());
+            if (firstInvite.getCurrency() != null)
+                payReq.setCurrency(firstInvite.getCurrency());
+        }
+
+        // Razorpay Phase 2 is the call the browser makes AFTER Razorpay has
+        // captured the money for the order Phase 1 created (see below).
+        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
+        boolean isRazorpayPhase2 = isRazorpay
+                && payReq.getRazorpayRequest() != null
+                && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
+                && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+
         // Validate + compute total server-side. Every line is priced on the plan
         // locked on its mapping, never on a plan the request picks (lockedPlanId).
+        // Phase 2 never refuses a plan: the learner has already paid the price
+        // Phase 1 checked. An admin who re-plans a course while the Razorpay
+        // widget is open must not turn that paid checkout into an error, so a
+        // stale plan resolves to the mapping's current one instead.
         double serverTotal = 0.0;
         Map<String, PaymentPlan> planByMappingId = new LinkedHashMap<>();
         for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
             String planId = lockedPlanId(
-                    sel.getPsInvitePaymentOptionId(), sel.getPaymentPlanId(), selectedMappings);
+                    sel.getPsInvitePaymentOptionId(), sel.getPaymentPlanId(), selectedMappings,
+                    !isRazorpayPhase2);
             PaymentPlan plan = paymentPlanRepository.findById(planId)
                     .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + planId));
             planByMappingId.put(sel.getPsInvitePaymentOptionId(), plan);
@@ -300,22 +329,7 @@ public class ProductPageEnrollmentService {
 
         double finalTotal = Math.max(0.0, afterOffer - discountAmount);
 
-        PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         payReq.setAmount(finalTotal);
-
-        // Override vendor/vendorId/currency from the first EnrollInvite so we always
-        // use
-        // the invite's configured payment gateway, ignoring whatever the client sends.
-        EnrollInvite firstInvite = null;
-        if (!selectedMappings.isEmpty()) {
-            firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
-            if (firstInvite.getVendor() != null)
-                payReq.setVendor(firstInvite.getVendor());
-            if (firstInvite.getVendorId() != null)
-                payReq.setVendorId(firstInvite.getVendorId());
-            if (firstInvite.getCurrency() != null)
-                payReq.setCurrency(firstInvite.getCurrency());
-        }
 
         // Defensive: ensure currency always has a value (Razorpay gateway requires it).
         // Fall back to any plan's currency, then to "INR".
@@ -347,11 +361,7 @@ public class ProductPageEnrollmentService {
         payReq.setEmail(user.getEmail());
 
         // ── Razorpay Phase 1: order creation ──────────────────────────────────
-        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
-        boolean isRazorpayPhase2 = isRazorpay
-                && payReq.getRazorpayRequest() != null
-                && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
-                && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+        // (isRazorpay / isRazorpayPhase2 are settled above, before pricing.)
 
         // Free payment options (amount = 0) must never reach a payment gateway
         if (isRazorpay && !isRazorpayPhase2 && finalTotal > 0.0) {
@@ -1079,8 +1089,9 @@ public class ProductPageEnrollmentService {
      * A request naming no plan gets the locked one. A page that maps one
      * bridge row more than once, on different plans, accepts each of those
      * plans as it always has. Anything else is refused before any user,
-     * payment or enrollment is created. It is refused with 409 Conflict, so
-     * a client can tell "the page changed under you: reload it" from other errors.
+     * payment or enrollment is created. It is refused with 409 Conflict
+     * (ConflictException, logged as a warning rather than an error), so a
+     * client can tell "the page changed under you: reload it" from other errors.
      *
      * Visible for testing.
      *
@@ -1088,6 +1099,21 @@ public class ProductPageEnrollmentService {
      */
     static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
                                List<ProductPageInviteMapping> pageMappings) {
+        return lockedPlanId(psInvitePaymentOptionId, requestedPlanId, pageMappings, true);
+    }
+
+    /**
+     * {@link #lockedPlanId(String, String, List)}, with a choice for a plan the
+     * mapping does not sell (any more).
+     *
+     * @param refuseUnlocked true refuses such a plan with 409. False resolves it
+     *                       to the mapping's current locked plan instead: for a
+     *                       call that must not fail because the money is
+     *                       already taken (Razorpay Phase 2). Pricing stays on
+     *                       locked plans either way.
+     */
+    static String lockedPlanId(String psInvitePaymentOptionId, String requestedPlanId,
+                               List<ProductPageInviteMapping> pageMappings, boolean refuseUnlocked) {
         Set<String> locked = new LinkedHashSet<>();
         for (ProductPageInviteMapping m : pageMappings) {
             if (m.getPsInvitePaymentOption() != null
@@ -1103,12 +1129,19 @@ public class ProductPageEnrollmentService {
             return locked.iterator().next();
         }
         String requested = requestedPlanId.trim();
-        if (!locked.contains(requested)) {
-            log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
-                    requested, psInvitePaymentOptionId, locked);
-            throw new VacademyException(HttpStatus.CONFLICT, PRICE_CHANGED_MESSAGE);
+        if (locked.contains(requested)) {
+            return requested;
         }
-        return requested;
+        if (!refuseUnlocked) {
+            String current = locked.iterator().next();
+            log.warn("Product page checkout: plan {} for bridge {} is no longer the one the page sells ({}); "
+                    + "the payment is already taken, so the line completes on {}",
+                    requested, psInvitePaymentOptionId, locked, current);
+            return current;
+        }
+        log.warn("Product page checkout refused plan {} for bridge {}: the page sells it on {}",
+                requested, psInvitePaymentOptionId, locked);
+        throw new ConflictException(PRICE_CHANGED_MESSAGE);
     }
 
     private PaymentInitiationRequestDTO clonePaymentRequest(PaymentInitiationRequestDTO source) {

@@ -9,7 +9,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.http.HttpStatus;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -42,11 +41,19 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.utm_attribution.service.UtmAttributionService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.RazorpayRequestDTO;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -202,12 +209,28 @@ class ProductPageEnrollmentPlanCheckTest {
         assertEquals("plan-a", ProductPageEnrollmentService.lockedPlanId("psli-a", null, pageMappings));
         assertEquals("plan-a", ProductPageEnrollmentService.lockedPlanId("psli-a", "", pageMappings));
 
-        VacademyException tampered = assertThrows(VacademyException.class,
+        // ConflictException: answered 409 and logged as a warning, not an error event.
+        ConflictException tampered = assertThrows(ConflictException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-cheap", pageMappings));
         assertEquals(ProductPageEnrollmentService.PRICE_CHANGED_MESSAGE, tampered.getMessage());
-        assertEquals(HttpStatus.CONFLICT, tampered.getStatus());
         assertThrows(VacademyException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-unknown", "plan-a", pageMappings));
+    }
+
+    @Test
+    @DisplayName("when it must not refuse (the money is taken), a stale plan resolves to the locked one")
+    void lockedPlanRuleWithoutRefusing() {
+        mapping("psli-a", "plan-now", "ONE_TIME");
+        mapping("psli-a", "plan-combo", "ONE_TIME");
+
+        assertEquals("plan-combo",
+                ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-combo", pageMappings, false));
+        assertEquals("plan-now",
+                ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-before", pageMappings, false));
+        assertEquals("plan-now", ProductPageEnrollmentService.lockedPlanId("psli-a", null, pageMappings, false));
+        // A course the page does not sell at all is still not sold.
+        assertThrows(VacademyException.class,
+                () -> ProductPageEnrollmentService.lockedPlanId("psli-unknown", "plan-now", pageMappings, false));
     }
 
     @Test
@@ -220,7 +243,7 @@ class ProductPageEnrollmentPlanCheckTest {
         assertEquals("plan-single", ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-single", pageMappings));
         assertEquals("plan-combo", ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-combo", pageMappings));
         // Another course's locked plan is not this course's.
-        assertThrows(VacademyException.class,
+        assertThrows(ConflictException.class,
                 () -> ProductPageEnrollmentService.lockedPlanId("psli-a", "plan-b", pageMappings));
     }
 
@@ -233,11 +256,10 @@ class ProductPageEnrollmentPlanCheckTest {
         plan("plan-a", 4999);
         plan("plan-cheap", 1);
 
-        VacademyException e = assertThrows(VacademyException.class,
+        ConflictException e = assertThrows(ConflictException.class,
                 () -> service.enrollForProductPage(enrollRequest("psli-a", "plan-cheap")));
 
         assertEquals(ProductPageEnrollmentService.PRICE_CHANGED_MESSAGE, e.getMessage());
-        assertEquals(HttpStatus.CONFLICT, e.getStatus());
         verify(paymentPlanRepository, never()).findById("plan-cheap");
         verifyNoInteractions(authService, paymentService, userPlanService, paymentLogService,
                 oneTimePaymentOptionOperation);
@@ -284,7 +306,7 @@ class ProductPageEnrollmentPlanCheckTest {
         req.setPaymentPlanId("plan-cheap");
         req.setUserDetails(new UserDTO());
 
-        VacademyException e = assertThrows(VacademyException.class, () -> service.enrollCpoForProductPage(req));
+        ConflictException e = assertThrows(ConflictException.class, () -> service.enrollCpoForProductPage(req));
 
         assertEquals(ProductPageEnrollmentService.PRICE_CHANGED_MESSAGE, e.getMessage());
         verifyNoInteractions(authService, userPlanService, complexPaymentOptionOperation);
@@ -311,5 +333,112 @@ class ProductPageEnrollmentPlanCheckTest {
         assertEquals("CPO_ENROLLED", res.getStatus());
         assertEquals("up-1", res.getUserPlanId());
         verify(userPlanService).createUserPlan(eq("user-1"), same(locked), any(), any(), any(), any(), eq("ACTIVE"));
+    }
+
+    /* ── Razorpay: the plan changes while the widget is open ───────────── */
+
+    private static final String RAZORPAY_SECRET = "rzp-test-secret";
+    private static final String ORDER = "order_ABC";
+    private static final String PAYMENT = "pay_XYZ";
+
+    /** The course sold through a Razorpay invite, as by-code shows it. */
+    private ProductPageInviteMapping razorpayMapping(String bridgeId, String planId) {
+        ProductPageInviteMapping m = mapping(bridgeId, planId, "ONE_TIME");
+        m.getPsInvitePaymentOption().getEnrollInvite().setVendor("RAZORPAY");
+        when(institutePaymentGatewayMappingService.findInstitutePaymentGatewaySpecifData("RAZORPAY", INSTITUTE))
+                .thenReturn(Map.of("keySecret", RAZORPAY_SECRET));
+        return m;
+    }
+
+    /** Phase 2 as RazorpayCheckoutForm sends it: the page as loaded before the change, plus the paid order. */
+    private static ProductPageEnrollRequest phase2Request(String bridgeId, String planId) throws Exception {
+        ProductPageEnrollRequest req = enrollRequest(bridgeId, planId);
+        RazorpayRequestDTO rzp = new RazorpayRequestDTO();
+        rzp.setRazorpayOrderId(ORDER);
+        rzp.setRazorpayPaymentId(PAYMENT);
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(RAZORPAY_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        StringBuilder hex = new StringBuilder();
+        for (byte b : mac.doFinal((ORDER + "|" + PAYMENT).getBytes(StandardCharsets.UTF_8))) {
+            hex.append(String.format("%02x", b));
+        }
+        rzp.setRazorpaySignature(hex.toString());
+        req.getPaymentInitiationRequest().setRazorpayRequest(rzp);
+        return req;
+    }
+
+    /** The parent payment log Phase 1 left for the order, with its provisioned children. */
+    private void phase1Log() {
+        PaymentLog parent = new PaymentLog();
+        parent.setId("phase1-log");
+        parent.setCreatedAt(LocalDateTime.now().minusMinutes(3));
+        parent.setPaymentSpecificData("{\"razorpayOrderId\":\"" + ORDER + "\",\"childPaymentLogIds\":[\"child-1\"]}");
+        when(paymentLogRepository.findAllByOrderIdInJson(ORDER)).thenReturn(List.of(parent));
+    }
+
+    @Test
+    @DisplayName("Razorpay Phase 2 completes the paid order although the admin switched the course's plan mid-checkout")
+    void phase2CompletesAfterAPlanChange() throws Exception {
+        // Phase 1 sold the course on plan-p1; the admin has since switched the
+        // mapping to plan-p2 (same bridge row), and the browser still holds p1.
+        razorpayMapping("psli-a", "plan-p2");
+        plan("plan-p1", 4999);
+        plan("plan-p2", 3999);
+        phase1Log();
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2Request("psli-a", "plan-p1"));
+
+        assertEquals("PAID", res.getStatus());
+        assertEquals("phase1-log", res.getPaymentLogId());
+        assertEquals(List.of("ps-psli-a"), res.getEnrolledPackageSessionIds());
+        // Completed through the order, exactly as the webhook does; nothing is created twice.
+        verify(paymentLogService).updatePaymentLog(ORDER, "PAID", INSTITUTE);
+        verifyNoInteractions(userPlanService, paymentService, oneTimePaymentOptionOperation);
+        // Priced on the plan the page sells now, never on the stale one.
+        verify(paymentPlanRepository, never()).findById("plan-p1");
+    }
+
+    @Test
+    @DisplayName("Razorpay Phase 2 with no Phase 1 order to complete enrolls on the mapping's current plan")
+    void phase2FallbackUsesTheLockedPlan() throws Exception {
+        ProductPageInviteMapping m = razorpayMapping("psli-a", "plan-p2");
+        plan("plan-p1", 4999);
+        PaymentPlan current = plan("plan-p2", 3999);
+        when(paymentLogRepository.findAllByOrderIdInJson(ORDER)).thenReturn(List.of());
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(phase2Request("psli-a", "plan-p1"));
+
+        assertEquals("PAID", res.getStatus());
+        verify(userPlanService).createUserPlan(eq("user-1"), same(current), any(),
+                same(m.getPsInvitePaymentOption().getEnrollInvite()),
+                same(m.getPsInvitePaymentOption().getPaymentOption()), any(), eq("INVITED"));
+        verify(paymentPlanRepository, never()).findById("plan-p1");
+    }
+
+    @Test
+    @DisplayName("Razorpay Phase 1 (nothing paid yet) still refuses a plan the mapping does not sell")
+    void phase1StillRefuses() {
+        razorpayMapping("psli-a", "plan-p2");
+        plan("plan-p1", 4999);
+        plan("plan-p2", 3999);
+
+        assertThrows(ConflictException.class,
+                () -> service.enrollForProductPage(enrollRequest("psli-a", "plan-p1")));
+
+        verifyNoInteractions(authService, paymentService, userPlanService, paymentLogService);
+    }
+
+    @Test
+    @DisplayName("a payment id without Razorpay as the gateway is not Phase 2: the plan check still refuses")
+    void paymentIdAloneIsNotPhase2() throws Exception {
+        mapping("psli-a", "plan-p2", "ONE_TIME"); // the invite names no gateway
+        plan("plan-p1", 4999);
+        plan("plan-p2", 3999);
+        ProductPageEnrollRequest req = phase2Request("psli-a", "plan-p1");
+        req.getPaymentInitiationRequest().setVendor("STRIPE");
+
+        assertThrows(ConflictException.class, () -> service.enrollForProductPage(req));
+
+        verifyNoInteractions(authService, paymentService, userPlanService, paymentLogService);
     }
 }

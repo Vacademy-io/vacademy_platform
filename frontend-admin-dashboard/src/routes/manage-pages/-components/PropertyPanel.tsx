@@ -64,6 +64,10 @@ import { useBlogManagerStore } from '../-stores/blog-manager-store';
 import { LinkPicker } from './LinkPicker';
 import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { CatalogDiscoveryEditor } from './catalog/CatalogDiscoveryEditor';
+import { NavItemEditor } from './header/NavItemEditor';
+import { AuthLinkStyleSelect } from './header/AuthLinkStyleSelect';
+import { HeaderDisplayOptions } from './header/HeaderDisplayOptions';
+import { keepMegaMenuItems } from './header/header-editor-utils';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -2617,6 +2621,15 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('navigation', newNav);
     };
 
+    // Several fields in one write (a nav item turned into a mega menu sets its
+    // type and settings together; two updateNavItem calls would each start
+    // from the same props, so the second would drop the first).
+    const patchNavItem = (index: number, patch: Record<string, unknown>) => {
+        const newNav = [...(props.navigation || [])];
+        newNav[index] = { ...newNav[index], ...patch };
+        updateProp('navigation', newNav);
+    };
+
     const deleteNavItem = (index: number) => {
         updateProp('navigation', (props.navigation || []).filter((_: any, i: number) => i !== index));
     };
@@ -2664,7 +2677,8 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                     openInSameTab: true,
                 };
             });
-        updateProp('navigation', navItems);
+        // Mega-menu items are not pages: they keep their place (and config).
+        updateProp('navigation', keepMegaMenuItems(props.navigation, navItems));
     };
 
     return (
@@ -2704,6 +2718,8 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onChange={(c) => updateProp('textColor', c)}
             />
 
+            <HeaderDisplayOptions props={props} onChange={updateProp} />
+
 {/* Sticky Header toggle REMOVED (2026-07-29): it wrote
                 globalSettings.stickyHeader, which nothing ever read — the learner
                 header is unconditionally `fixed`, and both the page offset
@@ -2742,6 +2758,11 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                 )}
                                 {item.label}
                             </button>
+                            {item.type === 'megaMenu' && (
+                                <span className="shrink-0 rounded bg-primary-100 px-1.5 py-0.5 text-caption text-primary-500">
+                                    {t('header.megaMenuBadge', 'Mega menu')}
+                                </span>
+                            )}
                             {item.enabled === false && (
                                 <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-caption text-gray-600">
                                     {t('header.hiddenBadge')}
@@ -2802,6 +2823,10 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                         }
                                     />
                                 </div>
+                                <NavItemEditor
+                                    item={item}
+                                    onPatch={(patch) => patchNavItem(index, patch)}
+                                />
                             </div>
                         )}
                     </div>
@@ -2856,6 +2881,10 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     placeholder={t('header.labelWithExamplePlaceholder')}
                                     value={link.label || ''}
                                     onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
+                                />
+                                <AuthLinkStyleSelect
+                                    value={link.style}
+                                    onChange={(style) => updateAuthLink(index, 'style', style)}
                                 />
                                 <div>
                                     <Label className="text-xs">{t('header.onClick')}</Label>

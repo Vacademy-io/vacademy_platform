@@ -191,15 +191,11 @@ export interface GlobalSettings {
         // When true, header login/signup buttons open the AuthModal in-place
         // instead of navigating to /login or /signup. Default: false (navigate).
         useAuthModal?: boolean;
-        navigation?: Array<{
-          label: string;
-          route: string;
-          openInSameTab?: boolean;
-        }>;
-        authLinks?: Array<{
-          label: string;
-          route: string;
-        }>;
+        navigation?: HeaderNavItem[];
+        authLinks?: HeaderAuthLink[];
+        activeStyle?: HeaderActiveStyle;
+        showSearch?: boolean;
+        showLanguageSwitcher?: boolean;
       };
     };
     footer?: {
@@ -302,6 +298,81 @@ export interface HeaderProps {
     label: string;
     link: string;
   };
+}
+
+/**
+ * Header mega menu ("Knowledge Streams"): a panel of streams (the top-level
+ * folders of a folder library) with each stream's categories (its child
+ * folders). Every key is optional; the defaults below apply only once an
+ * author has turned a nav item into a mega menu.
+ *
+ * Link patterns take {stream} / {category} = the folder's slug (folderSlug).
+ * Text patterns take {stream} = the stream's name (its subtitle, else its
+ * title — the English caption under a Hindi title) and {title} = its title.
+ * A folder's own link_url / cta_label always wins over a pattern.
+ */
+export interface HeaderMegaMenuConfig {
+  libraryId?: string;
+  /** Library name at the time it was picked (editor display only). */
+  libraryName?: string;
+  /** Small caps line above the tiles, e.g. "Six streams of knowledge". */
+  eyebrow?: string;
+  /** "Not sure where to begin? Find your path" — shown with helpRoute. */
+  helpLabel?: string;
+  helpRoute?: string;
+  /** Default '/courses?stream={stream}'. */
+  streamLinkPattern?: string;
+  /** Default '/courses?stream={stream}&category={category}'. */
+  categoryLinkPattern?: string;
+  /** Default 'Explore {stream}'. */
+  ctaLabelPattern?: string;
+  /** Default 'Categories in {stream}'. */
+  categoriesHeading?: string;
+  /** "● available ○ coming soon" above the category list. */
+  showLegend?: boolean;
+  /** Small print under the panel. */
+  footnote?: string;
+}
+
+/** A header nav item. `type` absent = 'link', i.e. every header authored before mega menus. */
+export interface HeaderNavItem {
+  label: string;
+  route: string;
+  openInSameTab?: boolean;
+  /** `false` hides the item without losing it; absent = visible. */
+  enabled?: boolean;
+  type?: "link" | "megaMenu";
+  megaMenu?: HeaderMegaMenuConfig;
+}
+
+/** Look of a header auth/CTA button. Absent = the original rule (first filled, the rest outlined). */
+export type HeaderAuthLinkStyle = "primary" | "outline" | "text";
+
+export interface HeaderAuthLink {
+  label: string;
+  route: string;
+  audienceId?: string;
+  formTitle?: string;
+  style?: HeaderAuthLinkStyle;
+}
+
+/** How the current page's nav item is marked. Absent = 'pill' (tinted background). */
+export type HeaderActiveStyle = "pill" | "underline";
+
+/** Authored props of the `header` section (globalSettings.layout.header.props or a page header). */
+export interface HeaderSectionProps {
+  logo?: string;
+  title?: string;
+  useAuthModal?: boolean;
+  backgroundColor?: string;
+  textColor?: string;
+  navigation?: HeaderNavItem[];
+  authLinks?: HeaderAuthLink[];
+  activeStyle?: HeaderActiveStyle;
+  /** Search icon that opens a site search (courses, pages, streams). */
+  showSearch?: boolean;
+  /** हिन्दी | EN switch; shows only when the site has more than one language. */
+  showLanguageSwitcher?: boolean;
 }
 
 export interface BannerProps {

@@ -96,6 +96,10 @@ FONT_STACKS: Dict[str, str] = {
     "Quicksand": "Quicksand, sans-serif", "Baloo 2": '"Baloo 2", sans-serif',
     "Playfair Display": '"Playfair Display", serif', "Fraunces": "Fraunces, serif",
     "Newsreader": "Newsreader, serif", "Lora": "Lora, serif",
+    # Devanagari faces for Hindi / Marathi sites.
+    "Noto Sans Devanagari": '"Noto Sans Devanagari", sans-serif', "Mukta": "Mukta, sans-serif",
+    "Hind": "Hind, sans-serif", "Noto Serif Devanagari": '"Noto Serif Devanagari", serif',
+    "Tiro Devanagari Hindi": '"Tiro Devanagari Hindi", serif',
 }
 
 _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")

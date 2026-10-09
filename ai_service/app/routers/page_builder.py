@@ -1089,6 +1089,12 @@ _FONT_STACKS: Dict[str, str] = {
     "Rubik": "Rubik, sans-serif",
     "Quicksand": "Quicksand, sans-serif",
     "Baloo 2": '"Baloo 2", sans-serif',
+    # Devanagari faces (mirrors catalogue-fonts.ts) for Hindi / Marathi sites.
+    "Noto Sans Devanagari": '"Noto Sans Devanagari", sans-serif',
+    "Mukta": "Mukta, sans-serif",
+    "Hind": "Hind, sans-serif",
+    "Noto Serif Devanagari": '"Noto Serif Devanagari", serif',
+    "Tiro Devanagari Hindi": '"Tiro Devanagari Hindi", serif',
 }
 
 # One compact, VALID exemplar page showing the premium vocabulary in-schema —
@@ -3618,6 +3624,7 @@ _FONT_FAMILIES = {
     "Inter", "Roboto", "Open Sans", "Poppins", "Lato", "Montserrat", "Mulish", "Figtree",
     "Outfit", "Nunito", "Space Grotesk", "Playfair Display", "Fraunces", "Newsreader",
     "Lora", "DM Serif Display", "Rubik", "Quicksand", "Baloo 2",
+    "Noto Sans Devanagari", "Mukta", "Hind", "Noto Serif Devanagari", "Tiro Devanagari Hindi",
 }
 _ATMOSPHERES = {"flat", "soft", "mesh", "aurora"}
 _INTENSITIES = {"subtle", "medium", "bold"}

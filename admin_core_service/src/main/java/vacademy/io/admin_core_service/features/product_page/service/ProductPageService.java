@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.product_page.dto.*;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPage;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPageInviteMapping;
 import vacademy.io.admin_core_service.features.product_page.repository.ProductPageInviteMappingRepository;
+import vacademy.io.admin_core_service.features.product_page.repository.ProductPageReadRepository;
 import vacademy.io.admin_core_service.features.product_page.repository.ProductPageRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -27,7 +28,6 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.CouponCo
 import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.CouponCodeRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
-import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -57,9 +57,6 @@ public class ProductPageService {
     private PackageSessionLearnerInvitationToPaymentOptionRepository psInvitePoRepository;
 
     @Autowired
-    private PaymentPlanRepository paymentPlanRepository;
-
-    @Autowired
     private InstituteCustomFiledService customFieldService;
 
     @Autowired
@@ -85,6 +82,12 @@ public class ProductPageService {
 
     @Autowired
     private LearnerPortalUrlResolver learnerPortalUrlResolver;
+
+    @Autowired
+    private ProductPageReadRepository readRepository;
+
+    @Autowired
+    private ProductPageCustomFieldLoader customFieldLoader;
 
     // -------------------------------------------------------------------------
     // Admin CRUD
@@ -114,7 +117,9 @@ public class ProductPageService {
 
     @Transactional
     public ProductPageResponse updateProductPage(String coursePageId, ProductPageRequest request) {
-        ProductPage page = coursePageRepository.findById(coursePageId)
+        // Locked: a catalogue sync running at the same time would otherwise add
+        // courses next to the ones this save re-inserts (see lockById).
+        ProductPage page = coursePageRepository.lockById(coursePageId)
                 .orElseThrow(() -> new VacademyException("Course page not found: " + coursePageId));
 
         page.setName(request.getName());
@@ -163,8 +168,7 @@ public class ProductPageService {
     public ProductPageResponse addCustomFieldToPage(String productPageId, String customFieldId, String instituteId) {
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        List<ProductPageInviteMapping> activeMappings = activeMappings(productPageId);
         if (activeMappings.isEmpty()) {
             throw new VacademyException("No active course mappings on this page — add courses and save first");
         }
@@ -208,8 +212,7 @@ public class ProductPageService {
             ProductPageCustomFieldUpdateRequest request, String instituteId) {
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        List<ProductPageInviteMapping> activeMappings = activeMappings(productPageId);
 
         boolean onThisPage = activeMappings.stream().anyMatch(mapping -> customFieldService
                 .getByInstituteIdAndFieldIdAndTypeAndTypeId(
@@ -251,8 +254,7 @@ public class ProductPageService {
             String productPageId, List<String> orderedCustomFieldIds, String instituteId) {
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        List<ProductPageInviteMapping> activeMappings = activeMappings(productPageId);
 
         if (orderedCustomFieldIds != null) {
             for (ProductPageInviteMapping mapping : activeMappings) {
@@ -302,8 +304,7 @@ public class ProductPageService {
 
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        List<ProductPageInviteMapping> activeMappings = activeMappings(productPageId);
         if (activeMappings.isEmpty()) {
             throw new VacademyException("No active course mappings on this page — add courses and save first");
         }
@@ -335,8 +336,7 @@ public class ProductPageService {
             String instituteId) {
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        List<ProductPageInviteMapping> activeMappings = activeMappings(productPageId);
 
         List<String> mappingIdsToDelete = new ArrayList<>();
         for (ProductPageInviteMapping mapping : activeMappings) {
@@ -506,8 +506,51 @@ public class ProductPageService {
         }
     }
 
+    /**
+     * The page's ACTIVE mappings in display order (display_order, created_at,
+     * id), each with its bridge row, invite, package session and payment
+     * option already loaded. Every read of a page's courses goes through here,
+     * so the learner page, the editor and checkout all see one order.
+     */
+    public List<ProductPageInviteMapping> activeMappings(String productPageId) {
+        return mappingRepository.findOrderedWithBridge(productPageId, List.of(STATUS_ACTIVE));
+    }
+
+    /** The mappings' locked plans by id, in one query. Missing plans are simply absent. */
+    public Map<String, PaymentPlan> loadPlans(Collection<ProductPageInviteMapping> mappings) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (ProductPageInviteMapping m : mappings) {
+            if (m.getPaymentPlanId() != null) ids.add(m.getPaymentPlanId());
+        }
+        return loadPlansById(ids);
+    }
+
+    public Map<String, PaymentPlan> loadPlansById(Collection<String> planIds) {
+        Map<String, PaymentPlan> out = new HashMap<>();
+        List<String> ids = new ArrayList<>(new LinkedHashSet<>(planIds));
+        ids.removeIf(Objects::isNull);
+        for (int from = 0; from < ids.size(); from += ProductPageCustomFieldLoader.CHUNK) {
+            List<String> chunk = ids.subList(from, Math.min(ids.size(), from + ProductPageCustomFieldLoader.CHUNK));
+            for (PaymentPlan plan : readRepository.findPlansWithOptionByIdIn(chunk)) {
+                out.put(plan.getId(), plan);
+            }
+        }
+        return out;
+    }
+
     ProductPageResponse buildAdminResponse(ProductPage page) {
+        return buildAdminResponse(page, activeMappings(page.getId()));
+    }
+
+    ProductPageResponse buildAdminResponse(ProductPage page, List<ProductPageInviteMapping> activeMappings) {
         ProductPageResponse resp = new ProductPageResponse();
+        fillAdminResponse(resp, page, activeMappings);
+        return resp;
+    }
+
+    /** Page fields and its mappings, into a response object the caller supplies. */
+    void fillAdminResponse(ProductPageResponse resp, ProductPage page,
+                           List<ProductPageInviteMapping> activeMappings) {
         resp.setId(page.getId());
         resp.setName(page.getName());
         resp.setCode(page.getCode());
@@ -517,23 +560,32 @@ public class ProductPageService {
         resp.setSettingsJson(page.getSettingsJson());
         resp.setShortUrl(page.getShortUrl());
 
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
-        resp.setMappings(activeMappings.stream().map(this::toMappingResponse).collect(Collectors.toList()));
-
-        return resp;
+        Map<String, PaymentPlan> plans = loadPlans(activeMappings);
+        resp.setMappings(activeMappings.stream()
+                .map(m -> toMappingResponse(m, plans))
+                .collect(Collectors.toList()));
     }
 
     private ProductPageResponse buildAdminResponseWithCustomFields(ProductPage page) {
-        List<ProductPageInviteMapping> activeMappings = mappingRepository
-                .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
-        return buildAdminResponseWithCustomFields(page, activeMappings);
+        return buildAdminResponseWithCustomFields(page, activeMappings(page.getId()));
     }
 
-    /** Overload accepting pre-fetched mappings to avoid a redundant query. */
+    /**
+     * Overload accepting pre-fetched mappings. The mappings are read once and
+     * used for both the course list and the form, where they used to be
+     * fetched a second time for the course list.
+     */
     private ProductPageResponse buildAdminResponseWithCustomFields(
             ProductPage page, List<ProductPageInviteMapping> activeMappings) {
-        ProductPageResponse resp = buildAdminResponse(page);
+        ProductPageResponse resp = new ProductPageResponse();
+        fillAdminResponseWithCustomFields(resp, page, activeMappings);
+        return resp;
+    }
+
+    /** {@link #fillAdminResponse} plus the checkout form, vendor, currency and GTM container. */
+    public void fillAdminResponseWithCustomFields(ProductPageResponse resp, ProductPage page,
+                                                  List<ProductPageInviteMapping> activeMappings) {
+        fillAdminResponse(resp, page, activeMappings);
 
         resp.setAggregatedCustomFields(aggregateCustomFields(page.getInstituteId(), activeMappings));
 
@@ -558,8 +610,6 @@ public class ProductPageService {
         } catch (Exception e) {
             log.debug("GTM setting not found for institute {}: {}", page.getInstituteId(), e.getMessage());
         }
-
-        return resp;
     }
 
     /**
@@ -567,19 +617,26 @@ public class ProductPageService {
      * fieldId.
      * Tracks which enrollInviteIds own each field so the frontend can filter
      * dynamically.
+     *
+     * Every invite's fields are read in ONE query (they used to cost one query
+     * per course); the per-invite lists and the aggregation are unchanged.
      */
     List<ProductPageAggregatedFieldDTO> aggregateCustomFields(
             String instituteId, List<ProductPageInviteMapping> activeMappings) {
+
+        List<String> inviteIds = activeMappings.stream()
+                .map(mapping -> mapping.getPsInvitePaymentOption().getEnrollInvite().getId())
+                .collect(Collectors.toList());
+        Map<String, List<InstituteCustomFieldDTO>> fieldsByInvite = inviteIds.isEmpty()
+                ? Map.of()
+                : customFieldLoader.fieldsByInvite(instituteId, inviteIds);
 
         // fieldId → aggregated DTO (preserving insertion order = first invite's config
         // wins)
         Map<String, ProductPageAggregatedFieldDTO> deduped = new LinkedHashMap<>();
 
-        for (ProductPageInviteMapping mapping : activeMappings) {
-            String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
-
-            List<InstituteCustomFieldDTO> fields = customFieldService.findCustomFieldsAsJson(
-                    instituteId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId);
+        for (String enrollInviteId : inviteIds) {
+            List<InstituteCustomFieldDTO> fields = fieldsByInvite.getOrDefault(enrollInviteId, List.of());
 
             for (InstituteCustomFieldDTO field : fields) {
                 // fieldId = CustomFields PK; fall back to InstituteCustomField PK if missing
@@ -597,7 +654,8 @@ public class ProductPageService {
         return new ArrayList<>(deduped.values());
     }
 
-    private ProductPageInviteMappingResponse toMappingResponse(ProductPageInviteMapping m) {
+    private ProductPageInviteMappingResponse toMappingResponse(ProductPageInviteMapping m,
+                                                               Map<String, PaymentPlan> plans) {
         ProductPageInviteMappingResponse r = new ProductPageInviteMappingResponse();
         r.setId(m.getId());
         r.setPsInvitePaymentOptionId(m.getPsInvitePaymentOption().getId());
@@ -609,8 +667,10 @@ public class ProductPageService {
         r.setDisplayOrder(m.getDisplayOrder());
         r.setStatus(m.getStatus());
 
-        paymentPlanRepository.findById(m.getPaymentPlanId())
-                .ifPresent(plan -> r.setPaymentPlan(plan.mapToPaymentPlanDTO()));
+        PaymentPlan plan = plans.get(m.getPaymentPlanId());
+        if (plan != null) {
+            r.setPaymentPlan(plan.mapToPaymentPlanDTO());
+        }
 
         if (m.getPsInvitePaymentOption().getPaymentOption() != null) {
             r.setPaymentOptionType(m.getPsInvitePaymentOption().getPaymentOption().getType());

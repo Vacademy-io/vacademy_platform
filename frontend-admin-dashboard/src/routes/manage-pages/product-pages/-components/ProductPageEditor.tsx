@@ -44,6 +44,7 @@ export const ProductPageEditor = () => {
     const [utmOpen, setUtmOpen] = useState(false);
     const [utmFields, setUtmFields] = useState({ source: '', medium: '', campaign: '', term: '', content: '' });
     const [utmLinkCopied, setUtmLinkCopied] = useState(false);
+    const [catalogueSyncing, setCatalogueSyncing] = useState(false);
 
     const {
         page,
@@ -274,21 +275,31 @@ export const ProductPageEditor = () => {
                                 <CatalogueSyncPanel
                                     productPageId={productPageId}
                                     instituteId={instituteId}
+                                    productPageCode={page?.code}
                                     isDirty={isDirty}
                                     onSynced={reseedMappings}
+                                    onRunningChange={setCatalogueSyncing}
                                 />
                             </div>
-                            <CourseSessionSelector
-                                mappingRows={mappingRows}
-                                suggestions={pageJson?.suggestions ?? {}}
-                                onUpdateSuggestions={(s) =>
-                                    updatePageJson({ ...pageJson, suggestions: s })
-                                }
-                                onAdd={addRowWithData}
-                                onUpdate={updateRow}
-                                onRemove={removeRow}
-                                onMove={moveRow}
-                            />
+                            {/* Locked while a catalogue sync runs: its result replaces these rows
+                                (pointer-events also stops the session browser's clickable rows). */}
+                            <fieldset
+                                disabled={catalogueSyncing}
+                                aria-busy={catalogueSyncing}
+                                className="min-w-0 disabled:pointer-events-none disabled:opacity-60"
+                            >
+                                <CourseSessionSelector
+                                    mappingRows={mappingRows}
+                                    suggestions={pageJson?.suggestions ?? {}}
+                                    onUpdateSuggestions={(s) =>
+                                        updatePageJson({ ...pageJson, suggestions: s })
+                                    }
+                                    onAdd={addRowWithData}
+                                    onUpdate={updateRow}
+                                    onRemove={removeRow}
+                                    onMove={moveRow}
+                                />
+                            </fieldset>
                         </div>
                     )}
 

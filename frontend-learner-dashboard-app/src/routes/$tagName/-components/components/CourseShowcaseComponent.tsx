@@ -17,6 +17,8 @@ import {
 } from "../../-utils/coming-soon";
 import { ComingSoonRibbon } from "./ComingSoonRibbon";
 import { useCatalogueLocale, useSiteT } from "../../-utils/catalogue-locale";
+import type { CatalogEditorialCardConfig } from "../../-types/catalog-cards-types";
+import { EditorialShowcaseGrid } from "./catalog/EditorialShowcaseGrid";
 
 /**
  * A CURATED strip of courses — "new", "on sale", one tag, or a hand-picked
@@ -57,6 +59,10 @@ interface ShowcaseCourse {
     enrollInviteId?: string;
     packageSessionId?: string;
     comingSoon: ComingSoonInfo | null;
+    /** Raw search fields, read only by the editorial card (cardStyle "editorial"). */
+    tagsRaw?: string | null;
+    comingSoonRaw?: unknown;
+    availability?: string | null;
 }
 
 export interface CourseShowcaseProps {
@@ -78,8 +84,16 @@ export interface CourseShowcaseProps {
      *  win over the section-wide badgeText/badgeTone above. */
     courseBadges?: Record<string, { text?: string; tone?: CourseShowcaseBadgeTone }>;
     backgroundColor?: string;
+    /** "editorial" = the catalogue's editorial course card (opt-in; absent = this strip's own card). */
+    cardStyle?: "default" | "editorial";
+    /** Editorial card options — same shape as courseCatalog render.card. */
+    card?: CatalogEditorialCardConfig;
+    /** Folder library of the stream line on editorial cards (the catalogue's streams library). */
+    streamsLibraryId?: string;
     instituteId?: string;
     tagName?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    globalSettings?: any;
 }
 
 const splitTags = (raw: unknown): string[] =>
@@ -131,9 +145,14 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
     badgeTone = "hot",
     courseBadges,
     backgroundColor,
+    cardStyle,
+    card,
+    streamsLibraryId,
     instituteId,
     tagName,
+    globalSettings,
 }) => {
+    const editorial = cardStyle === "editorial";
     const { t, i18n } = useTranslation("coursePlayerB");
     const navigate = useNavigate();
     // Course names are live data: translated where shown, never in the
@@ -195,6 +214,9 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                         enrollInviteId: c.enroll_invite_id,
                         packageSessionId: c.package_session_id,
                         comingSoon: readComingSoon(c.coming_soon),
+                        tagsRaw: typeof c.comma_separeted_tags === "string" ? c.comma_separeted_tags : null,
+                        comingSoonRaw: c.coming_soon,
+                        availability: c.enroll_invite_availability ?? null,
                     })),
                 );
             })
@@ -205,7 +227,8 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
         };
     }, [instituteId]);
 
-    const shown = useMemo(() => {
+    // Every course the source selects, in order (the editorial grid limits after folding language versions).
+    const selected = useMemo(() => {
         let list = courses;
         if (source === "onSale") {
             list = list.filter(
@@ -223,8 +246,10 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
             const byId = new Map(list.map((c) => [c.id, c]));
             list = order.map((id) => byId.get(id)).filter(Boolean) as ShowcaseCourse[];
         }
-        return list.slice(0, Math.max(1, limit));
-    }, [courses, source, tag, courseIds, limit]);
+        return list;
+    }, [courses, source, tag, courseIds]);
+    const shown = useMemo(() => selected.slice(0, Math.max(1, limit)), [selected, limit]);
+    const selectedIds = useMemo(() => selected.map((c) => c.id), [selected]);
 
     // A curated strip is often ONE or TWO courses. Left-aligning those in a
     // 3- or 4-up grid leaves the row visibly half-empty, so narrow the track
@@ -276,6 +301,19 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                     </p>
                 )}
 
+                {editorial ? (
+                    <EditorialShowcaseGrid
+                        courses={courses}
+                        selectedIds={selectedIds}
+                        limit={limit}
+                        loading={loading}
+                        card={card}
+                        streamsLibraryId={streamsLibraryId}
+                        globalSettings={globalSettings}
+                        instituteId={instituteId}
+                        onOpen={(c) => openCourse(c as ShowcaseCourse)}
+                    />
+                ) : (
                 <div className={gridClass}>
                     {loading
                         ? Array.from({ length: visibleCount }).map((_, i) => (
@@ -352,6 +390,7 @@ export const CourseShowcaseComponent: React.FC<CourseShowcaseProps> = ({
                               );
                           })}
                 </div>
+                )}
             </div>
         </section>
     );

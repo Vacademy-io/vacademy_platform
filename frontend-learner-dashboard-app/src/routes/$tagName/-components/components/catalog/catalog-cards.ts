@@ -62,6 +62,12 @@ export interface CatalogCard<R extends CatalogRowLike> {
   maxPrice: number | null;
   /** The versions differ in price ("from ₹X"). */
   priceVaries: boolean;
+  /**
+   * Every package id of the card, first-seen order — set ONLY when the card
+   * folds several packages (globalSettings.courseLanguages.versionGroups), so
+   * every other card keeps exactly its previous shape.
+   */
+  courseIds?: string[];
 }
 
 export interface PriceSummary {
@@ -158,6 +164,7 @@ const makeCard = <R extends CatalogRowLike>(
   languages: CourseLanguageOption[],
 ): CatalogCard<R> => {
   const summary = priceSummaryOf(rows);
+  const packageIds = [...new Set(rows.map((r) => String(r.package_id || r.id || "")).filter(Boolean))];
   return {
     courseId,
     rows,
@@ -167,6 +174,7 @@ const makeCard = <R extends CatalogRowLike>(
     // For a single-row card both branches give the row's own price — the original sort.
     sortPrice: summary.minPrice ?? Math.min(...rows.map((r) => toNumber(r.price))),
     ...summary,
+    ...(packageIds.length > 1 ? { courseIds: packageIds } : {}),
   };
 };
 
@@ -177,7 +185,13 @@ const makeCard = <R extends CatalogRowLike>(
  */
 export const buildCatalogCards = <R extends CatalogRowLike>(
   rows: R[],
-  opts: { grouping: boolean; languages: CourseLanguageOption[]; preferredLanguage?: string | null },
+  opts: {
+    grouping: boolean;
+    languages: CourseLanguageOption[];
+    preferredLanguage?: string | null;
+    /** Separate packages that are one course (opt-in, grouping only). */
+    versionGroups?: string[][] | null;
+  },
 ): CatalogCard<R>[] => {
   if (!opts.grouping) return rows.map((row) => makeCard(String(row.id || ""), [row], row, []));
   const withPackage = rows.map((row) => ({ row, package_id: row.package_id || row.id || null, package_session_id: row.package_session_id ?? row.packageSessionId ?? null, level_name: row.level_name ?? row.level, comma_separeted_tags: (row as { comma_separeted_tags?: string | null }).comma_separeted_tags ?? null }));
@@ -185,6 +199,7 @@ export const buildCatalogCards = <R extends CatalogRowLike>(
     enabled: true,
     languages: opts.languages,
     preferredLanguage: opts.preferredLanguage,
+    versionGroups: opts.versionGroups,
   }).map((group) =>
     makeCard(
       group.courseId,

@@ -12,6 +12,25 @@
         "_owner": "Feature 'sections' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogCards": {
+        "free": "मुफ़्त",
+        "ctaPaid": "कोर्स देखें",
+        "ctaStart": "मुफ़्त शुरू करें",
+        "ctaWatch": "मुफ़्त देखें",
+        "ctaRead": "मुफ़्त पढ़ें",
+        "ctaListen": "मुफ़्त सुनें",
+        "allCourses": "सभी कोर्स",
+        "sortedBy": {
+            "popular": "सबसे लोकप्रिय क्रम में",
+            "newest": "नवीनतम क्रम में",
+            "oldest": "सबसे पुराने क्रम में",
+            "price-asc": "कीमत: कम से अधिक",
+            "price-desc": "कीमत: अधिक से कम",
+            "rating": "रेटिंग के क्रम में",
+            "name-asc": "नाम (A–Z)",
+            "name-desc": "नाम (Z–A)"
+        },
+        "loadMore": "और कोर्स देखें",
+        "showingOf": "{{total}} में से {{shown}} दिखाए जा रहे हैं",
         "_owner": "Feature 'cards' adds its keys above this line (specs/CONTRACT.md)"
     },
     "siteChrome": {

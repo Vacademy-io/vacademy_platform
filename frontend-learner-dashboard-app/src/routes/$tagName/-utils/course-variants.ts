@@ -28,6 +28,13 @@ export interface CourseLanguageSettings {
   /** Fold a course's language levels into one card, with language chips and filter. */
   enabled?: boolean;
   languages?: CourseLanguageOption[];
+  /**
+   * Opt-in: courses that are the SAME course in different languages but were
+   * set up as separate packages (["<EN package id>", "<HI package id>"]). With
+   * grouping on, each list folds into one card like a course's language levels
+   * do. Absent = one card per package, exactly as before.
+   */
+  versionGroups?: string[][];
 }
 
 export const DEFAULT_COURSE_LANGUAGES: CourseLanguageOption[] = [
@@ -119,19 +126,46 @@ export interface CourseGroup<T extends VariantRow> {
 }
 
 /**
+ * Package id -> "vg:<n>" for the authored version groups (a list of 2+ ids is
+ * one course). An id listed twice keeps its first group. Null when none.
+ */
+export const versionGroupIndex = (groups: string[][] | null | undefined): Map<string, string> | null => {
+  if (!Array.isArray(groups) || !groups.length) return null;
+  const out = new Map<string, string>();
+  groups.forEach((group, i) => {
+    if (!Array.isArray(group)) return;
+    for (const id of group) {
+      const key = typeof id === "string" ? id.trim() : "";
+      if (key && !out.has(key)) out.set(key, `vg:${i}`);
+    }
+  });
+  return out.size ? out : null;
+};
+
+/**
  * Folds rows into one group per course, keeping the catalogue's order (a
  * course sits where its first row sat). With grouping disabled every row is a
  * group of one — the pre-existing one-card-per-level behaviour.
  */
 export const groupCourseVariants = <T extends VariantRow>(
   rows: T[],
-  opts: { enabled: boolean; languages: CourseLanguageOption[]; preferredLanguage?: string | null },
+  opts: {
+    enabled: boolean;
+    languages: CourseLanguageOption[];
+    preferredLanguage?: string | null;
+    /** Packages that are one course (CourseLanguageSettings.versionGroups); only read when enabled. */
+    versionGroups?: string[][] | null;
+  },
 ): CourseGroup<T>[] => {
   const groups: CourseGroup<T>[] = [];
   const byCourse = new Map<string, CourseGroup<T>>();
+  const groupOf = opts.enabled ? versionGroupIndex(opts.versionGroups) : null;
   for (const row of rows) {
     const courseId = String(row.package_id || row.package_session_id || "");
-    const key = opts.enabled && row.package_id ? String(row.package_id) : `${courseId}::${row.package_session_id ?? groups.length}`;
+    const key =
+      opts.enabled && row.package_id
+        ? groupOf?.get(String(row.package_id)) ?? String(row.package_id)
+        : `${courseId}::${row.package_session_id ?? groups.length}`;
     let group = byCourse.get(key);
     if (!group) {
       group = { courseId, variants: [], primary: row, languages: [] };

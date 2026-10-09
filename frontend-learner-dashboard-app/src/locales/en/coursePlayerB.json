@@ -12,6 +12,25 @@
         "_owner": "Feature 'sections' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogCards": {
+        "free": "Free",
+        "ctaPaid": "View course",
+        "ctaStart": "Start free",
+        "ctaWatch": "Watch free",
+        "ctaRead": "Read free",
+        "ctaListen": "Listen free",
+        "allCourses": "All courses",
+        "sortedBy": {
+            "popular": "Sorted by most popular",
+            "newest": "Sorted by newest",
+            "oldest": "Sorted by oldest",
+            "price-asc": "Sorted by price: low to high",
+            "price-desc": "Sorted by price: high to low",
+            "rating": "Sorted by rating",
+            "name-asc": "Sorted by name (A–Z)",
+            "name-desc": "Sorted by name (Z–A)"
+        },
+        "loadMore": "Load more courses",
+        "showingOf": "Showing {{shown}} of {{total}}",
         "_owner": "Feature 'cards' adds its keys above this line (specs/CONTRACT.md)"
     },
     "siteChrome": {

@@ -69,20 +69,25 @@ import {
 import { isSiteCartEnabled, type SiteCartItem } from "../../-utils/site-cart";
 import { useSiteCartStore } from "../../-stores/site-cart-store";
 import {
+  invitePaymentEntryFor,
   primeOpenEnrollInvite,
   primeProductPage,
   type CourseInitLike,
+  type OpenInvitePaymentEntry,
 } from "../../-services/course-levels-service";
 import { useCourseVersions } from "../-hooks/use-course-versions";
 import {
+  SITE_CART_MAX_ITEMS,
   SITE_CART_OPEN_EVENT,
   buildCourseCartItem,
+  cartCanTake,
   localizeCourseDisplay,
   resolveVersionOffer,
-  versionSearchUpdates,
+  searchText,
+  versionOwnDetails,
   type SiteCartOpenDetail,
 } from "../-utils/course-version-selection";
-import { CourseLanguagePicker } from "./CourseLanguagePicker";
+import { CourseLanguagePicker, CourseVersionPicker } from "./CourseLanguagePicker";
 import { CourseCartActions } from "./CourseCartActions";
 import {
   BookOpen,
@@ -108,7 +113,9 @@ const SENTINEL_LEVEL_NAMES = new Set([
 ]);
 const displayLevelName = (raw?: string | null): string => {
   if (!raw) return "";
-  const trimmed = raw.trim();
+  // String(): the router parses search values as JSON, so ?level=10 can
+  // arrive as a number.
+  const trimmed = String(raw).trim();
   if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return "";
   return trimmed;
 };
@@ -905,10 +912,14 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             fetchedInviteAvailability = enrollInviteData?.availability_status;
             fetchedInviteSettingJson = enrollInviteData?.setting_json;
 
-            // Extract price and currency from payment_plans
-            const paymentPlan =
-              enrollInviteData?.package_session_to_payment_options?.[0]
-                ?.payment_option?.payment_plans?.[0];
+            // Extract price and currency from payment_plans — of the invite
+            // entry for the linked package session, the same entry the
+            // enrolment dialog charges (entry [0] when it is not listed, as
+            // before; an invite can sell several package sessions).
+            const paymentPlan = invitePaymentEntryFor<OpenInvitePaymentEntry>(
+              enrollInviteData,
+              packageSessionId,
+            )?.payment_option?.payment_plans?.[0];
 
             if (paymentPlan) {
               const planPrice = paymentPlan.actual_price;
@@ -1209,6 +1220,7 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const selectedVersion = courseVersions.selected;
   const selectedVersionInvite = courseVersions.invite;
   const selectedVersionInviteId = courseVersions.selectedInviteId;
+  const versionCount = courseVersions.versions.length;
 
   // Everything below reads `courseData`; with a version selected it carries
   // that version's invite, price, availability, level, duration and authors.
@@ -1225,7 +1237,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     const offer = keepLoadedOffer
       ? null
       : resolveVersionOffer(selectedVersion, selectedVersionInvite);
-    const versionAuthors = (selectedVersion.instructors ?? []) as RawCourseInstructor[];
+    // The version's own read time and authors, even when it has none: the
+    // course-level values describe course-init's first level, often the other
+    // language. Kept only for a lone version whose details are unknown.
+    const own = versionOwnDetails(selectedVersion, versionCount);
+    const versionAuthors = (own.instructors ?? []) as RawCourseInstructor[];
     return {
       ...loadedCourseData,
       packageSessionId: selectedVersion.packageSessionId,
@@ -1244,22 +1260,32 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           }
         : {}),
       available_slots: selectedVersion.availableSlots ?? loadedCourseData.available_slots,
-      duration: selectedVersion.durationMinutes
-        ? getBackendCourseDuration(selectedVersion.durationMinutes)
-        : loadedCourseData.duration,
-      ...(versionAuthors.length
-        ? {
-            instructor: versionAuthors[0]?.full_name || loadedCourseData.instructor,
+      duration:
+        own.durationMinutes === undefined
+          ? loadedCourseData.duration
+          : own.durationMinutes
+            ? getBackendCourseDuration(own.durationMinutes)
+            : null,
+      ...(own.instructors === undefined
+        ? {}
+        : {
+            instructor: versionAuthors[0]?.full_name || null,
             instructors: mapCourseAuthors(
               versionAuthors,
               t("courseDetails.unknownTeacher", {
                 teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
               }),
             ),
-          }
-        : {}),
+          }),
     };
-  }, [loadedCourseData, selectedVersion, selectedVersionInvite, selectedVersionInviteId, t]);
+  }, [
+    loadedCourseData,
+    selectedVersion,
+    selectedVersionInvite,
+    selectedVersionInviteId,
+    versionCount,
+    t,
+  ]);
 
   // A link with no price context (a bare /<tag>/<courseId>) has no real price
   // until the versions arrive — show a placeholder rather than "Free".
@@ -1303,18 +1329,19 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   }, [siteCartActive, instituteId, hydrateSiteCart]);
 
   const handleVersionSelect = (nextPackageSessionId: string) => {
-    const next = courseVersions.versions.find(
-      (v) => v.packageSessionId === nextPackageSessionId,
-    );
-    if (!next || !next.enrollInviteId) return;
-    courseVersions.select(nextPackageSessionId);
+    // null: unknown version, or nothing to enrol it through. The updates name
+    // the version and the invite it is enrolled through (the link's promo
+    // invite when that sells it, else the version's own).
+    const updates = courseVersions.select(nextPackageSessionId);
+    if (!updates) return;
     pickedVersionRef.current = nextPackageSessionId;
     // Mirror the choice into the URL (replace: no history entry per click) so a
     // reload or a shared link opens the same version. Works for both mounts —
-    // the $courseId route and the root-mounted segment read the same params.
+    // the $courseId route and the root-mounted segment read the same params —
+    // and keeps every other param (?lang=, utm_*).
     const location = router.state.location;
     router.history.replace(
-      `${location.pathname}${withSearchParams(location.searchStr, versionSearchUpdates(next))}${
+      `${location.pathname}${withSearchParams(location.searchStr, updates)}${
         location.hash ? `#${location.hash}` : ""
       }`,
     );
@@ -1459,15 +1486,50 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     : t("comingSoon.notifyHint");
 
   // Language picker: only when the site has language versions and this course
-  // is offered in at least two languages. It stands in for the Level row.
+  // is offered in at least two languages. A Level picker follows when the
+  // selected language has several versions ("Beginner Hindi" and "Advanced
+  // Hindi"), so each of them can be seen and chosen. Either one names the
+  // version on screen, so the static Level row steps aside for them.
   const showLanguagePicker = courseLanguagesEnabled && courseVersions.options.length >= 2;
-  const languagePicker = showLanguagePicker ? (
-    <CourseLanguagePicker
-      options={courseVersions.options}
-      selectedPackageSessionId={selectedVersion?.packageSessionId ?? null}
-      onSelect={handleVersionSelect}
-    />
-  ) : null;
+  const showLevelPicker = courseLanguagesEnabled && courseVersions.levelOptions.length >= 2;
+  const showLevelRow = !showLanguagePicker && !showLevelPicker;
+  const selectedVersionId = selectedVersion?.packageSessionId ?? null;
+  const languagePicker =
+    showLanguagePicker || showLevelPicker ? (
+      <>
+        {showLanguagePicker && (
+          <CourseLanguagePicker
+            options={courseVersions.options}
+            selectedPackageSessionId={selectedVersionId}
+            onSelect={handleVersionSelect}
+          />
+        )}
+        {showLevelPicker && (
+          <CourseVersionPicker
+            label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
+            icon={
+              <GraduationCap
+                size={13}
+                className="text-catalogue-text-muted"
+                weight="duotone"
+                aria-hidden="true"
+              />
+            }
+            options={courseVersions.levelOptions}
+            selectedPackageSessionId={selectedVersionId}
+            onSelect={handleVersionSelect}
+          />
+        )}
+      </>
+    ) : null;
+
+  // While an opted-in page is still working out which version is on screen,
+  // its enrol button waits: the dialog would open on the link's version and
+  // reset what the visitor typed when the picked version lands. ("off" on
+  // sites without language versions or a site cart: nothing changes there.)
+  const enrolPending = courseVersions.status === "loading" && !comingSoon;
+  const enrolButtonClass = (base: string) =>
+    enrolPending ? `${base} cursor-wait opacity-70` : base;
 
   // Site cart: "Add to cart" + "Buy now" replace the enrol button. A Coming
   // Soon course still collects interest and a closed invite still explains
@@ -1492,7 +1554,9 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       : null;
   const showCartActions =
     siteCartMode && (!!siteCartItem || courseVersions.status === "loading");
-  const cartActionsReady = siteCartReady && !!siteCartItem;
+  // The line must carry the settled version, invite and price.
+  const cartActionsReady =
+    siteCartReady && !!siteCartItem && courseVersions.status !== "loading";
   const otherVersionLabel = otherVersionInCart
     ? (configuredLanguages.find((l) => l.code === otherVersionInCart.languageCode) ??
         languageOfLevel(otherVersionInCart.levelName, configuredLanguages))?.label ??
@@ -1520,9 +1584,21 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     };
     window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail }));
   };
-  // The store may refuse an item (e.g. a full cart), so success is read back
-  // from it rather than assumed.
+  // One store checkout takes at most SITE_CART_MAX_ITEMS courses, and the
+  // store does not enforce it, so a new course is refused here when the cart
+  // is full (swapping this course's version never grows the cart). Success is
+  // read back from the store rather than assumed.
   const addSiteCartItem = (item: SiteCartItem): boolean => {
+    if (!cartCanTake(useSiteCartStore.getState().items, item)) {
+      toast.error(
+        t("siteCart.full", {
+          max: SITE_CART_MAX_ITEMS,
+          courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase(),
+          defaultValue: "Your cart is full — up to {{max}} {{courses}} per order.",
+        }),
+      );
+      return false;
+    }
     addToSiteCart(item); // no-op when it is already in the cart
     const added = useSiteCartStore.getState().has(item.packageSessionId);
     if (!added) {
@@ -1559,6 +1635,10 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
       if (comingSoon.audienceId) setShowNotifyForm(true);
       return;
     }
+
+    // The version on screen is not settled yet (the buttons are disabled; an
+    // HTML page's data-vacademy="enrol" lands here too).
+    if (enrolPending) return;
 
     // Invite expired / not-yet-started / deactivated → show the admin message.
     if (isEnrollmentClosed) {
@@ -1609,8 +1689,12 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   // The syllabus tree. Rendered once, but at a different point in the column
   // depending on the view (see isOutlineView), so it is bound here rather than
   // written out twice — courseData is guaranteed non-null past the guard above.
+  // Keyed by the version: its load chain has no cancellation, so a slower
+  // load for the version the visitor just left must not land over the new
+  // one's syllabus. The key never changes on a site without versions.
   const courseStructure = (
     <CourseStructureDetails
+      key={courseData.packageSessionId}
       courseDepth={courseData.courseDepth}
       courseId={courseData.courseId || courseId}
       instituteId={instituteId}
@@ -1837,8 +1921,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                       </div>
 
                       {/* Level (hidden when the level is a sentinel like "Default",
-                          and when the Language picker already names it) */}
-                      {!showLanguagePicker && displayLevelName(courseData.level) && (
+                          and when a Language / Level picker already names it) */}
+                      {showLevelRow && displayLevelName(courseData.level) && (
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
@@ -1880,7 +1964,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                         <>
                           <button
                             onClick={handleEnrollClick}
-                            className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                            disabled={enrolPending}
+                            aria-busy={enrolPending || undefined}
+                            className={enrolButtonClass(
+                              "w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md",
+                            )}
                             style={{
                               backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                             }}
@@ -1996,8 +2084,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                       </div>
 
                       {/* Level (hidden when the level is a sentinel like "Default",
-                          and when the Language picker already names it) */}
-                      {!showLanguagePicker && displayLevelName(courseData.level) && (
+                          and when a Language / Level picker already names it) */}
+                      {showLevelRow && displayLevelName(courseData.level) && (
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
@@ -2039,7 +2127,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
                         <>
                           <button
                             onClick={handleEnrollClick}
-                            className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                            disabled={enrolPending}
+                            aria-busy={enrolPending || undefined}
+                            className={enrolButtonClass(
+                              "w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md",
+                            )}
                             style={{
                               backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                             }}
@@ -2291,7 +2383,11 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
               <div className="flex flex-col gap-1">
                 <button
                   onClick={handleEnrollClick}
-                  className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md shadow-md transition-all duration-200"
+                  disabled={enrolPending}
+                  aria-busy={enrolPending || undefined}
+                  className={enrolButtonClass(
+                    "w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md shadow-md transition-all duration-200",
+                  )}
                   style={{
                     backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                   }}
@@ -2393,7 +2489,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = (props) => {
       settings={catalogueData?.globalSettings?.i18n}
       scope={tagName}
     >
-      <CourseDetailsPageContent {...props} catalogueData={catalogueData} />
+      <CourseDetailsPageContent
+        {...props}
+        // Both mounts hand over search params the router parsed as JSON
+        // ("?level=10" arrives as a number); the page works on text.
+        enrollInviteId={searchText(props.enrollInviteId)}
+        packageSessionId={searchText(props.packageSessionId)}
+        bannerImage={searchText(props.bannerImage)}
+        level={searchText(props.level)}
+        price={searchText(props.price)}
+        productPageCode={searchText(props.productPageCode)}
+        catalogueData={catalogueData}
+      />
     </CatalogueLocaleProvider>
   );
 };

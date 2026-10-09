@@ -17,6 +17,8 @@ import {
   type CourseLanguageOption,
   type CourseLanguageSettings,
 } from "../../../-utils/course-variants";
+import { resolveCategoryFilterExtension, type ResolvedCategoryFilterExtension } from "./catalog-sidebar-config";
+import { resolveCustomFilters, type ResolvedCustomFilter } from "./catalog-custom-filters";
 import type {
   CatalogQuickFilterKind,
   CatalogStreamItem,
@@ -62,8 +64,10 @@ export interface CatalogDiscoveryConfig {
   /** Site course languages, codes lower-cased. */
   languages: CourseLanguageOption[];
   languageFilter: { enabled: boolean; label: string };
-  priceFilter: { enabled: boolean; label: string; showFree: boolean; maxOptions: number[] };
-  categoryFilter: { enabled: boolean; label: string };
+  priceFilter: { enabled: boolean; label: string; showFree: boolean; maxOptions: number[]; control?: "checkbox" };
+  categoryFilter: { enabled: boolean; label: string } & ResolvedCategoryFilterExtension;
+  /** Authored option groups (FORMAT, FOR…); [] when the section sets none. Feature 'sidebar'. */
+  customFilters: ResolvedCustomFilter[];
   grouping: boolean;
   badges: ResolvedBadgeRules | null;
   quickFilters: ResolvedQuickFilter[];
@@ -239,6 +243,10 @@ export const resolveCatalogDiscovery = (
   };
   const badges = resolveBadges(p.badges);
   const quickFilters = resolveQuickFilters(p.quickFilters, { courseLanguagesOn, languages });
+  // Feature 'sidebar': opt-in price control, category extensions and custom groups (absent → no keys).
+  const priceControl = priceRaw.control === "checkbox" ? { control: "checkbox" as const } : {};
+  const categoryExtension = resolveCategoryFilterExtension(p.categoryFilter);
+  const customFilters = resolveCustomFilters(p.customFilters, gs);
   const groupingRequested = p.groupLanguageVersions === true;
   const showFilterCounts = p.showFilterCounts === true;
   const showAppliedChips = p.showAppliedChips === true;
@@ -256,6 +264,7 @@ export const resolveCatalogDiscovery = (
     languageFilterRaw.enabled ||
     priceFilter.enabled ||
     categoryFilter.enabled ||
+    customFilters.length > 0 ||
     groupingRequested ||
     !!badges;
 
@@ -272,11 +281,13 @@ export const resolveCatalogDiscovery = (
       enabled: languageFilterRaw.enabled && courseLanguagesOn,
       label: languageFilterRaw.label,
     },
-    priceFilter,
+    priceFilter: { ...priceFilter, ...priceControl },
     categoryFilter: {
       enabled: categoryFilter.enabled && streams?.source === "folderLibrary",
       label: categoryFilter.label,
+      ...categoryExtension,
     },
+    customFilters,
     grouping: groupingRequested && courseLanguagesOn,
     badges,
     quickFilters,

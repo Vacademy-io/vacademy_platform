@@ -20,6 +20,10 @@
         "_owner": "Feature 'tabs' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogSidebar": {
+        "filters": "फ़िल्टर",
+        "clearAll": "सभी हटाएँ",
+        "showMore": "+ और देखें",
+        "showLess": "− कम देखें",
         "_owner": "Feature 'sidebar' adds its keys above this line (specs/CONTRACT.md)"
     },
     "catalogSections": {

@@ -170,7 +170,8 @@ export interface CatalogSlotContext {
       session: { shown: boolean; title: string; items: SlotFilterItem[]; selected: string[]; toggle: (id: string) => void };
       tags: { shown: boolean; title: string; items: SlotFilterItem[]; selected: string[]; toggle: (id: string) => void };
       instructor: { shown: boolean; title: string; items: SlotFilterItem[]; selected: string[]; toggle: (id: string) => void };
-      priceRange: { shown: boolean };
+      /** filtersConfig price range: heading + the original min / max inputs (same state as the default card). */
+      priceRange: { shown: boolean; title: string; inputs: React.ReactNode };
     };
   };
 

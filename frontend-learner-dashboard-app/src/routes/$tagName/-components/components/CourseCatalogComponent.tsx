@@ -116,6 +116,9 @@ import { useStoreSale } from "../site-cart/use-store-sale";
 import { useCatalogStreams, useDiscoveryState } from "./catalog/use-catalog-discovery";
 import { StreamTabs } from "./catalog/StreamTabs";
 import { DiscoveryFilterGroup } from "./catalog/DiscoveryFilterGroup";
+// Feature 'sidebar': category scope + authored option groups (customFilters).
+import { categoriesInScope } from "./catalog/catalog-sidebar-config";
+import { clearedCustomState, selectedCustomOptions } from "./catalog/catalog-custom-filters";
 import { AppliedFilterChips } from "./catalog/AppliedFilterChips";
 import { QuickFilterBar } from "./catalog/QuickFilterBar";
 import { CourseBadgePills, LanguageChips } from "./catalog/CardDiscoveryMeta";
@@ -646,6 +649,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     () =>
       resolveCatalogDiscovery(
         {
+          // [sidebar] authored option groups (FORMAT, FOR…).
+          customFilters: componentProps.customFilters,
           streams,
           syncUrl,
           showFilterCounts,
@@ -661,6 +666,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         globalSettings,
       ),
     [
+      componentProps.customFilters,
       streams,
       syncUrl,
       showFilterCounts,
@@ -1341,7 +1347,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     () => ({
       search: searchTerm,
       stream: activeStream,
-      categories: activeCategories,
+      // [sidebar] categoryFilter.scope 'all': categories picked on "All courses" filter too.
+      categories:
+        activeStream || discovery.categoryFilter.scope !== "all"
+          ? activeCategories
+          : categoriesInScope(discovery.categoryFilter, streamList, null).filter((c) =>
+              discoveryState.categories.includes(c.slug),
+            ),
       languages: discoveryState.languages,
       price: discoveryState.price,
       badges: discoveryState.badges,
@@ -1351,11 +1363,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
       instructors: selectedInstructors,
       priceRange,
       priceRangeOn: shouldShowPriceFilter,
+      // [sidebar] authored option groups — only on a section that has them.
+      ...(discovery.customFilters.length
+        ? { custom: selectedCustomOptions(discovery.customFilters, discoveryState.custom) }
+        : {}),
     }),
     [
       searchTerm,
       activeStream,
       activeCategories,
+      discovery.categoryFilter,
+      discovery.customFilters,
+      streamList,
+      discoveryState.categories,
+      discoveryState.custom,
       discoveryState.languages,
       discoveryState.price,
       discoveryState.badges,
@@ -1424,16 +1445,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     }
     return list;
   }, [discovery.priceFilter, discoveryState.price]);
+  // The categories the category group lists: the active stream's (scope 'all': every stream's on "All").
+  const categoryScope = useMemo(
+    () => categoriesInScope(discovery.categoryFilter, streamList, activeStream),
+    [discovery.categoryFilter, streamList, activeStream],
+  );
   const showCategoryFilter =
     filtersEnabled &&
     discovery.categoryFilter.enabled &&
-    !!activeStream &&
-    activeStream.categories.length > 0;
+    categoryScope.length > 0;
   const showLanguageFilter = filtersEnabled && presentLanguages.length > 0;
   const showPriceChoiceFilter = filtersEnabled && priceChoices.length > 0;
   const showFiltersPanel =
     shouldRenderFiltersPanel ||
-    (filtersEnabled && (showCategoryFilter || showLanguageFilter || showPriceChoiceFilter));
+    (filtersEnabled && (showCategoryFilter || showLanguageFilter || showPriceChoiceFilter)) ||
+    (filtersEnabled && discovery.customFilters.length > 0);
 
   // Live counts: each option counted against every OTHER active filter.
   const facetCounts = useMemo(() => {
@@ -1441,8 +1467,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     const count = (groupId: string, options: FacetOption<CatalogCard<Course>, Course>[]) =>
       countFacetOptions(allCards, facetGroups, groupId, options);
     return {
-      category: activeStream
-        ? count(GROUP_IDS.category, categoryOptions<Course>(activeStream.categories))
+      category: categoryScope.length
+        ? count(GROUP_IDS.category, categoryOptions<Course>(categoryScope))
         : {},
       language: count(GROUP_IDS.language, languageOptions<Course>(presentLanguages, discovery.languages)),
       price: count(GROUP_IDS.price, priceOptions<Course>(priceChoices)),
@@ -1459,7 +1485,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     discovery.languages,
     allCards,
     facetGroups,
-    activeStream,
+    categoryScope,
     presentLanguages,
     priceChoices,
     levels,
@@ -1621,11 +1647,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
     if (discovery.syncUrl) {
       lastWrittenQuery.current = null;
       updateSearchParams({
-        ...discoveryPatchToParams({ categories: [], languages: [], price: null, badges: [] }),
+        ...discoveryPatchToParams({
+          categories: [],
+          languages: [],
+          price: null,
+          badges: [],
+          ...(discovery.customFilters.length ? { custom: clearedCustomState(discovery.customFilters) } : {}),
+        }),
         [URL_PARAMS.query]: null,
       });
     } else if (countDiscoveryFilters(discoveryState) > 0) {
-      setDiscoveryState({ categories: [], languages: [], price: null, badges: [] });
+      setDiscoveryState({
+        categories: [],
+        languages: [],
+        price: null,
+        badges: [],
+        ...(discovery.customFilters.length ? { custom: clearedCustomState(discovery.customFilters) } : {}),
+      });
     }
   };
 
@@ -1662,6 +1700,17 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
       case "search":
         setSearchTerm("");
         break;
+      case "custom": {
+        // value = "<groupId>:<optionId>"
+        const [groupId, optionId] = chip.value.split(":");
+        setDiscoveryState({
+          custom: {
+            ...discoveryState.custom,
+            [groupId]: (discoveryState.custom?.[groupId] ?? []).filter((o) => o !== optionId),
+          },
+        });
+        break;
+      }
     }
   };
 
@@ -1722,7 +1771,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
         { ...criteria, priceRangeOn: shouldShowPriceFilter && isPriceFilterActive },
         {
           category: (slug) =>
-            siteT(activeStream?.categories.find((c) => c.slug === slug)?.title || slug),
+            siteT(categoryScope.find((c) => c.slug === slug)?.title || slug),
           language: languageName,
           price: priceChoiceLabel,
           badge: (badge) => badgeLabel(t, badge),
@@ -1731,6 +1780,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
           instructor: (name) => name,
           priceRange: (range) => formatRangeLabel(range, priceCurrency, siteLocale),
           search: (term) => `“${term}”`,
+          custom: (groupId, option) =>
+            discovery.customFilters.find((g) => g.id === groupId)?.labelFromSite ? siteT(option.label) : option.label,
         },
       )
     : [];
@@ -1739,11 +1790,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   // mobileFilterSheet, in the phone bottom sheet (same groups, same state).
   const discoveryFilterGroups = (
     <>
-      {showCategoryFilter && activeStream && (
+      {showCategoryFilter && (
         <DiscoveryFilterGroup
           title={discovery.categoryFilter.label || t("courseCatalog.categories", "Categories")}
           mode="multi"
-          options={activeStream.categories.map((c) => ({
+          options={categoryScope.map((c) => ({
             value: c.slug,
             label: siteT(c.title || c.subtitle || c.slug),
             count: facetCounts?.category[c.slug],
@@ -1787,6 +1838,42 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
   // Option names are live data: shown through the site dictionary, matched raw.
   const shownName = <T extends { id: string; name: string }>(items: T[]) =>
     items.map((item) => ({ ...item, name: siteT(item.name) }));
+
+  // The min / max inputs of the legacy price-range group (also the editorial
+  // sidebar's 'priceRange' section, feature 'sidebar').
+  const priceRangeInputs = (
+    <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
+      <div className="flex-1 space-y-1">
+        <label className="block text-xs text-catalogue-text-secondary">
+          {t("courseCatalog.min")}
+        </label>
+        <input
+          type="number"
+          min={0}
+          value={priceRange?.min ?? ""}
+          onChange={(e) =>
+            handlePriceInputChange("min", e.target.value)
+          }
+          className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+        />
+      </div>
+      <span className="pb-2 text-catalogue-text-muted">–</span>
+      <div className="flex-1 space-y-1">
+        <label className="block text-xs text-catalogue-text-secondary">
+          {t("courseCatalog.max")}
+        </label>
+        <input
+          type="number"
+          min={0}
+          value={priceRange?.max ?? ""}
+          onChange={(e) =>
+            handlePriceInputChange("max", e.target.value)
+          }
+          className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+        />
+      </div>
+    </div>
+  );
 
   // The original filter groups, shared by the sidebar and the bottom sheet.
   const legacyFilterGroups = (
@@ -1874,37 +1961,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
           <h3 className="text-sm font-semibold text-catalogue-text-primary">
             {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
           </h3>
-          <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
-            <div className="flex-1 space-y-1">
-              <label className="block text-xs text-catalogue-text-secondary">
-                {t("courseCatalog.min")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={priceRange?.min ?? ""}
-                onChange={(e) =>
-                  handlePriceInputChange("min", e.target.value)
-                }
-                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-            </div>
-            <span className="pb-2 text-catalogue-text-muted">–</span>
-            <div className="flex-1 space-y-1">
-              <label className="block text-xs text-catalogue-text-secondary">
-                {t("courseCatalog.max")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={priceRange?.max ?? ""}
-                onChange={(e) =>
-                  handlePriceInputChange("max", e.target.value)
-                }
-                className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-            </div>
-          </div>
+          {priceRangeInputs}
         </div>
       )}
     </>
@@ -2025,7 +2082,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (co
           selected: selectedInstructors,
           toggle: (id) => toggleItem(id, selectedInstructors, setSelectedInstructors),
         },
-        priceRange: { shown: shouldShowPriceFilter },
+        priceRange: {
+          shown: shouldShowPriceFilter,
+          title: priceFilterConfig?.label ?? t("courseCatalog.priceRange"),
+          inputs: priceRangeInputs,
+        },
       },
     },
     renderCourseCard: (card, index, opts) => renderCourseCard(card, index, opts),

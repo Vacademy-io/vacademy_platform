@@ -73,6 +73,9 @@ const NON_TEXT_KEYS = new Set(
         // Enum tokens (badges.types: 'bestseller', 'new'…) and the prefix of
         // detail-block anchor ids ('fees-'): never shown as text.
         'types', 'anchorprefix',
+        // Course level names a customFilters option matches by ('eBook', 'Short Film'):
+        // looked up raw, in every language.
+        'levels',
     ].map((k) => k.toLowerCase())
 );
 

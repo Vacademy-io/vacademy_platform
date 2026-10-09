@@ -37,7 +37,64 @@ interface CourseSubPageProps {
   instituteThemeCode?: string | null;
 }
 
-export const CourseSubPage: React.FC<CourseSubPageProps> = ({
+/** The catalogue page "/<tag>/<page>" shows: its route or id, with or without a leading "/". */
+const isSubPage = (page: string) => (p: { route?: string; id?: string }) =>
+  p.route === page || p.id === page || p.route === `/${page}` || p.id === `/${page}`;
+
+/** The learner app's own "/<page>", the visitor's query kept. */
+const AppRouteRedirect: React.FC<{ page: string }> = ({ page }) => (
+  <Navigate to={`/${page}` as never} search={true} replace />
+);
+
+/**
+ * Root-mounted host, and "<page>" is one of the learner app's own routes
+ * ("/new/login", "/new/dashboard"): "/<tag>/<page>" stays on the site only for
+ * a site page named like an app route (a Courses page — see
+ * RouteMatcher.pagePath). Any other such address goes to the app's own page,
+ * as the canonical "/<tag>/<x>" → "/<x>" redirect always sent it. That needs
+ * only the root catalogue's page list, read through the memoised fetch the
+ * page the visitor came from already made, and it is settled before the
+ * site's terminology, fonts or tracking load. Once a site page shows, it
+ * handles the visitor's next such address itself (appRouteRedirect).
+ *
+ * Every other sub-page (all of a classic host's) renders straight away.
+ */
+export const CourseSubPage: React.FC<CourseSubPageProps> = (props) => {
+  const { tagName, page, instituteId } = props;
+  const reserved = RouteMatcher.isReservedRootPage(tagName, page);
+  const site = `${instituteId}::${tagName}`;
+  const [verdict, setVerdict] = useState<{ site: string; page: string; to: "site" | "app" } | null>(null);
+  const settled =
+    verdict?.site === site && (verdict.to === "site" || verdict.page === page) ? verdict.to : null;
+
+  useEffect(() => {
+    if (!reserved || settled) return;
+    const decide = (to: "site" | "app") => setVerdict({ site, page, to });
+    // No institute to read the site from: the app's page, as before.
+    if (!instituteId) {
+      decide("app");
+      return;
+    }
+    let cancelled = false;
+    CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName)
+      .then((data) => {
+        if (!cancelled) decide((data.pages || []).some(isSubPage(page)) ? "site" : "app");
+      })
+      .catch(() => {
+        // The site cannot be read: the app's page, as before.
+        if (!cancelled) decide("app");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reserved, settled, site, instituteId, tagName, page]);
+
+  if (!reserved || settled === "site") return <CourseSubPageContent {...props} />;
+  if (settled === "app") return <AppRouteRedirect page={page} />;
+  return <DashboardLoader />;
+};
+
+const CourseSubPageContent: React.FC<CourseSubPageProps> = ({
   tagName,
   page,
   instituteId,
@@ -87,7 +144,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         setIsLoading(true);
         console.log("[CourseSubPage] Fetching catalogue data for:", { instituteId, tagName, page });
 
-        const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
+        // A root-mounted site's page named like an app route: CourseSubPage
+        // just found it through the memoised fetch, so reuse that request.
+        const data = await (RouteMatcher.isReservedRootPage(tagName, page)
+          ? CourseCatalogueService.getCourseCatalogueByTagMemo(instituteId, tagName)
+          : CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName));
 
         console.log("[CourseSubPage] Successfully fetched catalogue data");
         setCatalogueData(data);
@@ -304,14 +365,12 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     return <DashboardLoader />;
   }
 
-  // Root-mounted host, and "<page>" is one of the learner app's own routes
-  // ("/new/login", "/new/dashboard"): "/<tag>/<page>" stays on the site only
-  // for a site page named like an app route (a Courses page — see
-  // RouteMatcher.pagePath). With no such page here, the visitor goes to the
-  // app's own page, as the canonical "/<tag>/<x>" → "/<x>" redirect always
-  // sent them.
+  // Root-mounted host, an app-route address this site has no page for (see
+  // CourseSubPage) — the visitor moved on from a site page, the page was
+  // removed since the list was read, or the site failed to load: the app's own
+  // page, never a dead end.
   const appRouteRedirect = RouteMatcher.isReservedRootPage(tagName, page) ? (
-    <Navigate to={`/${page}` as never} search={true} replace />
+    <AppRouteRedirect page={page} />
   ) : null;
 
   if (error || !catalogueData) {
@@ -337,12 +396,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   }
 
   // Find the page configuration that matches the current route
-  const currentPage = catalogueData.pages.find(p =>
-    p.route === page ||
-    p.id === page ||
-    p.route === `/${page}` ||
-    p.id === `/${page}`
-  );
+  const currentPage = catalogueData.pages.find(isSubPage(page));
 
   /** Same opt-out as CourseCataloguePage. This component is the one that
    *  ACTUALLY renders custom pages on published sites: /$tagName/$courseId/
@@ -359,7 +413,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "true";
 
   // If no matching page found, show not found (in the site's language) —
-  // unless the address is the app's own page (see appRouteRedirect).
+  // unless the address is also the app's own page (see appRouteRedirect).
   if (!currentPage) {
     if (appRouteRedirect) return appRouteRedirect;
     console.warn("[CourseSubPage] No page found for route:", page);

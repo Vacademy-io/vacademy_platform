@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { useTranslation } from "react-i18next";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
@@ -70,6 +70,12 @@ import {
 } from "../../-utils/course-variants";
 import { isSiteCartEnabled, type SiteCartItem } from "../../-utils/site-cart";
 import { useSiteCartStore } from "../../-stores/site-cart-store";
+import { SiteCartDrawer } from "../../-components/site-cart/SiteCartDrawer";
+import { openSiteCartDrawer } from "../../-components/site-cart/site-cart-events";
+import {
+  useFallbackCartReopen,
+  useHasSiteCartOpener,
+} from "../../-components/site-cart/use-site-cart";
 import {
   invitePaymentEntryFor,
   primeOpenEnrollInvite,
@@ -80,7 +86,6 @@ import {
 import { useCourseVersions } from "../-hooks/use-course-versions";
 import {
   SITE_CART_MAX_ITEMS,
-  SITE_CART_OPEN_EVENT,
   buildCourseCartItem,
   cartCanTake,
   localizeCourseDisplay,
@@ -1428,6 +1433,29 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     }
   }, [detailsPrimaryColor]);
 
+  // The site cart drawer belongs to the header's cart button. A page without
+  // one (header switched off or missing) opens a drawer of its own, as the
+  // offer and learning-path sections do, so "Buy now" and "In cart" still
+  // reach the cart. Sites without a site cart never render it.
+  const hasHeaderCart = useHasSiteCartOpener();
+  const [fallbackCartOpen, setFallbackCartOpen] = useState(false);
+  // Bumped by "Buy now": the page's drawer goes on to checkout once.
+  const [fallbackCheckoutRequest, setFallbackCheckoutRequest] = useState(0);
+  // The theme wrapper as the drawer opens, so it wears the site's palette.
+  const [fallbackCartAnchor, setFallbackCartAnchor] = useState<HTMLElement | null>(null);
+  const openFallbackCart = useCallback((checkout: boolean) => {
+    setFallbackCartAnchor(themeRootRef.current);
+    setFallbackCartOpen(true);
+    if (checkout) setFallbackCheckoutRequest((n) => n + 1);
+  }, []);
+  const reopenFallbackCart = useCallback(() => openFallbackCart(false), [openFallbackCart]);
+  // Back from the store checkout reopens it — once the page, and any header
+  // cart button that would take the request instead, is on screen.
+  useFallbackCartReopen(
+    siteCartActive && !isLoading && namingReady && !error && !!courseData,
+    reopenFallbackCart,
+  );
+
   // data-vacademy="enrol" inside an html `details` page (HtmlPageSection)
   // dispatches this; the handler itself is defined after the loading/error
   // returns below, so reach it through a ref that is refreshed every render.
@@ -1599,13 +1627,14 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           )
       : null;
 
+  // The header's cart drawer when the page has one, else the page's own.
   const openSiteCart = (intent: SiteCartOpenDetail["intent"]) => {
     const detail: SiteCartOpenDetail = {
       intent,
       packageSessionId: siteCartItem?.packageSessionId,
       source: "course",
     };
-    window.dispatchEvent(new CustomEvent(SITE_CART_OPEN_EVENT, { detail }));
+    if (!openSiteCartDrawer(detail)) openFallbackCart(intent === "checkout");
   };
   // One store checkout takes at most SITE_CART_MAX_ITEMS courses, and the
   // store does not enforce it, so a new course is refused here when the cart
@@ -2203,6 +2232,23 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
             globalSettings={catalogueData.globalSettings}
             instituteId={instituteId}
             tagName={tagName}
+          />
+        )}
+
+      {/* The page's own cart drawer, only on a page without a header cart
+          button (kept mounted while open so it can animate closed). */}
+      {siteCartActive &&
+        catalogueData?.globalSettings?.siteCart &&
+        (!hasHeaderCart || fallbackCartOpen) && (
+          <SiteCartDrawer
+            open={fallbackCartOpen}
+            onOpenChange={setFallbackCartOpen}
+            instituteId={instituteId}
+            tagName={tagName}
+            settings={catalogueData.globalSettings.siteCart}
+            languages={courseLanguagesEnabled ? configuredLanguages : undefined}
+            themeAnchor={fallbackCartAnchor}
+            checkoutRequest={fallbackCheckoutRequest}
           />
         )}
 

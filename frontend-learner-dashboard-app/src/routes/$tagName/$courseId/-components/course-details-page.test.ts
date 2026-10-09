@@ -27,6 +27,12 @@ vi.mock("@/constants/urls", () => ({
   urlCourseDetails: "https://api.test/admin-core-service/open/packages/v2/search",
   GET_PRODUCT_PAGE_BY_CODE: (code: string, instituteId: string) =>
     `https://api.test/by-code?code=${code}&instituteId=${instituteId}`,
+  // Read by the site cart drawer's checkout and payment housekeeping.
+  VALIDATE_PRODUCT_PAGE_COUPON: "https://api.test/coupon",
+  PRODUCT_PAGE_FORM_SUBMIT: "https://api.test/form",
+  PRODUCT_PAGE_ENROLL: "https://api.test/enroll",
+  PRODUCT_PAGE_CPO_ENROLL: "https://api.test/cpo-enroll",
+  PEYMENT_LOG_STATUS_URL: "https://api.test/payment-log",
 }));
 
 const router = vi.hoisted(() => ({
@@ -100,8 +106,15 @@ vi.mock("@/components/common/enroll-by-invite/-components/InviteUnavailableMessa
 import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CourseDetailsPage } from "./CourseDetailsPage";
 import { useSiteCartStore } from "../../-stores/site-cart-store";
+import {
+  registerSiteCartOpener,
+  requestSiteCartReopen,
+  takeSiteCartReopenRequest,
+  type SiteCartOpenRequest,
+} from "../../-components/site-cart/site-cart-events";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const memoryStorage = new Map<string, string>();
@@ -206,9 +219,15 @@ const renderPage = async (props: Record<string, unknown>) => {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
+  // The app's query client (the site cart drawer's checkout reads the store page through it).
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   act(() =>
     root!.render(
-      React.createElement(CourseDetailsPage, { tagName: "site", instituteId: "inst", ...(props as { courseId: string }) }),
+      React.createElement(
+        QueryClientProvider,
+        { client },
+        React.createElement(CourseDetailsPage, { tagName: "site", instituteId: "inst", ...(props as { courseId: string }) }),
+      ),
     ),
   );
   await settle();
@@ -218,6 +237,17 @@ const renderPage = async (props: Record<string, unknown>) => {
 const radios = () => Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
 const buttonByText = (text: string) =>
   Array.from(host!.querySelectorAll<HTMLButtonElement>("button")).filter((b) => b.textContent?.trim() === text);
+
+const cleanups: Array<() => void> = [];
+/** A header cart button on the page: records the open requests it is handed. */
+const headerCart = () => {
+  const requests: Array<SiteCartOpenRequest | undefined> = [];
+  cleanups.push(registerSiteCartOpener((request) => requests.push(request)));
+  return requests;
+};
+/** The cart drawer (a dialog portalled to the body), when one is open. */
+const openCartDrawer = () =>
+  Array.from(document.body.querySelectorAll('[role="dialog"]')).find((d) => d.textContent?.includes("Your cart"));
 
 beforeEach(() => {
   net.get.mockReset();
@@ -231,6 +261,7 @@ beforeEach(() => {
   toasts.error.mockReset();
   memoryStorage.clear();
   useSiteCartStore.setState({ instituteId: null, items: [], hydrated: false, lastAddedAt: 0 });
+  takeSiteCartReopenRequest(); // none left over from another test
 });
 
 const unmountPage = () => {
@@ -242,6 +273,7 @@ const unmountPage = () => {
 
 afterEach(() => {
   unmountPage();
+  while (cleanups.length) cleanups.pop()!();
 });
 
 /* ── tests ────────────────────────────────────────────────────────────── */
@@ -465,9 +497,7 @@ describe("CourseDetailsPage — site cart", () => {
     catalogue.data = settings({ siteCart: { enabled: true, storeProductPageCode: "STORE" } });
     const full = Array.from({ length: 40 }, (_, i) => ({ packageSessionId: `x-${i}`, courseId: `xc-${i}`, title: `X${i}` }));
     useSiteCartStore.setState({ instituteId: "inst", items: full, hydrated: true });
-    const opened: unknown[] = [];
-    const onOpen = (e: Event) => opened.push((e as CustomEvent).detail);
-    window.addEventListener("siteCartOpen", onOpen);
+    const opened = headerCart();
     await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
 
     act(() => buttonByText("Add to cart")[0].click());
@@ -478,7 +508,6 @@ describe("CourseDetailsPage — site cart", () => {
     act(() => buttonByText("Buy now")[0].click());
     expect(useSiteCartStore.getState().items).toHaveLength(40);
     expect(opened).toEqual([expect.objectContaining({ intent: "view" })]);
-    window.removeEventListener("siteCartOpen", onOpen);
   });
 
   it("still swaps this course's version in a full cart", async () => {
@@ -507,9 +536,7 @@ describe("CourseDetailsPage — site cart", () => {
       [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
     });
     catalogue.data = settings({ siteCart: { enabled: true, storeProductPageCode: "STORE" } });
-    const opened: unknown[] = [];
-    const onOpen = (e: Event) => opened.push((e as CustomEvent).detail);
-    window.addEventListener("siteCartOpen", onOpen);
+    const opened = headerCart();
 
     // A bare link: the first version with an invite is the one on screen.
     await renderPage({ courseId: c });
@@ -526,7 +553,79 @@ describe("CourseDetailsPage — site cart", () => {
     act(() => buttonByText("Buy now")[0].click());
     expect(opened).toEqual([{ intent: "checkout", packageSessionId: `${c}-en`, source: "course" }]);
     expect(useSiteCartStore.getState().items).toHaveLength(1);
-    window.removeEventListener("siteCartOpen", onOpen);
+  });
+});
+
+describe("CourseDetailsPage — site cart drawer with and without a header cart button", () => {
+  const siteCart = { siteCart: { enabled: true, storeProductPageCode: "STORE" } };
+  // The store product page sells the English version at the price shown.
+  const storeMappings = (c: string) => [
+    { package_id: c, package_session_id: `${c}-en`, enroll_invite_id: "store-inv", status: "ACTIVE", payment_plan: { actual_price: 999, currency: "INR" } },
+  ];
+  const storeCheckouts = () =>
+    router.navigate.mock.calls.filter(
+      ([arg]: unknown[]) => (arg as { to?: string }).to === "/product-pages/$productPageCode",
+    );
+
+  it("hands Buy now and In cart to the header's cart and renders no drawer of its own", async () => {
+    const c = "c-hdr";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, storeMappings(c));
+    catalogue.data = settings(siteCart);
+    const opened = headerCart();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+
+    act(() => buttonByText("Buy now")[0].click());
+    await settle();
+    act(() => buttonByText("In cart")[0].click());
+    await settle();
+    expect(opened).toEqual([
+      { intent: "checkout", packageSessionId: `${c}-en`, source: "course" },
+      { intent: "view", packageSessionId: `${c}-en`, source: "course" },
+    ]);
+    expect(openCartDrawer()).toBeUndefined();
+    expect(storeCheckouts()).toHaveLength(0); // the header's drawer checks out, not the page
+  });
+
+  it("opens its own drawer on a page without one; Buy now checks out once", async () => {
+    const c = "c-nohdr";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, storeMappings(c));
+    catalogue.data = settings(siteCart); // no layout.header: no cart button anywhere
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(openCartDrawer()).toBeUndefined();
+
+    act(() => buttonByText("Buy now")[0].click());
+    await settle();
+    expect(useSiteCartStore.getState().items).toEqual([expect.objectContaining({ packageSessionId: `${c}-en` })]);
+    // The drawer's checkout: store pre-check, then the store's cart step.
+    expect(storeCheckouts()).toEqual([
+      [
+        expect.objectContaining({
+          params: { productPageCode: "STORE" },
+          search: expect.objectContaining({ courseIds: `${c}-en`, defaultTab: "CART", tagName: "site", source: "siteCart" }),
+        }),
+      ],
+    ]);
+
+    // "In cart" opens the drawer again — to look, not to check out again.
+    act(() => buttonByText("In cart")[0].click());
+    await settle();
+    expect(openCartDrawer()).toBeDefined();
+    expect(storeCheckouts()).toHaveLength(1);
+  });
+
+  it("reopens its own drawer after the store checkout's Back, but leaves that to a header", async () => {
+    const c = "c-back";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) }, storeMappings(c));
+    catalogue.data = settings(siteCart);
+    requestSiteCartReopen();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(openCartDrawer()).toBeDefined();
+    unmountPage();
+
+    headerCart();
+    requestSiteCartReopen();
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(openCartDrawer()).toBeUndefined();
   });
 });
 

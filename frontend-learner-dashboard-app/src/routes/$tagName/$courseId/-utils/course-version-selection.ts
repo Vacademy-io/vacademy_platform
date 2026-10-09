@@ -1,5 +1,6 @@
 import { languageOfLevel, type CourseLanguageOption } from "../../-utils/course-variants";
 import type { SiteCartItem } from "../../-utils/site-cart";
+import type { SiteCartOpenRequest } from "../../-components/site-cart/site-cart-events";
 import {
   invitePaymentEntryFor,
   type CourseLevel,
@@ -13,14 +14,10 @@ import {
  */
 
 /**
- * Window event that opens the site cart drawer (the cart stream's
- * SiteCartButton listens). `detail.intent` is "view" or "checkout".
- * The cart stream exports the same name from site-cart/site-cart-events.ts;
- * this copy goes once the two streams are merged.
+ * What the course page asks of the site cart drawer (openSiteCartDrawer in
+ * site-cart/site-cart-events.ts): `intent` "view" or "checkout" ("Buy now").
  */
-export const SITE_CART_OPEN_EVENT = "siteCartOpen";
-
-export interface SiteCartOpenDetail {
+export interface SiteCartOpenDetail extends SiteCartOpenRequest {
   intent: "view" | "checkout";
   /** The version just added, for a drawer that wants to highlight it. */
   packageSessionId?: string;

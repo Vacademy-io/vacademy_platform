@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_management.controller;
 
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +35,7 @@ public class BulkLearnerManagementController {
 
     private final BulkAssignmentService bulkAssignmentService;
     private final BulkDeassignmentService bulkDeassignmentService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     /**
      * Bulk assign users to multiple package sessions.
@@ -64,6 +67,13 @@ public class BulkLearnerManagementController {
                 request.getAssignments() != null ? request.getAssignments().size() : 0,
                 request.getOptions() != null && request.getOptions().isDryRun(),
                 userDetails != null ? userDetails.getUserId() : "unknown");
+
+        // Giving a discount is an admin decision, not just any institute member's.
+        boolean discountRequested = request.getAssignments() != null && request.getAssignments().stream()
+                .anyMatch(a -> AdminDiscountService.isRequested(a.getAdminDiscount()));
+        if (discountRequested) {
+            instituteAccessValidator.requireAdminAccess(userDetails, request.getInstituteId());
+        }
 
         String adminUserId = userDetails != null ? userDetails.getUserId() : null;
         BulkAssignResponseDTO response = bulkAssignmentService.bulkAssign(request, adminUserId);

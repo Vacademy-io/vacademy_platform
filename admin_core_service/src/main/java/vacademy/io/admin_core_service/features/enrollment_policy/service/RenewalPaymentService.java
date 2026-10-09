@@ -43,6 +43,7 @@ public class RenewalPaymentService {
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final SubOrgService subOrgService;
     private final PaymentLogRepository paymentLogRepository;
+    private final vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository paymentLogLineItemRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final AuthService authService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService mandateService;
@@ -95,6 +96,7 @@ public class RenewalPaymentService {
             paymentLog.setPaymentStatus(PaymentStatusEnum.PAID.name());
             paymentLog.setStatus(PaymentLogStatusEnum.SUCCESS.name());
             recordRenewalOnLedger(paymentLog, userPlan, instituteId);
+            countDiscountedCycle(paymentLog, userPlan);
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);
         } else if (paymentStatus == PaymentStatusEnum.FAILED) {
@@ -120,6 +122,24 @@ public class RenewalPaymentService {
             handleFailedRenewal(userPlan, instituteId);
         } else {
             log.info("Payment status is PENDING for orderId: {}, waiting for final status", orderId);
+        }
+    }
+
+    /**
+     * A renewal that carried the plan's discount line uses up one of the discount's
+     * billing cycles (admin discounts may be limited to the first N charges). Counted
+     * here, after the exactly-once PAID claim, so a failed or replayed charge never
+     * spends a cycle.
+     */
+    private void countDiscountedCycle(PaymentLog paymentLog, UserPlan userPlan) {
+        if (userPlan == null || userPlan.getAppliedCouponDiscountId() == null) {
+            return;
+        }
+        if (paymentLogLineItemRepository.existsByPaymentLogIdAndSourceId(
+                paymentLog.getId(), userPlan.getAppliedCouponDiscountId())) {
+            int used = userPlan.getDiscountCyclesApplied() != null ? userPlan.getDiscountCyclesApplied() : 0;
+            userPlan.setDiscountCyclesApplied(used + 1);
+            userPlanRepository.save(userPlan);
         }
     }
 

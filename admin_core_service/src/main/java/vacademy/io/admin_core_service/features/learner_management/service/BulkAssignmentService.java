@@ -46,6 +46,9 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.AdminDiscountService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
@@ -89,6 +92,11 @@ public class BulkAssignmentService {
     private final SubOrgAutoLinkService subOrgAutoLinkService;
     private final vacademy.io.admin_core_service.features.learner.service.LearnerCouponService learnerCouponService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
+    private final AdminDiscountService adminDiscountService;
+    // Provider, not a direct reference: this service is itself injected into the learner
+    // enroll services, and PaymentService's own graph reaches back toward them.
+    private final org.springframework.beans.factory.ObjectProvider<
+            vacademy.io.admin_core_service.features.payments.service.PaymentService> paymentServiceProvider;
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceService invoiceService;
     private final InstituteSettingService instituteSettingService;
@@ -641,6 +649,7 @@ public class BulkAssignmentService {
                     .message(config.isAutoCreated()
                             ? "Will create with auto-generated free invite"
                             : null);
+            previewAdminDiscount(b, assignment, config, instituteId, userEmail, isCpo);
             if (isCpo && cpoSummary != null) {
                 b.cpoTotalAmount(cpoSummary.total.doubleValue())
                         .cpoInstallmentCount(cpoSummary.count)
@@ -693,11 +702,15 @@ public class BulkAssignmentService {
         String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
+        // Discount the admin gives on this assignment (ONE_TIME / SUBSCRIPTION only).
+        AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
+                userEmail, adminUserId, isCpo);
+
         // Create UserPlan
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
                 config.getPaymentPlan(),
-                null, // no coupon discount for admin bulk
+                adminDiscount,
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null, // no payment initiation request
@@ -705,6 +718,7 @@ public class BulkAssignmentService {
                 userPlanSource,
                 createdSubOrgId,
                 null);
+        userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         String mappingId;
 
@@ -790,7 +804,10 @@ public class BulkAssignmentService {
         // (and uses the partial amount the admin specified instead of the full plan price).
         if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId))) {
             try {
-                Double amount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                Double grossAmount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                Double amount = adminDiscount != null
+                        ? CouponDiscountUtil.applyDiscount(grossAmount, adminDiscount)
+                        : grossAmount;
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
                         : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
@@ -805,6 +822,11 @@ public class BulkAssignmentService {
                         userPlan,
                         null,
                         paymentDate);
+
+                if (adminDiscount != null) {
+                    paymentServiceProvider.getObject()
+                            .recordFirstPaymentDiscountLineItem(paymentLogId, userPlan, grossAmount);
+                }
 
                 Map<String, Object> paymentSpecificData = new HashMap<>();
                 if (StringUtils.hasText(transactionId)) {
@@ -847,6 +869,7 @@ public class BulkAssignmentService {
                 .userPlanId(userPlan.getId())
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
                 .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null);
+        applyDiscountAmounts(resultBuilder, config, adminDiscount);
         if (isCpo && cpoSummary != null) {
             resultBuilder
                     .cpoTotalAmount(cpoSummary.total.doubleValue())
@@ -887,6 +910,7 @@ public class BulkAssignmentService {
                     .enrollInviteIdUsed(config.getEnrollInvite().getId())
                     .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
                     .message("Will re-enroll from " + existingMapping.getStatus() + " status");
+            previewAdminDiscount(b, assignment, config, instituteId, userEmail, isCpo);
             if (isCpo && cpoSummary != null) {
                 b.cpoTotalAmount(cpoSummary.total.doubleValue())
                         .cpoInstallmentCount(cpoSummary.count)
@@ -924,11 +948,14 @@ public class BulkAssignmentService {
         String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
+        AppliedCouponDiscount adminDiscount = resolveAdminDiscount(assignment, config, instituteId,
+                userEmail, adminUserId, isCpo);
+
         // Create new UserPlan (stacking is handled automatically by UserPlanService)
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
                 config.getPaymentPlan(),
-                null,
+                adminDiscount,
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null,
@@ -936,6 +963,7 @@ public class BulkAssignmentService {
                 userPlanSource,
                 createdSubOrgId,
                 null);
+        userPlan = stampAdminDiscount(userPlan, adminDiscount, adminUserId);
 
         // Ensure Student record exists with extra details (same as manual flow)
         if (userDTO != null) {
@@ -997,6 +1025,7 @@ public class BulkAssignmentService {
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
                 .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
                 .message("Re-enrolled from " + existingMapping.getStatus() + " status");
+        applyDiscountAmounts(resultBuilder, config, adminDiscount);
         if (isCpo && cpoSummary != null) {
             resultBuilder
                     .cpoTotalAmount(cpoSummary.total.doubleValue())
@@ -1022,6 +1051,66 @@ public class BulkAssignmentService {
      * Re-enrollments pass a null NewUserDTO and rely on assignment-level fields only.
      * Returns null when the PS isn't org-associated (the common case).
      */
+    /**
+     * The admin discount for one learner of an assignment, or null. CPO plans carry
+     * their own per-learner discount (cpo_config), so an admin_discount there is an error.
+     */
+    private AppliedCouponDiscount resolveAdminDiscount(AssignmentItemDTO assignment,
+                                                       DefaultInviteResolver.ResolvedConfig config,
+                                                       String instituteId, String userEmail,
+                                                       String adminUserId, boolean isCpo) {
+        if (!AdminDiscountService.isRequested(assignment.getAdminDiscount())) {
+            return null;
+        }
+        if (isCpo) {
+            throw new VacademyException("Use the CPO discount for installment plans, not admin_discount");
+        }
+        return adminDiscountService.resolveForCharge(
+                assignment.getAdminDiscount(), instituteId, config.getPaymentPlan(), config.getPaymentOption(),
+                config.getPackageSession().getId(), config.getEnrollInvite().getId(), userEmail, adminUserId);
+    }
+
+    private UserPlan stampAdminDiscount(UserPlan userPlan, AppliedCouponDiscount discount, String adminUserId) {
+        if (discount == null) {
+            return userPlan;
+        }
+        adminDiscountService.stampGrantedBy(userPlan, discount, adminUserId);
+        // Keep this instance: outside a transaction save() returns a merged copy whose
+        // discount association is an uninitialized proxy, which the payment-log step reads.
+        userPlanService.save(userPlan);
+        return userPlan;
+    }
+
+    /** Dry run: validate the discount and show the net price without persisting anything. */
+    private void previewAdminDiscount(BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b,
+                                      AssignmentItemDTO assignment,
+                                      DefaultInviteResolver.ResolvedConfig config,
+                                      String instituteId, String userEmail, boolean isCpo) {
+        if (!AdminDiscountService.isRequested(assignment.getAdminDiscount())) {
+            return;
+        }
+        if (isCpo) {
+            throw new VacademyException("Use the CPO discount for installment plans, not admin_discount");
+        }
+        var preview = adminDiscountService.preview(assignment.getAdminDiscount(), instituteId,
+                config.getPaymentPlan() != null ? config.getPaymentPlan().getId() : null, null,
+                config.getPackageSession().getId(), config.getEnrollInvite().getId(), userEmail);
+        b.grossAmount(preview.getGrossAmount())
+                .discountAmount(preview.getDiscountAmount())
+                .netAmount(preview.getNetAmount());
+    }
+
+    private static void applyDiscountAmounts(BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b,
+                                             DefaultInviteResolver.ResolvedConfig config,
+                                             AppliedCouponDiscount discount) {
+        if (discount == null || config.getPaymentPlan() == null) {
+            return;
+        }
+        double gross = config.getPaymentPlan().getActualPrice();
+        double net = CouponDiscountUtil.applyDiscount(gross, discount);
+        b.grossAmount(gross).discountAmount(Math.round((gross - net) * 100.0) / 100.0).netAmount(net);
+    }
+
     private SubOrgResolution maybeResolveSubOrgForOrgAssociatedPackage(
             DefaultInviteResolver.ResolvedConfig config,
             NewUserDTO newUserData,

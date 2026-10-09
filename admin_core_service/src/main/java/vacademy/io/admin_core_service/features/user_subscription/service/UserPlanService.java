@@ -1298,6 +1298,9 @@ public class UserPlanService {
                 .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
                 .appliedCoupon(vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
                         .fromJson(userPlan.getAppliedCouponDiscountJson()))
+                .discountGrantedByUserId(userPlan.getDiscountGrantedByUserId())
+                .discountGrantedAt(userPlan.getDiscountGrantedAt())
+                .discountCyclesApplied(userPlan.getDiscountCyclesApplied())
                 .enrollInviteId(userPlan.getEnrollInviteId())
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .paymentOptionJson(userPlan.getPaymentOptionJson())
@@ -1359,6 +1362,9 @@ public class UserPlanService {
                 .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
                 .appliedCoupon(vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
                         .fromJson(userPlan.getAppliedCouponDiscountJson()))
+                .discountGrantedByUserId(userPlan.getDiscountGrantedByUserId())
+                .discountGrantedAt(userPlan.getDiscountGrantedAt())
+                .discountCyclesApplied(userPlan.getDiscountCyclesApplied())
                 .enrollInviteId(userPlan.getEnrollInviteId())
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .paymentOptionJson(userPlan.getPaymentOptionJson())

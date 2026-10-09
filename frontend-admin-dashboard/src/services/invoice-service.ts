@@ -14,6 +14,7 @@ import {
     PUT_UPDATE_INVOICE,
     POST_INVOICES_BY_PAYMENT_LOGS,
 } from '@/constants/urls';
+import type { AdminDiscountRequest } from '@/services/admin-discounts';
 
 // Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
 // @JsonNaming(SnakeCaseStrategy) — item_type/unit_price, NOT itemType/unitPrice.
@@ -62,6 +63,8 @@ export interface InvoiceDTO {
     source_id?: string | null;
     /** Gateway payment link — present on ADMIN_MANUAL and USER_PLAN invoices when a payment option is configured. */
     payment_link?: string | null;
+    /** Set when the discount on this invoice was granted by an admin (user id of that admin). */
+    discount_granted_by_user_id?: string | null;
 }
 
 export interface UserAccountLedgerEntryDTO {
@@ -338,6 +341,11 @@ export interface AdminCreateInvoiceRequest {
     tax_enabled?: boolean;
     /** Override the tax rate (percentage, e.g. 18) for this invoice only. Ignored when tax_enabled is false. */
     tax_rate_percent?: number;
+    /**
+     * Admin-granted discount, applied as a DISCOUNT line on the pre-tax subtotal. COUPON mode
+     * accepts institute-wide coupons only. apply_for_cycles is not used here.
+     */
+    admin_discount?: AdminDiscountRequest;
 }
 
 /** One editable/derived dynamic value discovered in the institute's invoice template. */

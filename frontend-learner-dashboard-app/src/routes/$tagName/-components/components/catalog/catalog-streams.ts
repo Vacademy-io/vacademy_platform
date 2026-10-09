@@ -16,6 +16,7 @@ import {
   type PublicFolderNode,
 } from "../../../-services/folder-library-service";
 import type { CatalogStreamItem } from "../../../-types/course-catalogue-types";
+import { safeAccentColor, safeImageSrc } from "../../header/header-links";
 import type { StreamLabelMode } from "./catalog-config";
 
 export interface CatalogCategory {
@@ -28,6 +29,10 @@ export interface CatalogCategory {
   tags: string[];
   comingSoon: boolean;
   audienceId: string | null;
+  /** The folder's image (image_url; http(s) / site path only), null when none. Set by both builders. */
+  imageUrl?: string | null;
+  /** The folder's accent colour (#rgb/#rrggbb/#rrggbbaa), null when none. Set by both builders. */
+  accentColor?: string | null;
 }
 
 export interface CatalogStream {
@@ -41,6 +46,10 @@ export interface CatalogStream {
   tags: string[];
   comingSoon: boolean;
   audienceId: string | null;
+  /** The folder's image (image_url; http(s) / site path only), null when none. Set by both builders. */
+  imageUrl?: string | null;
+  /** The folder's accent colour (#rgb/#rrggbb/#rrggbbaa), null when none. Set by both builders. */
+  accentColor?: string | null;
   categories: CatalogCategory[];
 }
 
@@ -86,6 +95,8 @@ export const streamsFromFolderTree = (roots: PublicFolderNode[] | null | undefin
         tags: folderTagSet(child),
         comingSoon: !!child.coming_soon,
         audienceId: text(child.audience_id) || null,
+        imageUrl: safeImageSrc(child.image_url),
+        accentColor: safeAccentColor(child.accent_color),
       });
     }
     streams.push({
@@ -97,6 +108,8 @@ export const streamsFromFolderTree = (roots: PublicFolderNode[] | null | undefin
       tags: folderTagSet(node),
       comingSoon: !!node.coming_soon,
       audienceId: text(node.audience_id) || null,
+      imageUrl: safeImageSrc(node.image_url),
+      accentColor: safeAccentColor(node.accent_color),
       categories,
     });
   }
@@ -114,8 +127,30 @@ export const streamsFromTagItems = (items: CatalogStreamItem[]): CatalogStream[]
     tags: [norm(item.tag)].filter(Boolean),
     comingSoon: false,
     audienceId: null,
+    imageUrl: safeImageSrc(item.imageUrl),
+    accentColor: null,
     categories: [],
   }));
+
+/**
+ * Cards per stream tab: `total` = every card, `bySlug` = the cards each stream
+ * matches by the stream filter's own rule (any of the stream's tags, so a
+ * course tagged only at category level counts for its stream; a card in two
+ * streams counts in both). Pass the UNFILTERED cards (allCards) for the
+ * catalogue totals the Figma tabs show. Pure.
+ */
+export const countCardsByStream = (
+  cards: ReadonlyArray<{ tagSet: Set<string> }>,
+  streams: ReadonlyArray<Pick<CatalogStream, "slug" | "tags">>,
+): { total: number; bySlug: Map<string, number> } => {
+  const bySlug = new Map<string, number>();
+  for (const s of streams) {
+    let n = 0;
+    for (const card of cards) if (s.tags.some((tag) => card.tagSet.has(tag))) n++;
+    bySlug.set(s.slug, n);
+  }
+  return { total: cards.length, bySlug };
+};
 
 /** Tab text: title, subtitle (falling back to the title), or both. */
 export const streamTabText = (

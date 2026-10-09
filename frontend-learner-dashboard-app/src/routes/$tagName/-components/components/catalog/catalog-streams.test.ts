@@ -5,6 +5,7 @@ vi.mock("@/constants/urls", () => ({ BASE_URL: "" }));
 
 import type { PublicFolderNode } from "../../../-services/folder-library-service";
 import {
+  countCardsByStream,
   findStream,
   folderTagSet,
   nextTabIndex,
@@ -81,9 +82,68 @@ describe("streamsFromTagItems", () => {
         tags: ["shiksha"],
         comingSoon: false,
         audienceId: null,
+        imageUrl: null,
+        accentColor: null,
         categories: [],
       },
     ]);
+  });
+
+  it("keeps a safe tab icon from the item", () => {
+    const [ok, bad] = streamsFromTagItems([
+      { label: "A", slug: "a", tag: "a", imageUrl: "https://cdn.example.com/a.png" },
+      { label: "B", slug: "b", tag: "b", imageUrl: "javascript:alert(1)" },
+    ]);
+    expect(ok.imageUrl).toBe("https://cdn.example.com/a.png");
+    expect(bad.imageUrl).toBeNull();
+  });
+});
+
+describe("stream / category image + accent (folder image_url, accent_color)", () => {
+  const streams = streamsFromFolderTree([
+    folder(
+      "s1",
+      { title: "A", slug: "a", image_url: "https://cdn.example.com/a.png", accent_color: "#CC7722" }, // design-lint-ignore
+      [folder("c1", { title: "C", slug: "c", image_url: "javascript:alert(1)", accent_color: "red" })],
+    ),
+    folder("s2", { title: "B", slug: "b", image_url: "", accent_color: "#abc" }), // design-lint-ignore
+  ]);
+
+  it("carries a safe image and a hex accent through", () => {
+    expect(streams[0]).toMatchObject({ imageUrl: "https://cdn.example.com/a.png", accentColor: "#CC7722" }); // design-lint-ignore
+    expect(streams[1]).toMatchObject({ imageUrl: null, accentColor: "#abc" }); // design-lint-ignore
+  });
+
+  it("drops an unsafe image and a non-hex colour (category too)", () => {
+    expect(streams[0].categories[0]).toMatchObject({ imageUrl: null, accentColor: null });
+  });
+});
+
+describe("countCardsByStream", () => {
+  const card = (...tags: string[]) => ({ tagSet: new Set(tags) });
+  const STREAMS = [
+    { slug: "shiksha", tags: ["shiksha", "vedic-maths"] },
+    { slug: "kala", tags: ["kala"] },
+    { slug: "soon", tags: ["soon"] },
+  ];
+
+  it("counts by the stream filter's rule: category-level tags count, two streams count twice", () => {
+    const cards = [card("vedic-maths"), card("shiksha", "kala"), card("kala"), card("other")];
+    const { total, bySlug } = countCardsByStream(cards, STREAMS);
+    expect(total).toBe(4);
+    expect(Object.fromEntries(bySlug)).toEqual({ shiksha: 2, kala: 2, soon: 0 });
+  });
+
+  it("handles no streams and no cards", () => {
+    expect(countCardsByStream([card("a")], []).bySlug.size).toBe(0);
+    expect(countCardsByStream([], STREAMS)).toEqual({
+      total: 0,
+      bySlug: new Map([
+        ["shiksha", 0],
+        ["kala", 0],
+        ["soon", 0],
+      ]),
+    });
   });
 });
 

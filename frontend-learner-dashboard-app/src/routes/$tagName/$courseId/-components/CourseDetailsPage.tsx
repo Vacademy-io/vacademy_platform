@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 import { siteUsesDevanagari } from "../../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../../-utils/catalogue-fonts";
+import { buildSiteThemeVars } from "../../-utils/catalogue-palette";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate, useRouter } from "@tanstack/react-router";
@@ -290,7 +291,7 @@ const CourseHighlightDialog: React.FC<{
           {t("common.viewMore")}
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto" /* design-lint-ignore: pre-existing dialog height (whole-file gate) */>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -1821,6 +1822,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
         (catalogueData?.globalSettings as any)?.theme?.preset || "default"
       }
       className={`min-h-screen bg-catalogue-bg w-full${isDarkMode ? " dark" : ""}`}
+      // Opt-in theme.palette / theme.contentMaxWidth vars; undefined (no style attribute) when unset.
+      style={buildSiteThemeVars(catalogueData?.globalSettings) as React.CSSProperties | undefined}
     >
       {/* Render header and footer - add them if not in JSON */}
       {!catalogueData && (

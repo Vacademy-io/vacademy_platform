@@ -284,6 +284,25 @@ module.exports = {
           // as ink on white for most presets).
           "brand-ink": "hsl(var(--catalogue-brand-ink))",
         },
+        // Opt-in site palette (globalSettings.theme.palette → --palette-* channel
+        // vars on the page wrapper, see $tagName/-utils/catalogue-palette.ts).
+        // A site without a palette falls back to the catalogue token named
+        // second, so these classes are safe on any site.
+        palette: {
+          text: "hsl(var(--palette-text, var(--catalogue-text-primary)) / <alpha-value>)",
+          body: "hsl(var(--palette-body, var(--catalogue-text-secondary)) / <alpha-value>)",
+          muted: "hsl(var(--palette-muted, var(--catalogue-text-muted)) / <alpha-value>)",
+          muted2: "hsl(var(--palette-muted2, var(--catalogue-text-muted)) / <alpha-value>)",
+          primary: "hsl(var(--palette-primary, var(--primary-500)) / <alpha-value>)",
+          gold: "hsl(var(--palette-gold, var(--primary-500)) / <alpha-value>)",
+          accent: "hsl(var(--palette-accent, var(--primary-400)) / <alpha-value>)",
+          olive: "hsl(var(--palette-olive, var(--primary-500)) / <alpha-value>)",
+          cream: "hsl(var(--palette-cream, var(--catalogue-bg-subtle)) / <alpha-value>)",
+          canvas: "hsl(var(--palette-canvas, var(--catalogue-bg)) / <alpha-value>)",
+          sand: "hsl(var(--palette-sand, var(--catalogue-bg-muted)) / <alpha-value>)",
+          border: "hsl(var(--palette-border, var(--catalogue-border)) / <alpha-value>)",
+          "border-strong": "hsl(var(--palette-border-strong, var(--catalogue-border-strong)) / <alpha-value>)",
+        },
         // WhatsApp brand (contact CTA).
         whatsapp: "#25D366",
         "whatsapp-hover": "#20ba59",

@@ -4,6 +4,13 @@ import type { CourseLanguageSettings } from "../-utils/course-variants";
 import type { SiteCartSettings } from "../-utils/site-cart";
 import type { VisibleWhenRule } from "../-utils/catalogue-url-state";
 import type { BadgeRules } from "../-utils/course-badges";
+import type { CatalogueThemeSettings, SitePalette } from "../-utils/catalogue-palette";
+import type { CourseFormatsSetting } from "../-utils/course-format";
+import type { CatalogHeroConfig } from "./catalog-hero-types";
+import type { CatalogStreamsTabsExtension } from "./catalog-tabs-types";
+import type { CatalogCustomFilterConfig, CatalogFilterSidebarConfig } from "./catalog-sidebar-types";
+import type { CatalogColumnSectionConfig } from "./catalog-sections-types";
+import type { CatalogCardsRenderExtension } from "./catalog-cards-types";
 
 /**
  * A single tier in a quantity-based additional charge (e.g. shipping).
@@ -179,6 +186,19 @@ export interface GlobalSettings {
    * See -utils/site-cart.ts. Absent = the original catalogue cart.
    */
   siteCart?: SiteCartSettings;
+  /**
+   * Theme. Only the opt-in fields read by -utils/catalogue-palette.ts are
+   * typed (palette, contentMaxWidth); the rest stays as loosely read as before.
+   */
+  theme?: CatalogueThemeSettings;
+  /**
+   * Course formats ("E-books", "Live sessions"…) by key, matched by the course
+   * tag `format-<key>`, then a listed tag, then a listed level name. See
+   * -utils/course-format.ts. Absent = no format anywhere (as before).
+   */
+  courseFormats?: CourseFormatsSetting;
+  /** Display order of courseFormats keys (unlisted keys follow in authoring order). */
+  courseFormatOrder?: string[];
   layout?: {
     header?: {
       id: string;
@@ -441,7 +461,7 @@ export interface CourseCatalogProps {
       roundedEdges?: boolean;
       backgroundColor?: string;
     };
-  };
+  } & CatalogCardsRenderExtension;
 
   /* ── Courses-page discovery (all optional; absent = the original grid) ──
    * Used by courseCatalog and productCourseGrid alike. See
@@ -469,6 +489,28 @@ export interface CourseCatalogProps {
   badges?: BadgeRules;
   /** Below lg, filters open in a bottom sheet behind a "Filters (n)" button. */
   mobileFilterSheet?: boolean;
+
+  /* ── Figma-fidelity opt-ins (absent = the grid above, byte-identical) ──
+   * One field per feature; each feature owns its type file and only edits
+   * that file (see scratchpad specs/CONTRACT.md). Do not add fields here. */
+
+  /** Content column width in px (gutters excluded); else globalSettings.theme.contentMaxWidth. Foundation. */
+  contentMaxWidth?: number;
+
+  /** Section-level palette (CSS vars on the catalog root only). Foundation. */
+  palette?: SitePalette;
+
+  /** Cream hero above the stream tabs + results header. Feature 'hero' (./catalog-hero-types.ts). */
+  hero?: CatalogHeroConfig;
+
+  /** Editorial filter sidebar + promo card. Feature 'sidebar' (./catalog-sidebar-types.ts). */
+  filterSidebar?: CatalogFilterSidebarConfig;
+
+  /** Authored FORMAT / FOR option groups. Feature 'sidebar' (./catalog-sidebar-types.ts). */
+  customFilters?: CatalogCustomFilterConfig[];
+
+  /** Start-free row, spotlight, coming soon inside the results column. Feature 'sections' (./catalog-sections-types.ts). */
+  columnSections?: CatalogColumnSectionConfig[];
 }
 
 /** One tab when streams come from a hand-written tag list. */
@@ -479,9 +521,13 @@ export interface CatalogStreamItem {
   slug: string;
   /** The course tag the tab filters by. */
   tag: string;
+  /** Tab icon (http(s) URL or site path); anything else is dropped. */
+  imageUrl?: string;
 }
 
-export interface CatalogStreamsConfig {
+export type CatalogStreamsConfig = CatalogStreamsBaseConfig & CatalogStreamsTabsExtension;
+
+export interface CatalogStreamsBaseConfig {
   enabled?: boolean;
   /** 'folderLibrary': top-level folders are tabs, their sub-folders categories. 'tags': `items`. */
   source?: "folderLibrary" | "tags";

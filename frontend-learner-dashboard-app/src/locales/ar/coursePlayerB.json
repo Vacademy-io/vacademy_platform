@@ -1,4 +1,25 @@
 {
+    "catalogHero": {
+        "_owner": "Feature 'hero' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "catalogTabs": {
+        "_owner": "Feature 'tabs' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "catalogSidebar": {
+        "_owner": "Feature 'sidebar' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "catalogSections": {
+        "_owner": "Feature 'sections' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "catalogCards": {
+        "_owner": "Feature 'cards' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "siteChrome": {
+        "_owner": "Feature 'chrome' adds its keys above this line (specs/CONTRACT.md)"
+    },
+    "learningPaths": {
+        "_owner": "Feature 'paths' adds its keys above this line (specs/CONTRACT.md)"
+    },
     "common": {
         "viewMore": "عرض المزيد",
         "viewLess": "عرض أقل",
@@ -292,6 +313,7 @@
         }
     },
     "courseCatalog": {
+        "breadcrumbAriaLabel": "مسار التنقل",
         "filters": "التصفية",
         "clearAll": "مسح الكل",
         "showResults": "عرض النتائج",

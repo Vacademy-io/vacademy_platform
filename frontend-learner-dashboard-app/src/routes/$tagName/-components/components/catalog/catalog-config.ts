@@ -131,7 +131,8 @@ const resolveStreamItems = (raw: unknown): CatalogStreamItem[] => {
     const slug = toSlug(text(item.slug) || tag || label);
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
-    out.push({ label: label || tag || slug, slug, tag: tag || slug });
+    const imageUrl = text(item.imageUrl);
+    out.push({ label: label || tag || slug, slug, tag: tag || slug, ...(imageUrl ? { imageUrl } : {}) });
   }
   return out;
 };

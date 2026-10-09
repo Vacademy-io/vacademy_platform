@@ -8,6 +8,7 @@ import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { CatalogueLocaleProvider } from "../-utils/catalogue-locale";
 import { siteUsesDevanagari } from "../-utils/catalogue-site-language";
 import { collectConfigFontFamilies, ensureFontsLoaded } from "../-utils/catalogue-fonts";
+import { buildSiteThemeVars } from "../-utils/catalogue-palette";
 import { DEVANAGARI_FALLBACK_FAMILY, withArabicFallback, withDevanagariFallback } from "@/utils/branding";
 
 /** The catalogue home's body font when the site sets none (CourseCataloguePage). */
@@ -147,6 +148,8 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
       ref={themeRootRef}
       data-catalogue-theme={globalSettings?.theme?.preset || "default"}
       className={`min-h-screen w-full bg-catalogue-bg${isDarkMode ? " dark" : ""}`}
+      // Opt-in theme.palette / theme.contentMaxWidth vars; undefined (no style attribute) when unset.
+      style={buildSiteThemeVars(globalSettings) as React.CSSProperties | undefined}
     >
       {headerEnabled && (
         <div className={globalSettings?.stickyHeader !== false ? "sticky top-0 z-50" : ""}>

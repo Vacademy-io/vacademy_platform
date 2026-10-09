@@ -122,6 +122,13 @@ import { CourseBadgePills, LanguageChips } from "./catalog/CardDiscoveryMeta";
 import { badgeLabel } from "./catalog/catalog-labels";
 import { SiteCartCta, SiteCartCtaPending } from "./catalog/SiteCartCta";
 import { MobileFilterSheet, MobileFiltersButton } from "./catalog/MobileFilterSheet";
+import { buildContentWidthVars, buildPaletteVars, resolveContentMaxWidth } from "../../-utils/catalogue-palette";
+import { useCatalogSlots } from "./catalog/slots/use-catalog-slots";
+import type {
+  CatalogSlotContext,
+  CourseCardRenderOptions,
+  StreamTabsProps,
+} from "./catalog/slots/catalog-slot-types";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -296,7 +303,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   );
 };
 
-interface CourseCatalogComponentProps extends CourseCatalogProps {
+export interface CourseCatalogComponentProps extends CourseCatalogProps {
   instituteId: string;
   tagName: string;
   globalSettings?: any;
@@ -328,6 +335,9 @@ interface Course {
   createdAt?: string;
   [key: string]: any;
 }
+
+/** A row of the grid (exported for the render-slot types). */
+export type CatalogCourseRow = Course;
 
 interface FilterSectionProps {
   title: string;
@@ -590,28 +600,31 @@ const quickFilterDefaultLabel = (
   }
 };
 
-export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
-  title,
-  showFilters,
-  filtersConfig,
-  cartButtonConfig,
-  render,
-  defaultSort,
-  instituteId,
-  tagName,
-  globalSettings,
-  streams,
-  syncUrl,
-  showFilterCounts,
-  showAppliedChips,
-  quickFilters,
-  languageFilter,
-  priceFilter,
-  categoryFilter,
-  groupLanguageVersions,
-  badges,
-  mobileFilterSheet,
-}) => {
+export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = (componentProps) => {
+  const {
+    title,
+    showFilters,
+    filtersConfig,
+    cartButtonConfig,
+    render,
+    defaultSort,
+    instituteId,
+    tagName,
+    globalSettings,
+    streams,
+    syncUrl,
+    showFilterCounts,
+    showAppliedChips,
+    quickFilters,
+    languageFilter,
+    priceFilter,
+    categoryFilter,
+    groupLanguageVersions,
+    badges,
+    mobileFilterSheet,
+    contentMaxWidth,
+    palette,
+  } = componentProps;
   const { t, i18n } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const {
@@ -811,6 +824,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // Removed enrollment dialog state - all enrollment happens on details page
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Render-slot anchors (catalog/slots): the results column and the card grid.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   const cardFieldsSet = useMemo(
     () =>
@@ -1217,6 +1233,15 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     lastWrittenQuery.current = urlQuery;
     setSearchTerm(urlQuery ?? "");
   }, [urlQuery, discovery.syncUrl]);
+  // A submitted search (render slots: hero search button / Enter): the term
+  // now, and ?q= now too instead of after the typing debounce.
+  const commitSearch = (term: string) => {
+    setSearchTerm(term);
+    if (!discovery.syncUrl) return;
+    const next = searchToParam(term);
+    lastWrittenQuery.current = next;
+    updateSearchParams({ [URL_PARAMS.query]: next });
+  };
 
   // Course dates (created_at) for the Newest / Oldest sorts and the "New"
   // badge, on a discovery section only: an older grid keeps the order it has
@@ -1884,11 +1909,530 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     </>
   );
 
-  if (isLoading || streamsLoading) {
+  // ── Render slots (catalog/slots) ────────────────────────────────────────
+  // Opt-in features render through these; a section without their props gets
+  // NO_SLOTS from every hook and the markup below is exactly the original.
+  // Content width: the section's own prop, else the site theme's.
+  const contentMax = resolveContentMaxWidth(contentMaxWidth ?? globalSettings?.theme?.contentMaxWidth);
+  const shellStyle = contentMax === null
+    ? undefined
+    : (buildContentWidthVars(contentMax) as React.CSSProperties);
+  // A section-level palette: CSS vars on this section's root only.
+  const sectionPaletteVars = buildPaletteVars(palette, { mode: globalSettings?.mode });
+  const sectionStyle = Object.keys(sectionPaletteVars).length
+    ? (sectionPaletteVars as React.CSSProperties)
+    : undefined;
+  const legacyGroupTitle = (key: "level" | "session" | "tags" | "instructor") =>
+    key === "level"
+      ? filterHeadings.levels ?? getTerminologyPlural(ContentTerms.Level, SystemTerms.Level)
+      : key === "session"
+        ? filterHeadings.sessions ?? getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)
+        : key === "tags"
+          ? getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)
+          : filtersConfig?.find((filter) => filter.id === "instructors" || filter.id === "authors")?.label ??
+            t("courseCatalog.authors");
+  const slotContext: CatalogSlotContext = {
+    props: componentProps,
+    globalSettings,
+    instituteId,
+    tagName,
+    t,
+    siteT,
+    siteLocale,
+    isLoading: isLoading || streamsLoading,
+    scrollRef,
+    resultsRef,
+    gridRef,
+    contentMaxWidth: contentMax,
+    shellStyle,
+    discovery,
+    courses,
+    streamList,
+    activeStream,
+    activeCategories,
+    discoveryState,
+    setDiscoveryState,
+    selectStream,
+    allCards,
+    matchedCards,
+    filteredCards,
+    paginatedCards,
+    criteria,
+    facetGroups,
+    facetCounts,
+    filterKey,
+    currentPage,
+    totalPages,
+    itemsPerPage,
+    setCurrentPage,
+    searchTerm,
+    setSearchTerm,
+    commitSearch,
+    effectiveSort,
+    sortOptions,
+    changeSort,
+    sortLabel: (option) => sortOptionLabel(t, option),
+    quickChips,
+    toggleQuick,
+    appliedChips,
+    removeChip,
+    clearAllFilters,
+    hasActiveFilters,
+    filterBadgeCount,
+    filtersEnabled,
+    showFiltersPanel,
+    mobileFilterSheet: discovery.mobileFilterSheet,
+    openFilterSheet: () => setFilterSheetOpen(true),
+    defaultFilterGroups: { discovery: discoveryFilterGroups, legacy: legacyFilterGroups },
+    filterData: {
+      showCategoryFilter,
+      showLanguageFilter,
+      showPriceChoiceFilter,
+      presentLanguages,
+      priceChoices,
+      priceChoiceLabel,
+      languageName,
+      toggleCategory,
+      toggleLanguage,
+      selectPrice,
+      legacy: {
+        level: {
+          shown: shouldShowLevelFilter,
+          title: legacyGroupTitle("level"),
+          items: shownName(levels),
+          selected: selectedLevels,
+          toggle: (id) => toggleItem(id, selectedLevels, setSelectedLevels),
+        },
+        session: {
+          shown: shouldShowSessionFilter,
+          title: legacyGroupTitle("session"),
+          items: shownName(sessions),
+          selected: selectedSessions,
+          toggle: (id) => toggleItem(id, selectedSessions, setSelectedSessions),
+        },
+        tags: {
+          shown: shouldShowTagsFilter,
+          title: legacyGroupTitle("tags"),
+          items: shownName(tags),
+          selected: selectedTags,
+          toggle: (id) => toggleItem(id, selectedTags, setSelectedTags),
+        },
+        instructor: {
+          shown: shouldShowInstructorFilter,
+          title: legacyGroupTitle("instructor"),
+          items: instructors,
+          selected: selectedInstructors,
+          toggle: (id) => toggleItem(id, selectedInstructors, setSelectedInstructors),
+        },
+        priceRange: { shown: shouldShowPriceFilter },
+      },
+    },
+    renderCourseCard: (card, index, opts) => renderCourseCard(card, index, opts),
+    handleCourseClick,
+    priceViews,
+    ranks,
+    badgeRules,
+    displayBadges,
+    preferredLanguage,
+    siteCartOn,
+    storeSale,
+  };
+  const slots = useCatalogSlots(slotContext);
+
+  // ── One grid card (render slots: renderCourseCard) ─────────────────────
+  // The original card markup, unchanged. The 'cards' feature's renderCard
+  // (catalog/slots/use-cards-slots.tsx) is asked first and may return an
+  // editorial card; undefined keeps this one. Called only while rendering.
+  const renderCourseCard = (
+    card: CatalogCard<Course>,
+    index: number,
+    opts?: CourseCardRenderOptions,
+  ): React.ReactNode => {
+    if (slots.renderCard) {
+      const custom = slots.renderCard(card, index, opts);
+      if (custom !== undefined) return custom;
+    }
+    // The card's version on show (the card itself without grouping).
+    const course = card.primary;
+    // With versions merged, a language-only level ("Hindi") is
+    // already said by the language chips.
+    const levelLabel =
+      discovery.grouping &&
+      isPureLanguageLevel(course.level, discovery.languages)
+        ? ""
+        : displayLevelName(course.level);
+    // Compute category label: first tag > non-General type > level
+    // (level goes through displayLevelName so backend sentinels
+    // like "default" never surface as a category chip)
+    const category =
+      course.tags?.[0] ||
+      (course.type && course.type !== "General" ? course.type : "") ||
+      levelLabel ||
+      "";
+    const categoryStyle = getCategoryStyle(category);
+    const courseTerm = getTerminology(
+      ContentTerms.Course,
+      SystemTerms.Course,
+    );
+    const courseTitle = siteT(course.title);
+    const cartOffer = siteCartOn ? cardCartOffer(card.rows, storeSale) : null;
+    // Merged versions: the price speaks for the versions that match
+    // the filters and can be bought now (null: none can — show this
+    // version's own status). Single-version cards: always null.
+    const priceView = priceViews.get(card) ?? null;
+    // The version whose price and MRP are shown when they all cost the same.
+    const priceRow = priceView && !priceView.from ? priceView.row : course;
+    // Coming Soon: ribbon, launch date in place of the price, no
+    // cart, and the CTA opens the course's notify form. The card
+    // itself still opens the details page.
+    const comingSoon = readComingSoon(course.coming_soon);
+    const launchLabel = formatLaunchDate(
+      comingSoon?.launchDate,
+      i18n.language,
+    );
+
+    // Determine whether the course has a real image to display
+    const hasRealImage =
+      displayImage &&
+      course.thumbnail &&
+      !course.thumbnail.includes("/api/placeholder/") &&
+      course.thumbnail.trim() !== "" &&
+      course.thumbnail !== "null" &&
+      course.thumbnail !== "undefined";
+
+    const cardKey =
+      discovery.grouping
+        ? `course-${card.courseId}`
+        : course.enrollInviteId ??
+          `${course.id}-${course.packageSessionId ?? ""}-${index}`;
+
     return (
+      <div
+        key={opts?.keyPrefix ? `${opts.keyPrefix}${cardKey}` : cardKey}
+        className={cn(
+          "bg-catalogue-bg-elevated flex flex-col cursor-pointer border border-catalogue-border-subtle",
+          "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
+          render?.styles?.roundedEdges !== false
+            ? "rounded-catalogue-lg overflow-hidden"
+            : "rounded-none overflow-hidden",
+        )}
+        onClick={() => handleCourseClick(course)}
+      >
+        {/* ── Header band (image or gradient fallback) ── */}
+        {displayImage && (
+          <div
+            className={cn(
+              "relative h-44 overflow-hidden flex-shrink-0",
+              // `contain` letterboxes, so give the band a surface
+              // rather than leaving a bare gap beside the artwork.
+              imageFit === "contain" && "bg-catalogue-bg-subtle",
+            )}
+          >
+            {hasRealImage ? (
+              /* Real image: fill the band */
+              <div className="w-full h-full">
+                <CourseImage
+                  previewImageUrl={course.thumbnail}
+                  alt={courseTitle}
+                  className={cn(
+                    "w-full h-full",
+                    imageFit === "contain"
+                      ? "object-contain"
+                      : "object-cover",
+                  )}
+                />
+              </div>
+            ) : (
+              /* No image: pastel gradient + centered icon */
+              <div
+                className={cn(
+                  "w-full h-full flex items-center justify-center",
+                  "bg-gradient-to-br",
+                  categoryStyle.band,
+                )}
+              >
+                <BookOpen
+                  size={56}
+                  weight="duotone"
+                  className={categoryStyle.icon}
+                />
+              </div>
+            )}
+            {/* Offer badge: top-left overlay */}
+            <div className="absolute top-3 start-3">
+              <OfferBadge
+                actual={priceRow.price}
+                elevated={priceRow.elevatedPrice}
+              />
+            </div>
+            {/* End corner, so it never collides with the offer badge */}
+            {comingSoon && (
+              <div className="absolute top-3 end-3">
+                <ComingSoonRibbon info={comingSoon} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Card body ── */}
+        <div className="flex flex-col flex-1 p-5 gap-2">
+          {comingSoon && !displayImage && (
+            <ComingSoonRibbon info={comingSoon} className="self-start" />
+          )}
+          {/* Bestseller / Popular / New / Free (badges prop) */}
+          {badgeRules && (
+            <CourseBadgePills badges={displayBadges.get(card.courseId)} />
+          )}
+          {/* Category label */}
+          {category && (
+            <span
+              className={cn(
+                "text-xs font-bold uppercase tracking-wide",
+                categoryStyle.text,
+              )}
+            >
+              {siteT(category)}
+            </span>
+          )}
+
+          {/* Title */}
+          {displayTitle && (
+            <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-snug">
+              {courseTitle}
+            </h3>
+          )}
+
+          {/* EN / हिं — the languages this course comes in */}
+          {discovery.grouping && (
+            <LanguageChips languages={card.languages} translate={siteT} />
+          )}
+
+          {/* Description — guard against placeholder text */}
+          {displayDescription &&
+            course.description &&
+            course.description !== t("courseCatalog.noDescriptionAvailable") && (
+              <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
+                {siteT(course.description)}
+              </p>
+            )}
+
+          {/* Spacer pushes meta row to the bottom */}
+          <div className="flex-1" />
+
+          {/* ── Meta footer row ── */}
+          <div className="border-t border-gray-100 pt-3 flex items-center justify-between gap-2">
+            {/* Left: duration + level */}
+            <div className="flex items-center gap-3 text-xs text-gray-500 min-w-0">
+              {course.duration && (
+                <span className="flex items-center gap-1 shrink-0">
+                  <Clock size={13} weight="bold" aria-hidden="true" />
+                  {course.duration}
+                </span>
+              )}
+              {displayLevel && levelLabel && (
+                <span className="flex items-center gap-1 truncate">
+                  <ChartBarHorizontal size={13} weight="bold" aria-hidden="true" />
+                  {siteT(levelLabel)}
+                </span>
+              )}
+            </div>
+
+            {/* Right: price (or closed/opens-soon when the invite window is not open) */}
+            {comingSoon ? (
+              <span className="shrink-0 text-xs font-semibold text-primary-500">
+                {launchLabel
+                  ? t("comingSoon.launchingOn", { date: launchLabel })
+                  : t("comingSoon.ribbon")}
+              </span>
+            ) : displayPrice &&
+              globalSettings?.payment?.enabled !== false &&
+              (() => {
+                // Merged versions at different prices: "from" the
+                // cheapest on offer ("from Free" when it costs nothing).
+                if (priceView?.from) {
+                  return (
+                    <div className="shrink-0">
+                      <span className="flex items-baseline gap-1">
+                        <span className="text-xs text-catalogue-text-muted">
+                          {t("courseCatalog.priceFrom", "from")}
+                        </span>
+                        {priceView.minPrice === 0 ? (
+                          <span className="text-xs font-bold text-success-600">
+                            {t("courseCatalog.priceFree", "Free")}
+                          </span>
+                        ) : (
+                          <PriceWithMrp
+                            actual={priceView.minPrice}
+                            currency={priceView.row.currency}
+                            size="sm"
+                            layout="inline"
+                            hideBadge
+                          />
+                        )}
+                      </span>
+                    </div>
+                  );
+                }
+                // Merged versions at one price: that version's price.
+                if (priceView) {
+                  return (
+                    <div className="shrink-0">
+                      {priceRow.price === 0 ? (
+                        <span className="text-xs font-bold text-success-600">
+                          {t("courseCatalog.freeLabel")}
+                        </span>
+                      ) : (
+                        <PriceWithMrp
+                          actual={priceRow.price}
+                          elevated={priceRow.elevatedPrice}
+                          currency={priceRow.currency}
+                          size="sm"
+                          layout="inline"
+                          hideBadge
+                        />
+                      )}
+                    </div>
+                  );
+                }
+                const availability = resolveInviteAvailability(
+                  course.enroll_invite_availability,
+                );
+                if (availability !== "AVAILABLE") {
+                  return (
+                    <div className="shrink-0">
+                      <span className="text-xs font-semibold text-orange-600">
+                        {availability === "NOT_STARTED"
+                          ? t("courseCatalog.openSoon")
+                          : t("courseCatalog.enrollmentClosed")}
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="shrink-0">
+                    {course.price === 0 ? (
+                      <span className="text-xs font-bold text-green-600">
+                        {t("courseCatalog.freeLabel")}
+                      </span>
+                    ) : (
+                      <PriceWithMrp
+                        actual={course.price}
+                        elevated={course.elevatedPrice}
+                        currency={course.currency}
+                        size="sm"
+                        layout="inline"
+                        hideBadge
+                      />
+                    )}
+                  </div>
+                );
+              })()}
+          </div>
+
+          {/* Cart controls (the original catalogue cart; the site-wide cart replaces it) */}
+          {shouldShowCartControls && !comingSoon && !siteCartOn && (
+            <div
+              className="mt-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CartControls
+                course={course}
+                globalSettings={globalSettings}
+                cartButtonConfig={cartButtonConfig}
+                addItem={addItem}
+                getItemByEnrollInviteId={getItemByEnrollInviteId}
+                updateQuantity={updateQuantity}
+                removeItem={removeItem}
+              />
+            </div>
+          )}
+
+          {siteCartOn && !comingSoon && cartOffer && cartOffer.route !== "page" ? (
+            <>
+              {/* Site-wide cart: add this course (choosing its
+                  language when it has several versions) — the
+                  versions the store sells; nothing to press
+                  while the store page loads. */}
+              {cartOffer.route === "cart" ? (
+                <SiteCartCta
+                  instituteId={instituteId}
+                  courseId={card.courseId}
+                  versions={cartOffer.versions}
+                  purchasable={cartOffer.purchasable}
+                  title={course.title}
+                  languages={discovery.languages}
+                  translate={siteT}
+                  themeAnchor={scrollRef}
+                />
+              ) : (
+                <SiteCartCtaPending />
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCourseClick(course);
+                }}
+                className="catalogue-btn catalogue-btn-secondary w-full"
+              >
+                {t("courseCatalog.viewCourse", { course: courseTerm })}
+              </button>
+            </>
+          ) : (
+            /* Keyboard-focusable CTA — also the accessible action for
+               the whole-card mouse click above. */
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (
+                  comingSoon &&
+                  openComingSoonForm(
+                    comingSoon,
+                    t("comingSoon.notifyTitle", { title: courseTitle }),
+                  )
+                ) {
+                  return;
+                }
+                handleCourseClick(course);
+              }}
+              className="catalogue-btn catalogue-btn-primary mt-2 w-full"
+            >
+              {comingSoon
+                ? (comingSoon.buttonText && siteT(comingSoon.buttonText)) ||
+                  t("comingSoon.notifyMe")
+                : t("courseCatalog.viewCourse", { course: courseTerm })}
+            </button>
+          )}
+          {/* The primary CTA opens the form, so keep a keyboard
+              path to the details page the card click leads to. */}
+          {comingSoon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCourseClick(course);
+              }}
+              className="catalogue-btn catalogue-btn-secondary w-full"
+            >
+              {t("comingSoon.viewDetails")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (isLoading || streamsLoading) {
+    const skeleton = (
       <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
-        <div className="w-full px-4 sm:px-6 lg:px-8 space-y-section">
+        <div
+          className={contentMax === null ? "w-full px-4 sm:px-6 lg:px-8 space-y-section" : "catalogue-shell space-y-section"}
+          style={shellStyle}
+        >
           <div className="catalogue-skeleton-shimmer h-8 w-48"></div>
+          {/* [slot: loadingGrid — feature 'cards'] */}
+          {slots.loadingGrid ? slots.loadingGrid() : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[...Array(6)].map((_, i) => (
               <div
@@ -1904,8 +2448,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
+    );
+    // [slot: catalogHero — feature 'hero'] stays visible while the grid loads.
+    return slots.catalogHero ? (
+      <>
+        {slots.catalogHero()}
+        {skeleton}
+      </>
+    ) : (
+      skeleton
     );
   }
 
@@ -1914,12 +2468,46 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const tabsShown = !!discovery.streams && streamList.length > 0;
   const stickyTabs = tabsShown && !!discovery.streams?.sticky;
 
-  return (
+  // [slots: streamTabs, streamTabsPlacement — feature 'tabs'] The tabs are
+  // rendered through one call; 'band' places them full-bleed at the top of
+  // the section root instead of inside the content container.
+  const streamTabsProps: StreamTabsProps | null = discovery.streams
+    ? {
+        streams: streamList,
+        active: activeStream?.slug ?? null,
+        allLabel: discovery.streams.allLabel,
+        labelMode: discovery.streams.labelMode,
+        sticky: discovery.streams.sticky,
+        onSelect: selectStream,
+        controlsId: gridId,
+      }
+    : null;
+  const streamTabsNode =
+    streamTabsProps && (slots.streamTabs ? slots.streamTabs(streamTabsProps) : <StreamTabs {...streamTabsProps} />);
+  const tabsInBand = slots.streamTabsPlacement === "band";
+  // [slot: filterGroups — feature 'sidebar'] one entry point for the sidebar card and the phone sheet.
+  const filterGroupsNode = slots.filterGroups ? (
+    slots.filterGroups()
+  ) : (
+    <>
+      {discoveryFilterGroups}
+      {legacyFilterGroups}
+    </>
+  );
+
+  const section = (
     <div
       ref={scrollRef}
-      className="py-8 sm:py-10 bg-catalogue-bg-subtle w-full"
+      className={slots.rootClassName ?? "py-8 sm:py-10 bg-catalogue-bg-subtle w-full"}
+      style={sectionStyle}
     >
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+      {tabsInBand && streamTabsNode}
+      <div
+        className={contentMax === null ? "w-full px-4 sm:px-6 lg:px-8" : "catalogue-shell"}
+        style={shellStyle}
+      >
+        {/* [slot: hideTitleBlock — feature 'hero'] */}
+        {!slots.hideTitleBlock && (
         <div className="mb-6">
           <div className="mb-3 h-1 w-12 rounded-full bg-primary-400" />
           <h2 className="catalogue-h2 text-catalogue-text-primary">
@@ -1931,21 +2519,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             </p>
           )}
         </div>
-
-        {discovery.streams && (
-          <StreamTabs
-            streams={streamList}
-            active={activeStream?.slug ?? null}
-            allLabel={discovery.streams.allLabel}
-            labelMode={discovery.streams.labelMode}
-            sticky={discovery.streams.sticky}
-            onSelect={selectStream}
-            controlsId={gridId}
-          />
         )}
 
+        {!tabsInBand && streamTabsNode}
+
+        {/* [slots: columnsClassName … mainColumnClassName — feature 'sidebar'] */}
         <div
-          className={`flex flex-col ${showFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
+          className={slots.columnsClassName ?? `flex flex-col ${showFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
           id={tabsShown ? gridId : undefined}
           role={tabsShown ? "tabpanel" : undefined}
           aria-labelledby={
@@ -1954,10 +2534,15 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         >
           {showFiltersPanel && (
             <div
-              className={`${discovery.mobileFilterSheet ? "hidden lg:block " : ""}w-full lg:w-64 lg:flex-shrink-0 order-1`}
+              className={slots.sidebarColumnClassName ?? `${discovery.mobileFilterSheet ? "hidden lg:block " : ""}w-full lg:w-64 lg:flex-shrink-0 order-1`}
+              style={slots.sidebarColumnStyle}
             >
               {/* Below a sticky tab bar the sidebar sticks lower, clear of it. */}
-              <div className={stickyTabs ? "lg:sticky lg:top-40" : "lg:sticky lg:top-20"}>
+              <div className={slots.sidebarStickyClassName ?? (stickyTabs ? "lg:sticky lg:top-40" : "lg:sticky lg:top-20")}>
+                {/* [slot: sidebarTop — feature 'sidebar'] */}
+                {slots.sidebarTop?.()}
+                {/* [slot: sidebarPanel — feature 'sidebar'] replaces the whole filter card */}
+                {slots.sidebarPanel ? slots.sidebarPanel() : (
                 <div className="catalogue-surface p-4 sm:p-5 rounded-catalogue-lg border border-catalogue-border-subtle shadow-sm">
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
@@ -2031,21 +2616,25 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       </div>
                     </div>
 
-                    {discoveryFilterGroups}
-                    {legacyFilterGroups}
+                    {filterGroupsNode}
                   </div>
                 </div>
+                )}
+                {/* [slot: sidebarBottom — feature 'sidebar'] promo card */}
+                {slots.sidebarBottom?.()}
               </div>
             </div>
           )}
 
           {/* Main Content Area */}
           <div
+            ref={resultsRef}
             className={
-              showFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"
+              slots.mainColumnClassName ?? (showFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full")
             }
           >
-            {/* Search and Sort Bar */}
+            {/* Search and Sort Bar [slot: resultsHeader — feature 'hero'] */}
+            {slots.resultsHeader ? slots.resultsHeader() : (
             <div className="catalogue-toolbar p-3 sm:p-4 mb-6">
               <div className="flex flex-col sm:flex-row gap-stack">
                 {/* Search */}
@@ -2113,386 +2702,25 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 )}
               </div>
             </div>
+            )}
 
-            <QuickFilterBar chips={quickChips} onToggle={toggleQuick} />
+            {/* [slot: quickFilterBar — feature 'hero'] */}
+            {slots.quickFilterBar ? slots.quickFilterBar() : <QuickFilterBar chips={quickChips} onToggle={toggleQuick} />}
             <AppliedFilterChips
               chips={appliedChips}
               onRemove={removeChip}
               onClearAll={clearAllFilters}
             />
 
-            {/* Course Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {paginatedCards.map((card, index) => {
-                // The card's version on show (the card itself without grouping).
-                const course = card.primary;
-                // With versions merged, a language-only level ("Hindi") is
-                // already said by the language chips.
-                const levelLabel =
-                  discovery.grouping &&
-                  isPureLanguageLevel(course.level, discovery.languages)
-                    ? ""
-                    : displayLevelName(course.level);
-                // Compute category label: first tag > non-General type > level
-                // (level goes through displayLevelName so backend sentinels
-                // like "default" never surface as a category chip)
-                const category =
-                  course.tags?.[0] ||
-                  (course.type && course.type !== "General" ? course.type : "") ||
-                  levelLabel ||
-                  "";
-                const categoryStyle = getCategoryStyle(category);
-                const courseTerm = getTerminology(
-                  ContentTerms.Course,
-                  SystemTerms.Course,
-                );
-                const courseTitle = siteT(course.title);
-                const cartOffer = siteCartOn ? cardCartOffer(card.rows, storeSale) : null;
-                // Merged versions: the price speaks for the versions that match
-                // the filters and can be bought now (null: none can — show this
-                // version's own status). Single-version cards: always null.
-                const priceView = priceViews.get(card) ?? null;
-                // The version whose price and MRP are shown when they all cost the same.
-                const priceRow = priceView && !priceView.from ? priceView.row : course;
-                // Coming Soon: ribbon, launch date in place of the price, no
-                // cart, and the CTA opens the course's notify form. The card
-                // itself still opens the details page.
-                const comingSoon = readComingSoon(course.coming_soon);
-                const launchLabel = formatLaunchDate(
-                  comingSoon?.launchDate,
-                  i18n.language,
-                );
+            {/* [slot: beforeGrid — feature 'sections'] */}
+            {slots.beforeGrid?.()}
 
-                // Determine whether the course has a real image to display
-                const hasRealImage =
-                  displayImage &&
-                  course.thumbnail &&
-                  !course.thumbnail.includes("/api/placeholder/") &&
-                  course.thumbnail.trim() !== "" &&
-                  course.thumbnail !== "null" &&
-                  course.thumbnail !== "undefined";
+            {/* [slot: gridHeading — feature 'cards'] */}
+            {slots.gridHeading?.()}
 
-                return (
-                  <div
-                    key={
-                      discovery.grouping
-                        ? `course-${card.courseId}`
-                        : course.enrollInviteId ??
-                          `${course.id}-${course.packageSessionId ?? ""}-${index}`
-                    }
-                    className={cn(
-                      "bg-catalogue-bg-elevated flex flex-col cursor-pointer border border-catalogue-border-subtle",
-                      "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
-                      render?.styles?.roundedEdges !== false
-                        ? "rounded-catalogue-lg overflow-hidden"
-                        : "rounded-none overflow-hidden",
-                    )}
-                    onClick={() => handleCourseClick(course)}
-                  >
-                    {/* ── Header band (image or gradient fallback) ── */}
-                    {displayImage && (
-                      <div
-                        className={cn(
-                          "relative h-44 overflow-hidden flex-shrink-0",
-                          // `contain` letterboxes, so give the band a surface
-                          // rather than leaving a bare gap beside the artwork.
-                          imageFit === "contain" && "bg-catalogue-bg-subtle",
-                        )}
-                      >
-                        {hasRealImage ? (
-                          /* Real image: fill the band */
-                          <div className="w-full h-full">
-                            <CourseImage
-                              previewImageUrl={course.thumbnail}
-                              alt={courseTitle}
-                              className={cn(
-                                "w-full h-full",
-                                imageFit === "contain"
-                                  ? "object-contain"
-                                  : "object-cover",
-                              )}
-                            />
-                          </div>
-                        ) : (
-                          /* No image: pastel gradient + centered icon */
-                          <div
-                            className={cn(
-                              "w-full h-full flex items-center justify-center",
-                              "bg-gradient-to-br",
-                              categoryStyle.band,
-                            )}
-                          >
-                            <BookOpen
-                              size={56}
-                              weight="duotone"
-                              className={categoryStyle.icon}
-                            />
-                          </div>
-                        )}
-                        {/* Offer badge: top-left overlay */}
-                        <div className="absolute top-3 start-3">
-                          <OfferBadge
-                            actual={priceRow.price}
-                            elevated={priceRow.elevatedPrice}
-                          />
-                        </div>
-                        {/* End corner, so it never collides with the offer badge */}
-                        {comingSoon && (
-                          <div className="absolute top-3 end-3">
-                            <ComingSoonRibbon info={comingSoon} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* ── Card body ── */}
-                    <div className="flex flex-col flex-1 p-5 gap-2">
-                      {comingSoon && !displayImage && (
-                        <ComingSoonRibbon info={comingSoon} className="self-start" />
-                      )}
-                      {/* Bestseller / Popular / New / Free (badges prop) */}
-                      {badgeRules && (
-                        <CourseBadgePills badges={displayBadges.get(card.courseId)} />
-                      )}
-                      {/* Category label */}
-                      {category && (
-                        <span
-                          className={cn(
-                            "text-xs font-bold uppercase tracking-wide",
-                            categoryStyle.text,
-                          )}
-                        >
-                          {siteT(category)}
-                        </span>
-                      )}
-
-                      {/* Title */}
-                      {displayTitle && (
-                        <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-snug">
-                          {courseTitle}
-                        </h3>
-                      )}
-
-                      {/* EN / हिं — the languages this course comes in */}
-                      {discovery.grouping && (
-                        <LanguageChips languages={card.languages} translate={siteT} />
-                      )}
-
-                      {/* Description — guard against placeholder text */}
-                      {displayDescription &&
-                        course.description &&
-                        course.description !== t("courseCatalog.noDescriptionAvailable") && (
-                          <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
-                            {siteT(course.description)}
-                          </p>
-                        )}
-
-                      {/* Spacer pushes meta row to the bottom */}
-                      <div className="flex-1" />
-
-                      {/* ── Meta footer row ── */}
-                      <div className="border-t border-gray-100 pt-3 flex items-center justify-between gap-2">
-                        {/* Left: duration + level */}
-                        <div className="flex items-center gap-3 text-xs text-gray-500 min-w-0">
-                          {course.duration && (
-                            <span className="flex items-center gap-1 shrink-0">
-                              <Clock size={13} weight="bold" aria-hidden="true" />
-                              {course.duration}
-                            </span>
-                          )}
-                          {displayLevel && levelLabel && (
-                            <span className="flex items-center gap-1 truncate">
-                              <ChartBarHorizontal size={13} weight="bold" aria-hidden="true" />
-                              {siteT(levelLabel)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Right: price (or closed/opens-soon when the invite window is not open) */}
-                        {comingSoon ? (
-                          <span className="shrink-0 text-xs font-semibold text-primary-500">
-                            {launchLabel
-                              ? t("comingSoon.launchingOn", { date: launchLabel })
-                              : t("comingSoon.ribbon")}
-                          </span>
-                        ) : displayPrice &&
-                          globalSettings?.payment?.enabled !== false &&
-                          (() => {
-                            // Merged versions at different prices: "from" the
-                            // cheapest on offer ("from Free" when it costs nothing).
-                            if (priceView?.from) {
-                              return (
-                                <div className="shrink-0">
-                                  <span className="flex items-baseline gap-1">
-                                    <span className="text-xs text-catalogue-text-muted">
-                                      {t("courseCatalog.priceFrom", "from")}
-                                    </span>
-                                    {priceView.minPrice === 0 ? (
-                                      <span className="text-xs font-bold text-success-600">
-                                        {t("courseCatalog.priceFree", "Free")}
-                                      </span>
-                                    ) : (
-                                      <PriceWithMrp
-                                        actual={priceView.minPrice}
-                                        currency={priceView.row.currency}
-                                        size="sm"
-                                        layout="inline"
-                                        hideBadge
-                                      />
-                                    )}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            // Merged versions at one price: that version's price.
-                            if (priceView) {
-                              return (
-                                <div className="shrink-0">
-                                  {priceRow.price === 0 ? (
-                                    <span className="text-xs font-bold text-success-600">
-                                      {t("courseCatalog.freeLabel")}
-                                    </span>
-                                  ) : (
-                                    <PriceWithMrp
-                                      actual={priceRow.price}
-                                      elevated={priceRow.elevatedPrice}
-                                      currency={priceRow.currency}
-                                      size="sm"
-                                      layout="inline"
-                                      hideBadge
-                                    />
-                                  )}
-                                </div>
-                              );
-                            }
-                            const availability = resolveInviteAvailability(
-                              course.enroll_invite_availability,
-                            );
-                            if (availability !== "AVAILABLE") {
-                              return (
-                                <div className="shrink-0">
-                                  <span className="text-xs font-semibold text-orange-600">
-                                    {availability === "NOT_STARTED"
-                                      ? t("courseCatalog.openSoon")
-                                      : t("courseCatalog.enrollmentClosed")}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div className="shrink-0">
-                                {course.price === 0 ? (
-                                  <span className="text-xs font-bold text-green-600">
-                                    {t("courseCatalog.freeLabel")}
-                                  </span>
-                                ) : (
-                                  <PriceWithMrp
-                                    actual={course.price}
-                                    elevated={course.elevatedPrice}
-                                    currency={course.currency}
-                                    size="sm"
-                                    layout="inline"
-                                    hideBadge
-                                  />
-                                )}
-                              </div>
-                            );
-                          })()}
-                      </div>
-
-                      {/* Cart controls (the original catalogue cart; the site-wide cart replaces it) */}
-                      {shouldShowCartControls && !comingSoon && !siteCartOn && (
-                        <div
-                          className="mt-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <CartControls
-                            course={course}
-                            globalSettings={globalSettings}
-                            cartButtonConfig={cartButtonConfig}
-                            addItem={addItem}
-                            getItemByEnrollInviteId={getItemByEnrollInviteId}
-                            updateQuantity={updateQuantity}
-                            removeItem={removeItem}
-                          />
-                        </div>
-                      )}
-
-                      {siteCartOn && !comingSoon && cartOffer && cartOffer.route !== "page" ? (
-                        <>
-                          {/* Site-wide cart: add this course (choosing its
-                              language when it has several versions) — the
-                              versions the store sells; nothing to press
-                              while the store page loads. */}
-                          {cartOffer.route === "cart" ? (
-                            <SiteCartCta
-                              instituteId={instituteId}
-                              courseId={card.courseId}
-                              versions={cartOffer.versions}
-                              purchasable={cartOffer.purchasable}
-                              title={course.title}
-                              languages={discovery.languages}
-                              translate={siteT}
-                              themeAnchor={scrollRef}
-                            />
-                          ) : (
-                            <SiteCartCtaPending />
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCourseClick(course);
-                            }}
-                            className="catalogue-btn catalogue-btn-secondary w-full"
-                          >
-                            {t("courseCatalog.viewCourse", { course: courseTerm })}
-                          </button>
-                        </>
-                      ) : (
-                        /* Keyboard-focusable CTA — also the accessible action for
-                           the whole-card mouse click above. */
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (
-                              comingSoon &&
-                              openComingSoonForm(
-                                comingSoon,
-                                t("comingSoon.notifyTitle", { title: courseTitle }),
-                              )
-                            ) {
-                              return;
-                            }
-                            handleCourseClick(course);
-                          }}
-                          className="catalogue-btn catalogue-btn-primary mt-2 w-full"
-                        >
-                          {comingSoon
-                            ? (comingSoon.buttonText && siteT(comingSoon.buttonText)) ||
-                              t("comingSoon.notifyMe")
-                            : t("courseCatalog.viewCourse", { course: courseTerm })}
-                        </button>
-                      )}
-                      {/* The primary CTA opens the form, so keep a keyboard
-                          path to the details page the card click leads to. */}
-                      {comingSoon && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCourseClick(course);
-                          }}
-                          className="catalogue-btn catalogue-btn-secondary w-full"
-                        >
-                          {t("comingSoon.viewDetails")}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Course Grid [slots: gridClassName, visibleCards, renderCard — feature 'cards'] */}
+            <div ref={gridRef} className={slots.gridClassName ?? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"}>
+              {(slots.visibleCards ?? paginatedCards).map((card, index) => renderCourseCard(card, index))}
             </div>
 
             {/* A coming-soon stream: nothing to list yet, collect interest instead */}
@@ -2547,8 +2775,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               </div>
             )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
+            {/* Pagination [slot: pagination — feature 'cards'] */}
+            {slots.pagination ? slots.pagination() : totalPages > 1 && (
               <div className="mt-8 flex flex-col items-center gap-4">
                 <nav
                   aria-label={t("courseCatalog.paginationAriaLabel")}
@@ -2617,6 +2845,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 </p>
               </div>
             )}
+
+            {/* [slot: afterGrid — feature 'sections'] */}
+            {slots.afterGrid?.()}
           </div>
         </div>
       </div>
@@ -2649,10 +2880,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           canClear={hasActiveFilters}
           onClearAll={clearAllFilters}
         >
-          {discoveryFilterGroups}
-          {legacyFilterGroups}
+          {filterGroupsNode}
         </MobileFilterSheet>
       )}
     </div>
+  );
+
+  // [slot: catalogHero — feature 'hero'] above the section root, outside scrollRef.
+  return slots.catalogHero ? (
+    <>
+      {slots.catalogHero()}
+      {section}
+    </>
+  ) : (
+    section
   );
 };

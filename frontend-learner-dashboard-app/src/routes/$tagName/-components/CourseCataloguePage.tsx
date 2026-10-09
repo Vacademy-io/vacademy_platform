@@ -33,6 +33,7 @@ import {
   type CourseFinderSelection,
 } from "./CourseFinderWizard";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
+import { withSiteThemeVars } from "../-utils/catalogue-palette";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -601,7 +602,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || 'subtle'}
       data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
-      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
+      // Opt-in theme.palette / theme.contentMaxWidth vars join the primary scale (same object when unset).
+      style={withSiteThemeVars(buildPrimaryScaleVars(themeSettings?.primaryColor), catalogueData?.globalSettings) as React.CSSProperties}
     >
       {catalogueData.globalSettings?.i18n?.enabled ? (
         // A site with languages: title/description from stable inputs (page

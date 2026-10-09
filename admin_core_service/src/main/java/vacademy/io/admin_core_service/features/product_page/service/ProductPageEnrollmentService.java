@@ -337,9 +337,11 @@ public class ProductPageEnrollmentService {
         // (₹299 for a $299 course), so it is refused here, before a user, a
         // payment log or an enrollment exists. Nothing is refused once the
         // money is taken (Razorpay Phase 2) or when nothing is charged (a free
-        // cart). When the courses name one currency it replaces whatever the
-        // request carries; when none names any, the request's value and the
-        // fallback below stand as before.
+        // cart). Free courses decide nothing (their currency is often just a
+        // default label). When the priced courses name one currency it
+        // replaces whatever the request carries; when none does (a cart of
+        // free courses only, say), the request's value and the fallback below
+        // stand as before.
         String serverCurrency = checkoutCurrency(selectedMappings, planByMappingId,
                 !isRazorpayPhase2 && finalTotal > 0.0);
         if (serverCurrency != null) {
@@ -1118,17 +1120,27 @@ public class ProductPageEnrollmentService {
      * The currency a product-page order is charged in, decided by the server
      * rather than the request.
      *
-     * Each course is charged in its invite's currency, or its plan's when the
-     * invite names none: the rule this checkout has always used for the first
-     * course, now applied to every course in the cart. When they all agree
-     * (ignoring case and blanks) that one code is the order's currency. When
-     * none names a currency the answer is null, and the caller keeps what it
-     * did before. When they disagree there is no single currency to charge:
-     * with refuseMixed that is a 409 (ConflictException), otherwise null.
+     * Each course that costs something is charged in its invite's currency,
+     * or its plan's when the invite names none: the rule this checkout has
+     * always used for the first course, now applied to every priced course in
+     * the cart. When they all agree (ignoring case and blanks) that one code
+     * is the order's currency. When none names a currency the answer is null,
+     * and the caller keeps what it did before. When they disagree there is no
+     * single currency to charge: with refuseMixed that is a 409
+     * (ConflictException), otherwise null.
      *
-     * A course whose invite and plan name different currencies is charged in
-     * its invite's, exactly as a single-course checkout of it is charged
-     * today; that misconfiguration is logged, not refused.
+     * A free course (no plan, or a plan priced 0) decides nothing. It adds
+     * nothing to the order (allocateOrderTotal gives it no share of a priced
+     * cart), and its currency is often only a default label: a free plan is
+     * created in INR by the server and in GBP by the admin app when no
+     * currency is picked. A paid AUD course and a free orientation labelled
+     * INR are one AUD order, whichever comes first. A cart of free courses
+     * only (also on a basket-priced page whose courses are all 0, where the
+     * basket sets the money) gets null, so today's fallback stands for it.
+     *
+     * A priced course whose invite and plan name different currencies is
+     * charged in its invite's, exactly as a single-course checkout of it is
+     * charged today; that misconfiguration is logged, not refused.
      *
      * Visible for testing.
      *
@@ -1141,10 +1153,13 @@ public class ProductPageEnrollmentService {
         Set<String> currencies = new TreeSet<>();
         for (ProductPageInviteMapping m : selectedMappings) {
             PackageSessionLearnerInvitationToPaymentOption bridge = m.getPsInvitePaymentOption();
-            EnrollInvite invite = bridge.getEnrollInvite();
             PaymentPlan plan = planByBridgeId.get(bridge.getId());
+            if (plan == null || plan.getActualPrice() <= 0) {
+                continue;
+            }
+            EnrollInvite invite = bridge.getEnrollInvite();
             String inviteCurrency = currencyCode(invite != null ? invite.getCurrency() : null);
-            String planCurrency = currencyCode(plan != null ? plan.getCurrency() : null);
+            String planCurrency = currencyCode(plan.getCurrency());
             if (inviteCurrency != null && planCurrency != null && !inviteCurrency.equals(planCurrency)) {
                 log.warn("Product page checkout: bridge {} is charged in its invite's currency {} "
                         + "although its plan {} is priced in {}", bridge.getId(), inviteCurrency,

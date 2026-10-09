@@ -19,11 +19,17 @@ class CatalogueSyncPlannerTest {
 
     private static final long DAY = 24L * 60 * 60 * 1000;
 
-    /** A sellable catalogue session: ACTIVE DEFAULT invite, ONE_TIME option, INR plan. */
+    /** A sellable catalogue session: ACTIVE DEFAULT invite, ONE_TIME option, INR plan priced 4999. */
     private static CatalogueSyncPlanner.Pick pick(String session) {
         return new CatalogueSyncPlanner.Pick(session, "Course " + session, "Hindi",
                 "psli-" + session, "inv-" + session, "ACTIVE", "DEFAULT", null, null, "RAZORPAY", "INR",
-                "po-" + session, "ONE_TIME", "plan-" + session, "INR");
+                "po-" + session, "ONE_TIME", "plan-" + session, 4999.0, "INR");
+    }
+
+    /** A sellable catalogue session on `vendor`, its invite and plan both in `currency`, at `price`. */
+    private static CatalogueSyncPlanner.Pick sold(String session, String vendor, String currency, double price) {
+        return with(with(with(with(pick(session), "vendor", vendor), "inviteCurrency", currency),
+                "planCurrency", currency), "price", price);
     }
 
     private static CatalogueSyncPlanner.Pick with(CatalogueSyncPlanner.Pick p, String field, Object value) {
@@ -39,14 +45,22 @@ class CatalogueSyncPlannerTest {
                 field.equals("option") ? (String) value : p.paymentOptionId(),
                 field.equals("optionType") ? (String) value : p.paymentOptionType(),
                 field.equals("plan") ? (String) value : p.paymentPlanId(),
+                field.equals("price") ? (Double) value : p.planPrice(),
                 field.equals("planCurrency") ? (String) value : p.planCurrency());
     }
 
-    /** A healthy existing mapping on the catalogue's own bridge row and plan for its session. */
+    /** A healthy existing mapping on the catalogue's own bridge row and plan (priced 4999) for its session. */
     private static CatalogueSyncPlanner.Row row(String mappingId, int order, String session) {
         return new CatalogueSyncPlanner.Row(mappingId, order, session, "Course " + session, "Hindi",
                 "psli-" + session, "ACTIVE", "inv-" + session, "ACTIVE", null, null, "RAZORPAY", "INR",
-                true, "ACTIVE", "ONE_TIME", "plan-" + session, true, "ACTIVE", "INR");
+                true, "ACTIVE", "ONE_TIME", "plan-" + session, true, "ACTIVE", 4999.0, "INR");
+    }
+
+    /** A healthy existing mapping on `vendor`, its invite and plan both in `currency`, at `price`. */
+    private static CatalogueSyncPlanner.Row rowSold(String mappingId, int order, String session, String vendor,
+                                                    String currency, double price) {
+        return rowWith(rowWith(rowWith(rowWith(row(mappingId, order, session), "vendor", vendor),
+                "inviteCurrency", currency), "planCurrency", currency), "price", price);
     }
 
     private static CatalogueSyncPlanner.Row rowWith(CatalogueSyncPlanner.Row r, String field, Object value) {
@@ -66,6 +80,7 @@ class CatalogueSyncPlannerTest {
                 field.equals("plan") ? (String) value : r.planId(),
                 field.equals("planFound") ? (Boolean) value : r.planFound(),
                 field.equals("planStatus") ? (String) value : r.planStatus(),
+                field.equals("price") ? (Double) value : r.planPrice(),
                 field.equals("planCurrency") ? (String) value : r.planCurrency());
     }
 
@@ -612,6 +627,74 @@ class CatalogueSyncPlannerTest {
         assertEquals(List.of("stripeusd:" + CatalogueSyncPlanner.CURRENCY_MISMATCH), skippedReasons(plan));
         assertEquals(new CatalogueSyncPlanner.Terms("RAZORPAY", "INR"),
                 CatalogueSyncPlanner.pageTerms(rows, picks.subList(1, 3)));
+    }
+
+    /* ── free courses: charged nothing, so their currency decides nothing ── */
+
+    @Test
+    @DisplayName("an empty page whose first catalogue course is free and labelled INR still adds the paid AUD courses")
+    void freeFirstCourseDoesNotSetAnEmptyPagesCurrency() {
+        // Free plans are created in INR by the server, so a free course's label says nothing.
+        List<CatalogueSyncPlanner.Pick> picks = List.of(
+                sold("a-intro", "EWAY", "INR", 0),
+                sold("physics", "EWAY", "AUD", 499),
+                sold("chemistry", "EWAY", "AUD", 399));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(List.of(), picks, true);
+
+        assertEquals(List.of("a-intro", "physics", "chemistry"), addedSessions(plan));
+        assertTrue(plan.skipped().isEmpty(), plan.skipped().toString());
+        assertEquals(new CatalogueSyncPlanner.Terms("EWAY", "AUD"), CatalogueSyncPlanner.pageTerms(List.of(), picks));
+        assertTrue(plan.warnings().isEmpty(), plan.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("free courses join a priced page whatever their currency labels; their gateway is still checked")
+    void freeCoursesJoinAPricedPage() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(rowSold("m1", 0, "a", "EWAY", "AUD", 499));
+        List<CatalogueSyncPlanner.Pick> picks = List.of(sold("a", "EWAY", "AUD", 499),
+                sold("freeinr", "EWAY", "INR", 0),
+                // Invite and plan disagree, but nothing is charged in either.
+                with(sold("freesplit", "EWAY", "INR", 0), "planCurrency", "GBP"),
+                with(sold("noprice", "EWAY", "INR", 0), "price", null),
+                // The first course in a cart picks the gateway, free or not.
+                sold("freestripe", "STRIPE", "INR", 0),
+                sold("paidinr", "EWAY", "INR", 999),
+                sold("paidaud", "EWAY", "AUD", 399));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(List.of("freeinr", "freesplit", "noprice", "paidaud"), addedSessions(plan));
+        assertEquals(List.of(
+                "freestripe:" + CatalogueSyncPlanner.VENDOR_MISMATCH,
+                "paidinr:" + CatalogueSyncPlanner.CURRENCY_MISMATCH), skippedReasons(plan));
+        assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("currency")), plan.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("a free row first on the page sets its gateway but not its currency, and is not warned about")
+    void freeRowDoesNotSetThePageCurrency() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(
+                rowWith(rowSold("m1", 0, "a", "EWAY", "INR", 0), "planCurrency", "GBP"),
+                rowSold("m2", 1, "b", "EWAY", "AUD", 499));
+        List<CatalogueSyncPlanner.Pick> picks = List.of(
+                with(sold("a", "EWAY", "INR", 0), "planCurrency", "GBP"),
+                sold("b", "EWAY", "AUD", 499),
+                sold("paidaud", "EWAY", "AUD", 399),
+                sold("paidinr", "EWAY", "INR", 399),
+                sold("stripe", "STRIPE", "AUD", 399));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(List.of("paidaud"), addedSessions(plan));
+        assertEquals(List.of(
+                "paidinr:" + CatalogueSyncPlanner.CURRENCY_MISMATCH,
+                "stripe:" + CatalogueSyncPlanner.VENDOR_MISMATCH), skippedReasons(plan));
+        assertEquals(new CatalogueSyncPlanner.Terms("EWAY", "AUD"),
+                CatalogueSyncPlanner.pageTerms(rows, picks.subList(2, 5)));
+        // Checkout charges the free row nothing, so the page is not mixed, and its labels are not a price.
+        assertTrue(plan.warnings().stream().noneMatch(w -> w.contains("currency")), plan.warnings().toString());
+        assertTrue(plan.deactivations().isEmpty());
     }
 
     @Test

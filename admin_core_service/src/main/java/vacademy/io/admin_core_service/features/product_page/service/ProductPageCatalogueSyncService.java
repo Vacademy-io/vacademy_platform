@@ -192,6 +192,7 @@ public class ProductPageCatalogueSyncService {
                 mapping.getPaymentPlanId(),
                 plan != null,
                 plan != null ? plan.getStatus() : null,
+                plan != null ? Double.valueOf(plan.getActualPrice()) : null,
                 plan != null ? plan.getCurrency() : null);
     }
 
@@ -211,6 +212,7 @@ public class ProductPageCatalogueSyncService {
                 row.getPaymentOptionId(),
                 row.getPaymentOptionType(),
                 row.getPaymentPlanId(),
+                row.getActualPrice(),
                 row.getPlanCurrency());
     }
 }

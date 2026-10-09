@@ -260,6 +260,71 @@ class ProductPageEnrollmentCurrencyTest {
         verifyNoInteractions(paymentService);
     }
 
+    /* ── free courses decide nothing ───────────────────────────────────── */
+
+    @Test
+    @DisplayName("a paid AUD course and a free course labelled INR are one AUD order, not a 409")
+    void freeCourseBesideAPaidOneIsNotAMix() {
+        // The server creates a free plan in INR, and a default invite copies it.
+        course("a", 499, "EWAY", "AUD", "AUD");
+        course("free", 0, "EWAY", "INR", "INR");
+
+        ProductPageEnrollResponse res = service.enrollForProductPage(checkout("EWAY", "AUD", "a", "free"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("AUD", charged.getCurrency());
+        assertEquals(499.0, charged.getAmount());
+        assertEquals(List.of("ps-a", "ps-free"), res.getEnrolledPackageSessionIds());
+    }
+
+    @Test
+    @DisplayName("a free course first in the cart does not set the currency: the paid course's does")
+    void freeCourseFirstDoesNotSetTheCurrency() {
+        course("free", 0, "EWAY", "INR", "INR");
+        course("a", 499, "EWAY", "AUD", "AUD");
+
+        // The learner app sends the page's currency, read from its first course.
+        service.enrollForProductPage(checkout("EWAY", "INR", "free", "a"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("AUD", charged.getCurrency());
+        assertEquals(499.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("a basket-priced page whose courses are all free is never refused, and keeps the first course's currency")
+    void basketOfFreeCoursesIsNeverRefused() {
+        // FLAT basket pricing: every course is 0 and the basket sets the money.
+        // Their labels disagree (the admin app writes GBP when no currency is picked).
+        course("x", 0, "STRIPE", "INR", "INR");
+        course("y", 0, "STRIPE", null, "GBP");
+        when(basketPricingCalculator.price(any(), any())).thenReturn(new BasketPricingCalculator.BasketPrice(799, 0));
+
+        service.enrollForProductPage(checkout("STRIPE", "INR", "x", "y"));
+
+        PaymentInitiationRequestDTO charged = charged();
+        assertEquals("INR", charged.getCurrency());
+        assertEquals(799.0, charged.getAmount());
+    }
+
+    @Test
+    @DisplayName("the rule ignores free courses: no plan, or a plan priced 0")
+    void checkoutCurrencyIgnoresFreeCourses() {
+        ProductPageInviteMapping paid = course("p", 10, null, "AUD", "AUD");
+        ProductPageInviteMapping free = course("f", 0, null, "INR", "INR");
+        ProductPageInviteMapping freeGbp = course("g", 0, null, null, "GBP");
+        ProductPageInviteMapping noPlan = course("n", 10, null, "USD", "USD");
+        Map<String, PaymentPlan> byBridge = new HashMap<>();
+        for (ProductPageInviteMapping m : List.of(paid, free, freeGbp)) {
+            byBridge.put(m.getPsInvitePaymentOption().getId(), plans.get(m.getPaymentPlanId()));
+        }
+
+        assertEquals("AUD", ProductPageEnrollmentService.checkoutCurrency(List.of(free, paid, freeGbp), byBridge, true));
+        assertEquals("AUD", ProductPageEnrollmentService.checkoutCurrency(List.of(paid, noPlan), byBridge, true));
+        // Free courses only: nothing decides, and nothing is refused.
+        assertNull(ProductPageEnrollmentService.checkoutCurrency(List.of(free, freeGbp), byBridge, true));
+    }
+
     /* ── the server decides the currency ───────────────────────────────── */
 
     @Test

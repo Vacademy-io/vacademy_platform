@@ -140,6 +140,7 @@ class ProductPageCatalogueSyncServiceTest {
         PaymentPlan plan = new PaymentPlan();
         plan.setId("plan-" + session);
         plan.setStatus("ACTIVE");
+        plan.setActualPrice(4999);
         plan.setCurrency("INR");
         plans.put(plan.getId(), plan);
         active.add(m);
@@ -170,6 +171,7 @@ class ProductPageCatalogueSyncServiceTest {
         values.put("PaymentOptionId", "po-" + session);
         values.put("PaymentOptionType", "ONE_TIME");
         values.put("PaymentPlanId", "plan-" + session);
+        values.put("ActualPrice", 4999.0);
         values.put("PlanCurrency", "INR");
         values.putAll(overrides);
         catalogue.add((ProductPageCatalogueSessionRow) Proxy.newProxyInstance(
@@ -375,6 +377,21 @@ class ProductPageCatalogueSyncServiceTest {
     }
 
     @Test
+    @DisplayName("an empty page whose first catalogue course is free and labelled INR still gets the paid AUD courses")
+    void freeFirstCourseDoesNotSetTheCurrency() {
+        // The institute's seeded free plan is INR; its paid courses are AUD on Eway.
+        catalogueRow("a-intro", Map.of("ActualPrice", 0.0, "InviteVendor", "EWAY"));
+        catalogueRow("b-physics", Map.of("InviteVendor", "EWAY", "InviteCurrency", "AUD", "PlanCurrency", "AUD"));
+        catalogueRow("c-chemistry", Map.of("InviteVendor", "EWAY", "InviteCurrency", "AUD", "PlanCurrency", "AUD"));
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        assertEquals(List.of("a-intro", "b-physics", "c-chemistry"), res.getAddedPackageSessionIds());
+        assertTrue(res.getSkipped().isEmpty());
+        assertEquals(3, saved().size());
+    }
+
+    @Test
     @DisplayName("the catalogue is read with the statuses the public v2 search uses")
     void readsTheV2CatalogueScope() {
         service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
@@ -409,7 +426,10 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals(start, dated.inviteStartDate());
         assertEquals(end, dated.inviteEndDate());
         assertTrue(row.planFound());
-        assertFalse(ProductPageCatalogueSyncService.toRow(m, Map.of()).planFound());
+        assertEquals(4999.0, row.planPrice());
+        CatalogueSyncPlanner.Row noPlan = ProductPageCatalogueSyncService.toRow(m, Map.of());
+        assertFalse(noPlan.planFound());
+        assertNull(noPlan.planPrice());
     }
 
     @Test
@@ -425,6 +445,7 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals("DEFAULT", pick.inviteTag());
         assertEquals("ONE_TIME", pick.paymentOptionType());
         assertEquals("plan-a", pick.paymentPlanId());
+        assertEquals(4999.0, pick.planPrice());
         assertEquals("INR", pick.planCurrency());
         assertEquals("RAZORPAY", pick.inviteVendor());
         assertEquals("Hindi", pick.levelName());

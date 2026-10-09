@@ -38,6 +38,11 @@ import java.util.TreeSet;
  *       ones the learner page shows); on an empty page, the first course
  *       added. Courses already on the page are never changed by this; mixed
  *       ones are reported in the warnings.</li>
+ *   <li>A free course (plan price 0) is charged nothing, so only its gateway
+ *       counts: the first course in a cart still picks the gateway. Its
+ *       currency is often only a default label (free plans are created in
+ *       INR, or GBP by the admin app), so it neither sets the page's currency
+ *       nor keeps the course off the page, exactly as checkout ignores it.</li>
  *   <li>With deactivateMissing: a mapping whose session left the catalogue is
  *       switched off, and so is one sold through an inactive bridge row,
  *       payment option or plan, or a closed invite (inactive, not started,
@@ -78,7 +83,8 @@ final class CatalogueSyncPlanner {
     record Pick(String packageSessionId, String packageName, String levelName,
                 String psliId, String inviteId, String inviteStatus, String inviteTag,
                 Date inviteStartDate, Date inviteEndDate, String inviteVendor, String inviteCurrency,
-                String paymentOptionId, String paymentOptionType, String paymentPlanId, String planCurrency) {
+                String paymentOptionId, String paymentOptionType, String paymentPlanId, Double planPrice,
+                String planCurrency) {
     }
 
     /** An ACTIVE mapping already on the page, with the state of everything it sells through. */
@@ -87,7 +93,7 @@ final class CatalogueSyncPlanner {
                String inviteId, String inviteStatus, Date inviteStartDate, Date inviteEndDate,
                String inviteVendor, String inviteCurrency,
                boolean paymentOptionFound, String paymentOptionStatus, String paymentOptionType,
-               String planId, boolean planFound, String planStatus, String planCurrency) {
+               String planId, boolean planFound, String planStatus, Double planPrice, String planCurrency) {
     }
 
     /** How the gateway warning names invites that set none (checkout then uses the institute's default). */
@@ -188,12 +194,13 @@ final class CatalogueSyncPlanner {
     /**
      * What the page charges through: the first remaining row's gateway, as
      * the learner page shows it (by-code reads its first mapping), and the
-     * first currency a remaining row names (invite currency, else plan
-     * currency: the order checkout reads them in). A page with no rows left
-     * takes its gateway from the first course that can be added to it, and a
-     * page whose rows name no currency takes its currency from the first
-     * course on that gateway naming one, so the course that decides always
-     * goes in. Visible for testing.
+     * first currency a remaining priced row names (invite currency, else
+     * plan currency: the order checkout reads them in). A page with no rows
+     * left takes its gateway from the first course that can be added to it,
+     * and a page whose priced rows name no currency takes its currency from
+     * the first priced course on that gateway naming one, so the course that
+     * decides always goes in. A free course can set the gateway, never the
+     * currency. Visible for testing.
      */
     static Terms pageTerms(List<Row> kept, List<Pick> candidates) {
         List<Pick> sellable = new ArrayList<>();
@@ -204,10 +211,12 @@ final class CatalogueSyncPlanner {
                 : !sellable.isEmpty() ? code(sellable.get(0).inviteVendor()) : null;
         String currency = null;
         for (Row row : kept) {
+            if (!priced(row.planPrice())) continue;
             currency = firstCode(row.inviteCurrency(), row.planCurrency());
             if (currency != null) return new Terms(vendor, currency);
         }
         for (Pick pick : sellable) {
+            if (!priced(pick.planPrice())) continue;
             // A course on another gateway is skipped anyway; it decides nothing.
             if (!Objects.equals(code(pick.inviteVendor()), vendor)) continue;
             currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
@@ -221,11 +230,12 @@ final class CatalogueSyncPlanner {
      * it can. Checkout charges a whole cart in one currency through one
      * gateway, so a course on any other would be charged wrongly or fail. A
      * course whose invite and plan disagree on the currency would be charged
-     * its plan's price in its invite's currency, whatever the page.
+     * its plan's price in its invite's currency, whatever the page. A free
+     * course is charged nothing, so only its gateway is checked.
      */
     static String termsReason(Pick pick, Terms page) {
         if (mixedCurrencies(pick)) return CURRENCY_MISMATCH;
-        String currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
+        String currency = priced(pick.planPrice()) ? firstCode(pick.inviteCurrency(), pick.planCurrency()) : null;
         if (currency != null && page.currency() != null && !currency.equals(page.currency())) {
             return CURRENCY_MISMATCH;
         }
@@ -233,10 +243,21 @@ final class CatalogueSyncPlanner {
         return null;
     }
 
+    /** A priced course whose invite and plan name different currencies. A free one is charged in neither. */
     private static boolean mixedCurrencies(Pick pick) {
+        if (!priced(pick.planPrice())) return false;
         String invite = code(pick.inviteCurrency());
         String plan = code(pick.planCurrency());
         return invite != null && plan != null && !invite.equals(plan);
+    }
+
+    /**
+     * A course that costs something. A free one (price 0, or no plan) is
+     * charged nothing, so its currency decides nothing: the rule checkout
+     * uses (ProductPageEnrollmentService.checkoutCurrency).
+     */
+    private static boolean priced(Double price) {
+        return price != null && price > 0;
     }
 
     /** Why a catalogue session cannot be sold from a product page; null when it can. */
@@ -309,17 +330,22 @@ final class CatalogueSyncPlanner {
         for (Row row : kept) {
             defaultGateway |= blank(row.inviteVendor());
             addCode(vendors, row.inviteVendor());
-            addCode(currencies, firstCode(row.inviteCurrency(), row.planCurrency()));
-            String invite = code(row.inviteCurrency());
-            String plan = code(row.planCurrency());
-            if (invite != null && plan != null && !invite.equals(plan)) {
-                splitCurrency.add(label(row.packageName(), row.levelName()));
+            // A free course is charged nothing: checkout ignores its currency.
+            if (priced(row.planPrice())) {
+                addCode(currencies, firstCode(row.inviteCurrency(), row.planCurrency()));
+                String invite = code(row.inviteCurrency());
+                String plan = code(row.planCurrency());
+                if (invite != null && plan != null && !invite.equals(plan)) {
+                    splitCurrency.add(label(row.packageName(), row.levelName()));
+                }
             }
         }
         for (Add add : adds) {
             defaultGateway |= blank(add.pick().inviteVendor());
             addCode(vendors, add.pick().inviteVendor());
-            addCode(currencies, firstCode(add.pick().inviteCurrency(), add.pick().planCurrency()));
+            if (priced(add.pick().planPrice())) {
+                addCode(currencies, firstCode(add.pick().inviteCurrency(), add.pick().planCurrency()));
+            }
         }
         List<String> gateways = new ArrayList<>(vendors);
         if (defaultGateway && !vendors.isEmpty()) gateways.add(DEFAULT_GATEWAY_LABEL);

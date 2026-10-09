@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { enrollCpoForProductPage } from '../-services/product-page-service';
+import { enrollCpoForProductPage, handleGetProductPage } from '../-services/product-page-service';
+import { checkoutErrorOf } from '../-utils/checkout-error';
 import {
     fetchCpoSchedule,
     fetchCpoDues,
@@ -30,6 +32,9 @@ interface CpoInstallmentsCheckoutStepProps {
     onBack: () => void;
     onSuccess: () => void;
 }
+
+/** A failure this step explains itself, in words already translated. */
+class CpoStepError extends Error {}
 
 export const CpoInstallmentsCheckoutStep = ({
     pageData,
@@ -81,6 +86,33 @@ export const CpoInstallmentsCheckoutStep = ({
     );
 
     const payAmount = cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
+
+    const queryClient = useQueryClient();
+    const priceChangedMessage = t(
+        'common.priceChangedReload',
+        'The price of a course in your cart has changed. Please review your cart and try again.'
+    );
+    /**
+     * Why a payment step failed, as the combined checkout says it
+     * (checkoutErrorOf): the server's own words when they were written for the
+     * learner, else `fallback` — never the transport's "Request failed with
+     * status code …". A 409 means the plan on this page changed since it
+     * loaded (the server refuses the plan id the step sent): the page is
+     * fetched again, so a retry sends the mapping's current plan.
+     */
+    const failPayment = (err: unknown, fallback: string) => {
+        if (err instanceof CpoStepError) {
+            setPaymentError(err.message);
+            return;
+        }
+        const { message, priceChanged } = checkoutErrorOf(err, fallback, priceChangedMessage);
+        setPaymentError(message);
+        if (priceChanged) {
+            void queryClient.invalidateQueries({
+                queryKey: handleGetProductPage(pageData.code, pageData.institute_id).queryKey,
+            });
+        }
+    };
 
     // On mount: fetch the CPO installment template (before enrollment)
     useEffect(() => {
@@ -139,7 +171,7 @@ export const CpoInstallmentsCheckoutStep = ({
         }
 
         if (!currentUserId || !currentUserPlanId) {
-            throw new Error(t('cpoInstallments.enrollmentDataMissingRetryLater'));
+            throw new CpoStepError(t('cpoInstallments.enrollmentDataMissingRetryLater'));
         }
 
         // Fetch actual SFP rows to get their IDs
@@ -149,7 +181,7 @@ export const CpoInstallmentsCheckoutStep = ({
             .map((d) => d.id);
 
         if (pendingSfpIds.length === 0) {
-            throw new Error(t('cpoInstallments.noPendingInstallmentsFound'));
+            throw new CpoStepError(t('cpoInstallments.noPendingInstallmentsFound'));
         }
 
         await buildPayRequest(currentUserId, currentUserPlanId, pendingSfpIds);
@@ -183,7 +215,7 @@ export const CpoInstallmentsCheckoutStep = ({
                 }
             });
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('common.couldNotInitiatePayment'));
+            failPayment(err, t('common.couldNotInitiatePayment'));
         } finally {
             setIsProcessing(false);
         }
@@ -200,7 +232,7 @@ export const CpoInstallmentsCheckoutStep = ({
             // Read from ref — always up-to-date even if this closure is stale
             const enrolled = enrolledDataRef.current;
             if (!enrolled?.userId || !enrolled?.userPlanId) {
-                throw new Error(t('cpoInstallments.enrollmentDataMissingRetry'));
+                throw new CpoStepError(t('cpoInstallments.enrollmentDataMissingRetry'));
             }
             const sfpDues = await fetchCpoDues({ userId: enrolled.userId, userPlanId: enrolled.userPlanId });
             const pendingSfpIds = sfpDues
@@ -222,7 +254,7 @@ export const CpoInstallmentsCheckoutStep = ({
             void clearPurchasedFromSiteCart([pageData.institute_id], cpoSessionIds);
             onSuccess();
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('cpoInstallments.paymentConfirmationFailed'));
+            failPayment(err, t('cpoInstallments.paymentConfirmationFailed'));
         } finally {
             setIsProcessing(false);
         }
@@ -271,7 +303,7 @@ export const CpoInstallmentsCheckoutStep = ({
                 }
             });
         } catch (err) {
-            setPaymentError(err instanceof Error ? err.message : t('common.genericPaymentFailed'));
+            failPayment(err, t('common.genericPaymentFailed'));
         } finally {
             setIsProcessing(false);
         }

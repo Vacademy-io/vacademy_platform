@@ -47,6 +47,24 @@ export interface FolderNode {
     display_order: number;
     status: FolderNodeStatus;
     view?: FolderView | null;
+    /** URL-safe id used in links (?stream=shiksha). Unique within the library. */
+    slug?: string | null;
+    /** The course tag this folder stands for (filters the Courses page); defaults to the slug. */
+    course_tag?: string | null;
+    /** Second line under the title — e.g. the English name under a Hindi title ("EDUCATION"). */
+    subtitle?: string | null;
+    /** Headline shown when the folder is featured (mega menu detail panel). */
+    tagline?: string | null;
+    /** Call-to-action label, e.g. "Explore Education". */
+    cta_label?: string | null;
+    /** Where the folder (or its CTA) links: a site route like /courses?stream=shiksha, or a full URL. */
+    link_url?: string | null;
+    /** Hex colour behind the folder's image/icon. */
+    accent_color?: string | null;
+    /** Shown but not open yet: clicking collects the visitor's email for audience_id. */
+    coming_soon?: boolean;
+    /** Audience (lead campaign) that collects "notify me" sign-ups for a coming-soon folder. */
+    audience_id?: string | null;
     children: FolderNode[];
 }
 
@@ -66,6 +84,16 @@ export interface FolderNodeInput {
     status?: FolderNodeStatus;
     /** {} clears the folder's display override. */
     view?: FolderView;
+    /** '' clears a text field; coming_soon false/true sets the flag. */
+    slug?: string;
+    course_tag?: string;
+    subtitle?: string;
+    tagline?: string;
+    cta_label?: string;
+    link_url?: string;
+    accent_color?: string;
+    coming_soon?: boolean;
+    audience_id?: string;
 }
 
 const params = (instituteId: string, extra: Record<string, string> = {}) => ({ instituteId, ...extra });

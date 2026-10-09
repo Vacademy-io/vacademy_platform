@@ -1,4 +1,8 @@
 // Updated to support layout configuration
+import type { CatalogueI18nSettings } from "../-utils/catalogue-i18n";
+import type { CourseLanguageSettings } from "../-utils/course-variants";
+import type { SiteCartSettings } from "../-utils/site-cart";
+import type { VisibleWhenRule } from "../-utils/catalogue-url-state";
 
 /**
  * A single tier in a quantity-based additional charge (e.g. shipping).
@@ -153,6 +157,25 @@ export interface GlobalSettings {
     levelGroups?: Record<string, string[]>;
   };
   communityJoinLink?: string;
+  /**
+   * Site content languages (हिन्दी / EN switcher). The site is authored in
+   * `defaultLocale`; every other language is a dictionary of translations
+   * keyed by the source text — see -utils/catalogue-i18n.ts. Absent = a
+   * single-language site, rendered exactly as before.
+   */
+  i18n?: CatalogueI18nSettings;
+  /**
+   * How a course's language versions are told apart. Versions are LEVELS
+   * ("Hindi", "Beginner English"); these rules read the language out of the
+   * level name so the catalogue can show one card per course with EN / हिं
+   * chips. See -utils/course-variants.ts.
+   */
+  courseLanguages?: CourseLanguageSettings;
+  /**
+   * One site-wide course cart whose checkout is the store product page's.
+   * See -utils/site-cart.ts. Absent = the original catalogue cart.
+   */
+  siteCart?: SiteCartSettings;
   layout?: {
     header?: {
       id: string;
@@ -211,11 +234,19 @@ export interface Page {
   components: Component[];
 }
 
+export type { VisibleWhenRule };
+
 export interface Component {
   id: string;
   type: string;
   enabled: boolean;
   props: Record<string, any>;
+  /**
+   * Show the section only for certain query strings, e.g. the "Start free"
+   * block on the unfiltered Courses view: [{ param: "stream", op: "empty" }].
+   * Absent = always shown (see evaluateVisibleWhen).
+   */
+  visibleWhen?: VisibleWhenRule[];
 }
 
 export interface IntroPage {

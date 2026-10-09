@@ -305,8 +305,33 @@ describe("learningPath and the site's store page", () => {
   });
 
   it("falls back to the path's own checkout when the store page cannot load", () => {
-    storeOverride.current = { status: "error", sells: () => false };
+    storeOverride.current = { status: "error", sells: () => false, lists: () => false };
     const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings });
+    expect(html).toContain("Enrol in this path");
+    expect(html).toContain(OWN_CHECKOUT);
+    expect(html).not.toContain("Add whole path to cart");
+  });
+
+  it("adds the path to the cart when its page is the store page itself, even with a course listed twice", () => {
+    Object.assign(initial, { instituteId: INSTITUTE, hydrated: true, items: [] });
+    // The store lists C1 in English twice (two plans): its own checkout would
+    // select both and charge C1 twice; the cart's pre-check holds it back.
+    const storeAsPath = {
+      ...page,
+      code: STORE,
+      mappings: [...page.mappings, { ...mapping("c1", "c1-en", "English", 450, 3), id: "m-c1-en-b", ps_invite_payment_option_id: "b-c1-en-b" }],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE], storeAsPath);
+    const html = render({ productPageCode: STORE, addAllLabel: "", globalSettings: settings }, page, null, client);
+    expect(html).toContain("Add whole path to cart");
+    expect(html).not.toContain("Enrol in this path");
+    expect(html).not.toContain("/product-pages/STORE?");
+  });
+
+  it("keeps the path's own checkout for a course the store lists twice when the path's page sells it as it is", () => {
+    Object.assign(initial, { instituteId: INSTITUTE, hydrated: true, items: [] });
+    const html = render({ productPageCode: CODE, addAllLabel: "", globalSettings: settings }, page, ["c1-en", "c1-en", "c2-hi"]);
     expect(html).toContain("Enrol in this path");
     expect(html).toContain(OWN_CHECKOUT);
     expect(html).not.toContain("Add whole path to cart");

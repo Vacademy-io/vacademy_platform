@@ -234,11 +234,45 @@ describe("productPageOffer, the site cart and its store page", () => {
   });
 
   it("links every course to this page's checkout when the store page cannot load", () => {
-    overrides.store = { status: "error", sells: () => false };
+    overrides.store = { status: "error", sells: () => false, lists: () => false };
     const html = render({ globalSettings: siteCart, tagName: "site" });
     expect(enrolCount(html)).toBe(2);
     expect(addCount(html)).toBe(0);
     expect(html).toContain(`href="${OWN_CHECKOUT_B}"`);
+  });
+
+  /** The store page listing course A (ps-1) twice — two plans, say — and course B once. */
+  const STORE_LISTING_A_TWICE = {
+    id: "store",
+    code: STORE,
+    name: "Store",
+    mappings: [
+      { ...mapping("ps-1", "A", 0), id: "s-1a", ps_invite_payment_option_id: "plan-1a" },
+      { ...mapping("ps-1", "A", 1), id: "s-1b", ps_invite_payment_option_id: "plan-1b" },
+      { ...mapping("ps-2", "B", 2), id: "s-2" },
+    ],
+  };
+
+  it("adds a course the store lists twice to the site cart when the section shows the store page itself", () => {
+    // Its own checkout would select both of A's plans and charge it twice;
+    // the cart's pre-check holds A back and says why instead.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE], STORE_LISTING_A_TWICE);
+    const html = render({ productPageCode: STORE, globalSettings: siteCart, tagName: "site" }, null, client);
+    expect(addCount(html)).toBe(3);
+    expect(enrolCount(html)).toBe(0);
+    expect(html).not.toContain("/product-pages/STORE?");
+  });
+
+  it("links a course the store lists twice to this page's checkout when this page sells it as it is", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["PRODUCT_PAGE_BY_CODE", STORE, INSTITUTE], STORE_LISTING_A_TWICE);
+    const html = render({ globalSettings: siteCart, tagName: "site" }, null, client);
+    expect(addCount(html)).toBe(1);
+    expect(enrolCount(html)).toBe(1);
+    expect(html).toContain(
+      'href="/product-pages/OFFER?instituteId=inst-1&amp;tagName=site&amp;courseIds=ps-1&amp;defaultTab=CART"',
+    );
   });
 
   it("keeps its own basket, reads no store page and links nothing new on a site without a site cart", () => {

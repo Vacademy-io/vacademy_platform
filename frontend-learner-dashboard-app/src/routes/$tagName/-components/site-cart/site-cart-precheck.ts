@@ -76,16 +76,15 @@ const activeBySession = (storeMappings: StoreMappingLike[] | null | undefined) =
 };
 
 /**
- * The versions the store checkout can sell as they are: exactly one ACTIVE
- * mapping each (none is "not in the store", two would charge it twice) — the
- * rule the pre-check applies to every cart item.
+ * How many ACTIVE mappings a product page has for each version it lists. Its
+ * checkout sells a version with exactly one as it is; none is "not on sale",
+ * and two or more would charge it twice — the rule the pre-check applies to
+ * every cart item.
  */
-export const storeSellableSessions = (storeMappings: StoreMappingLike[] | null | undefined): Set<string> => {
-  const sellable = new Set<string>();
-  for (const [id, matches] of activeBySession(storeMappings)) {
-    if (matches.length === 1) sellable.add(id);
-  }
-  return sellable;
+export const activeMappingCounts = (mappings: StoreMappingLike[] | null | undefined): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const [id, matches] of activeBySession(mappings)) counts.set(id, matches.length);
+  return counts;
 };
 
 export const precheckSiteCart = (

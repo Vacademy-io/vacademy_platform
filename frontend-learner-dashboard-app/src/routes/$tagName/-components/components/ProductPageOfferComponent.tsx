@@ -48,7 +48,7 @@ import { isSiteCartEnabled } from "../../-utils/site-cart";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { cartItemFromMapping } from "../site-cart/site-cart-items";
-import { storeCartRoute } from "../site-cart/store-sale";
+import { pageSells, storeCartRoute } from "../site-cart/store-sale";
 import { useStoreSale } from "../site-cart/use-store-sale";
 import {
   useFallbackCartReopen,
@@ -398,8 +398,10 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const notifySiteCart = useSiteCartNotifier();
   // The site cart checks out through the store page, so only a course the
   // store sells goes in; any other keeps a link to THIS page's checkout (its
-  // own prices and coupons) instead of an add that could never be paid for.
+  // own prices and coupons) instead of an add that could never be paid for —
+  // unless this page would charge it twice too (see storeCartRoute).
   const storeSale = useStoreSale(instituteId, globalSettings?.siteCart, siteCartOn);
+  const ownPageSells = useMemo(() => pageSells(data?.mappings), [data]);
   const { enabled: languagesEnabled, locale, baseLocale } = useCatalogueLocale();
   const siteLang = languagesEnabled && locale !== baseLocale ? locale : undefined;
   const cartLanguages = useMemo(
@@ -1005,7 +1007,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           </Link>
         );
         // Site-cart mode: into the site cart only when the store sells it.
-        const cartRoute = siteCartOn ? storeCartRoute(storeSale, [m.package_session_id]) : null;
+        const cartRoute = siteCartOn ? storeCartRoute(storeSale, [m.package_session_id], ownPageSells) : null;
 
         // The details page carries productPageCode so ITS enrol CTA re-enters
         // this exact checkout instead of the standalone enroll-invite dialog.

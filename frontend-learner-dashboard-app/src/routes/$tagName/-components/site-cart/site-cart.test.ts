@@ -12,11 +12,11 @@ import {
   versionLabel,
 } from "./site-cart-items";
 import {
+  activeMappingCounts,
   canCheckOutDirectly,
   precheckSiteCart,
   readyAtStorePrices,
   reviewSummary,
-  storeSellableSessions,
   unavailableSessionIds,
 } from "./site-cart-precheck";
 import { CLOSED_DRAWER_THEME, nextDrawerTheme, readCatalogueTheme } from "./catalogue-theme-snapshot";
@@ -327,9 +327,9 @@ describe("precheckSiteCart", () => {
   });
 });
 
-describe("storeSellableSessions", () => {
-  it("is the versions with exactly one ACTIVE mapping (the pre-check's rule)", () => {
-    const sellable = storeSellableSessions([
+describe("activeMappingCounts", () => {
+  it("counts each version's ACTIVE mappings (one sells as it is, two would charge it twice)", () => {
+    const counts = activeMappingCounts([
       mapping("one"),
       mapping("twice"),
       mapping("twice"),
@@ -338,8 +338,8 @@ describe("storeSellableSessions", () => {
       mapping("revived"),
       { package_session_id: null, status: "ACTIVE" },
     ]);
-    expect([...sellable].sort()).toEqual(["one", "revived"]);
-    expect(storeSellableSessions(null).size).toBe(0);
+    expect(Object.fromEntries(counts)).toEqual({ one: 1, twice: 2, revived: 1 });
+    expect(activeMappingCounts(null).size).toBe(0);
   });
 });
 

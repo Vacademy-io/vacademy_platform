@@ -31,7 +31,7 @@ import { CourseThumbnail } from "../site-cart/CourseThumbnail";
 import { SiteCartDrawer } from "../site-cart/SiteCartDrawer";
 import { openSiteCartDrawer } from "../site-cart/site-cart-events";
 import { isMeaningfulLevel } from "../site-cart/site-cart-items";
-import { storeCartRoute } from "../site-cart/store-sale";
+import { pageSells, storeCartRoute } from "../site-cart/store-sale";
 import { useFallbackCartReopen, useSiteCart, useSiteCartNotifier } from "../site-cart/use-site-cart";
 import { useStoreSale } from "../site-cart/use-store-sale";
 import {
@@ -235,9 +235,13 @@ const PathDetail: React.FC<PathDetailProps> = ({
   // The site cart checks out through its store page: the path goes into it
   // only when the store sells every course the visitor chose. Otherwise
   // "Enrol in this path" keeps the path's own checkout, as on a site without
-  // a site cart; while the store page loads, neither is offered.
+  // a site cart — unless that would charge a course twice (see
+  // storeCartRoute); while the store page loads, neither is offered.
   const storeSale = useStoreSale(instituteId, siteCartSettings, siteCartOn);
-  const route = siteCartOn ? storeCartRoute(storeSale, items.map((i) => i.packageSessionId)) : "page";
+  const ownPageSells = useMemo(() => pageSells(data?.mappings), [data?.mappings]);
+  const route = siteCartOn
+    ? storeCartRoute(storeSale, items.map((i) => i.packageSessionId), ownPageSells)
+    : "page";
   const toCart = route === "cart";
   // The cart holds one version per course, so the path is measured (and
   // added) one version per course — one add always settles the button.

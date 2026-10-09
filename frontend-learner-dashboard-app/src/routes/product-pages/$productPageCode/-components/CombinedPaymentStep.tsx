@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { enrollForProductPage } from '../-services/product-page-service';
+import { enrollForProductPage, handleGetProductPage } from '../-services/product-page-service';
+import { checkoutErrorOf } from '../-utils/checkout-error';
 import {
     pushCombinedPaymentInitiated,
     pushCombinedEnrollmentSuccess,
@@ -78,6 +80,24 @@ export const CombinedPaymentStep = ({
         name: userName,
     } = resolveLearnerIdentity(Object.values(registrationData));
 
+    const queryClient = useQueryClient();
+    // A 409 means a price on this page changed since it loaded: refetch it so
+    // the cart shows the current prices before the learner tries again.
+    const failCheckout = (err: unknown, fallback: string) => {
+        const { message, priceChanged } = checkoutErrorOf(
+            err,
+            fallback,
+            t('common.priceChangedReload', 'The price of a course in your cart has changed. Please review your cart and try again.')
+        );
+        setPaymentError(message);
+        pushCombinedPaymentFailed(message, vendor, utmParams);
+        if (priceChanged) {
+            void queryClient.invalidateQueries({
+                queryKey: handleGetProductPage(pageData.code, pageData.institute_id).queryKey,
+            });
+        }
+    };
+
     const doEnroll = async (paymentInitiationRequest: Record<string, unknown>) => {
         setIsProcessing(true);
         setPaymentError(null);
@@ -118,9 +138,7 @@ export const CombinedPaymentStep = ({
             pushCombinedEnrollmentSuccess(amount, selectedPsOptionIds.length, utmParams);
             onSuccess();
         } catch (err) {
-            const msg = err instanceof Error ? err.message : t('common.genericPaymentFailed');
-            setPaymentError(msg);
-            pushCombinedPaymentFailed(msg, vendor, utmParams);
+            failCheckout(err, t('common.genericPaymentFailed'));
         } finally {
             setIsProcessing(false);
         }
@@ -187,9 +205,7 @@ export const CombinedPaymentStep = ({
                 });
             }
         } catch (err) {
-            const msg = err instanceof Error ? err.message : t('common.couldNotInitiatePayment');
-            setPaymentError(msg);
-            pushCombinedPaymentFailed(msg, vendor, utmParams);
+            failCheckout(err, t('common.couldNotInitiatePayment'));
         } finally {
             setIsProcessing(false);
         }

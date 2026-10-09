@@ -111,6 +111,26 @@ describe('Global header → nav item type and mega menu', () => {
         expect(headerProps().navigation[0].megaMenu.helpRoute).toBe('/find-your-path');
     });
 
+    it('keeps a mega-menu item and its settings through "Sync from pages"', () => {
+        render(<PropertyPanel />);
+        fireEvent.click(screen.getByRole('button', { name: /Knowledge Streams/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Mega menu' }));
+        fireEvent.change(screen.getByLabelText('Folder library'), { target: { value: 'lib-1' } });
+        const before = headerProps().navigation[0];
+
+        fireEvent.click(screen.getByRole('button', { name: 'header.syncPages' }));
+        const nav = headerProps().navigation;
+        expect(nav.map((i: { label: string }) => i.label)).toEqual([
+            'Knowledge Streams',
+            'Home',
+            'Find your path',
+        ]);
+        expect(nav[0]).toEqual(before);
+        expect(nav[0]).toMatchObject({ type: 'megaMenu', megaMenu: { libraryId: 'lib-1' } });
+        // "Courses" was not a page: a plain item is still replaced as before.
+        expect(nav.some((i: { label: string }) => i.label === 'Courses')).toBe(false);
+    });
+
     it('switches back to a plain link, keeping the menu settings for later', () => {
         render(<PropertyPanel />);
         fireEvent.click(screen.getByRole('button', { name: /Knowledge Streams/ }));

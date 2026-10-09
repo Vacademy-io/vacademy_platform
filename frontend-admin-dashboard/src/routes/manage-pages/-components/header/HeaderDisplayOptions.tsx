@@ -31,7 +31,7 @@ export const HeaderDisplayOptions = ({
         />
         <HeaderToggle
             label="Language switch"
-            hint="हिन्दी | EN — appears once the site has more than one language (Global Settings)."
+            hint="हिन्दी | EN — the other languages first, the site's main language last. Appears once the site has more than one language (Global Settings); on phones it sits in the menu."
             checked={props.showLanguageSwitcher === true}
             onChange={(v) => onChange('showLanguageSwitcher', v)}
         />

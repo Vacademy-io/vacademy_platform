@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
     fromSitePath,
     isUsableHeaderLink,
+    keepMegaMenuItems,
     navItemTypePatch,
     toSitePath,
     unknownPatternTokens,
+    type HeaderNavItemValue,
 } from './header-editor-utils';
 
 describe('toSitePath / fromSitePath', () => {
@@ -56,6 +58,50 @@ describe('unknownPatternTokens', () => {
             'x',
         ]);
         expect(unknownPatternTokens(undefined, ['stream'])).toEqual([]);
+    });
+});
+
+describe('keepMegaMenuItems', () => {
+    const page = (label: string): HeaderNavItemValue => ({ label, route: label.toLowerCase() });
+    const mega = (label: string): HeaderNavItemValue => ({
+        label,
+        route: '',
+        type: 'megaMenu',
+        megaMenu: { libraryId: 'lib' },
+    });
+
+    it('keeps each mega-menu item at its old position in the synced list', () => {
+        const streams = mega('Knowledge Streams');
+        const synced = keepMegaMenuItems(
+            [streams, page('Old'), page('About')],
+            [page('Home'), page('Courses'), page('About')]
+        );
+        expect(synced.map((i) => i.label)).toEqual([
+            'Knowledge Streams',
+            'Home',
+            'Courses',
+            'About',
+        ]);
+        // The very same object: label, route and the whole menu config survive.
+        expect(synced[0]).toBe(streams);
+    });
+
+    it('keeps several in their order, clamping positions past the end', () => {
+        const a = mega('A');
+        const b = mega('B');
+        expect(
+            keepMegaMenuItems([page('X'), a, page('Y'), page('Z'), b], [page('Home')]).map(
+                (i) => i.label
+            )
+        ).toEqual(['Home', 'A', 'B']);
+    });
+
+    it('is the plain page list when there is no mega-menu item', () => {
+        const fromPages = [page('Home'), page('About')];
+        expect(
+            keepMegaMenuItems([page('Old'), { ...page('Typed'), type: 'link' }], fromPages)
+        ).toEqual(fromPages);
+        expect(keepMegaMenuItems(undefined, fromPages)).toEqual(fromPages);
     });
 });
 

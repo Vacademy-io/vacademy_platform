@@ -66,6 +66,7 @@ import { FolderBrowserEditor } from './folders/FolderBrowserEditor';
 import { NavItemEditor } from './header/NavItemEditor';
 import { AuthLinkStyleSelect } from './header/AuthLinkStyleSelect';
 import { HeaderDisplayOptions } from './header/HeaderDisplayOptions';
+import { keepMegaMenuItems } from './header/header-editor-utils';
 import type { ComponentStyle } from '../-types/editor-types';
 
 // Shared display labels for short enum-style tokens reused across many
@@ -2669,7 +2670,8 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                     openInSameTab: true,
                 };
             });
-        updateProp('navigation', navItems);
+        // Mega-menu items are not pages: they keep their place (and config).
+        updateProp('navigation', keepMegaMenuItems(props.navigation, navItems));
     };
 
     return (

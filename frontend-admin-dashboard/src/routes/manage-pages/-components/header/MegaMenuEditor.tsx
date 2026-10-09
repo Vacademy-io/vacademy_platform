@@ -150,7 +150,8 @@ export const MegaMenuEditor = ({
                 {libraryId && !isLoading && !isError && !selected && (
                     <Warning>
                         This library{value.libraryName ? ` (“${value.libraryName}”)` : ''} was
-                        deleted. Pick another one — until then the item works as a plain link.
+                        deleted. Pick another one — until then the live item works as a plain link
+                        to its route.
                     </Warning>
                 )}
                 {selected && tree && (

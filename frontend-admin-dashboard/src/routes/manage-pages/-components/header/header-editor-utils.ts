@@ -77,6 +77,24 @@ export const unknownPatternTokens = (
     return [...found];
 };
 
+/**
+ * "Sync from pages" rebuilds the nav from the site's pages. A mega-menu item
+ * is not a page, so rebuilding would silently drop it and its whole config:
+ * each one is kept at its old position instead (clamped to the new list).
+ */
+export const keepMegaMenuItems = <T extends object>(
+    current: readonly T[] | null | undefined,
+    fromPages: readonly T[]
+): T[] => {
+    const out = [...fromPages];
+    (Array.isArray(current) ? current : []).forEach((item: T, index: number) => {
+        if ((item as { type?: unknown } | null)?.type === 'megaMenu') {
+            out.splice(Math.min(index, out.length), 0, item);
+        }
+    });
+    return out;
+};
+
 /** The patch that turns a nav item into a mega menu (or back into a link). */
 export const navItemTypePatch = (
     item: HeaderNavItemValue,

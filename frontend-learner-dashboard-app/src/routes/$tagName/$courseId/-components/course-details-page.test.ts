@@ -629,6 +629,92 @@ describe("CourseDetailsPage — site cart drawer with and without a header cart 
   });
 });
 
+describe("CourseDetailsPage — site cart and a link's own invite", () => {
+  const siteCart = { siteCart: { enabled: true, storeProductPageCode: "STORE" } };
+
+  it("keeps a plain link (the version's own invite) in the site cart", async () => {
+    const c = "c-own";
+    routeNetwork(c, { [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999) });
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: `${c}-inv-en` });
+    expect(buttonByText("Add to cart").length).toBeGreaterThan(0);
+    expect(buttonByText("courseDetails.enrollNow")).toHaveLength(0);
+  });
+
+  it("enrols a promo link through its invite at its price, never through the cart", async () => {
+    const c = "c-diwali";
+    routeNetwork(c, {
+      PROMO: invite("PROMO", `${c}-en`, 700),
+      [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
+    });
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "PROMO" });
+
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    expect(buttonByText("Buy now")).toHaveLength(0);
+    const enrol = buttonByText("courseDetails.enrollNow");
+    expect(enrol.length).toBeGreaterThan(0);
+    act(() => enrol[0].click());
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: "PROMO", price: 700 }),
+    });
+    // An HTML page's data-vacademy="enrol" goes the same way.
+    act(() => (children.dialog!.onOpenChange as (open: boolean) => void)(false));
+    expect(children.dialog).toMatchObject({ open: false });
+    act(() => {
+      window.dispatchEvent(new Event("openCourseEnrollment"));
+    });
+    expect(children.dialog).toMatchObject({
+      open: true,
+      courseData: expect.objectContaining({ enrollInviteId: "PROMO", price: 700 }),
+    });
+    expect(useSiteCartStore.getState().items).toHaveLength(0);
+  });
+
+  it("offers the cart for a version the promo does not sell, and the promo again on the way back", async () => {
+    const c = "c-promo-en";
+    routeNetwork(c, {
+      PROMO: invite("PROMO", `${c}-en`, 700), // sells English only
+      [`${c}-inv-en`]: invite(`${c}-inv-en`, `${c}-en`, 999),
+      [`${c}-inv-hi`]: invite(`${c}-inv-hi`, `${c}-hi`, 449),
+    });
+    catalogue.data = settings({ courseLanguages: { enabled: true }, ...siteCart });
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "PROMO" });
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+
+    act(() => radios()[1].click()); // Hindi, through its own invite
+    await settle();
+    act(() => buttonByText("Add to cart")[0].click());
+    expect(useSiteCartStore.getState().items).toEqual([
+      expect.objectContaining({ packageSessionId: `${c}-hi`, enrollInviteId: `${c}-inv-hi`, price: 449 }),
+    ]);
+
+    act(() => radios()[0].click()); // back to English: the promo again
+    await settle();
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ packageSessionId: `${c}-en`, enrollInviteId: "PROMO", price: 700 }),
+    });
+  });
+
+  it("keeps a link's invite when the versions cannot be read to vouch for it", async () => {
+    const c = "c-noversions";
+    routeNetwork(c, { PROMO: invite("PROMO", `${c}-en`, 700) });
+    net.post.mockImplementation(async () => {
+      throw new Error("search down");
+    });
+    catalogue.data = settings(siteCart);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "PROMO" });
+    expect(buttonByText("Add to cart")).toHaveLength(0);
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(children.dialog).toMatchObject({
+      courseData: expect.objectContaining({ enrollInviteId: "PROMO", price: 700 }),
+    });
+  });
+});
+
 describe("CourseDetailsPage — product page checkout and the site language", () => {
   const i18n = {
     enabled: true,

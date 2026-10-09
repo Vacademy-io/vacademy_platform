@@ -87,6 +87,31 @@ export const effectiveInviteIdFor = (
 };
 
 /**
+ * Whether a site-cart visit keeps its link's own invite enrol flow instead of
+ * the site cart. The cart checks out through the store product page, which
+ * charges the store's plan — so a version on screen that is enrolled through
+ * any invite other than its own catalogue invite (a promo or bundle link, see
+ * InviteGrant) would lose that invite's price there. Such visits enrol through
+ * the invite, as a product page visit does through its page. With no version
+ * to compare against (none listed, or the list failed to load), a link that
+ * carried an invite keeps it too. Undecided (false) while the versions load.
+ */
+export const keepsLinkInviteEnrolment = (input: {
+  status: "off" | "loading" | "ready" | "error";
+  selected: Pick<CourseLevel, "enrollInviteId"> | null;
+  /** The invite the selected version is enrolled through (effectiveInviteIdFor). */
+  selectedInviteId: string | null;
+  /** ?enrollInviteId */
+  urlEnrollInviteId?: string | null;
+}): boolean => {
+  if (input.status !== "ready" && input.status !== "error") return false;
+  if (input.selected) {
+    return !!input.selectedInviteId && input.selectedInviteId !== input.selected.enrollInviteId;
+  }
+  return !!input.urlEnrollInviteId;
+};
+
+/**
  * Versions in picker order: the site's language order first (English before
  * Hindi by default), versions whose language is unknown last, and the source
  * order (catalogue / product page order) within each group.

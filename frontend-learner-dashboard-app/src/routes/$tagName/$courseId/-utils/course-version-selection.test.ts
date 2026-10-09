@@ -16,6 +16,7 @@ import {
   cartCanTake,
   effectiveInviteIdFor,
   grantCovers,
+  keepsLinkInviteEnrolment,
   languageOptionsFor,
   levelOptionsFor,
   localizeCourseDisplay,
@@ -221,6 +222,51 @@ describe("effectiveInviteIdFor / grantCovers (the link's invite)", () => {
     expect(urlDesignatedVersion([en, hi], input({ urlEnrollInviteId: "promo", grant }))).toBe(hi);
     expect(urlDesignatedVersion([en, hi], input({ urlPackageSessionId: "ps-en", urlEnrollInviteId: "promo", grant }))).toBe(en);
     expect(urlDesignatedVersion([en, hi], input({ urlEnrollInviteId: "promo" }))).toBeNull();
+  });
+});
+
+describe("keepsLinkInviteEnrolment (site cart vs the link's invite)", () => {
+  const promoEn: InviteGrant = { inviteId: "promo", packageSessionIds: ["ps-en"] };
+  const keeps = (
+    selected: CourseLevel | null,
+    grant: InviteGrant | null,
+    urlEnrollInviteId: string | null,
+    status: "off" | "loading" | "ready" | "error" = "ready",
+  ) =>
+    keepsLinkInviteEnrolment({
+      status,
+      selected,
+      selectedInviteId: selected ? effectiveInviteIdFor(selected, grant) : null,
+      urlEnrollInviteId,
+    });
+
+  it("leaves a plain visit (the version's own catalogue invite) to the site cart", () => {
+    const ownLink: InviteGrant = { inviteId: "inv-en", packageSessionIds: ["ps-en"] };
+    expect(keeps(en, ownLink, "inv-en")).toBe(false);
+    expect(keeps(en, null, null)).toBe(false); // a bare link
+    // Switched to Hindi on a plain English link: Hindi's own invite.
+    expect(keeps(hi, ownLink, "inv-hi")).toBe(false);
+  });
+
+  it("keeps the invite flow while a promo or bundle link prices the version on screen", () => {
+    expect(keeps(en, promoEn, "promo")).toBe(true);
+    const bundle: InviteGrant = { inviteId: "bundle", packageSessionIds: ["ps-en", "ps-hi"] };
+    expect(keeps(hi, bundle, "bundle")).toBe(true);
+    // A version only the promo sells (no catalogue invite of its own).
+    const hiPromoOnly = version({ packageSessionId: "ps-hi", levelName: "Hindi" });
+    expect(keeps(hiPromoOnly, { inviteId: "promo", packageSessionIds: ["ps-hi"] }, "promo")).toBe(true);
+  });
+
+  it("gives a version the promo does not sell back to the site cart", () => {
+    // Landed on English through an English-only promo, switched to Hindi.
+    expect(keeps(hi, promoEn, "inv-hi")).toBe(false);
+  });
+
+  it("decides nothing while the versions load; with none known, a link's invite is kept", () => {
+    expect(keeps(null, promoEn, "promo", "loading")).toBe(false);
+    expect(keeps(null, null, "promo", "error")).toBe(true);
+    expect(keeps(null, null, "inv-en", "ready")).toBe(true);
+    expect(keeps(null, null, null, "error")).toBe(false);
   });
 });
 

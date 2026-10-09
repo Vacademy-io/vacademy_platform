@@ -88,6 +88,7 @@ import {
   SITE_CART_MAX_ITEMS,
   buildCourseCartItem,
   cartCanTake,
+  keepsLinkInviteEnrolment,
   localizeCourseDisplay,
   resolveVersionOffer,
   searchText,
@@ -1221,7 +1222,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const siteT = siteLocale.t;
   const courseLanguageSettings = catalogueData?.globalSettings?.courseLanguages;
   const courseLanguagesEnabled = !!courseLanguageSettings?.enabled;
-  // A product page visit keeps that page's own mapping, price and checkout.
+  // A product page visit keeps that page's own mapping, price and checkout
+  // (and so does a promo link, once the versions show it: see siteCartMode).
   const siteCartActive =
     isSiteCartEnabled(catalogueData?.globalSettings?.siteCart) && !productPageCode;
   const configuredLanguages = useMemo(
@@ -1582,10 +1584,20 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
   const enrolButtonClass = (base: string) =>
     enrolPending ? `${base} cursor-wait opacity-70` : base;
 
+  // A link whose invite prices the version on screen (a promo or bundle link,
+  // not the version's own catalogue invite) keeps that invite's own enrol
+  // flow, as a product page visit keeps its page's checkout: the store
+  // checkout would charge the store's plan instead.
+  const linkInviteVisit = keepsLinkInviteEnrolment({
+    status: courseVersions.status,
+    selected: selectedVersion,
+    selectedInviteId: selectedVersionInviteId,
+    urlEnrollInviteId: enrollInviteId,
+  });
   // Site cart: "Add to cart" + "Buy now" replace the enrol button. A Coming
   // Soon course still collects interest and a closed invite still explains
   // itself, through the original button.
-  const siteCartMode = siteCartActive && !comingSoon && !isEnrollmentClosed;
+  const siteCartMode = siteCartActive && !linkInviteVisit && !comingSoon && !isEnrollmentClosed;
   const siteCartItem =
     siteCartMode && cartPackageSessionId
       ? buildCourseCartItem({

@@ -7,13 +7,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
+const mocks = vi.hoisted(() => ({ validateCoupon: vi.fn() }));
+
+type MutationOptions = {
+    mutationFn: () => Promise<unknown>;
+    onSuccess?: (data: unknown) => void;
+    onError?: (err: unknown) => void;
+};
+
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
 }));
+// Runs the request the way React Query would, without the cache.
 vi.mock('@tanstack/react-query', () => ({
-    useMutation: () => ({ mutate: () => undefined, isPending: false }),
+    useMutation: (options: MutationOptions) => ({
+        mutate: () => {
+            void options.mutationFn().then(options.onSuccess, options.onError);
+        },
+        isPending: false,
+    }),
 }));
-vi.mock('../-services/product-page-service', () => ({ validateCoupon: async () => ({}) }));
+vi.mock('../-services/product-page-service', () => ({ validateCoupon: mocks.validateCoupon }));
 vi.mock('@/components/common/enroll-by-invite/-utils/gtm', () => ({
     pushCartViewed: () => undefined,
     pushCouponApplied: () => undefined,
@@ -92,7 +106,10 @@ const mountWithCoupon = () => {
 const text = () => container!.textContent ?? '';
 const couponInput = () => container!.querySelector('input[aria-label="cartStep.couponCard.title"]') as HTMLInputElement | null;
 
-beforeEach(() => useProductPageStore.getState().reset());
+beforeEach(() => {
+    useProductPageStore.getState().reset();
+    mocks.validateCoupon.mockReset();
+});
 afterEach(() => {
     if (root) act(() => root!.unmount());
     container?.remove();
@@ -126,5 +143,111 @@ describe('the cart coupon box', () => {
 
         expect(couponInput()?.value).toBe('');
         expect(text()).not.toContain('cartStep.couponChanged');
+    });
+});
+
+const course = (id: string, price: number) => ({
+    id: `m-${id}`,
+    ps_invite_payment_option_id: `opt-${id}`,
+    package_session_id: `ps-${id}`,
+    payment_plan_id: `plan-${id}`,
+    payment_plan: { id: `plan-${id}`, name: 'Plan', actual_price: price, currency: 'INR' },
+    status: 'ACTIVE',
+});
+
+const pageWith = (courses: ReturnType<typeof course>[], pricing: object = {}): ProductPageData =>
+    ({
+        ...page(0),
+        settings_json: JSON.stringify({ ...settings, ...pricing }),
+        mappings: courses,
+    }) as unknown as ProductPageData;
+
+const mount = (pageData: ProductPageData) => {
+    const store = useProductPageStore.getState();
+    store.setPageData(pageData);
+    store.setSelection(pageData.mappings.map((m) => m.ps_invite_payment_option_id));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() =>
+        root!.render(
+            React.createElement(CartStep, { pageData, settings, onBack: () => undefined, onNext: () => undefined })
+        )
+    );
+};
+
+const applyCode = async (code: string) => {
+    const input = couponInput()!;
+    // React tracks an input's value itself; set it the way typing does.
+    act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, code);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const apply = [...container!.querySelectorAll('button')].find((b) => b.textContent === 'cartStep.couponCard.apply');
+    await act(async () => {
+        apply!.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+};
+
+/** The server's validate endpoint for a 50% coupon: half of whatever it is asked about. */
+const halfOff = async (_page: string, _code: string, amount: number) => ({
+    valid: true,
+    coupon_code_id: 'coupon-1',
+    applied_coupon_discount_id: 'applied-1',
+    discount_type: 'PERCENTAGE',
+    discount_value: amount / 2,
+    max_discount_value: null,
+    message: 'VALID',
+});
+
+/**
+ * At enrolment the server works a coupon out on what the basket costs before
+ * it: the basket price, less the best page offer (ProductPageEnrollmentService).
+ * Asked about any other figure, a percentage coupon comes out bigger in the
+ * cart than the server allows, and the page shows a price nobody is charged —
+ * at worst "free" for a basket the server bills.
+ */
+describe('checking a coupon in the cart', () => {
+    it('asks about the basket price, not what the courses cost apart', async () => {
+        // "Any 3 for 799": three courses at 600 cost 1,800 apart, 799 together.
+        mount(
+            pageWith([course('a', 600), course('b', 600), course('c', 600)], {
+                basketPricing: { enabled: true, ladder: { prices: [349, 599, 799], perExtra: 150 } },
+            })
+        );
+        mocks.validateCoupon.mockImplementation(halfOff);
+
+        await applyCode('HALF');
+
+        expect(mocks.validateCoupon).toHaveBeenCalledWith('STORE', 'HALF', 799, 3);
+        // What the server charges: half of 799. Half of 1,800 made it free.
+        expect(useProductPageStore.getState().discountAmount).toBe(399.5);
+        expect(useProductPageStore.getState().finalPrice()).toBe(399.5);
+    });
+
+    it('asks about the price after the page offer', async () => {
+        mount(
+            pageWith([course('a', 1000)], {
+                offers: { enabled: true, rules: [{ id: 'o1', label: 'Launch', discountType: 'FIXED', discountValue: 100 }] },
+            })
+        );
+        mocks.validateCoupon.mockImplementation(halfOff);
+
+        await applyCode('HALF');
+
+        expect(mocks.validateCoupon).toHaveBeenCalledWith('STORE', 'HALF', 900, 1);
+        expect(useProductPageStore.getState().finalPrice()).toBe(450);
+    });
+
+    it('asks about the plain course price on a page with neither, as it always has', async () => {
+        mount(pageWith([course('a', 1000), course('b', 500)]));
+        mocks.validateCoupon.mockImplementation(halfOff);
+
+        await applyCode('HALF');
+
+        expect(mocks.validateCoupon).toHaveBeenCalledWith('STORE', 'HALF', 1500, 2);
+        expect(useProductPageStore.getState().couponCode).toBe('HALF');
+        expect(useProductPageStore.getState().finalPrice()).toBe(750);
     });
 });

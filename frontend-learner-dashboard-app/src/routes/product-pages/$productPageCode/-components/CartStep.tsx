@@ -69,7 +69,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, toggleSelection, setSelection, utmParams,
-        finalPrice, basketQuote,
+        finalPrice, basketQuote, priceBeforeCoupon,
     } = useProductPageStore();
     // Institute-level kill switch (admin Settings → Coupons → "Enable coupon redemption").
     // ANDed with the per-product-page settings.coupon.enabled flag below — both must be on.
@@ -163,11 +163,17 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     }, [selectedPsOptionIds, couponCode, discountAmount, clearCoupon]);
 
     const couponMutation = useMutation({
+        // Asked about what the basket costs before the coupon (after the basket
+        // price and the page offer), the figure the server works the coupon out
+        // on at enrolment. On the plain course total a percentage coupon came
+        // out bigger here than there, so the page could show "free" for a
+        // basket the server then billed. Without a basket price or an offer the
+        // two figures are the same.
         mutationFn: () =>
             validateCoupon(
                 pageData.code,
                 couponInput.trim(),
-                subtotal,
+                priceBeforeCoupon(),
                 selectedPsOptionIds.length
             ),
         onSuccess: (data) => {

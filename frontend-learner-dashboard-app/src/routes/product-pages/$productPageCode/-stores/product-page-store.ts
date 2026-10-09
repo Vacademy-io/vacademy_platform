@@ -76,6 +76,12 @@ interface ProductPageStore {
     basketQuote: () => BasketQuote | null;
     /** Best predefined page offer for the current cart, or null. */
     appliedOffer: () => AppliedOffer | null;
+    /**
+     * What the basket costs before any coupon: the basket price (or the sum of
+     * the courses), less the best offer. The server works a coupon out on this
+     * figure at enrolment, so the cart asks about a coupon on it too.
+     */
+    priceBeforeCoupon: () => number;
     finalPrice: () => number;
 
     reset: () => void;
@@ -107,17 +113,6 @@ const initialState = {
     ...noCpoState,
 };
 
-/**
- * What the basket costs before any coupon — the figure a coupon is worked out
- * against. Same order the server applies them: a configured basket price
- * REPLACES the sum of item prices, then the best offer comes off.
- */
-const priceBeforeCoupon = (state: ProductPageStore): number => {
-    const quote = state.basketQuote();
-    const base = quote ? quote.total : state.totalPrice();
-    return Math.max(0, base - (state.appliedOffer()?.amount ?? 0));
-};
-
 export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     ...initialState,
 
@@ -133,12 +128,12 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
         );
         const kept = before.selectedPsOptionIds.filter((id) => onSale.has(id));
         const selectionChanged = kept.length !== before.selectedPsOptionIds.length;
-        const priceBefore = priceBeforeCoupon(before);
+        const priceBefore = before.priceBeforeCoupon();
 
         set(selectionChanged ? { pageData: data, selectedPsOptionIds: kept } : { pageData: data });
 
         const hadCoupon = !!before.couponCode || !!before.couponId || before.discountAmount > 0;
-        if (hadCoupon && (selectionChanged || priceBeforeCoupon(get()) !== priceBefore)) {
+        if (hadCoupon && (selectionChanged || get().priceBeforeCoupon() !== priceBefore)) {
             set(noCoupon);
         }
     },
@@ -219,9 +214,17 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
         return bestOffer(parseOffers(pageData.settings_json), base, selectedPsOptionIds.length);
     },
 
+    // Same order the server applies them: a configured basket price REPLACES
+    // the sum of item prices, then the best offer comes off.
+    priceBeforeCoupon: () => {
+        const quote = get().basketQuote();
+        const base = quote ? quote.total : get().totalPrice();
+        return Math.max(0, base - (get().appliedOffer()?.amount ?? 0));
+    },
+
     // The coupon comes off last, so it discounts what the visitor would
     // actually have paid (see priceBeforeCoupon).
-    finalPrice: () => Math.max(0, priceBeforeCoupon(get()) - get().discountAmount),
+    finalPrice: () => Math.max(0, get().priceBeforeCoupon() - get().discountAmount),
 
     reset: () => set(initialState),
 }));

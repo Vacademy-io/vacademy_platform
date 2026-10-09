@@ -149,3 +149,34 @@ describe('clearBasketState — a different basket on the same page', () => {
         expect(Object.keys(store().registrationData)).toEqual(['email']);
     });
 });
+
+/**
+ * The figure the server checks a coupon against at enrolment
+ * (ProductPageEnrollmentService: the basket price, less the best page offer).
+ * The cart asks about a coupon on the same figure, so both work out one discount.
+ */
+describe('priceBeforeCoupon — what a coupon is worked out against', () => {
+    beforeEach(() => store().reset());
+
+    it('is what the selected courses cost on a page with no basket price or offer', () => {
+        store().setPageData(page([mapping('a', 1000), mapping('b', 500), mapping('c', 300)]));
+        store().setSelection(['a', 'b']);
+
+        expect(store().priceBeforeCoupon()).toBe(1500);
+    });
+
+    it('is the basket price less the best page offer, and leaves the coupon out', () => {
+        store().setPageData(
+            page([mapping('a', 600), mapping('b', 600), mapping('c', 600)], {
+                basketPricing: { enabled: true, ladder: { prices: [349, 599, 799], perExtra: 150 } },
+                offers: { enabled: true, rules: [{ id: 'o1', label: 'Launch', discountType: 'FIXED', discountValue: 100 }] },
+            })
+        );
+        store().setSelection(['a', 'b', 'c']);
+        store().applyCoupon('coupon-1', 'applied-1', 200);
+
+        expect(store().totalPrice()).toBe(1800);
+        expect(store().priceBeforeCoupon()).toBe(699);
+        expect(store().finalPrice()).toBe(499);
+    });
+});

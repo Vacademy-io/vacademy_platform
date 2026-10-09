@@ -129,6 +129,13 @@ export const useCourseVersions = (opts: {
     },
     [fetchKey],
   );
+  // A later URL that names another version (an in-page link, Back/Forward)
+  // takes over from the pick.
+  useEffect(() => {
+    setPicked((current) =>
+      current && urlPackageSessionId && urlPackageSessionId !== current.packageSessionId ? null : current,
+    );
+  }, [urlPackageSessionId]);
 
   const selectionInput = useMemo<VersionSelectionInput>(
     () => ({

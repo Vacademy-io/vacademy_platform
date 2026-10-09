@@ -11,8 +11,9 @@ const service = vi.hoisted(() => ({
   fetchCourseLevels: vi.fn(),
   getOpenEnrollInvite: vi.fn(),
 }));
-vi.mock("../../-services/course-levels-service", async (importActual) => ({
-  ...(await importActual<typeof import("../../-services/course-levels-service")>()),
+type CourseLevelsService = typeof import("../../-services/course-levels-service");
+vi.mock("../../-services/course-levels-service", async (importActual: () => Promise<CourseLevelsService>) => ({
+  ...(await importActual()),
   fetchCourseLevels: service.fetchCourseLevels,
   getOpenEnrollInvite: service.getOpenEnrollInvite,
 }));
@@ -138,6 +139,17 @@ describe("useCourseVersions", () => {
     expect(latest?.selectedInviteId).toBe("inv-hi");
     expect(latest?.invite?.id).toBe("inv-hi");
     expect(service.fetchCourseLevels).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a pick once the URL reflects it, and lets a later URL take over", async () => {
+    await mount(baseOpts);
+    act(() => latest!.select("ps-hi"));
+    await rerender({ ...baseOpts, urlPackageSessionId: "ps-hi", urlEnrollInviteId: "inv-hi" });
+    expect(latest?.selected?.packageSessionId).toBe("ps-hi");
+    // e.g. an in-page link or Back/Forward to the English version
+    await rerender({ ...baseOpts, urlPackageSessionId: "ps-en", urlEnrollInviteId: "inv-en" });
+    expect(latest?.selected?.packageSessionId).toBe("ps-en");
+    expect(latest?.selectedInviteId).toBe("inv-en");
   });
 
   it("resolves a non-default ?enrollInviteId through the package sessions it sells", async () => {

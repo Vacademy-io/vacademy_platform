@@ -43,8 +43,8 @@ vi.mock("@tanstack/react-router", () => ({
   Link: () => null,
 }));
 
-vi.mock("react-i18next", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-i18next")>()),
+vi.mock("react-i18next", async (importOriginal: () => Promise<typeof import("react-i18next")>) => ({
+  ...(await importOriginal()),
   useTranslation: () => ({
     t: (key: string, opts?: string | { defaultValue?: string }) =>
       typeof opts === "string" ? opts : (opts?.defaultValue ?? key),
@@ -217,7 +217,7 @@ describe("CourseDetailsPage — a site without the new settings", () => {
     expect(net.post).not.toHaveBeenCalled(); // no catalogue search
     // Exactly the three reads the page always made: course-init, the student
     // display settings and the link's invite — nothing new, nothing twice.
-    expect(net.get.mock.calls.map(([u]) => String(u).split("?")[0]).sort()).toEqual([
+    expect(net.get.mock.calls.map(([u]: unknown[]) => String(u).split("?")[0]).sort()).toEqual([
       "https://api.test/admin-core-service/open/institute/setting/v1/student-display",
       `https://api.test/admin-core-service/open/learner/enroll-invite/inst/${c}-inv-en`,
       "https://api.test/admin-core-service/open/v1/learner-study-library/course-init",

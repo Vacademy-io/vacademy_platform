@@ -7,9 +7,11 @@
  * order. Array.prototype.sort is stable, so ties keep catalogue order.
  */
 
+import type { TFunction } from "i18next";
 import { comparePopularity } from "../../../-utils/course-badges";
 import type { CourseCatalogSortOption } from "../../../-types/course-catalogue-types";
 import type { CatalogCard, CatalogRowLike } from "./catalog-cards";
+import { SORT_URL_TOKENS } from "./catalog-url";
 
 /** Milliseconds for a created_at value; missing or unparseable sorts as the epoch. */
 export const createdTime = (value: string | null | undefined): number => {
@@ -17,6 +19,33 @@ export const createdTime = (value: string | null | undefined): number => {
   const t = new Date(value).getTime();
   return Number.isNaN(t) ? 0 : t;
 };
+
+/**
+ * Rows with `createdAt` (read by the Newest / Oldest sorts and the "New"
+ * badge) taken from the search API's created_at — only for a section that
+ * opted into discovery (`dated`). The API used to send no date, so an older
+ * grid showed the search's own order under "Newest" and "Oldest" alike; such
+ * a section gets its rows back untouched and keeps exactly that order.
+ */
+export const withCreatedAt = <R extends { created_at?: unknown; createdAt?: string }>(
+  rows: R[],
+  dated: boolean,
+): R[] =>
+  dated
+    ? rows.map((row) =>
+        typeof row.created_at === "string" && row.created_at && row.createdAt !== row.created_at
+          ? { ...row, createdAt: row.created_at }
+          : row,
+      )
+    : rows;
+
+/**
+ * A sort's visitor-facing name (react-i18next chrome, so it follows the site
+ * language): courseCatalog.sort.<its ?sort= token>, with the option itself as
+ * the English default. The option's value stays the stored English name.
+ */
+export const sortOptionLabel = (t: TFunction, option: CourseCatalogSortOption): string =>
+  t(`courseCatalog.sort.${SORT_URL_TOKENS[option]}`, option);
 
 export const sortCatalogCards = <R extends CatalogRowLike>(
   cards: CatalogCard<R>[],

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { TFunction } from "i18next";
+import { COURSE_CATALOG_SORT_OPTIONS } from "../../../-types/course-catalogue-types";
 import { DEFAULT_COURSE_LANGUAGES as LANGS } from "../../../-utils/course-variants";
 import { buildCatalogCards, type CatalogRowLike } from "./catalog-cards";
-import { createdTime, sortCatalogCards } from "./catalog-sort";
+import { createdTime, sortCatalogCards, sortOptionLabel, withCreatedAt } from "./catalog-sort";
 
 const row = (over: Partial<CatalogRowLike>): CatalogRowLike => ({
   id: "c",
@@ -97,5 +99,63 @@ describe("sortCatalogCards", () => {
     expect(createdTime(undefined)).toBe(0);
     expect(createdTime("nope")).toBe(0);
     expect(createdTime("2026-01-01T00:00:00Z")).toBe(Date.parse("2026-01-01T00:00:00Z"));
+  });
+});
+
+/**
+ * Rows as the v2 search sends them (created_at, snake_case), in the server's
+ * order B, C, A — the order every older grid has always shown.
+ */
+type ApiRow = CatalogRowLike & { created_at?: string };
+const SERVER_ORDER: ApiRow[] = [
+  row({ id: "b", title: "B", created_at: "2026-05-01T00:00:00Z" } as Partial<ApiRow>),
+  row({ id: "c", title: "C", created_at: "2025-01-01T00:00:00Z" } as Partial<ApiRow>),
+  row({ id: "a", title: "A", created_at: "2026-09-01T00:00:00Z" } as Partial<ApiRow>),
+];
+const order = (rows: ApiRow[], sort: "Newest" | "Oldest") =>
+  ids(sortCatalogCards(buildCatalogCards(rows, { grouping: false, languages: LANGS }), sort, base));
+
+describe("withCreatedAt", () => {
+  it("leaves an older grid's rows untouched, so Newest and Oldest keep the server order", () => {
+    const rows = withCreatedAt(SERVER_ORDER, false);
+    expect(rows).toBe(SERVER_ORDER);
+    expect(rows.every((r) => r.createdAt === undefined)).toBe(true);
+    expect(order(rows, "Newest")).toEqual(["b", "c", "a"]);
+    expect(order(rows, "Oldest")).toEqual(["b", "c", "a"]);
+  });
+
+  it("dates a discovery section's rows, so Newest and Oldest sort by created_at", () => {
+    const rows = withCreatedAt(SERVER_ORDER, true);
+    expect(rows.map((r) => r.createdAt)).toEqual(SERVER_ORDER.map((r) => r.created_at));
+    expect(order(rows, "Newest")).toEqual(["a", "b", "c"]);
+    expect(order(rows, "Oldest")).toEqual(["c", "b", "a"]);
+    // The API rows themselves are not changed.
+    expect(SERVER_ORDER.every((r) => r.createdAt === undefined)).toBe(true);
+  });
+
+  it("keeps a row without a usable created_at as it is", () => {
+    const undated = row({ id: "u" }) as ApiRow;
+    const blank = row({ id: "v", created_at: "" } as Partial<ApiRow>) as ApiRow;
+    const [u, v] = withCreatedAt([undated, blank], true);
+    expect(u).toBe(undated);
+    expect(v).toBe(blank);
+  });
+});
+
+describe("sortOptionLabel", () => {
+  // Echo "key|default" so both the key and the English fallback are checked.
+  const t = ((key: string, fallback: string) => `${key}|${fallback}`) as unknown as TFunction;
+
+  it("names every sort with a coursePlayerB key (its ?sort= token) and the option as the default", () => {
+    expect(COURSE_CATALOG_SORT_OPTIONS.map((option) => sortOptionLabel(t, option))).toEqual([
+      "courseCatalog.sort.newest|Newest",
+      "courseCatalog.sort.oldest|Oldest",
+      "courseCatalog.sort.price-asc|Price: Low to High",
+      "courseCatalog.sort.price-desc|Price: High to Low",
+      "courseCatalog.sort.rating|Rating",
+      "courseCatalog.sort.name-asc|Name A-Z",
+      "courseCatalog.sort.name-desc|Name Z-A",
+      "courseCatalog.sort.popular|Popular",
+    ]);
   });
 });

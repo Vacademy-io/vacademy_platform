@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { LEAD_LOOKUP } from '@/constants/urls';
+import { isValidPhoneValue } from '@/lib/phone-validation';
 
 /**
  * "Is this phone / email already ours?"
@@ -60,12 +61,17 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * suffix, and the backend compares emails exactly. A name has to be whole too -
  * the match is exact, so a first name alone simply finds nothing - but there is
  * no format to check, only that something was typed.
+ *
+ * The phone check is country-aware rather than a digit count. The input carries
+ * the dial code, so "91" plus eight digits is ten digits and would have passed a
+ * length test while being an incomplete Indian number - sent, matched against
+ * nobody, and reported back as "not in the system".
  */
 export function isTermCompleteFor(mode: LookupMode, term: string): boolean {
     const trimmed = term.trim();
     if (!trimmed) return false;
     if (mode === 'email') return EMAIL_RE.test(trimmed);
-    if (mode === 'phone') return trimmed.replace(/[^0-9]/g, '').length >= 10;
+    if (mode === 'phone') return isValidPhoneValue(trimmed);
     return trimmed.length >= 3;
 }
 
@@ -77,7 +83,7 @@ export const LOOKUP_MODE_COPY: Record<
     phone: {
         label: 'Phone number',
         placeholder: '9876543210',
-        hint: 'Enter the full number. A partial one would match the wrong person.',
+        hint: 'Pick the country and enter the full number — a partial one would match the wrong person.',
     },
     email: {
         label: 'Email address',

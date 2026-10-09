@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MyDropdown } from '@/components/design-system/dropdown';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadTerminology } from '@/hooks/use-lead-terminology';
@@ -115,21 +116,38 @@ export function LeadLookupPage() {
                         className="w-full"
                     />
                 </div>
-                <div className="min-w-56 flex-1">
-                    <MyInput
-                        inputType={mode === 'phone' ? 'tel' : mode === 'email' ? 'email' : 'text'}
-                        input={term}
-                        onChangeFunction={(e) => setTerm(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                submit();
-                            }
-                        }}
-                        inputPlaceholder={copy.placeholder}
-                        label={copy.label}
-                        className="w-full"
-                    />
+                {/* The phone box carries its own country picker: a number stored with
+                    a dial code and one typed without it are the same person, and the
+                    institute's own preferred countries decide the default. onKeyDown
+                    sits on the wrapper because the widget takes no key handler. */}
+                <div
+                    className="min-w-56 flex-1"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            submit();
+                        }
+                    }}
+                >
+                    {mode === 'phone' ? (
+                        <PhoneNumberInput
+                            name="lead-lookup-phone"
+                            value={term}
+                            onChange={(_name, value) => setTerm(value)}
+                            label={copy.label}
+                            placeholder={copy.placeholder}
+                            validate={false}
+                        />
+                    ) : (
+                        <MyInput
+                            inputType={mode === 'email' ? 'email' : 'text'}
+                            input={term}
+                            onChangeFunction={(e) => setTerm(e.target.value)}
+                            inputPlaceholder={copy.placeholder}
+                            label={copy.label}
+                            className="w-full"
+                        />
+                    )}
                 </div>
                 <MyButton
                     buttonType="primary"

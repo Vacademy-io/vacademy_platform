@@ -143,6 +143,8 @@ export const StepFourForm = ({
         form.setValue('file_id', '');
     };
 
+    const [discountServerError, setDiscountServerError] = useState<string | null>(null);
+
     const onSubmit = (values: StepFourData) => {
         const discountErr = canDiscount
             ? getAdminDiscountValidationError(
@@ -152,6 +154,10 @@ export const StepFourForm = ({
             : null;
         if (discountErr) {
             setDiscountError(discountErr);
+            return;
+        }
+        if (canDiscount && discountServerError && values.admin_discount?.mode !== 'NONE') {
+            setDiscountError(discountServerError);
             return;
         }
         setDiscountError(null);
@@ -317,6 +323,7 @@ export const StepFourForm = ({
                                         enrollInviteId={stepThreeData?.invite?.id}
                                         learnerEmail={stepTwoData?.email || undefined}
                                         onPreview={handleDiscountPreview}
+                                        onServerErrorChange={setDiscountServerError}
                                         label="Discount (optional)"
                                     />
                                     {discountError && (

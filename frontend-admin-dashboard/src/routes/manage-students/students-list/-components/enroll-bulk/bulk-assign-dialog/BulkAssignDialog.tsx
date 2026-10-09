@@ -575,7 +575,9 @@ export const BulkAssignDialog = ({
         // An admin discount that's half filled in (no value / no reason) must not be sent.
         if (currentStep === 'config')
             return selectedPackageSessions.every(
-                (ps) => !getAdminDiscountValidationError(ps.adminDiscount)
+                (ps) =>
+                    !getAdminDiscountValidationError(ps.adminDiscount) &&
+                    !(ps.adminDiscount && ps.adminDiscount.mode !== 'NONE' && ps.adminDiscountError)
             );
         // Every org-associated batch must name the organisation being enrolled into —
         // the backend rejects the enrollment outright without one.

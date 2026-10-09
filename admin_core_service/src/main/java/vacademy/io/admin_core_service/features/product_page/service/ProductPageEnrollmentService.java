@@ -1079,7 +1079,7 @@ public class ProductPageEnrollmentService {
                 .collect(Collectors.toList());
     }
 
-    private void createLineItem(String paymentLogId, String sourceId, int amount) {
+    private void createLineItem(String paymentLogId, String sourceId, double amount) {
         paymentLogRepository.findById(paymentLogId).ifPresent(log -> {
             PaymentLogLineItem item = new PaymentLogLineItem();
             item.setPaymentLog(log);
@@ -1091,7 +1091,7 @@ public class ProductPageEnrollmentService {
         });
     }
 
-    private void createLineItem(String paymentLogId, String type, String source, String sourceId, int amount) {
+    private void createLineItem(String paymentLogId, String type, String source, String sourceId, double amount) {
         paymentLogRepository.findById(paymentLogId).ifPresent(log -> {
             PaymentLogLineItem item = new PaymentLogLineItem();
             item.setPaymentLog(log);
@@ -1321,8 +1321,9 @@ public class ProductPageEnrollmentService {
                 .map(paymentLogLineItemRepository::findByPaymentLog)
                 .map(existing -> existing.stream()
                         .filter(item -> item.getAmount() != null && item.getAmount() < 0)
-                        .mapToInt(item -> -item.getAmount())
+                        .mapToDouble(item -> -item.getAmount())
                         .sum())
+                .map(sum -> (int) Math.round(sum))
                 .orElse(0);
         reduction -= alreadyRecorded;
         if (reduction <= 0) {

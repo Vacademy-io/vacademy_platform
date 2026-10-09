@@ -1,6 +1,7 @@
 import { BulkAssignResponse, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/lib/formatters';
+import { adminCouponErrorMessage } from '@/services/admin-discounts';
 import { CheckCircle, XCircle, SkipForward } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
@@ -58,7 +59,9 @@ const fmtAmount = (n: number | null | undefined): string =>
  * rather than guessed at.
  */
 const explainFailure = (message: string, tr: (k: string) => string): string =>
-    /No active PaymentPlan found/i.test(message) ? tr('noPlanConfigured') : message;
+    /No active PaymentPlan found/i.test(message)
+        ? tr('noPlanConfigured')
+        : adminCouponErrorMessage(message.trim()) ?? message;
 
 export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props) => {
     const { t } = useTranslation('manageStudentsStep4Preview');

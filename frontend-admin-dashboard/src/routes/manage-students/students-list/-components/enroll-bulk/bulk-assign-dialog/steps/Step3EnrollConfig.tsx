@@ -153,6 +153,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                     <AdminDiscountField
                         value={ps.adminDiscount ?? EMPTY_ADMIN_DISCOUNT}
                         onChange={(v) => onUpdate({ adminDiscount: v })}
+                        onServerErrorChange={(e) => onUpdate({ adminDiscountError: e })}
                         paymentPlanId={resolvedPlan.id}
                         isSubscription={resolved?.paymentOption?.type === 'SUBSCRIPTION'}
                         currency={resolvedPlan.currency || 'INR'}

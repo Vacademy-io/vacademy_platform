@@ -6,6 +6,12 @@
  * mapping that matches an id — so a course listed twice on the store page is
  * charged twice. Both are decided here, before the visitor leaves the cart, so
  * an item is never dropped or double-charged without them seeing why.
+ *
+ * One order is charged in ONE currency (the checkout adds its lines up), so an
+ * item priced in another currency than the order's is set aside to be checked
+ * out on its own. A price that changed since the item was added (a promo or a
+ * product page's own price, against the store's plan) is put in front of the
+ * visitor before checkout, never applied silently.
  */
 import type { SiteCartItem } from "../../-utils/site-cart";
 import { SITE_CART_MAX_ITEMS } from "./site-cart-items";
@@ -16,7 +22,9 @@ export type PrecheckIssue =
   /** The store page maps this version more than once — checking out would charge it twice. */
   | "listedTwice"
   /** The cart holds this course (or this exact version) more than once. */
-  | "duplicateInCart";
+  | "duplicateInCart"
+  /** Priced in another currency than the rest of the order — it is checked out separately. */
+  | "otherCurrency";
 
 export interface StoreMappingLike {
   package_session_id?: string | null;
@@ -31,24 +39,54 @@ export interface FlaggedItem {
 
 export interface PriceChange {
   item: SiteCartItem;
+  /** What the store checkout charges for it now. */
   storePrice: number;
+  /** The store's currency for it (else the item's). */
   currency?: string;
 }
 
 export interface SiteCartPrecheck {
-  /** Items the store checkout can sell, in cart order. */
+  /** Items the store checkout can sell, in cart order — one currency. */
   ready: SiteCartItem[];
   /** Items that must not go to checkout as they are, each with the reason. */
   flagged: FlaggedItem[];
-  /** Ready items whose store price differs from the price the cart showed. */
+  /** Ready items whose store price (or currency) differs from what the cart showed. */
   priceChanges: PriceChange[];
   /** The cart holds more items than one order may. */
   overLimit: boolean;
-  /** True when the whole cart can go to checkout unchanged. */
+  /** True when every item can go to checkout in this order (nothing flagged). */
   ok: boolean;
 }
 
 const isActive = (m: StoreMappingLike) => (m.status ?? "ACTIVE").toUpperCase() === "ACTIVE";
+
+const currencyCode = (value: string | null | undefined): string => (value || "").trim().toUpperCase();
+
+/** The store's ACTIVE mappings, by package session. */
+const activeBySession = (storeMappings: StoreMappingLike[] | null | undefined) => {
+  const bySession = new Map<string, StoreMappingLike[]>();
+  for (const m of storeMappings || []) {
+    const id = m.package_session_id;
+    if (!id || !isActive(m)) continue;
+    const list = bySession.get(id);
+    if (list) list.push(m);
+    else bySession.set(id, [m]);
+  }
+  return bySession;
+};
+
+/**
+ * The versions the store checkout can sell as they are: exactly one ACTIVE
+ * mapping each (none is "not in the store", two would charge it twice) — the
+ * rule the pre-check applies to every cart item.
+ */
+export const storeSellableSessions = (storeMappings: StoreMappingLike[] | null | undefined): Set<string> => {
+  const sellable = new Set<string>();
+  for (const [id, matches] of activeBySession(storeMappings)) {
+    if (matches.length === 1) sellable.add(id);
+  }
+  return sellable;
+};
 
 export const precheckSiteCart = (
   items: SiteCartItem[],
@@ -56,21 +94,15 @@ export const precheckSiteCart = (
   opts: { max?: number } = {},
 ): SiteCartPrecheck => {
   const max = opts.max ?? SITE_CART_MAX_ITEMS;
-
-  const activeBySession = new Map<string, StoreMappingLike[]>();
-  for (const m of storeMappings || []) {
-    const id = m.package_session_id;
-    if (!id || !isActive(m)) continue;
-    const list = activeBySession.get(id);
-    if (list) list.push(m);
-    else activeBySession.set(id, [m]);
-  }
+  const bySession = activeBySession(storeMappings);
 
   const ready: SiteCartItem[] = [];
   const flagged: FlaggedItem[] = [];
   const priceChanges: PriceChange[] = [];
   const seenSessions = new Set<string>();
   const seenCourses = new Set<string>();
+  // The order's currency: that of its first sellable item that names one.
+  let orderCurrency = "";
 
   for (const item of items) {
     // Later copies are the duplicates; the first stays sellable.
@@ -81,7 +113,7 @@ export const precheckSiteCart = (
     seenSessions.add(item.packageSessionId);
     seenCourses.add(item.courseId);
 
-    const matches = activeBySession.get(item.packageSessionId) || [];
+    const matches = bySession.get(item.packageSessionId) || [];
     if (matches.length === 0) {
       flagged.push({ item, issue: "notInStore" });
       continue;
@@ -91,19 +123,23 @@ export const precheckSiteCart = (
       continue;
     }
 
+    const plan = matches[0]!.payment_plan;
+    const currency = currencyCode(plan?.currency || item.currency);
+    if (currency) {
+      if (!orderCurrency) orderCurrency = currency;
+      else if (currency !== orderCurrency) {
+        flagged.push({ item, issue: "otherCurrency" });
+        continue;
+      }
+    }
+
     ready.push(item);
-    const storePrice = matches[0]!.payment_plan?.actual_price;
-    if (
-      typeof item.price === "number" &&
-      typeof storePrice === "number" &&
-      Number.isFinite(storePrice) &&
-      Math.abs(storePrice - item.price) >= 0.01
-    ) {
-      priceChanges.push({
-        item,
-        storePrice,
-        currency: matches[0]!.payment_plan?.currency || item.currency,
-      });
+    const storePrice = plan?.actual_price;
+    if (typeof item.price === "number" && typeof storePrice === "number" && Number.isFinite(storePrice)) {
+      const shownCurrency = currencyCode(item.currency);
+      const changed =
+        Math.abs(storePrice - item.price) >= 0.01 || (!!shownCurrency && !!currency && shownCurrency !== currency);
+      if (changed) priceChanges.push({ item, storePrice, currency: plan?.currency || item.currency });
     }
   }
 
@@ -118,10 +154,56 @@ export const precheckSiteCart = (
 };
 
 /**
+ * Can the checkout go ahead without asking the visitor? Only when every item
+ * can be sold in this order and — where prices are shown at all — at the
+ * prices the cart showed. A changed price is confirmed first, never charged
+ * silently.
+ */
+export const canCheckOutDirectly = (result: SiteCartPrecheck, opts: { pricesShown: boolean }): boolean =>
+  result.ok && (!opts.pricesShown || result.priceChanges.length === 0);
+
+export interface PrecheckReview {
+  /** Items the store cannot sell as they are (everything flagged but the other-currency ones). */
+  blocked: FlaggedItem[];
+  /** Items left for an order of their own, in their own currency. */
+  otherCurrency: FlaggedItem[];
+  /** Nothing is flagged: the review is only about changed prices. */
+  priceOnly: boolean;
+}
+
+/** What a review has to say, for the cart drawer. */
+export const reviewSummary = (result: SiteCartPrecheck): PrecheckReview => ({
+  blocked: result.flagged.filter((f) => f.issue !== "otherCurrency"),
+  otherCurrency: result.flagged.filter((f) => f.issue === "otherCurrency"),
+  priceOnly: result.ok && result.priceChanges.length > 0,
+});
+
+/**
+ * The items that go to checkout, at the prices the checkout will charge — what
+ * a review's total adds up. A changed line drops its old struck-through price,
+ * which no longer belongs to it.
+ */
+export const readyAtStorePrices = (result: Pick<SiteCartPrecheck, "ready" | "priceChanges">): SiteCartItem[] => {
+  const changes = new Map(result.priceChanges.map((c) => [c.item, c]));
+  return result.ready.map((item) => {
+    const change = changes.get(item);
+    if (!change) return item;
+    const atStore: SiteCartItem = {
+      ...item,
+      price: change.storePrice,
+      ...(change.currency ? { currency: change.currency } : {}),
+    };
+    delete atStore.elevatedPrice;
+    return atStore;
+  });
+};
+
+/**
  * Package session ids "Remove unavailable" takes out: the versions the store
  * cannot sell (or would charge twice). A duplicate copy is left to the visitor
  * — it can share its id with the copy that stays, and removing by id would
- * take both.
+ * take both. An item in another currency is not unavailable: it can be bought
+ * in an order of its own, so it stays too.
  */
 export const unavailableSessionIds = (result: Pick<SiteCartPrecheck, "flagged">): string[] => [
   ...new Set(

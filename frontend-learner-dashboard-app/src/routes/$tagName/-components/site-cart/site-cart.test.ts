@@ -11,7 +11,14 @@ import {
   stripLanguageWords,
   versionLabel,
 } from "./site-cart-items";
-import { precheckSiteCart, unavailableSessionIds } from "./site-cart-precheck";
+import {
+  canCheckOutDirectly,
+  precheckSiteCart,
+  readyAtStorePrices,
+  reviewSummary,
+  storeSellableSessions,
+  unavailableSessionIds,
+} from "./site-cart-precheck";
 import { CLOSED_DRAWER_THEME, nextDrawerTheme, readCatalogueTheme } from "./catalogue-theme-snapshot";
 
 const item = (courseId: string, packageSessionId: string, extra: Partial<SiteCartItem> = {}): SiteCartItem => ({
@@ -220,6 +227,92 @@ describe("precheckSiteCart", () => {
     ]);
   });
 
+  it("never goes straight to checkout over a changed price (a promo price the store does not sell)", () => {
+    // Added from a promo link at 2,500; the store charges its plan's 4,999.
+    const promo = item("c1", "a", { price: 2500, currency: "INR", enrollInviteId: "DIWALI50" });
+    const result = precheckSiteCart([promo], [mapping("a", { payment_plan: { actual_price: 4999, currency: "INR" } })]);
+    expect(result.ok).toBe(true);
+    expect(canCheckOutDirectly(result, { pricesShown: true })).toBe(false);
+    expect(reviewSummary(result)).toEqual({ blocked: [], otherCurrency: [], priceOnly: true });
+    // Where no price is ever shown there is nothing to confirm.
+    expect(canCheckOutDirectly(result, { pricesShown: false })).toBe(true);
+    // A cart at the store's prices goes straight on.
+    const same = precheckSiteCart([item("c1", "a", { price: 100 })], [mapping("a")]);
+    expect(canCheckOutDirectly(same, { pricesShown: true })).toBe(true);
+  });
+
+  it("counts a currency change as a price change", () => {
+    const result = precheckSiteCart(
+      [item("c1", "a", { price: 499, currency: "INR" })],
+      [mapping("a", { payment_plan: { actual_price: 499, currency: "USD" } })],
+    );
+    expect(result.priceChanges).toEqual([
+      { item: expect.objectContaining({ packageSessionId: "a" }), storePrice: 499, currency: "USD" },
+    ]);
+  });
+
+  it("checks out one currency at a time: items in another currency than the first are set aside", () => {
+    const rupees = item("c1", "a", { price: 499, currency: "INR" });
+    const dollars = item("c2", "b", { price: 299, currency: "USD" });
+    const moreRupees = item("c3", "c", { price: 999, currency: "INR" });
+    const result = precheckSiteCart(
+      [rupees, dollars, moreRupees],
+      [
+        mapping("a", { payment_plan: { actual_price: 499, currency: "INR" } }),
+        mapping("b", { payment_plan: { actual_price: 299, currency: "usd" } }),
+        mapping("c", { payment_plan: { actual_price: 999, currency: "INR" } }),
+      ],
+    );
+    expect(result.ready).toEqual([rupees, moreRupees]);
+    expect(result.flagged).toEqual([{ item: dollars, issue: "otherCurrency" }]);
+    expect(result.ok).toBe(false);
+    expect(canCheckOutDirectly(result, { pricesShown: false })).toBe(false);
+    // Not unavailable — it can be bought in an order of its own, so it stays in the cart.
+    expect(unavailableSessionIds(result)).toEqual([]);
+    expect(reviewSummary(result)).toEqual({
+      blocked: [],
+      otherCurrency: [{ item: dollars, issue: "otherCurrency" }],
+      priceOnly: false,
+    });
+  });
+
+  it("reads the currency from the store's plan, else the cart line, and never flags an unknown one", () => {
+    const result = precheckSiteCart(
+      [item("c1", "a"), item("c2", "b", { currency: "USD" }), item("c3", "c"), item("c4", "d")],
+      [
+        mapping("a", { payment_plan: { actual_price: 100, currency: "INR" } }),
+        mapping("b", { payment_plan: { actual_price: 100, currency: null } }),
+        mapping("c", { payment_plan: null }),
+        mapping("d", { payment_plan: { actual_price: 100, currency: " inr " } }),
+      ],
+    );
+    expect(result.ready.map((i) => i.packageSessionId)).toEqual(["a", "c", "d"]);
+    expect(result.flagged.map((f) => [f.item.packageSessionId, f.issue])).toEqual([["b", "otherCurrency"]]);
+  });
+
+  it("tells the price review apart from items that cannot be sold", () => {
+    const result = precheckSiteCart(
+      [item("c1", "a", { price: 100 }), item("c2", "missing")],
+      [mapping("a", { payment_plan: { actual_price: 120, currency: "INR" } })],
+    );
+    const summary = reviewSummary(result);
+    expect(summary.priceOnly).toBe(false);
+    expect(summary.blocked.map((f) => f.issue)).toEqual(["notInStore"]);
+  });
+
+  it("prices the review's total at what checkout charges", () => {
+    const changed = item("c1", "a", { price: 2500, elevatedPrice: 5000, currency: "INR" });
+    const kept = item("c2", "b", { price: 100, currency: "INR" });
+    const result = precheckSiteCart(
+      [changed, kept],
+      [mapping("a", { payment_plan: { actual_price: 4999, currency: "INR" } }), mapping("b")],
+    );
+    const atStore = readyAtStorePrices(result);
+    expect(atStore[0]).toEqual({ ...changed, price: 4999, currency: "INR", elevatedPrice: undefined });
+    expect(atStore[0]).not.toHaveProperty("elevatedPrice");
+    expect(atStore[1]).toBe(kept);
+  });
+
   it("refuses more than one order's worth of items", () => {
     const items = Array.from({ length: 3 }, (_, n) => item(`c${n}`, `s${n}`));
     const result = precheckSiteCart(items, items.map((i) => mapping(i.packageSessionId)), { max: 2 });
@@ -231,6 +324,22 @@ describe("precheckSiteCart", () => {
     const result = precheckSiteCart([item("c1", "a")], undefined);
     expect(result.ready).toEqual([]);
     expect(result.flagged[0]?.issue).toBe("notInStore");
+  });
+});
+
+describe("storeSellableSessions", () => {
+  it("is the versions with exactly one ACTIVE mapping (the pre-check's rule)", () => {
+    const sellable = storeSellableSessions([
+      mapping("one"),
+      mapping("twice"),
+      mapping("twice"),
+      mapping("gone", { status: "DELETED" }),
+      mapping("revived", { status: "INACTIVE" }),
+      mapping("revived"),
+      { package_session_id: null, status: "ACTIVE" },
+    ]);
+    expect([...sellable].sort()).toEqual(["one", "revived"]);
+    expect(storeSellableSessions(null).size).toBe(0);
   });
 });
 

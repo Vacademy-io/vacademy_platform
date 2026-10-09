@@ -28,7 +28,13 @@ import {
 import { fetchPaymentOutcome } from "./payment-status";
 import { reconcilePendingPurchases } from "./pending-purchases";
 import { SITE_CART_MAX_ITEMS, versionLabel } from "./site-cart-items";
-import { unavailableSessionIds, type PrecheckIssue } from "./site-cart-precheck";
+import {
+  readyAtStorePrices,
+  reviewSummary,
+  unavailableSessionIds,
+  type PrecheckIssue,
+  type PriceChange,
+} from "./site-cart-precheck";
 import { useSiteCart } from "./use-site-cart";
 import { useSiteCartCheckout } from "./use-site-cart-checkout";
 
@@ -122,7 +128,6 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
   const nextTheme = nextDrawerTheme(themeState, open, themeAnchor, readCatalogueTheme);
   if (nextTheme !== themeState) setThemeState(nextTheme);
   const theme = nextTheme.theme;
-  const totals = useMemo(() => cartTotals(items), [items]);
 
   // A changed cart (or a reopened drawer) invalidates the last availability check.
   const itemsKey = items.map((i) => `${i.packageSessionId}:${i.courseId}`).join(",");
@@ -157,6 +162,19 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
     for (const f of review?.flagged || []) map.set(f.item, f.issue);
     return map;
   }, [review]);
+  const priceChanges = useMemo(() => {
+    const map = new Map<SiteCartItem, PriceChange>();
+    if (!hidePrices) for (const c of review?.priceChanges || []) map.set(c.item, c);
+    return map;
+  }, [review, hidePrices]);
+  const summary = review ? reviewSummary(review) : null;
+  // The total for what the button does: during a review, the courses that go
+  // on to checkout at the prices it charges; otherwise (or when none can) the
+  // cart as added.
+  const totals = useMemo(
+    () => cartTotals(review?.ready.length ? readyAtStorePrices(review) : items),
+    [review, items],
+  );
 
   const coursesLower = terms.courses.toLocaleLowerCase();
   const countLabel = (count: number) =>
@@ -175,10 +193,14 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
           "siteCart.issue.listedTwice",
           "Listed twice at checkout — please contact the institute before buying it.",
         );
+      case "otherCurrency":
+        return t("siteCart.issue.otherCurrency", "Priced in a different currency — check it out separately.");
       default:
         return t("siteCart.issue.duplicateInCart", "Already in your cart above — remove one.");
     }
   };
+  const priceText = (amount: number, currency?: string | null) =>
+    amount === 0 ? t("productPageOffer.free", "Free") : formatPriceAmount(amount, currency);
 
   const checking = state.status === "checking";
   const full = items.length >= SITE_CART_MAX_ITEMS;
@@ -227,6 +249,7 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
     <ul className="divide-y divide-catalogue-border">
       {items.map((item, index) => {
         const issue = issues.get(item);
+        const change = priceChanges.get(item);
         const title = siteT(item.title) || terms.course;
         const version = versionLabel(item, languages, siteT);
         return (
@@ -248,19 +271,49 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
                 {version?.level && (
                   <span className="text-xs font-medium text-catalogue-text-secondary">{version.level}</span>
                 )}
-                {!hidePrices && typeof item.price === "number" && (
-                  <PriceWithMrp
-                    actual={item.price}
-                    elevated={item.elevatedPrice}
-                    currency={item.currency}
-                    size="xs"
-                    layout="inline"
-                    hideBadge
-                  />
+                {change && typeof item.price === "number" ? (
+                  // The price the cart showed → what checkout charges now.
+                  <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+                    <span className="sr-only">
+                      {t("siteCart.priceChangedFromTo", {
+                        from: priceText(item.price, item.currency),
+                        to: priceText(change.storePrice, change.currency),
+                        defaultValue: "Price changed from {{from}} to {{to}}",
+                      })}
+                    </span>
+                    <span aria-hidden="true" className="text-catalogue-text-muted line-through">
+                      {priceText(item.price, item.currency)}
+                    </span>
+                    <ArrowRight
+                      className="size-3 text-catalogue-text-muted rtl:rotate-180"
+                      weight="bold"
+                      aria-hidden="true"
+                    />
+                    <span aria-hidden="true" className="font-semibold text-catalogue-text-primary">
+                      {priceText(change.storePrice, change.currency)}
+                    </span>
+                  </span>
+                ) : (
+                  !hidePrices &&
+                  typeof item.price === "number" && (
+                    <PriceWithMrp
+                      actual={item.price}
+                      elevated={item.elevatedPrice}
+                      currency={item.currency}
+                      size="xs"
+                      layout="inline"
+                      hideBadge
+                    />
+                  )
                 )}
               </div>
               {issue && (
-                <p className="mt-1.5 flex items-start gap-1.5 text-xs font-medium text-danger-600">
+                <p
+                  className={cn(
+                    "mt-1.5 flex items-start gap-1.5 text-xs font-medium",
+                    issue === "otherCurrency" ? "text-warning-700" : "text-danger-600",
+                  )}
+                >
                   <WarningCircle className="mt-px size-3.5 shrink-0" weight="bold" aria-hidden="true" />
                   {issueText(issue)}
                 </p>
@@ -326,6 +379,8 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
       {state.status === "error" &&
         notice("danger", t("siteCart.storeError", "Checkout is unavailable right now. Please try again."))}
       {review &&
+        summary &&
+        summary.blocked.length > 0 &&
         notice(
           "warning",
           review.ready.length
@@ -338,7 +393,16 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
                 defaultValue: "None of these {{courses}} can be checked out online yet.",
               }),
         )}
-      {review && review.priceChanges.length > 0 &&
+      {summary &&
+        summary.otherCurrency.length > 0 &&
+        notice(
+          "warning",
+          t("siteCart.otherCurrencySummary", {
+            courses: coursesLower,
+            defaultValue: "Some {{courses}} are priced in a different currency — check them out separately.",
+          }),
+        )}
+      {priceChanges.size > 0 &&
         notice("info", t("siteCart.priceChanged", "Some prices have changed — checkout shows the current price."))}
 
       {!hidePrices && (
@@ -373,10 +437,13 @@ export const SiteCartDrawer: React.FC<SiteCartDrawerProps> = ({
               onClick={() => goToCheckout(review.ready)}
               className="catalogue-btn catalogue-btn-primary w-full justify-center"
             >
-              {t("siteCart.checkoutAvailable", {
-                count: review.ready.length,
-                defaultValue: "Check out {{count}} available",
-              })}
+              {/* Only prices changed: everything goes on, at the store's prices. */}
+              {summary?.priceOnly
+                ? t("siteCart.continueAtCurrentPrices", "Continue at current prices")
+                : t("siteCart.checkoutAvailable", {
+                    count: review.ready.length,
+                    defaultValue: "Check out {{count}} available",
+                  })}
               <ArrowRight className="size-4 rtl:rotate-180" weight="bold" aria-hidden="true" />
             </button>
           )}

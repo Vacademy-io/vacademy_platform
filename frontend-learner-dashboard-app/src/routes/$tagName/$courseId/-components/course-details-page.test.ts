@@ -233,11 +233,15 @@ beforeEach(() => {
   useSiteCartStore.setState({ instituteId: null, items: [], hydrated: false, lastAddedAt: 0 });
 });
 
-afterEach(() => {
+const unmountPage = () => {
   act(() => root?.unmount());
   host?.remove();
   root = null;
   host = null;
+};
+
+afterEach(() => {
+  unmountPage();
 });
 
 /* ── tests ────────────────────────────────────────────────────────────── */
@@ -523,6 +527,60 @@ describe("CourseDetailsPage — site cart", () => {
     expect(opened).toEqual([{ intent: "checkout", packageSessionId: `${c}-en`, source: "course" }]);
     expect(useSiteCartStore.getState().items).toHaveLength(1);
     window.removeEventListener("siteCartOpen", onOpen);
+  });
+});
+
+describe("CourseDetailsPage — product page checkout and the site language", () => {
+  const i18n = {
+    enabled: true,
+    defaultLocale: "en",
+    locales: [{ code: "en", label: "EN" }, { code: "hi", label: "हिन्दी" }],
+    strings: { hi: { Yoga: "योग" } },
+  };
+  const mappings = (c: string) => [
+    { package_id: c, package_session_id: `${c}-en`, enroll_invite_id: "pp-en", level_name: "English", status: "ACTIVE", display_order: 1, payment_plan: { actual_price: 600, currency: "INR" } },
+  ];
+  const enrolFromPath = async (c: string, extra: Record<string, unknown>) => {
+    routeNetwork(c, { "pp-en": invite("pp-en", `${c}-en`, 600) }, mappings(c));
+    catalogue.data = settings(extra);
+    await renderPage({ courseId: c, packageSessionId: `${c}-en`, enrollInviteId: "pp-en", productPageCode: "PATH" });
+    act(() => buttonByText("courseDetails.enrollNow")[0].click());
+    expect(router.navigate).toHaveBeenCalledTimes(1);
+    return (router.navigate.mock.calls[0][0] as { search: Record<string, unknown> }).search;
+  };
+
+  it("keeps the exact checkout URL on a single-language site", async () => {
+    expect(await enrolFromPath("c-pp-plain", {})).toEqual({
+      instituteId: "inst",
+      courseIds: "c-pp-plain-en",
+      defaultTab: "CART",
+    });
+  });
+
+  it("opens the checkout inside the site on a site with languages (base language: no lang)", async () => {
+    expect(await enrolFromPath("c-pp-en", { i18n })).toEqual({
+      instituteId: "inst",
+      courseIds: "c-pp-en-en",
+      defaultTab: "CART",
+      tagName: "site",
+    });
+  });
+
+  it("carries the visitor's language, from the URL or the remembered choice", async () => {
+    router.location = { pathname: "/site/c-pp-hi", searchStr: "?lang=hi", hash: "" };
+    expect(await enrolFromPath("c-pp-hi", { i18n })).toEqual({
+      instituteId: "inst",
+      courseIds: "c-pp-hi-en",
+      defaultTab: "CART",
+      tagName: "site",
+      lang: "hi",
+    });
+
+    unmountPage();
+    router.navigate.mockReset();
+    router.location = { pathname: "/site/c-pp-kept", searchStr: "", hash: "" };
+    memoryStorage.set("catalogue-locale:site", "hi"); // chosen on an earlier visit
+    expect(await enrolFromPath("c-pp-kept", { i18n })).toMatchObject({ tagName: "site", lang: "hi" });
   });
 });
 

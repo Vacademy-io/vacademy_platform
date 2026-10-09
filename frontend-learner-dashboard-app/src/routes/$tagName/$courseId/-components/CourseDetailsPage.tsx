@@ -1673,6 +1673,13 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
     const psId =
       selectedVersion?.packageSessionId || courseData.packageSessionId || packageSessionId;
     if (productPageCode && psId) {
+      // A site with languages opens the checkout inside the site (its header
+      // and dictionary) in the visitor's language, as its other checkout
+      // links do; a single-language site keeps the URL it always had.
+      const siteLang =
+        siteLocale.enabled && siteLocale.locale !== siteLocale.baseLocale
+          ? siteLocale.locale
+          : undefined;
       navigate({
         to: "/product-pages/$productPageCode",
         params: { productPageCode },
@@ -1680,6 +1687,8 @@ const CourseDetailsPageContent: React.FC<CourseDetailsPageContentProps> = ({
           ...(instituteId ? { instituteId } : {}),
           courseIds: psId,
           defaultTab: "CART" as const,
+          ...(siteLocale.enabled && tagName ? { tagName } : {}),
+          ...(siteLang ? { lang: siteLang } : {}),
         },
       });
       return;

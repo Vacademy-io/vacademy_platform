@@ -121,6 +121,20 @@ describe("resolveCatalogDiscovery", () => {
     ]);
   });
 
+  it("treats a badge type list with nothing valid in it as badges off (every box unticked)", () => {
+    const none = resolveCatalogDiscovery({ badges: { enabled: true, types: [] } }, {});
+    expect(none.badges).toBeNull();
+    expect(none.active).toBe(false);
+    expect(resolveCatalogDiscovery({ badges: { enabled: true, types: ["bogus"] } }, {}).badges).toBeNull();
+    // No type list at all still means every badge.
+    expect(resolveCatalogDiscovery({ badges: { enabled: true, types: "new" } }, {}).badges?.types).toEqual([
+      "bestseller",
+      "popular",
+      "new",
+      "free",
+    ]);
+  });
+
   it("only enables the category filter for folder-library streams", () => {
     expect(resolveCatalogDiscovery({ categoryFilter: { enabled: true } }, {}).categoryFilter.enabled).toBe(false);
     expect(

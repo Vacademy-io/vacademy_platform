@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_COURSE_LANGUAGES as LANGS } from "../../../-utils/course-variants";
-import { buildCatalogCards, courseTagsOf, isComingSoonRow, isPureLanguageLevel, rowLanguage, type CatalogRowLike } from "./catalog-cards";
+import {
+  buildCatalogCards,
+  cardPriceView,
+  courseTagsOf,
+  isBuyableNowRow,
+  isComingSoonRow,
+  isPureLanguageLevel,
+  priceSummaryOf,
+  rowLanguage,
+  type CatalogRowLike,
+} from "./catalog-cards";
 
 const row = (over: Partial<CatalogRowLike> & Record<string, unknown>): CatalogRowLike & Record<string, unknown> => ({
   id: "c1",
@@ -59,6 +69,72 @@ describe("buildCatalogCards", () => {
     );
     expect(card).toMatchObject({ minPrice: null, maxPrice: null, priceVaries: false, sortPrice: 0 });
   });
+
+  it("leaves closed and not-yet-open versions out of the price summary and the price sort", () => {
+    // Hindi ₹500 with enrolment closed, English ₹1000 open: no "from ₹500".
+    const [card] = buildCatalogCards(
+      [
+        row({ id: "c5", packageSessionId: "hi", level: "Hindi", level_name: "Hindi", price: 500, enroll_invite_availability: "EXPIRED" }),
+        row({ id: "c5", packageSessionId: "en", level: "English", level_name: "English", price: 1000 }),
+        row({ id: "c5", packageSessionId: "x", level: "Beginner", price: 50, enroll_invite_availability: "NOT_STARTED" }),
+      ],
+      { grouping: true, languages: LANGS },
+    );
+    expect(card).toMatchObject({ minPrice: 1000, maxPrice: 1000, priceVaries: false, sortPrice: 1000 });
+  });
+
+  it("sorts a single row by its own price whatever its state (the original grid)", () => {
+    const cards = buildCatalogCards(
+      [row({ id: "a", price: 700, enroll_invite_availability: "INACTIVE" }), row({ id: "b", price: 0, coming_soon: { enabled: true } })],
+      { grouping: false, languages: LANGS },
+    );
+    expect(cards.map((c) => c.sortPrice)).toEqual([700, 0]);
+  });
+});
+
+describe("prices that can be paid now", () => {
+  it("knows which versions can be bought now (missing availability = open)", () => {
+    expect(isBuyableNowRow({})).toBe(true);
+    expect(isBuyableNowRow({ enroll_invite_availability: "AVAILABLE" })).toBe(true);
+    expect(isBuyableNowRow({ enroll_invite_availability: "EXPIRED" })).toBe(false);
+    expect(isBuyableNowRow({ enroll_invite_availability: "NOT_STARTED" })).toBe(false);
+    expect(isBuyableNowRow({ coming_soon: { enabled: true } })).toBe(false);
+  });
+
+  it("summarises only those versions", () => {
+    expect(priceSummaryOf([row({ price: 0 }), row({ price: 900 })])).toEqual({ minPrice: 0, maxPrice: 900, priceVaries: true });
+    expect(priceSummaryOf([row({ price: 0, enroll_invite_availability: "EXPIRED" }), row({ price: 900 })])).toEqual({
+      minPrice: 900,
+      maxPrice: 900,
+      priceVaries: false,
+    });
+    expect(priceSummaryOf([])).toEqual({ minPrice: null, maxPrice: null, priceVaries: false });
+  });
+});
+
+describe("cardPriceView (what a merged card's price shows)", () => {
+  const hiFree = row({ id: "m", packageSessionId: "hi", level: "Hindi", level_name: "Hindi", price: 0 });
+  const enPaid = row({ id: "m", packageSessionId: "en", level: "English", level_name: "English", price: 1000, elevatedPrice: 1500 });
+  const enCheap = row({ id: "m", packageSessionId: "en2", level: "English 2", level_name: "English 2", price: 1000 });
+  const closed = row({ id: "m", packageSessionId: "old", price: 200, enroll_invite_availability: "EXPIRED" });
+
+  it("says 'from' the cheapest when the versions on offer differ (Free included)", () => {
+    expect(cardPriceView({ primary: enPaid }, [hiFree, enPaid])).toEqual({ row: hiFree, minPrice: 0, from: true });
+  });
+
+  it("follows the active filters: a 'Paid' filter shows the paid version's price, not Free", () => {
+    expect(cardPriceView({ primary: hiFree }, [enPaid])).toEqual({ row: enPaid, minPrice: 1000, from: false });
+  });
+
+  it("ignores versions that cannot be bought now", () => {
+    expect(cardPriceView({ primary: closed }, [closed, enPaid])).toEqual({ row: enPaid, minPrice: 1000, from: false });
+    expect(cardPriceView({ primary: closed }, [closed])).toBeNull();
+  });
+
+  it("prefers the card's own version among equally cheap ones", () => {
+    expect(cardPriceView({ primary: enCheap }, [enPaid, enCheap])?.row).toBe(enCheap);
+    expect(cardPriceView({ primary: hiFree }, [enPaid, enCheap])?.row).toBe(enPaid);
+  });
 });
 
 describe("row helpers", () => {
@@ -80,6 +156,17 @@ describe("row helpers", () => {
   it("reads a row's language from its level name", () => {
     expect(rowLanguage({ level_name: "Advanced Hindi" }, LANGS)?.code).toBe("hi");
     expect(rowLanguage({ level_name: null, level: "Beginner" }, LANGS)).toBeNull();
+  });
+
+  it("remembers a row's language per language list", () => {
+    const r = { level_name: "Hindi" };
+    expect(rowLanguage(r, LANGS)?.code).toBe("hi");
+    expect(rowLanguage(r, LANGS)?.code).toBe("hi");
+    const none = { level_name: "Beginner" };
+    expect(rowLanguage(none, LANGS)).toBeNull();
+    expect(rowLanguage(none, LANGS)).toBeNull();
+    // Another language list is its own lookup.
+    expect(rowLanguage(r, [{ code: "x", label: "Other", match: ["hindi"] }])?.code).toBe("x");
   });
 
   it("recognises coming-soon rows", () => {

@@ -21,9 +21,15 @@ export const createdTime = (value: string | null | undefined): number => {
 export const sortCatalogCards = <R extends CatalogRowLike>(
   cards: CatalogCard<R>[],
   sort: CourseCatalogSortOption,
-  opts: { ranks: Map<string, number>; titleOf: (card: CatalogCard<R>) => string },
+  opts: {
+    ranks: Map<string, number>;
+    titleOf: (card: CatalogCard<R>) => string;
+    /** The price a card shows (merged cards: given the active filters). Default: card.sortPrice. */
+    priceOf?: (card: CatalogCard<R>) => number;
+  },
 ): CatalogCard<R>[] => {
   const out = [...cards];
+  const priceOf = opts.priceOf ?? ((card: CatalogCard<R>) => card.sortPrice);
   switch (sort) {
     case "Newest":
       out.sort((a, b) => createdTime(b.primary.createdAt) - createdTime(a.primary.createdAt));
@@ -32,10 +38,10 @@ export const sortCatalogCards = <R extends CatalogRowLike>(
       out.sort((a, b) => createdTime(a.primary.createdAt) - createdTime(b.primary.createdAt));
       break;
     case "Price: Low to High":
-      out.sort((a, b) => a.sortPrice - b.sortPrice);
+      out.sort((a, b) => priceOf(a) - priceOf(b));
       break;
     case "Price: High to Low":
-      out.sort((a, b) => b.sortPrice - a.sortPrice);
+      out.sort((a, b) => priceOf(b) - priceOf(a));
       break;
     case "Rating":
       out.sort((a, b) => b.primary.rating - a.primary.rating);

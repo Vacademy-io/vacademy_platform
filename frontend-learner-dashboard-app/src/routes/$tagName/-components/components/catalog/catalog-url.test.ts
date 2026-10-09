@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { withSearchParams } from "../../../-utils/catalogue-url-state";
+import { ALL_BADGES } from "../../../-utils/course-badges";
+import { resolveCatalogDiscovery } from "./catalog-config";
 import {
   countDiscoveryFilters,
+  discoveryLinkScope,
   discoveryPatchToParams,
   formatPriceParam,
+  parseDiscoveryParams,
   parsePriceParam,
   readDiscoveryParams,
   readStreamParams,
   samePrice,
+  sanitizeDiscoveryState,
   searchToParam,
   sortFromToken,
   sortToToken,
@@ -16,12 +21,17 @@ import {
 } from "./catalog-url";
 import { COURSE_CATALOG_SORT_OPTIONS } from "../../../-types/course-catalogue-types";
 
+const STREAMS: DiscoveryValidation["streams"] = [
+  { slug: "shiksha", categories: [{ slug: "vedic-maths" }, { slug: "sanskrit" }] },
+  { slug: "kala", categories: [{ slug: "music" }] },
+];
+
+/** A section that offers every control. */
 const V: DiscoveryValidation = {
-  streams: [
-    { slug: "shiksha", categories: [{ slug: "vedic-maths" }, { slug: "sanskrit" }] },
-    { slug: "kala", categories: [{ slug: "music" }] },
-  ],
+  streams: STREAMS,
   languageCodes: ["en", "hi"],
+  prices: "any",
+  badges: [...ALL_BADGES],
 };
 
 describe("price param", () => {
@@ -98,6 +108,124 @@ describe("readDiscoveryParams", () => {
 
   it("drops languages when the site has none", () => {
     expect(readDiscoveryParams("?language=hi", { ...V, languageCodes: [] }).languages).toEqual([]);
+  });
+
+  it("keeps only the prices and badges the section lists", () => {
+    const limited = { ...V, prices: [{ kind: "free" as const }], badges: ["new" as const] };
+    expect(readDiscoveryParams("?price=free&badge=new,bestseller", limited)).toMatchObject({
+      price: { kind: "free" },
+      badges: ["new"],
+    });
+    expect(readDiscoveryParams("?price=paid", limited).price).toBeNull();
+    expect(readDiscoveryParams("?price=max:500", { ...V, prices: [{ kind: "max", max: 500 }] }).price).toEqual({
+      kind: "max",
+      max: 500,
+    });
+  });
+});
+
+describe("parse + sanitize", () => {
+  it("parses syntax only", () => {
+    expect(parseDiscoveryParams("?stream=Kala&category=Music,x&language=HI&price=bad&badge=NEW,hot")).toEqual({
+      stream: "Kala",
+      categories: ["Music", "x"],
+      languages: ["HI"],
+      price: null,
+      badges: ["new"],
+    });
+  });
+
+  it("sanitizes a local state the same way (canonical slugs, offered values only)", () => {
+    const scope = { ...V, languageCodes: ["hi"], prices: [] as never[], badges: [] as never[] };
+    expect(
+      sanitizeDiscoveryState(
+        { stream: "KALA", categories: ["MUSIC", "sanskrit"], languages: ["en", "hi"], price: { kind: "paid" }, badges: ["new"] },
+        scope,
+      ),
+    ).toEqual({ stream: "kala", categories: ["music"], languages: ["hi"], price: null, badges: [] });
+  });
+});
+
+describe("discoveryLinkScope: a link only applies what the section can show and undo", () => {
+  const LANG_ON = { courseLanguages: { enabled: true } };
+  const scope = (props: Record<string, unknown>, gs: unknown = LANG_ON, ctx: Partial<Parameters<typeof discoveryLinkScope>[1]> = {}) =>
+    discoveryLinkScope(resolveCatalogDiscovery(props, gs), {
+      streams: STREAMS,
+      filtersShown: true,
+      presentLanguages: ["en", "hi"],
+      ...ctx,
+    });
+  const ALL = "?stream=shiksha&category=vedic-maths&language=hi&price=free&badge=new";
+
+  it("stream tabs alone: the mega-menu category link opens the whole stream", () => {
+    const v = scope({ streams: { enabled: true } });
+    expect(readDiscoveryParams(ALL, v)).toEqual({
+      stream: "shiksha",
+      categories: [],
+      languages: [],
+      price: null,
+      badges: [],
+    });
+  });
+
+  it("applies a category only with the category filter showing", () => {
+    const props = { streams: { enabled: true }, categoryFilter: { enabled: true } };
+    expect(readDiscoveryParams(ALL, scope(props)).categories).toEqual(["vedic-maths"]);
+    expect(readDiscoveryParams(ALL, scope(props, LANG_ON, { filtersShown: false })).categories).toEqual([]);
+  });
+
+  it("with applied-filter chips every valid value applies (each shows as a removable chip)", () => {
+    const v = scope({ streams: { enabled: true }, showAppliedChips: true });
+    expect(readDiscoveryParams(ALL.replace("badge=new", "badge=new,popular"), v)).toEqual({
+      stream: "shiksha",
+      categories: ["vedic-maths"],
+      languages: ["hi"],
+      price: { kind: "free" },
+      badges: ["new", "popular"],
+    });
+    // …but never a course language the site does not have switched on.
+    expect(readDiscoveryParams(ALL, scope({ showAppliedChips: true }, {})).languages).toEqual([]);
+  });
+
+  it("languages: the sidebar group's present languages, or language quick filters", () => {
+    expect(readDiscoveryParams("?language=en,hi", scope({ languageFilter: { enabled: true } })).languages).toEqual([
+      "en",
+      "hi",
+    ]);
+    expect(
+      readDiscoveryParams("?language=en,hi", scope({ languageFilter: { enabled: true } }, LANG_ON, { presentLanguages: ["hi"] }))
+        .languages,
+    ).toEqual(["hi"]);
+    const quick = scope({ quickFilters: [{ id: "hi", label: "", kind: "language", value: "hi" }] });
+    expect(readDiscoveryParams("?language=en,hi", quick).languages).toEqual(["hi"]);
+    expect(readDiscoveryParams("?language=hi", scope({ languageFilter: { enabled: true } }, LANG_ON, { filtersShown: false })).languages).toEqual([]);
+  });
+
+  it("prices: any with the price filter showing, else exactly the quick filters' choices", () => {
+    expect(scope({ priceFilter: { enabled: true } }).prices).toBe("any");
+    expect(scope({ priceFilter: { enabled: true } }, LANG_ON, { filtersShown: false }).prices).toEqual([]);
+    const quick = scope({
+      quickFilters: [
+        { id: "f", label: "", kind: "free" },
+        { id: "u", label: "", kind: "priceMax", value: 1000 },
+      ],
+    });
+    expect(quick.prices).toEqual([{ kind: "free" }, { kind: "max", max: 1000 }]);
+    expect(readDiscoveryParams("?price=max:1000", quick).price).toEqual({ kind: "max", max: 1000 });
+    expect(readDiscoveryParams("?price=max:500", quick).price).toBeNull();
+    expect(readDiscoveryParams("?price=paid", quick).price).toBeNull();
+  });
+
+  it("badges: only New / Bestseller quick filters are badge controls", () => {
+    const v = scope({
+      quickFilters: [
+        { id: "n", label: "", kind: "new" },
+        { id: "p", label: "", kind: "popular" },
+        { id: "f", label: "", kind: "free" },
+      ],
+    });
+    expect(v.badges).toEqual(["new"]);
+    expect(readDiscoveryParams("?badge=new,popular,free,bestseller", v).badges).toEqual(["new"]);
   });
 });
 

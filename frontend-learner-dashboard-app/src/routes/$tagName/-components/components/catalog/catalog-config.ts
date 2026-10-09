@@ -151,14 +151,20 @@ const resolveStreams = (raw: unknown): ResolvedStreams | null => {
   };
 };
 
+/**
+ * Badge rules. `types` absent = all four. A types LIST is the admin's choice
+ * of which badges may show, so one with nothing valid left in it (e.g. every
+ * box unticked) means no badges — badges off, and no popularity fetch.
+ */
 const resolveBadges = (raw: unknown): ResolvedBadgeRules | null => {
   if (!isObject(raw) || raw.enabled !== true) return null;
   const types = Array.isArray(raw.types)
     ? (raw.types.filter((t, i, all) => ALL_BADGES.includes(t as CourseBadge) && all.indexOf(t) === i) as CourseBadge[])
-    : [];
+    : [...ALL_BADGES];
+  if (!types.length) return null;
   return {
     enabled: true,
-    types: types.length ? types : [...ALL_BADGES],
+    types,
     newDays: positiveInt(raw.newDays),
     bestsellerTop: positiveInt(raw.bestsellerTop),
     max: positiveInt(raw.max),

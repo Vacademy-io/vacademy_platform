@@ -5,9 +5,10 @@
  *    &badge=new,bestseller&sort=popular&q=yoga
  *
  * A shared or mega-menu link reproduces the view. Every value is validated
- * against what the page actually offers (known streams, their categories,
- * the site's course languages…); anything unknown or malformed is ignored, so
- * a stale link degrades to the unfiltered grid instead of an empty one.
+ * against what the section actually offers (known streams, their categories,
+ * the filters it shows…); anything unknown, malformed or without a control on
+ * this section is ignored, so a stale link degrades to the unfiltered grid
+ * instead of an empty or silently narrowed one.
  */
 
 import { ALL_BADGES, type CourseBadge } from "../../../-utils/course-badges";
@@ -16,6 +17,7 @@ import {
   COURSE_CATALOG_SORT_OPTIONS,
   type CourseCatalogSortOption,
 } from "../../../-types/course-catalogue-types";
+import type { CatalogDiscoveryConfig, ResolvedQuickFilter } from "./catalog-config";
 
 /** Not in the shared URL_PARAMS (yet): ?badge=new,bestseller. */
 export const BADGE_PARAM = "badge";
@@ -42,11 +44,16 @@ export const EMPTY_DISCOVERY_STATE: DiscoveryState = {
   badges: [],
 };
 
-/** What a link may select on this page. */
+/** What a link (or the local state) may select on this section — see discoveryLinkScope. */
 export interface DiscoveryValidation {
+  /** Stream tabs, each with the categories that may be selected ([] = none). */
   streams: { slug: string; categories: { slug: string }[] }[];
-  /** Course language codes; empty when the site has no course languages. */
+  /** Course language codes that may be selected. */
   languageCodes: string[];
+  /** Price choices that may be selected: any valid one, or exactly these. */
+  prices: "any" | PriceChoice[];
+  /** Badge filters that may be selected. */
+  badges: CourseBadge[];
 }
 
 /* ── sort ───────────────────────────────────────────────────────────── */
@@ -97,46 +104,121 @@ export const formatPriceParam = (price: PriceChoice | null | undefined): string 
 export const samePrice = (a: PriceChoice | null | undefined, b: PriceChoice | null | undefined): boolean =>
   formatPriceParam(a) === formatPriceParam(b);
 
+/* ── what a section offers ──────────────────────────────────────────── */
+
+const lower = (s: string) => s.toLowerCase();
+
+const quickPriceChoice = (qf: ResolvedQuickFilter): PriceChoice[] => {
+  if (qf.kind === "free") return [{ kind: "free" }];
+  if (qf.kind === "priceMax" && typeof qf.value === "number") return [{ kind: "max", max: qf.value }];
+  return [];
+};
+
+/**
+ * What a link may switch on in this section. A filter value from the URL
+ * only applies where the visitor can see and undo it: the section shows a
+ * control for it (a sidebar group or a quick filter), or lists applied
+ * filters as removable chips. Anything else is ignored — so a mega-menu link
+ * to one category opens the whole stream on a section without a category
+ * filter, instead of a silently narrowed grid under a tab that looks complete.
+ * The stream itself always applies: the tabs are its control.
+ */
+export const discoveryLinkScope = (
+  config: Pick<
+    CatalogDiscoveryConfig,
+    | "showAppliedChips"
+    | "courseLanguagesOn"
+    | "languages"
+    | "languageFilter"
+    | "priceFilter"
+    | "categoryFilter"
+    | "quickFilters"
+  >,
+  ctx: {
+    streams: DiscoveryValidation["streams"];
+    /** The section shows its filter sidebar (showFilters is not false). */
+    filtersShown: boolean;
+    /** Codes the sidebar language group lists (the languages some course is in). */
+    presentLanguages: string[];
+  },
+): DiscoveryValidation => {
+  const chips = config.showAppliedChips;
+  const quick = config.quickFilters;
+  const siteCodes = config.courseLanguagesOn ? config.languages.map((l) => lower(l.code)) : [];
+  const languageControls = new Set(
+    [
+      ...(ctx.filtersShown && config.languageFilter.enabled ? ctx.presentLanguages : []),
+      ...quick.flatMap((q) => (q.kind === "language" && typeof q.value === "string" ? [q.value] : [])),
+    ].map(lower),
+  );
+  const categoryControl = chips || (ctx.filtersShown && config.categoryFilter.enabled);
+  const priceControl = chips || (ctx.filtersShown && config.priceFilter.enabled);
+  return {
+    streams: categoryControl
+      ? ctx.streams
+      : ctx.streams.map((s) => ({ slug: s.slug, categories: [] })),
+    languageCodes: chips ? siteCodes : siteCodes.filter((c) => languageControls.has(c)),
+    prices: priceControl ? "any" : quick.flatMap(quickPriceChoice),
+    // Only "New" and "Bestseller" quick filters are badge filters ("Free" is
+    // the price filter's Free, "Popular" a sort); no sidebar group lists badges.
+    badges: chips
+      ? [...ALL_BADGES]
+      : ALL_BADGES.filter((b) => (b === "new" || b === "bestseller") && quick.some((q) => q.kind === b)),
+  };
+};
+
 /* ── state <-> params ───────────────────────────────────────────────── */
 
 const unique = <T>(list: T[]): T[] => [...new Set(list)];
+
+const isBadge = (b: string): b is CourseBadge => ALL_BADGES.includes(b as CourseBadge);
+
+/** The discovery values a query string carries — syntax only; sanitizeDiscoveryState decides what applies. */
+export const parseDiscoveryParams = (searchStr: string | null | undefined): DiscoveryState => ({
+  stream: readSearchParam(searchStr, URL_PARAMS.stream),
+  categories: readListParam(searchStr, URL_PARAMS.category),
+  languages: readListParam(searchStr, URL_PARAMS.language),
+  price: parsePriceParam(readSearchParam(searchStr, URL_PARAMS.price)),
+  badges: readListParam(searchStr, BADGE_PARAM).map(lower).filter(isBadge),
+});
+
+/**
+ * The part of a discovery state this section offers: a known stream (its
+ * slug as the section spells it), that stream's selectable categories, and
+ * the languages / price / badges listed in `v`. Everything else is dropped.
+ */
+export const sanitizeDiscoveryState = (s: DiscoveryState, v: DiscoveryValidation): DiscoveryState => {
+  const wanted = lower(s.stream || "");
+  const stream = wanted ? v.streams.find((x) => lower(x.slug) === wanted) : undefined;
+  const codes = new Set(v.languageCodes.map(lower));
+  const price = s.price;
+  return {
+    stream: stream?.slug ?? null,
+    categories: stream
+      ? unique(
+          s.categories
+            .map((c) => stream.categories.find((x) => lower(x.slug) === lower(c))?.slug)
+            .filter((c): c is string => !!c),
+        )
+      : [],
+    languages: unique(s.languages.map(lower).filter((c) => codes.has(c))),
+    price: price && (v.prices === "any" || v.prices.some((p) => samePrice(p, price))) ? price : null,
+    badges: unique(s.badges.filter((b) => v.badges.includes(b))),
+  };
+};
+
+export const readDiscoveryParams = (
+  searchStr: string | null | undefined,
+  v: DiscoveryValidation,
+): DiscoveryState => sanitizeDiscoveryState(parseDiscoveryParams(searchStr), v);
 
 /** Stream and category only — what a mega-menu link carries. */
 export const readStreamParams = (
   searchStr: string | null | undefined,
   v: DiscoveryValidation,
 ): Pick<DiscoveryState, "stream" | "categories"> => {
-  const wanted = (readSearchParam(searchStr, URL_PARAMS.stream) || "").toLowerCase();
-  const stream = wanted ? v.streams.find((s) => s.slug.toLowerCase() === wanted) : undefined;
-  if (!stream) return { stream: null, categories: [] };
-  const categories = unique(
-    readListParam(searchStr, URL_PARAMS.category)
-      .map((c) => c.toLowerCase())
-      .map((c) => stream.categories.find((x) => x.slug.toLowerCase() === c)?.slug)
-      .filter((c): c is string => !!c),
-  );
-  return { stream: stream.slug, categories };
-};
-
-export const readDiscoveryParams = (
-  searchStr: string | null | undefined,
-  v: DiscoveryValidation,
-): DiscoveryState => {
-  const codes = new Set(v.languageCodes.map((c) => c.toLowerCase()));
-  return {
-    ...readStreamParams(searchStr, v),
-    languages: unique(
-      readListParam(searchStr, URL_PARAMS.language)
-        .map((c) => c.toLowerCase())
-        .filter((c) => codes.has(c)),
-    ),
-    price: parsePriceParam(readSearchParam(searchStr, URL_PARAMS.price)),
-    badges: unique(
-      readListParam(searchStr, BADGE_PARAM)
-        .map((b) => b.toLowerCase())
-        .filter((b): b is CourseBadge => ALL_BADGES.includes(b as CourseBadge)),
-    ),
-  };
+  const { stream, categories } = readDiscoveryParams(searchStr, v);
+  return { stream, categories };
 };
 
 /** Query-string updates for the keys present in `patch` (null removes a key). */

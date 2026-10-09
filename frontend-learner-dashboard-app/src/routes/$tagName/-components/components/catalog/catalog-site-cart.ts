@@ -6,20 +6,15 @@
  * is not "coming soon". Free versions keep the course-page enrol path.
  */
 
-import { resolveInviteAvailability } from "@/lib/invite-availability";
 import type { CourseLanguageOption } from "../../../-utils/course-variants";
 import type { SiteCartItem } from "../../../-utils/site-cart";
-import { isComingSoonRow, rowLanguage, type CatalogRowLike } from "./catalog-cards";
+import { isBuyableNowRow, rowLanguage, type CatalogRowLike } from "./catalog-cards";
 
 export const packageSessionOf = (row: CatalogRowLike): string =>
   String(row.packageSessionId || row.package_session_id || "").trim();
 
 export const isPurchasableRow = (row: CatalogRowLike): boolean =>
-  !!packageSessionOf(row) &&
-  typeof row.price === "number" &&
-  row.price > 0 &&
-  !isComingSoonRow(row) &&
-  resolveInviteAvailability(row.enroll_invite_availability) === "AVAILABLE";
+  !!packageSessionOf(row) && typeof row.price === "number" && row.price > 0 && isBuyableNowRow(row);
 
 /** The versions of a card that can go in the cart, in catalogue order. */
 export const purchasableVersions = <R extends CatalogRowLike>(rows: R[]): R[] => rows.filter(isPurchasableRow);

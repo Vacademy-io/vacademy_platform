@@ -132,3 +132,29 @@ export const streamTabText = (
 
 export const findStream = (streams: CatalogStream[], slug: string | null | undefined): CatalogStream | null =>
   (slug && streams.find((s) => s.slug === slug)) || null;
+
+/** The DOM id of one stream tab (null = "All courses") — the tab panel names its active tab with it. */
+export const streamTabId = (controlsId: string, slug: string | null): string =>
+  `${controlsId}-tab-${slug === null ? "all" : `s-${slug.replace(/[^A-Za-z0-9_-]/g, "_")}`}`;
+
+/**
+ * The tab a key moves focus to in a horizontal tab row (ARIA tabs pattern):
+ * ArrowRight / ArrowLeft step and wrap around (mirrored right-to-left),
+ * Home / End jump to the ends. Null = not a tab-navigation key.
+ */
+export const nextTabIndex = (key: string, index: number, count: number, rtl = false): number | null => {
+  if (count <= 0 || index < 0) return null;
+  const step = (delta: number) => (index + delta + count) % count;
+  switch (key) {
+    case "ArrowRight":
+      return step(rtl ? -1 : 1);
+    case "ArrowLeft":
+      return step(rtl ? 1 : -1);
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+};

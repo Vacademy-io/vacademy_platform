@@ -68,6 +68,3 @@ export const toggleQuickFilter = (
       return {};
   }
 };
-
-/** A quick filter only re-orders (it can never empty the grid). */
-export const isSortOnlyQuickFilter = (qf: ResolvedQuickFilter): boolean => qf.kind === "popular";

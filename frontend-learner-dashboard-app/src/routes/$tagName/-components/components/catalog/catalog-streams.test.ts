@@ -4,7 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/constants/urls", () => ({ BASE_URL: "" }));
 
 import type { PublicFolderNode } from "../../../-services/folder-library-service";
-import { findStream, folderTagSet, streamTabText, streamsFromFolderTree, streamsFromTagItems } from "./catalog-streams";
+import {
+  findStream,
+  folderTagSet,
+  nextTabIndex,
+  streamTabId,
+  streamTabText,
+  streamsFromFolderTree,
+  streamsFromTagItems,
+} from "./catalog-streams";
 
 const folder = (id: string, extra: Partial<PublicFolderNode> = {}, children: PublicFolderNode[] = []): PublicFolderNode => ({
   id,
@@ -97,5 +105,40 @@ describe("streamTabText", () => {
     expect(findStream(streams, "kala")?.id).toBe("s2");
     expect(findStream(streams, null)).toBeNull();
     expect(findStream(streams, "nope")).toBeNull();
+  });
+});
+
+describe("nextTabIndex (arrow keys across the tab row)", () => {
+  it("steps with the arrows and wraps around", () => {
+    expect(nextTabIndex("ArrowRight", 0, 4)).toBe(1);
+    expect(nextTabIndex("ArrowRight", 3, 4)).toBe(0);
+    expect(nextTabIndex("ArrowLeft", 0, 4)).toBe(3);
+    expect(nextTabIndex("ArrowLeft", 2, 4)).toBe(1);
+  });
+
+  it("jumps to the ends with Home / End", () => {
+    expect(nextTabIndex("Home", 2, 4)).toBe(0);
+    expect(nextTabIndex("End", 0, 4)).toBe(3);
+  });
+
+  it("mirrors the arrows right-to-left", () => {
+    expect(nextTabIndex("ArrowRight", 1, 4, true)).toBe(0);
+    expect(nextTabIndex("ArrowLeft", 3, 4, true)).toBe(0);
+  });
+
+  it("ignores other keys and a tab it cannot place", () => {
+    expect(nextTabIndex("Enter", 1, 4)).toBeNull();
+    expect(nextTabIndex("ArrowRight", -1, 4)).toBeNull();
+    expect(nextTabIndex("ArrowRight", 0, 0)).toBeNull();
+  });
+});
+
+describe("streamTabId", () => {
+  it("gives every tab its own id, the All tab included", () => {
+    expect(streamTabId(":r1:", null)).toBe(":r1:-tab-all");
+    expect(streamTabId(":r1:", "shiksha")).toBe(":r1:-tab-s-shiksha");
+    // A stream whose key is literally "all" never takes the All tab's id.
+    expect(streamTabId(":r1:", "all")).not.toBe(streamTabId(":r1:", null));
+    expect(streamTabId(":r1:", "a b/c")).toBe(":r1:-tab-s-a_b_c");
   });
 });

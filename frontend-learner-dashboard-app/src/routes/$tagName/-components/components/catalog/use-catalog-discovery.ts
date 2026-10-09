@@ -9,6 +9,7 @@ import {
   discoveryPatchToParams,
   readDiscoveryParams,
   readStreamParams,
+  sanitizeDiscoveryState,
   type DiscoveryState,
   type DiscoveryValidation,
 } from "./catalog-url";
@@ -46,6 +47,10 @@ export const useCatalogStreams = (instituteId: string, streams: ResolvedStreams 
  * filter tweaks replace it, and Back/Forward or a mega-menu link simply
  * re-render. Without it the state is local — but a ?stream= link still
  * preselects its tab, on arrival and whenever the link changes.
+ *
+ * Either way the state is read through `validation` (discoveryLinkScope):
+ * a value the section offers no control for never applies — whether it came
+ * from a link or was left behind by a control the page builder switched off.
  */
 export const useDiscoveryState = (opts: {
   syncUrl: boolean;
@@ -77,5 +82,7 @@ export const useDiscoveryState = (opts: {
     [syncUrl, update],
   );
 
-  return { state: syncUrl ? fromUrl : local, setState };
+  const localState = useMemo(() => sanitizeDiscoveryState(local, validation), [local, validation]);
+
+  return { state: syncUrl ? fromUrl : localState, setState };
 };

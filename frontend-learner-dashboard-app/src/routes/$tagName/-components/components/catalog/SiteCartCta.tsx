@@ -15,8 +15,11 @@ import { ThemedPortalSurface } from "./ThemedPortalSurface";
  * The card CTA when the site-wide cart is on: "Add to cart" ⇄ "In cart".
  * A course sold in several languages opens a small chooser first; picking
  * another language swaps the version in the cart (one version per course).
+ * Disabled until the stored cart has loaded for this institute — an add made
+ * before that would be overwritten when the stored cart arrives.
  */
 export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
+  instituteId,
   courseId,
   versions,
   title,
@@ -24,6 +27,8 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   translate,
   themeAnchor,
 }: {
+  /** The institute the page's site cart belongs to (the catalogue hydrates it). */
+  instituteId: string;
   courseId: string;
   /** Purchasable versions only (see purchasableVersions). */
   versions: R[];
@@ -38,6 +43,7 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   const items = useSiteCartStore((s) => s.items);
   const add = useSiteCartStore((s) => s.add);
   const remove = useSiteCartStore((s) => s.remove);
+  const ready = useSiteCartStore((s) => s.hydrated && s.instituteId === instituteId);
   const [open, setOpen] = useState(false);
 
   const inCart = useMemo(() => new Set(items.map((i) => i.packageSessionId)), [items]);
@@ -82,8 +88,11 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
       <button
         type="button"
         aria-pressed={!!current}
+        disabled={!ready}
+        aria-busy={!ready || undefined}
         onClick={(e) => {
           e.stopPropagation();
+          if (!ready) return;
           if (current) removeVersion(only);
           else addVersion(only);
         }}
@@ -96,9 +105,15 @@ export const SiteCartCta = <R extends CatalogRowLike & { thumbnail?: string }>({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={ready && open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" onClick={(e) => e.stopPropagation()} className={buttonClass}>
+        <button
+          type="button"
+          disabled={!ready}
+          aria-busy={!ready || undefined}
+          onClick={(e) => e.stopPropagation()}
+          className={buttonClass}
+        >
           {icon}
           {label}
           <CaretDown size={14} weight="bold" aria-hidden="true" />

@@ -8,6 +8,7 @@
  * price ("from ₹X" when versions differ) and which version it opens.
  */
 
+import { resolveInviteAvailability } from "@/lib/invite-availability";
 import {
   groupCourseVariants,
   languageOfLevel,
@@ -50,12 +51,21 @@ export interface CatalogCard<R extends CatalogRowLike> {
   languages: CourseLanguageOption[];
   /** Lower-case course tags of every version. */
   tagSet: Set<string>;
-  /** Price used by the price sorts: the lowest version price. */
+  /**
+   * Price used by the price sorts: the lowest price that can be paid now,
+   * else the lowest version price (a single-row card: its own price).
+   */
   sortPrice: number;
   /** Lowest / highest price among the versions that can be bought now. */
   minPrice: number | null;
   maxPrice: number | null;
   /** The versions differ in price ("from ₹X"). */
+  priceVaries: boolean;
+}
+
+export interface PriceSummary {
+  minPrice: number | null;
+  maxPrice: number | null;
   priceVaries: boolean;
 }
 
@@ -76,6 +86,10 @@ export const courseTagsOf = (row: { comma_separeted_tags?: string | null; tags?:
 /** Coming-soon rows have no real price yet. */
 export const isComingSoonRow = (row: { coming_soon?: unknown }): boolean => readComingSoon(row.coming_soon) !== null;
 
+/** A version that can be bought right now: not coming soon, and its enrolment window is open. */
+export const isBuyableNowRow = (row: Pick<CatalogRowLike, "coming_soon" | "enroll_invite_availability">): boolean =>
+  !isComingSoonRow(row) && resolveInviteAvailability(row.enroll_invite_availability) === "AVAILABLE";
+
 /**
  * A level that is ONLY a language ("Hindi", "English", "हिन्दी") — with
  * grouping on, the language chips already say it, so it is noise as a Level
@@ -94,12 +108,43 @@ export const isPureLanguageLevel = (
   return tokens.includes(name);
 };
 
-const priceSummary = (rows: CatalogRowLike[]) => {
-  const prices = rows.filter((r) => !isComingSoonRow(r)).map((r) => toNumber(r.price));
+/** Lowest / highest price among the versions that can be bought now (coming soon, closed and not-yet-open ones are left out). */
+export const priceSummaryOf = (rows: CatalogRowLike[]): PriceSummary => {
+  const prices = rows.filter(isBuyableNowRow).map((r) => toNumber(r.price));
   if (!prices.length) return { minPrice: null, maxPrice: null, priceVaries: false };
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   return { minPrice, maxPrice, priceVaries: minPrice !== maxPrice };
+};
+
+export interface CardPriceView<R> {
+  /** The version whose price (and MRP) is shown — the card's own version when it is one of them. */
+  row: R;
+  /** The lowest price on offer. */
+  minPrice: number;
+  /** The versions on offer differ in price: show "from {minPrice}". */
+  from: boolean;
+}
+
+/**
+ * What a merged card's price area shows: the versions that match the active
+ * filters (`rows`) AND can be bought now — so a "Paid" filter never shows a
+ * free version's "Free", and a closed version never sets the "from" price.
+ * Null when none of them can be bought now (the card then shows its own
+ * version's status, as a single-version card does).
+ */
+export const cardPriceView = <R extends CatalogRowLike>(
+  card: Pick<CatalogCard<R>, "primary">,
+  rows: R[],
+): CardPriceView<R> | null => {
+  const buyable = rows.filter(isBuyableNowRow);
+  if (!buyable.length) return null;
+  const prices = buyable.map((r) => toNumber(r.price));
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const cheapest = (r: R) => toNumber(r.price) === minPrice;
+  const row = buyable.find((r) => r === card.primary && cheapest(r)) ?? buyable.find(cheapest) ?? buyable[0];
+  return { row, minPrice, from: minPrice !== maxPrice };
 };
 
 const tagSetOf = (rows: CatalogRowLike[]) =>
@@ -110,15 +155,19 @@ const makeCard = <R extends CatalogRowLike>(
   rows: R[],
   primary: R,
   languages: CourseLanguageOption[],
-): CatalogCard<R> => ({
-  courseId,
-  rows,
-  primary,
-  languages,
-  tagSet: tagSetOf(rows),
-  sortPrice: Math.min(...rows.map((r) => toNumber(r.price))),
-  ...priceSummary(rows),
-});
+): CatalogCard<R> => {
+  const summary = priceSummaryOf(rows);
+  return {
+    courseId,
+    rows,
+    primary,
+    languages,
+    tagSet: tagSetOf(rows),
+    // For a single-row card both branches give the row's own price — the original sort.
+    sortPrice: summary.minPrice ?? Math.min(...rows.map((r) => toNumber(r.price))),
+    ...summary,
+  };
+};
 
 /**
  * Cards in catalogue order. Grouping off: one card per row, in row order (the
@@ -145,8 +194,27 @@ export const buildCatalogCards = <R extends CatalogRowLike>(
   );
 };
 
-/** The language a row is in, read from its level name. */
+// Per language list, per row: the facet counts ask for the same rows' language
+// many times on every keystroke, and languageOfLevel builds a RegExp per token.
+const rowLanguageCache = new WeakMap<CourseLanguageOption[], WeakMap<object, CourseLanguageOption | null>>();
+
+/**
+ * The language a row is in, read from its level name. Remembered per row
+ * object and language list (rows and the resolved language list are not
+ * mutated), so repeated filter and count tests are lookups.
+ */
 export const rowLanguage = (
   row: { level_name?: string | null; level?: string },
   languages: CourseLanguageOption[],
-): CourseLanguageOption | null => languageOfLevel(row.level_name ?? row.level, languages);
+): CourseLanguageOption | null => {
+  let byRow = rowLanguageCache.get(languages);
+  if (!byRow) {
+    byRow = new WeakMap();
+    rowLanguageCache.set(languages, byRow);
+  }
+  const known = byRow.get(row);
+  if (known !== undefined) return known;
+  const lang = languageOfLevel(row.level_name ?? row.level, languages);
+  byRow.set(row, lang);
+  return lang;
+};

@@ -70,6 +70,13 @@ export const applyFacetGroups = <T extends { rows: R[] }, R>(
   return items.filter((item) => passes(item, cardTests, rowTests));
 };
 
+/** The versions of an item that pass every active row group — all of them when none is active. */
+export const rowsMatchingGroups = <T extends { rows: R[] }, R>(item: T, groups: FacetGroup<T, R>[]): R[] => {
+  const { rowTests } = partition(groups);
+  if (!rowTests.length) return item.rows;
+  return item.rows.filter((row) => rowTests.every((test) => test(row)));
+};
+
 /** Per option: how many items pass every OTHER active group and match the option. */
 export const countFacetOptions = <T extends { rows: R[] }, R>(
   items: T[],
@@ -229,7 +236,7 @@ export const GROUP_IDS = {
   priceRange: "priceRange",
 } as const;
 
-export const buildFacetGroups = <R extends CatalogRowLike>(
+const rawFacetGroups = <R extends CatalogRowLike>(
   c: CatalogCriteria,
   ctx: CriteriaContext,
 ): FacetGroup<CatalogCard<R>, R>[] => {
@@ -295,6 +302,34 @@ export const buildFacetGroups = <R extends CatalogRowLike>(
     },
   ];
 };
+
+/** A test that remembers its answer per card / row object. */
+const remember = <K extends object>(test: (k: K) => boolean): ((k: K) => boolean) => {
+  const known = new WeakMap<K, boolean>();
+  return (k) => {
+    const hit = known.get(k);
+    if (hit !== undefined) return hit;
+    const answer = test(k);
+    known.set(k, answer);
+    return answer;
+  };
+};
+
+/**
+ * The filter groups for one set of criteria. Each group's test remembers its
+ * answer per card / row: the groups are rebuilt whenever the criteria change,
+ * so an answer never goes stale, and counting the options of one group no
+ * longer re-runs every OTHER group's test (search above all) once per option.
+ */
+export const buildFacetGroups = <R extends CatalogRowLike>(
+  c: CatalogCriteria,
+  ctx: CriteriaContext,
+): FacetGroup<CatalogCard<R>, R>[] =>
+  rawFacetGroups<R>(c, ctx).map((group) => ({
+    ...group,
+    ...(group.matches ? { matches: remember(group.matches) } : {}),
+    ...(group.rowMatches ? { rowMatches: remember(group.rowMatches) } : {}),
+  }));
 
 /* ── option lists for counting ──────────────────────────────────────── */
 

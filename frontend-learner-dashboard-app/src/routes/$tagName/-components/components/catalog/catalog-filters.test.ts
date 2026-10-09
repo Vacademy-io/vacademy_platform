@@ -19,6 +19,7 @@ import {
   rowMatchesLevels,
   rowMatchesPrice,
   rowMatchesSearch,
+  rowsMatchingGroups,
   sessionOptions,
   tagOptions,
   type CatalogCriteria,
@@ -182,6 +183,46 @@ describe("facet counts", () => {
   it("lists only the languages the catalogue has", () => {
     expect(presentLanguageCodes(ROWS, LANGS)).toEqual(["en", "hi"]);
     expect(presentLanguageCodes([row({ level_name: "Beginner" })], LANGS)).toEqual([]);
+  });
+
+  it("runs each group's test once per card or row, however many options are counted", () => {
+    let translations = 0;
+    const translate = (s: string) => {
+      translations += 1;
+      return s;
+    };
+    // A search that matches nothing, so every row's title and description are translated.
+    const groups = buildFacetGroups(criteria({ search: "zzz", languages: ["hi"] }), ctx({}, translate));
+    applyFacetGroups(grouped, groups);
+    const afterGrid = translations;
+    expect(afterGrid).toBe(ROWS.length * 2);
+    countFacetOptions(grouped, groups, GROUP_IDS.language, languageOptions(["en", "hi"], LANGS));
+    countFacetOptions(
+      grouped,
+      groups,
+      GROUP_IDS.price,
+      priceOptions([
+        { value: "free", choice: { kind: "free" } },
+        { value: "paid", choice: { kind: "paid" } },
+      ]),
+    );
+    countFacetOptions(grouped, groups, GROUP_IDS.level, levelOptions(["English", "Hindi", "Beginner"]));
+    expect(translations).toBe(afterGrid);
+  });
+});
+
+describe("rowsMatchingGroups", () => {
+  const c1 = grouped[0]; // EN ₹1200 + HI ₹800
+
+  it("returns every version when no version filter is active", () => {
+    expect(rowsMatchingGroups(c1, buildFacetGroups(criteria({ stream: SHIKSHA }), ctx()))).toBe(c1.rows);
+  });
+
+  it("returns the versions passing every active version filter", () => {
+    const hindi = rowsMatchingGroups(c1, buildFacetGroups(criteria({ languages: ["hi"] }), ctx()));
+    expect(hindi.map((r) => r.price)).toEqual([800]);
+    const paidUnder1000 = rowsMatchingGroups(c1, buildFacetGroups(criteria({ price: { kind: "max", max: 1000 }, levels: ["English"] }), ctx()));
+    expect(paidUnder1000).toEqual([]);
   });
 });
 

@@ -66,9 +66,11 @@ import { usePopularityRanks } from "../../-services/popularity-service";
 import { badgesNeedRanks, resolveCatalogDiscovery, type ResolvedQuickFilter } from "./catalog/catalog-config";
 import {
   buildCatalogCards,
+  cardPriceView,
   courseTagsOf,
-  isComingSoonRow,
+  isBuyableNowRow,
   isPureLanguageLevel,
+  type CardPriceView,
   type CatalogCard,
 } from "./catalog/catalog-cards";
 import {
@@ -83,6 +85,7 @@ import {
   levelOptions,
   presentLanguageCodes,
   priceOptions,
+  rowsMatchingGroups,
   sessionOptions,
   tagOptions,
   type AppliedChip,
@@ -94,6 +97,7 @@ import { formatAmountLabel, formatRangeLabel } from "./catalog/catalog-format";
 import { sortCatalogCards } from "./catalog/catalog-sort";
 import {
   countDiscoveryFilters,
+  discoveryLinkScope,
   discoveryPatchToParams,
   formatPriceParam,
   parsePriceParam,
@@ -105,7 +109,7 @@ import {
   type PriceChoice,
 } from "./catalog/catalog-url";
 import { isQuickFilterActive, toggleQuickFilter } from "./catalog/catalog-quick-filters";
-import { findStream } from "./catalog/catalog-streams";
+import { findStream, streamTabId } from "./catalog/catalog-streams";
 import { purchasableVersions } from "./catalog/catalog-site-cart";
 import { useCatalogStreams, useDiscoveryState } from "./catalog/use-catalog-discovery";
 import { StreamTabs } from "./catalog/StreamTabs";
@@ -1131,13 +1135,24 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     instituteId,
     discovery.streams,
   );
-  const languageCodes = useMemo(
-    () => (discovery.courseLanguagesOn ? discovery.languages.map((l) => l.code) : []),
-    [discovery.courseLanguagesOn, discovery.languages],
+  // The languages the sidebar language filter lists: the ones some course is in.
+  const presentLanguages = useMemo(
+    () =>
+      discovery.languageFilter.enabled
+        ? presentLanguageCodes(courses, discovery.languages)
+        : [],
+    [discovery.languageFilter.enabled, courses, discovery.languages],
   );
+  // A link's filter values apply only where this section shows a control for
+  // them (or lists applied filters as chips) — see discoveryLinkScope.
   const validation = useMemo<DiscoveryValidation>(
-    () => ({ streams: streamList, languageCodes }),
-    [streamList, languageCodes],
+    () =>
+      discoveryLinkScope(discovery, {
+        streams: streamList,
+        filtersShown: filtersEnabled,
+        presentLanguages,
+      }),
+    [discovery, streamList, filtersEnabled, presentLanguages],
   );
   const { state: discoveryState, setState: setDiscoveryState } = useDiscoveryState({
     syncUrl: discovery.syncUrl,
@@ -1146,6 +1161,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     validation,
   });
   const activeStream = findStream(streamList, discoveryState.stream);
+  // discoveryState only holds categories this section can show and clear.
   const activeCategories = useMemo(
     () =>
       activeStream
@@ -1218,7 +1234,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const badgeInputs = useMemo(() => {
     if (!wantsBadges) return [];
     // One input per course: its versions share created_at and tags; the
-    // price is the cheapest version that is on sale (coming soon = none).
+    // price is the cheapest version that can be bought now (coming soon,
+    // closed or not-yet-open versions count for none) — the same versions
+    // the card's price shows, so "Free" never sits on a paid card.
     const byCourse = new Map<
       string,
       { courseId: string; createdAt: string | null; price: number | null; tags: Set<string> }
@@ -1233,7 +1251,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         tags: new Set<string>(),
       };
       if (!entry.createdAt && typeof c.createdAt === "string") entry.createdAt = c.createdAt;
-      if (!isComingSoonRow(c)) {
+      if (isBuyableNowRow(c)) {
         const price = Number(c.price) || 0;
         entry.price = entry.price === null ? price : Math.min(entry.price, price);
       }
@@ -1327,23 +1345,35 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     (card: CatalogCard<Course>) => siteT(card.primary.title),
     [siteT],
   );
+  const matchedCards = useMemo(
+    () => applyFacetGroups(allCards, facetGroups),
+    [allCards, facetGroups],
+  );
+  // A merged card's price speaks for the versions that match the active
+  // filters and can be bought now ("from ₹X" when they differ); the price
+  // sorts follow the same number. Single-version cards keep the original
+  // price display and sort.
+  const priceViews = useMemo(() => {
+    const views = new Map<CatalogCard<Course>, CardPriceView<Course> | null>();
+    if (!discovery.grouping) return views;
+    for (const card of matchedCards) {
+      if (card.rows.length > 1) {
+        views.set(card, cardPriceView(card, rowsMatchingGroups(card, facetGroups)));
+      }
+    }
+    return views;
+  }, [discovery.grouping, matchedCards, facetGroups]);
   const filteredCards = useMemo(
     () =>
-      sortCatalogCards(applyFacetGroups(allCards, facetGroups), effectiveSort, {
+      sortCatalogCards(matchedCards, effectiveSort, {
         ranks,
         titleOf,
+        priceOf: (card) => priceViews.get(card)?.minPrice ?? card.sortPrice,
       }),
-    [allCards, facetGroups, effectiveSort, ranks, titleOf],
+    [matchedCards, effectiveSort, ranks, titleOf, priceViews],
   );
 
   // ── Discovery filter groups (sidebar / bottom sheet) ───────────────────
-  const presentLanguages = useMemo(
-    () =>
-      discovery.languageFilter.enabled
-        ? presentLanguageCodes(courses, discovery.languages)
-        : [],
-    [discovery.languageFilter.enabled, courses, discovery.languages],
-  );
   const priceChoices = useMemo(() => {
     if (!discovery.priceFilter.enabled) return [];
     const list: { value: string; choice: PriceChoice }[] = [];
@@ -1427,7 +1457,15 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const selectStream = (slug: string | null) => {
-    if (slug === discoveryState.stream) return;
+    if (slug === discoveryState.stream) {
+      // The active tab again: back to the whole stream (a filter tweak, so
+      // the URL entry is replaced). In the URL this also drops a category the
+      // section ignores; an unchanged URL is never rewritten.
+      if (discovery.syncUrl || discoveryState.categories.length) {
+        setDiscoveryState({ categories: [] });
+      }
+      return;
+    }
     // A tab is navigation (pushes history); its categories belong to it.
     setDiscoveryState({ stream: slug, categories: [] }, { push: true });
     // Switched from the stuck tab bar: bring the top of the grid back.
@@ -1859,7 +1897,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     );
   }
 
-  const stickyTabs = !!discovery.streams?.sticky && streamList.length > 0;
+  // StreamTabs renders only with at least one stream; everything below the
+  // tabs (filters, toolbar, grid) is then their tab panel.
+  const tabsShown = !!discovery.streams && streamList.length > 0;
+  const stickyTabs = tabsShown && !!discovery.streams?.sticky;
 
   return (
     <div
@@ -1893,6 +1934,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
         <div
           className={`flex flex-col ${showFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
+          id={tabsShown ? gridId : undefined}
+          role={tabsShown ? "tabpanel" : undefined}
+          aria-labelledby={
+            tabsShown ? streamTabId(gridId, activeStream?.slug ?? null) : undefined
+          }
         >
           {showFiltersPanel && (
             <div
@@ -2064,10 +2110,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             />
 
             {/* Course Grid */}
-            <div
-              id={discovery.streams ? gridId : undefined}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"
-            >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {paginatedCards.map((card, index) => {
                 // The card's version on show (the card itself without grouping).
                 const course = card.primary;
@@ -2093,6 +2136,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 );
                 const courseTitle = siteT(course.title);
                 const cartVersions = siteCartOn ? purchasableVersions(card.rows) : [];
+                // Merged versions: the price speaks for the versions that match
+                // the filters and can be bought now (null: none can — show this
+                // version's own status). Single-version cards: always null.
+                const priceView = priceViews.get(card) ?? null;
+                // The version whose price and MRP are shown when they all cost the same.
+                const priceRow = priceView && !priceView.from ? priceView.row : course;
                 // Coming Soon: ribbon, launch date in place of the price, no
                 // cart, and the CTA opens the course's notify form. The card
                 // itself still opens the details page.
@@ -2171,8 +2220,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         {/* Offer badge: top-left overlay */}
                         <div className="absolute top-3 start-3">
                           <OfferBadge
-                            actual={course.price}
-                            elevated={course.elevatedPrice}
+                            actual={priceRow.price}
+                            elevated={priceRow.elevatedPrice}
                           />
                         </div>
                         {/* End corner, so it never collides with the offer badge */}
@@ -2257,6 +2306,53 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         ) : displayPrice &&
                           globalSettings?.payment?.enabled !== false &&
                           (() => {
+                            // Merged versions at different prices: "from" the
+                            // cheapest on offer ("from Free" when it costs nothing).
+                            if (priceView?.from) {
+                              return (
+                                <div className="shrink-0">
+                                  <span className="flex items-baseline gap-1">
+                                    <span className="text-xs text-catalogue-text-muted">
+                                      {t("courseCatalog.priceFrom", "from")}
+                                    </span>
+                                    {priceView.minPrice === 0 ? (
+                                      <span className="text-xs font-bold text-success-600">
+                                        {t("courseCatalog.priceFree", "Free")}
+                                      </span>
+                                    ) : (
+                                      <PriceWithMrp
+                                        actual={priceView.minPrice}
+                                        currency={priceView.row.currency}
+                                        size="sm"
+                                        layout="inline"
+                                        hideBadge
+                                      />
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            // Merged versions at one price: that version's price.
+                            if (priceView) {
+                              return (
+                                <div className="shrink-0">
+                                  {priceRow.price === 0 ? (
+                                    <span className="text-xs font-bold text-success-600">
+                                      {t("courseCatalog.freeLabel")}
+                                    </span>
+                                  ) : (
+                                    <PriceWithMrp
+                                      actual={priceRow.price}
+                                      elevated={priceRow.elevatedPrice}
+                                      currency={priceRow.currency}
+                                      size="sm"
+                                      layout="inline"
+                                      hideBadge
+                                    />
+                                  )}
+                                </div>
+                              );
+                            }
                             const availability = resolveInviteAvailability(
                               course.enroll_invite_availability,
                             );
@@ -2268,31 +2364,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                                       ? t("courseCatalog.openSoon")
                                       : t("courseCatalog.enrollmentClosed")}
                                   </span>
-                                </div>
-                              );
-                            }
-                            // Merged versions at different prices: "from" the cheapest.
-                            if (discovery.grouping && card.priceVaries && card.minPrice !== null) {
-                              return (
-                                <div className="shrink-0">
-                                  {card.minPrice === 0 ? (
-                                    <span className="text-xs font-bold text-success-600">
-                                      {t("courseCatalog.freeLabel")}
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-baseline gap-1">
-                                      <span className="text-xs text-catalogue-text-muted">
-                                        {t("courseCatalog.priceFrom", "from")}
-                                      </span>
-                                      <PriceWithMrp
-                                        actual={card.minPrice}
-                                        currency={course.currency}
-                                        size="sm"
-                                        layout="inline"
-                                        hideBadge
-                                      />
-                                    </span>
-                                  )}
                                 </div>
                               );
                             }
@@ -2340,6 +2411,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           {/* Site-wide cart: add this course (choosing its
                               language when it has several versions). */}
                           <SiteCartCta
+                            instituteId={instituteId}
                             courseId={card.courseId}
                             versions={cartVersions}
                             title={course.title}

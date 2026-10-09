@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ResolvedQuickFilter } from "./catalog-config";
-import { isQuickFilterActive, isSortOnlyQuickFilter, toggleQuickFilter, type QuickFilterState } from "./catalog-quick-filters";
+import { isQuickFilterActive, toggleQuickFilter, type QuickFilterState } from "./catalog-quick-filters";
 
 const qf = (kind: ResolvedQuickFilter["kind"], value?: string | number): ResolvedQuickFilter => ({
   id: kind,
@@ -20,7 +20,6 @@ describe("quick filters drive the same state as the sidebar and sort", () => {
     expect(isQuickFilterActive(popular, on)).toBe(true);
     expect(toggleQuickFilter(popular, on, "Price: Low to High")).toEqual({ sort: "Price: Low to High" });
     expect(toggleQuickFilter(popular, on, "Popular")).toEqual({ sort: "Newest" });
-    expect(isSortOnlyQuickFilter(popular)).toBe(true);
   });
 
   it("New and Bestseller toggle badge filters without touching the others", () => {

@@ -65,6 +65,28 @@ describe("sortCatalogCards", () => {
     expect(ids(sortCatalogCards(grouped, "Price: Low to High", base))).toEqual(["x", "y"]);
   });
 
+  it("sorts grouped cards by a price that can be paid now (a closed version does not count)", () => {
+    const grouped = buildCatalogCards(
+      [
+        row({ id: "x", price: 900 }),
+        row({ id: "y", price: 500 }),
+        row({ id: "x", price: 100, packageSessionId: "x2", enroll_invite_availability: "EXPIRED" }),
+      ],
+      { grouping: true, languages: LANGS },
+    );
+    expect(ids(sortCatalogCards(grouped, "Price: Low to High", base))).toEqual(["y", "x"]);
+  });
+
+  it("sorts by the price a card shows when told (merged cards under filters)", () => {
+    const shown = new Map([
+      ["a", 50],
+      ["d", 999],
+    ]);
+    const priceOf = (c: (typeof cards)[number]) => shown.get(c.courseId) ?? c.sortPrice;
+    expect(ids(sortCatalogCards(cards, "Price: Low to High", { ...base, priceOf }))).toEqual(["a", "b", "c", "d"]);
+    expect(ids(sortCatalogCards(cards, "Price: High to Low", { ...base, priceOf }))).toEqual(["d", "c", "b", "a"]);
+  });
+
   it("does not mutate its input", () => {
     const copy = [...cards];
     sortCatalogCards(cards, "Name Z-A", base);

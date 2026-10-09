@@ -1,5 +1,6 @@
 {
     "loading": "Loading...",
+    "loadError": "Couldn't load these settings. Refresh the page to try again.",
     "page": {
         "title": "Student Display Settings",
         "description": "Control what learners see — sidebar, courses, login, certificates, notifications and more."
@@ -119,7 +120,13 @@
     "allCourses": {
         "cardTitle": "All Courses Page",
         "cardDescription": "Tabs and default selection",
-        "hideInstructorName": "Hide Instructor Name (Course Cards)"
+        "hideInstructorName": "Hide Instructor Name (Course Cards)",
+        "addCustomTab": "+ Add custom tab",
+        "customTabLabelPlaceholder": "e.g. Free Courses",
+        "customTabTags": "Show courses with any of these tags",
+        "customTabTagsPlaceholder": "Select course tags",
+        "customTabIncomplete": "Learners won't see this tab until it has a label and at least one tag.",
+        "customTabNoTags": "No course tags yet. Add tags to courses first, then pick them here."
     },
     "liveClasses": {
         "cardTitle": "Live Classes",

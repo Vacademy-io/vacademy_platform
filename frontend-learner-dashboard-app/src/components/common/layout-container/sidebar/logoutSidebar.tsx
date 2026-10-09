@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useOfflineAvailable } from "@/hooks/offline/use-offline-availability";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { SidebarMenu } from "@/components/ui/sidebar";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { collectSidebarNavRoutes } from "./active-route";
 
 import { SidebarItem } from "./sidebar-item";
 import {
@@ -55,6 +56,11 @@ export const LogoutSidebar = ({
     offlineAvailable === true
       ? filteredHamburgerItems
       : stripOfflineEntries(filteredHamburgerItems);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navRoutes = collectSidebarNavRoutes(
+    offlineFilteredItems.map((obj) => ({ ...obj, to: obj.to || "/" })),
+    pathname
+  );
 
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(
@@ -234,6 +240,7 @@ export const LogoutSidebar = ({
                       title={obj.title}
                       to={(obj.to || "/") as string}
                       onClick={setSidebarOpen}
+                      navRoutes={navRoutes}
                     />
                   </div>
                 </div>

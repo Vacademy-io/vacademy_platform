@@ -305,8 +305,23 @@ export interface StudentAllCoursesTabConfig {
   visible: boolean;
 }
 
+/**
+ * Admin-defined Courses-page tab listing every catalogue course that carries
+ * ANY of `tags`. Lives outside `tabs` so builds that predate it ignore it
+ * instead of mapping the unknown id to In Progress. `order` shares the
+ * built-in tabs' numbering.
+ */
+export interface StudentAllCoursesCustomTab {
+  id: string;
+  label: string;
+  tags: string[];
+  order: number;
+  visible: boolean;
+}
+
 export interface StudentAllCoursesSettings {
   tabs: StudentAllCoursesTabConfig[];
+  customTabs?: StudentAllCoursesCustomTab[];
   defaultTab: StudentAllCoursesTabId;
   /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
   hideInstructorName?: boolean;

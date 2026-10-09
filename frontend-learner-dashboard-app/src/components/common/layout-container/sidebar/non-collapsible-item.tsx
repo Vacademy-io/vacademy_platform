@@ -3,11 +3,12 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { isNavRouteActive } from "./active-route";
 
-export const NonCollapsibleItem = ({ icon, title, to, onClick, badgeCount }: SidebarItemProps) => {
+export const NonCollapsibleItem = ({ icon, title, to, onClick, badgeCount, navRoutes = [] }: SidebarItemProps) => {
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
-    const isActive = to ? currentRoute.includes(to) : false;
+    const isActive = isNavRouteActive(currentRoute, to, navRoutes);
 
     return (
         <SidebarMenuItem>

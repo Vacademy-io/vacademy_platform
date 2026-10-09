@@ -41,6 +41,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -88,7 +89,9 @@ class ProductPageCatalogueSyncServiceTest {
         page.setInstituteId(INSTITUTE);
         page.setStatus("ACTIVE");
         page.setName("Store");
-        when(productPageRepository.lockById(PAGE_ID)).thenAnswer(i -> Optional.of(page));
+        // As the query does: the page only when it belongs to the institute named.
+        when(productPageRepository.lockByIdAndInstituteId(eq(PAGE_ID), anyString()))
+                .thenAnswer(i -> i.getArgument(1).equals(page.getInstituteId()) ? Optional.of(page) : Optional.empty());
         when(productPageService.activeMappings(PAGE_ID)).thenAnswer(i -> new ArrayList<>(active));
         when(productPageService.loadPlans(any())).thenAnswer(i -> plans);
         when(catalogueRepository.findCatalogueSessions(eq(INSTITUTE), anyList(), anyList(), anyList(), eq("ACTIVE")))
@@ -281,6 +284,7 @@ class ProductPageCatalogueSyncServiceTest {
                 .when(accessValidator).requireInstituteAdmin(user, INSTITUTE);
 
         assertThrows(ForbiddenException.class, () -> service.syncCatalogue(user, PAGE_ID, INSTITUTE, true));
+        verify(productPageRepository, never()).lockByIdAndInstituteId(anyString(), anyString());
         verify(productPageRepository, never()).lockById(anyString());
         verify(mappingRepository, never()).saveAll(any());
     }
@@ -290,15 +294,38 @@ class ProductPageCatalogueSyncServiceTest {
     void pageMustBelongToTheInstitute() {
         page.setInstituteId("inst-2");
         assertThrows(VacademyException.class, () -> service.syncCatalogue(user, PAGE_ID, INSTITUTE, true));
+        // The tenant check is part of the locking query: the other institute's
+        // row is never locked by the unscoped lock.
+        verify(productPageRepository).lockByIdAndInstituteId(PAGE_ID, INSTITUTE);
+        verify(productPageRepository, never()).lockById(anyString());
 
         page.setInstituteId(INSTITUTE);
         page.setStatus("DELETED");
         assertThrows(VacademyException.class, () -> service.syncCatalogue(user, PAGE_ID, INSTITUTE, true));
 
-        when(productPageRepository.lockById("nope")).thenReturn(Optional.empty());
+        when(productPageRepository.lockByIdAndInstituteId("nope", INSTITUTE)).thenReturn(Optional.empty());
         assertThrows(VacademyException.class, () -> service.syncCatalogue(user, "nope", INSTITUTE, true));
         verify(catalogueRepository, never()).findCatalogueSessions(any(), any(), any(), any(), any());
         verify(mappingRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("a mapping whose invite window closed is switched off and its session re-added from the catalogue")
+    void closedInviteIsReplaced() {
+        mapping("m1", 0, "a");
+        ProductPageInviteMapping expired = mapping("m2", 1, "b");
+        expired.getPsInvitePaymentOption().getEnrollInvite()
+                .setEndDate(new java.sql.Date(System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000));
+        catalogueRow("a");
+        // The catalogue sells "b" through its current (open) invite now.
+        catalogueRow("b");
+
+        ProductPageCatalogueSyncResponse res = service.syncCatalogue(user, PAGE_ID, INSTITUTE, true);
+
+        assertEquals("INACTIVE", expired.getStatus());
+        assertEquals(1, res.getDeactivated());
+        assertEquals("invite_expired", res.getDeactivatedMappings().get(0).getReason());
+        assertEquals(List.of("b"), res.getAddedPackageSessionIds());
     }
 
     @Test
@@ -325,7 +352,16 @@ class ProductPageCatalogueSyncServiceTest {
         assertEquals("Course a", row.packageName());
         assertEquals("psli-a", row.bridgeId());
         assertEquals("INACTIVE", row.inviteStatus());
+        assertNull(row.inviteStartDate());
+        assertNull(row.inviteEndDate());
         assertEquals("CPO", row.paymentOptionType());
+        java.sql.Date start = new java.sql.Date(1_700_000_000_000L);
+        java.sql.Date end = new java.sql.Date(1_800_000_000_000L);
+        m.getPsInvitePaymentOption().getEnrollInvite().setStartDate(start);
+        m.getPsInvitePaymentOption().getEnrollInvite().setEndDate(end);
+        CatalogueSyncPlanner.Row dated = ProductPageCatalogueSyncService.toRow(m, plans);
+        assertEquals(start, dated.inviteStartDate());
+        assertEquals(end, dated.inviteEndDate());
         assertTrue(row.planFound());
         assertFalse(ProductPageCatalogueSyncService.toRow(m, Map.of()).planFound());
     }

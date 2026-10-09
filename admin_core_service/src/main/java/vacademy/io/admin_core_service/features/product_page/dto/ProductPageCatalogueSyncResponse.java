@@ -26,7 +26,11 @@ public class ProductPageCatalogueSyncResponse extends ProductPageResponse {
     /** Mappings added: one per catalogue package session the page did not sell. */
     private int added;
 
-    /** Mappings switched off (status INACTIVE): their session left the catalogue, or they could no longer be sold. */
+    /**
+     * Mappings switched off (status INACTIVE): their session left the catalogue
+     * (reason left_catalogue), or they could no longer be sold (every other
+     * reason). deactivated_mappings[].reason tells the two apart.
+     */
     private int deactivated;
 
     /** Catalogue sessions that could not be added, and why. */
@@ -58,8 +62,8 @@ public class ProductPageCatalogueSyncResponse extends ProductPageResponse {
     }
 
     /**
-     * reason: left_catalogue | bridge_inactive | invite_inactive
-     * | payment_option_inactive | plan_inactive | plan_missing
+     * reason: left_catalogue | bridge_inactive | invite_inactive | invite_not_started
+     * | invite_expired | payment_option_inactive | plan_inactive | plan_missing
      */
     @Data
     @NoArgsConstructor

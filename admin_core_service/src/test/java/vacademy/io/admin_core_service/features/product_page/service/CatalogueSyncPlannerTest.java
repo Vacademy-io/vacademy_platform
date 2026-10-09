@@ -8,6 +8,7 @@ import java.util.Date;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -44,7 +45,7 @@ class CatalogueSyncPlannerTest {
     /** A healthy existing mapping on the catalogue's own bridge row and plan for its session. */
     private static CatalogueSyncPlanner.Row row(String mappingId, int order, String session) {
         return new CatalogueSyncPlanner.Row(mappingId, order, session, "Course " + session, "Hindi",
-                "psli-" + session, "ACTIVE", "inv-" + session, "ACTIVE", "RAZORPAY", "INR",
+                "psli-" + session, "ACTIVE", "inv-" + session, "ACTIVE", null, null, "RAZORPAY", "INR",
                 true, "ACTIVE", "ONE_TIME", "plan-" + session, true, "ACTIVE", "INR");
     }
 
@@ -55,6 +56,8 @@ class CatalogueSyncPlannerTest {
                 field.equals("bridgeStatus") ? (String) value : r.bridgeStatus(),
                 r.inviteId(),
                 field.equals("inviteStatus") ? (String) value : r.inviteStatus(),
+                field.equals("start") ? (Date) value : r.inviteStartDate(),
+                field.equals("end") ? (Date) value : r.inviteEndDate(),
                 field.equals("vendor") ? (String) value : r.inviteVendor(),
                 r.inviteCurrency(),
                 field.equals("optionFound") ? (Boolean) value : r.paymentOptionFound(),
@@ -185,7 +188,7 @@ class CatalogueSyncPlannerTest {
         assertTrue(plan.deactivations().isEmpty());
         assertTrue(plan.adds().isEmpty());
         assertTrue(warns(plan, "not in the catalogue: Course gone (Hindi)"), plan.warnings().toString());
-        assertTrue(warns(plan, "inactive enrollment link, payment option or plan: Course c (Hindi)"),
+        assertTrue(warns(plan, "inactive or closed enrollment link, payment option or plan: Course c (Hindi)"),
                 plan.warnings().toString());
     }
 
@@ -214,6 +217,85 @@ class CatalogueSyncPlannerTest {
         // A status that was never set is not "inactive": m7 stays.
         assertEquals(List.of("a", "b", "c", "d", "e", "f"), addedSessions(plan));
         assertEquals(7, plan.adds().get(0).displayOrder());
+    }
+
+    @Test
+    @DisplayName("a mapping whose invite window has closed, or not opened, is switched off like the Courses page closes it")
+    void closedInvitesAreStale() {
+        Date lastWeek = new Date(System.currentTimeMillis() - 7 * DAY);
+        Date nextWeek = new Date(System.currentTimeMillis() + 7 * DAY);
+        List<CatalogueSyncPlanner.Row> rows = List.of(
+                row("m1", 0, "a"),
+                rowWith(row("m2", 1, "over"), "end", lastWeek),
+                rowWith(row("m3", 2, "later"), "start", nextWeek),
+                rowWith(row("m4", 3, "moved"), "end", lastWeek));
+        // "over" and "later" are on the same closed invites in the catalogue;
+        // the catalogue now sells "moved" through another, open invite.
+        List<CatalogueSyncPlanner.Pick> picks = List.of(pick("a"),
+                with(pick("over"), "end", lastWeek),
+                with(pick("later"), "start", nextWeek),
+                with(with(pick("moved"), "psli", "psli-moved-2"), "invite", "inv-moved-2"));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows, picks, true);
+
+        assertEquals(List.of(
+                "m2:" + CatalogueSyncPlanner.INVITE_EXPIRED,
+                "m3:" + CatalogueSyncPlanner.INVITE_NOT_STARTED,
+                "m4:" + CatalogueSyncPlanner.INVITE_EXPIRED), deactivatedIds(plan));
+        assertEquals(List.of(
+                "over:" + CatalogueSyncPlanner.INVITE_EXPIRED,
+                "later:" + CatalogueSyncPlanner.INVITE_NOT_STARTED), skippedReasons(plan));
+        assertEquals(List.of("moved"), addedSessions(plan));
+        assertEquals("psli-moved-2", plan.adds().get(0).pick().psliId());
+    }
+
+    @Test
+    @DisplayName("an invite is open through the whole of its end day, and an unset window never closes it")
+    void inviteWindowEdges() {
+        Date today = new Date(System.currentTimeMillis() - 60_000);
+        Date yesterday = new Date(System.currentTimeMillis() - DAY);
+        CatalogueSyncPlanner.Row endsToday = rowWith(row("m1", 0, "a"), "end", today);
+        CatalogueSyncPlanner.Row startedYesterday = rowWith(row("m2", 1, "b"), "start", yesterday);
+
+        assertNull(CatalogueSyncPlanner.staleReason(endsToday));
+        assertNull(CatalogueSyncPlanner.staleReason(startedYesterday));
+        assertNull(CatalogueSyncPlanner.staleReason(row("m3", 2, "c")));
+        // The status part stays lenient for existing rows: only an explicit non-ACTIVE status counts.
+        assertNull(CatalogueSyncPlanner.staleReason(rowWith(row("m4", 3, "d"), "inviteStatus", " active ")));
+        assertEquals(CatalogueSyncPlanner.INVITE_INACTIVE,
+                CatalogueSyncPlanner.staleReason(rowWith(row("m5", 4, "e"), "inviteStatus", "INACTIVE")));
+    }
+
+    @Test
+    @DisplayName("without deactivateMissing a closed invite is reported, not switched off")
+    void closedInvitesAreReportedWhenKept() {
+        Date lastWeek = new Date(System.currentTimeMillis() - 7 * DAY);
+        List<CatalogueSyncPlanner.Row> rows = List.of(row("m1", 0, "a"), rowWith(row("m2", 1, "b"), "end", lastWeek));
+
+        CatalogueSyncPlanner.Plan plan = CatalogueSyncPlanner.plan(rows,
+                List.of(pick("a"), with(pick("b"), "end", lastWeek)), false);
+
+        assertTrue(plan.deactivations().isEmpty());
+        assertTrue(warns(plan, "inactive or closed enrollment link, payment option or plan: Course b (Hindi)"),
+                plan.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("an invite with no gateway (the institute default) counts as a gateway of its own beside a named one")
+    void defaultGatewayCountsWhenMixed() {
+        List<CatalogueSyncPlanner.Row> rows = List.of(row("m1", 0, "a"));
+
+        CatalogueSyncPlanner.Plan mixed = CatalogueSyncPlanner.plan(rows,
+                List.of(pick("a"), with(pick("b"), "vendor", " ")), true);
+        assertTrue(warns(mixed, "more than one payment gateway (RAZORPAY, " + CatalogueSyncPlanner.DEFAULT_GATEWAY_LABEL
+                + ")"), mixed.warnings().toString());
+
+        // Every invite on the institute default: one gateway, nothing to warn about.
+        CatalogueSyncPlanner.Plan allDefault = CatalogueSyncPlanner.plan(
+                List.of(rowWith(row("m1", 0, "a"), "vendor", null)),
+                List.of(pick("a"), with(pick("b"), "vendor", null)), true);
+        assertTrue(allDefault.warnings().stream().noneMatch(w -> w.contains("payment gateway")),
+                allDefault.warnings().toString());
     }
 
     @Test

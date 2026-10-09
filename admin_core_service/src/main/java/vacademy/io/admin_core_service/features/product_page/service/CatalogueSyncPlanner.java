@@ -30,8 +30,9 @@ import java.util.TreeSet;
  *       ACTIVE plan.</li>
  *   <li>With deactivateMissing: a mapping whose session left the catalogue is
  *       switched off, and so is one sold through an inactive bridge row,
- *       invite, payment option or plan; its session is then added again from
- *       the catalogue when it can be sold.</li>
+ *       payment option or plan, or a closed invite (inactive, not started,
+ *       expired: the rule sessions are added by); its session is then added
+ *       again from the catalogue when it can be sold.</li>
  *   <li>Never empties a page: when every mapping would go and nothing would be
  *       added (an empty catalogue, most likely a misconfiguration), nothing is
  *       switched off.</li>
@@ -70,10 +71,14 @@ final class CatalogueSyncPlanner {
     /** An ACTIVE mapping already on the page, with the state of everything it sells through. */
     record Row(String mappingId, int displayOrder, String packageSessionId, String packageName, String levelName,
                String bridgeId, String bridgeStatus,
-               String inviteId, String inviteStatus, String inviteVendor, String inviteCurrency,
+               String inviteId, String inviteStatus, Date inviteStartDate, Date inviteEndDate,
+               String inviteVendor, String inviteCurrency,
                boolean paymentOptionFound, String paymentOptionStatus, String paymentOptionType,
                String planId, boolean planFound, String planStatus, String planCurrency) {
     }
+
+    /** How the gateway warning names invites that set none (checkout then uses the institute's default). */
+    static final String DEFAULT_GATEWAY_LABEL = "institute default";
 
     record Add(Pick pick, int displayOrder) {
     }
@@ -155,17 +160,8 @@ final class CatalogueSyncPlanner {
     static String skipReason(Pick pick) {
         if (pick.psliId() == null) return NO_ACTIVE_INVITE;
         if (pick.inviteId() == null) return INVITE_INACTIVE;
-        switch (EnrollInviteAvailabilityUtil.compute(
-                pick.inviteStatus(), pick.inviteStartDate(), pick.inviteEndDate())) {
-            case EnrollInviteAvailabilityUtil.INACTIVE:
-                return INVITE_INACTIVE;
-            case EnrollInviteAvailabilityUtil.NOT_STARTED:
-                return INVITE_NOT_STARTED;
-            case EnrollInviteAvailabilityUtil.EXPIRED:
-                return INVITE_EXPIRED;
-            default:
-                break;
-        }
+        String closed = closedInviteReason(pick.inviteStatus(), pick.inviteStartDate(), pick.inviteEndDate());
+        if (closed != null) return closed;
         if (pick.paymentOptionId() == null) return PAYMENT_OPTION_INACTIVE;
         if ("CPO".equalsIgnoreCase(trim(pick.paymentOptionType()))) return CPO_NOT_SUPPORTED;
         if (pick.paymentPlanId() == null) return NO_ACTIVE_PLAN;
@@ -175,15 +171,40 @@ final class CatalogueSyncPlanner {
     /**
      * Why an existing mapping can no longer be sold; null when it still can.
      * Only an explicit non-ACTIVE status counts: rows written before statuses
-     * were set carry none, and they sell fine today.
+     * were set carry none, and they sell fine today. The invite is held to the
+     * rule a catalogue session is added by (skipReason): one whose enrollment
+     * window has closed, or not opened yet, is no longer sold either, exactly
+     * when the Courses page badges the course as closed.
      */
     static String staleReason(Row row) {
         if (inactive(row.bridgeStatus())) return BRIDGE_INACTIVE;
         if (inactive(row.inviteStatus())) return INVITE_INACTIVE;
+        // The status was judged just above, as leniently as every other status
+        // here; only the enrollment window is left to check.
+        String closed = closedInviteReason(null, row.inviteStartDate(), row.inviteEndDate());
+        if (closed != null) return closed;
         if (!row.paymentOptionFound() || inactive(row.paymentOptionStatus())) return PAYMENT_OPTION_INACTIVE;
         if (!row.planFound()) return PLAN_MISSING;
         if (inactive(row.planStatus())) return PLAN_INACTIVE;
         return null;
+    }
+
+    /**
+     * An invite that does not accept enrollments now, by the rule the Courses
+     * page and the enrollment guard use (EnrollInviteAvailabilityUtil); null
+     * when it is open.
+     */
+    private static String closedInviteReason(String status, Date startDate, Date endDate) {
+        switch (EnrollInviteAvailabilityUtil.compute(status, startDate, endDate)) {
+            case EnrollInviteAvailabilityUtil.INACTIVE:
+                return INVITE_INACTIVE;
+            case EnrollInviteAvailabilityUtil.NOT_STARTED:
+                return INVITE_NOT_STARTED;
+            case EnrollInviteAvailabilityUtil.EXPIRED:
+                return INVITE_EXPIRED;
+            default:
+                return null;
+        }
     }
 
     private static List<String> warnings(List<Row> kept, List<Add> adds, Map<String, Pick> catalogue) {
@@ -191,18 +212,25 @@ final class CatalogueSyncPlanner {
 
         Set<String> vendors = new TreeSet<>();
         Set<String> currencies = new TreeSet<>();
+        // An invite that names no gateway pays through the institute's default
+        // one, which is a gateway of its own as far as the cart is concerned.
+        boolean defaultGateway = false;
         for (Row row : kept) {
+            defaultGateway |= blank(row.inviteVendor());
             addCode(vendors, row.inviteVendor());
             addCode(currencies, row.inviteCurrency());
             addCode(currencies, row.planCurrency());
         }
         for (Add add : adds) {
+            defaultGateway |= blank(add.pick().inviteVendor());
             addCode(vendors, add.pick().inviteVendor());
             addCode(currencies, add.pick().inviteCurrency());
             addCode(currencies, add.pick().planCurrency());
         }
-        if (vendors.size() > 1) {
-            out.add("Courses on this page are paid through more than one payment gateway (" + String.join(", ", vendors)
+        List<String> gateways = new ArrayList<>(vendors);
+        if (defaultGateway && !vendors.isEmpty()) gateways.add(DEFAULT_GATEWAY_LABEL);
+        if (gateways.size() > 1) {
+            out.add("Courses on this page are paid through more than one payment gateway (" + String.join(", ", gateways)
                     + "). Checkout charges the whole cart through the gateway of the first course in it.");
         }
         if (currencies.size() > 1) {
@@ -240,7 +268,7 @@ final class CatalogueSyncPlanner {
                     + ". Remove them and sync again to use the Courses page price.");
         }
         if (!stale.isEmpty()) {
-            out.add(count(stale) + " sold here through an inactive enrollment link, payment option or plan: "
+            out.add(count(stale) + " sold here through an inactive or closed enrollment link, payment option or plan: "
                     + names(stale) + ".");
         }
         if (!outside.isEmpty()) {
@@ -276,8 +304,11 @@ final class CatalogueSyncPlanner {
     }
 
     private static void addCode(Set<String> into, String code) {
-        String c = trim(code);
-        if (c != null && !c.isEmpty()) into.add(c.toUpperCase(Locale.ROOT));
+        if (!blank(code)) into.add(trim(code).toUpperCase(Locale.ROOT));
+    }
+
+    private static boolean blank(String s) {
+        return s == null || s.isBlank();
     }
 
     static String label(String packageName, String levelName) {

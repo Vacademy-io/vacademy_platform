@@ -84,9 +84,10 @@ public class ProductPageCatalogueSyncService {
             throw new VacademyException("productPageId is required");
         }
         // Locked like the editor's save, so a save and a sync never interleave.
-        // Another institute's page reads as missing rather than forbidden.
-        ProductPage page = productPageRepository.lockById(productPageId.trim())
-                .filter(p -> instituteId.equals(p.getInstituteId()) && !STATUS_DELETED.equals(p.getStatus()))
+        // The institute is part of the locking query, so another institute's
+        // page is never locked: it reads as missing rather than forbidden.
+        ProductPage page = productPageRepository.lockByIdAndInstituteId(productPageId.trim(), instituteId)
+                .filter(p -> !STATUS_DELETED.equals(p.getStatus()))
                 .orElseThrow(() -> new VacademyException("Product page not found"));
 
         List<ProductPageInviteMapping> active = productPageService.activeMappings(page.getId());
@@ -181,6 +182,8 @@ public class ProductPageCatalogueSyncService {
                 bridge.getStatus(),
                 invite != null ? invite.getId() : null,
                 invite != null ? invite.getStatus() : null,
+                invite != null ? invite.getStartDate() : null,
+                invite != null ? invite.getEndDate() : null,
                 invite != null ? invite.getVendor() : null,
                 invite != null ? invite.getCurrency() : null,
                 option != null,

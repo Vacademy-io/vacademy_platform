@@ -29,4 +29,13 @@ public interface ProductPageRepository extends JpaRepository<ProductPage, String
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM ProductPage p WHERE p.id = :id")
     Optional<ProductPage> lockById(@Param("id") String id);
+
+    /**
+     * {@link #lockById}, but only when the page belongs to the institute: the
+     * tenant check is part of the locking statement, so a caller naming another
+     * institute's page never holds a lock on that page's row.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM ProductPage p WHERE p.id = :id AND p.instituteId = :instituteId")
+    Optional<ProductPage> lockByIdAndInstituteId(@Param("id") String id, @Param("instituteId") String instituteId);
 }

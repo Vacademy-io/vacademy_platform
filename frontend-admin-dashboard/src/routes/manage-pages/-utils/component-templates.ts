@@ -988,7 +988,8 @@ export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Compo
             addAllLabel: t('learningPath.addAllLabel', { defaultValue: 'Add whole path to cart' }),
             enrolLabel: t('learningPath.enrolLabel', { defaultValue: 'Enrol in this path' }),
             viewPathLabel: t('learningPath.viewPathLabel', { defaultValue: 'View path' }),
-            emptyText: t('learningPath.emptyText', { defaultValue: 'Learning paths are coming soon.' }),
+            // Not "coming soon": the AI page review flags that as placeholder copy.
+            emptyText: t('learningPath.emptyText', { defaultValue: 'New learning paths will appear here.' }),
         },
     },
 

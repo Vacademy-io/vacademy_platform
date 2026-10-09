@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     ArrowCounterClockwise,
@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useEditorStore } from '../../-stores/editor-store';
+import type { CatalogueConfig } from '../../-types/editor-types';
 import { translateSiteStrings } from '../../-services/ai-page-service';
 import { baseLocaleOf, localesOf, type TranslationDictionary } from '../../-utils/catalogue-i18n';
 import { languageName } from '../../-hooks/use-localized-editing';
@@ -53,23 +54,41 @@ interface AiRun {
     unchanged: string[];
     tooLong: string[];
     error?: string;
+    /** The site the run translated (see currentSite). */
+    site: CatalogueConfig | null;
 }
 
 const PAGE_SIZE = 50;
 
-/** Writes one language's dictionary from the LATEST store state (an AI batch may land while the admin edits). */
+/**
+ * Which site the editor store holds. The store is shared by every site, and
+ * originalConfig is replaced only when a site is loaded (setConfig), never by
+ * an edit — so an AI result that comes back after the admin opened another
+ * site can be told apart from one that still belongs here.
+ */
+const currentSite = () => useEditorStore.getState().originalConfig;
+
+/**
+ * Writes one language's dictionary from the LATEST store state (an AI batch
+ * may land while the admin edits). Given `site` — currentSite() when the AI
+ * request went out — it writes nothing once the store holds another site.
+ * Returns whether it wrote.
+ */
 const writeDictionary = (
     locale: string,
-    update: (dict: TranslationDictionary | undefined) => TranslationDictionary
-) => {
+    update: (dict: TranslationDictionary | undefined) => TranslationDictionary,
+    site?: CatalogueConfig | null
+): boolean => {
     const state = useEditorStore.getState();
     const config = state.config;
-    if (!config) return;
+    if (!config) return false;
+    if (site !== undefined && state.originalConfig !== site) return false;
     const i18n = config.globalSettings.i18n || {};
     const strings = i18n.strings || {};
     state.updateGlobalSettings({
         i18n: { ...i18n, strings: { ...strings, [locale]: update(strings[locale]) } },
     });
+    return true;
 };
 
 const errorDetail = (err: unknown): string => {
@@ -112,6 +131,15 @@ export const TranslationsPanel = ({
     const [visible, setVisible] = useState(PAGE_SIZE);
     const [run, setRun] = useState<AiRun | null>(null);
     const cancelRef = useRef(false);
+    // Leaving the editor (browser Back, another site) unmounts the dialog
+    // without onOpenChange(false): stop a running batch loop then too, or it
+    // keeps sending (and paying for) the remaining batches.
+    useEffect(
+        () => () => {
+            cancelRef.current = true;
+        },
+        []
+    );
 
     const dict = i18n?.strings?.[locale];
     const siteStrings = useMemo(() => collectSiteStrings(config), [config]);
@@ -165,6 +193,7 @@ export const TranslationsPanel = ({
         if (missing.length === 0 || run?.running) return;
         const { batches, tooLong } = batchForTranslation(missing);
         const target = locale;
+        const site = currentSite();
         cancelRef.current = false;
         const progress: AiRun = {
             running: true,
@@ -174,10 +203,13 @@ export const TranslationsPanel = ({
             failed: [],
             unchanged: [],
             tooLong,
+            site,
         };
         setRun({ ...progress });
         for (const batch of batches) {
-            if (cancelRef.current) break;
+            // Stopped (button, dialog closed, panel gone), or another site was
+            // opened meanwhile — these texts are not that site's texts.
+            if (cancelRef.current || currentSite() !== site) break;
             try {
                 const res = await translateSiteStrings({
                     strings: batch,
@@ -186,19 +218,30 @@ export const TranslationsPanel = ({
                 });
                 let unchanged: string[] = [];
                 let added = 0;
-                writeDictionary(target, (d) => {
-                    // Only fill what is still missing: a translation the admin
-                    // typed while this batch was running wins.
-                    const stillMissing = Object.fromEntries(
-                        Object.entries(res.translations || {}).filter(([source]) => !d?.[source])
-                    );
-                    const merged = mergeAiTranslations(d, stillMissing);
-                    unchanged = merged.unchanged;
-                    added = Object.entries(stillMissing).filter(
-                        ([source, value]) => value.trim() !== '' && value !== source
-                    ).length;
-                    return merged.dict;
-                });
+                const written = writeDictionary(
+                    target,
+                    (d) => {
+                        // Only fill what is still missing: a translation the admin
+                        // typed while this batch was running wins.
+                        const stillMissing = Object.fromEntries(
+                            Object.entries(res.translations || {}).filter(
+                                ([source]) => !d?.[source]
+                            )
+                        );
+                        const merged = mergeAiTranslations(d, stillMissing);
+                        unchanged = merged.unchanged;
+                        added = Object.entries(stillMissing).filter(
+                            ([source, value]) => value.trim() !== '' && value !== source
+                        ).length;
+                        return merged.dict;
+                    },
+                    site
+                );
+                if (!written) {
+                    progress.error =
+                        'Another site was opened, so the translation stopped and its last batch was not saved.';
+                    break;
+                }
                 progress.translated += added;
                 progress.unchanged.push(...unchanged);
                 progress.failed.push(...(res.failed || []));
@@ -225,7 +268,7 @@ export const TranslationsPanel = ({
 
     const keepUnchanged = () => {
         if (!run?.unchanged.length) return;
-        writeDictionary(locale, (d) => keepAsBase(d, run.unchanged));
+        writeDictionary(locale, (d) => keepAsBase(d, run.unchanged), run.site);
         setRun({ ...run, unchanged: [] });
     };
 
@@ -509,6 +552,7 @@ const TranslationRow = ({
     const translateAgain = async () => {
         setBusy(true);
         setRowError(null);
+        const site = currentSite();
         try {
             const res = await translateSiteStrings({
                 strings: [row.source],
@@ -518,10 +562,13 @@ const TranslationRow = ({
             });
             const out = res.translations?.[row.source];
             if (typeof out === 'string' && out.trim()) {
-                writeDictionary(locale, (d) =>
-                    out === row.source
-                        ? keepAsBase(d, [row.source])
-                        : setTranslation(d, row.source, out)
+                writeDictionary(
+                    locale,
+                    (d) =>
+                        out === row.source
+                            ? keepAsBase(d, [row.source])
+                            : setTranslation(d, row.source, out),
+                    site
                 );
             } else {
                 setRowError(

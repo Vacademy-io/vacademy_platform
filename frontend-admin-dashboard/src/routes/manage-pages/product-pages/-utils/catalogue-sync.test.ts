@@ -19,6 +19,9 @@ const SERVER_CODES = [
     'payment_option_inactive',
     'cpo_not_supported',
     'no_active_plan',
+    'non_default_invite',
+    'currency_mismatch',
+    'vendor_mismatch',
     'left_catalogue',
     'bridge_inactive',
     'plan_inactive',
@@ -114,9 +117,40 @@ describe('describeSyncReason', () => {
             label: 'Instalment (CPO) plans cannot be sold through the cart',
             hint: 'Sell these courses from their own course page or invite link instead.',
         });
-        expect(describeSyncReason('invite_expired').hint).toMatch(/end date/);
         expect(describeSyncReason('left_catalogue').label).toMatch(/never were/);
         expect(describeSyncReason('INVITE_NOT_STARTED').label).toBe('Its invite link has not opened yet');
+    });
+
+    it('points a closed link at the course’s default invite link, never at reopening a promo link', () => {
+        for (const code of ['invite_expired', 'invite_inactive']) {
+            const { hint } = describeSyncReason(code);
+            expect(hint).toMatch(/default invite link/);
+            expect(hint).not.toMatch(/extend|end date|back on/i);
+        }
+    });
+
+    it('explains the courses a store page cannot take: other invite link, currency or gateway', () => {
+        expect(describeSyncReason('non_default_invite')).toEqual({
+            label: 'Only a non-default invite link sells this course',
+            hint: 'Add it by hand if that price is intended.',
+        });
+        expect(describeSyncReason('currency_mismatch')).toEqual({
+            label: 'Priced in a different currency from this store page, or its invite link and payment plan name different currencies',
+            hint: 'If its invite link and payment plan name different currencies, give them the same one, then sync again. Otherwise sell it from its own product page.',
+        });
+        expect(describeSyncReason('vendor_mismatch')).toEqual({
+            label: 'Paid through a different payment gateway from this store page',
+            hint: 'Sell it from its own product page.',
+        });
+    });
+
+    it('also explains currency_mismatch for a course whose invite link and plan disagree — its own page would not fix that', () => {
+        // The planner sends this code before comparing with the page's currency,
+        // even on an empty page, when a course's invite and plan currencies differ.
+        const { label, hint } = describeSyncReason('currency_mismatch');
+        expect(label).toMatch(/invite link and payment plan name different currencies/);
+        expect(hint).toMatch(/^If its invite link and payment plan name different currencies, give them the same one/);
+        expect(hint).not.toMatch(/^Sell it from its own product page/);
     });
 
     it('humanises an unknown code and passes a sentence through', () => {

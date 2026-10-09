@@ -42,7 +42,12 @@ export const paramCaveat = (param: string): string | null =>
         ? 'The site language is remembered in the visitor’s browser and is usually not in the address, so ?lang only reflects a link that carries it. A rule on it hides this section from visitors who picked their language earlier.'
         : null;
 
-/** "Only on the unfiltered view": the Courses page with no stream tab chosen. */
+/**
+ * "Only on the All courses tab": the Courses page with no stream tab chosen.
+ * It reads ?stream only, so the section stays while a visitor filters or
+ * searches inside All courses (?language, ?price, ?badge, ?q) — add rules on
+ * those parameters for a stricter "nothing filtered".
+ */
 export const UNFILTERED_VIEW_PRESET: VisibleWhenRule[] = [{ param: 'stream', op: 'empty' }];
 
 const OPS = new Set<VisibleWhenOp>(['empty', 'notEmpty', 'equals', 'notEquals']);
@@ -95,6 +100,6 @@ export const describeRule = (rule: VisibleWhenRule): string => {
 /** One line for the collapsed control. */
 export const describeVisibleWhen = (rules: VisibleWhenRule[]): string => {
     if (!rules.length) return 'Always shown';
-    if (isUnfilteredPreset(rules)) return 'Only on the unfiltered view';
+    if (isUnfilteredPreset(rules)) return 'Only on the All courses tab';
     return `Only when ${rules.map(describeRule).join(' and ')}`;
 };

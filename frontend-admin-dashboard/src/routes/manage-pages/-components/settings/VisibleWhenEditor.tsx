@@ -23,9 +23,8 @@ import {
 /**
  * Section visibility by address (component.visibleWhen): "show this section
  * only when ?stream is empty", for example — the Courses page shows its
- * "Start free" block and learning paths only on the unfiltered view. Every
- * rule must hold. No rules = always shown, which is how every existing
- * section stays.
+ * "Start free" block only on the All courses tab. Every rule must hold. No
+ * rules = always shown, which is how every existing section stays.
  */
 
 interface VisibleWhenEditorProps {
@@ -76,7 +75,7 @@ export const VisibleWhenEditor = ({ rules: stored, onChange, idPrefix }: Visible
                 <div className="space-y-2">
                     <p className="text-caption text-neutral-500">
                         Show this section only when the page address matches — every rule must hold. Handy on the
-                        Courses page: keep &ldquo;Start free&rdquo; for the unfiltered view and hide it once a stream
+                        Courses page: keep &ldquo;Start free&rdquo; on the All courses tab and hide it once a stream
                         tab is picked.
                     </p>
                     <div className="flex flex-wrap gap-1">
@@ -90,7 +89,7 @@ export const VisibleWhenEditor = ({ rules: stored, onChange, idPrefix }: Visible
                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             )}
                         >
-                            Only on the unfiltered view
+                            Only on the All courses tab
                         </button>
                         <button
                             type="button"

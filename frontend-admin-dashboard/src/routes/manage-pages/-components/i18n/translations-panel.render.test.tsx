@@ -56,6 +56,56 @@ const load = (hi: Record<string, string> = {}) =>
 const hi = () => useEditorStore.getState().config!.globalSettings.i18n!.strings!.hi!;
 const base = () => useEditorStore.getState().config!.pages[0]!.components[0]!.props;
 
+const aiResult = (translations: Record<string, string>) => ({
+    translations,
+    failed: [],
+    tm_hits: 0,
+    run_id: 'r1',
+    model: 'm',
+    warnings: [],
+});
+
+/** An AI request still in flight, settled by the test. */
+const inFlight = () => {
+    let resolve!: (value: ReturnType<typeof aiResult>) => void;
+    const promise = new Promise<ReturnType<typeof aiResult>>((r) => (resolve = r));
+    return { promise, resolve };
+};
+
+/** Settles a request and lets the batch loop run on to its next step. */
+const settle = (land: () => void) =>
+    act(async () => {
+        land();
+        await new Promise((r) => setTimeout(r, 0));
+    });
+
+/** Long enough to travel alone, so site A's run has two batches: this text, then NEET + Join now. */
+const LONG = 'A long story about our school and its teachers. '.repeat(70);
+
+const loadWithLongText = () => {
+    load({ 'Learn the Indian way': 'भारतीय तरीके से सीखें' });
+    useEditorStore.getState().updateComponent('home', 'h', {
+        props: { ...base(), description: LONG },
+    });
+};
+
+/** What the editor does when the admin opens another site: the same store, a new config. */
+const openSiteB = (i18n?: Record<string, unknown>) =>
+    act(() =>
+        useEditorStore.getState().setConfig({
+            pages: [
+                {
+                    id: 'b-home',
+                    route: 'home',
+                    components: [
+                        { id: 'b', type: 'heroSection', enabled: true, props: { title: 'Site B' } },
+                    ],
+                },
+            ],
+            globalSettings: i18n ? { i18n } : {},
+        } as never)
+    );
+
 describe('TranslationsPanel', () => {
     beforeEach(() => {
         translateSiteStrings.mockReset();
@@ -124,5 +174,75 @@ describe('TranslationsPanel', () => {
         });
         expect(await screen.findByText(/Insufficient credits/)).toBeInTheDocument();
         expect(hi()).toEqual({ 'Learn the Indian way': 'भारतीय तरीके से सीखें' });
+    });
+
+    it('keeps writing every batch while the admin edits the same site', async () => {
+        loadWithLongText();
+        const first = inFlight();
+        translateSiteStrings
+            .mockReturnValueOnce(first.promise)
+            .mockResolvedValueOnce(aiResult({ NEET: 'नीट', 'Join now': 'अभी जुड़ें' }));
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Translate 3 missing with AI/ }));
+        // An ordinary edit while the first batch runs: still the same site.
+        act(() =>
+            useEditorStore.getState().updateComponent('home', 'h', { props: { ...base(), layout: 'centered' } })
+        );
+        await settle(() => first.resolve(aiResult({ [LONG]: 'हमारे स्कूल की कहानी' })));
+        await waitFor(() => expect(hi()['Join now']).toBe('अभी जुड़ें'));
+        expect(translateSiteStrings).toHaveBeenCalledTimes(2);
+        expect(hi()[LONG]).toBe('हमारे स्कूल की कहानी');
+        expect(hi().NEET).toBe('नीट');
+    });
+
+    it('drops a batch that lands after another site was opened, and sends no more', async () => {
+        loadWithLongText();
+        const first = inFlight();
+        translateSiteStrings
+            .mockReturnValueOnce(first.promise)
+            .mockResolvedValue(aiResult({ NEET: 'नीट', 'Join now': 'अभी जुड़ें' }));
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Translate 3 missing with AI/ }));
+        expect(translateSiteStrings.mock.calls[0]![0].strings).toEqual([LONG]);
+        // Browser Back, then site B, while site A's first batch is still running.
+        openSiteB();
+        await settle(() => first.resolve(aiResult({ [LONG]: 'हमारे स्कूल की कहानी' })));
+        // Site B gets no i18n block and no edit (the autosave would have saved it as a draft).
+        expect(useEditorStore.getState().config!.globalSettings).toEqual({});
+        expect(useEditorStore.getState().config!.pages[0]!.id).toBe('b-home');
+        expect(translateSiteStrings).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops sending batches when the dialog goes away without being closed (route change)', async () => {
+        loadWithLongText();
+        const first = inFlight();
+        translateSiteStrings
+            .mockReturnValueOnce(first.promise)
+            .mockResolvedValue(aiResult({ NEET: 'नीट', 'Join now': 'अभी जुड़ें' }));
+        const { unmount } = render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.click(screen.getByRole('button', { name: /Translate 3 missing with AI/ }));
+        unmount();
+        await settle(() => first.resolve(aiResult({ [LONG]: 'हमारे स्कूल की कहानी' })));
+        expect(translateSiteStrings).toHaveBeenCalledTimes(1);
+        expect(hi().NEET).toBeUndefined();
+    });
+
+    it('drops a row’s AI translation that lands after another site was opened', async () => {
+        const pending = inFlight();
+        translateSiteStrings.mockReturnValueOnce(pending.promise);
+        render(<TranslationsPanel open initialLocale="hi" onOpenChange={vi.fn()} />);
+        fireEvent.click(screen.getAllByRole('button', { name: 'Translate with AI' })[0]!);
+        expect(translateSiteStrings.mock.calls[0]![0].strings).toEqual(['NEET']);
+        openSiteB({
+            enabled: true,
+            defaultLocale: 'en',
+            locales: [
+                { code: 'en', label: 'EN' },
+                { code: 'hi', label: 'हिन्दी' },
+            ],
+            strings: { hi: {} },
+        });
+        await settle(() => pending.resolve(aiResult({ NEET: 'नीट' })));
+        expect(hi()).toEqual({});
     });
 });

@@ -359,7 +359,7 @@ export const LearningPathEditor = ({ component, pageId, updateComponent }: Learn
                 <TextField
                     label="When there is nothing to show"
                     value={props.emptyText || ''}
-                    placeholder="Learning paths are coming soon."
+                    placeholder="New learning paths will appear here."
                     onChange={(v) => set('emptyText', v)}
                 />
             </div>

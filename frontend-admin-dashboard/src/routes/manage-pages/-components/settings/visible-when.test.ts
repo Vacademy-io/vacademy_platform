@@ -88,7 +88,8 @@ describe('rule helpers', () => {
 
     it('describes rules in plain words', () => {
         expect(describeVisibleWhen([])).toBe('Always shown');
-        expect(describeVisibleWhen(UNFILTERED_VIEW_PRESET)).toBe('Only on the unfiltered view');
+        // It reads ?stream only, so it names the tab it means, not "unfiltered".
+        expect(describeVisibleWhen(UNFILTERED_VIEW_PRESET)).toBe('Only on the All courses tab');
         expect(
             describeVisibleWhen([
                 { param: 'stream', op: 'equals', value: 'shiksha' },

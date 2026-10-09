@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowsClockwise, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { getProductPage, syncProductPageCatalogue } from '../-services/product-pages-service';
 import type { ProductPageResponse } from '../-types/product-page-types';
-import { useStoreSites } from '../-hooks/use-store-sites';
+import { fetchStoreSites, useStoreSites } from '../-hooks/use-store-sites';
 import {
     describeSyncReason,
     groupSyncItemsByReason,
@@ -46,7 +46,8 @@ interface CatalogueSyncPanelProps {
     /**
      * A site's store page, which should sell exactly what the Courses page
      * shows: "switch off" then starts ticked. Leave it out and pass
-     * `productPageCode` to have the panel look it up in the sites' settings.
+     * `productPageCode` to have the panel look it up in the sites' settings
+     * when a sync starts (or read it from the sites list's cache before then).
      */
     isStorePage?: boolean;
     productPageCode?: string | null;
@@ -91,21 +92,62 @@ export const CatalogueSyncPanel = ({
     compact = false,
 }: CatalogueSyncPanelProps) => {
     const queryClient = useQueryClient();
-    const storeSites = useStoreSites(instituteId, isStorePage === undefined ? productPageCode : null);
-    const storePage = isStorePage ?? storeSites.length > 0;
+    // Finding out whether this is a store page loads every site's whole
+    // catalogue JSON, so it happens only when a sync starts. Until then the
+    // panel goes by what the sites list already cached (null = not known).
+    const lookUp = isStorePage === undefined;
+    const storeSites = useStoreSites(instituteId, lookUp ? productPageCode : null, {
+        fetch: false,
+    });
+    const storePage = isStorePage ?? !!storeSites?.length;
     // The admin's own tick wins; until then the default follows the kind of
-    // page (which may only be known once the sites' settings have loaded).
+    // page (which may only be known once a sync has started).
     const [deactivateChoice, setDeactivateChoice] = useState<boolean | null>(null);
     const deactivateMissing = deactivateChoice ?? storePage;
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [checking, setChecking] = useState(false);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState<CatalogueSyncResult | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const blocked = isDirty || !productPageId || !instituteId;
+    // The props as they are now, for a sync start that resumes after the
+    // store-page lookup.
+    const latest = useRef({ blocked, productPageId, instituteId });
+    latest.current = { blocked, productPageId, instituteId };
+
+    const startSync = async () => {
+        let store = storePage;
+        // An untouched box takes its default from the kind of page: find out now.
+        if (deactivateChoice === null && lookUp && (productPageCode || '').trim()) {
+            setChecking(true);
+            try {
+                const sites = await fetchStoreSites(queryClient, instituteId, productPageCode);
+                store = sites.length > 0;
+            } catch {
+                // The sites did not load: keep what the cache said (unticked
+                // when nothing was cached, so the sync then only adds).
+            } finally {
+                setChecking(false);
+            }
+            // The course rows stay editable during the lookup. A row edited
+            // meanwhile would be lost to the sync's rows, and a page the editor
+            // moved to was not the one looked up, so the dialog waits for the
+            // next click ("Save your changes first" shows meanwhile).
+            const now = latest.current;
+            const moved = now.productPageId !== productPageId || now.instituteId !== instituteId;
+            if (now.blocked || moved) return;
+        }
+        // Settle the default now, so the dialog's wording and the sync agree
+        // even if the sites' settings change while it is open.
+        setDeactivateChoice((choice) => choice ?? store);
+        setConfirmOpen(true);
+    };
 
     const run = async () => {
         setConfirmOpen(false);
+        // Unsaved edits since the dialog opened: saving them later would undo the sync.
+        if (latest.current.blocked) return;
         setRunning(true);
         onRunningChange?.(true);
         setError(null);
@@ -161,21 +203,18 @@ export const CatalogueSyncPanel = ({
                     <p className="mt-0.5 text-caption text-neutral-500">
                         {compact
                             ? 'Adds every course version on your Courses page that the store page does not sell yet.'
-                            : 'Adds every course version published to your catalogue that this page does not sell yet, after the courses already here. Prices follow each course’s catalogue price, as on the Courses page. Saved at once.'}
+                            : 'Adds every course version published to your catalogue that this page does not sell yet, after the courses already here. Each one sells through its default invite, at that invite’s price. Saved at once.'}
                     </p>
                 </div>
                 <MyButton
                     buttonType="secondary"
                     scale="small"
-                    disable={blocked || running}
-                    onClick={() => {
-                        // Settle the default now, so the dialog's wording and the sync agree
-                        // even if the store-page lookup finishes while it is open.
-                        setDeactivateChoice((choice) => choice ?? storePage);
-                        setConfirmOpen(true);
-                    }}
+                    disable={blocked || running || checking}
+                    onClick={startSync}
                 >
-                    <ArrowsClockwise className={cn('size-3.5', running && 'animate-spin')} />
+                    <ArrowsClockwise
+                        className={cn('size-3.5', (running || checking) && 'animate-spin')}
+                    />
                     {running ? 'Syncing…' : 'Sync all catalogue courses'}
                 </MyButton>
             </div>
@@ -194,7 +233,9 @@ export const CatalogueSyncPanel = ({
                 <p className="ms-6 text-caption text-neutral-400">
                     {storePage
                         ? 'Ticked by default on a store page: it should sell exactly what your Courses page shows.'
-                        : 'Unticked by default here: courses this page sells that are not on your Courses page would be switched off.'}
+                        : storeSites === null
+                          ? 'Ticked by default if this is a site’s store page (checked when you sync): a store page should sell exactly what your Courses page shows.'
+                          : 'Unticked by default here: courses this page sells that are not on your Courses page would be switched off.'}
                 </p>
             </div>
 
@@ -250,7 +291,9 @@ export const CatalogueSyncPanel = ({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={run}>Sync now</AlertDialogAction>
+                        <AlertDialogAction onClick={run} disabled={blocked}>
+                            Sync now
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

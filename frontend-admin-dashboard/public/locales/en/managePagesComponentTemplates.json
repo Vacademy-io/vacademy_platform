@@ -267,7 +267,7 @@
     },
     "learningPath": {
         "addAllLabel": "Add whole path to cart",
-        "emptyText": "Learning paths are coming soon.",
+        "emptyText": "New learning paths will appear here.",
         "enrolLabel": "Enrol in this path",
         "subtitle": "Courses in the order we recommend taking them.",
         "title": "Learning paths",

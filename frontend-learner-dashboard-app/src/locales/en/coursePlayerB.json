@@ -332,7 +332,18 @@
         "removeFromCart": "Remove from cart",
         "showResultsCount": "Show results ({{count}})",
         "streamSoon": "Soon",
-        "streamsAriaLabel": "Streams"
+        "streamsAriaLabel": "Streams",
+        "chooseVersion": "Choose a version",
+        "sort": {
+            "newest": "Newest",
+            "oldest": "Oldest",
+            "price-asc": "Price: Low to High",
+            "price-desc": "Price: High to Low",
+            "rating": "Rating",
+            "name-asc": "Name A-Z",
+            "name-desc": "Name Z-A",
+            "popular": "Popular"
+        }
     },
     "buyRentSection": {
         "chooseOption": "Select the option that best fits your needs",
@@ -549,7 +560,8 @@
         "issue": {
             "duplicateInCart": "Already in your cart above — remove one.",
             "listedTwice": "Listed twice at checkout — please contact the institute before buying it.",
-            "notInStore": "Not available for online checkout."
+            "notInStore": "Not available for online checkout.",
+            "otherCurrency": "Priced in a different currency — check it out separately."
         },
         "issuesSummary": "Some {{courses}} can't be checked out right now — see the notes above.",
         "itemCount": "{{count}} {{course}}",
@@ -570,6 +582,9 @@
         "total": "Total",
         "totalAtCheckout": "Shown at checkout",
         "viewCart": "View cart",
-        "viewCartCount": "View cart ({{count}})"
+        "viewCartCount": "View cart ({{count}})",
+        "otherCurrencySummary": "Some {{courses}} are priced in a different currency — check them out separately.",
+        "continueAtCurrentPrices": "Continue at current prices",
+        "priceChangedFromTo": "Price changed from {{from}} to {{to}}"
     }
 }

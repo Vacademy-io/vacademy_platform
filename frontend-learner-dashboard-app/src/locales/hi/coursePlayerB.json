@@ -332,7 +332,18 @@
         "removeFromCart": "कार्ट से हटाएँ",
         "showResultsCount": "परिणाम देखें ({{count}})",
         "streamSoon": "जल्द",
-        "streamsAriaLabel": "धाराएँ"
+        "streamsAriaLabel": "धाराएँ",
+        "chooseVersion": "संस्करण चुनें",
+        "sort": {
+            "newest": "सबसे नया",
+            "oldest": "सबसे पुराना",
+            "price-asc": "कीमत: कम से ज़्यादा",
+            "price-desc": "कीमत: ज़्यादा से कम",
+            "rating": "रेटिंग",
+            "name-asc": "नाम: A-Z",
+            "name-desc": "नाम: Z-A",
+            "popular": "लोकप्रिय"
+        }
     },
     "buyRentSection": {
         "chooseOption": "अपनी ज़रूरत के हिसाब से सबसे उपयुक्त विकल्प चुनें",
@@ -549,7 +560,8 @@
         "issue": {
             "duplicateInCart": "यह ऊपर पहले से आपकी कार्ट में है — एक हटाएँ।",
             "listedTwice": "चेकआउट में दो बार सूचीबद्ध है — खरीदने से पहले संस्थान से संपर्क करें।",
-            "notInStore": "ऑनलाइन चेकआउट के लिए उपलब्ध नहीं है।"
+            "notInStore": "ऑनलाइन चेकआउट के लिए उपलब्ध नहीं है।",
+            "otherCurrency": "इसकी कीमत दूसरी मुद्रा में है — इसका चेकआउट अलग से करें।"
         },
         "issuesSummary": "कुछ {{courses}} का अभी चेकआउट नहीं हो सकता — ऊपर दिए नोट देखें।",
         "itemCount": "{{count}} {{course}}",
@@ -570,6 +582,9 @@
         "total": "कुल",
         "totalAtCheckout": "चेकआउट पर दिखेगा",
         "viewCart": "कार्ट देखें",
-        "viewCartCount": "कार्ट देखें ({{count}})"
+        "viewCartCount": "कार्ट देखें ({{count}})",
+        "otherCurrencySummary": "कुछ {{courses}} की कीमत दूसरी मुद्रा में है — उनका चेकआउट अलग से करें।",
+        "continueAtCurrentPrices": "वर्तमान कीमतों पर जारी रखें",
+        "priceChangedFromTo": "कीमत {{from}} से बदलकर {{to}} हो गई है"
     }
 }

@@ -42,8 +42,12 @@ import java.util.TreeSet;
  *       gateway from the cart's first priced course and the currency from its
  *       priced courses. A free course's gateway is often a fallback set before
  *       the institute configured one, and its currency only a default label
- *       (free plans are created in INR, or GBP by the admin app), so it sets
- *       neither for the page, and neither keeps it off the page.</li>
+ *       (free plans are created in INR, or GBP by the admin app), so on a page
+ *       that sells something priced it sets neither for the page, and neither
+ *       keeps it off the page. On a page where nothing is priced (FLAT basket
+ *       pricing, where the basket sets the money) checkout charges a cart
+ *       through its first course's gateway, so there the page's gateway is its
+ *       first course's and a course on another one is not added.</li>
  *   <li>Added courses are numbered priced first, then free, each in catalogue
  *       order, so a free course never becomes the page's first row only
  *       because the catalogue lists it first (the learner page falls back to
@@ -197,11 +201,16 @@ final class CatalogueSyncPlanner {
     /**
      * The gateway and currency every priced course added to the page must
      * share. Null fields: vendor, when the deciding invite names no gateway
-     * (the institute default) or nothing priced is left to decide one (then
-     * no priced course is checked against it either); currency, when nothing
-     * priced on the page names one yet (it then constrains nothing).
+     * (the institute default) or nothing is left to decide one; currency,
+     * when nothing priced on the page names one yet (it then constrains
+     * nothing). anyPriced: whether the page keeps or gains a priced course.
+     * Checkout then charges a cart through its first priced course's gateway,
+     * so a free course joins on any gateway. Where nothing is priced (FLAT
+     * basket pricing: every course is 0 and the basket sets the money) it
+     * charges a cart through its first course's gateway, so a free course
+     * must be on the page's.
      */
-    record Terms(String vendor, String currency) {
+    record Terms(String vendor, String currency, boolean anyPriced) {
     }
 
     /**
@@ -214,41 +223,48 @@ final class CatalogueSyncPlanner {
      * takes its currency from the first priced course on that gateway naming
      * one, so the course that decides always goes in. A free course sets
      * neither: checkout charges it nothing and takes both from the cart's
-     * priced courses. Visible for testing.
+     * priced courses. Only on a page where nothing is priced does the first
+     * remaining row, else the first sellable course, set the gateway, as
+     * checkout charges a cart there through its first course's. Visible for
+     * testing.
      */
     static Terms pageTerms(List<Row> kept, List<Pick> candidates) {
         List<Pick> sellable = new ArrayList<>();
         for (Pick pick : candidates) {
             if (skipReason(pick) == null && !mixedCurrencies(pick)) sellable.add(pick);
         }
-        String vendor = vendor(kept, sellable);
+        boolean anyPriced = kept.stream().anyMatch(row -> priced(row.planPrice()))
+                || sellable.stream().anyMatch(pick -> priced(pick.planPrice()));
+        String vendor = vendor(kept, sellable, anyPriced);
         String currency = null;
         for (Row row : kept) {
             if (!priced(row.planPrice())) continue;
             currency = firstCode(row.inviteCurrency(), row.planCurrency());
-            if (currency != null) return new Terms(vendor, currency);
+            if (currency != null) return new Terms(vendor, currency, anyPriced);
         }
         for (Pick pick : sellable) {
             if (!priced(pick.planPrice())) continue;
             // A course on another gateway is skipped anyway; it decides nothing.
             if (!Objects.equals(code(pick.inviteVendor()), vendor)) continue;
             currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
-            if (currency != null) return new Terms(vendor, currency);
+            if (currency != null) return new Terms(vendor, currency, anyPriced);
         }
-        return new Terms(vendor, null);
+        return new Terms(vendor, null, anyPriced);
     }
 
     /**
      * The page's gateway: the first remaining priced row's, else the first
-     * priced sellable course's; null when that invite names none (the
-     * institute default) or when nothing priced is left to take one from.
+     * priced sellable course's. On a page where nothing is priced, the first
+     * remaining row's, else the first sellable course's. Null when that
+     * invite names none (the institute default), or nothing is left to take
+     * one from.
      */
-    private static String vendor(List<Row> kept, List<Pick> sellable) {
+    private static String vendor(List<Row> kept, List<Pick> sellable, boolean anyPriced) {
         for (Row row : kept) {
-            if (priced(row.planPrice())) return code(row.inviteVendor());
+            if (!anyPriced || priced(row.planPrice())) return code(row.inviteVendor());
         }
         for (Pick pick : sellable) {
-            if (priced(pick.planPrice())) return code(pick.inviteVendor());
+            if (!anyPriced || priced(pick.planPrice())) return code(pick.inviteVendor());
         }
         return null;
     }
@@ -260,10 +276,16 @@ final class CatalogueSyncPlanner {
      * fail. A course whose invite and plan disagree on the currency would be
      * charged its plan's price in its invite's currency, whatever the page. A
      * free course is charged nothing, and checkout takes neither its gateway
-     * nor its currency, so it always can.
+     * nor its currency, so it can join any page that sells something priced.
+     * Where nothing is priced, a cart (the basket price) is charged through
+     * its first course's gateway, so a free course there must be on the
+     * page's gateway; its currency still decides nothing.
      */
     static String termsReason(Pick pick, Terms page) {
-        if (!priced(pick.planPrice())) return null;
+        if (!priced(pick.planPrice())) {
+            return page.anyPriced() || Objects.equals(code(pick.inviteVendor()), page.vendor())
+                    ? null : VENDOR_MISMATCH;
+        }
         if (mixedCurrencies(pick)) return CURRENCY_MISMATCH;
         String currency = firstCode(pick.inviteCurrency(), pick.planCurrency());
         if (currency != null && page.currency() != null && !currency.equals(page.currency())) {
